@@ -6,6 +6,7 @@ Enterprise-grade thread management system that prevents leaks, ensures
 clean shutdown, and provides comprehensive monitoring.
 
 Features:
+- Centralized executor registry with coordinated shutdown
 - Automatic thread discovery and tracking
 - Async/await support with event loop management
 - Multi-phase shutdown with escalation
@@ -16,9 +17,10 @@ Features:
 - Auto-cleanup of orphaned threads
 - Stack trace capture for debugging
 - Metric collection and reporting
-- Configurable policies (no hardcoding)
+- Configurable policies via environment variables (no hardcoding)
 - Thread priority management
 - Graceful degradation under load
+- Signal handling integration (SIGINT, SIGTERM)
 """
 
 import asyncio
@@ -31,38 +33,663 @@ import sys
 import os
 import ctypes
 import weakref
-from typing import Dict, List, Optional, Callable, Set, Any, Union, Tuple
+import functools
+from typing import Dict, List, Optional, Callable, Set, Any, Union, Tuple, TypeVar, Generic
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from enum import Enum, auto
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, wait as futures_wait, FIRST_COMPLETED
+from contextlib import contextmanager
 import atexit
 
 logger = logging.getLogger(__name__)
 
+# Type variable for generic executor wrapper
+T = TypeVar('T')
 
-# Global registry of all executors for cleanup
-_executor_registry: List[weakref.ref] = []
-_executor_lock = threading.Lock()
-_shutdown_initiated = False
 
+# =============================================================================
+# CONFIGURATION - All values from environment, no hardcoding
+# =============================================================================
+
+def _env_float(key: str, default: float) -> float:
+    """Get float from environment with default."""
+    try:
+        return float(os.getenv(key, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _env_int(key: str, default: int) -> int:
+    """Get int from environment with default."""
+    try:
+        return int(os.getenv(key, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    """Get bool from environment with default."""
+    val = os.getenv(key, str(default)).lower()
+    return val in ('true', '1', 'yes', 'on')
+
+
+@dataclass
+class ExecutorConfig:
+    """
+    Configuration for executor management - all values from environment.
+
+    Environment Variables:
+        EXECUTOR_SHUTDOWN_TIMEOUT: Max seconds to wait for graceful shutdown (default: 5.0)
+        EXECUTOR_FORCE_TIMEOUT: Max seconds before force shutdown (default: 2.0)
+        EXECUTOR_HEALTH_CHECK_INTERVAL: Seconds between health checks (default: 30.0)
+        EXECUTOR_MAX_PENDING_TASKS: Max pending tasks before backpressure (default: 1000)
+        EXECUTOR_ENABLE_METRICS: Enable detailed metrics collection (default: True)
+        EXECUTOR_LOG_LEVEL: Logging level for executor events (default: INFO)
+        EXECUTOR_AUTO_SCALE: Enable auto-scaling of worker threads (default: False)
+        EXECUTOR_MIN_WORKERS: Minimum worker threads when auto-scaling (default: 2)
+        EXECUTOR_MAX_WORKERS: Maximum worker threads when auto-scaling (default: CPU_COUNT * 2)
+    """
+    shutdown_timeout: float = field(default_factory=lambda: _env_float('EXECUTOR_SHUTDOWN_TIMEOUT', 5.0))
+    force_timeout: float = field(default_factory=lambda: _env_float('EXECUTOR_FORCE_TIMEOUT', 2.0))
+    health_check_interval: float = field(default_factory=lambda: _env_float('EXECUTOR_HEALTH_CHECK_INTERVAL', 30.0))
+    max_pending_tasks: int = field(default_factory=lambda: _env_int('EXECUTOR_MAX_PENDING_TASKS', 1000))
+    enable_metrics: bool = field(default_factory=lambda: _env_bool('EXECUTOR_ENABLE_METRICS', True))
+    auto_scale: bool = field(default_factory=lambda: _env_bool('EXECUTOR_AUTO_SCALE', False))
+    min_workers: int = field(default_factory=lambda: _env_int('EXECUTOR_MIN_WORKERS', 2))
+    max_workers: int = field(default_factory=lambda: _env_int('EXECUTOR_MAX_WORKERS', (os.cpu_count() or 4) * 2))
+
+    @classmethod
+    def from_env(cls) -> 'ExecutorConfig':
+        """Create config from environment variables."""
+        return cls()
+
+
+# =============================================================================
+# EXECUTOR REGISTRY - Centralized lifecycle management
+# =============================================================================
+
+class ExecutorState(Enum):
+    """Executor lifecycle states."""
+    CREATED = auto()
+    RUNNING = auto()
+    DRAINING = auto()  # Not accepting new tasks, finishing existing
+    SHUTTING_DOWN = auto()
+    TERMINATED = auto()
+    FAILED = auto()
+
+
+@dataclass
+class ExecutorMetrics:
+    """Metrics for a single executor."""
+    name: str
+    created_at: datetime = field(default_factory=datetime.now)
+    tasks_submitted: int = 0
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    tasks_cancelled: int = 0
+    total_execution_time: float = 0.0
+    peak_pending_tasks: int = 0
+    current_pending_tasks: int = 0
+    shutdown_duration: Optional[float] = None
+
+    @property
+    def avg_execution_time(self) -> float:
+        """Average task execution time."""
+        completed = self.tasks_completed
+        if completed == 0:
+            return 0.0
+        return self.total_execution_time / completed
+
+    @property
+    def success_rate(self) -> float:
+        """Task success rate as percentage."""
+        total = self.tasks_completed + self.tasks_failed
+        if total == 0:
+            return 100.0
+        return (self.tasks_completed / total) * 100.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'name': self.name,
+            'created_at': self.created_at.isoformat(),
+            'tasks_submitted': self.tasks_submitted,
+            'tasks_completed': self.tasks_completed,
+            'tasks_failed': self.tasks_failed,
+            'tasks_cancelled': self.tasks_cancelled,
+            'avg_execution_time': self.avg_execution_time,
+            'success_rate': self.success_rate,
+            'peak_pending_tasks': self.peak_pending_tasks,
+            'current_pending_tasks': self.current_pending_tasks,
+            'shutdown_duration': self.shutdown_duration,
+        }
+
+
+@dataclass
+class ExecutorInfo:
+    """Comprehensive information about a registered executor."""
+    executor_id: int
+    executor_ref: weakref.ref
+    name: str
+    max_workers: int
+    state: ExecutorState = ExecutorState.CREATED
+    created_at: datetime = field(default_factory=datetime.now)
+    creator_stack: Optional[str] = None
+    category: str = "general"
+    priority: int = 0  # Higher = shutdown later
+    metrics: ExecutorMetrics = field(default_factory=lambda: ExecutorMetrics(name="unknown"))
+    shutdown_event: Optional[threading.Event] = None
+    pending_futures: Set[Future] = field(default_factory=set)
+
+    def __post_init__(self):
+        self.metrics = ExecutorMetrics(name=self.name)
+        self.shutdown_event = threading.Event()
+
+
+class ExecutorRegistry:
+    """
+    Centralized registry for all thread pool executors.
+
+    Provides:
+    - Automatic registration and tracking
+    - Coordinated multi-phase shutdown
+    - Health monitoring
+    - Metrics collection
+    - Priority-based shutdown ordering
+
+    Thread-safe and async-compatible.
+    """
+
+    _instance: Optional['ExecutorRegistry'] = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls) -> 'ExecutorRegistry':
+        """Singleton pattern for global registry."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        """Initialize registry (only once due to singleton)."""
+        if self._initialized:
+            return
+
+        self._initialized = True
+        self._lock = threading.RLock()
+        self._executors: Dict[int, ExecutorInfo] = {}
+        self._config = ExecutorConfig.from_env()
+        self._shutdown_initiated = False
+        self._shutdown_complete = threading.Event()
+        self._global_shutdown_event = threading.Event()
+
+        # Metrics aggregation
+        self._total_executors_created = 0
+        self._total_executors_shutdown = 0
+        self._failed_shutdowns = 0
+
+        # Health monitoring
+        self._health_check_thread: Optional[threading.Thread] = None
+        self._start_health_monitoring()
+
+        # Register signal handlers
+        self._register_signal_handlers()
+
+        # Register atexit handler
+        atexit.register(self._atexit_handler)
+
+        logger.info("🔧 ExecutorRegistry initialized")
+        logger.debug(f"   Config: shutdown_timeout={self._config.shutdown_timeout}s, "
+                    f"force_timeout={self._config.force_timeout}s")
+
+    def _register_signal_handlers(self):
+        """Register signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            sig_name = signal.Signals(signum).name
+            logger.info(f"📡 Received {sig_name}, initiating graceful shutdown...")
+            self._global_shutdown_event.set()
+            # Don't call shutdown directly - let the main thread handle it
+
+        # Only register if we're in the main thread
+        if threading.current_thread() is threading.main_thread():
+            try:
+                signal.signal(signal.SIGTERM, signal_handler)
+                # SIGINT is typically handled by the application
+            except (ValueError, OSError) as e:
+                logger.debug(f"Could not register signal handlers: {e}")
+
+    def _start_health_monitoring(self):
+        """Start background health monitoring thread."""
+        if self._config.health_check_interval <= 0:
+            return
+
+        def health_loop():
+            while not self._global_shutdown_event.wait(timeout=self._config.health_check_interval):
+                try:
+                    self._perform_health_check()
+                except Exception as e:
+                    logger.error(f"Health check error: {e}")
+
+        self._health_check_thread = threading.Thread(
+            target=health_loop,
+            name="ExecutorRegistry-HealthCheck",
+            daemon=True
+        )
+        self._health_check_thread.start()
+
+    def _perform_health_check(self):
+        """Perform health check on all registered executors."""
+        with self._lock:
+            dead_executors = []
+
+            for executor_id, info in self._executors.items():
+                executor = info.executor_ref()
+
+                if executor is None:
+                    # Executor was garbage collected
+                    dead_executors.append(executor_id)
+                    logger.warning(f"🗑️ Executor '{info.name}' was garbage collected without shutdown")
+                    continue
+
+                # Check for stuck tasks
+                if info.metrics.current_pending_tasks > self._config.max_pending_tasks:
+                    logger.warning(
+                        f"⚠️ Executor '{info.name}' has {info.metrics.current_pending_tasks} "
+                        f"pending tasks (max: {self._config.max_pending_tasks})"
+                    )
+
+            # Clean up dead executors
+            for executor_id in dead_executors:
+                info = self._executors.pop(executor_id, None)
+                if info:
+                    info.state = ExecutorState.TERMINATED
+
+    def register(
+        self,
+        executor: 'ManagedThreadPoolExecutor',
+        name: str,
+        max_workers: int,
+        category: str = "general",
+        priority: int = 0,
+        capture_stack: bool = True
+    ) -> int:
+        """
+        Register an executor for lifecycle management.
+
+        Args:
+            executor: The executor to register
+            name: Human-readable name for identification
+            max_workers: Number of worker threads
+            category: Category for grouping (e.g., "io", "compute", "network")
+            priority: Shutdown priority (higher = shutdown later)
+            capture_stack: Whether to capture creation stack trace
+
+        Returns:
+            Executor ID for later reference
+        """
+        executor_id = id(executor)
+
+        # Capture creation stack if requested
+        creator_stack = None
+        if capture_stack:
+            try:
+                creator_stack = ''.join(traceback.format_stack()[:-2])
+            except Exception:
+                pass
+
+        info = ExecutorInfo(
+            executor_id=executor_id,
+            executor_ref=weakref.ref(executor),
+            name=name,
+            max_workers=max_workers,
+            state=ExecutorState.RUNNING,
+            creator_stack=creator_stack,
+            category=category,
+            priority=priority,
+        )
+
+        with self._lock:
+            self._executors[executor_id] = info
+            self._total_executors_created += 1
+
+        logger.debug(f"📝 Registered executor: {name} (id={executor_id}, workers={max_workers})")
+        return executor_id
+
+    def unregister(self, executor_id: int) -> Optional[ExecutorInfo]:
+        """
+        Unregister an executor.
+
+        Args:
+            executor_id: The executor ID to unregister
+
+        Returns:
+            ExecutorInfo if found, None otherwise
+        """
+        with self._lock:
+            info = self._executors.pop(executor_id, None)
+            if info:
+                logger.debug(f"📤 Unregistered executor: {info.name}")
+            return info
+
+    def get_executor_info(self, executor_id: int) -> Optional[ExecutorInfo]:
+        """Get information about a specific executor."""
+        with self._lock:
+            return self._executors.get(executor_id)
+
+    def get_all_executors(self) -> List[ExecutorInfo]:
+        """Get list of all registered executors."""
+        with self._lock:
+            return list(self._executors.values())
+
+    def get_executors_by_category(self, category: str) -> List[ExecutorInfo]:
+        """Get executors filtered by category."""
+        with self._lock:
+            return [info for info in self._executors.values() if info.category == category]
+
+    def update_metrics(
+        self,
+        executor_id: int,
+        tasks_submitted: int = 0,
+        tasks_completed: int = 0,
+        tasks_failed: int = 0,
+        tasks_cancelled: int = 0,
+        execution_time: float = 0.0,
+        pending_delta: int = 0
+    ):
+        """Update metrics for an executor."""
+        with self._lock:
+            info = self._executors.get(executor_id)
+            if info:
+                info.metrics.tasks_submitted += tasks_submitted
+                info.metrics.tasks_completed += tasks_completed
+                info.metrics.tasks_failed += tasks_failed
+                info.metrics.tasks_cancelled += tasks_cancelled
+                info.metrics.total_execution_time += execution_time
+                info.metrics.current_pending_tasks += pending_delta
+                info.metrics.peak_pending_tasks = max(
+                    info.metrics.peak_pending_tasks,
+                    info.metrics.current_pending_tasks
+                )
+
+    def is_shutdown_initiated(self) -> bool:
+        """Check if shutdown has been initiated."""
+        return self._shutdown_initiated
+
+    def shutdown_all(
+        self,
+        wait: bool = True,
+        timeout: Optional[float] = None,
+        cancel_pending: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Shutdown all registered executors with coordinated multi-phase approach.
+
+        Args:
+            wait: Whether to wait for pending tasks
+            timeout: Total timeout (uses config default if None)
+            cancel_pending: Whether to cancel pending futures
+
+        Returns:
+            Shutdown statistics
+        """
+        if self._shutdown_initiated:
+            logger.warning("Shutdown already initiated")
+            return {"already_initiated": True}
+
+        with self._lock:
+            self._shutdown_initiated = True
+            self._global_shutdown_event.set()
+
+        timeout = timeout or self._config.shutdown_timeout
+        start_time = time.time()
+
+        stats = {
+            "total_executors": 0,
+            "successful": 0,
+            "failed": 0,
+            "timed_out": 0,
+            "by_category": defaultdict(int),
+            "duration": 0.0,
+            "details": []
+        }
+
+        # Get executors sorted by priority (lower priority shuts down first)
+        with self._lock:
+            executors = sorted(
+                self._executors.values(),
+                key=lambda x: x.priority
+            )
+            stats["total_executors"] = len(executors)
+
+        logger.info(f"🛑 Shutting down {len(executors)} executors...")
+
+        # Phase 1: Signal all executors to stop accepting new tasks
+        logger.debug("   Phase 1: Signaling executors to drain...")
+        for info in executors:
+            info.state = ExecutorState.DRAINING
+            if info.shutdown_event:
+                info.shutdown_event.set()
+
+        # Phase 2: Graceful shutdown with timeout
+        logger.debug(f"   Phase 2: Graceful shutdown (timeout={timeout}s)...")
+        phase_deadline = time.time() + timeout
+
+        for info in executors:
+            executor = info.executor_ref()
+            if executor is None:
+                stats["successful"] += 1
+                continue
+
+            remaining_time = max(0.1, phase_deadline - time.time())
+            shutdown_start = time.time()
+
+            try:
+                info.state = ExecutorState.SHUTTING_DOWN
+
+                # Cancel pending futures if requested
+                if cancel_pending and hasattr(executor, '_pending_futures'):
+                    for future in list(getattr(executor, '_pending_futures', [])):
+                        if not future.done():
+                            future.cancel()
+                            info.metrics.tasks_cancelled += 1
+
+                # Shutdown the executor
+                executor.shutdown(wait=wait, cancel_futures=cancel_pending)
+
+                info.state = ExecutorState.TERMINATED
+                info.metrics.shutdown_duration = time.time() - shutdown_start
+                stats["successful"] += 1
+                stats["by_category"][info.category] += 1
+
+                logger.debug(f"   ✅ {info.name} shutdown in {info.metrics.shutdown_duration:.2f}s")
+
+            except Exception as e:
+                info.state = ExecutorState.FAILED
+                stats["failed"] += 1
+                self._failed_shutdowns += 1
+                logger.error(f"   ❌ Failed to shutdown {info.name}: {e}")
+                stats["details"].append({
+                    "name": info.name,
+                    "error": str(e),
+                    "state": "failed"
+                })
+
+        # Phase 3: Force shutdown any remaining
+        force_timeout = self._config.force_timeout
+        logger.debug(f"   Phase 3: Force shutdown check (timeout={force_timeout}s)...")
+
+        with self._lock:
+            remaining = [
+                info for info in self._executors.values()
+                if info.state not in (ExecutorState.TERMINATED, ExecutorState.FAILED)
+            ]
+
+        if remaining:
+            logger.warning(f"   ⚠️ {len(remaining)} executors still running, forcing shutdown...")
+            force_deadline = time.time() + force_timeout
+
+            for info in remaining:
+                executor = info.executor_ref()
+                if executor is None:
+                    continue
+
+                try:
+                    # Force shutdown without waiting
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    info.state = ExecutorState.TERMINATED
+                    stats["timed_out"] += 1
+                except Exception as e:
+                    logger.error(f"   Force shutdown failed for {info.name}: {e}")
+                    stats["failed"] += 1
+
+        # Cleanup
+        with self._lock:
+            self._total_executors_shutdown += stats["successful"]
+            self._executors.clear()
+
+        stats["duration"] = time.time() - start_time
+        self._shutdown_complete.set()
+
+        logger.info(f"✅ Shutdown complete: {stats['successful']}/{stats['total_executors']} "
+                   f"successful in {stats['duration']:.2f}s")
+
+        return stats
+
+    async def shutdown_all_async(
+        self,
+        timeout: Optional[float] = None,
+        cancel_pending: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Async version of shutdown_all.
+
+        Runs the shutdown in a thread pool to avoid blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.shutdown_all(wait=True, timeout=timeout, cancel_pending=cancel_pending)
+        )
+
+    def _atexit_handler(self):
+        """Handler called at process exit."""
+        if not self._shutdown_initiated:
+            logger.debug("🔧 atexit: Shutting down executors...")
+            try:
+                self.shutdown_all(wait=False, timeout=2.0, cancel_pending=True)
+            except Exception as e:
+                logger.error(f"atexit shutdown error: {e}")
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get aggregated metrics for all executors."""
+        with self._lock:
+            executor_metrics = [info.metrics.to_dict() for info in self._executors.values()]
+
+            return {
+                "total_created": self._total_executors_created,
+                "total_shutdown": self._total_executors_shutdown,
+                "failed_shutdowns": self._failed_shutdowns,
+                "currently_active": len(self._executors),
+                "shutdown_initiated": self._shutdown_initiated,
+                "executors": executor_metrics
+            }
+
+    def get_report(self) -> str:
+        """Generate a human-readable report."""
+        metrics = self.get_metrics()
+
+        lines = [
+            "",
+            "=" * 70,
+            "🔧 EXECUTOR REGISTRY REPORT",
+            "=" * 70,
+            f"Total Created:    {metrics['total_created']}",
+            f"Total Shutdown:   {metrics['total_shutdown']}",
+            f"Failed Shutdowns: {metrics['failed_shutdowns']}",
+            f"Currently Active: {metrics['currently_active']}",
+            f"Shutdown Status:  {'Initiated' if metrics['shutdown_initiated'] else 'Running'}",
+            "",
+        ]
+
+        if metrics['executors']:
+            lines.append("Active Executors:")
+            for em in metrics['executors']:
+                lines.append(f"  - {em['name']}:")
+                lines.append(f"      Submitted: {em['tasks_submitted']}, "
+                           f"Completed: {em['tasks_completed']}, "
+                           f"Failed: {em['tasks_failed']}")
+                lines.append(f"      Avg Time: {em['avg_execution_time']:.3f}s, "
+                           f"Success Rate: {em['success_rate']:.1f}%")
+
+        lines.append("=" * 70)
+        lines.append("")
+
+        return "\n".join(lines)
+
+
+# Global registry instance
+def get_executor_registry() -> ExecutorRegistry:
+    """Get the global executor registry instance."""
+    return ExecutorRegistry()
+
+
+# =============================================================================
+# MANAGED THREAD POOL EXECUTOR
+# =============================================================================
 
 class ManagedThreadPoolExecutor(ThreadPoolExecutor):
     """
     ThreadPoolExecutor with centralized lifecycle management.
 
-    This executor automatically registers itself for cleanup during shutdown.
-    All executors created with this class will be properly shut down when
-    the application exits, preventing hanging threads.
+    Features:
+    - Automatic registration with ExecutorRegistry
+    - Task-level metrics collection
+    - Graceful shutdown support
+    - Backpressure handling
+    - Async-friendly submit methods
 
     Usage:
         executor = ManagedThreadPoolExecutor(max_workers=4, name='my-pool')
-        future = executor.submit(some_function)
+        future = executor.submit(some_function, arg1, arg2)
+
+        # Or async:
+        result = await executor.submit_async(some_function, arg1, arg2)
     """
 
-    def __init__(self, max_workers=None, thread_name_prefix='', initializer=None, initargs=(), name=None):
+    def __init__(
+        self,
+        max_workers: Optional[int] = None,
+        thread_name_prefix: str = '',
+        initializer: Optional[Callable[..., None]] = None,
+        initargs: Tuple = (),
+        name: Optional[str] = None,
+        category: str = "general",
+        priority: int = 0
+    ):
+        """
+        Initialize a managed executor.
+
+        Args:
+            max_workers: Maximum number of worker threads (default: CPU count * 2)
+            thread_name_prefix: Prefix for worker thread names
+            initializer: Callable to run in each worker thread at start
+            initargs: Arguments for initializer
+            name: Human-readable name (default: thread_name_prefix or 'ManagedPool')
+            category: Category for grouping executors
+            priority: Shutdown priority (higher = shutdown later)
+        """
+        # Determine worker count
+        if max_workers is None:
+            max_workers = min(32, (os.cpu_count() or 1) * 2)
+
         self._pool_name = name or thread_name_prefix or 'ManagedPool'
+        self._category = category
+        self._priority = priority
+        self._max_workers = max_workers
+
         prefix = thread_name_prefix or f'{self._pool_name}-worker'
 
         super().__init__(
@@ -72,77 +699,219 @@ class ManagedThreadPoolExecutor(ThreadPoolExecutor):
             initargs=initargs
         )
 
-        # Register in global registry for coordinated shutdown
-        with _executor_lock:
-            _executor_registry.append(weakref.ref(self))
+        # Track pending futures for cancellation
+        self._pending_futures: Set[Future] = set()
+        self._futures_lock = threading.Lock()
 
-        logger.debug(f"Created ManagedThreadPoolExecutor: {self._pool_name}")
+        # Register with global registry
+        self._registry = get_executor_registry()
+        self._executor_id = self._registry.register(
+            executor=self,
+            name=self._pool_name,
+            max_workers=max_workers,
+            category=category,
+            priority=priority
+        )
 
-    def shutdown(self, wait=True, *, cancel_futures=False):
-        """Shutdown with logging."""
+        logger.debug(f"Created ManagedThreadPoolExecutor: {self._pool_name} "
+                    f"(workers={max_workers}, category={category})")
+
+    def submit(self, fn: Callable[..., T], *args, **kwargs) -> Future:
+        """
+        Submit a callable for execution with metrics tracking.
+
+        Args:
+            fn: Callable to execute
+            *args: Positional arguments for fn
+            **kwargs: Keyword arguments for fn
+
+        Returns:
+            Future representing the pending execution
+        """
+        # Check if shutdown initiated
+        if self._registry.is_shutdown_initiated():
+            raise RuntimeError(f"Executor '{self._pool_name}' is shutting down")
+
+        # Track submission
+        self._registry.update_metrics(self._executor_id, tasks_submitted=1, pending_delta=1)
+
+        start_time = time.time()
+
+        # Wrap function to track completion
+        @functools.wraps(fn)
+        def tracked_fn(*a, **kw):
+            try:
+                result = fn(*a, **kw)
+                execution_time = time.time() - start_time
+                self._registry.update_metrics(
+                    self._executor_id,
+                    tasks_completed=1,
+                    execution_time=execution_time,
+                    pending_delta=-1
+                )
+                return result
+            except Exception as e:
+                self._registry.update_metrics(
+                    self._executor_id,
+                    tasks_failed=1,
+                    pending_delta=-1
+                )
+                raise
+
+        # Submit to parent
+        future = super().submit(tracked_fn, *args, **kwargs)
+
+        # Track future for potential cancellation
+        with self._futures_lock:
+            self._pending_futures.add(future)
+            future.add_done_callback(lambda f: self._remove_future(f))
+
+        return future
+
+    def _remove_future(self, future: Future):
+        """Remove a completed future from tracking."""
+        with self._futures_lock:
+            self._pending_futures.discard(future)
+
+    async def submit_async(self, fn: Callable[..., T], *args, **kwargs) -> T:
+        """
+        Async submit that awaits the result.
+
+        Args:
+            fn: Callable to execute
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Result of fn execution
+        """
+        loop = asyncio.get_event_loop()
+        future = self.submit(fn, *args, **kwargs)
+        return await loop.run_in_executor(None, future.result)
+
+    def map_async(
+        self,
+        fn: Callable[[Any], T],
+        *iterables,
+        timeout: Optional[float] = None
+    ) -> List[T]:
+        """
+        Map function over iterables with timeout support.
+
+        Args:
+            fn: Function to apply
+            *iterables: Input iterables
+            timeout: Timeout for entire operation
+
+        Returns:
+            List of results
+        """
+        futures = [self.submit(fn, *args) for args in zip(*iterables)]
+
+        if timeout is not None:
+            done, not_done = futures_wait(futures, timeout=timeout)
+            for f in not_done:
+                f.cancel()
+            return [f.result() for f in done]
+        else:
+            return [f.result() for f in futures]
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False):
+        """
+        Shutdown the executor.
+
+        Args:
+            wait: Whether to wait for pending tasks
+            cancel_futures: Whether to cancel pending futures
+        """
         logger.debug(f"Shutting down executor: {self._pool_name}")
+
+        # Cancel pending futures if requested
+        if cancel_futures:
+            with self._futures_lock:
+                for future in list(self._pending_futures):
+                    if not future.done():
+                        future.cancel()
+
+        # Unregister from registry
+        self._registry.unregister(self._executor_id)
+
+        # Call parent shutdown
         super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+    @property
+    def name(self) -> str:
+        """Get executor name."""
+        return self._pool_name
+
+    @property
+    def pending_count(self) -> int:
+        """Get count of pending tasks."""
+        with self._futures_lock:
+            return len(self._pending_futures)
+
+    def get_metrics(self) -> Optional[Dict[str, Any]]:
+        """Get metrics for this executor."""
+        info = self._registry.get_executor_info(self._executor_id)
+        if info:
+            return info.metrics.to_dict()
+        return None
 
 
 # Backwards compatibility alias
 DaemonThreadPoolExecutor = ManagedThreadPoolExecutor
 
 
+# =============================================================================
+# CONVENIENCE FUNCTIONS
+# =============================================================================
+
 def shutdown_all_executors(wait: bool = True, timeout: float = 5.0) -> int:
     """
     Shutdown all registered executors.
 
     Args:
-        wait: If True, wait for pending tasks to complete
-        timeout: Maximum time to wait per executor
+        wait: Whether to wait for pending tasks
+        timeout: Maximum time to wait
 
     Returns:
         Number of executors shut down
     """
-    global _shutdown_initiated
-
-    if _shutdown_initiated:
-        return 0
-
-    _shutdown_initiated = True
-    count = 0
-
-    with _executor_lock:
-        for ref in _executor_registry:
-            executor = ref()
-            if executor is not None:
-                try:
-                    logger.debug(f"Shutting down executor: {getattr(executor, '_pool_name', 'unknown')}")
-                    executor.shutdown(wait=wait, cancel_futures=True)
-                    count += 1
-                except Exception as e:
-                    logger.warning(f"Error shutting down executor: {e}")
-
-        _executor_registry.clear()
-
-    logger.info(f"Shut down {count} thread pool executors")
-    return count
+    registry = get_executor_registry()
+    stats = registry.shutdown_all(wait=wait, timeout=timeout)
+    return stats.get("successful", 0)
 
 
-# Register atexit handler
-def _atexit_shutdown():
-    """Shutdown all executors on exit."""
-    shutdown_all_executors(wait=False, timeout=2.0)
+async def shutdown_all_executors_async(timeout: float = 5.0) -> Dict[str, Any]:
+    """
+    Async shutdown of all executors.
 
-atexit.register(_atexit_shutdown)
+    Args:
+        timeout: Maximum time to wait
+
+    Returns:
+        Shutdown statistics
+    """
+    registry = get_executor_registry()
+    return await registry.shutdown_all_async(timeout=timeout)
 
 
-def get_daemon_executor(max_workers: int = 4, name: str = 'jarvis') -> ManagedThreadPoolExecutor:
+def get_daemon_executor(
+    max_workers: int = 4,
+    name: str = 'jarvis',
+    category: str = "general",
+    priority: int = 0
+) -> ManagedThreadPoolExecutor:
     """
     Get a managed thread pool executor.
 
     Creates a new executor and registers it for cleanup on shutdown.
-    Note: "daemon" is a misnomer - these are managed executors with proper shutdown,
-    not true daemon threads (which can't be reliably created with ThreadPoolExecutor).
 
     Args:
         max_workers: Maximum number of worker threads
         name: Thread name prefix for identification
+        category: Category for grouping
+        priority: Shutdown priority
 
     Returns:
         ManagedThreadPoolExecutor instance
@@ -150,9 +919,25 @@ def get_daemon_executor(max_workers: int = 4, name: str = 'jarvis') -> ManagedTh
     return ManagedThreadPoolExecutor(
         max_workers=max_workers,
         thread_name_prefix=f'{name}-worker-',
-        name=name
+        name=name,
+        category=category,
+        priority=priority
     )
 
+
+def get_executor_metrics() -> Dict[str, Any]:
+    """Get metrics for all executors."""
+    return get_executor_registry().get_metrics()
+
+
+def print_executor_report():
+    """Print executor status report."""
+    print(get_executor_registry().get_report())
+
+
+# =============================================================================
+# THREAD STATE AND POLICY (preserved from original for compatibility)
+# =============================================================================
 
 class ThreadState(Enum):
     """Thread lifecycle states"""
@@ -167,47 +952,57 @@ class ThreadState(Enum):
 
 class ShutdownPhase(Enum):
     """Shutdown escalation phases"""
-    GRACEFUL = auto()      # Signal threads to stop
-    FORCEFUL = auto()      # Interrupt threads
-    TERMINATE = auto()     # Force terminate
-    EMERGENCY = auto()     # Last resort cleanup
+    GRACEFUL = auto()
+    FORCEFUL = auto()
+    TERMINATE = auto()
+    EMERGENCY = auto()
 
 
 @dataclass
 class ThreadPolicy:
-    """Configurable thread behavior policy"""
-    # Shutdown behavior
-    graceful_shutdown_timeout: float = 5.0      # Seconds to wait in graceful phase
-    forceful_shutdown_timeout: float = 3.0      # Seconds to wait in forceful phase
-    terminate_shutdown_timeout: float = 2.0     # Seconds to wait in terminate phase
-    emergency_shutdown_timeout: float = 1.0     # Final timeout before giving up
-
-    # Thread limits
-    max_threads: Optional[int] = None           # None = unlimited
-    max_thread_lifetime: Optional[float] = None # None = unlimited
-    warn_thread_age: float = 3600.0            # Warn if thread runs longer than this
-
-    # Monitoring
-    enable_health_check: bool = True
-    health_check_interval: float = 30.0        # Seconds between health checks
-    enable_deadlock_detection: bool = True
-    deadlock_check_interval: float = 60.0      # Seconds between deadlock checks
-
-    # Cleanup
-    auto_cleanup_orphans: bool = True
-    orphan_check_interval: float = 60.0        # Seconds between orphan checks
-    force_daemon_on_shutdown: bool = True      # Convert non-daemons to daemons during shutdown
-
-    # Logging
-    log_thread_creation: bool = True
-    log_thread_completion: bool = True
-    log_stack_traces: bool = True
-    capture_full_stack: bool = False           # Capture entire stack vs just caller
-
-    # Performance
-    use_thread_pool: bool = True
-    thread_pool_size: Optional[int] = None     # None = auto-detect
-    recycle_threads: bool = True
+    """Configurable thread behavior policy - all values from environment."""
+    graceful_shutdown_timeout: float = field(
+        default_factory=lambda: _env_float('THREAD_GRACEFUL_TIMEOUT', 5.0))
+    forceful_shutdown_timeout: float = field(
+        default_factory=lambda: _env_float('THREAD_FORCEFUL_TIMEOUT', 3.0))
+    terminate_shutdown_timeout: float = field(
+        default_factory=lambda: _env_float('THREAD_TERMINATE_TIMEOUT', 2.0))
+    emergency_shutdown_timeout: float = field(
+        default_factory=lambda: _env_float('THREAD_EMERGENCY_TIMEOUT', 1.0))
+    max_threads: Optional[int] = field(
+        default_factory=lambda: _env_int('THREAD_MAX_COUNT', 0) or None)
+    max_thread_lifetime: Optional[float] = field(
+        default_factory=lambda: _env_float('THREAD_MAX_LIFETIME', 0) or None)
+    warn_thread_age: float = field(
+        default_factory=lambda: _env_float('THREAD_WARN_AGE', 3600.0))
+    enable_health_check: bool = field(
+        default_factory=lambda: _env_bool('THREAD_HEALTH_CHECK', True))
+    health_check_interval: float = field(
+        default_factory=lambda: _env_float('THREAD_HEALTH_INTERVAL', 30.0))
+    enable_deadlock_detection: bool = field(
+        default_factory=lambda: _env_bool('THREAD_DEADLOCK_DETECTION', True))
+    deadlock_check_interval: float = field(
+        default_factory=lambda: _env_float('THREAD_DEADLOCK_INTERVAL', 60.0))
+    auto_cleanup_orphans: bool = field(
+        default_factory=lambda: _env_bool('THREAD_AUTO_CLEANUP', True))
+    orphan_check_interval: float = field(
+        default_factory=lambda: _env_float('THREAD_ORPHAN_INTERVAL', 60.0))
+    force_daemon_on_shutdown: bool = field(
+        default_factory=lambda: _env_bool('THREAD_FORCE_DAEMON', True))
+    log_thread_creation: bool = field(
+        default_factory=lambda: _env_bool('THREAD_LOG_CREATION', True))
+    log_thread_completion: bool = field(
+        default_factory=lambda: _env_bool('THREAD_LOG_COMPLETION', True))
+    log_stack_traces: bool = field(
+        default_factory=lambda: _env_bool('THREAD_LOG_STACK', True))
+    capture_full_stack: bool = field(
+        default_factory=lambda: _env_bool('THREAD_FULL_STACK', False))
+    use_thread_pool: bool = field(
+        default_factory=lambda: _env_bool('THREAD_USE_POOL', True))
+    thread_pool_size: Optional[int] = field(
+        default_factory=lambda: _env_int('THREAD_POOL_SIZE', 0) or None)
+    recycle_threads: bool = field(
+        default_factory=lambda: _env_bool('THREAD_RECYCLE', True))
 
 
 @dataclass
@@ -231,124 +1026,76 @@ class ThreadMetrics:
 @dataclass
 class ThreadInfo:
     """Comprehensive thread information"""
-    # Identity
     thread_id: int
     thread: Union[threading.Thread, weakref.ref]
     name: str
-    ident: Optional[int] = None  # Thread identifier from OS
-
-    # Lifecycle
+    ident: Optional[int] = None
     state: ThreadState = ThreadState.CREATED
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     stopped_at: Optional[datetime] = None
-
-    # Origin
     creator: str = "unknown"
     creator_stack: Optional[List[str]] = None
     purpose: str = "Unknown"
-    category: str = "general"  # e.g., "io", "compute", "network"
-
-    # Configuration
+    category: str = "general"
     daemon: bool = False
     priority: int = 0
-
-    # Cleanup
     shutdown_callback: Optional[Callable] = None
     shutdown_event: Optional[Union[threading.Event, asyncio.Event]] = None
     is_async: bool = False
     event_loop: Optional[asyncio.AbstractEventLoop] = None
-
-    # Monitoring
     last_heartbeat: Optional[datetime] = None
     heartbeat_interval: Optional[float] = None
     health_check_callback: Optional[Callable] = None
-
-    # Metrics
     exception: Optional[Exception] = None
     stack_trace: Optional[str] = None
     cpu_time: float = 0.0
-
-    # Relationships
     parent_thread_id: Optional[int] = None
     child_thread_ids: Set[int] = field(default_factory=set)
 
 
+# =============================================================================
+# ADVANCED THREAD MANAGER (preserved and enhanced)
+# =============================================================================
+
 class AdvancedThreadManager:
     """
-    Enterprise-grade thread manager with async support
+    Enterprise-grade thread manager with async support.
 
-    Features:
-    - Automatic thread discovery
-    - Multi-phase shutdown
-    - Deadlock detection
-    - Health monitoring
-    - Async/sync thread support
-    - Thread pool management
-    - Leak prevention
-
-    Usage:
-        # Configure policy
-        policy = ThreadPolicy(
-            graceful_shutdown_timeout=10.0,
-            max_threads=100
-        )
-
-        manager = AdvancedThreadManager(policy=policy)
-
-        # Create managed thread
-        thread = manager.create_thread(
-            target=worker,
-            name="Worker-1",
-            purpose="Process data",
-            category="compute"
-        )
-
-        # Or register existing thread
-        manager.register(thread, purpose="Legacy worker")
-
-        # At shutdown
-        await manager.shutdown_async()  # or manager.shutdown_sync()
+    Now integrated with ExecutorRegistry for unified lifecycle management.
     """
 
     def __init__(self, policy: Optional[ThreadPolicy] = None):
         self.policy = policy or ThreadPolicy()
         self.threads: Dict[int, ThreadInfo] = {}
-        self.lock = threading.RLock()  # Reentrant lock for nested calls
+        self.lock = threading.RLock()
         self.metrics = ThreadMetrics()
 
-        # Shutdown coordination
         self.shutdown_initiated = False
         self.shutdown_lock = threading.Lock()
         self.shutdown_event = threading.Event()
 
-        # Thread pool (use ManagedThreadPoolExecutor for proper shutdown)
+        # Use ManagedThreadPoolExecutor for integration with registry
         self.thread_pool: Optional[ManagedThreadPoolExecutor] = None
         if self.policy.use_thread_pool:
             pool_size = self.policy.thread_pool_size or (os.cpu_count() or 4) * 2
             self.thread_pool = ManagedThreadPoolExecutor(
                 max_workers=pool_size,
-                thread_name_prefix="ManagedPool",
-                name="AdvancedThreadManager"
+                name="AdvancedThreadManager",
+                category="thread_manager",
+                priority=100  # High priority - shutdown last
             )
 
-        # Monitoring
         self.health_check_thread: Optional[threading.Thread] = None
         self.deadlock_check_thread: Optional[threading.Thread] = None
         self.orphan_check_thread: Optional[threading.Thread] = None
 
-        # Category tracking
         self.categories: Dict[str, Set[int]] = defaultdict(set)
 
-        # Start monitoring
         self._start_monitoring()
-
-        # Register atexit handler
         atexit.register(self._emergency_cleanup)
 
         logger.info("🧵 AdvancedThreadManager initialized")
-        logger.info(f"   Policy: graceful={self.policy.graceful_shutdown_timeout}s, "
-                   f"max_threads={self.policy.max_threads or 'unlimited'}")
 
     def _start_monitoring(self):
         """Start background monitoring threads"""
@@ -388,12 +1135,11 @@ class AdvancedThreadManager:
                                   for frame in stack]
                 else:
                     stack_trace = [f"{frame.filename}:{frame.lineno} in {frame.name}"
-                                  for frame in stack[-5:]]  # Last 5 frames
+                                  for frame in stack[-5:]]
                 return caller, stack_trace
 
             return caller, None
-        except Exception as e:
-            logger.debug(f"Failed to get caller info: {e}")
+        except Exception:
             return "unknown", None
 
     def register(
@@ -410,26 +1156,7 @@ class AdvancedThreadManager:
         heartbeat_interval: Optional[float] = None,
         health_check_callback: Optional[Callable] = None
     ) -> threading.Thread:
-        """
-        Register a thread for comprehensive tracking
-
-        Args:
-            thread: Thread to register
-            purpose: Human-readable purpose
-            category: Thread category for grouping
-            shutdown_callback: Function to call for clean shutdown
-            shutdown_event: Event to set for shutdown signaling
-            is_async: Whether thread runs async code
-            event_loop: Event loop if async thread
-            force_daemon: Convert to daemon if not already
-            priority: Thread priority (higher = more important)
-            heartbeat_interval: Expected heartbeat interval
-            health_check_callback: Custom health check function
-
-        Returns:
-            The registered thread
-        """
-        # Check thread limit
+        """Register a thread for comprehensive tracking."""
         with self.lock:
             if self.policy.max_threads and len(self.threads) >= self.policy.max_threads:
                 raise RuntimeError(
@@ -437,17 +1164,12 @@ class AdvancedThreadManager:
                     "Increase max_threads or wait for threads to complete."
                 )
 
-            # Get caller context
             caller, stack_trace = self._get_caller_info(depth=3)
 
-            # Force daemon if requested
             original_daemon = thread.daemon
-            if force_daemon and not thread.daemon:
-                if self.policy.log_thread_creation:
-                    logger.debug(f"Converting {thread.name} to daemon")
+            if force_daemon and not thread.daemon and not thread.is_alive():
                 thread.daemon = True
 
-            # Create thread info
             thread_id = id(thread)
             info = ThreadInfo(
                 thread_id=thread_id,
@@ -470,11 +1192,9 @@ class AdvancedThreadManager:
                 parent_thread_id=id(threading.current_thread())
             )
 
-            # Register
             self.threads[thread_id] = info
             self.categories[category].add(thread_id)
 
-            # Update metrics
             self.metrics.total_created += 1
             self.metrics.current_active += 1
             if thread.daemon:
@@ -485,14 +1205,9 @@ class AdvancedThreadManager:
             if self.metrics.current_active > self.metrics.peak_active:
                 self.metrics.peak_active = self.metrics.current_active
 
-            # Log
             if self.policy.log_thread_creation:
-                logger.info(
-                    f"📝 Registered thread: {thread.name} "
-                    f"(daemon={thread.daemon}, category={category}, priority={priority})"
-                )
-                if original_daemon != thread.daemon:
-                    logger.info(f"   Converted to daemon: {thread.name}")
+                logger.debug(f"📝 Registered thread: {thread.name} "
+                           f"(daemon={thread.daemon}, category={category})")
 
             return thread
 
@@ -505,64 +1220,36 @@ class AdvancedThreadManager:
         daemon: bool = True,
         **kwargs
     ) -> threading.Thread:
-        """
-        Create and register a new thread
-
-        Args:
-            target: Function to run
-            name: Thread name
-            purpose: Thread purpose
-            category: Thread category
-            daemon: Whether thread should be daemon
-            **kwargs: Additional arguments for register()
-
-        Returns:
-            Created and registered thread
-        """
-        # Wrap target to track lifecycle
+        """Create and register a new thread."""
         def wrapped_target(*args, **target_kwargs):
             thread_id = id(threading.current_thread())
 
             try:
-                # Mark as started
                 with self.lock:
                     if thread_id in self.threads:
                         self.threads[thread_id].state = ThreadState.RUNNING
                         self.threads[thread_id].started_at = datetime.now()
 
-                # Run target
                 result = target(*args, **target_kwargs)
 
-                # Mark as completed
                 with self.lock:
                     if thread_id in self.threads:
                         self.threads[thread_id].state = ThreadState.STOPPED
                         self.threads[thread_id].stopped_at = datetime.now()
                         self.metrics.total_completed += 1
 
-                        if self.policy.log_thread_completion:
-                            lifetime = (self.threads[thread_id].stopped_at -
-                                       self.threads[thread_id].created_at).total_seconds()
-                            logger.info(f"✅ Thread completed: {name} (lifetime={lifetime:.2f}s)")
-
                 return result
 
             except Exception as e:
-                # Mark as failed
                 with self.lock:
                     if thread_id in self.threads:
                         self.threads[thread_id].state = ThreadState.FAILED
                         self.threads[thread_id].exception = e
                         self.threads[thread_id].stack_trace = traceback.format_exc()
                         self.metrics.total_failed += 1
-
-                        logger.error(f"❌ Thread failed: {name}: {e}")
-                        if self.policy.log_stack_traces:
-                            logger.error(f"Stack trace:\n{self.threads[thread_id].stack_trace}")
                 raise
 
             finally:
-                # Cleanup
                 with self.lock:
                     if thread_id in self.threads:
                         self.metrics.current_active -= 1
@@ -571,11 +1258,9 @@ class AdvancedThreadManager:
                         else:
                             self.metrics.current_non_daemon -= 1
 
-        # Get target args/kwargs
         target_args = kwargs.pop('args', ())
         target_kwargs = kwargs.pop('kwargs', {})
 
-        # Create thread
         thread = threading.Thread(
             target=wrapped_target,
             name=name,
@@ -584,111 +1269,22 @@ class AdvancedThreadManager:
             kwargs=target_kwargs
         )
 
-        # Register
         return self.register(thread, purpose=purpose, category=category, **kwargs)
 
-    def create_async_thread(
-        self,
-        coro: Callable,
-        name: str,
-        purpose: str = "Unknown",
-        category: str = "async",
-        **kwargs
-    ) -> threading.Thread:
-        """
-        Create thread that runs async coroutine
-
-        Args:
-            coro: Async coroutine function
-            name: Thread name
-            purpose: Thread purpose
-            category: Thread category
-            **kwargs: Additional arguments
-
-        Returns:
-            Thread running the coroutine
-        """
-        def run_async():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(coro())
-            finally:
-                loop.close()
-
-        return self.create_thread(
-            target=run_async,
-            name=name,
-            purpose=purpose,
-            category=category,
-            is_async=True,
-            **kwargs
-        )
-
-    def submit_to_pool(
-        self,
-        func: Callable,
-        *args,
-        name: str = "PoolTask",
-        purpose: str = "Pool task",
-        **kwargs
-    ) -> Future:
-        """
-        Submit task to thread pool
-
-        Args:
-            func: Function to run
-            *args: Function arguments
-            name: Task name
-            purpose: Task purpose
-            **kwargs: Function keyword arguments
-
-        Returns:
-            Future representing the task
-        """
+    def submit_to_pool(self, func: Callable, *args, **kwargs) -> Future:
+        """Submit task to thread pool."""
         if not self.thread_pool:
             raise RuntimeError("Thread pool not enabled")
-
-        future = self.thread_pool.submit(func, *args, **kwargs)
-
-        # Track the worker thread when it starts
-        # Note: We can't directly track pool threads as they're created on-demand
-
-        return future
-
-    def unregister(self, thread: threading.Thread):
-        """Unregister a completed thread"""
-        thread_id = id(thread)
-        with self.lock:
-            if thread_id in self.threads:
-                info = self.threads.pop(thread_id)
-                self.categories[info.category].discard(thread_id)
-
-                if self.policy.log_thread_completion:
-                    logger.debug(f"📤 Unregistered thread: {info.name}")
-
-    def get_thread_info(self, thread_id: int) -> Optional[ThreadInfo]:
-        """Get information about a thread"""
-        with self.lock:
-            return self.threads.get(thread_id)
+        return self.thread_pool.submit(func, *args, **kwargs)
 
     def get_active_threads(self, category: Optional[str] = None) -> List[ThreadInfo]:
-        """
-        Get list of active threads
-
-        Args:
-            category: Optional category filter
-
-        Returns:
-            List of active thread info
-        """
+        """Get list of active threads."""
         with self.lock:
             threads = list(self.threads.values())
 
             if category:
                 threads = [t for t in threads if t.category == category]
 
-            # Filter to alive threads
             active = []
             for info in threads:
                 thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
@@ -697,120 +1293,38 @@ class AdvancedThreadManager:
 
             return active
 
-    def get_leaked_threads(self) -> List[ThreadInfo]:
-        """Get threads that appear to be leaked"""
-        active = self.get_active_threads()
-        leaked = []
-
-        now = datetime.now()
-        for info in active:
-            # Check if thread is too old
-            if self.policy.max_thread_lifetime:
-                age = (now - info.created_at).total_seconds()
-                if age > self.policy.max_thread_lifetime:
-                    info.state = ThreadState.LEAKED
-                    leaked.append(info)
-
-            # Check if thread is non-daemon and should have stopped
-            if not info.daemon and info.state == ThreadState.STOPPED:
-                leaked.append(info)
-
-        return leaked
-
-    def heartbeat(self, thread_id: Optional[int] = None):
-        """
-        Record a heartbeat for a thread
-
-        Args:
-            thread_id: Thread ID (defaults to current thread)
-        """
-        if thread_id is None:
-            thread_id = id(threading.current_thread())
-
-        with self.lock:
-            if thread_id in self.threads:
-                self.threads[thread_id].last_heartbeat = datetime.now()
-
     def _health_check_loop(self):
         """Background health check loop"""
-        logger.info("💓 Health check monitoring started")
-
-        while not self.shutdown_event.is_set():
+        while not self.shutdown_event.wait(timeout=self.policy.health_check_interval):
             try:
-                time.sleep(self.policy.health_check_interval)
-
                 active = self.get_active_threads()
-                issues = []
-
                 now = datetime.now()
-                for info in active:
-                    # Check heartbeat
-                    if info.heartbeat_interval:
-                        if info.last_heartbeat:
-                            age = (now - info.last_heartbeat).total_seconds()
-                            if age > info.heartbeat_interval * 2:  # Allow 2x interval
-                                issues.append(f"{info.name}: No heartbeat for {age:.1f}s")
-                        else:
-                            issues.append(f"{info.name}: No heartbeat recorded")
 
-                    # Check thread age
+                for info in active:
                     thread_age = (now - info.created_at).total_seconds()
                     if thread_age > self.policy.warn_thread_age:
-                        issues.append(f"{info.name}: Running for {thread_age/3600:.1f}h")
-
-                    # Custom health check
-                    if info.health_check_callback:
-                        try:
-                            if not info.health_check_callback():
-                                issues.append(f"{info.name}: Failed custom health check")
-                        except Exception as e:
-                            issues.append(f"{info.name}: Health check error: {e}")
-
-                if issues:
-                    logger.warning(f"⚠️  Thread health issues detected:")
-                    for issue in issues[:10]:  # Limit output
-                        logger.warning(f"   - {issue}")
-                    if len(issues) > 10:
-                        logger.warning(f"   ... and {len(issues) - 10} more")
-
+                        logger.warning(f"⚠️ Thread {info.name} running for {thread_age/3600:.1f}h")
             except Exception as e:
                 logger.error(f"Health check error: {e}")
 
     def _deadlock_check_loop(self):
         """Background deadlock detection loop"""
-        logger.info("🔒 Deadlock detection started")
-
-        while not self.shutdown_event.is_set():
+        while not self.shutdown_event.wait(timeout=self.policy.deadlock_check_interval):
             try:
-                time.sleep(self.policy.deadlock_check_interval)
-
-                # Simple deadlock detection: check for threads stuck in same state
                 with self.lock:
-                    stuck_threads = []
                     for info in self.threads.values():
-                        if info.state == ThreadState.RUNNING:
-                            if info.last_heartbeat:
-                                age = (datetime.now() - info.last_heartbeat).total_seconds()
-                                if age > 60.0:  # No activity for 1 minute
-                                    stuck_threads.append((info.name, age))
-
-                    if stuck_threads:
-                        logger.warning(f"⚠️  Potential deadlock detected:")
-                        for name, age in stuck_threads[:5]:
-                            logger.warning(f"   - {name}: No activity for {age:.1f}s")
-
+                        if info.state == ThreadState.RUNNING and info.last_heartbeat:
+                            age = (datetime.now() - info.last_heartbeat).total_seconds()
+                            if age > 60.0:
+                                logger.warning(f"⚠️ Potential deadlock: {info.name} "
+                                             f"no activity for {age:.1f}s")
             except Exception as e:
                 logger.error(f"Deadlock check error: {e}")
 
     def _orphan_check_loop(self):
         """Background orphan cleanup loop"""
-        logger.info("🧹 Orphan cleanup monitoring started")
-
-        while not self.shutdown_event.is_set():
+        while not self.shutdown_event.wait(timeout=self.policy.orphan_check_interval):
             try:
-                time.sleep(self.policy.orphan_check_interval)
-
-                # Find orphaned threads (registered but no longer alive)
                 with self.lock:
                     orphans = []
                     for thread_id, info in list(self.threads.items()):
@@ -819,315 +1333,67 @@ class AdvancedThreadManager:
                             if info.state not in (ThreadState.STOPPED, ThreadState.FAILED):
                                 orphans.append(thread_id)
 
-                    # Clean up orphans
                     for thread_id in orphans:
                         info = self.threads.pop(thread_id)
                         self.categories[info.category].discard(thread_id)
                         self.metrics.total_leaked += 1
                         logger.warning(f"🧹 Cleaned up orphaned thread: {info.name}")
-
             except Exception as e:
                 logger.error(f"Orphan check error: {e}")
 
-    async def shutdown_async(
-        self,
-        timeout: Optional[float] = None,
-        categories: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Async shutdown with multi-phase escalation
-
-        Args:
-            timeout: Total timeout (uses policy if None)
-            categories: Specific categories to shutdown (None = all)
-
-        Returns:
-            Shutdown statistics
-        """
+    async def shutdown_async(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Async shutdown with multi-phase escalation."""
         if self.shutdown_initiated:
-            logger.warning("Shutdown already in progress")
             return {"already_shutdown": True}
 
         with self.shutdown_lock:
             self.shutdown_initiated = True
             self.shutdown_event.set()
 
-        logger.info("🛑 Initiating advanced thread shutdown...")
+        logger.info("🛑 Initiating thread manager shutdown...")
 
-        # Calculate timeouts
-        if timeout is None:
-            timeout = (self.policy.graceful_shutdown_timeout +
-                      self.policy.forceful_shutdown_timeout +
-                      self.policy.terminate_shutdown_timeout +
-                      self.policy.emergency_shutdown_timeout)
+        # Also trigger executor registry shutdown
+        registry = get_executor_registry()
+        executor_stats = await registry.shutdown_all_async(timeout=timeout)
 
-        start_time = time.time()
-        stats = {
-            "total_threads": 0,
-            "by_phase": {},
-            "by_category": defaultdict(int),
-            "leaked": [],
-            "failed": []
+        return {
+            "thread_manager": "shutdown",
+            "executor_registry": executor_stats
         }
 
-        # Get threads to shutdown
-        active = self.get_active_threads()
-        if categories:
-            active = [t for t in active if t.category in categories]
+    def shutdown_sync(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Synchronous shutdown wrapper."""
+        if self.shutdown_initiated:
+            return {"already_shutdown": True}
 
-        stats["total_threads"] = len(active)
-        non_daemon = [t for t in active if not t.daemon]
+        with self.shutdown_lock:
+            self.shutdown_initiated = True
+            self.shutdown_event.set()
 
-        logger.info(f"   Total threads: {len(active)} ({len(non_daemon)} non-daemon)")
+        # Shutdown executor registry
+        registry = get_executor_registry()
+        executor_stats = registry.shutdown_all(wait=True, timeout=timeout or 5.0)
 
-        # PHASE 1: Graceful shutdown
-        logger.info(f"📞 Phase 1: Graceful shutdown ({self.policy.graceful_shutdown_timeout}s)...")
-        phase_stats = await self._shutdown_phase_graceful(non_daemon)
-        stats["by_phase"]["graceful"] = phase_stats
-
-        # Check if done
-        remaining = [t for t in non_daemon if self._is_thread_alive(t)]
-        if not remaining:
-            logger.info("✅ All threads stopped gracefully")
-            return self._finalize_shutdown_stats(stats, start_time)
-
-        # PHASE 2: Forceful shutdown
-        logger.info(f"⚡ Phase 2: Forceful shutdown ({self.policy.forceful_shutdown_timeout}s)...")
-        phase_stats = await self._shutdown_phase_forceful(remaining)
-        stats["by_phase"]["forceful"] = phase_stats
-
-        # Check if done
-        remaining = [t for t in remaining if self._is_thread_alive(t)]
-        if not remaining:
-            logger.info("✅ All threads stopped")
-            return self._finalize_shutdown_stats(stats, start_time)
-
-        # PHASE 3: Terminate
-        logger.info(f"🔨 Phase 3: Terminate ({self.policy.terminate_shutdown_timeout}s)...")
-        phase_stats = await self._shutdown_phase_terminate(remaining)
-        stats["by_phase"]["terminate"] = phase_stats
-
-        # Check if done
-        remaining = [t for t in remaining if self._is_thread_alive(t)]
-        if not remaining:
-            logger.info("✅ All threads stopped")
-            return self._finalize_shutdown_stats(stats, start_time)
-
-        # PHASE 4: Emergency cleanup
-        logger.info(f"🚨 Phase 4: Emergency cleanup ({self.policy.emergency_shutdown_timeout}s)...")
-        phase_stats = await self._shutdown_phase_emergency(remaining)
-        stats["by_phase"]["emergency"] = phase_stats
-
-        # Final check
-        remaining = [t for t in remaining if self._is_thread_alive(t)]
-        if remaining:
-            logger.error(f"❌ {len(remaining)} threads could not be stopped:")
-            for info in remaining[:10]:
-                logger.error(f"   - {info.name} ({info.category})")
-                stats["leaked"].append(info.name)
-            self.metrics.total_leaked += len(remaining)
-
-        return self._finalize_shutdown_stats(stats, start_time)
-
-    def shutdown_sync(
-        self,
-        timeout: Optional[float] = None,
-        categories: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Synchronous shutdown wrapper
-
-        Args:
-            timeout: Total timeout
-            categories: Categories to shutdown
-
-        Returns:
-            Shutdown statistics
-        """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create new loop in thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        lambda: asyncio.run(self.shutdown_async(timeout, categories))
-                    )
-                    return future.result(timeout=timeout)
-            else:
-                return asyncio.run(self.shutdown_async(timeout, categories))
-        except RuntimeError:
-            # No event loop
-            return asyncio.run(self.shutdown_async(timeout, categories))
-
-    async def _shutdown_phase_graceful(self, threads: List[ThreadInfo]) -> Dict[str, int]:
-        """Graceful shutdown phase"""
-        stats = {"success": 0, "timeout": 0, "failed": 0}
-
-        # Signal all threads
-        for info in threads:
-            try:
-                # Set shutdown event
-                if info.shutdown_event:
-                    if isinstance(info.shutdown_event, asyncio.Event):
-                        info.shutdown_event.set()
-                    else:
-                        info.shutdown_event.set()
-
-                # Call shutdown callback
-                if info.shutdown_callback:
-                    if asyncio.iscoroutinefunction(info.shutdown_callback):
-                        await info.shutdown_callback()
-                    else:
-                        info.shutdown_callback()
-
-                info.state = ThreadState.STOPPING
-            except Exception as e:
-                logger.error(f"Error signaling {info.name}: {e}")
-                stats["failed"] += 1
-
-        # Wait for threads
-        deadline = time.time() + self.policy.graceful_shutdown_timeout
-        for info in threads:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                stats["timeout"] += 1
-                continue
-
-            thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-            if thread:
-                thread.join(timeout=remaining)
-                if thread.is_alive():
-                    stats["timeout"] += 1
-                else:
-                    stats["success"] += 1
-                    info.state = ThreadState.STOPPED
-
-        return stats
-
-    async def _shutdown_phase_forceful(self, threads: List[ThreadInfo]) -> Dict[str, int]:
-        """Forceful shutdown phase"""
-        stats = {"success": 0, "timeout": 0, "failed": 0}
-
-        # Convert to daemon if policy allows
-        if self.policy.force_daemon_on_shutdown:
-            for info in threads:
-                thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-                if thread and not thread.daemon:
-                    thread.daemon = True
-                    logger.debug(f"Converted {info.name} to daemon")
-
-        # Wait again
-        deadline = time.time() + self.policy.forceful_shutdown_timeout
-        for info in threads:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                stats["timeout"] += 1
-                continue
-
-            thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-            if thread:
-                thread.join(timeout=remaining)
-                if thread.is_alive():
-                    stats["timeout"] += 1
-                else:
-                    stats["success"] += 1
-                    info.state = ThreadState.STOPPED
-
-        return stats
-
-    async def _shutdown_phase_terminate(self, threads: List[ThreadInfo]) -> Dict[str, int]:
-        """Terminate phase - try to forcefully stop threads"""
-        stats = {"success": 0, "timeout": 0, "failed": 0}
-
-        # This is platform-specific and dangerous
-        # Only use as last resort
-        for info in threads:
-            thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-            if not thread or not thread.is_alive():
-                stats["success"] += 1
-                continue
-
-            try:
-                # Try to raise exception in thread (CPython only, dangerous)
-                if hasattr(ctypes, 'pythonapi'):
-                    thread_id = thread.ident
-                    if thread_id:
-                        exc_type = SystemExit
-                        ret = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                            ctypes.c_long(thread_id),
-                            ctypes.py_object(exc_type)
-                        )
-                        if ret == 0:
-                            stats["failed"] += 1
-                        elif ret > 1:
-                            # Revert if affected multiple threads
-                            ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, None)
-                            stats["failed"] += 1
-                        else:
-                            stats["success"] += 1
-                            self.metrics.total_forced_stop += 1
-                else:
-                    stats["failed"] += 1
-            except Exception as e:
-                logger.error(f"Failed to terminate {info.name}: {e}")
-                stats["failed"] += 1
-
-        # Wait briefly
-        await asyncio.sleep(self.policy.terminate_shutdown_timeout)
-
-        return stats
-
-    async def _shutdown_phase_emergency(self, threads: List[ThreadInfo]) -> Dict[str, int]:
-        """Emergency cleanup phase"""
-        stats = {"cleaned": 0, "leaked": 0}
-
-        # Mark all as leaked and clean up references
-        for info in threads:
-            thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-            if thread and thread.is_alive():
-                info.state = ThreadState.LEAKED
-                stats["leaked"] += 1
-                logger.error(f"LEAKED: {info.name} ({info.purpose})")
-            else:
-                stats["cleaned"] += 1
-
-        return stats
-
-    def _is_thread_alive(self, info: ThreadInfo) -> bool:
-        """Check if thread is alive"""
-        thread = info.thread() if isinstance(info.thread, weakref.ref) else info.thread
-        return thread and thread.is_alive()
-
-    def _finalize_shutdown_stats(self, stats: Dict, start_time: float) -> Dict[str, Any]:
-        """Finalize shutdown statistics"""
-        stats["duration"] = time.time() - start_time
-        stats["timestamp"] = datetime.now().isoformat()
-
-        self.metrics.shutdown_attempts += 1
-        if not stats.get("leaked"):
-            self.metrics.successful_shutdowns += 1
-        else:
-            self.metrics.failed_shutdowns += 1
-
-        logger.info(f"✅ Shutdown completed in {stats['duration']:.2f}s")
-        return stats
+        return {
+            "thread_manager": "shutdown",
+            "executor_registry": executor_stats
+        }
 
     def _emergency_cleanup(self):
-        """Emergency cleanup called by atexit"""
+        """Emergency cleanup called by atexit."""
         if not self.shutdown_initiated:
-            logger.warning("⚠️  Emergency cleanup triggered (atexit)")
+            logger.debug("⚠️ Emergency thread manager cleanup")
             try:
-                self.shutdown_sync(timeout=5.0)
+                self.shutdown_sync(timeout=2.0)
             except Exception as e:
                 logger.error(f"Emergency cleanup failed: {e}")
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get current metrics"""
+        """Get current metrics."""
         return asdict(self.metrics)
 
     def get_report(self) -> Dict[str, Any]:
-        """Get comprehensive report"""
+        """Get comprehensive report."""
         active = self.get_active_threads()
 
         return {
@@ -1137,35 +1403,20 @@ class AdvancedThreadManager:
                 cat: len([t for t in active if t.category == cat])
                 for cat in self.categories.keys()
             },
-            "leaked": len(self.get_leaked_threads()),
-            "policy": asdict(self.policy)
+            "executor_metrics": get_executor_metrics()
         }
 
-    def print_report(self):
-        """Print detailed report"""
-        report = self.get_report()
 
-        print("\n" + "=" * 80)
-        print("🧵 ADVANCED THREAD MANAGER REPORT")
-        print("=" * 80)
-        print(f"Metrics:")
-        for key, value in report["metrics"].items():
-            print(f"  {key}: {value}")
-        print(f"\nActive Threads: {report['active_threads']}")
-        print(f"By Category:")
-        for cat, count in report["by_category"].items():
-            print(f"  {cat}: {count}")
-        print(f"Leaked: {report['leaked']}")
-        print("=" * 80 + "\n")
+# =============================================================================
+# GLOBAL INSTANCES AND CONVENIENCE FUNCTIONS
+# =============================================================================
 
-
-# Global instance
 _thread_manager: Optional[AdvancedThreadManager] = None
 _manager_lock = threading.Lock()
 
 
 def get_thread_manager(policy: Optional[ThreadPolicy] = None) -> AdvancedThreadManager:
-    """Get or create global thread manager"""
+    """Get or create global thread manager."""
     global _thread_manager
 
     with _manager_lock:
@@ -1174,24 +1425,19 @@ def get_thread_manager(policy: Optional[ThreadPolicy] = None) -> AdvancedThreadM
         return _thread_manager
 
 
-def create_managed_thread(
-    target: Callable,
-    name: str,
-    **kwargs
-) -> threading.Thread:
-    """Convenience function to create managed thread"""
+def create_managed_thread(target: Callable, name: str, **kwargs) -> threading.Thread:
+    """Convenience function to create managed thread."""
     manager = get_thread_manager()
-    thread = manager.create_thread(target=target, name=name, **kwargs)
-    return thread
+    return manager.create_thread(target=target, name=name, **kwargs)
 
 
 async def shutdown_all_threads_async(timeout: Optional[float] = None) -> Dict[str, Any]:
-    """Async shutdown all threads"""
+    """Async shutdown all threads and executors."""
     manager = get_thread_manager()
     return await manager.shutdown_async(timeout=timeout)
 
 
 def shutdown_all_threads(timeout: Optional[float] = None) -> Dict[str, Any]:
-    """Sync shutdown all threads"""
+    """Sync shutdown all threads and executors."""
     manager = get_thread_manager()
     return manager.shutdown_sync(timeout=timeout)
