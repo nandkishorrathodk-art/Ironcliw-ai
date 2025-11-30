@@ -1,0 +1,582 @@
+{
+  "info": {
+    "_postman_id": "jarvis-voice-unlock-flow-2024",
+    "name": "JARVIS Voice Unlock Flow (Sequential)",
+    "description": "Sequential collection that mimics the Voice Unlock Authentication Flow.\n\nRun this collection with the Collection Runner to execute the full authentication pipeline.\n\nOrder of execution:\n1. Health Check\n2. Start Audit Session\n3. Anti-Spoofing Check\n4. Voice Authentication\n5. Multi-Factor Fusion (if needed)\n6. Screen Unlock\n7. JARVIS Feedback\n8. End Audit Session\n\nUse with Collection Runner for automated flow execution.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8010",
+      "type": "string"
+    },
+    {
+      "key": "speaker_name",
+      "value": "Derek",
+      "type": "string"
+    },
+    {
+      "key": "confidence_threshold",
+      "value": "0.85",
+      "type": "string"
+    },
+    {
+      "key": "voice_confidence",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fused_confidence",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "audit_session_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "auth_result",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "should_unlock",
+      "value": "false",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. System Health Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Check system health",
+              "const response = pm.response.json();",
+              "",
+              "pm.test('System is healthy', function() {",
+              "    pm.expect(response.status).to.be.oneOf(['healthy', 'degraded']);",
+              "});",
+              "",
+              "// If unhealthy, skip remaining requests",
+              "if (response.status === 'unhealthy') {",
+              "    pm.execution.setNextRequest('Error: System Unavailable');",
+              "    console.log('System unhealthy - skipping to error handler');",
+              "} else {",
+              "    console.log('System health: ' + response.status);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "health"]
+        },
+        "description": "Verify voice authentication system is operational before proceeding"
+      }
+    },
+    {
+      "name": "2. Start Audit Session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Store audit session ID for later",
+              "const response = pm.response.json();",
+              "",
+              "if (response.session_id) {",
+              "    pm.collectionVariables.set('audit_session_id', response.session_id);",
+              "    console.log('Audit session started: ' + response.session_id);",
+              "}",
+              "",
+              "pm.test('Audit session created', function() {",
+              "    pm.expect(response).to.have.property('session_id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_id\": \"{{speaker_name}}\",\n    \"source\": \"postman_flow\",\n    \"metadata\": {\n        \"flow_version\": \"1.0.0\",\n        \"timestamp\": \"{{$timestamp}}\"\n    }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/audit/session/start",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "audit", "session", "start"]
+        },
+        "description": "Start Langfuse audit trail for this authentication attempt"
+      }
+    },
+    {
+      "name": "3. Anti-Spoofing Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Check for replay attack",
+              "const response = pm.response.json();",
+              "",
+              "pm.test('No replay attack detected', function() {",
+              "    pm.expect(response.is_replay).to.not.equal(true);",
+              "});",
+              "",
+              "// If replay attack detected, skip to security alert",
+              "if (response.is_replay === true) {",
+              "    pm.collectionVariables.set('auth_result', 'replay_attack');",
+              "    pm.execution.setNextRequest('Error: Security Alert');",
+              "    console.log('SECURITY ALERT: Replay attack detected!');",
+              "} else {",
+              "    console.log('Anti-spoofing check passed');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"check_exact_match\": true,\n    \"check_spectral_fingerprint\": true,\n    \"check_environmental_signature\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/patterns/detect-replay",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "patterns", "detect-replay"]
+        },
+        "description": "Check if audio matches known replay attack patterns"
+      }
+    },
+    {
+      "name": "4. Voice Authentication",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Evaluate voice authentication result",
+              "const response = pm.response.json();",
+              "const confidence = response.confidence || response.voice_confidence || 0;",
+              "const threshold = parseFloat(pm.collectionVariables.get('confidence_threshold'));",
+              "",
+              "// Store confidence for later use",
+              "pm.collectionVariables.set('voice_confidence', confidence.toString());",
+              "",
+              "console.log('Voice confidence: ' + (confidence * 100).toFixed(1) + '%');",
+              "console.log('Threshold: ' + (threshold * 100).toFixed(1) + '%');",
+              "",
+              "pm.test('Voice authentication completed', function() {",
+              "    pm.expect(confidence).to.be.a('number');",
+              "});",
+              "",
+              "// Route based on confidence level",
+              "if (confidence >= 0.90) {",
+              "    // High confidence - direct unlock",
+              "    pm.collectionVariables.set('should_unlock', 'true');",
+              "    pm.collectionVariables.set('auth_result', 'high_confidence');",
+              "    pm.execution.setNextRequest('6. Unlock Screen');",
+              "    console.log('HIGH CONFIDENCE - Direct unlock');",
+              "} else if (confidence >= threshold) {",
+              "    // Pass threshold - unlock with fusion",
+              "    pm.collectionVariables.set('should_unlock', 'true');",
+              "    pm.collectionVariables.set('auth_result', 'passed');",
+              "    pm.execution.setNextRequest('6. Unlock Screen');",
+              "    console.log('PASSED - Proceeding to unlock');",
+              "} else if (confidence >= 0.75) {",
+              "    // Borderline - need multi-factor fusion",
+              "    pm.collectionVariables.set('auth_result', 'borderline');",
+              "    console.log('BORDERLINE - Need multi-factor fusion');",
+              "    // Continue to next request (Multi-Factor Fusion)",
+              "} else {",
+              "    // Low confidence - authentication failed",
+              "    pm.collectionVariables.set('should_unlock', 'false');",
+              "    pm.collectionVariables.set('auth_result', 'failed');",
+              "    pm.execution.setNextRequest('Error: Authentication Failed');",
+              "    console.log('FAILED - Low confidence');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"speaker_name\": \"{{speaker_name}}\",\n    \"use_adaptive\": true,\n    \"max_attempts\": 1,\n    \"include_analysis\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/authenticate/enhanced",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "authenticate", "enhanced"]
+        },
+        "description": "Perform enhanced voice biometric authentication with ECAPA-TDNN"
+      }
+    },
+    {
+      "name": "5. Multi-Factor Fusion",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Evaluate multi-factor fusion result",
+              "const response = pm.response.json();",
+              "const fusedConfidence = response.fused_confidence || 0;",
+              "",
+              "pm.collectionVariables.set('fused_confidence', fusedConfidence.toString());",
+              "",
+              "console.log('Fused confidence: ' + (fusedConfidence * 100).toFixed(1) + '%');",
+              "",
+              "pm.test('Multi-factor fusion completed', function() {",
+              "    pm.expect(fusedConfidence).to.be.a('number');",
+              "});",
+              "",
+              "// Check if fusion result meets threshold (80% for borderline cases)",
+              "if (fusedConfidence >= 0.80) {",
+              "    pm.collectionVariables.set('should_unlock', 'true');",
+              "    pm.collectionVariables.set('auth_result', 'fusion_passed');",
+              "    console.log('FUSION PASSED - Proceeding to unlock');",
+              "} else {",
+              "    pm.collectionVariables.set('should_unlock', 'false');",
+              "    pm.collectionVariables.set('auth_result', 'fusion_failed');",
+              "    pm.execution.setNextRequest('Error: Fusion Failed - Challenge Required');",
+              "    console.log('FUSION FAILED - Challenge required');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"voice_confidence\": {{voice_confidence}},\n    \"behavioral_context\": {\n        \"time_of_day\": \"morning\",\n        \"typical_unlock_hour\": 7,\n        \"same_wifi_network\": true,\n        \"device_moved_since_lock\": false\n    },\n    \"weights\": {\n        \"voice\": 0.50,\n        \"behavioral\": 0.35,\n        \"context\": 0.15\n    },\n    \"apply_bonuses\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/fusion/calculate",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "fusion", "calculate"]
+        },
+        "description": "Apply multi-factor fusion for borderline cases (voice + behavioral + context)"
+      }
+    },
+    {
+      "name": "6. Unlock Screen",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Only run if should_unlock is true",
+              "const shouldUnlock = pm.collectionVariables.get('should_unlock');",
+              "if (shouldUnlock !== 'true') {",
+              "    console.log('Skipping unlock - should_unlock is false');",
+              "    pm.execution.setNextRequest('8. End Audit Session');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "pm.test('Screen unlock successful', function() {",
+              "    pm.expect(response.success).to.equal(true);",
+              "});",
+              "",
+              "if (response.success) {",
+              "    console.log('Screen unlocked successfully!');",
+              "} else {",
+              "    console.log('Screen unlock failed: ' + response.error);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"method\": \"keychain\",\n    \"reason\": \"voice_biometric_authenticated\",\n    \"authenticated_user\": \"{{speaker_name}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/screen/unlock",
+          "host": ["{{base_url}}"],
+          "path": ["api", "screen", "unlock"]
+        },
+        "description": "Execute screen unlock via keychain method"
+      }
+    },
+    {
+      "name": "7. JARVIS Success Feedback",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('JARVIS spoke feedback', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "console.log('JARVIS feedback delivered');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"text\": \"Unlocking for you, {{speaker_name}}.\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/voice/jarvis/speak",
+          "host": ["{{base_url}}"],
+          "path": ["voice", "jarvis", "speak"]
+        },
+        "description": "Have JARVIS speak success feedback"
+      }
+    },
+    {
+      "name": "8. End Audit Session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Audit session ended', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const authResult = pm.collectionVariables.get('auth_result');",
+              "const voiceConf = pm.collectionVariables.get('voice_confidence');",
+              "const fusedConf = pm.collectionVariables.get('fused_confidence');",
+              "",
+              "console.log('=== AUTHENTICATION SUMMARY ===');",
+              "console.log('Result: ' + authResult);",
+              "console.log('Voice Confidence: ' + (parseFloat(voiceConf) * 100).toFixed(1) + '%');",
+              "if (fusedConf) {",
+              "    console.log('Fused Confidence: ' + (parseFloat(fusedConf) * 100).toFixed(1) + '%');",
+              "}",
+              "console.log('==============================');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"session_id\": \"{{audit_session_id}}\",\n    \"status\": \"{{auth_result}}\",\n    \"voice_confidence\": {{voice_confidence}},\n    \"outcome\": \"flow_completed\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/voice-auth-intelligence/audit/session/end",
+          "host": ["{{base_url}}"],
+          "path": ["api", "voice-auth-intelligence", "audit", "session", "end"]
+        },
+        "description": "Close Langfuse audit trail with final status"
+      }
+    },
+    {
+      "name": "Error: System Unavailable",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "console.log('ERROR: Voice auth system unavailable');",
+              "pm.execution.setNextRequest(null); // Stop execution"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"text\": \"I'm having trouble with voice authentication right now. Please use your password to unlock.\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/voice/jarvis/speak",
+          "host": ["{{base_url}}"],
+          "path": ["voice", "jarvis", "speak"]
+        },
+        "description": "Error handler when system is unavailable"
+      }
+    },
+    {
+      "name": "Error: Security Alert",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "console.log('SECURITY ALERT: Possible replay attack detected');",
+              "pm.execution.setNextRequest('8. End Audit Session');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"text\": \"Security alert: I detected characteristics consistent with a voice recording rather than a live person. Access denied. This attempt has been logged.\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/voice/jarvis/speak",
+          "host": ["{{base_url}}"],
+          "path": ["voice", "jarvis", "speak"]
+        },
+        "description": "Security alert for replay attack detection"
+      }
+    },
+    {
+      "name": "Error: Authentication Failed",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "console.log('Authentication failed - low confidence');",
+              "pm.execution.setNextRequest('8. End Audit Session');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"text\": \"I'm having trouble verifying your voice. Could you try again, maybe speak a bit louder and closer to the microphone? Or you can use your password instead.\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/voice/jarvis/speak",
+          "host": ["{{base_url}}"],
+          "path": ["voice", "jarvis", "speak"]
+        },
+        "description": "Error handler for failed voice authentication"
+      }
+    },
+    {
+      "name": "Error: Fusion Failed - Challenge Required",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "console.log('Multi-factor fusion failed - challenge question required');",
+              "pm.execution.setNextRequest('8. End Audit Session');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"text\": \"I need a quick verification. What was the last project you worked on yesterday?\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/voice/jarvis/speak",
+          "host": ["{{base_url}}"],
+          "path": ["voice", "jarvis", "speak"]
+        },
+        "description": "Challenge question when fusion doesn't reach threshold"
+      }
+    }
+  ]
+}

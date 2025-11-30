@@ -134,6 +134,8 @@ regexes = [
   '''(?i)use password\.''',
   '''(?i)password authentication\.''',
   '''(?i)Please use password''',
+  '''(?i)password instead''',
+  '''(?i)use.*password instead''',
   # App names that contain "Password" (e.g., 1Password password manager)
   '''"1Password"''',
   '''1Password''',
@@ -221,6 +223,8 @@ paths = [
   # macOS Helper notification files (contain app names like "1Password", not secrets)
   '''backend/macos_helper/notification_monitor.py''',
   '''backend/macos_helper/intelligence/notification_triage.py''',
+  # Postman collections (contain example API requests and user-facing messages, not actual secrets)
+  '''postman/collections/''',
 ]
 
 # Commits to skip (if you've already cleaned history)
