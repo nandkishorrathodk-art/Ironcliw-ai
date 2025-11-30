@@ -1335,12 +1335,19 @@ class SpeechBrainEngine(BaseSTTEngine):
         return torch.zeros(16000), 16000
 
     async def _try_soundfile_decode(self, audio_data: bytes) -> tuple:
-        """Try decoding with soundfile (libsndfile backend)"""
+        """Try decoding with soundfile (libsndfile backend) - NON-BLOCKING"""
         try:
             import soundfile as sf
             import io
-            audio_io = io.BytesIO(audio_data)
-            waveform, sample_rate = sf.read(audio_io, dtype='float32')
+
+            def _decode_sync():
+                """Run blocking soundfile decode in thread pool"""
+                audio_io = io.BytesIO(audio_data)
+                return sf.read(audio_io, dtype='float32')
+
+            # Run blocking I/O in thread pool to prevent event loop freeze
+            loop = asyncio.get_running_loop()
+            waveform, sample_rate = await loop.run_in_executor(None, _decode_sync)
             logger.debug(f"✅ soundfile decoded: {waveform.shape}, {sample_rate}Hz")
             return waveform, sample_rate
         except Exception as e:
@@ -1348,43 +1355,51 @@ class SpeechBrainEngine(BaseSTTEngine):
             return None, None
 
     async def _try_pydub_decode(self, audio_data: bytes) -> tuple:
-        """Try decoding with pydub (uses ffmpeg - handles almost everything)"""
+        """Try decoding with pydub (uses ffmpeg - handles almost everything) - NON-BLOCKING"""
         try:
             from pydub import AudioSegment
             import io
 
-            audio_io = io.BytesIO(audio_data)
-
-            # Try to detect format from magic bytes
+            # Detect format before running in executor
             detected_format = self._detect_format_magic(audio_data)
 
-            # Try with detected format
-            if detected_format:
-                try:
-                    audio_segment = AudioSegment.from_file(audio_io, format=detected_format)
-                except:
-                    # Reset stream and try without format hint
-                    audio_io.seek(0)
+            def _decode_sync():
+                """Run blocking pydub/ffmpeg decode in thread pool"""
+                audio_io = io.BytesIO(audio_data)
+
+                # Try with detected format
+                if detected_format:
+                    try:
+                        audio_segment = AudioSegment.from_file(audio_io, format=detected_format)
+                    except:
+                        # Reset stream and try without format hint
+                        audio_io.seek(0)
+                        audio_segment = AudioSegment.from_file(audio_io)
+                else:
                     audio_segment = AudioSegment.from_file(audio_io)
-            else:
-                audio_segment = AudioSegment.from_file(audio_io)
 
-            # Convert to numpy array
-            samples = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
-            sample_rate = audio_segment.frame_rate
+                # Convert to numpy array
+                samples = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
+                sample_rate = audio_segment.frame_rate
 
-            # Normalize to [-1, 1]
-            if audio_segment.sample_width == 1:  # 8-bit
-                samples = samples / 128.0 - 1.0
-            elif audio_segment.sample_width == 2:  # 16-bit
-                samples = samples / 32768.0
-            elif audio_segment.sample_width == 4:  # 32-bit
-                samples = samples / 2147483648.0
+                # Normalize to [-1, 1]
+                if audio_segment.sample_width == 1:  # 8-bit
+                    samples = samples / 128.0 - 1.0
+                elif audio_segment.sample_width == 2:  # 16-bit
+                    samples = samples / 32768.0
+                elif audio_segment.sample_width == 4:  # 32-bit
+                    samples = samples / 2147483648.0
 
-            # Handle stereo
-            if audio_segment.channels == 2:
-                samples = samples.reshape((-1, 2))
-                samples = samples.mean(axis=1)
+                # Handle stereo
+                if audio_segment.channels == 2:
+                    samples = samples.reshape((-1, 2))
+                    samples = samples.mean(axis=1)
+
+                return samples, sample_rate
+
+            # Run blocking ffmpeg decode in thread pool to prevent event loop freeze
+            loop = asyncio.get_running_loop()
+            samples, sample_rate = await loop.run_in_executor(None, _decode_sync)
 
             logger.debug(f"✅ pydub decoded: {samples.shape}, {sample_rate}Hz, format={detected_format}")
             return samples, sample_rate
@@ -1394,13 +1409,19 @@ class SpeechBrainEngine(BaseSTTEngine):
             return None, None
 
     async def _try_librosa_decode(self, audio_data: bytes) -> tuple:
-        """Try decoding with librosa (robust audio loader)"""
+        """Try decoding with librosa (robust audio loader) - NON-BLOCKING"""
         try:
             import librosa
             import io
 
-            audio_io = io.BytesIO(audio_data)
-            waveform, sample_rate = librosa.load(audio_io, sr=None, mono=True)
+            def _decode_sync():
+                """Run blocking librosa decode in thread pool"""
+                audio_io = io.BytesIO(audio_data)
+                return librosa.load(audio_io, sr=None, mono=True)
+
+            # Run blocking librosa decode in thread pool to prevent event loop freeze
+            loop = asyncio.get_running_loop()
+            waveform, sample_rate = await loop.run_in_executor(None, _decode_sync)
             logger.debug(f"✅ librosa decoded: {waveform.shape}, {sample_rate}Hz")
             return waveform, sample_rate
 

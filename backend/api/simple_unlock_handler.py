@@ -533,7 +533,7 @@ async def _execute_screen_action(
         )
 
         if audio_data:
-            # Verify speaker using voice biometrics
+            # Verify speaker using voice biometrics with TIMEOUT PROTECTION
             try:
                 from voice.speaker_verification_service import get_speaker_verification_service
 
@@ -541,7 +541,20 @@ async def _execute_screen_action(
                 logger.info("🎤 Starting voice biometric verification...")
                 context["status_message"] = "Verifying your voice biometrics..."
 
-                speaker_service = await get_speaker_verification_service()
+                # Get speaker service with timeout
+                try:
+                    speaker_service = await asyncio.wait_for(
+                        get_speaker_verification_service(),
+                        timeout=10.0  # 10 second timeout for service initialization
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("⏱️ Speaker service initialization timed out")
+                    return {
+                        "success": False,
+                        "error": "verification_timeout",
+                        "message": "Voice verification service initialization timed out. Please try again.",
+                    }
+
                 sample_count = sum(
                     profile.get("total_samples", 0)
                     for profile in speaker_service.speaker_profiles.values()
@@ -551,11 +564,23 @@ async def _execute_screen_action(
                     f"{sample_count} voice samples loaded"
                 )
 
-                # Step 2: Verify speaker using voice biometrics
+                # Step 2: Verify speaker using voice biometrics WITH TIMEOUT
                 logger.info("🔐 Analyzing voice pattern against biometric database...")
                 context["status_message"] = "Analyzing voice pattern..."
 
-                verification_result = await speaker_service.verify_speaker(audio_data, speaker_name)
+                try:
+                    verification_result = await asyncio.wait_for(
+                        speaker_service.verify_speaker(audio_data, speaker_name),
+                        timeout=30.0  # 30 second timeout for verification (includes embedding extraction)
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("⏱️ Voice verification timed out after 30 seconds")
+                    return {
+                        "success": False,
+                        "error": "verification_timeout",
+                        "message": "Voice verification took too long. Please try again with clearer audio.",
+                    }
+
                 logger.info(f"🎤 Verification result: {verification_result}")
 
                 speaker_name = verification_result["speaker_name"]

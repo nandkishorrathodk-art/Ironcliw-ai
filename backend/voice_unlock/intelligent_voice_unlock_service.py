@@ -374,16 +374,29 @@ class IntelligentVoiceUnlockService:
             if sample_rate:
                 logger.info(f"🎵 Using frontend-provided sample rate: {sample_rate}Hz")
 
-        # Stage 2: Transcription using Hybrid STT
+        # Stage 2: Transcription using Hybrid STT (with timeout protection)
         stage_transcription = metrics_logger.create_stage(
             "transcription",
             sample_rate=sample_rate,
             audio_size=diagnostics.audio_size_bytes
         )
 
-        transcription_result = await self._transcribe_audio_with_retry(
-            audio_data, diagnostics, sample_rate=sample_rate
-        )
+        try:
+            transcription_result = await asyncio.wait_for(
+                self._transcribe_audio_with_retry(
+                    audio_data, diagnostics, sample_rate=sample_rate
+                ),
+                timeout=20.0  # 20 second timeout for transcription
+            )
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Transcription timed out after 20 seconds")
+            stage_transcription.complete(success=False, error_message="Transcription timeout")
+            stages.append(stage_transcription)
+            return await self._create_failure_response(
+                "transcription_timeout",
+                "Speech recognition took too long. Please try again.",
+                diagnostics=diagnostics.__dict__
+            )
 
         if not transcription_result:
             diagnostics.failure_reason = "transcription_failed"
@@ -545,16 +558,27 @@ class IntelligentVoiceUnlockService:
                 security_analysis=security_analysis,
             )
 
-        # Stage 6: Biometric Verification (anti-spoofing)
+        # Stage 6: Biometric Verification (anti-spoofing) - with timeout protection
         stage_biometric = metrics_logger.create_stage(
             "biometric_verification",
             speaker_name=speaker_identified,
             audio_size=diagnostics.audio_size_bytes
         )
 
-        verification_passed, verification_confidence = await self._verify_speaker_identity(
-            audio_data, speaker_identified
-        )
+        try:
+            verification_passed, verification_confidence = await asyncio.wait_for(
+                self._verify_speaker_identity(audio_data, speaker_identified),
+                timeout=30.0  # 30 second timeout for speaker verification
+            )
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Biometric verification timed out after 30 seconds")
+            stage_biometric.complete(success=False, error_message="Verification timeout")
+            stages.append(stage_biometric)
+            return await self._create_failure_response(
+                "biometric_timeout",
+                "Voice verification took too long. Please try again.",
+                diagnostics=diagnostics.__dict__
+            )
 
         # Get threshold dynamically
         threshold = getattr(self.speaker_engine, 'threshold', 0.35) if self.speaker_engine else 0.35
