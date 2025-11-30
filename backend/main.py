@@ -2663,6 +2663,27 @@ except Exception as e:
     )
     logger.warning("⚠️  Using minimal fallback CORS configuration")
 
+# ═══════════════════════════════════════════════════════════════
+# VOICE UNLOCK API - Mount at module level for proper route registration
+# ═══════════════════════════════════════════════════════════════
+# Routes must be registered BEFORE the server starts, NOT during lifespan
+try:
+    from api.voice_unlock_api import router as voice_unlock_router
+    _routes_before = len(app.routes)
+    app.include_router(voice_unlock_router, tags=["voice_unlock"])
+    _routes_after = len(app.routes)
+    _voice_routes = [r.path for r in app.routes if hasattr(r, 'path') and 'voice-unlock' in r.path]
+    logger.info(f"✅ Voice Unlock API mounted at /api/voice-unlock (module level)")
+    logger.info(f"   Routes before: {_routes_before}, after: {_routes_after}, voice-unlock: {len(_voice_routes)}")
+    if _voice_routes:
+        for vr in _voice_routes[:3]:
+            logger.info(f"   - {vr}")
+        if len(_voice_routes) > 3:
+            logger.info(f"   ... and {len(_voice_routes) - 3} more")
+except ImportError as e:
+    logger.warning(f"⚠️  Voice Unlock API not available: {e}")
+except Exception as e:
+    logger.error(f"❌ Failed to mount Voice Unlock API: {e}")
 
 # Health check endpoint
 @app.get("/health")
