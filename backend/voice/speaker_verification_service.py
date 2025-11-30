@@ -34,6 +34,13 @@ from uuid import uuid4
 
 import numpy as np
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 # ============================================================================
 # ASYNC OPTIMIZATION: Shared Thread Pool for CPU-Intensive Operations
 # ============================================================================
@@ -49,10 +56,17 @@ def get_verification_executor() -> ThreadPoolExecutor:
     global _verification_executor
     if _verification_executor is None:
         # Use 4 workers for parallel CPU-intensive operations
-        _verification_executor = ThreadPoolExecutor(
-            max_workers=4,
-            thread_name_prefix="speaker_verify"
-        )
+        if _HAS_MANAGED_EXECUTOR:
+            _verification_executor = ManagedThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="speaker_verify",
+                name="speaker_verify"
+            )
+        else:
+            _verification_executor = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="speaker_verify"
+            )
         logging.getLogger(__name__).info(
             "🔧 Created speaker verification thread pool (4 workers)"
         )

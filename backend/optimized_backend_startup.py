@@ -10,6 +10,14 @@ import time
 import logging
 from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import aiofiles
 import json
 
@@ -27,7 +35,13 @@ class OptimizedBackendStartup:
         self.max_import_workers = int(os.getenv('BACKEND_MAX_IMPORT_WORKERS', '4'))
         
         # Thread pool for imports
-        self.import_executor = ThreadPoolExecutor(max_workers=self.max_import_workers)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.import_executor = ManagedThreadPoolExecutor(max_workers=self.max_import_workers, name='import')
+
+        else:
+
+            self.import_executor = ThreadPoolExecutor(max_workers=self.max_import_workers)
         
         # Track loaded components
         self.loaded_components = {}

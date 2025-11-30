@@ -25,6 +25,13 @@ except ImportError:
     SWIFT_MONITORING_AVAILABLE = False
     ResourceSnapshot = None
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 class LoadPhase(Enum):
@@ -86,7 +93,10 @@ class SmartStartupManager:
         
         # Executors
         self.cpu_count = multiprocessing.cpu_count()
-        self.thread_executor = ThreadPoolExecutor(max_workers=min(4, self.cpu_count))
+        if _HAS_MANAGED_EXECUTOR:
+            self.thread_executor = ManagedThreadPoolExecutor(max_workers=min(4, self.cpu_count), name='smart_startup')
+        else:
+            self.thread_executor = ThreadPoolExecutor(max_workers=min(4, self.cpu_count))
         self.process_executor = ProcessPoolExecutor(max_workers=2)
         
         # Setup signal handlers

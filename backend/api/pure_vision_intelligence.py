@@ -22,6 +22,13 @@ import os
 import random
 import numpy as np
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 
 # ============================================================================
 # Async Utilities for Vision Intelligence
@@ -35,7 +42,10 @@ def _get_vision_executor() -> ThreadPoolExecutor:
     """Get or create thread pool for vision operations."""
     global _vision_executor
     if _vision_executor is None:
-        _vision_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vision_")
+        if _HAS_MANAGED_EXECUTOR:
+            _vision_executor = ManagedThreadPoolExecutor(max_workers=2, thread_name_prefix="vision_", name="pure_vision")
+        else:
+            _vision_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vision_")
     return _vision_executor
 
 

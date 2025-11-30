@@ -43,6 +43,13 @@ from uuid import uuid4
 import pyautogui
 from PIL import Image
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 # ============================================================================
 # Async Utilities - Thread Pool for Blocking Operations
 # ============================================================================
@@ -54,7 +61,10 @@ def _get_executor() -> ThreadPoolExecutor:
     """Get or create the global thread pool executor."""
     global _executor
     if _executor is None:
-        _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_")
+        if _HAS_MANAGED_EXECUTOR:
+            _executor = ManagedThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_", name="pyautogui")
+        else:
+            _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_")
     return _executor
 
 async def run_blocking(func: Callable, *args, timeout: float = 30.0, **kwargs) -> Any:

@@ -27,6 +27,13 @@ from typing import Optional, Tuple, Dict, Any
 import numpy as np
 import torch
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 # Shared thread pool for CPU-intensive feature extraction
@@ -39,10 +46,17 @@ def get_feature_executor() -> ThreadPoolExecutor:
     global _feature_executor
     if _feature_executor is None:
         # Use 4 workers for parallel feature extraction
-        _feature_executor = ThreadPoolExecutor(
-            max_workers=4,
-            thread_name_prefix="feature_extract"
-        )
+        if _HAS_MANAGED_EXECUTOR:
+            _feature_executor = ManagedThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="feature_extract",
+                name="feature_extract"
+            )
+        else:
+            _feature_executor = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="feature_extract"
+            )
         logger.info("🔧 Created feature extraction thread pool (4 workers)")
     return _feature_executor
 

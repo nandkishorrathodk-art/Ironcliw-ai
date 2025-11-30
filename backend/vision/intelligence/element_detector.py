@@ -10,6 +10,14 @@ import pytesseract
 from dataclasses import dataclass
 import logging
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import asyncio
 import tempfile
 from pathlib import Path
@@ -57,7 +65,13 @@ class ElementDetector:
         Args:
             use_ocr_strategy: Use OCRStrategyManager for intelligent OCR fallbacks
         """
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=4)
         self.min_element_size = 10  # Minimum size for valid elements
         self.text_confidence_threshold = 60
 

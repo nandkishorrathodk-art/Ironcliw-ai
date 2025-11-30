@@ -33,6 +33,13 @@ from scipy import stats
 from scipy.spatial.distance import mahalanobis
 from scipy.stats import multivariate_normal
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 # Shared thread pool for CPU-intensive biometric computations
@@ -43,10 +50,17 @@ def get_biometric_executor() -> ThreadPoolExecutor:
     """Get or create the shared thread pool for biometric computations."""
     global _biometric_executor
     if _biometric_executor is None:
-        _biometric_executor = ThreadPoolExecutor(
-            max_workers=4,
-            thread_name_prefix="biometric_verify"
-        )
+        if _HAS_MANAGED_EXECUTOR:
+            _biometric_executor = ManagedThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="biometric_verify",
+                name="biometric_verify"
+            )
+        else:
+            _biometric_executor = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="biometric_verify"
+            )
         logger.info("🔧 Created biometric verification thread pool (4 workers)")
     return _biometric_executor
 

@@ -32,6 +32,13 @@ import numpy as np
 from PIL import Image
 import io
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 # Import the C++ extension
 try:
     from . import fast_capture
@@ -148,7 +155,10 @@ class FastCaptureEngine:
             >>> engine = FastCaptureEngine(default_config=config)
         """
         self._engine = fast_capture.FastCaptureEngine()
-        self._executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+            self._executor = ManagedThreadPoolExecutor(max_workers=4, name='fast_capture')
+        else:
+            self._executor = ThreadPoolExecutor(max_workers=4)
         
         if default_config:
             self.set_default_config(default_config)

@@ -42,84 +42,116 @@ import atexit
 logger = logging.getLogger(__name__)
 
 
-class DaemonThreadPoolExecutor(ThreadPoolExecutor):
-    """
-    ThreadPoolExecutor that uses daemon threads.
+# Global registry of all executors for cleanup
+_executor_registry: List[weakref.ref] = []
+_executor_lock = threading.Lock()
+_shutdown_initiated = False
 
-    Daemon threads are automatically terminated when the main program exits,
-    preventing hanging on shutdown. This is essential for clean JARVIS shutdown.
+
+class ManagedThreadPoolExecutor(ThreadPoolExecutor):
+    """
+    ThreadPoolExecutor with centralized lifecycle management.
+
+    This executor automatically registers itself for cleanup during shutdown.
+    All executors created with this class will be properly shut down when
+    the application exits, preventing hanging threads.
 
     Usage:
-        executor = DaemonThreadPoolExecutor(max_workers=4)
+        executor = ManagedThreadPoolExecutor(max_workers=4, name='my-pool')
         future = executor.submit(some_function)
     """
 
-    def __init__(self, max_workers=None, thread_name_prefix='', initializer=None, initargs=()):
+    def __init__(self, max_workers=None, thread_name_prefix='', initializer=None, initargs=(), name=None):
+        self._pool_name = name or thread_name_prefix or 'ManagedPool'
+        prefix = thread_name_prefix or f'{self._pool_name}-worker'
+
         super().__init__(
             max_workers=max_workers,
-            thread_name_prefix=thread_name_prefix or 'DaemonPool',
+            thread_name_prefix=prefix,
             initializer=initializer,
             initargs=initargs
         )
-        # Register for cleanup on exit
-        atexit.register(self._cleanup)
 
-    def _adjust_thread_count(self):
-        """Override to make threads daemon"""
-        super()._adjust_thread_count()
-        # Make all threads daemon
-        for thread in self._threads:
-            if not thread.daemon:
-                thread.daemon = True
+        # Register in global registry for coordinated shutdown
+        with _executor_lock:
+            _executor_registry.append(weakref.ref(self))
 
-    def _cleanup(self):
-        """Cleanup on exit"""
-        try:
-            self.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            pass  # Ignore errors during cleanup
+        logger.debug(f"Created ManagedThreadPoolExecutor: {self._pool_name}")
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        """Shutdown with logging."""
+        logger.debug(f"Shutting down executor: {self._pool_name}")
+        super().shutdown(wait=wait, cancel_futures=cancel_futures)
 
 
-# Global registry of all executors for cleanup
-_executor_registry: List['DaemonThreadPoolExecutor'] = []
-_executor_lock = threading.Lock()
+# Backwards compatibility alias
+DaemonThreadPoolExecutor = ManagedThreadPoolExecutor
 
 
-def get_daemon_executor(max_workers: int = 4, name: str = 'jarvis') -> DaemonThreadPoolExecutor:
+def shutdown_all_executors(wait: bool = True, timeout: float = 5.0) -> int:
     """
-    Get a daemon thread pool executor.
+    Shutdown all registered executors.
+
+    Args:
+        wait: If True, wait for pending tasks to complete
+        timeout: Maximum time to wait per executor
+
+    Returns:
+        Number of executors shut down
+    """
+    global _shutdown_initiated
+
+    if _shutdown_initiated:
+        return 0
+
+    _shutdown_initiated = True
+    count = 0
+
+    with _executor_lock:
+        for ref in _executor_registry:
+            executor = ref()
+            if executor is not None:
+                try:
+                    logger.debug(f"Shutting down executor: {getattr(executor, '_pool_name', 'unknown')}")
+                    executor.shutdown(wait=wait, cancel_futures=True)
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"Error shutting down executor: {e}")
+
+        _executor_registry.clear()
+
+    logger.info(f"Shut down {count} thread pool executors")
+    return count
+
+
+# Register atexit handler
+def _atexit_shutdown():
+    """Shutdown all executors on exit."""
+    shutdown_all_executors(wait=False, timeout=2.0)
+
+atexit.register(_atexit_shutdown)
+
+
+def get_daemon_executor(max_workers: int = 4, name: str = 'jarvis') -> ManagedThreadPoolExecutor:
+    """
+    Get a managed thread pool executor.
 
     Creates a new executor and registers it for cleanup on shutdown.
+    Note: "daemon" is a misnomer - these are managed executors with proper shutdown,
+    not true daemon threads (which can't be reliably created with ThreadPoolExecutor).
 
     Args:
         max_workers: Maximum number of worker threads
         name: Thread name prefix for identification
 
     Returns:
-        DaemonThreadPoolExecutor instance
+        ManagedThreadPoolExecutor instance
     """
-    executor = DaemonThreadPoolExecutor(
+    return ManagedThreadPoolExecutor(
         max_workers=max_workers,
-        thread_name_prefix=f'{name}-daemon-'
+        thread_name_prefix=f'{name}-worker-',
+        name=name
     )
-    with _executor_lock:
-        _executor_registry.append(executor)
-    return executor
-
-
-def shutdown_all_executors():
-    """Shutdown all registered executors"""
-    with _executor_lock:
-        for executor in _executor_registry:
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                pass
-        _executor_registry.clear()
-
-
-# Register cleanup on module exit
-atexit.register(shutdown_all_executors)
 
 
 class ThreadState(Enum):
@@ -290,13 +322,14 @@ class AdvancedThreadManager:
         self.shutdown_lock = threading.Lock()
         self.shutdown_event = threading.Event()
 
-        # Thread pool
-        self.thread_pool: Optional[ThreadPoolExecutor] = None
+        # Thread pool (use ManagedThreadPoolExecutor for proper shutdown)
+        self.thread_pool: Optional[ManagedThreadPoolExecutor] = None
         if self.policy.use_thread_pool:
             pool_size = self.policy.thread_pool_size or (os.cpu_count() or 4) * 2
-            self.thread_pool = ThreadPoolExecutor(
+            self.thread_pool = ManagedThreadPoolExecutor(
                 max_workers=pool_size,
-                thread_name_prefix="ManagedPool"
+                thread_name_prefix="ManagedPool",
+                name="AdvancedThreadManager"
             )
 
         # Monitoring

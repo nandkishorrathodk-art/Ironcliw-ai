@@ -11207,6 +11207,17 @@ if __name__ == "__main__":
         sys.stdout.flush()
         sys.stderr.flush()
 
+        # Shutdown all managed thread pool executors first
+        print(f"\n{Colors.CYAN}🧹 Shutting down thread pool executors...{Colors.ENDC}")
+        try:
+            from core.thread_manager import shutdown_all_executors
+            count = shutdown_all_executors(wait=True, timeout=3.0)
+            print(f"   ├─ Shut down {count} managed executors")
+        except ImportError:
+            print(f"   ├─ Thread manager not available")
+        except Exception as e:
+            print(f"   ├─ {Colors.YELLOW}⚠ Executor shutdown error: {e}{Colors.ENDC}")
+
         # Aggressively clean up async tasks and event loop
         print(f"\n{Colors.CYAN}🧹 Performing final async cleanup...{Colors.ENDC}")
         try:
@@ -11349,8 +11360,31 @@ if __name__ == "__main__":
                 print(
                     f"\n{Colors.YELLOW}⚠️  {len(non_daemon_threads)} non-daemon threads still running:{Colors.ENDC}"
                 )
+                # Group threads by their target function to identify sources
+                thread_sources = {}
                 for thread in non_daemon_threads:
-                    print(f"   - {thread.name}")
+                    # Get thread target info
+                    target_name = "unknown"
+                    if hasattr(thread, '_target') and thread._target:
+                        target_name = getattr(thread._target, '__qualname__',
+                                            getattr(thread._target, '__name__', str(thread._target)))
+                    elif hasattr(thread, 'name'):
+                        target_name = thread.name
+
+                    if target_name not in thread_sources:
+                        thread_sources[target_name] = []
+                    thread_sources[target_name].append(thread.name)
+
+                # Print grouped summary
+                print(f"\n   {Colors.CYAN}Thread sources:{Colors.ENDC}")
+                for source, threads in sorted(thread_sources.items(), key=lambda x: -len(x[1])):
+                    print(f"   - {source}: {len(threads)} threads")
+                    if len(threads) <= 3:
+                        for t in threads:
+                            print(f"     • {t}")
+
+                # Log individual threads
+                for thread in non_daemon_threads[:10]:  # First 10 only
                     logger.warning(f"Non-daemon thread still running: {thread.name}")
 
             # Daemon threads are okay

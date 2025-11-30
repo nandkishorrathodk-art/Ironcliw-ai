@@ -34,6 +34,14 @@ from functools import lru_cache
 from skimage.feature import hog, local_binary_pattern
 from torchvision import transforms, models
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import json
 
 logger = logging.getLogger(__name__)
@@ -162,7 +170,13 @@ class MLTemplateGenerator:
         self.feature_index: Dict[str, List[Tuple[str, float]]] = {}  # For similarity search
 
         # Thread pool for CPU-bound operations
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=4)
 
         # Memory budget (MB)
         self.max_memory_mb = config.get('max_memory_mb', 500)

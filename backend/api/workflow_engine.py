@@ -18,6 +18,13 @@ from collections import defaultdict, deque
 
 from .workflow_parser import Workflow, WorkflowAction, ActionType
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -335,7 +342,10 @@ class WorkflowExecutionEngine:
         # Initialize components
         self.executor_registry = ActionExecutorRegistry()
         self.learning_engine = WorkflowLearningEngine()
-        self.thread_pool = ThreadPoolExecutor(max_workers=self.config.get('max_workers', 10))
+        if _HAS_MANAGED_EXECUTOR:
+            self.thread_pool = ManagedThreadPoolExecutor(max_workers=self.config.get('max_workers', 10), name='workflow_engine')
+        else:
+            self.thread_pool = ThreadPoolExecutor(max_workers=self.config.get('max_workers', 10))
         self.active_workflows: Dict[str, Workflow] = {}
         self.execution_contexts: Dict[str, ExecutionContext] = {}
         

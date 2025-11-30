@@ -27,6 +27,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 from PIL import Image, ImageOps
 import numpy as np
 from anthropic import Anthropic
@@ -990,7 +998,13 @@ class ClaudeVisionAnalyzer:
         self.cache = (
             MemoryAwareCache(self.config) if self.config.cache_enabled else None
         )
-        self.executor = ThreadPoolExecutor(max_workers=self.config.thread_pool_size)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=self.config.thread_pool_size, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=self.config.thread_pool_size)
         self.api_semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
 
         # Metrics storage

@@ -26,6 +26,13 @@ from .optimization_config import (
     OptimizationConfig, ModelPriority, OPTIMIZATION_CONFIG
 )
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -60,7 +67,10 @@ class ModelManager:
         
         # Threading
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=2)
+        if _HAS_MANAGED_EXECUTOR:
+            self._executor = ManagedThreadPoolExecutor(max_workers=2, name='model_manager')
+        else:
+            self._executor = ThreadPoolExecutor(max_workers=2)
         self._gc_thread = None
         self._running = True
         

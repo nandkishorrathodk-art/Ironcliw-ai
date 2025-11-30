@@ -17,6 +17,14 @@ from datetime import datetime, timedelta
 from enum import Enum
 import psutil
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import aiofiles
 
 logger = logging.getLogger(__name__)
@@ -73,7 +81,13 @@ class RustSelfHealer:
         self._last_successful_build: Optional[datetime] = None
         
         # Thread pools for concurrent operations
-        self._thread_pool = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self._thread_pool = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self._thread_pool = ThreadPoolExecutor(max_workers=4)
         self._process_pool = ProcessPoolExecutor(max_workers=2)
         
     async def start(self):

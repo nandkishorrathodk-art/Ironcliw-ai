@@ -15,6 +15,13 @@ from concurrent.futures import ThreadPoolExecutor
 import subprocess
 from datetime import datetime, timedelta
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +41,10 @@ class AsyncTTSHandler:
         self.max_cache_size = max_cache_size
         
         # Thread pool for CPU-bound operations
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='async_tts')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=4)
         
         # Cache metadata
         self._cache_metadata: Dict[str, dict] = {}

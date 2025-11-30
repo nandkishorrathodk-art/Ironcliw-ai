@@ -1075,6 +1075,14 @@ async def lifespan(app: FastAPI):
                     "   ⚠️ Vision not in CORE list, adding it to ensure multi-space queries work"
                 )
 
+            # IMPORTANT: Voice unlock API is CRITICAL for biometric authentication
+            # Must be loaded at startup to mount the /api/voice-unlock router
+            components["voice_unlock"] = import_voice_unlock()
+            if components["voice_unlock"] and components["voice_unlock"].get("router"):
+                logger.info("   ✅ voice_unlock loaded (API router available)")
+            else:
+                logger.warning("   ⚠️ voice_unlock loaded but router not available")
+
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
             for comp_name in core_components:
@@ -3080,9 +3088,15 @@ def mount_routers():
 
     # Voice Unlock API (router already has /api/voice-unlock prefix)
     voice_unlock = components.get("voice_unlock", {})
+    logger.info(f"🔍 Voice Unlock check: components.get('voice_unlock') = {bool(voice_unlock)}")
+    if voice_unlock:
+        logger.info(f"🔍 Voice Unlock router present: {bool(voice_unlock.get('router'))}")
+        logger.info(f"🔍 Voice Unlock keys: {list(voice_unlock.keys())}")
     if voice_unlock and voice_unlock.get("router"):
         app.include_router(voice_unlock["router"], tags=["voice_unlock"])
         logger.info("✅ Voice Unlock API mounted at /api/voice-unlock")
+    else:
+        logger.warning("⚠️ Voice Unlock router NOT mounted - router missing from components")
 
     # Voice Authentication Intelligence API (LangGraph + Langfuse + ChromaDB + Cache)
     try:

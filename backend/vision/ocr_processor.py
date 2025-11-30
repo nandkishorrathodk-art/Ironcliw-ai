@@ -14,6 +14,14 @@ import numpy as np
 import pytesseract
 import cv2
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import re
 import pandas as pd
 
@@ -73,7 +81,13 @@ class OCRProcessor:
     
     def __init__(self, languages: List[str] = None):
         self.languages = languages or ['eng']
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=2, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=2)
         
         # OCR configuration
         self.custom_config = '--oem 3 --psm 11'  # Use best OCR engine mode, sparse text

@@ -14,6 +14,14 @@ import tempfile
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -365,7 +373,13 @@ class MultiSpaceCaptureEngine:
     def __init__(self, cache_size_mb: int = 200, memory_manager=None):
         self.cache = MultiSpaceCaptureCache(max_size_mb=cache_size_mb)
         self.space_switcher = None  # Will be initialized if needed
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=4)
         self.capture_methods = self._initialize_capture_methods()
         self.current_space_id = 1
         self._capture_lock = asyncio.Lock()

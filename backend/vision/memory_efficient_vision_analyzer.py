@@ -20,6 +20,14 @@ from datetime import datetime, timedelta
 import pickle
 import os
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import psutil
 import gc
 import logging
@@ -169,7 +177,13 @@ class MemoryEfficientVisionAnalyzer:
         
         # Thread pool for parallel processing
         max_workers = int(os.getenv('VISION_MAX_WORKERS', '3'))
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=max_workers, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=max_workers)
         
         # Initialize compression configuration and strategy
         self.compression_config = CompressionConfig()

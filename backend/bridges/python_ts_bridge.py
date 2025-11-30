@@ -26,6 +26,14 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import pickle
 import base64
 
@@ -104,8 +112,11 @@ class PythonTypeScriptBridge:
         # Response handlers
         self.response_handlers: Dict[str, asyncio.Future] = {}
         
-        # Thread pool for CPU-bound operations
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Thread pool for CPU-bound operations (use managed for clean shutdown)
+        if _HAS_MANAGED_EXECUTOR:
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='ts-bridge')
+        else:
+            self.executor = ThreadPoolExecutor(max_workers=4)
         
         self._running = False
         

@@ -25,6 +25,14 @@ import threading
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future, ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
@@ -340,7 +348,13 @@ class PredictionQueue:
         self.current_size_bytes = 0
         self.queue: List[PredictionTask] = []
         self.task_map: Dict[str, PredictionTask] = {}
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=4)
         self.active_tasks: Dict[str, Future] = {}
         self._lock = threading.Lock()
 

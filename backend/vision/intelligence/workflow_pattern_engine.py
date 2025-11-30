@@ -32,6 +32,14 @@ import weakref
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
+
 # Import existing systems for integration
 from .visual_state_management_system import VisualStateManagementSystem, ApplicationStateTracker
 from .activity_recognition_engine import ActivityRecognitionEngine, RecognizedTask, PrimaryActivity
@@ -1131,7 +1139,13 @@ class WorkflowPatternEngine:
         }
         
         # Threading for async processing
-        self.executor = ThreadPoolExecutor(max_workers=3)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=3, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=3)
         self._cleanup_task = None
         
         # Persistence

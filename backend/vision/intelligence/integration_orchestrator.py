@@ -17,6 +17,14 @@ from datetime import datetime
 from collections import OrderedDict
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import numpy as np
 from PIL import Image
 
@@ -111,7 +119,13 @@ class IntegrationOrchestrator:
         
         # Processing queue
         self.processing_queue = asyncio.Queue(maxsize=self.config['max_queue_size'])
-        self.executor = ThreadPoolExecutor(max_workers=self.config['max_workers'])
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=self.config['max_workers'], name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=self.config['max_workers'])
         
         # Metrics tracking
         self.current_metrics = ProcessingMetrics()

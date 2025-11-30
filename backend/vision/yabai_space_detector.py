@@ -16,6 +16,14 @@ import json
 import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 from enum import Enum
 from functools import partial
 from typing import Any, Dict, List, Optional
@@ -30,7 +38,13 @@ def _get_yabai_executor() -> ThreadPoolExecutor:
     """Get or create thread pool for Yabai subprocess calls."""
     global _yabai_executor
     if _yabai_executor is None:
-        _yabai_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="yabai_")
+        if _HAS_MANAGED_EXECUTOR:
+
+            _yabai_executor = ManagedThreadPoolExecutor(max_workers=2, thread_name_prefix="yabai_", name='yabai')
+
+        else:
+
+            _yabai_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="yabai_")
     return _yabai_executor
 
 

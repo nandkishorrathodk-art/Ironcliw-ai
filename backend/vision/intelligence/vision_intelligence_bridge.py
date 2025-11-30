@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
+
 import base64
 from datetime import datetime
 
@@ -113,7 +121,13 @@ class VisionIntelligenceBridge:
         self.swift_bridge = SwiftBridge()
         self.rust_pattern_matcher = None
         self.rust_feature_extractor = None
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        if _HAS_MANAGED_EXECUTOR:
+
+            self.executor = ManagedThreadPoolExecutor(max_workers=4, name='pool')
+
+        else:
+
+            self.executor = ThreadPoolExecutor(max_workers=4)
         
         # Initialize Rust components if available
         if RUST_AVAILABLE:

@@ -38,6 +38,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
@@ -46,6 +47,13 @@ from scipy import signal
 from scipy.signal import butter, filtfilt, medfilt
 
 from .base_engine import BaseSTTEngine, STTResult
+
+# Import managed executor for clean shutdown
+try:
+    from core.thread_manager import ManagedThreadPoolExecutor
+    _HAS_MANAGED_EXECUTOR = True
+except ImportError:
+    _HAS_MANAGED_EXECUTOR = False
 
 logger = logging.getLogger(__name__)
 
@@ -619,10 +627,17 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             # Create dedicated thread pool for model loading to avoid event loop conflicts
             # Using max_workers=1 ensures sequential loading and prevents thread exhaustion
-            executor = ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="speechbrain_loader"
-            )
+            if _HAS_MANAGED_EXECUTOR:
+                executor = ManagedThreadPoolExecutor(
+                    max_workers=1,
+                    thread_name_prefix="speechbrain_loader",
+                    name="speechbrain_loader"
+                )
+            else:
+                executor = ThreadPoolExecutor(
+                    max_workers=1,
+                    thread_name_prefix="speechbrain_loader"
+                )
 
             def _load_model_sync():
                 """Synchronous model loading function to run in dedicated thread."""
