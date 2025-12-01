@@ -1,0 +1,34 @@
+{
+  "name": "jarvis-postman-tests",
+  "version": "1.0.0",
+  "description": "Newman test runner for JARVIS Voice Biometric Authentication API tests",
+  "scripts": {
+    "test": "npm run test:all",
+    "test:all": "npm run test:voice-auth && npm run test:voice-unlock && npm run test:api",
+    "test:voice-auth": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --env-var speaker_name=Derek --reporters cli,htmlextra --reporter-htmlextra-export ./reports/voice-auth-report.html",
+    "test:voice-unlock": "newman run collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --env-var speaker_name=Derek --reporters cli,htmlextra --reporter-htmlextra-export ./reports/voice-unlock-report.html",
+    "test:api": "newman run collections/JARVIS_API_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --folder 'Health & Status' --reporters cli,htmlextra --reporter-htmlextra-export ./reports/api-report.html",
+    "test:anti-spoofing": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --folder '4. Anti-Spoofing' --reporters cli",
+    "test:calibration": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --folder '2. Calibration System' --reporters cli",
+    "test:quick": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --env-var base_url=http://localhost:8010 --folder '1. System Status' --reporters cli",
+    "validate": "node -e \"const fs=require('fs');['collections','environments'].forEach(d=>fs.readdirSync(d).filter(f=>f.endsWith('.json')).forEach(f=>{try{JSON.parse(fs.readFileSync(d+'/'+f));console.log('✅',f)}catch(e){console.error('❌',f,e.message);process.exit(1)}}))\"",
+    "setup": "npm install"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "newman": "^6.2.1",
+    "newman-reporter-htmlextra": "^1.23.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "postman",
+    "newman",
+    "api-testing",
+    "voice-biometrics",
+    "jarvis"
+  ],
+  "author": "Derek Russell",
+  "license": "MIT"
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json.schemastore.org/newmanrc",
+  "description": "Newman configuration for JARVIS Postman API tests",
+  "globals": {
+    "base_url": "http://localhost:8010",
+    "speaker_name": "Derek",
+    "user_id": "derek",
+    "confidence_threshold": "0.85",
+    "security_level": "base"
+  },
+  "run": {
+    "collection": "collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
+    "environment": "environments/JARVIS_Environment.postman_environment.json",
+    "reporters": ["cli", "htmlextra"],
+    "reporter": {
+      "htmlextra": {
+        "export": "./reports/newman-report.html",
+        "title": "JARVIS Voice Auth API Tests",
+        "browserTitle": "JARVIS Tests",
+        "darkTheme": true,
+        "testPaging": true,
+        "logs": true,
+        "showEnvironmentData": true,
+        "showGlobalData": true,
+        "omitHeaders": true,
+        "showMarkdownLinks": true,
+        "noSyntaxHighlighting": false,
+        "showFolderDescription": true,
+        "timezone": "America/Los_Angeles"
+      }
+    },
+    "iterationCount": 1,
+    "delayRequest": 100,
+    "timeout": 30000,
+    "timeoutRequest": 10000,
+    "timeoutScript": 10000,
+    "ignoreRedirects": false,
+    "insecure": false,
+    "bail": false,
+    "color": "auto",
+    "suppressExitCode": false,
+    "workingDir": "."
+  },
+  "collections": {
+    "voice-auth-intelligence": {
+      "name": "JARVIS Voice Auth Intelligence",
+      "file": "collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
+      "folders": [
+        "1. System Status",
+        "2. Calibration System",
+        "3. Fine-Tuning System",
+        "4. Anti-Spoofing",
+        "5. Authentication Simulation",
+        "6. Audit Trail (Langfuse)",
+        "7. Multi-Factor Fusion",
+        "8. Full Pipeline Tests"
+      ],
+      "description": "Advanced ML-based voice authentication with calibration and anti-spoofing"
+    },
+    "voice-unlock-flow": {
+      "name": "JARVIS Voice Unlock Flow",
+      "file": "collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json",
+      "description": "Sequential voice unlock authentication pipeline"
+    },
+    "api-collection": {
+      "name": "JARVIS AI Agent API",
+      "file": "collections/JARVIS_API_Collection.postman_collection.json",
+      "folders": [
+        "Health & Status",
+        "Startup",
+        "Screen Control"
+      ],
+      "description": "Complete JARVIS system API"
+    }
+  },
+  "environments": {
+    "local": {
+      "name": "JARVIS Local Development",
+      "file": "environments/JARVIS_Environment.postman_environment.json",
+      "variables": {
+        "base_url": "http://localhost:8010",
+        "websocket_url": "ws://localhost:8000"
+      }
+    },
+    "docker": {
+      "name": "JARVIS Docker",
+      "variables": {
+        "base_url": "http://host.docker.internal:8010",
+        "websocket_url": "ws://host.docker.internal:8000"
+      }
+    },
+    "staging": {
+      "name": "JARVIS Staging",
+      "variables": {
+        "base_url": "https://staging.jarvis.example.com",
+        "websocket_url": "wss://staging.jarvis.example.com"
+      }
+    }
+  },
+  "scripts": {
+    "test:all": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json && newman run collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json && newman run collections/JARVIS_API_Collection.postman_collection.json --folder 'Health & Status'",
+    "test:voice-auth": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
+    "test:voice-unlock": "newman run collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json",
+    "test:api": "newman run collections/JARVIS_API_Collection.postman_collection.json --folder 'Health & Status'",
+    "test:anti-spoofing": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '4. Anti-Spoofing'",
+    "test:calibration": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '2. Calibration System'"
+  }
+}

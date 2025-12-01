@@ -304,3 +304,19 @@ model_checkpoints/
 backend/voice/voice_samples/
 backend/voice/voiceprints/
 ROTATION_INSTRUCTIONS.md
+
+# Postman - Keep collections but ignore reports and secrets
+postman/reports/
+postman/*.log
+postman/newman-run-*.json
+postman/.postman/
+postman/environments/*-secrets.json
+postman/environments/*-production.json
+postman/environments/*-staging.json
+# Keep local development environment in git
+!postman/environments/JARVIS_Environment.postman_environment.json
+
+# Newman reports and output
+newman/
+newman-*.html
+newman-*.json
