@@ -144,18 +144,35 @@ class IntelligentVoiceUnlockService:
         """
         Initialize all components - PARALLELIZED for speed with timeout protection.
 
-        OPTIMIZED v2.1 - Faster initialization:
-        - Reduced component timeout from 10s to 5s
-        - Reduced total timeout from 30s to 15s
+        OPTIMIZED v2.2 - Proper ML model initialization:
+        - Uses prewarmer status to skip already-loaded models (instant if prewarmed)
+        - Increased timeouts to allow ML models to fully load on cold start
         - All phases run in single parallel block for maximum speed
         - Graceful degradation continues even if components timeout
+
+        IMPORTANT: On first startup, model loading takes 15-30s total.
+        Subsequent initializations (or if prewarmed at startup) are <1s.
         """
         if self.initialized:
             return
 
-        # OPTIMIZED: Shorter timeouts for faster startup
-        COMPONENT_TIMEOUT = 5.0   # Reduced from 10s - fast-fail for slow components
-        TOTAL_INIT_TIMEOUT = 15.0  # Reduced from 30s - startup must be quick
+        # Check if models were already prewarmed at system startup
+        try:
+            from voice_unlock.ml_model_prewarmer import is_prewarmed, get_prewarm_status
+            if is_prewarmed():
+                prewarm_status = get_prewarm_status()
+                logger.info(f"🚀 Models already prewarmed - using fast initialization path")
+                logger.info(f"   Prewarm status: {prewarm_status.to_dict()}")
+                COMPONENT_TIMEOUT = 5.0   # Fast timeout - models already loaded
+                TOTAL_INIT_TIMEOUT = 15.0  # Short total timeout
+            else:
+                logger.info("⏳ Models not prewarmed - allowing time for ML model loading")
+                COMPONENT_TIMEOUT = 20.0   # Allow time for model loading (Whisper + ECAPA)
+                TOTAL_INIT_TIMEOUT = 45.0  # Allow 45s total for cold start
+        except ImportError:
+            logger.debug("Prewarmer not available - using default timeouts")
+            COMPONENT_TIMEOUT = 20.0
+            TOTAL_INIT_TIMEOUT = 45.0
 
         logger.info("🚀 Initializing Intelligent Voice Unlock Service (v2.1 optimized parallel)...")
         init_start = datetime.now()

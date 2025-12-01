@@ -1165,6 +1165,23 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Memory manager initialized")
 
     # ═══════════════════════════════════════════════════════════════
+    # VOICE UNLOCK ML MODEL PREWARMING (Critical for instant "unlock my screen")
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        logger.info("🔥 Prewarming Voice Unlock ML models (Whisper + ECAPA-TDNN)...")
+        from voice_unlock.ml_model_prewarmer import prewarm_voice_unlock_models_background
+
+        # Start prewarming in background - doesn't block startup but models will be ready
+        # by the time user says "unlock my screen"
+        await prewarm_voice_unlock_models_background()
+        logger.info("   → ML model prewarming started in background")
+        logger.info("   → First 'unlock my screen' will be instant once prewarming completes")
+    except ImportError as e:
+        logger.debug(f"ML model prewarmer not available: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ ML model prewarming skipped: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
     # NEURAL MESH INITIALIZATION (Multi-Agent Collaboration System)
     # ═══════════════════════════════════════════════════════════════
     try:
