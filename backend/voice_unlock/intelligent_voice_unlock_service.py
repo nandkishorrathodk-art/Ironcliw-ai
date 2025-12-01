@@ -183,12 +183,29 @@ class IntelligentVoiceUnlockService:
         logger.info(f"✅ Intelligent Voice Unlock Service initialized in {init_time:.0f}ms")
 
     async def _initialize_stt(self):
-        """Initialize Hybrid STT Router"""
+        """
+        Initialize Hybrid STT Router with model prewarming.
+
+        This calls router.initialize() which:
+        - Discovers available STT engines
+        - Connects to learning database
+        - Prewarms Whisper model (loads into memory for instant first transcription)
+        """
         try:
             from voice.hybrid_stt_router import get_hybrid_router
 
             self.stt_router = get_hybrid_router()
-            logger.info("✅ Hybrid STT Router connected")
+
+            # CRITICAL: Call initialize() to prewarm Whisper model
+            # This eliminates the 3-10+ second model load time on first transcription
+            await self.stt_router.initialize()
+
+            # Log prewarming status
+            stats = self.stt_router.get_stats()
+            if stats.get("whisper_prewarmed"):
+                logger.info("✅ Hybrid STT Router connected (Whisper prewarmed)")
+            else:
+                logger.warning("⚠️ Hybrid STT Router connected (Whisper NOT prewarmed - first request may be slow)")
         except Exception as e:
             logger.error(f"Failed to initialize Hybrid STT: {e}")
             self.stt_router = None
