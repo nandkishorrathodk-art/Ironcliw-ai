@@ -867,9 +867,55 @@ class IntelligentVoiceUnlockService:
             audio_size=diagnostics.audio_size_bytes
         )
 
-        # 🔑 CAPTURE VOICE EMBEDDING for semantic cache storage later
+        # 🚀 UNIFIED CACHE FAST-PATH: Try instant recognition before expensive verification
+        # This is the critical integration - unified cache has Derek's preloaded profile
+        # Average cache match time: <1ms vs full verification: 200-500ms
+        unified_cache_hit = False
         voice_embedding_for_cache = None
-        if self.speaker_engine and hasattr(self.speaker_engine, 'extract_embedding'):
+
+        if self.unified_cache and self.unified_cache.is_ready:
+            try:
+                unified_result = await asyncio.wait_for(
+                    self.unified_cache.verify_voice_from_audio(
+                        audio_data=audio_data,
+                        sample_rate=16000,
+                        expected_speaker=speaker_identified,  # Hint for faster matching
+                    ),
+                    timeout=2.0  # Fast-path timeout
+                )
+
+                if unified_result.matched and unified_result.similarity >= 0.88:
+                    # HIGH CONFIDENCE INSTANT MATCH - skip full verification!
+                    unified_cache_hit = True
+                    verification_passed = True
+                    verification_confidence = unified_result.similarity
+                    voice_embedding_for_cache = unified_result.embedding
+
+                    logger.info(
+                        f"⚡ UNIFIED CACHE INSTANT MATCH: {speaker_identified} "
+                        f"(similarity={unified_result.similarity:.2%}, "
+                        f"type={unified_result.match_type}, "
+                        f"source={unified_result.profile_source})"
+                    )
+
+                    # Track cache performance
+                    self.stats["unified_cache_hits"] = self.stats.get("unified_cache_hits", 0) + 1
+
+                elif unified_result.embedding is not None:
+                    # Got embedding but not instant match - save for fallback
+                    voice_embedding_for_cache = unified_result.embedding
+                    logger.debug(
+                        f"🔄 Unified cache: no instant match "
+                        f"(similarity={unified_result.similarity:.2%}), falling back to full verification"
+                    )
+
+            except asyncio.TimeoutError:
+                logger.debug("⏱️ Unified cache fast-path timed out, falling back to full verification")
+            except Exception as e:
+                logger.debug(f"Unified cache fast-path failed (non-critical): {e}")
+
+        # 🔑 FALLBACK: Extract embedding if not already from unified cache
+        if voice_embedding_for_cache is None and self.speaker_engine and hasattr(self.speaker_engine, 'extract_embedding'):
             try:
                 voice_embedding_for_cache = await asyncio.wait_for(
                     self.speaker_engine.extract_embedding(audio_data),
@@ -879,20 +925,22 @@ class IntelligentVoiceUnlockService:
             except Exception as e:
                 logger.debug(f"Voice embedding extraction failed (non-critical): {e}")
 
-        try:
-            verification_passed, verification_confidence = await asyncio.wait_for(
-                self._verify_speaker_identity(audio_data, speaker_identified),
-                timeout=BIOMETRIC_TIMEOUT  # 10 second timeout (was 30s!)
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"⏱️ Biometric verification timed out after {BIOMETRIC_TIMEOUT}s")
-            stage_biometric.complete(success=False, error_message="Verification timeout")
-            stages.append(stage_biometric)
-            return await self._create_failure_response(
-                "biometric_timeout",
-                "Voice verification took too long. Please try again.",
-                diagnostics=diagnostics.__dict__
-            )
+        # 🔒 FULL VERIFICATION: Only if unified cache didn't provide instant match
+        if not unified_cache_hit:
+            try:
+                verification_passed, verification_confidence = await asyncio.wait_for(
+                    self._verify_speaker_identity(audio_data, speaker_identified),
+                    timeout=BIOMETRIC_TIMEOUT  # 10 second timeout (was 30s!)
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"⏱️ Biometric verification timed out after {BIOMETRIC_TIMEOUT}s")
+                stage_biometric.complete(success=False, error_message="Verification timeout")
+                stages.append(stage_biometric)
+                return await self._create_failure_response(
+                    "biometric_timeout",
+                    "Voice verification took too long. Please try again.",
+                    diagnostics=diagnostics.__dict__
+                )
 
         # Get threshold dynamically
         threshold = getattr(self.speaker_engine, 'threshold', 0.35) if self.speaker_engine else 0.35
@@ -2314,8 +2362,10 @@ class IntelligentVoiceUnlockService:
                 "cai": self.cai_handler is not None,
                 "sai": self.sai_analyzer is not None,
                 "keychain_cache": keychain_metrics.get("cache_valid", False),
+                "unified_voice_cache": self.unified_cache is not None and self.unified_cache.is_ready,
             },
             "keychain_cache_metrics": keychain_metrics,
+            "unified_cache_stats": self.unified_cache.get_stats() if self.unified_cache else {},
         }
 
 

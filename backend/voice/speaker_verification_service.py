@@ -2327,6 +2327,11 @@ class SpeakerVerificationService:
         # Known environments for context
         self.known_environments = ["home", "office", "default"]
 
+        # 🚀 UNIFIED VOICE CACHE: Fast-path for instant recognition (~1ms vs 200-500ms)
+        self.unified_cache = None
+        self._unified_cache_hits = 0
+        self._unified_cache_misses = 0
+
     async def _run_in_executor(self, func, *args, **kwargs) -> Any:
         """Run a CPU-intensive function in the thread pool to avoid blocking."""
         loop = asyncio.get_running_loop()
@@ -2387,6 +2392,20 @@ class SpeakerVerificationService:
             logger.info(f"🔄 Starting profile auto-reload (check every {self.reload_check_interval}s)...")
             self._reload_task = asyncio.create_task(self._profile_reload_monitor())
             logger.info("✅ Profile hot reload enabled - updates will be detected automatically")
+
+        # 🚀 UNIFIED CACHE: Connect for instant recognition fast-path
+        try:
+            from voice_unlock.unified_voice_cache_manager import get_unified_cache_manager
+
+            self.unified_cache = get_unified_cache_manager()
+            if self.unified_cache and self.unified_cache.is_ready:
+                logger.info(f"✅ Unified voice cache connected ({self.unified_cache.profiles_loaded} profiles)")
+            else:
+                logger.debug("Unified voice cache not ready yet (will connect when available)")
+        except ImportError:
+            logger.debug("Unified voice cache module not available")
+        except Exception as e:
+            logger.debug(f"Unified voice cache connection failed (non-critical): {e}")
 
     def _start_background_preload(self):
         """Start background thread to initialize SpeechBrain engine and pre-load speaker encoder"""
@@ -4399,6 +4418,55 @@ class SpeakerVerificationService:
                 logger.info(f"🎤 AUDIO DEBUG: Converted {len(audio_int16)} int16 samples to float32")
             except Exception as e:
                 logger.info(f"🎤 AUDIO DEBUG: Keeping original format: {e}")
+
+        # 🚀 UNIFIED CACHE FAST-PATH: Try instant recognition before expensive SpeechBrain verification
+        # This provides ~1ms matching vs 200-500ms for full model inference
+        unified_cache_hit = False
+        if self.unified_cache and self.unified_cache.is_ready:
+            try:
+                cache_result = await asyncio.wait_for(
+                    self.unified_cache.verify_voice_from_audio(
+                        audio_data=audio_data,
+                        sample_rate=16000,
+                        expected_speaker=speaker_name,  # Hint for faster matching
+                    ),
+                    timeout=2.0  # Fast-path timeout
+                )
+
+                if cache_result.matched and cache_result.similarity >= 0.85:
+                    # HIGH CONFIDENCE INSTANT MATCH - skip expensive SpeechBrain!
+                    unified_cache_hit = True
+                    self._unified_cache_hits += 1
+
+                    verify_end = time_module.perf_counter()
+                    verify_time_ms = (verify_end - verify_start) * 1000
+
+                    logger.info(
+                        f"⚡ UNIFIED CACHE INSTANT MATCH: {cache_result.speaker_name} "
+                        f"(similarity={cache_result.similarity:.2%}, type={cache_result.match_type}, "
+                        f"verified in {verify_time_ms:.1f}ms)"
+                    )
+
+                    # Get profile for additional metadata
+                    profile = self.speaker_profiles.get(cache_result.speaker_name, {})
+
+                    return {
+                        "verified": True,
+                        "confidence": cache_result.similarity,
+                        "speaker_name": cache_result.speaker_name,
+                        "is_owner": profile.get("is_primary_user", True),
+                        "security_level": profile.get("security_level", "standard"),
+                        "match_source": "unified_cache_fast_path",
+                        "match_type": cache_result.match_type,
+                        "verification_time_ms": verify_time_ms,
+                    }
+
+            except asyncio.TimeoutError:
+                self._unified_cache_misses += 1
+                logger.debug("⏱️ Unified cache fast-path timed out, using standard SpeechBrain path")
+            except Exception as e:
+                self._unified_cache_misses += 1
+                logger.debug(f"Unified cache fast-path failed (non-critical): {e}")
 
         try:
             # If speaker name provided, verify against that profile

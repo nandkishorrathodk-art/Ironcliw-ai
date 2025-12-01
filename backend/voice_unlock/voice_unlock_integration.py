@@ -802,6 +802,11 @@ class VoiceUnlockSystem:
         self.max_retry_attempts = 3
         self.anti_spoofing_enabled = True
 
+        # 🚀 UNIFIED VOICE CACHE: Fast-path for instant recognition (~1ms vs 200-500ms)
+        self._unified_cache = None
+        self._unified_cache_hits = 0
+        self._unified_cache_misses = 0
+
         logger.info("Voice Unlock System initialized with ML optimization and enhanced v2.0 features")
         
     @property
@@ -854,6 +859,21 @@ class VoiceUnlockSystem:
         if self._adaptive_auth is None and self.speaker_service:
             self._adaptive_auth = AdaptiveAuthenticationEngine(self.speaker_service)
         return self._adaptive_auth
+
+    @property
+    def unified_cache(self):
+        """Lazy load unified voice cache for instant recognition."""
+        if self._unified_cache is None:
+            try:
+                from voice_unlock.unified_voice_cache_manager import get_unified_cache_manager
+                self._unified_cache = get_unified_cache_manager()
+                if self._unified_cache and self._unified_cache.is_ready:
+                    logger.info(f"✅ Unified voice cache connected ({self._unified_cache.profiles_loaded} profiles)")
+            except ImportError:
+                logger.debug("Unified voice cache module not available")
+            except Exception as e:
+                logger.debug(f"Unified voice cache connection failed: {e}")
+        return self._unified_cache
 
     def set_tts_callback(self, callback: Callable[[str], Any]):
         """Set TTS callback for voice feedback."""

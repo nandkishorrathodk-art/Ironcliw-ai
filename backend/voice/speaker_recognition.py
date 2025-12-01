@@ -54,6 +54,9 @@ class SpeakerRecognitionEngine:
         # Intelligent voice router (cost-aware local/cloud routing)
         self.voice_router = None
 
+        # 🚀 UNIFIED VOICE CACHE: Fast-path for instant recognition
+        self.unified_cache = None
+
         # Similarity thresholds
         self.recognition_threshold = 0.75  # Minimum similarity to recognize speaker
         self.verification_threshold = 0.85  # Higher threshold for security commands
@@ -68,6 +71,20 @@ class SpeakerRecognitionEngine:
             return
 
         logger.info("🎭 Initializing Speaker Recognition Engine...")
+
+        # 🚀 UNIFIED CACHE: Try to connect for instant recognition fast-path
+        try:
+            from voice_unlock.unified_voice_cache_manager import get_unified_cache_manager
+
+            self.unified_cache = get_unified_cache_manager()
+            if self.unified_cache and self.unified_cache.is_ready:
+                logger.info(f"✅ Unified voice cache connected ({self.unified_cache.profiles_loaded} profiles)")
+            else:
+                logger.debug("Unified voice cache not ready yet")
+        except ImportError:
+            logger.debug("Unified voice cache module not available")
+        except Exception as e:
+            logger.debug(f"Unified voice cache connection failed: {e}")
 
         # Initialize intelligent voice router (handles model selection)
         try:
@@ -196,6 +213,31 @@ class SpeakerRecognitionEngine:
         """
         if not self.initialized:
             await self.initialize()
+
+        # 🚀 UNIFIED CACHE FAST-PATH: Try instant recognition before expensive models
+        # This provides ~1ms matching vs 200-500ms for full model inference
+        if self.unified_cache and self.unified_cache.is_ready:
+            try:
+                cache_result = await asyncio.wait_for(
+                    self.unified_cache.verify_voice_from_audio(
+                        audio_data=audio_data,
+                        sample_rate=16000,
+                    ),
+                    timeout=2.0  # Fast-path timeout
+                )
+
+                if cache_result.matched and cache_result.similarity >= 0.85:
+                    # HIGH CONFIDENCE INSTANT MATCH - skip expensive models!
+                    logger.info(
+                        f"⚡ UNIFIED CACHE INSTANT MATCH: {cache_result.speaker_name} "
+                        f"(similarity={cache_result.similarity:.2%}, type={cache_result.match_type})"
+                    )
+                    return cache_result.speaker_name, cache_result.similarity
+
+            except asyncio.TimeoutError:
+                logger.debug("Unified cache fast-path timed out, using standard path")
+            except Exception as e:
+                logger.debug(f"Unified cache fast-path failed: {e}")
 
         # Try intelligent voice router first (cost-aware local/cloud routing)
         if self.voice_router:
