@@ -9412,6 +9412,53 @@ class ContextStoreStateMachine(RuleBasedStateMachine):
 - `.github/workflows/test.yml` - Run tests and quality checks
 - `.github/workflows/deploy-to-gcp.yml` - Deploy to GCP VM
 - `.github/workflows/sync-databases.yml` - Database management
+- `.github/workflows/postman-api-tests.yml` - Postman/Newman API tests
+
+### Postman API Testing
+
+**Automated API Testing with Newman & GitHub Actions:**
+
+JARVIS includes comprehensive Postman collections with automated testing via Newman CLI.
+
+**Collections:**
+| Collection | Purpose | Requests |
+|------------|---------|----------|
+| `JARVIS_Voice_Auth_Intelligence_Collection` | ML-based voice auth with calibration & anti-spoofing | 25+ |
+| `JARVIS_Voice_Unlock_Flow_Collection` | End-to-end voice unlock pipeline (PRD v2.0) | 12 |
+| `JARVIS_API_Collection` | Complete JARVIS system API | 50+ |
+
+**Run Tests Locally:**
+```bash
+cd postman
+npm install
+npm test                  # Run all collections
+npm run test:voice-auth   # Test Voice Auth Intelligence
+npm run test:voice-unlock # Test Voice Unlock Flow
+npm run test:anti-spoofing # Test anti-spoofing endpoints
+```
+
+**GitHub Actions Integration:**
+- Automated tests on push/PR to `main` or `develop`
+- Mock server for CI environment
+- HTML test reports as artifacts
+- Security scanning for secrets in collections
+
+**Test Reports:**
+After CI runs, download the `newman-reports` artifact for detailed HTML reports.
+
+**Directory Structure:**
+```
+postman/
+├── collections/           # Postman collection JSON files
+├── environments/          # Environment variables
+├── flows/                 # Flow documentation
+├── reports/               # Newman HTML reports (gitignored)
+├── package.json           # npm scripts for testing
+├── newman.config.json     # Newman configuration
+└── README.md              # Detailed documentation
+```
+
+See [postman/README.md](postman/README.md) for complete documentation.
 
 ### Security Enhancements
 
