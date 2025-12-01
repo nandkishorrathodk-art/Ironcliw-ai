@@ -203,10 +203,18 @@ class IntelligentActionOrchestrator:
 
         self._state = OrchestratorState.RUNNING
 
-        # Announce startup
+        # Announce startup with dynamic JARVIS online message
         if self._voice:
+            import random
+            startup_messages = [
+                "JARVIS online. Ready to assist you, sir.",
+                "JARVIS is now online. How can I help you today?",
+                "All systems operational. JARVIS at your service.",
+                "JARVIS online and awaiting your command.",
+                "Good to see you. JARVIS is ready.",
+            ]
             await self._voice.speak(
-                "AGI OS systems online. I'm ready to assist you, sir.",
+                random.choice(startup_messages),
                 mode=VoiceMode.NORMAL
             )
 
@@ -219,10 +227,17 @@ class IntelligentActionOrchestrator:
 
         self._state = OrchestratorState.STOPPING
 
-        # Announce shutdown
+        # Announce shutdown with dynamic JARVIS offline message
         if self._voice:
+            import random
+            shutdown_messages = [
+                "JARVIS going offline. Goodbye, sir.",
+                "Shutting down. See you soon.",
+                "JARVIS offline. Take care, sir.",
+                "Systems shutting down. Until next time.",
+            ]
             await self._voice.speak(
-                "Shutting down AGI OS systems. Goodbye, sir.",
+                random.choice(shutdown_messages),
                 mode=VoiceMode.QUIET
             )
 

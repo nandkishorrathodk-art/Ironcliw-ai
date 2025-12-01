@@ -266,8 +266,15 @@ class AGIOSCoordinator:
                 except Exception:
                     pass
 
+            import random
+            shutdown_messages = [
+                f"JARVIS going offline. Goodbye, {owner_name}.",
+                f"Shutting down now. See you soon, {owner_name}.",
+                f"JARVIS offline. Take care, {owner_name}.",
+                f"Systems shutting down. Until next time, {owner_name}.",
+            ]
             await self._voice.speak(
-                f"Shutting down AGI OS. Goodbye, {owner_name}.",
+                random.choice(shutdown_messages),
                 mode=VoiceMode.QUIET
             )
             await asyncio.sleep(2)
@@ -598,12 +605,28 @@ class AGIOSCoordinator:
             except Exception as e:
                 logger.warning("Could not get owner name: %s", e)
 
+        import random
         if available == total:
-            greeting = f"Good day, {owner_name}. AGI OS systems are fully online. All components operational. I'm ready to assist you."
+            full_online_greetings = [
+                f"Good day, {owner_name}. JARVIS is fully online. All systems operational.",
+                f"JARVIS online, {owner_name}. All components ready and awaiting your command.",
+                f"Hello, {owner_name}. JARVIS is ready to assist. All systems are go.",
+                f"JARVIS fully operational, {owner_name}. How may I help you today?",
+            ]
+            greeting = random.choice(full_online_greetings)
         elif available > total // 2:
-            greeting = f"AGI OS systems are online, {owner_name}. {available} of {total} components available. Running in degraded mode."
+            degraded_greetings = [
+                f"JARVIS is online, {owner_name}. {available} of {total} components available. Running at reduced capacity.",
+                f"Hello, {owner_name}. JARVIS online with {available} of {total} systems ready.",
+                f"JARVIS partially online, {owner_name}. Some systems are still initializing.",
+            ]
+            greeting = random.choice(degraded_greetings)
         else:
-            greeting = f"AGI OS starting with limited functionality, {owner_name}. Several components are unavailable."
+            limited_greetings = [
+                f"JARVIS starting with limited functionality, {owner_name}. Several systems are unavailable.",
+                f"Hello, {owner_name}. JARVIS is online but operating with reduced capabilities.",
+            ]
+            greeting = random.choice(limited_greetings)
 
         await self._voice.greet()
         await asyncio.sleep(0.5)

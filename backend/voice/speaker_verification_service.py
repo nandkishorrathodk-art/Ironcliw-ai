@@ -4146,11 +4146,22 @@ class SpeakerVerificationService:
                     skipped_count += 1
                     continue
 
-            # If no profiles found, auto-create owner profile from macOS user
+            # If no profiles found, try to bootstrap from Cloud SQL first
             if len(profiles) == 0:
-                logger.warning("⚠️ No speaker profiles found in database!")
-                logger.info("🔄 Attempting to auto-create owner profile from macOS system user...")
-                await self._auto_create_owner_profile_from_macos()
+                logger.warning("⚠️ No speaker profiles found in local database!")
+                logger.info("🔄 Attempting to bootstrap voice profiles from Cloud SQL...")
+
+                # Try to sync from Cloud SQL
+                cloud_bootstrap_success = await self._try_bootstrap_from_cloudsql()
+
+                if cloud_bootstrap_success:
+                    # Reload profiles after bootstrap
+                    profiles = await self.learning_db.get_all_speaker_profiles()
+                    logger.info(f"📊 After Cloud SQL bootstrap: {len(profiles)} profile(s) available")
+                else:
+                    # Fallback: Auto-create owner profile from macOS
+                    logger.info("🔄 Cloud SQL unavailable, creating owner profile from macOS system user...")
+                    await self._auto_create_owner_profile_from_macos()
 
             # Summary
             logger.info(
@@ -4258,6 +4269,75 @@ class SpeakerVerificationService:
         except Exception as e:
             logger.error(f"❌ Failed to auto-create owner profile from macOS: {e}")
             logger.info("💡 Fallback: Voice unlock will require manual enrollment")
+
+    async def _try_bootstrap_from_cloudsql(self) -> bool:
+        """
+        Attempt to bootstrap voice profiles from Cloud SQL when local database is empty.
+
+        This method:
+        1. Creates a HybridDatabaseSync instance
+        2. Initializes it with Cloud SQL connection
+        3. Calls bootstrap_voice_profiles_from_cloudsql() to sync profiles
+        4. Returns success/failure status
+
+        Returns:
+            True if profiles were successfully synced from Cloud SQL
+            False if Cloud SQL unavailable or sync failed
+        """
+        hybrid_sync = None
+        try:
+            # Import the hybrid database sync class
+            from intelligence.hybrid_database_sync import HybridDatabaseSync
+
+            logger.info("🔄 Attempting Cloud SQL bootstrap for voice profiles...")
+
+            # Create a new instance for bootstrap
+            hybrid_sync = HybridDatabaseSync()
+
+            # Initialize with Cloud SQL connection
+            logger.info("   Initializing HybridDatabaseSync for Cloud SQL access...")
+            try:
+                await asyncio.wait_for(hybrid_sync.initialize(), timeout=20.0)
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ HybridDatabaseSync initialization timed out")
+                return False
+            except Exception as init_error:
+                logger.warning(f"⚠️ HybridDatabaseSync initialization failed: {init_error}")
+                return False
+
+            # Check if Cloud SQL is available
+            if not hybrid_sync.is_initialized:
+                logger.warning("⚠️ HybridDatabaseSync not initialized - Cloud SQL unavailable")
+                return False
+
+            # Call the bootstrap method
+            success = await hybrid_sync.bootstrap_voice_profiles_from_cloudsql()
+
+            if success:
+                logger.info("✅ Voice profiles successfully bootstrapped from Cloud SQL")
+                # Also reload profiles into FAISS cache if available
+                if hasattr(hybrid_sync, 'faiss_cache') and hybrid_sync.faiss_cache:
+                    logger.info("   FAISS cache updated with synced profiles")
+            else:
+                logger.warning("⚠️ Cloud SQL bootstrap returned no profiles")
+
+            return success
+
+        except ImportError as ie:
+            logger.warning(f"⚠️ Could not import HybridDatabaseSync: {ie}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Cloud SQL bootstrap failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+        finally:
+            # Clean up the temporary sync instance
+            if hybrid_sync:
+                try:
+                    await hybrid_sync.shutdown()
+                except Exception:
+                    pass
 
     async def verify_speaker(self, audio_data: bytes, speaker_name: Optional[str] = None) -> dict:
         """
