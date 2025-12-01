@@ -2080,26 +2080,48 @@ class IntelligentVoiceUnlockService:
                 ]
         elif threat_level == "medium" and recent_attempts > 2:
             # Multiple attempts - polite but firm
-            responses = [
-                f"I'm sorry {speaker_name}, but I cannot unlock this device. You've tried {recent_attempts} times recently. Only the device owner has voice unlock privileges.",
-                f"Access denied, {speaker_name}. This is your {recent_attempts}th attempt. Voice unlock is restricted to the device owner.",
-                f"{speaker_name}, I cannot grant access. You've attempted this {recent_attempts} times, but only the owner can unlock via voice.",
-            ]
+            if speaker_display:
+                responses = [
+                    f"I'm sorry {speaker_display}, but I cannot unlock this device. You've tried {recent_attempts} times recently. Only the device owner has voice unlock privileges.",
+                    f"Access denied, {speaker_display}. This is your {recent_attempts}th attempt. Voice unlock is restricted to the device owner.",
+                    f"{speaker_display}, I cannot grant access. You've attempted this {recent_attempts} times, but only the owner can unlock via voice.",
+                ]
+            else:
+                responses = [
+                    f"I cannot unlock this device. You've tried {recent_attempts} times recently. Only the device owner has voice unlock privileges.",
+                    f"Access denied. This is the {recent_attempts}th attempt. Voice unlock is restricted to the device owner.",
+                    f"Cannot grant access after {recent_attempts} attempts. Only the owner can unlock via voice.",
+                ]
         elif is_known_person and total_attempts < 3:
             # Known person, first few attempts - friendly but clear
-            responses = [
-                f"I recognize you, {speaker_name}, but I'm afraid only the device owner can unlock via voice. Perhaps they can assist you?",
-                f"Hello {speaker_name}. While I know you, voice unlock is reserved for the device owner only. You may need their assistance.",
-                f"{speaker_name}, I cannot unlock the device for you. Voice authentication is owner-only. The owner can help you if needed.",
-            ]
+            if speaker_display:
+                responses = [
+                    f"I recognize you, {speaker_display}, but I'm afraid only the device owner can unlock via voice. Perhaps they can assist you?",
+                    f"Hello {speaker_display}. While I know you, voice unlock is reserved for the device owner only. You may need their assistance.",
+                    f"{speaker_display}, I cannot unlock the device for you. Voice authentication is owner-only. The owner can help you if needed.",
+                ]
+            else:
+                responses = [
+                    "I recognize your voice, but only the device owner can unlock via voice. Perhaps they can assist you?",
+                    "Voice unlock is reserved for the device owner only. You may need their assistance.",
+                    "I cannot unlock the device for you. Voice authentication is owner-only. The owner can help you if needed.",
+                ]
         elif scenario == "single_unauthorized_access":
             # First attempt by unknown person - polite explanation
-            responses = [
-                f"I'm sorry, but I don't recognize you as the device owner, {speaker_name}. Voice unlock is restricted to the owner only.",
-                f"Access denied. {speaker_name}, only the device owner can unlock this system via voice. I cannot grant you access.",
-                f"I cannot unlock this device for you, {speaker_name}. Voice unlock requires owner authentication, and you are not registered as the owner.",
-                f"{speaker_name}, this device is secured with owner-only voice authentication. I cannot grant access to non-owner users.",
-            ]
+            if speaker_display:
+                responses = [
+                    f"I'm sorry, but I don't recognize you as the device owner, {speaker_display}. Voice unlock is restricted to the owner only.",
+                    f"Access denied. {speaker_display}, only the device owner can unlock this system via voice. I cannot grant you access.",
+                    f"I cannot unlock this device for you, {speaker_display}. Voice unlock requires owner authentication, and you are not registered as the owner.",
+                    f"{speaker_display}, this device is secured with owner-only voice authentication. I cannot grant access to non-owner users.",
+                ]
+            else:
+                responses = [
+                    "I'm sorry, but I don't recognize you as the device owner. Voice unlock is restricted to the owner only.",
+                    "Access denied. Only the device owner can unlock this system via voice.",
+                    "I cannot unlock this device for you. Voice unlock requires owner authentication.",
+                    "This device is secured with owner-only voice authentication. Voice not recognized.",
+                ]
         else:
             # Default - clear and professional
             # Handle None speaker_name gracefully

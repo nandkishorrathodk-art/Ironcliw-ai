@@ -4146,22 +4146,24 @@ class SpeakerVerificationService:
                     skipped_count += 1
                     continue
 
-            # If no profiles found, provide diagnostics
+            # If no profiles found, auto-create owner profile from macOS user
             if len(profiles) == 0:
                 logger.warning("⚠️ No speaker profiles found in database!")
-                logger.info("💡 To create a speaker profile, use voice commands like:")
-                logger.info("   - 'Learn my voice as Derek'")
-                logger.info("   - 'Create speaker profile for Derek'")
+                logger.info("🔄 Attempting to auto-create owner profile from macOS system user...")
+                await self._auto_create_owner_profile_from_macos()
 
             # Summary
             logger.info(
                 f"✅ Speaker profile loading complete: {loaded_count} loaded, {skipped_count} skipped"
             )
 
-            if loaded_count == 0 and len(profiles) == 0:
+            if loaded_count == 0 and len(profiles) == 0 and not self.speaker_profiles:
                 logger.warning(
-                    "⚠️ No speaker profiles available - voice authentication will operate in enrollment mode"
+                    "⚠️ No speaker profiles available - voice authentication will require enrollment"
                 )
+                logger.info("💡 To create a speaker profile, use voice commands like:")
+                logger.info("   - 'Learn my voice as Derek'")
+                logger.info("   - 'Create speaker profile for Derek'")
             elif loaded_count == 0 and len(profiles) > 0:
                 logger.error(
                     f"❌ Found {len(profiles)} profiles in database but failed to load any - check logs above for errors"
@@ -4175,6 +4177,87 @@ class SpeakerVerificationService:
             logger.info("   2. Verify speaker_profiles table exists and has correct schema")
             logger.info("   3. Run database migrations if needed")
             logger.info("   4. Check Cloud SQL proxy is running (if using Cloud SQL)")
+
+    async def _auto_create_owner_profile_from_macos(self) -> None:
+        """
+        Auto-create an owner profile from macOS system user when no profiles exist.
+
+        This provides a fallback identity for the voice unlock system when:
+        - No speaker profiles exist in the database
+        - Cloud SQL is unavailable
+        - First-time setup hasn't completed enrollment
+
+        The auto-created profile allows voice unlock to recognize the macOS user as owner
+        and enables enrollment-on-first-use functionality.
+        """
+        import os
+        import subprocess
+        from uuid import uuid4
+
+        try:
+            # Get macOS username
+            username = os.environ.get('USER') or os.getlogin()
+
+            # Get full name from macOS directory services
+            try:
+                result = subprocess.run(
+                    ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    if len(lines) > 1:
+                        full_name = lines[1].strip()
+                    else:
+                        full_name = username.replace('.', ' ').title()
+                else:
+                    full_name = username.replace('.', ' ').title()
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                full_name = username.replace('.', ' ').title()
+
+            # Extract first name for speaker profile
+            first_name = full_name.split()[0] if full_name else username.title()
+
+            # Create a placeholder owner profile (no embedding - requires enrollment)
+            speaker_id = f"macos_auto_{uuid4().hex[:8]}"
+
+            self.speaker_profiles[first_name] = {
+                "speaker_id": speaker_id,
+                "embedding": None,  # No embedding - will require enrollment
+                "embedding_dimension": self.current_model_dimension,
+                "confidence": 0.0,
+                "is_primary_user": True,  # Mark as owner
+                "security_level": "standard",
+                "total_samples": 0,
+                "is_native": True,
+                "quality": "auto_detected",
+                "threshold": self.verification_threshold,
+                "acoustic_features": {},
+                "auto_created": True,
+                "macos_username": username,
+                "macos_full_name": full_name,
+                "requires_enrollment": True,
+            }
+
+            self.profile_quality_scores[first_name] = {
+                "is_native": True,
+                "quality": "auto_detected",
+                "threshold": self.verification_threshold,
+                "samples": 0,
+            }
+
+            logger.info(f"✅ Auto-created owner profile for macOS user: {first_name}")
+            logger.info(f"   macOS username: {username}")
+            logger.info(f"   macOS full name: {full_name}")
+            logger.info(f"   Profile marked as is_primary_user=True")
+            logger.info("   ⚠️  Note: Voiceprint enrollment required for full voice authentication")
+            logger.info("   💡 Say 'JARVIS, learn my voice' to complete enrollment")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to auto-create owner profile from macOS: {e}")
+            logger.info("💡 Fallback: Voice unlock will require manual enrollment")
 
     async def verify_speaker(self, audio_data: bytes, speaker_name: Optional[str] = None) -> dict:
         """
@@ -4241,11 +4324,27 @@ class SpeakerVerificationService:
             # If speaker name provided, verify against that profile
             if speaker_name and speaker_name in self.speaker_profiles:
                 profile = self.speaker_profiles[speaker_name]
-                known_embedding = profile["embedding"]
+                known_embedding = profile.get("embedding")
+
+                # Check if this is an auto-created profile requiring enrollment
+                if profile.get("requires_enrollment", False) or known_embedding is None:
+                    logger.info(f"🔄 Profile {speaker_name} requires voice enrollment (auto-created from macOS)")
+                    logger.info(f"   💡 Say 'JARVIS, learn my voice' to complete enrollment")
+                    return {
+                        "verified": False,
+                        "confidence": 0.0,
+                        "speaker_name": speaker_name,
+                        "is_owner": profile.get("is_primary_user", False),
+                        "security_level": profile.get("security_level", "standard"),
+                        "requires_enrollment": True,
+                        "enrollment_hint": f"Hello {speaker_name}! I recognize you as the device owner, but I need to learn your voice first. Say 'JARVIS, learn my voice' to complete enrollment.",
+                        "error": "enrollment_required",
+                        "error_detail": "Voiceprint enrollment required - profile created from macOS user"
+                    }
 
                 # DEBUG: Log embedding dimensions and validate stored embedding
                 logger.info(f"🔍 DEBUG: Verifying {speaker_name}")
-                logger.info(f"🔍 DEBUG: Stored embedding shape: {known_embedding.shape if hasattr(known_embedding, 'shape') else len(known_embedding)}")
+                logger.info(f"🔍 DEBUG: Stored embedding shape: {known_embedding.shape if hasattr(known_embedding, 'shape') else len(known_embedding) if known_embedding else 'None'}")
                 logger.info(f"🔍 DEBUG: Stored embedding dimension in profile: {profile.get('embedding_dimension', 'unknown')}")
 
                 # CRITICAL: Validate stored embedding norm BEFORE verification
