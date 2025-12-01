@@ -42,6 +42,14 @@ HALLUCINATION_CHECK_TIMEOUT = 2.0  # Max time for STT hallucination check
 INTENT_VERIFY_TIMEOUT = 1.0      # Max time for intent verification
 OWNER_CHECK_TIMEOUT = 2.0        # Max time for owner database lookup
 VAD_PREPROCESS_TIMEOUT = 3.0     # Max time for VAD audio preprocessing
+# Additional timeout constants for complete coverage
+SECURITY_ANALYSIS_TIMEOUT = 3.0   # Max time for SAI security analysis
+SECURITY_RESPONSE_TIMEOUT = 2.0   # Max time for generating security responses
+FAILURE_ANALYSIS_TIMEOUT = 3.0    # Max time for analyzing verification failures
+RECORD_ATTEMPT_TIMEOUT = 2.0      # Max time for database recording
+PERFORM_UNLOCK_TIMEOUT = 15.0     # Max time for actual unlock execution
+CONTEXT_ANALYSIS_TIMEOUT = 5.0    # Max time for parallel context/scenario analysis
+PROFILE_UPDATE_TIMEOUT = 2.0      # Max time for speaker profile updates
 
 
 @dataclass
