@@ -697,6 +697,8 @@ WantedBy=default.target
             return health_data
 
         # Try actual database connection
+        conn = None
+        cursor = None
         try:
             port = self.config['cloud_sql']['port']
             conn = psycopg2.connect(
@@ -712,8 +714,6 @@ WantedBy=default.target
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
-            cursor.close()
-            conn.close()
 
             # Success!
             current_time = datetime.now()
@@ -765,6 +765,19 @@ WantedBy=default.target
                         self.consecutive_failures = 0
                     else:
                         logger.error("[CLOUDSQL] ❌ AUTO-HEAL: Reconnection failed")
+
+        finally:
+            # CRITICAL: Always close cursor and connection to prevent leaks
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         # Calculate timeout forecast
         if self.last_successful_query:
@@ -1086,6 +1099,8 @@ WantedBy=default.target
             'issues': []
         }
 
+        conn = None
+        cursor = None
         try:
             port = self.config['cloud_sql']['port']
             conn = psycopg2.connect(
@@ -1165,9 +1180,6 @@ WantedBy=default.target
                 elif actual_sample_count < 10:
                     profile_data['issues'].append(f"{speaker_name}: Only {actual_sample_count} samples (recommend 30+)")
 
-            cursor.close()
-            conn.close()
-
             # Determine overall status
             if profile_data['profiles_found'] == 0:
                 profile_data['status'] = 'no_profiles'
@@ -1186,6 +1198,19 @@ WantedBy=default.target
             logger.error(f"[CLOUDSQL] ❌ Voice profile check failed: {e}")
             profile_data['status'] = 'check_failed'
             profile_data['error'] = str(e)
+
+        finally:
+            # CRITICAL: Always close cursor and connection to prevent leaks
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return profile_data
 

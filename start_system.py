@@ -5384,6 +5384,9 @@ class AsyncSystemManager:
             # ==========================================
             logger.info("🗄️  Inspecting database for voice profiles...")
 
+            # Initialize connection variables outside try block to ensure cleanup
+            conn = None
+            cursor = None
             try:
                 # Check if CloudSQL is available
                 cloudsql_config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
@@ -5487,9 +5490,6 @@ class AsyncSystemManager:
                             'recommendation': 'Clean up orphaned samples to improve performance'
                         })
 
-                    cursor.close()
-                    conn.close()
-
             except Exception as e:
                 diagnostic['findings'].append({
                     'type': 'database_connection_failed',
@@ -5497,6 +5497,18 @@ class AsyncSystemManager:
                     'severity': 'critical',
                     'recommendation': 'Check CloudSQL proxy is running and configured'
                 })
+            finally:
+                # CRITICAL: Always close cursor and connection to prevent leaks
+                if cursor:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
 
             # ==========================================
             # 3. MODEL VERSION COMPATIBILITY CHECK
@@ -5791,6 +5803,8 @@ class AsyncSystemManager:
             # 5. CHECK CLOUDSQL PROXY CONNECTION
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking CloudSQL proxy connection...")
+            # Initialize connection variable outside try block to ensure cleanup
+            proxy_conn = None
             try:
                 import psycopg2
                 import json
@@ -5805,7 +5819,7 @@ class AsyncSystemManager:
                     cloud_sql = config.get("cloud_sql", {})
 
                     # Test connection
-                    conn = psycopg2.connect(
+                    proxy_conn = psycopg2.connect(
                         host=cloud_sql.get("host", "127.0.0.1"),
                         port=cloud_sql.get("port", 5432),
                         database=cloud_sql.get("database", "jarvis_learning"),
@@ -5813,7 +5827,6 @@ class AsyncSystemManager:
                         password=cloud_sql.get("password", ""),
                         connect_timeout=3
                     )
-                    conn.close()
 
                     status['detailed_checks']['cloudsql_proxy'] = {
                         'connected': True,
@@ -5836,6 +5849,13 @@ class AsyncSystemManager:
                 }
                 status['issues'].append(f'CloudSQL proxy check failed: {e}')
                 logger.error(f"[VOICE UNLOCK] ❌ CloudSQL Proxy: FAILED - {e}")
+            finally:
+                # CRITICAL: Always close connection to prevent leaks
+                if proxy_conn:
+                    try:
+                        proxy_conn.close()
+                    except Exception:
+                        pass
 
             # ═══════════════════════════════════════════════════════════
             # 6. CHECK BEAST MODE: SPEAKER VERIFICATION SERVICE
