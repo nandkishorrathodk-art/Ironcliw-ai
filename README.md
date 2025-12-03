@@ -1,10 +1,69 @@
-# JARVIS AI Assistant v17.8.3 - Parallel Model Loading & Timeout Protection
+# JARVIS AI Assistant v17.8.4 - Database Connection Leak Prevention
 
-An intelligent voice-activated AI assistant with **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
-## ⚡ NEW in v17.8.3: Parallel Model Loading & Timeout Protection
+## ⚡ NEW in v17.8.4: Database Connection Leak Prevention
+
+JARVIS v17.8.4 fixes **Database Connection Leaks** that occurred during startup when psycopg2 connections weren't properly closed on exceptions.
+
+### Problem Solved
+
+```
+Before (v17.8.3):
+2025-12-03 12:30:14 - WARNING - ⚠️ Found 4 leaked connections
+2025-12-03 12:41:48 - WARNING - ⚠️ Found 1 leaked connections (idle > 5 min)
+
+After (v17.8.4):
+2025-12-03 12:48:49 - INFO - 🧹 Checking for leaked connections...
+2025-12-03 12:48:49 - INFO - ✅ No leaked connections found
+```
+
+### Root Cause
+
+Database connections created with `psycopg2.connect()` without proper `try/finally` cleanup would leak when exceptions occurred before `close()` was called.
+
+### Fix Applied
+
+**Pattern Used (try/finally with null checks):**
+```python
+# Initialize outside try block for cleanup access
+conn = None
+cursor = None
+try:
+    conn = psycopg2.connect(...)
+    cursor = conn.cursor()
+    cursor.execute("SELECT ...")
+    # ... operations ...
+except Exception as e:
+    logger.error(f"Database error: {e}")
+finally:
+    # CRITICAL: Always close to prevent leaks
+    if cursor:
+        try:
+            cursor.close()
+        except Exception:
+            pass
+    if conn:
+        try:
+            conn.close()
+        except Exception:
+            pass
+```
+
+### Files Fixed
+
+| File | Method | Fix |
+|------|--------|-----|
+| `backend/intelligence/cloud_sql_proxy_manager.py` | `check_connection_health()` | Added finally block for cursor/conn cleanup |
+| `backend/intelligence/cloud_sql_proxy_manager.py` | `_check_voice_profiles()` | Added finally block for cursor/conn cleanup |
+| `start_system.py` | Database deep inspection | Added finally block for cursor/conn cleanup |
+| `start_system.py` | CloudSQL proxy check | Added finally block for conn cleanup |
+
+---
+
+## ⚡ v17.8.3: Parallel Model Loading & Timeout Protection
 
 JARVIS v17.8.3 introduces **Parallel Model Loading** for 3-4x faster startup, **Comprehensive Timeout Protection** to prevent hangs, and **Voice Profile Database Consolidation** to fix voice authentication issues.
 
