@@ -4112,32 +4112,52 @@ class AsyncSystemManager:
             else:
                 print(f"{Colors.GREEN}      └─ ✅ All profiles validated{Colors.ENDC}")
 
-            # Check for Derek's profile (could be "Derek" or "Derek J. Russell")
-            derek_found = any("Derek" in name for name in speaker_service.speaker_profiles.keys())
+            # ================================================================
+            # DYNAMIC PRIMARY USER DETECTION - No hardcoded names!
+            # ================================================================
+            # Find primary users by checking is_primary_user or is_owner flags
+            primary_users = []
+            all_profiles = speaker_service.speaker_profiles
 
-            if derek_found:
-                # Count total samples
+            for name, profile in all_profiles.items():
+                is_primary = (
+                    profile.get("is_primary_user", False) or
+                    profile.get("is_owner", False) or
+                    profile.get("security_clearance") == "admin"
+                )
+                if is_primary:
+                    primary_users.append((name, profile))
+
+            # If no primary users flagged, check if any profiles have embeddings
+            if not primary_users and all_profiles:
+                # Fall back to profiles with valid embeddings
+                for name, profile in all_profiles.items():
+                    if profile.get("embedding") is not None or profile.get("voiceprint_embedding") is not None:
+                        primary_users.append((name, profile))
+
+            if primary_users:
+                # Count total samples across primary users
                 total_samples = sum(
                     profile.get("total_samples", 0)
-                    for name, profile in speaker_service.speaker_profiles.items()
-                    if "Derek" in name
+                    for name, profile in primary_users
                 )
-                num_profiles = len(
-                    [name for name in speaker_service.speaker_profiles.keys() if "Derek" in name]
-                )
+                num_profiles = len(primary_users)
+                primary_names = [name for name, _ in primary_users]
 
                 # Check for BEAST MODE features
                 beast_mode_profiles = []
-                for name, profile in speaker_service.speaker_profiles.items():
-                    if "Derek" in name:
-                        acoustic_features = profile.get("acoustic_features", {})
-                        has_beast_mode = any(v is not None for v in acoustic_features.values())
-                        if has_beast_mode:
-                            beast_mode_profiles.append(name)
+                for name, profile in primary_users:
+                    acoustic_features = profile.get("acoustic_features", {})
+                    has_beast_mode = any(v is not None for v in acoustic_features.values())
+                    if has_beast_mode:
+                        beast_mode_profiles.append(name)
 
                 print(f"\n{Colors.GREEN}✅ Voice biometric authentication ready:{Colors.ENDC}")
                 print(
-                    f"{Colors.CYAN}   └─ Profiles loaded: {num_profiles} Derek profile(s){Colors.ENDC}"
+                    f"{Colors.CYAN}   └─ Primary user(s): {', '.join(primary_names)}{Colors.ENDC}"
+                )
+                print(
+                    f"{Colors.CYAN}   └─ Profiles loaded: {num_profiles}{Colors.ENDC}"
                 )
                 print(f"{Colors.CYAN}   └─ Voice samples: {total_samples} total{Colors.ENDC}")
 
@@ -4170,13 +4190,13 @@ class AsyncSystemManager:
                 sv._global_speaker_service = speaker_service
                 print(f"{Colors.GREEN}   ✓ Global speaker service injected{Colors.ENDC}")
             else:
-                # Enhanced diagnostics when Derek's profile is not found
-                total_profiles = len(speaker_service.speaker_profiles)
+                # No primary users found
+                total_profiles = len(all_profiles)
                 if total_profiles > 0:
-                    # Profiles exist, but not Derek's - list what's available
-                    profile_names = list(speaker_service.speaker_profiles.keys())
+                    # Profiles exist but none marked as primary
+                    profile_names = list(all_profiles.keys())
                     print(
-                        f"{Colors.YELLOW}   ⚠️  Derek's profile not found in {total_profiles} loaded profile(s){Colors.ENDC}"
+                        f"{Colors.YELLOW}   ⚠️  No primary user profile found in {total_profiles} loaded profile(s){Colors.ENDC}"
                     )
                     print(f"{Colors.CYAN}   Available profiles: {', '.join(profile_names)}{Colors.ENDC}")
                     print(
@@ -4188,13 +4208,13 @@ class AsyncSystemManager:
                         f"{Colors.YELLOW}   ⚠️  No speaker profiles found in database{Colors.ENDC}"
                     )
                     print(
-                        f"{Colors.CYAN}   💡 To create Derek's voice profile, say:{Colors.ENDC}"
+                        f"{Colors.CYAN}   💡 To create your voice profile, say:{Colors.ENDC}"
                     )
                     print(
-                        f"{Colors.CYAN}      - 'Learn my voice as Derek'{Colors.ENDC}"
+                        f"{Colors.CYAN}      - 'Learn my voice as [Your Name]'{Colors.ENDC}"
                     )
                     print(
-                        f"{Colors.CYAN}      - 'Create speaker profile for Derek'{Colors.ENDC}"
+                        f"{Colors.CYAN}      - 'Create speaker profile for [Your Name]'{Colors.ENDC}"
                     )
                     print(
                         f"{Colors.CYAN}   Voice authentication will activate after enrollment{Colors.ENDC}"
@@ -5194,7 +5214,7 @@ class AsyncSystemManager:
                     'action': f'Re-enroll voice profile (only {samples_in_db}/30 samples)',
                     'reason': 'Voice profile has insufficient training data for accurate verification',
                     'auto_fix_available': True,
-                    'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker Derek',
+                    'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker "[YOUR_NAME]"',
                     'steps': ['Run voice enrollment script', 'Provide 30+ voice samples', 'Test verification again']
                 })
 
@@ -5210,7 +5230,7 @@ class AsyncSystemManager:
                         'action': 'Re-enroll voice profile (model version mismatch detected)',
                         'reason': 'Voice embedding dimension incompatible with current model',
                         'auto_fix_available': True,
-                        'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker Derek --force',
+                        'auto_fix_command': 'python backend/voice/enroll_voice.py --speaker "[YOUR_NAME]" --force',
                         'steps': ['Delete old voice profile', 'Re-enroll with current model', 'Verify enrollment']
                     })
                 else:
@@ -6082,7 +6102,82 @@ class AsyncSystemManager:
                 logger.warning(f"[VOICE UNLOCK] ⚠️  SAI: CHECK FAILED - {e}")
 
             # ═══════════════════════════════════════════════════════════
-            # 12. CHECK HYBRID DATABASE SYNC SYSTEM
+            # 12. CHECK VOICE BIOMETRIC INTELLIGENCE (VBI) - CRITICAL!
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking Voice Biometric Intelligence (VBI)...")
+            try:
+                from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
+
+                vbi = await get_voice_biometric_intelligence()
+
+                if vbi and hasattr(vbi, '_unified_cache') and vbi._unified_cache:
+                    cache = vbi._unified_cache
+                    profiles_loaded = cache.profiles_loaded
+                    cache_state = cache.state.value if hasattr(cache.state, 'value') else str(cache.state)
+
+                    # Get profile details dynamically - NO hardcoding!
+                    preloaded = cache.get_preloaded_profiles()
+                    profile_details = []
+                    has_owner = False
+
+                    for name, profile in preloaded.items():
+                        is_owner = profile.source == "learning_database"
+                        if is_owner:
+                            has_owner = True
+                        profile_details.append({
+                            'name': name,
+                            'is_owner': is_owner,
+                            'dimensions': profile.embedding_dimensions,
+                            'samples': profile.total_samples,
+                            'source': profile.source
+                        })
+
+                    status['detailed_checks']['voice_biometric_intelligence'] = {
+                        'available': True,
+                        'cache_state': cache_state,
+                        'profiles_loaded': profiles_loaded,
+                        'has_owner_profile': has_owner,
+                        'profiles': profile_details
+                    }
+
+                    if profiles_loaded > 0 and has_owner:
+                        logger.info(f"[VOICE UNLOCK] ✅ VBI: READY ({profiles_loaded} profiles, state={cache_state})")
+                        for pd in profile_details:
+                            owner_tag = " [OWNER]" if pd['is_owner'] else ""
+                            logger.info(
+                                f"[VOICE UNLOCK]    ├─ {pd['name']}{owner_tag} "
+                                f"(dim={pd['dimensions']}, samples={pd['samples']})"
+                            )
+                    elif profiles_loaded > 0:
+                        logger.warning(f"[VOICE UNLOCK] ⚠️  VBI: {profiles_loaded} profiles but NO OWNER detected")
+                        status['issues'].append('VBI has profiles but no owner profile - voice unlock may fail')
+                    else:
+                        logger.warning("[VOICE UNLOCK] ⚠️  VBI: NO PROFILES LOADED")
+                        status['issues'].append('VBI has no profiles - voice unlock will fail')
+                else:
+                    status['detailed_checks']['voice_biometric_intelligence'] = {
+                        'available': False,
+                        'error': 'VBI or unified cache not initialized'
+                    }
+                    status['issues'].append('Voice Biometric Intelligence not ready')
+                    logger.warning("[VOICE UNLOCK] ⚠️  VBI: NOT INITIALIZED")
+
+            except ImportError as e:
+                status['detailed_checks']['voice_biometric_intelligence'] = {
+                    'available': False,
+                    'error': f'Import failed: {e}'
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  VBI: MODULE NOT FOUND - {e}")
+            except Exception as e:
+                status['detailed_checks']['voice_biometric_intelligence'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                status['issues'].append(f'VBI check failed: {e}')
+                logger.error(f"[VOICE UNLOCK] ❌ VBI: CHECK FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 13. CHECK HYBRID DATABASE SYNC SYSTEM
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking Hybrid Database Sync System...")
             try:
@@ -7206,7 +7301,27 @@ class AsyncSystemManager:
                     else:
                         print(f"    │  ├─ ⚠️  SAI: {Colors.YELLOW}NOT AVAILABLE{Colors.ENDC}")
 
-                    # 12. Hybrid Database Sync
+                    # 12. Voice Biometric Intelligence (VBI) - CRITICAL!
+                    vbi = detailed.get('voice_biometric_intelligence', {})
+                    if vbi.get('available'):
+                        vbi_profiles = vbi.get('profiles_loaded', 0)
+                        vbi_state = vbi.get('cache_state', 'unknown')
+                        has_owner = vbi.get('has_owner_profile', False)
+                        color = Colors.GREEN if vbi_profiles > 0 and has_owner else Colors.YELLOW
+                        owner_status = "OWNER DETECTED" if has_owner else "NO OWNER"
+                        print(f"    │  ├─ ✅ VBI (Voice Biometric): {color}{vbi_profiles} profiles{Colors.ENDC} ({owner_status})")
+                        print(f"    │  │  ├─ Cache State: {vbi_state}")
+                        # Show profiles dynamically
+                        vbi_profile_list = vbi.get('profiles', [])
+                        for i, p in enumerate(vbi_profile_list):
+                            connector = "└─" if i == len(vbi_profile_list) - 1 else "├─"
+                            owner_tag = " [OWNER]" if p.get('is_owner') else ""
+                            print(f"    │  │  {connector} {p.get('name', 'unknown')}{owner_tag} ({p.get('dimensions', 0)}D)")
+                    else:
+                        error = vbi.get('error', 'Not initialized')
+                        print(f"    │  ├─ ❌ VBI (Voice Biometric): {Colors.FAIL}{error}{Colors.ENDC}")
+
+                    # 13. Hybrid Database Sync
                     hybrid_sync = detailed.get('hybrid_sync', {})
                     if hybrid_sync.get('enabled'):
                         cloudsql_status = "AVAILABLE" if hybrid_sync.get('cloudsql_available') else "UNAVAILABLE"
@@ -7222,6 +7337,11 @@ class AsyncSystemManager:
                         print(f"    │  └─ ⚠️  Hybrid Sync: {Colors.YELLOW}DISABLED{Colors.ENDC} ({reason})")
 
                     # UNLOCK FLOW DIAGRAM
+                    # Get owner name dynamically - NO hardcoding!
+                    _enrollment = voice_unlock_status.get('enrollment_details', {})
+                    _owner_full_name = _enrollment.get('username', 'Owner')
+                    _owner_first_name = _owner_full_name.split()[0] if _owner_full_name else 'Owner'
+
                     print(f"    │")
                     print(f"    └─ {Colors.CYAN}🔄 UNLOCK FLOW (When you say 'unlock my screen'):{Colors.ENDC}")
                     print(f"       │")
@@ -7232,7 +7352,7 @@ class AsyncSystemManager:
                     print(f"       │")
                     print(f"       ├─ {Colors.BLUE}[3] Speaker Identification{Colors.ENDC} → Extract ECAPA-TDNN embedding")
                     print(f"       │   ├─ Compare with CloudSQL profiles")
-                    print(f"       │   └─ Identify: Derek J. Russell (confidence: XX%)")
+                    print(f"       │   └─ Identify: {_owner_full_name} (confidence: XX%)")
                     print(f"       │")
                     print(f"       ├─ {Colors.BLUE}[4] Multi-Modal Verification{Colors.ENDC} → BEAST MODE")
                     print(f"       │   ├─ Deep learning embeddings (ECAPA-TDNN)")
@@ -7259,7 +7379,7 @@ class AsyncSystemManager:
                     print(f"       │   ├─ Randomized timing (human-like)")
                     print(f"       │   └─ Press Enter")
                     print(f"       │")
-                    print(f"       └─ {Colors.GREEN}[9] ✅ UNLOCKED{Colors.ENDC} → Welcome back, Derek!")
+                    print(f"       └─ {Colors.GREEN}[9] ✅ UNLOCKED{Colors.ENDC} → Welcome back, {_owner_first_name}!")
                     print(f"")
 
                     # Legacy checks

@@ -1053,15 +1053,37 @@ async def load_voice_auth():
             except Exception as e:
                 logger.warning(f"[WARMUP] ⚠️ Unified voice cache error: {e}")
 
-            # 🧠 Pre-load Voice Biometric Intelligence
+            # 🧠 Pre-load Voice Biometric Intelligence (NO hardcoded names!)
             logger.info("[WARMUP] 🧠 Pre-loading Voice Biometric Intelligence...")
             try:
                 from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
                 vbi = await get_voice_biometric_intelligence()
 
-                if vbi and vbi._unified_cache: 
+                if vbi and vbi._unified_cache:
                     vbi_profiles = vbi._unified_cache.profiles_loaded
                     logger.info(f"[WARMUP] ✅ Voice Biometric Intelligence ready ({vbi_profiles} profiles)")
+
+                    # Log loaded profiles dynamically - no hardcoding!
+                    preloaded = vbi._unified_cache.get_preloaded_profiles()
+                    for profile_name, profile_data in preloaded.items():
+                        is_owner = profile_data.source == "learning_database"
+                        owner_tag = " [PRIMARY OWNER]" if is_owner else ""
+                        logger.info(
+                            f"[WARMUP]    └─ VBI: {profile_name}{owner_tag} "
+                            f"(dim={profile_data.embedding_dimensions}, "
+                            f"samples={profile_data.total_samples})"
+                        )
+
+                    # Verify at least one owner profile exists
+                    has_owner = any(
+                        p.source == "learning_database"
+                        for p in preloaded.values()
+                    )
+                    if not has_owner and vbi_profiles > 0:
+                        logger.warning(
+                            "[WARMUP] ⚠️ VBI has profiles but none marked as primary owner! "
+                            "Voice unlock may fail."
+                        )
                 else:
                     logger.warning("[WARMUP] ⚠️ Voice Biometric Intelligence has no cache")
 
@@ -1114,26 +1136,31 @@ async def check_voice_auth_health(service) -> bool:
         except:
             pass
 
-        # 🧠 Check VBI is ready
+        # 🧠 Check VBI is ready - get it directly, don't rely on service attribute
         has_vbi = False
+        vbi_profile_count = 0
         try:
-            if hasattr(service, 'voice_biometric_intelligence') and service.voice_biometric_intelligence:
-                has_vbi = True
-        except:
-            pass
+            from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
+            vbi = await get_voice_biometric_intelligence()
+            if vbi and hasattr(vbi, '_unified_cache') and vbi._unified_cache:
+                vbi_profile_count = vbi._unified_cache.profiles_loaded
+                has_vbi = vbi_profile_count > 0
+        except Exception as e:
+            logger.debug(f"VBI check error: {e}")
 
         is_healthy = has_stt and has_speaker and has_profiles and has_cache_profiles
 
         if is_healthy:
             logger.info(
                 f"[WARMUP] ✅ Voice auth health check PASSED "
-                f"(cache: {cache_profile_count} profiles, VBI: {has_vbi})"
+                f"(cache: {cache_profile_count} profiles, VBI: {has_vbi} ({vbi_profile_count} profiles))"
             )
         else:
             logger.warning(
                 f"[WARMUP] ⚠️ Voice auth health check DEGRADED "
                 f"(STT: {has_stt}, Speaker: {has_speaker}, "
-                f"Profiles: {has_profiles}, CacheProfiles: {has_cache_profiles}, VBI: {has_vbi})"
+                f"Profiles: {has_profiles}, CacheProfiles: {has_cache_profiles}, "
+                f"VBI: {has_vbi} ({vbi_profile_count} profiles))"
             )
 
         return is_healthy
