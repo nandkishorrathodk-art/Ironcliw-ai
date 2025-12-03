@@ -334,6 +334,10 @@ class UnifiedVoiceCacheManager:
         This is the KEY optimization - loads Derek's embedding at startup
         so voice matching is instant (no database query needed).
 
+        Database source priority:
+        1. Learning database (primary) - ~/.jarvis/learning/jarvis_learning.db
+        2. Voice unlock metrics (fallback) - ~/.jarvis/voice_unlock_metrics.db
+
         Returns:
             Number of profiles preloaded
         """
@@ -342,100 +346,195 @@ class UnifiedVoiceCacheManager:
         try:
             import sqlite3
 
-            # Connect directly to the voice unlock metrics database
-            # MetricsDatabase uses ~/.jarvis/unlock_metrics.db
-            db_dir = os.path.expanduser("~/.jarvis")
-            db_path = os.path.join(db_dir, "unlock_metrics.db")
-
-            if not os.path.exists(db_path):
-                logger.warning(f"Voice metrics database not found: {db_path}")
-                return 0
-
-            conn = sqlite3.connect(db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT
-                    speaker_name,
-                    embedding_b64,
-                    embedding_dimensions,
-                    total_samples_used,
-                    avg_sample_confidence,
-                    updated_at,
-                    source
-                FROM voice_embeddings
-                WHERE embedding_b64 IS NOT NULL
-                ORDER BY updated_at DESC
-            """)
-
-            rows = cursor.fetchall()
-            conn.close()
             loaded = 0
 
-            for row in rows:
+            # ================================================================
+            # PRIMARY SOURCE: Learning Database (has Derek's actual voiceprint)
+            # ================================================================
+            db_dir = os.path.expanduser("~/.jarvis/learning")
+            learning_db_path = os.path.join(db_dir, "jarvis_learning.db")
+
+            if os.path.exists(learning_db_path):
                 try:
-                    # Access by column name since we used row_factory
-                    speaker_name = row["speaker_name"]
-                    embedding_b64 = row["embedding_b64"]
-                    dimensions = row["embedding_dimensions"] or 192
-                    samples = row["total_samples_used"] or 0
-                    confidence = row["avg_sample_confidence"] or 0.0
-                    updated_at = row["updated_at"]
-                    source = row["source"] or "database"
+                    conn = sqlite3.connect(learning_db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
 
-                    # Decode base64 embedding
-                    embedding_bytes = base64.b64decode(embedding_b64)
-                    embedding = np.frombuffer(
-                        embedding_bytes, dtype=np.float32
-                    )
+                    # Query speaker_profiles table (has voiceprint_embedding column)
+                    cursor.execute("""
+                        SELECT
+                            speaker_name,
+                            voiceprint_embedding,
+                            embedding_dimension,
+                            total_samples,
+                            recognition_confidence,
+                            is_primary_user,
+                            last_updated
+                        FROM speaker_profiles
+                        WHERE voiceprint_embedding IS NOT NULL
+                        ORDER BY is_primary_user DESC, last_updated DESC
+                    """)
 
-                    # Validate dimensions
-                    if len(embedding) != dimensions:
-                        logger.warning(
-                            f"Embedding dimension mismatch for {speaker_name}: "
-                            f"{len(embedding)} vs {dimensions}"
-                        )
-                        continue
+                    rows = cursor.fetchall()
+                    conn.close()
 
-                    # Create profile
-                    profile = VoiceProfile(
-                        speaker_name=speaker_name,
-                        embedding=embedding,
-                        embedding_dimensions=dimensions,
-                        total_samples=samples,
-                        avg_confidence=confidence,
-                        source=source,
-                    )
-
-                    if updated_at:
+                    for row in rows:
                         try:
-                            profile.last_verified = datetime.fromisoformat(
-                                updated_at.replace("Z", "+00:00")
+                            speaker_name = row["speaker_name"]
+                            embedding_blob = row["voiceprint_embedding"]
+                            embedding_dim = row["embedding_dimension"] or CacheConfig.EMBEDDING_DIM
+                            samples = row["total_samples"] or 0
+                            confidence = row["recognition_confidence"] or 0.0
+                            is_primary = row["is_primary_user"] or 0
+                            updated_at = row["last_updated"]
+
+                            # voiceprint_embedding is stored as raw bytes (float32 array)
+                            embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+
+                            # Validate embedding dimensions
+                            # Accept both 192-dim (ECAPA-TDNN) and other valid dimensions
+                            actual_dim = len(embedding)
+                            expected_dim = embedding_dim or CacheConfig.EMBEDDING_DIM
+
+                            if actual_dim == 0:
+                                logger.warning(f"Empty embedding for {speaker_name}")
+                                continue
+
+                            if actual_dim != expected_dim and actual_dim != CacheConfig.EMBEDDING_DIM:
+                                logger.warning(
+                                    f"Embedding dimension mismatch for {speaker_name}: "
+                                    f"got {actual_dim}, expected {expected_dim}"
+                                )
+                                # Still try to use it if it's a valid size
+                                if actual_dim < 50:
+                                    continue
+
+                            # Create profile with actual dimension
+                            profile = VoiceProfile(
+                                speaker_name=speaker_name,
+                                embedding=embedding,
+                                embedding_dimensions=actual_dim,
+                                total_samples=samples,
+                                avg_confidence=confidence,
+                                source="learning_database",
                             )
-                        except:
-                            pass
 
-                    self._preloaded_profiles[speaker_name] = profile
-                    loaded += 1
+                            if updated_at:
+                                try:
+                                    profile.last_verified = datetime.fromisoformat(
+                                        updated_at.replace("Z", "+00:00")
+                                    )
+                                except:
+                                    pass
 
-                    logger.info(
-                        f"Preloaded voice profile: {speaker_name} "
-                        f"(dim={dimensions}, samples={samples}, "
-                        f"confidence={confidence:.2%})"
-                    )
+                            self._preloaded_profiles[speaker_name] = profile
+                            loaded += 1
 
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to load profile for {row[0]}: {e}"
-                    )
+                            owner_tag = " [OWNER]" if is_primary else ""
+                            logger.info(
+                                f"✅ Preloaded voice profile: {speaker_name}{owner_tag} "
+                                f"(dim={len(embedding)}, samples={samples}, "
+                                f"confidence={confidence:.2%})"
+                            )
+
+                        except Exception as e:
+                            logger.warning(f"Failed to load profile: {e}")
+
+                    if loaded > 0:
+                        logger.info(
+                            f"✅ Preloaded {loaded} voice profile(s) from learning database"
+                        )
+
+                except sqlite3.Error as e:
+                    logger.warning(f"Learning database error: {e}")
+
+            # ================================================================
+            # FALLBACK: Voice unlock metrics database (if learning DB failed)
+            # ================================================================
+            if loaded == 0:
+                fallback_db_path = os.path.join(
+                    os.path.expanduser("~/.jarvis"),
+                    "voice_unlock_metrics.db"
+                )
+
+                if os.path.exists(fallback_db_path):
+                    try:
+                        conn = sqlite3.connect(fallback_db_path)
+                        conn.row_factory = sqlite3.Row
+                        cursor = conn.cursor()
+
+                        cursor.execute("""
+                            SELECT
+                                speaker_name,
+                                embedding_b64,
+                                embedding_dimensions,
+                                total_samples_used,
+                                avg_sample_confidence,
+                                updated_at,
+                                source
+                            FROM voice_embeddings
+                            WHERE embedding_b64 IS NOT NULL
+                            ORDER BY updated_at DESC
+                        """)
+
+                        rows = cursor.fetchall()
+                        conn.close()
+
+                        for row in rows:
+                            try:
+                                speaker_name = row["speaker_name"]
+                                embedding_b64 = row["embedding_b64"]
+                                dimensions = row["embedding_dimensions"] or 192
+                                samples = row["total_samples_used"] or 0
+                                confidence = row["avg_sample_confidence"] or 0.0
+                                source = row["source"] or "metrics_database"
+
+                                # Decode base64 embedding
+                                embedding_bytes = base64.b64decode(embedding_b64)
+                                embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+
+                                # Validate dimensions
+                                if len(embedding) != dimensions:
+                                    continue
+
+                                profile = VoiceProfile(
+                                    speaker_name=speaker_name,
+                                    embedding=embedding,
+                                    embedding_dimensions=dimensions,
+                                    total_samples=samples,
+                                    avg_confidence=confidence,
+                                    source=source,
+                                )
+
+                                self._preloaded_profiles[speaker_name] = profile
+                                loaded += 1
+
+                                logger.info(
+                                    f"Preloaded voice profile (fallback): {speaker_name}"
+                                )
+
+                            except Exception as e:
+                                logger.warning(f"Failed to load fallback profile: {e}")
+
+                        if loaded > 0:
+                            logger.info(
+                                f"Preloaded {loaded} profile(s) from fallback metrics database"
+                            )
+
+                    except sqlite3.Error as e:
+                        logger.warning(f"Fallback metrics database error: {e}")
+
+            if loaded == 0:
+                logger.warning(
+                    "⚠️ No voice profiles loaded! Voice recognition will fail. "
+                    "Ensure Derek's voiceprint is enrolled in the learning database."
+                )
 
             self._stats.profiles_preloaded = loaded
-            logger.info(f"Preloaded {loaded} voice profile(s) from database")
             return loaded
 
         except Exception as e:
-            logger.error(f"Failed to preload voice profiles: {e}")
+            logger.error(f"Failed to preload voice profiles: {e}", exc_info=True)
             return 0
 
     async def _ensure_models_loaded(self) -> bool:
@@ -538,6 +637,8 @@ class UnifiedVoiceCacheManager:
         This is the FAST PATH for new audio - uses the model from the
         parallel loader's cache instead of loading a new model.
 
+        CRITICAL: PyTorch operations run in thread pool to avoid blocking!
+
         Args:
             audio_data: Audio waveform (numpy array or tensor)
             sample_rate: Audio sample rate (default 16kHz)
@@ -554,11 +655,42 @@ class UnifiedVoiceCacheManager:
                 logger.warning("ECAPA encoder not available for embedding extraction")
                 return None
 
+            # Run CPU-intensive PyTorch operations in thread pool to avoid blocking
+            embedding_np = await asyncio.to_thread(
+                self._extract_embedding_sync,
+                encoder,
+                audio_data
+            )
+
+            if embedding_np is not None:
+                # Normalize (fast numpy operation)
+                embedding_np = self._normalize_embedding(embedding_np)
+
+                extract_time_ms = (time.time() - start_time) * 1000
+                logger.debug(f"Extracted embedding in {extract_time_ms:.1f}ms (async)")
+
+            return embedding_np
+
+        except Exception as e:
+            logger.error(f"Embedding extraction failed: {e}")
+            return None
+
+    def _extract_embedding_sync(self, encoder, audio_data) -> Optional[np.ndarray]:
+        """
+        Synchronous embedding extraction - runs in thread pool.
+
+        CRITICAL: This runs CPU-intensive PyTorch operations off the event loop.
+        """
+        try:
             import torch
 
             # Convert to tensor if needed
             if isinstance(audio_data, np.ndarray):
                 waveform = torch.from_numpy(audio_data).float()
+            elif isinstance(audio_data, bytes):
+                # Handle raw bytes (int16 PCM)
+                audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                waveform = torch.from_numpy(audio_array).float()
             else:
                 waveform = audio_data.float()
 
@@ -566,23 +698,17 @@ class UnifiedVoiceCacheManager:
             if waveform.dim() == 1:
                 waveform = waveform.unsqueeze(0)
 
-            # Extract embedding
+            # Extract embedding (CPU-intensive)
             with torch.no_grad():
                 embedding = encoder.encode_batch(waveform)
 
             # Convert to numpy and flatten
             embedding_np = embedding.squeeze().cpu().numpy()
 
-            # Normalize
-            embedding_np = self._normalize_embedding(embedding_np)
-
-            extract_time_ms = (time.time() - start_time) * 1000
-            logger.debug(f"Extracted embedding in {extract_time_ms:.1f}ms")
-
             return embedding_np
 
         except Exception as e:
-            logger.error(f"Embedding extraction failed: {e}")
+            logger.error(f"Sync embedding extraction failed: {e}")
             return None
 
     async def _connect_biometric_cache(self) -> bool:
@@ -1150,11 +1276,80 @@ async def initialize_unified_cache(
     )
 
 
+# =============================================================================
+# ASYNC GETTER WITH AUTO-INITIALIZATION
+# =============================================================================
+_init_lock = asyncio.Lock()
+_initialized = False
+
+
+async def get_unified_voice_cache() -> UnifiedVoiceCacheManager:
+    """
+    Get the unified voice cache with automatic initialization.
+
+    This is the RECOMMENDED way to access the unified voice cache because:
+    1. It ensures the cache is properly initialized before use
+    2. It preloads voice profiles from database (critical for recognition!)
+    3. It's async-safe with proper locking
+    4. It handles errors gracefully
+
+    Usage:
+        cache = await get_unified_voice_cache()
+        result = await cache.verify_voice_from_audio(audio_data)
+
+    Returns:
+        Initialized UnifiedVoiceCacheManager instance
+    """
+    global _initialized
+
+    manager = get_unified_cache_manager()
+
+    # Check if already initialized (fast path)
+    if _initialized and manager.state == CacheState.READY:
+        return manager
+
+    # Async-safe initialization
+    async with _init_lock:
+        # Double-check after acquiring lock
+        if _initialized and manager.state == CacheState.READY:
+            return manager
+
+        # Initialize if needed
+        if manager.state in [CacheState.UNINITIALIZED, CacheState.ERROR]:
+            logger.info("🔄 Auto-initializing unified voice cache...")
+
+            try:
+                success = await asyncio.wait_for(
+                    manager.initialize(
+                        preload_profiles=True,
+                        preload_models=True,
+                    ),
+                    timeout=15.0  # Allow time for model loading
+                )
+
+                if success:
+                    _initialized = True
+                    logger.info(
+                        f"✅ Unified voice cache initialized: "
+                        f"{manager.profiles_loaded} profiles preloaded"
+                    )
+                else:
+                    logger.warning("⚠️ Unified voice cache initialization returned False")
+
+            except asyncio.TimeoutError:
+                logger.error("⏱️ Unified voice cache initialization timed out")
+            except Exception as e:
+                logger.error(f"❌ Unified voice cache initialization failed: {e}")
+
+    return manager
+
+
 def reset_unified_cache():
     """Reset the global cache (for testing)"""
-    global _cache_manager
+    global _cache_manager, _initialized
 
     with _cache_lock:
         if _cache_manager:
             asyncio.create_task(_cache_manager.shutdown())
         _cache_manager = None
+        _initialized = False

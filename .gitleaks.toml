@@ -141,11 +141,15 @@ regexes = [
   # Allow user-facing authentication fallback messages (no actual secrets)
   '''(?i)use password authentication''',
   '''(?i)use your password''',
+  '''(?i)using your password''',
+  '''(?i)try using your password''',
   '''(?i)use password\.''',
   '''(?i)password authentication\.''',
   '''(?i)Please use password''',
+  '''(?i)Please try using''',
   '''(?i)password instead''',
   '''(?i)use.*password instead''',
+  '''(?i)using.*password instead''',
   # App names that contain "Password" (e.g., 1Password password manager)
   '''"1Password"''',
   '''1Password''',
@@ -192,6 +196,7 @@ paths = [
   '''backend/api/simple_unlock_handler.py''',
   '''backend/voice_unlock/intelligent_voice_unlock_service.py''',
   '''backend/voice_unlock/voice_unlock_integration.py''',
+  '''backend/voice_unlock/voice_biometric_intelligence.py''',
   '''backend/voice_unlock/fix_keychain_password.sh''',
   '''backend/voice_unlock/metrics_database.py''',
   # Keychain management (retrieves passwords from keychain, doesn't store hardcoded secrets)

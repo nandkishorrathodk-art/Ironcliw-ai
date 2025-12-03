@@ -555,11 +555,11 @@ async def _execute_screen_action(
     """
     Execute screen action using advanced transport manager.
 
-    Automatically selects the best transport method based on:
-    - Real-time health monitoring
-    - Success rate history
-    - Latency metrics
-    - Current availability
+    ENHANCED v3.0:
+    - Uses VoiceBiometricIntelligence for UPFRONT transparent recognition
+    - Announces voice verification BEFORE unlock (no more "Processing..." stuck)
+    - Fast-path with < 3 second verification
+    - Graceful fallback to legacy verification
     """
 
     logger.info(f"[TRANSPORT-EXEC] Executing {action}")
@@ -591,111 +591,182 @@ async def _execute_screen_action(
         )
 
         if audio_data:
-            # Verify speaker using voice biometrics with TIMEOUT PROTECTION
+            # =================================================================
+            # 🧠 VOICE BIOMETRIC INTELLIGENCE: Verify and announce FIRST!
+            # =================================================================
+            # This provides TRANSPARENCY by recognizing voice and announcing it
+            # BEFORE the unlock process, so no more "Processing..." stuck!
+            # =================================================================
             try:
-                # Step 1: Announce verification start
-                logger.info("🎤 Starting voice biometric verification...")
-                context["status_message"] = "Verifying your voice biometrics..."
+                from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
 
-                # FAST PATH: Use cached speaker service (pre-loaded at startup)
-                speaker_service = await _get_cached_speaker_service()
-                if speaker_service is None:
-                    # Fallback: Initialize service if cache failed
+                vbi = await asyncio.wait_for(
+                    get_voice_biometric_intelligence(),
+                    timeout=2.0
+                )
+
+                if vbi:
+                    logger.info("🧠 Using Voice Biometric Intelligence for upfront recognition...")
+
+                    # Verify voice and announce result FIRST (fast path < 3 seconds)
+                    vbi_result = await asyncio.wait_for(
+                        vbi.verify_and_announce(
+                            audio_data=audio_data,
+                            context={
+                                'device_trusted': True,
+                            },
+                            speak=True,  # Announce "Voice verified, Derek. 94% confidence. Unlocking now..."
+                        ),
+                        timeout=3.0
+                    )
+
+                    if vbi_result.verified:
+                        logger.info(
+                            f"🧠 Voice recognized UPFRONT: {vbi_result.speaker_name} "
+                            f"({vbi_result.confidence:.1%}) in {vbi_result.verification_time_ms:.0f}ms"
+                        )
+
+                        # Store verified speaker name in context
+                        context["verified_speaker_name"] = vbi_result.speaker_name
+                        context["verification_confidence"] = vbi_result.confidence
+                        context["status_message"] = f"Voice verified: {vbi_result.speaker_name}"
+                        context["verification_message"] = vbi_result.announcement
+
+                        # Skip legacy verification - proceed directly to unlock!
+                        logger.info("✅ Skipping legacy verification - proceeding to unlock")
+
+                    else:
+                        # Voice not verified - return failure immediately
+                        logger.warning(
+                            f"🧠 Voice not recognized ({vbi_result.level.value}, {vbi_result.confidence:.1%})"
+                        )
+                        return {
+                            "success": False,
+                            "error": "voice_verification_failed",
+                            "message": vbi_result.announcement or (
+                                f"I couldn't verify your voice. "
+                                f"Confidence was {vbi_result.confidence:.0%}, but I need at least 75%."
+                            ),
+                            "retry_guidance": vbi_result.retry_guidance,
+                        }
+
+            except asyncio.TimeoutError:
+                logger.warning("⏱️ VoiceBiometricIntelligence timed out - using legacy verification")
+                # Fall through to legacy verification
+            except ImportError:
+                logger.debug("VoiceBiometricIntelligence not available - using legacy verification")
+            except Exception as e:
+                logger.warning(f"VoiceBiometricIntelligence error: {e} - using legacy verification")
+
+            # =================================================================
+            # LEGACY FALLBACK: Use old verification if VBI not available
+            # =================================================================
+            if "verified_speaker_name" not in context:
+                # Verify speaker using voice biometrics with TIMEOUT PROTECTION
+                try:
+                    # Step 1: Announce verification start
+                    logger.info("🎤 Starting voice biometric verification (legacy)...")
+                    context["status_message"] = "Verifying your voice biometrics..."
+
+                    # FAST PATH: Use cached speaker service (pre-loaded at startup)
+                    speaker_service = await _get_cached_speaker_service()
+                    if speaker_service is None:
+                        # Fallback: Initialize service if cache failed
+                        try:
+                            from voice.speaker_verification_service import get_speaker_verification_service
+                            speaker_service = await asyncio.wait_for(
+                                get_speaker_verification_service(),
+                                timeout=5.0  # Reduced from 10s to 5s
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error("⏱️ Speaker service initialization timed out")
+                            return {
+                                "success": False,
+                                "error": "verification_timeout",
+                                "message": "Voice verification service initialization timed out. Please try again.",
+                            }
+
+                    sample_count = sum(
+                        profile.get("total_samples", 0)
+                        for profile in speaker_service.speaker_profiles.values()
+                    )
+                    logger.info(
+                        f"🔐 Speaker service ready: {len(speaker_service.speaker_profiles)} profiles, "
+                        f"{sample_count} voice samples loaded"
+                    )
+
+                    # Step 2: Verify speaker using voice biometrics WITH TIMEOUT
+                    logger.info("🔐 Analyzing voice pattern against biometric database...")
+                    context["status_message"] = "Analyzing voice pattern..."
+
                     try:
-                        from voice.speaker_verification_service import get_speaker_verification_service
-                        speaker_service = await asyncio.wait_for(
-                            get_speaker_verification_service(),
-                            timeout=10.0  # 10 second timeout for service initialization
+                        verification_result = await asyncio.wait_for(
+                            speaker_service.verify_speaker(audio_data, speaker_name),
+                            timeout=15.0  # Reduced from 30s to 15s
                         )
                     except asyncio.TimeoutError:
-                        logger.error("⏱️ Speaker service initialization timed out")
+                        logger.error("⏱️ Voice verification timed out after 15 seconds")
                         return {
                             "success": False,
                             "error": "verification_timeout",
-                            "message": "Voice verification service initialization timed out. Please try again.",
+                            "message": "Voice verification took too long. Please try again with clearer audio.",
                         }
 
-                sample_count = sum(
-                    profile.get("total_samples", 0)
-                    for profile in speaker_service.speaker_profiles.values()
-                )
-                logger.info(
-                    f"🔐 Speaker service ready: {len(speaker_service.speaker_profiles)} profiles, "
-                    f"{sample_count} voice samples loaded"
-                )
+                    logger.info(f"🎤 Verification result: {verification_result}")
 
-                # Step 2: Verify speaker using voice biometrics WITH TIMEOUT
-                logger.info("🔐 Analyzing voice pattern against biometric database...")
-                context["status_message"] = "Analyzing voice pattern..."
+                    speaker_name = verification_result["speaker_name"]
+                    is_verified = verification_result["verified"]
+                    confidence = verification_result["confidence"]
+                    is_owner = verification_result["is_owner"]
 
-                try:
-                    verification_result = await asyncio.wait_for(
-                        speaker_service.verify_speaker(audio_data, speaker_name),
-                        timeout=30.0  # 30 second timeout for verification (includes embedding extraction)
+                    # Step 3: Announce verification result
+                    logger.info(
+                        f"🔐 Speaker verification: {speaker_name} - "
+                        f"{'✅ VERIFIED' if is_verified else '❌ FAILED'} "
+                        f"(confidence: {confidence:.1%}, owner: {is_owner})"
                     )
-                except asyncio.TimeoutError:
-                    logger.error("⏱️ Voice verification timed out after 30 seconds")
-                    return {
-                        "success": False,
-                        "error": "verification_timeout",
-                        "message": "Voice verification took too long. Please try again with clearer audio.",
-                    }
 
-                logger.info(f"🎤 Verification result: {verification_result}")
+                    if not is_verified:
+                        logger.warning(
+                            f"🚫 Voice verification failed for {speaker_name} - unlock denied"
+                        )
+                        context["status_message"] = "Voice verification failed - access denied"
+                        return {
+                            "success": False,
+                            "error": "voice_verification_failed",
+                            "message": (
+                                f"I'm sorry, I couldn't verify your voice biometrics. "
+                                f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security."
+                            ),
+                        }
 
-                speaker_name = verification_result["speaker_name"]
-                is_verified = verification_result["verified"]
-                confidence = verification_result["confidence"]
-                is_owner = verification_result["is_owner"]
+                    # Check if speaker is the device owner
+                    if not is_owner:
+                        logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
+                        context["status_message"] = "Non-owner detected - access denied"
+                        # Get owner name dynamically
+                        owner_name = await _get_owner_name()
+                        return {
+                            "success": False,
+                            "error": "not_owner",
+                            "message": f"Voice verified as {speaker_name}, but only the device owner {owner_name} can unlock the screen.",
+                        }
 
-                # Step 3: Announce verification result
-                logger.info(
-                    f"🔐 Speaker verification: {speaker_name} - "
-                    f"{'✅ VERIFIED' if is_verified else '❌ FAILED'} "
-                    f"(confidence: {confidence:.1%}, owner: {is_owner})"
-                )
+                    # Store verified speaker name in context for personalized response
+                    context["verified_speaker_name"] = speaker_name
+                    context["verification_confidence"] = confidence
 
-                if not is_verified:
-                    logger.warning(
-                        f"🚫 Voice verification failed for {speaker_name} - unlock denied"
+                    logger.info(
+                        f"✅ Voice verification passed for owner: {speaker_name} ({confidence:.1%})"
                     )
-                    context["status_message"] = "Voice verification failed - access denied"
-                    return {
-                        "success": False,
-                        "error": "voice_verification_failed",
-                        "message": (
-                            f"I'm sorry, I couldn't verify your voice biometrics. "
-                            f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security."
-                        ),
-                    }
-
-                # Check if speaker is the device owner
-                if not is_owner:
-                    logger.warning(f"🚫 Non-owner {speaker_name} attempted unlock - denied")
-                    context["status_message"] = "Non-owner detected - access denied"
-                    # Get owner name dynamically
-                    owner_name = await _get_owner_name()
-                    return {
-                        "success": False,
-                        "error": "not_owner",
-                        "message": f"Voice verified as {speaker_name}, but only the device owner {owner_name} can unlock the screen.",
-                    }
-
-                # Store verified speaker name in context for personalized response
-                context["verified_speaker_name"] = speaker_name
-                context["verification_confidence"] = confidence
-
-                logger.info(
-                    f"✅ Voice verification passed for owner: {speaker_name} ({confidence:.1%})"
-                )
-                context["status_message"] = (
-                    f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
-                )
-                # Store intermediate message for JARVIS to speak
-                context["verification_message"] = (
-                    f"Identity confirmed, {speaker_name}. "
-                    f"Initiating screen unlock sequence now."
-                )
+                    context["status_message"] = (
+                        f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
+                    )
+                    # Store intermediate message for JARVIS to speak
+                    context["verification_message"] = (
+                        f"Identity confirmed, {speaker_name}. "
+                        f"Initiating screen unlock sequence now."
+                    )
 
             except Exception as e:
                 logger.error(f"Voice verification error: {e}", exc_info=True)

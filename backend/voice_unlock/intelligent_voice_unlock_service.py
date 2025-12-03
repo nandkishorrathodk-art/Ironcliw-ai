@@ -130,6 +130,9 @@ class IntelligentVoiceUnlockService:
         # 🎯 UNIFIED VOICE CACHE: Preloads Derek's voice profile for instant recognition
         self.unified_cache = None
 
+        # 🧠 VOICE BIOMETRIC INTELLIGENCE: Upfront transparent voice recognition
+        self.voice_biometric_intelligence = None
+
         # Statistics
         self.stats = {
             "total_unlock_attempts": 0,
@@ -141,6 +144,8 @@ class IntelligentVoiceUnlockService:
             "ml_voice_updates": 0,
             "ml_typing_updates": 0,
             "last_unlock_time": None,
+            "instant_recognitions": 0,
+            "voice_announced_first": 0,
         }
 
     async def initialize(self):
@@ -256,11 +261,22 @@ class IntelligentVoiceUnlockService:
                 logger.warning(f"⚠️ Unified Voice Cache not available: {e}")
                 self.unified_cache = None
 
+        async def _init_voice_biometric_intelligence():
+            """🧠 Initialize Voice Biometric Intelligence for upfront recognition."""
+            try:
+                from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
+                self.voice_biometric_intelligence = await get_voice_biometric_intelligence()
+                logger.info("🧠 Voice Biometric Intelligence connected (upfront recognition enabled)")
+            except Exception as e:
+                logger.warning(f"⚠️ Voice Biometric Intelligence not available: {e}")
+                self.voice_biometric_intelligence = None
+
         async def _run_initialization():
             """Run all initialization phases - ALL IN PARALLEL for maximum speed."""
             # OPTIMIZED v2.2: Run ALL components in single parallel block
             # This eliminates sequential phase delays (was 3 phases = 3x latency)
             # NEW: Added unified voice cache for preloading Derek's voice profile
+            # NEW: Added Voice Biometric Intelligence for upfront transparent recognition
             await asyncio.gather(
                 # Core services (Phase 1)
                 _init_with_timeout(self._initialize_stt(), "Hybrid STT Router"),
@@ -270,6 +286,8 @@ class IntelligentVoiceUnlockService:
                 _init_with_timeout(_init_voice_biometric_cache(), "Voice Biometric Cache"),
                 # NEW: Unified Voice Cache - preloads Derek's embedding for instant recognition
                 _init_with_timeout(_init_unified_voice_cache(), "Unified Voice Cache"),
+                # NEW: Voice Biometric Intelligence - upfront voice recognition with transparency
+                _init_with_timeout(_init_voice_biometric_intelligence(), "Voice Biometric Intelligence"),
                 # Intelligence layers (Phase 2) - now parallel with Phase 1
                 _init_with_timeout(self._initialize_cai(), "Context-Aware Intelligence"),
                 _init_with_timeout(self._initialize_sai(), "Scenario-Aware Intelligence"),
@@ -483,6 +501,82 @@ class IntelligentVoiceUnlockService:
         from voice_unlock.unlock_metrics_logger import get_metrics_logger, StageMetrics
         metrics_logger = get_metrics_logger()
         stages: List[StageMetrics] = []
+
+        # =============================================================================
+        # 🧠 UPFRONT VOICE BIOMETRIC INTELLIGENCE: Verify and announce FIRST
+        # =============================================================================
+        # This provides TRANSPARENCY by recognizing voice and announcing it
+        # BEFORE the unlock process, so the user knows immediately if recognized
+        # =============================================================================
+        if self.voice_biometric_intelligence:
+            try:
+                # Verify voice and announce result FIRST
+                vbi_result = await asyncio.wait_for(
+                    self.voice_biometric_intelligence.verify_and_announce(
+                        audio_data=audio_data,
+                        context={
+                            'consecutive_failures': diagnostics.retry_count,
+                            'device_trusted': True,
+                        },
+                        speak=True,  # Announce "Voice verified, Derek. 94% confidence. Unlocking now..."
+                    ),
+                    timeout=3.0  # Quick timeout for upfront verification
+                )
+
+                self.stats["voice_announced_first"] += 1
+
+                if vbi_result.verified:
+                    self.stats["instant_recognitions"] += 1
+                    logger.info(
+                        f"🧠 Voice recognized UPFRONT: {vbi_result.speaker_name} "
+                        f"({vbi_result.confidence:.1%}) in {vbi_result.verification_time_ms:.0f}ms"
+                    )
+
+                    # Voice is verified - proceed directly to unlock (skip redundant verification)
+                    if vbi_result.was_cached or vbi_result.confidence >= 0.85:
+                        # High confidence - proceed directly
+                        unlock_result = await asyncio.wait_for(
+                            self._perform_unlock(
+                                vbi_result.speaker_name, {}, {}, attempt_id=None
+                            ),
+                            timeout=PERFORM_UNLOCK_TIMEOUT
+                        )
+
+                        # Terminate caffeinate
+                        try:
+                            caffeinate_process.terminate()
+                        except:
+                            pass
+
+                        return {
+                            "success": unlock_result["success"],
+                            "speaker_name": vbi_result.speaker_name,
+                            "transcribed_text": "unlock my screen",
+                            "stt_confidence": 1.0,
+                            "speaker_confidence": vbi_result.confidence,
+                            "verification_confidence": vbi_result.confidence,
+                            "is_owner": True,
+                            "message": f"Voice verified ({vbi_result.level.value})",
+                            "latency_ms": vbi_result.verification_time_ms,
+                            "voice_biometric_intelligence": True,
+                            "recognition_level": vbi_result.level.value,
+                            "announcement": vbi_result.announcement,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                else:
+                    # Voice not verified - provide feedback but continue with full flow
+                    logger.info(
+                        f"🧠 Voice not immediately recognized "
+                        f"({vbi_result.level.value}, {vbi_result.confidence:.1%}). "
+                        f"Continuing with full verification..."
+                    )
+                    # Update diagnostics with VBI result
+                    diagnostics.speaker_confidence = vbi_result.confidence
+
+            except asyncio.TimeoutError:
+                logger.warning("⏱️ Upfront voice verification timed out, continuing with full flow")
+            except Exception as e:
+                logger.debug(f"Upfront voice verification failed (continuing with full flow): {e}")
 
         # =============================================================================
         # 🚀 FAST PATH: Check voice biometric cache for instant repeat unlocks
