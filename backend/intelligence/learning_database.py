@@ -2969,11 +2969,42 @@ class JARVISLearningDatabase:
             logger.error(f"Failed to record misheard query: {e}")
             return -1
 
+    # ==========================================================================
+    # INVALID SPEAKER NAMES - These should NEVER create profiles
+    # ==========================================================================
+    INVALID_SPEAKER_NAMES = frozenset({
+        'unknown', 'test', 'placeholder', 'anonymous', 'guest',
+        'none', 'null', 'undefined', '', ' ',
+    })
+
     async def get_or_create_speaker_profile(self, speaker_name: str = "Derek J. Russell") -> int:
         """
         Get or create speaker profile for voice recognition.
         Derek J. Russell is the primary user.
+
+        VALIDATION: Rejects invalid/placeholder speaker names to prevent
+        garbage profiles from being created in the database.
         """
+        # =======================================================================
+        # VALIDATION: Prevent invalid speaker names from creating profiles
+        # =======================================================================
+        if not speaker_name or not speaker_name.strip():
+            logger.warning(f"⚠️ Rejected empty speaker name - not creating profile")
+            return -1
+
+        speaker_name_lower = speaker_name.strip().lower()
+        if speaker_name_lower in self.INVALID_SPEAKER_NAMES:
+            logger.debug(
+                f"🚫 Rejected invalid speaker name '{speaker_name}' - "
+                "not creating profile for placeholder names"
+            )
+            return -1
+
+        # Additional validation: must be at least 2 characters
+        if len(speaker_name.strip()) < 2:
+            logger.warning(f"⚠️ Rejected speaker name '{speaker_name}' - too short")
+            return -1
+
         try:
             db = self._ensure_db_initialized()
             # Check if using Cloud SQL (PostgreSQL) or SQLite
@@ -3020,6 +3051,106 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.error(f"Failed to get/create speaker profile: {e}")
             return -1
+
+    async def cleanup_invalid_speaker_profiles(self) -> Dict[str, Any]:
+        """
+        Remove invalid/placeholder speaker profiles from the database.
+
+        This cleans up profiles like 'unknown', 'test', etc. that were
+        accidentally created and have no valid embedding.
+
+        Returns:
+            Dict with cleanup results
+        """
+        result = {
+            'cleaned_profiles': [],
+            'errors': [],
+            'total_removed': 0,
+        }
+
+        try:
+            db = self._ensure_db_initialized()
+            is_cloud = isinstance(db, DatabaseConnectionWrapper) and db.is_cloud
+
+            async with db.cursor() as cursor:
+                # Find invalid profiles (no embedding or invalid name)
+                invalid_names_list = list(self.INVALID_SPEAKER_NAMES)
+
+                if is_cloud:
+                    # PostgreSQL: Find profiles with invalid names OR missing embeddings
+                    placeholders = ', '.join(['%s'] * len(invalid_names_list))
+                    await cursor.execute(f"""
+                        SELECT speaker_id, speaker_name, voiceprint_embedding IS NULL as missing_embedding
+                        FROM speaker_profiles
+                        WHERE LOWER(speaker_name) IN ({placeholders})
+                           OR voiceprint_embedding IS NULL
+                    """, invalid_names_list)
+                else:
+                    # SQLite
+                    placeholders = ', '.join(['?'] * len(invalid_names_list))
+                    await cursor.execute(f"""
+                        SELECT speaker_id, speaker_name, voiceprint_embedding IS NULL as missing_embedding
+                        FROM speaker_profiles
+                        WHERE LOWER(speaker_name) IN ({placeholders})
+                           OR voiceprint_embedding IS NULL
+                    """, invalid_names_list)
+
+                invalid_profiles = await cursor.fetchall()
+
+                for profile in invalid_profiles:
+                    speaker_id = profile[0] if isinstance(profile, (list, tuple)) else profile['speaker_id']
+                    speaker_name = profile[1] if isinstance(profile, (list, tuple)) else profile['speaker_name']
+                    missing_embedding = profile[2] if isinstance(profile, (list, tuple)) else profile['missing_embedding']
+
+                    # Don't delete the primary user (Derek) even if embedding is temporarily missing
+                    if speaker_name == "Derek J. Russell":
+                        logger.info(f"⚠️ Skipping cleanup of primary user profile: {speaker_name}")
+                        continue
+
+                    try:
+                        # Delete associated voice samples first
+                        if is_cloud:
+                            await cursor.execute(
+                                "DELETE FROM voice_samples WHERE speaker_id = %s",
+                                (speaker_id,)
+                            )
+                            await cursor.execute(
+                                "DELETE FROM speaker_profiles WHERE speaker_id = %s",
+                                (speaker_id,)
+                            )
+                        else:
+                            await cursor.execute(
+                                "DELETE FROM voice_samples WHERE speaker_id = ?",
+                                (speaker_id,)
+                            )
+                            await cursor.execute(
+                                "DELETE FROM speaker_profiles WHERE speaker_id = ?",
+                                (speaker_id,)
+                            )
+
+                        reason = "invalid name" if speaker_name.lower() in self.INVALID_SPEAKER_NAMES else "missing embedding"
+                        result['cleaned_profiles'].append({
+                            'speaker_id': speaker_id,
+                            'speaker_name': speaker_name,
+                            'reason': reason,
+                        })
+                        result['total_removed'] += 1
+
+                        logger.info(f"🧹 Cleaned up invalid profile: {speaker_name} ({reason})")
+
+                    except Exception as e:
+                        result['errors'].append(f"Failed to delete {speaker_name}: {e}")
+                        logger.error(f"Failed to cleanup profile {speaker_name}: {e}")
+
+                await db.commit()
+
+            logger.info(f"✅ Profile cleanup complete: {result['total_removed']} removed")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup invalid profiles: {e}")
+            result['errors'].append(str(e))
+            return result
 
     async def record_voice_sample(
         self,

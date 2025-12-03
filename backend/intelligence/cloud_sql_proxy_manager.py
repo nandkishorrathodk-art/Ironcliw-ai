@@ -1180,13 +1180,58 @@ WantedBy=default.target
                 elif actual_sample_count < 10:
                     profile_data['issues'].append(f"{speaker_name}: Only {actual_sample_count} samples (recommend 30+)")
 
-            # Determine overall status
-            if profile_data['profiles_found'] == 0:
+            # =================================================================
+            # AUTO-CLEANUP: Remove invalid profiles (unknown, test, etc.)
+            # =================================================================
+            INVALID_NAMES = {'unknown', 'test', 'placeholder', 'anonymous', 'guest', 'none', 'null'}
+            profiles_to_cleanup = []
+
+            for speaker in profile_data['speakers']:
+                speaker_name = speaker['speaker_name']
+                # Check if profile should be cleaned up
+                if (speaker_name.lower() in INVALID_NAMES or
+                    (not speaker['embedding_valid'] and speaker_name != "Derek J. Russell")):
+                    profiles_to_cleanup.append(speaker)
+
+            if profiles_to_cleanup:
+                logger.info(f"[CLOUDSQL] 🧹 Auto-cleaning {len(profiles_to_cleanup)} invalid profile(s)...")
+                for invalid_profile in profiles_to_cleanup:
+                    try:
+                        speaker_id = invalid_profile['speaker_id']
+                        speaker_name = invalid_profile['speaker_name']
+
+                        # Delete voice samples first, then profile
+                        cursor.execute("DELETE FROM voice_samples WHERE speaker_id = %s", (speaker_id,))
+                        cursor.execute("DELETE FROM speaker_profiles WHERE speaker_id = %s", (speaker_id,))
+
+                        logger.info(f"[CLOUDSQL] 🧹 Removed invalid profile: {speaker_name}")
+
+                        # Remove from issues list
+                        profile_data['issues'] = [
+                            issue for issue in profile_data['issues']
+                            if speaker_name not in issue
+                        ]
+                        profile_data['speakers'] = [
+                            s for s in profile_data['speakers']
+                            if s['speaker_id'] != speaker_id
+                        ]
+                        profile_data['profiles_found'] -= 1
+
+                    except Exception as cleanup_error:
+                        logger.warning(f"[CLOUDSQL] ⚠️ Failed to cleanup {speaker_name}: {cleanup_error}")
+
+                conn.commit()
+                logger.info(f"[CLOUDSQL] ✅ Cleanup complete - removed {len(profiles_to_cleanup)} invalid profile(s)")
+
+            # Determine overall status (after cleanup)
+            valid_profiles = [s for s in profile_data['speakers'] if s['embedding_valid']]
+            if len(valid_profiles) == 0:
                 profile_data['status'] = 'no_profiles'
                 profile_data['ready_for_unlock'] = False
             elif profile_data['issues']:
+                # Only flag as issues if there are real issues (not just cleaned up ones)
                 profile_data['status'] = 'issues_found'
-                profile_data['ready_for_unlock'] = False
+                profile_data['ready_for_unlock'] = len(valid_profiles) > 0  # Ready if at least one valid
             else:
                 profile_data['status'] = 'ready'
                 profile_data['ready_for_unlock'] = True
