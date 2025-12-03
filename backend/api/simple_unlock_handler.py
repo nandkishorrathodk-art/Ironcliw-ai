@@ -555,13 +555,21 @@ async def _execute_screen_action(
     """
     Execute screen action using advanced transport manager.
 
-    ENHANCED v3.0:
+    ENHANCED v3.1:
     - Uses VoiceBiometricIntelligence for UPFRONT transparent recognition
     - Announces voice verification BEFORE unlock (no more "Processing..." stuck)
     - Fast-path with < 3 second verification
     - Graceful fallback to legacy verification
+    - TIMING DIAGNOSTICS: Track each stage for performance debugging
     """
+    import time as time_module
+    exec_start = time_module.perf_counter()
 
+    def log_timing(stage: str):
+        elapsed = (time_module.perf_counter() - exec_start) * 1000
+        logger.info(f"⏱️ [{elapsed:.0f}ms] {stage}")
+
+    log_timing("START _execute_screen_action")
     logger.info(f"[TRANSPORT-EXEC] Executing {action}")
     logger.debug(f"[TRANSPORT-EXEC] Context: {context}")
 
@@ -591,6 +599,7 @@ async def _execute_screen_action(
         )
 
         if audio_data:
+            log_timing("Audio data available - starting voice verification")
             # =================================================================
             # 🧠 VOICE BIOMETRIC INTELLIGENCE: Verify and announce FIRST!
             # =================================================================
@@ -600,13 +609,16 @@ async def _execute_screen_action(
             try:
                 from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
 
+                log_timing("VBI imported, getting instance...")
                 vbi = await asyncio.wait_for(
                     get_voice_biometric_intelligence(),
                     timeout=2.0
                 )
+                log_timing("VBI instance obtained")
 
                 if vbi:
                     logger.info("🧠 Using Voice Biometric Intelligence for upfront recognition...")
+                    log_timing("Starting VBI verify_and_announce...")
 
                     # Verify voice and announce result FIRST (fast path < 3 seconds)
                     vbi_result = await asyncio.wait_for(
@@ -619,6 +631,7 @@ async def _execute_screen_action(
                         ),
                         timeout=3.0
                     )
+                    log_timing(f"VBI verify_and_announce done (verified={vbi_result.verified})")
 
                     if vbi_result.verified:
                         logger.info(
@@ -651,17 +664,21 @@ async def _execute_screen_action(
                         }
 
             except asyncio.TimeoutError:
+                log_timing("VBI TIMEOUT after 5s - using legacy verification")
                 logger.warning("⏱️ VoiceBiometricIntelligence timed out - using legacy verification")
                 # Fall through to legacy verification
             except ImportError:
+                log_timing("VBI import failed - using legacy verification")
                 logger.debug("VoiceBiometricIntelligence not available - using legacy verification")
             except Exception as e:
+                log_timing(f"VBI error ({e}) - using legacy verification")
                 logger.warning(f"VoiceBiometricIntelligence error: {e} - using legacy verification")
 
             # =================================================================
             # LEGACY FALLBACK: Use old verification if VBI not available
             # =================================================================
             if "verified_speaker_name" not in context:
+                log_timing("Starting LEGACY verification (VBI failed/unavailable)")
                 # Verify speaker using voice biometrics with TIMEOUT PROTECTION
                 try:
                     # Step 1: Announce verification start
@@ -768,22 +785,26 @@ async def _execute_screen_action(
                         f"Initiating screen unlock sequence now."
                     )
 
-            except Exception as e:
-                logger.error(f"Voice verification error: {e}", exc_info=True)
-                # Voice verification failed - deny unlock
-                return {
-                    "success": False,
-                    "error": "voice_verification_error",
-                    "message": f"Voice verification system error: {str(e)}",
-                }
+                except Exception as e:
+                    logger.error(f"Voice verification error: {e}", exc_info=True)
+                    # Voice verification failed - deny unlock
+                    return {
+                        "success": False,
+                        "error": "voice_verification_error",
+                        "message": f"Voice verification system error: {str(e)}",
+                    }
         else:
             logger.info("📝 No audio data - bypassing voice verification (text command)")
 
     # Get transport manager
+    log_timing("Getting transport manager...")
     transport = await _get_transport_manager()
+    log_timing("Transport manager obtained")
 
     # Execute using smart transport selection
+    log_timing("Executing transport action...")
     result = await transport.execute(action, context)
+    log_timing(f"Transport execution done (success={result.get('success')})")
 
     # Log result with metrics
     if result.get("success"):

@@ -768,14 +768,45 @@ class VoiceBiometricIntelligence:
 
     async def _verify_speaker(
         self,
-        audio_data: bytes
+        audio_data
     ) -> Tuple[Optional[str], float, bool]:
         """
         Verify speaker identity from audio using FAST unified cache.
 
+        ENHANCED: Handles all audio input types (bytes, base64 string, numpy, tensor).
+
         Returns:
             Tuple of (speaker_name, confidence, was_cached)
         """
+        # =================================================================
+        # AUDIO NORMALIZATION: Handle all input types
+        # =================================================================
+        try:
+            # Import helper from unified cache manager
+            from voice_unlock.unified_voice_cache_manager import normalize_audio_data
+            normalized_audio = normalize_audio_data(audio_data)
+            if normalized_audio is None:
+                logger.warning("⚠️ Failed to normalize audio data for speaker verification")
+                return None, 0.0, False
+            audio_data = normalized_audio
+        except ImportError:
+            # Fallback: inline conversion if import fails
+            if isinstance(audio_data, str):
+                try:
+                    import base64
+                    audio_data = base64.b64decode(audio_data)
+                except Exception:
+                    logger.warning("⚠️ Audio data is string but not valid base64")
+                    return None, 0.0, False
+
+        # Validate audio length (at least 0.5s at 16kHz = 16000 bytes for 16-bit audio)
+        if len(audio_data) < 16000:
+            logger.warning(
+                f"⚠️ Audio too short for verification: {len(audio_data)} bytes "
+                f"(need at least 16000 for 0.5s)"
+            )
+            # Continue anyway - the model may still work with padding
+
         # =================================================================
         # FAST PATH: Use unified voice cache (< 100ms when cached!)
         # =================================================================
@@ -871,11 +902,20 @@ class VoiceBiometricIntelligence:
 
         return None, 0.0, False
 
-    async def _analyze_audio(self, audio_data: bytes) -> AudioAnalysis:
+    async def _analyze_audio(self, audio_data) -> AudioAnalysis:
         """Analyze audio quality and environment."""
         analysis = AudioAnalysis()
 
         try:
+            # Ensure audio_data is bytes (handle base64 strings)
+            if isinstance(audio_data, str):
+                try:
+                    import base64
+                    audio_data = base64.b64decode(audio_data)
+                except Exception:
+                    # Not base64, try encoding as UTF-8 bytes
+                    audio_data = audio_data.encode('utf-8')
+
             # Basic analysis
             analysis.duration_ms = len(audio_data) / 32  # Rough estimate for 16kHz
 

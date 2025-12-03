@@ -53,6 +53,128 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# AUDIO DATA NORMALIZATION HELPERS
+# =============================================================================
+def normalize_audio_data(audio_data) -> Optional[bytes]:
+    """
+    Normalize audio data to bytes format for consistent processing.
+
+    Handles:
+    - bytes: Pass through
+    - str: Decode as base64, or encode as UTF-8 fallback
+    - numpy array: Convert to int16 PCM bytes
+    - torch tensor: Convert to numpy then to bytes
+
+    Args:
+        audio_data: Audio data in any supported format
+
+    Returns:
+        Audio data as bytes, or None if conversion fails
+    """
+    if audio_data is None:
+        return None
+
+    try:
+        # Already bytes - pass through
+        if isinstance(audio_data, bytes):
+            return audio_data
+
+        # String - likely base64 encoded
+        if isinstance(audio_data, str):
+            try:
+                import base64
+                return base64.b64decode(audio_data)
+            except Exception:
+                # Not base64, try as raw string (unlikely for audio)
+                logger.warning("Audio data is string but not valid base64")
+                return audio_data.encode('utf-8')
+
+        # NumPy array - convert to PCM bytes
+        if isinstance(audio_data, np.ndarray):
+            # Normalize to -1.0 to 1.0 range if needed
+            if audio_data.dtype == np.float32 or audio_data.dtype == np.float64:
+                # Scale to int16 range
+                audio_int16 = (audio_data * 32767).astype(np.int16)
+            elif audio_data.dtype == np.int16:
+                audio_int16 = audio_data
+            else:
+                # Convert to float first then to int16
+                audio_float = audio_data.astype(np.float32)
+                max_val = np.abs(audio_float).max()
+                if max_val > 1.0:
+                    audio_float = audio_float / max_val
+                audio_int16 = (audio_float * 32767).astype(np.int16)
+            return audio_int16.tobytes()
+
+        # Torch tensor - convert via numpy
+        if hasattr(audio_data, 'numpy'):  # Duck-type check for torch tensor
+            try:
+                np_array = audio_data.cpu().numpy() if hasattr(audio_data, 'cpu') else audio_data.numpy()
+                return normalize_audio_data(np_array)  # Recursive call
+            except Exception as e:
+                logger.warning(f"Failed to convert tensor to bytes: {e}")
+                return None
+
+        # Unknown type - try to convert
+        logger.warning(f"Unknown audio data type: {type(audio_data)}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Audio data normalization failed: {e}")
+        return None
+
+
+def audio_data_to_numpy(audio_data, sample_rate: int = 16000) -> Optional[np.ndarray]:
+    """
+    Convert audio data to numpy float32 array for ML models.
+
+    Args:
+        audio_data: Audio data in any supported format
+        sample_rate: Expected sample rate (for validation)
+
+    Returns:
+        Audio as numpy float32 array normalized to [-1, 1]
+    """
+    try:
+        # Handle bytes (PCM int16)
+        if isinstance(audio_data, bytes):
+            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            return audio_np
+
+        # Handle base64 string
+        if isinstance(audio_data, str):
+            try:
+                import base64
+                audio_bytes = base64.b64decode(audio_data)
+                return audio_data_to_numpy(audio_bytes, sample_rate)
+            except Exception:
+                return None
+
+        # Handle numpy array
+        if isinstance(audio_data, np.ndarray):
+            if audio_data.dtype == np.int16:
+                return audio_data.astype(np.float32) / 32768.0
+            elif audio_data.dtype in [np.float32, np.float64]:
+                return audio_data.astype(np.float32)
+            else:
+                return audio_data.astype(np.float32)
+
+        # Handle torch tensor
+        if hasattr(audio_data, 'numpy'):
+            try:
+                np_array = audio_data.cpu().numpy() if hasattr(audio_data, 'cpu') else audio_data.numpy()
+                return audio_data_to_numpy(np_array, sample_rate)
+            except Exception:
+                return None
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Audio to numpy conversion failed: {e}")
+        return None
+
+
+# =============================================================================
 # CONFIGURATION
 # =============================================================================
 class CacheConfig:
@@ -546,10 +668,13 @@ class UnifiedVoiceCacheManager:
         2. Model caching to prevent redundant loading
         3. Fast embedding computation for voice matching
 
+        ENHANCED: Includes retry logic and fallback mechanisms.
+
         Returns:
-            True if models are ready
+            True if models are ready (or fallback available)
         """
         self._state = CacheState.LOADING_MODELS
+        max_retries = 2
 
         try:
             from voice.parallel_model_loader import get_model_loader
@@ -560,38 +685,137 @@ class UnifiedVoiceCacheManager:
             # Check if already cached in parallel loader
             if self._model_loader.is_cached("ecapa_encoder"):
                 self._stats.models_loaded = True
-                logger.info("ECAPA-TDNN model already cached in parallel loader")
+                logger.info("✅ ECAPA-TDNN model already cached in parallel loader")
                 return True
 
-            # Try to load the ECAPA encoder if not cached
-            # This uses the parallel loader's shared thread pool
-            try:
-                result = await self._model_loader.load_model(
-                    model_name="ecapa_encoder",
-                    load_func=self._create_ecapa_loader(),
-                    timeout=60.0,  # Allow time for first-time model download
-                    use_cache=True,
-                )
-                if result.success:
-                    self._stats.models_loaded = True
+            # Try to load the ECAPA encoder with retries
+            for attempt in range(max_retries):
+                try:
                     logger.info(
-                        f"ECAPA-TDNN loaded via parallel loader "
-                        f"in {result.load_time_ms:.0f}ms"
+                        f"🔄 Loading ECAPA-TDNN encoder (attempt {attempt + 1}/{max_retries})..."
                     )
+                    result = await self._model_loader.load_model(
+                        model_name="ecapa_encoder",
+                        load_func=self._create_ecapa_loader(),
+                        timeout=60.0,  # Allow time for first-time model download
+                        use_cache=True,
+                    )
+                    if result.success:
+                        self._stats.models_loaded = True
+                        logger.info(
+                            f"✅ ECAPA-TDNN loaded via parallel loader "
+                            f"in {result.load_time_ms:.0f}ms"
+                        )
+                        return True
+                    else:
+                        logger.warning(
+                            f"⚠️ ECAPA-TDNN load attempt {attempt + 1} failed: {result.error}"
+                        )
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(0.5)  # Brief pause before retry
+
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"⏱️ ECAPA-TDNN load attempt {attempt + 1} timed out"
+                    )
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5)
+
+                except Exception as load_err:
+                    logger.warning(
+                        f"⚠️ ECAPA-TDNN load attempt {attempt + 1} error: {load_err}"
+                    )
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5)
+
+            # All retries exhausted - try direct loading as fallback
+            logger.info("🔄 Attempting direct ECAPA-TDNN load (fallback)...")
+            try:
+                encoder = await self._load_ecapa_directly()
+                if encoder is not None:
+                    # Cache it manually
+                    self._model_loader.cache_model("ecapa_encoder", encoder)
+                    self._stats.models_loaded = True
+                    logger.info("✅ ECAPA-TDNN loaded via direct fallback")
                     return True
-                else:
-                    logger.warning(f"ECAPA-TDNN load failed: {result.error}")
-                    # Still mark as ready - we can fall back to pre-computed embeddings
-                    self._stats.models_loaded = False
+            except Exception as direct_err:
+                logger.warning(f"⚠️ Direct ECAPA load failed: {direct_err}")
+
+            # ECAPA unavailable - check if we have preloaded embeddings as fallback
+            if len(self._preloaded_profiles) > 0:
+                logger.warning(
+                    f"⚠️ ECAPA-TDNN not available. Using {len(self._preloaded_profiles)} "
+                    f"preloaded embeddings for matching only (no real-time extraction)"
+                )
+                self._stats.models_loaded = False
+                return True  # Can still function with preloaded embeddings
+            else:
+                logger.error(
+                    "❌ ECAPA-TDNN not available AND no preloaded embeddings. "
+                    "Voice verification will fail!"
+                )
+                self._stats.models_loaded = False
+                return False
+
+        except ImportError as e:
+            logger.warning(f"⚠️ ParallelModelLoader not available: {e}")
+            # Try direct loading
+            try:
+                encoder = await self._load_ecapa_directly()
+                if encoder is not None:
+                    self._stats.models_loaded = True
+                    # Store encoder directly on instance for get_ecapa_encoder fallback
+                    self._direct_ecapa_encoder = encoder
+                    logger.info("✅ ECAPA-TDNN loaded directly (no parallel loader)")
                     return True
-            except Exception as load_err:
-                logger.warning(f"Model loading error: {load_err}")
-                # Continue without model - use preloaded embeddings only
-                return True
+            except Exception:
+                pass
+            return len(self._preloaded_profiles) > 0
 
         except Exception as e:
-            logger.warning(f"Model loader not available: {e}")
-            return False
+            logger.warning(f"⚠️ Model loader error: {e}")
+            return len(self._preloaded_profiles) > 0
+
+    async def _load_ecapa_directly(self):
+        """
+        Direct ECAPA-TDNN loading as fallback when parallel loader fails.
+
+        Returns:
+            Loaded encoder or None
+        """
+        try:
+            import torch
+            from speechbrain.inference.speaker import EncoderClassifier
+
+            # Force CPU to avoid MPS issues
+            torch.set_num_threads(1)
+
+            logger.info("🔄 Loading ECAPA-TDNN directly from SpeechBrain...")
+
+            # Run in thread to avoid blocking
+            def _load():
+                return EncoderClassifier.from_hparams(
+                    source="speechbrain/spkrec-ecapa-voxceleb",
+                    run_opts={"device": "cpu"}
+                )
+
+            encoder = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _load),
+                timeout=60.0
+            )
+
+            logger.info("✅ ECAPA-TDNN loaded directly")
+            return encoder
+
+        except ImportError:
+            logger.warning("⚠️ SpeechBrain not installed - cannot load ECAPA-TDNN")
+            return None
+        except asyncio.TimeoutError:
+            logger.warning("⏱️ Direct ECAPA load timed out after 60s")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Direct ECAPA load failed: {e}")
+            return None
 
     def _create_ecapa_loader(self):
         """
@@ -618,13 +842,23 @@ class UnifiedVoiceCacheManager:
         """
         Get the cached ECAPA-TDNN encoder from the parallel model loader.
 
+        ENHANCED: Checks both parallel loader cache and direct encoder fallback.
+
         Returns:
             Encoder model if available, None otherwise
         """
-        if self._model_loader is None:
-            return None
+        # First check direct encoder fallback (set when parallel loader unavailable)
+        if hasattr(self, '_direct_ecapa_encoder') and self._direct_ecapa_encoder is not None:
+            return self._direct_ecapa_encoder
 
-        return self._model_loader.get_cached("ecapa_encoder")
+        # Then check parallel loader cache
+        if self._model_loader is not None:
+            encoder = self._model_loader.get_cached("ecapa_encoder")
+            if encoder is not None:
+                return encoder
+
+        logger.debug("ECAPA encoder not available from any source")
+        return None
 
     async def extract_embedding(
         self,
@@ -680,23 +914,35 @@ class UnifiedVoiceCacheManager:
         Synchronous embedding extraction - runs in thread pool.
 
         CRITICAL: This runs CPU-intensive PyTorch operations off the event loop.
+
+        Handles all audio input types via audio_data_to_numpy helper.
         """
         try:
             import torch
 
-            # Convert to tensor if needed
-            if isinstance(audio_data, np.ndarray):
-                waveform = torch.from_numpy(audio_data).float()
-            elif isinstance(audio_data, bytes):
-                # Handle raw bytes (int16 PCM)
-                audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-                waveform = torch.from_numpy(audio_array).float()
-            else:
-                waveform = audio_data.float()
+            # Use robust audio conversion helper
+            audio_np = audio_data_to_numpy(audio_data)
+            if audio_np is None:
+                logger.error("Failed to convert audio data to numpy array")
+                return None
+
+            # Convert numpy to torch tensor
+            waveform = torch.from_numpy(audio_np).float()
 
             # Ensure correct shape: (batch, samples) or (samples,)
             if waveform.dim() == 1:
                 waveform = waveform.unsqueeze(0)
+
+            # Validate audio length (at least 0.5 seconds at 16kHz)
+            min_samples = 8000  # 0.5s at 16kHz
+            if waveform.shape[-1] < min_samples:
+                logger.warning(
+                    f"Audio too short for embedding: {waveform.shape[-1]} samples "
+                    f"(need at least {min_samples})"
+                )
+                # Pad with zeros if too short
+                padding = min_samples - waveform.shape[-1]
+                waveform = torch.nn.functional.pad(waveform, (0, padding))
 
             # Extract embedding (CPU-intensive)
             with torch.no_grad():
@@ -705,10 +951,18 @@ class UnifiedVoiceCacheManager:
             # Convert to numpy and flatten
             embedding_np = embedding.squeeze().cpu().numpy()
 
+            # Validate embedding dimensions
+            if embedding_np.shape[-1] != 192:
+                logger.warning(
+                    f"Unexpected embedding dimension: {embedding_np.shape[-1]} (expected 192)"
+                )
+
             return embedding_np
 
         except Exception as e:
             logger.error(f"Sync embedding extraction failed: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return None
 
     async def _connect_biometric_cache(self) -> bool:
