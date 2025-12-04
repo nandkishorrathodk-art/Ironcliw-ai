@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import psutil
+from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Set, Tuple
 
 # Check for Swift availability
 try:
@@ -33,6 +36,504 @@ except (ImportError, OSError):
     SWIFT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# DYNAMIC RESTART CONFIGURATION - No Hardcoding
+# =============================================================================
+
+@dataclass
+class DynamicRestartConfig:
+    """
+    Dynamic configuration for restart operations.
+    Loads ports and settings from config file - NO HARDCODING.
+    """
+    # Primary port (loaded from config)
+    primary_api_port: int = 8011
+
+    # Fallback ports (loaded from config)
+    fallback_ports: List[int] = field(default_factory=lambda: [8010, 8000, 8001, 8080, 8888])
+
+    # Frontend and auxiliary ports
+    frontend_port: int = 3000
+    loading_server_port: int = 3001
+    database_port: int = 5432
+
+    # UE state indicators for macOS/Linux
+    ue_state_indicators: List[str] = field(default_factory=lambda: [
+        'disk-sleep', 'uninterruptible', 'D', 'U',
+        'D+', 'U+', 'Ds', 'Us',  # With additional flags
+    ])
+
+    # Cleanup timeouts (seconds)
+    graceful_timeout: float = 2.0
+    force_kill_timeout: float = 1.0
+    port_verification_timeout: float = 1.0
+    parallel_cleanup_timeout: float = 10.0
+
+    # Self-healing settings
+    enable_self_healing: bool = True
+    blacklist_ue_ports: bool = True
+    max_kill_attempts: int = 3
+
+    # Config file path
+    config_file_path: Optional[Path] = None
+
+    def __post_init__(self):
+        """Load configuration from file if available."""
+        if self.config_file_path is None:
+            self.config_file_path = Path(__file__).parent / 'config' / 'startup_progress_config.json'
+        self._load_from_config()
+
+    def _load_from_config(self) -> None:
+        """Load dynamic configuration from JSON config file."""
+        try:
+            if self.config_file_path and self.config_file_path.exists():
+                with open(self.config_file_path, 'r') as f:
+                    config = json.load(f)
+
+                # Load backend config
+                backend_config = config.get('backend_config', {})
+                self.primary_api_port = backend_config.get('port', self.primary_api_port)
+                self.fallback_ports = backend_config.get('fallback_ports', self.fallback_ports)
+
+                # Load loading server config
+                loading_config = config.get('loading_server', {})
+                self.loading_server_port = loading_config.get('port', self.loading_server_port)
+
+                logger.debug(f"Loaded restart config: primary={self.primary_api_port}, fallbacks={self.fallback_ports}")
+        except Exception as e:
+            logger.warning(f"Failed to load restart config from {self.config_file_path}: {e}")
+
+    def get_all_ports(self) -> List[int]:
+        """Get all ports that need to be managed during restart."""
+        ports = {self.primary_api_port, self.frontend_port, self.loading_server_port, self.database_port}
+        ports.update(self.fallback_ports)
+        return sorted(list(ports))
+
+    def get_api_ports(self) -> List[int]:
+        """Get only API-related ports (primary + fallbacks)."""
+        ports = {self.primary_api_port}
+        ports.update(self.fallback_ports)
+        return sorted(list(ports))
+
+
+class UEStateDetector:
+    """
+    Detects processes in Uninterruptible Sleep (UE) state on macOS.
+    These processes CANNOT be killed and must be avoided/blacklisted.
+    """
+
+    # macOS process state indicators for unkillable processes
+    # Note: psutil returns verbose states like 'disk-sleep', 'running', 'sleeping'
+    # ps command returns single-letter codes: D=uninterruptible sleep, U=uninterruptible wait
+    PSUTIL_UE_STATES = ['disk-sleep', 'uninterruptible']
+    PS_UE_CODES = {'D', 'U', 'D+', 'U+', 'Ds', 'Us'}  # Single-letter ps codes
+
+    def __init__(self, config: Optional[DynamicRestartConfig] = None):
+        self.config = config or DynamicRestartConfig()
+        self._blacklisted_pids: Set[int] = set()
+        self._blacklisted_ports: Set[int] = set()
+
+    def is_ue_state(self, status: str, is_ps_status: bool = False) -> bool:
+        """
+        Check if a process status indicates UE (Uninterruptible Sleep) state.
+
+        Args:
+            status: The process status string
+            is_ps_status: If True, status is from ps command (single letter codes)
+                         If False, status is from psutil (verbose states)
+        """
+        if is_ps_status:
+            # ps command returns single-letter codes like 'D', 'U', 'D+', etc.
+            # Check exact match against known UE codes
+            status_stripped = status.strip()
+            return status_stripped in self.PS_UE_CODES
+        else:
+            # psutil returns verbose states like 'disk-sleep', 'running'
+            status_lower = status.lower()
+            return any(ue_state in status_lower for ue_state in self.PSUTIL_UE_STATES)
+
+    def check_process_state(self, pid: int) -> Tuple[bool, str]:
+        """
+        Check if a process is in UE state using multiple methods.
+        Returns: (is_ue_state, detailed_status)
+        """
+        try:
+            # Method 1: Use psutil (returns verbose states like 'disk-sleep', 'running')
+            proc = psutil.Process(pid)
+            status = proc.status()
+
+            if self.is_ue_state(status, is_ps_status=False):
+                return True, f"psutil:{status}"
+
+            # Method 2: Use ps command for more detailed status (macOS-specific)
+            # ps returns single-letter codes like D, U, S, R
+            try:
+                result = subprocess.run(
+                    ['ps', '-o', 'stat=', '-p', str(pid)],
+                    capture_output=True, text=True, timeout=2.0
+                )
+                if result.returncode == 0:
+                    ps_status = result.stdout.strip()
+                    if self.is_ue_state(ps_status, is_ps_status=True):
+                        return True, f"ps:{ps_status}"
+                    return False, f"ps:{ps_status}"
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+            return False, f"psutil:{status}"
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            return False, f"error:{str(e)}"
+
+    def check_port_for_ue_process(self, port: int) -> Tuple[bool, Optional[int], str]:
+        """
+        Check if a port is being held by a UE-state process.
+        Returns: (has_ue_process, pid_if_ue, detailed_status)
+        """
+        try:
+            # Find process using the port
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port == port and conn.status == 'LISTEN':
+                    pid = conn.pid
+                    if pid:
+                        is_ue, status = self.check_process_state(pid)
+                        if is_ue:
+                            self._blacklisted_pids.add(pid)
+                            self._blacklisted_ports.add(port)
+                            return True, pid, status
+                        return False, pid, status
+            return False, None, "no_listener"
+        except psutil.AccessDenied:
+            # Access denied on macOS is normal for some ports - treat as no UE process
+            return False, None, "access_denied"
+        except OSError as e:
+            return False, None, f"os_error:{str(e)}"
+
+    def is_pid_blacklisted(self, pid: int) -> bool:
+        """Check if a PID is blacklisted due to UE state."""
+        return pid in self._blacklisted_pids
+
+    def is_port_blacklisted(self, port: int) -> bool:
+        """Check if a port is blacklisted due to UE process."""
+        return port in self._blacklisted_ports
+
+    def get_blacklisted_ports(self) -> Set[int]:
+        """Get all blacklisted ports."""
+        return self._blacklisted_ports.copy()
+
+    def get_blacklisted_pids(self) -> Set[int]:
+        """Get all blacklisted PIDs."""
+        return self._blacklisted_pids.copy()
+
+    def scan_all_ports(self, ports: List[int]) -> Dict[int, Dict[str, Any]]:
+        """Scan all given ports for UE processes."""
+        results = {}
+        for port in ports:
+            has_ue, pid, status = self.check_port_for_ue_process(port)
+            results[port] = {
+                'has_ue_process': has_ue,
+                'pid': pid,
+                'status': status,
+                'blacklisted': has_ue
+            }
+        return results
+
+
+class AsyncRestartManager:
+    """
+    Async-capable restart manager with parallel cleanup and self-healing.
+    """
+
+    def __init__(self, config: Optional[DynamicRestartConfig] = None):
+        self.config = config or DynamicRestartConfig()
+        self.ue_detector = UEStateDetector(config=self.config)
+        self._cleanup_results: List[Dict[str, Any]] = []
+
+    async def _kill_process_async(
+        self,
+        proc: psutil.Process,
+        ptype: str,
+        timeout: float
+    ) -> Dict[str, Any]:
+        """
+        Kill a single process with UE state detection.
+        Returns detailed result dict.
+        """
+        pid = proc.pid
+        result = {
+            'pid': pid,
+            'type': ptype,
+            'status': 'pending',
+            'ue_state': False,
+            'attempts': 0,
+            'error': None
+        }
+
+        try:
+            cmdline = " ".join(proc.cmdline()) if proc.cmdline() else ""
+            result['cmdline'] = cmdline[:150]
+            result['name'] = proc.name()
+            result['age_minutes'] = (time.time() - proc.create_time()) / 60
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            result['status'] = 'already_dead'
+            return result
+
+        # Check for UE state BEFORE attempting to kill
+        is_ue, ue_status = self.ue_detector.check_process_state(pid)
+        if is_ue:
+            result['ue_state'] = True
+            result['status'] = 'ue_state_detected'
+            result['ue_status'] = ue_status
+            logger.warning(f"⚠️ PID {pid} is in UE state ({ue_status}) - CANNOT KILL, blacklisting")
+            return result
+
+        # Attempt graceful termination
+        for attempt in range(self.config.max_kill_attempts):
+            result['attempts'] = attempt + 1
+
+            try:
+                if attempt == 0:
+                    # Try SIGTERM first
+                    proc.terminate()
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, proc.wait, timeout
+                            ),
+                            timeout=timeout + 0.5
+                        )
+                        result['status'] = 'terminated'
+                        return result
+                    except (asyncio.TimeoutError, psutil.TimeoutExpired):
+                        pass
+
+                elif attempt == 1:
+                    # Try SIGKILL
+                    proc.kill()
+                    await asyncio.sleep(0.2)
+                    if not proc.is_running():
+                        result['status'] = 'force_killed'
+                        return result
+
+                else:
+                    # Last resort: OS-level SIGKILL
+                    os.kill(pid, signal.SIGKILL)
+                    await asyncio.sleep(0.3)
+                    if not psutil.pid_exists(pid):
+                        result['status'] = 'sigkill'
+                        return result
+
+                    # Check if it became a UE process
+                    is_ue_now, ue_status = self.ue_detector.check_process_state(pid)
+                    if is_ue_now:
+                        result['ue_state'] = True
+                        result['status'] = 'became_ue_state'
+                        result['ue_status'] = ue_status
+                        logger.error(f"⚠️ PID {pid} became UE state after kill attempt - blacklisting")
+                        return result
+
+            except psutil.NoSuchProcess:
+                result['status'] = 'terminated'
+                return result
+            except Exception as e:
+                result['error'] = str(e)
+
+        result['status'] = 'failed'
+        return result
+
+    async def cleanup_processes_parallel(
+        self,
+        processes: List[Tuple[psutil.Process, str, str]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Clean up multiple processes in parallel using asyncio.
+
+        Args:
+            processes: List of (process, cmdline, type) tuples
+
+        Returns:
+            List of cleanup result dicts
+        """
+        if not processes:
+            return []
+
+        tasks = []
+        for proc, cmdline, ptype in processes:
+            timeout = self.config.graceful_timeout
+            task = asyncio.create_task(
+                self._kill_process_async(proc, ptype, timeout)
+            )
+            tasks.append(task)
+
+        # Wait for all tasks with overall timeout
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=self.config.parallel_cleanup_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Parallel cleanup timed out, some processes may still be running")
+            results = []
+            for task in tasks:
+                if task.done():
+                    try:
+                        results.append(task.result())
+                    except Exception as e:
+                        results.append({'status': 'error', 'error': str(e)})
+                else:
+                    task.cancel()
+                    results.append({'status': 'timeout'})
+
+        # Process results
+        cleaned = []
+        for result in results:
+            if isinstance(result, Exception):
+                cleaned.append({'status': 'error', 'error': str(result)})
+            elif isinstance(result, dict):
+                cleaned.append(result)
+
+        return cleaned
+
+    async def verify_ports_free_async(self, ports: List[int]) -> Dict[int, Dict[str, Any]]:
+        """
+        Verify multiple ports are free in parallel.
+        Returns dict of port -> status info.
+        """
+        async def check_port(port: int) -> Tuple[int, Dict[str, Any]]:
+            # First check for UE process
+            has_ue, pid, ue_status = self.ue_detector.check_port_for_ue_process(port)
+
+            if has_ue:
+                return port, {
+                    'free': False,
+                    'ue_process': True,
+                    'pid': pid,
+                    'status': ue_status,
+                    'action': 'blacklisted'
+                }
+
+            try:
+                # Try to connect to check if port is in use
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(self.config.port_verification_timeout)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+
+                if result == 0:
+                    # Port still in use - try force kill
+                    try:
+                        kill_result = subprocess.run(
+                            f"lsof -ti:{port} | xargs kill -9 2>/dev/null",
+                            shell=True, capture_output=True, timeout=2.0
+                        )
+                        await asyncio.sleep(0.3)
+
+                        # Recheck
+                        sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock2.settimeout(0.5)
+                        recheck = sock2.connect_ex(('127.0.0.1', port))
+                        sock2.close()
+
+                        if recheck != 0:
+                            return port, {'free': True, 'action': 'force_freed'}
+                        else:
+                            # Check if it's now a UE process
+                            has_ue_now, pid_now, _ = self.ue_detector.check_port_for_ue_process(port)
+                            if has_ue_now:
+                                return port, {
+                                    'free': False,
+                                    'ue_process': True,
+                                    'pid': pid_now,
+                                    'action': 'blacklisted_after_kill_attempt'
+                                }
+                            return port, {'free': False, 'action': 'still_in_use'}
+                    except subprocess.TimeoutExpired:
+                        return port, {'free': False, 'action': 'kill_timeout'}
+                else:
+                    return port, {'free': True, 'action': 'already_free'}
+
+            except Exception as e:
+                return port, {'free': False, 'error': str(e)}
+
+        tasks = [check_port(port) for port in ports]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        port_status = {}
+        for result in results:
+            if isinstance(result, tuple):
+                port, status = result
+                port_status[port] = status
+            elif isinstance(result, Exception):
+                logger.error(f"Port check failed: {result}")
+
+        return port_status
+
+    def get_healthy_port(self, exclude_blacklisted: bool = True) -> Optional[int]:
+        """
+        Find a healthy port for the API to use.
+        Excludes UE-blocked ports if requested.
+        """
+        blacklisted = self.ue_detector.get_blacklisted_ports() if exclude_blacklisted else set()
+
+        # Try primary port first
+        if self.config.primary_api_port not in blacklisted:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                result = sock.connect_ex(('127.0.0.1', self.config.primary_api_port))
+                sock.close()
+                if result != 0:  # Port is free
+                    return self.config.primary_api_port
+            except:
+                pass
+
+        # Try fallback ports
+        for port in self.config.fallback_ports:
+            if port in blacklisted:
+                continue
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                if result != 0:  # Port is free
+                    return port
+            except:
+                continue
+
+        return None
+
+
+# Global instances for module-level access
+_restart_config: Optional[DynamicRestartConfig] = None
+_ue_detector: Optional[UEStateDetector] = None
+_async_restart_manager: Optional[AsyncRestartManager] = None
+
+
+def get_restart_config() -> DynamicRestartConfig:
+    """Get or create the global restart config instance."""
+    global _restart_config
+    if _restart_config is None:
+        _restart_config = DynamicRestartConfig()
+    return _restart_config
+
+
+def get_ue_detector() -> UEStateDetector:
+    """Get or create the global UE state detector instance."""
+    global _ue_detector
+    if _ue_detector is None:
+        _ue_detector = UEStateDetector(config=get_restart_config())
+    return _ue_detector
+
+
+def get_async_restart_manager() -> AsyncRestartManager:
+    """Get or create the global async restart manager instance."""
+    global _async_restart_manager
+    if _async_restart_manager is None:
+        _async_restart_manager = AsyncRestartManager(config=get_restart_config())
+    return _async_restart_manager
 
 
 class GCPVMSessionManager:
@@ -653,6 +1154,12 @@ class ProcessCleanupManager:
         FORCE restart cleanup - ALWAYS kills all JARVIS processes.
         Used when --restart flag is provided to ensure clean slate.
 
+        ENHANCED with:
+        - Dynamic port configuration (no hardcoding)
+        - UE (Uninterruptible Sleep) state detection
+        - Parallel async cleanup for better performance
+        - Self-healing capabilities
+
         This is MORE AGGRESSIVE than cleanup_old_instances_on_code_change()
         because it doesn't check for code changes - it ALWAYS kills everything.
 
@@ -664,15 +1171,42 @@ class ProcessCleanupManager:
         """
         cleaned = []
 
-        logger.warning("🔥 BULLETPROOF FORCE RESTART MODE - Killing ALL JARVIS processes...")
+        # Get dynamic configuration - NO HARDCODED PORTS
+        restart_config = get_restart_config()
+        ue_detector = get_ue_detector()
+        async_manager = get_async_restart_manager()
 
-        # Step 0: Gracefully shutdown ML Learning Engine before killing processes
+        # Get ports dynamically from config
+        all_ports = restart_config.get_all_ports()
+        api_ports = restart_config.get_api_ports()
+
+        logger.warning("🔥 ENHANCED FORCE RESTART MODE - Killing ALL JARVIS processes...")
+        logger.info(f"   📋 Dynamic port configuration loaded:")
+        logger.info(f"      Primary API: {restart_config.primary_api_port}")
+        logger.info(f"      Fallback ports: {restart_config.fallback_ports}")
+        logger.info(f"      All managed ports: {all_ports}")
+
+        # Step 0: Scan for UE (Uninterruptible Sleep) processes FIRST
+        logger.info("🔍 Scanning for UE (Uninterruptible Sleep) processes...")
+        ue_scan_results = ue_detector.scan_all_ports(all_ports)
+        ue_blocked_ports = []
+        for port, result in ue_scan_results.items():
+            if result['has_ue_process']:
+                ue_blocked_ports.append(port)
+                logger.warning(f"   ⚠️ Port {port} has UE process (PID {result['pid']}) - CANNOT KILL")
+                logger.warning(f"      Status: {result['status']}")
+                logger.warning(f"      This port will be blacklisted and avoided")
+
+        if ue_blocked_ports:
+            logger.warning(f"   🚫 {len(ue_blocked_ports)} ports blocked by UE processes: {ue_blocked_ports}")
+            logger.info(f"   💡 System will use alternative ports for startup")
+
+        # Step 1: Gracefully shutdown ML Learning Engine before killing processes
         try:
             logger.info("🧠 Attempting graceful ML Learning Engine shutdown...")
             from voice_unlock.continuous_learning_engine import shutdown_learning_engine
 
             # Use asyncio to run async shutdown
-            import asyncio
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -691,12 +1225,12 @@ class ProcessCleanupManager:
         except Exception as e:
             logger.warning(f"Error during ML Learning Engine shutdown: {e}")
 
-        # Step 1: ALWAYS clear Python cache in force restart mode
+        # Step 2: ALWAYS clear Python cache in force restart mode
         cache_cleared = self._clear_python_cache()
         if cache_cleared:
             logger.info(f"✅ Cleared {cache_cleared} total cache items (modules + files)")
 
-        # Step 2: Clear importlib cache to prevent stale module usage
+        # Step 3: Clear importlib cache to prevent stale module usage
         import importlib
         importlib.invalidate_caches()
         logger.info("✅ Invalidated importlib caches")
@@ -713,18 +1247,23 @@ class ProcessCleanupManager:
         python_processes = []
         node_processes = []
         proxy_processes = []
+        ue_state_processes = []  # NEW: Track UE state processes separately
 
-        # Step 3: Enhanced process detection with multiple strategies
+        # Step 4: Enhanced process detection with multiple strategies
         logger.info("🔍 Using multiple strategies to find ALL JARVIS processes...")
 
-        # Extended pattern list for better detection
+        # Extended pattern list for better detection - DYNAMIC based on config
         jarvis_patterns = [
             "main.py", "start_system.py", "jarvis", "JARVIS",
             "unified_websocket", "voice_unlock", "speaker_verification",
             "whisper_audio", "hybrid_stt", "cloud-sql-proxy",
-            "npm start", "react-scripts", "webpack", "node.*3000",
-            "python.*8010", "websocket.*8010", "ws_server"
+            "npm start", "react-scripts", "webpack",
         ]
+        # Add dynamic port patterns
+        for port in api_ports:
+            jarvis_patterns.append(f"python.*{port}")
+            jarvis_patterns.append(f"websocket.*{port}")
+            jarvis_patterns.append(f"node.*{port}")
 
         # Strategy 1: Process iteration with extended patterns
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid", "connections"]):
@@ -746,11 +1285,11 @@ class ProcessCleanupManager:
                             is_jarvis = True
                             break
 
-                # Also check by port connections
+                # Also check by port connections - USING DYNAMIC PORTS
                 if not is_jarvis:
                     try:
                         for conn in proc.connections(kind='inet'):
-                            if conn.laddr.port in [3000, 3001, 8010, 5432]:
+                            if conn.laddr.port in all_ports:
                                 is_jarvis = True
                                 logger.debug(f"Found process on port {conn.laddr.port}: PID {proc.pid}")
                                 break
@@ -758,6 +1297,13 @@ class ProcessCleanupManager:
                         pass
 
                 if is_jarvis:
+                    # Check for UE state BEFORE categorizing
+                    is_ue, ue_status = ue_detector.check_process_state(proc.pid)
+                    if is_ue:
+                        ue_state_processes.append((proc, cmdline, ue_status))
+                        logger.warning(f"   ⚠️ PID {proc.pid} is in UE state ({ue_status}) - will skip")
+                        continue  # Don't try to kill UE processes
+
                     # Enhanced categorization
                     if "main.py" in cmdline:
                         backend_processes.append((proc, cmdline))
@@ -777,15 +1323,22 @@ class ProcessCleanupManager:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        # Strategy 2: Port-based detection (find processes on JARVIS ports)
-        logger.info("🔍 Checking for processes on JARVIS ports (3000, 3001, 8010, 5432)...")
-        for port in [3000, 3001, 8010, 5432]:
+        # Strategy 2: Port-based detection - USING DYNAMIC PORTS
+        ports_to_check = [p for p in all_ports if p not in ue_blocked_ports]
+        logger.info(f"🔍 Checking for processes on JARVIS ports: {ports_to_check}")
+        for port in ports_to_check:
             try:
                 for conn in psutil.net_connections(kind='inet'):
                     if conn.laddr.port == port and conn.status == 'LISTEN':
                         try:
                             proc = psutil.Process(conn.pid)
                             if proc.pid != current_pid and proc.pid != current_ppid:
+                                # Check UE state
+                                is_ue, ue_status = ue_detector.check_process_state(proc.pid)
+                                if is_ue:
+                                    logger.warning(f"   ⚠️ Port {port} PID {proc.pid} is UE state - skipping")
+                                    continue
+
                                 cmdline = " ".join(proc.cmdline()) if proc.cmdline() else ""
                                 # Check if not already in our lists
                                 all_pids = [p[0].pid for p in backend_processes + frontend_processes +
@@ -799,113 +1352,91 @@ class ProcessCleanupManager:
             except Exception as e:
                 logger.debug(f"Port scan error: {e}")
 
-        # Kill in order with AGGRESSIVE timeouts (most critical first)
-        all_process_groups = [
-            (proxy_processes, "cloud-sql-proxy", 1),    # 1s timeout - kill proxy first
-            (backend_processes, "backend", 1),          # 1s timeout - kill backend fast
-            (websocket_processes, "websocket", 1),      # 1s timeout - kill websocket fast
-            (python_processes, "python", 1),            # 1s timeout - kill python processes
-            (node_processes, "node", 2),                # 2s timeout - node processes
-            (related_processes, "related", 2),          # 2s timeout - related processes
-            (frontend_processes, "frontend", 3),        # 3s timeout - frontend last
-        ]
+        # Report UE state processes
+        if ue_state_processes:
+            logger.warning(f"⚠️ {len(ue_state_processes)} processes in UE state (CANNOT KILL):")
+            for proc, cmdline, ue_status in ue_state_processes:
+                logger.warning(f"   • PID {proc.pid}: {ue_status}")
+                logger.warning(f"     Command: {cmdline[:100]}")
 
-        for processes, ptype, timeout in all_process_groups:
-            if not processes:
-                continue
+        # Step 5: Kill processes - Try async parallel cleanup first
+        all_killable_processes = []
+        for proc, cmdline in backend_processes:
+            all_killable_processes.append((proc, cmdline, "backend"))
+        for proc, cmdline in websocket_processes:
+            all_killable_processes.append((proc, cmdline, "websocket"))
+        for proc, cmdline in python_processes:
+            all_killable_processes.append((proc, cmdline, "python"))
+        for proc, cmdline in proxy_processes:
+            all_killable_processes.append((proc, cmdline, "cloud-sql-proxy"))
+        for proc, cmdline in node_processes:
+            all_killable_processes.append((proc, cmdline, "node"))
+        for proc, cmdline in related_processes:
+            all_killable_processes.append((proc, cmdline, "related"))
+        for proc, cmdline in frontend_processes:
+            all_killable_processes.append((proc, cmdline, "frontend"))
 
-            logger.warning(f"🔪 Killing {len(processes)} {ptype} process(es) with {timeout}s timeout...")
+        if all_killable_processes:
+            logger.info(f"🔪 Killing {len(all_killable_processes)} processes...")
 
-            for proc, cmdline in processes:
-                try:
-                    age_seconds = current_time - proc.create_time()
-                    logger.info(f"   → Terminating {ptype} PID {proc.pid} (age: {age_seconds/60:.1f}min)")
-                    logger.debug(f"      Command: {cmdline[:150]}")
-
-                    # Try graceful termination first
-                    try:
-                        proc.terminate()
-                        proc.wait(timeout=timeout)
-                        cleaned.append({
-                            "pid": proc.pid,
-                            "name": proc.name(),
-                            "type": ptype,
-                            "cmdline": cmdline[:100],
-                            "age_minutes": age_seconds / 60,
-                            "status": "terminated",
-                        })
-                        logger.info(f"   ✅ Terminated {ptype} PID {proc.pid}")
-                    except psutil.TimeoutExpired:
-                        # IMMEDIATE force kill if unresponsive
-                        logger.warning(f"   ⚡ Process {proc.pid} unresponsive, FORCE KILLING...")
-                        proc.kill()
-                        # Don't wait, just verify it's dead
-                        time.sleep(0.1)
-                        if not proc.is_running():
-                            cleaned.append({
-                                "pid": proc.pid,
-                                "name": proc.name(),
-                                "type": ptype,
-                                "cmdline": cmdline[:100],
-                                "age_minutes": age_seconds / 60,
-                                "status": "force_killed",
-                            })
-                            logger.warning(f"   💀 Force killed {ptype} PID {proc.pid}")
-                        else:
-                            # Use OS-level kill as last resort
-                            import signal
-                            os.kill(proc.pid, signal.SIGKILL)
-                            logger.error(f"   ☠️ OS-level SIGKILL sent to PID {proc.pid}")
-                            cleaned.append({
-                                "pid": proc.pid,
-                                "name": proc.name(),
-                                "type": ptype,
-                                "cmdline": cmdline[:100],
-                                "age_minutes": age_seconds / 60,
-                                "status": "sigkill",
-                            })
-                    except psutil.NoSuchProcess:
-                        logger.debug(f"   Process {proc.pid} already dead")
-
-                except Exception as e:
-                    # Last resort: shell command kill
-                    try:
-                        import subprocess
-                        subprocess.run(f"kill -9 {proc.pid}", shell=True, capture_output=True)
-                        logger.warning(f"   🔨 Shell kill -9 executed for PID {proc.pid}")
-                        cleaned.append({
-                            "pid": proc.pid,
-                            "name": "unknown",
-                            "type": ptype,
-                            "cmdline": cmdline[:100],
-                            "status": "shell_killed",
-                        })
-                    except:
-                        logger.error(f"   ❌ Failed to kill {ptype} PID {proc.pid}: {e}")
-
-        # Step 4: Final verification - ensure ports are free
-        logger.info("🔍 Verifying all JARVIS ports are free...")
-        for port in [3000, 3001, 8010, 5432]:
+            # Try async parallel cleanup
             try:
-                # Try to bind to the port to verify it's free
-                import socket
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1)
-                result = sock.connect_ex(('127.0.0.1', port))
-                sock.close()
-                if result == 0:
-                    logger.warning(f"   ⚠️ Port {port} still in use after cleanup!")
-                    # Force kill any remaining process on this port
-                    import subprocess
-                    subprocess.run(f"lsof -ti:{port} | xargs kill -9 2>/dev/null",
-                                 shell=True, capture_output=True)
-                    logger.info(f"   ✅ Force killed processes on port {port}")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Already in async context - use sync fallback
+                    cleaned = self._sync_kill_processes(all_killable_processes, current_time, ue_detector)
                 else:
-                    logger.info(f"   ✅ Port {port} is free")
-            except:
-                pass
+                    # Run async cleanup
+                    cleaned = asyncio.run(
+                        async_manager.cleanup_processes_parallel(all_killable_processes)
+                    )
+            except RuntimeError:
+                # No event loop - run async cleanup
+                try:
+                    cleaned = asyncio.run(
+                        async_manager.cleanup_processes_parallel(all_killable_processes)
+                    )
+                except Exception as e:
+                    logger.warning(f"Async cleanup failed ({e}), using sync fallback")
+                    cleaned = self._sync_kill_processes(all_killable_processes, current_time, ue_detector)
 
-        # Step 5: Clear any remaining module references
+            # Report results
+            successful = [r for r in cleaned if r.get('status') in ['terminated', 'force_killed', 'sigkill']]
+            ue_detected = [r for r in cleaned if r.get('ue_state')]
+            failed = [r for r in cleaned if r.get('status') == 'failed']
+
+            logger.info(f"   ✅ Successfully killed: {len(successful)}")
+            if ue_detected:
+                logger.warning(f"   ⚠️ UE state detected (skipped): {len(ue_detected)}")
+            if failed:
+                logger.error(f"   ❌ Failed to kill: {len(failed)}")
+
+        # Step 6: Final verification - ensure ports are free (DYNAMIC PORTS)
+        logger.info("🔍 Verifying all JARVIS ports are free...")
+
+        # Use async port verification if possible
+        try:
+            loop = asyncio.get_event_loop()
+            if not loop.is_running():
+                port_status = asyncio.run(async_manager.verify_ports_free_async(ports_to_check))
+            else:
+                # Sync fallback
+                port_status = self._sync_verify_ports(ports_to_check, ue_detector)
+        except RuntimeError:
+            try:
+                port_status = asyncio.run(async_manager.verify_ports_free_async(ports_to_check))
+            except:
+                port_status = self._sync_verify_ports(ports_to_check, ue_detector)
+
+        for port, status in port_status.items():
+            if status.get('free'):
+                logger.info(f"   ✅ Port {port} is free ({status.get('action', 'ok')})")
+            elif status.get('ue_process'):
+                logger.warning(f"   ⚠️ Port {port} has UE process - blacklisted")
+            else:
+                logger.warning(f"   ⚠️ Port {port} still in use: {status}")
+
+        # Step 7: Clear any remaining module references
         to_remove = []
         for module_name in list(sys.modules.keys()):
             if any(pattern in module_name for pattern in [
@@ -923,9 +1454,19 @@ class ProcessCleanupManager:
         if to_remove:
             logger.info(f"✅ Removed {len(to_remove)} additional JARVIS modules from sys.modules")
 
+        # Step 8: Report healthy port for next startup
+        healthy_port = async_manager.get_healthy_port(exclude_blacklisted=True)
+        if healthy_port:
+            logger.info(f"🎯 Recommended port for next startup: {healthy_port}")
+        else:
+            logger.warning("⚠️ No healthy ports available - may need system restart")
+
         if cleaned:
-            logger.warning(f"✅ BULLETPROOF FORCE RESTART: Killed {len(cleaned)} total processes")
-            logger.info("   System is now completely clean for fresh start")
+            successful_count = len([r for r in cleaned if r.get('status') != 'failed'])
+            logger.warning(f"✅ ENHANCED FORCE RESTART: Processed {len(cleaned)} processes ({successful_count} killed)")
+            logger.info("   System is now clean for fresh start")
+            if ue_blocked_ports:
+                logger.warning(f"   ⚠️ Note: {len(ue_blocked_ports)} ports remain blocked by UE processes")
         else:
             logger.info("✅ No JARVIS processes found - system already clean")
 
@@ -933,6 +1474,180 @@ class ProcessCleanupManager:
         time.sleep(0.5)
 
         return cleaned
+
+    def _sync_kill_processes(
+        self,
+        processes: List[Tuple[psutil.Process, str, str]],
+        current_time: float,
+        ue_detector: UEStateDetector
+    ) -> List[Dict]:
+        """
+        Synchronous process killing fallback with UE state detection.
+        Used when async cleanup is not available.
+        """
+        cleaned = []
+
+        for proc, cmdline, ptype in processes:
+            try:
+                age_seconds = current_time - proc.create_time()
+
+                # Check UE state before attempting kill
+                is_ue, ue_status = ue_detector.check_process_state(proc.pid)
+                if is_ue:
+                    cleaned.append({
+                        "pid": proc.pid,
+                        "name": proc.name() if proc.is_running() else "unknown",
+                        "type": ptype,
+                        "cmdline": cmdline[:100],
+                        "age_minutes": age_seconds / 60,
+                        "status": "ue_state_detected",
+                        "ue_state": True,
+                        "ue_status": ue_status
+                    })
+                    logger.warning(f"   ⚠️ PID {proc.pid} in UE state - skipping")
+                    continue
+
+                logger.info(f"   → Terminating {ptype} PID {proc.pid} (age: {age_seconds/60:.1f}min)")
+
+                # Try graceful termination first
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=2.0)
+                    cleaned.append({
+                        "pid": proc.pid,
+                        "name": proc.name(),
+                        "type": ptype,
+                        "cmdline": cmdline[:100],
+                        "age_minutes": age_seconds / 60,
+                        "status": "terminated",
+                    })
+                    logger.info(f"   ✅ Terminated {ptype} PID {proc.pid}")
+                except psutil.TimeoutExpired:
+                    # IMMEDIATE force kill if unresponsive
+                    logger.warning(f"   ⚡ Process {proc.pid} unresponsive, FORCE KILLING...")
+                    proc.kill()
+                    time.sleep(0.1)
+                    if not proc.is_running():
+                        cleaned.append({
+                            "pid": proc.pid,
+                            "name": proc.name(),
+                            "type": ptype,
+                            "cmdline": cmdline[:100],
+                            "age_minutes": age_seconds / 60,
+                            "status": "force_killed",
+                        })
+                        logger.warning(f"   💀 Force killed {ptype} PID {proc.pid}")
+                    else:
+                        # Check if became UE state
+                        is_ue_now, ue_status = ue_detector.check_process_state(proc.pid)
+                        if is_ue_now:
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "type": ptype,
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "became_ue_state",
+                                "ue_state": True,
+                                "ue_status": ue_status
+                            })
+                            logger.error(f"   ⚠️ PID {proc.pid} became UE state - blacklisting")
+                        else:
+                            # Use OS-level kill as last resort
+                            os.kill(proc.pid, signal.SIGKILL)
+                            logger.error(f"   ☠️ OS-level SIGKILL sent to PID {proc.pid}")
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "type": ptype,
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "sigkill",
+                            })
+                except psutil.NoSuchProcess:
+                    logger.debug(f"   Process {proc.pid} already dead")
+
+            except Exception as e:
+                # Last resort: shell command kill
+                try:
+                    subprocess.run(f"kill -9 {proc.pid}", shell=True, capture_output=True, timeout=2.0)
+                    logger.warning(f"   🔨 Shell kill -9 executed for PID {proc.pid}")
+                    cleaned.append({
+                        "pid": proc.pid,
+                        "name": "unknown",
+                        "type": ptype,
+                        "cmdline": cmdline[:100],
+                        "status": "shell_killed",
+                    })
+                except:
+                    logger.error(f"   ❌ Failed to kill {ptype} PID {proc.pid}: {e}")
+
+        return cleaned
+
+    def _sync_verify_ports(
+        self,
+        ports: List[int],
+        ue_detector: UEStateDetector
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Synchronous port verification fallback with UE detection.
+        """
+        port_status = {}
+
+        for port in ports:
+            # Check for UE process first
+            has_ue, pid, ue_status = ue_detector.check_port_for_ue_process(port)
+            if has_ue:
+                port_status[port] = {
+                    'free': False,
+                    'ue_process': True,
+                    'pid': pid,
+                    'status': ue_status,
+                    'action': 'blacklisted'
+                }
+                continue
+
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+
+                if result == 0:
+                    # Port still in use - try force kill
+                    subprocess.run(
+                        f"lsof -ti:{port} | xargs kill -9 2>/dev/null",
+                        shell=True, capture_output=True, timeout=2.0
+                    )
+                    time.sleep(0.3)
+
+                    # Recheck
+                    sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock2.settimeout(0.5)
+                    recheck = sock2.connect_ex(('127.0.0.1', port))
+                    sock2.close()
+
+                    if recheck != 0:
+                        port_status[port] = {'free': True, 'action': 'force_freed'}
+                    else:
+                        # Check if it's now a UE process
+                        has_ue_now, pid_now, _ = ue_detector.check_port_for_ue_process(port)
+                        if has_ue_now:
+                            port_status[port] = {
+                                'free': False,
+                                'ue_process': True,
+                                'pid': pid_now,
+                                'action': 'blacklisted_after_kill_attempt'
+                            }
+                        else:
+                            port_status[port] = {'free': False, 'action': 'still_in_use'}
+                else:
+                    port_status[port] = {'free': True, 'action': 'already_free'}
+
+            except Exception as e:
+                port_status[port] = {'free': False, 'error': str(e)}
+
+        return port_status
 
     def cleanup_old_instances_on_code_change(self) -> List[Dict]:
         """
