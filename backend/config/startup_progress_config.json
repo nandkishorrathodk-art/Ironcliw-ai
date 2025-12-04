@@ -21,8 +21,8 @@
       "endpoint": "/health",
       "method": "GET",
       "accept_status": [200, 404, 405],
-      "message": "Backend HTTP server accepting TCP connections on port 8010 - FastAPI process alive",
-      "detail": "Uvicorn ASGI server bound to localhost:8010, responding to health checks",
+      "message": "Backend HTTP server accepting TCP connections - FastAPI process alive",
+      "detail": "Uvicorn ASGI server responding to health checks (port auto-discovered)",
       "icon": "⚙️",
       "label": "Backend Init",
       "required": true,
@@ -110,7 +110,7 @@
   "fallback_stages": [
     {
       "progress": 50,
-      "message": "Backend process spawned - waiting for HTTP server to bind to port 8010",
+      "message": "Backend process spawned - waiting for HTTP server to bind",
       "icon": "⏳",
       "label": "Spawning",
       "sublabel": "Waiting for TCP bind",
@@ -191,8 +191,9 @@
   ],
   "backend_config": {
     "host": "localhost",
-    "port": 8010,
-    "protocol": "http"
+    "port": 8011,
+    "protocol": "http",
+    "fallback_ports": [8010, 8000, 8001, 8080, 8888]
   },
   "loading_server": {
     "host": "localhost",

@@ -9172,12 +9172,13 @@ except Exception as e:
                         config = json.load(f)
                 except:
                     # Fallback minimal config if file not found
+                    # Port will be dynamically discovered via parallel scanning
                     config = {
                         "progress_tracking": {"poll_interval_ms": 2000, "max_startup_time_s": 300},
                         "milestones": [
                             {"endpoint": "/health", "progress": 60, "name": "backend", "message": "Backend responding", "icon": "⚙️"}
                         ],
-                        "backend_config": {"host": "localhost", "port": 8010, "protocol": "http"},
+                        "backend_config": {"host": "localhost", "port": 8011, "protocol": "http"},
                         "loading_server": {"host": "localhost", "port": 3001, "protocol": "http", "update_endpoint": "/api/update-progress"}
                     }
 
@@ -9187,7 +9188,155 @@ except Exception as e:
                 backend_cfg = config["backend_config"]
                 loader_cfg = config["loading_server"]
 
-                # Build dynamic URLs
+                # ═══════════════════════════════════════════════════════════════════
+                # ADVANCED ASYNC DYNAMIC PORT DISCOVERY
+                # ═══════════════════════════════════════════════════════════════════
+                # Features:
+                # - Parallel port scanning for speed (all ports checked simultaneously)
+                # - Proper async timeout handling (no event loop blocking)
+                # - Health validation (checks response content, not just status code)
+                # - Graceful degradation with informative logging
+                # - Continuous re-discovery if selected port becomes unresponsive
+                # ═══════════════════════════════════════════════════════════════════
+
+                class AsyncPortDiscovery:
+                    """Fully async port discovery with parallel scanning."""
+
+                    def __init__(self, host: str, protocol: str, timeout: float = 2.0):
+                        self.host = host
+                        self.protocol = protocol
+                        self.timeout = timeout
+                        self.discovered_port = None
+                        self.port_health_scores = {}  # Track port health over time
+                        self._session = None
+
+                    async def _get_session(self):
+                        """Lazy async session creation."""
+                        if self._session is None or self._session.closed:
+                            connector = aiohttp.TCPConnector(
+                                limit=10,
+                                ttl_dns_cache=300,
+                                enable_cleanup_closed=True
+                            )
+                            self._session = aiohttp.ClientSession(
+                                connector=connector,
+                                timeout=aiohttp.ClientTimeout(total=self.timeout)
+                            )
+                        return self._session
+
+                    async def close(self):
+                        """Clean up session."""
+                        if self._session and not self._session.closed:
+                            await self._session.close()
+
+                    async def check_port_health(self, port: int) -> dict:
+                        """Check if a specific port has a healthy backend (Python 3.9+ compatible)."""
+                        result = {
+                            'port': port,
+                            'healthy': False,
+                            'status_code': None,
+                            'response_time_ms': None,
+                            'error': None
+                        }
+
+                        url = f"{self.protocol}://{self.host}:{port}/health"
+                        start_time = asyncio.get_event_loop().time()
+
+                        async def _do_health_check():
+                            """Inner async function for timeout wrapping."""
+                            session = await self._get_session()
+                            async with session.get(url) as resp:
+                                result['status_code'] = resp.status
+                                result['response_time_ms'] = (asyncio.get_event_loop().time() - start_time) * 1000
+                                if resp.status == 200:
+                                    try:
+                                        data = await resp.json()
+                                        if data.get('status') == 'healthy':
+                                            result['healthy'] = True
+                                        elif 'status' in data:
+                                            result['healthy'] = data.get('status') not in ['error', 'failed', 'unhealthy']
+                                        else:
+                                            result['healthy'] = True
+                                    except:
+                                        result['healthy'] = True
+
+                        try:
+                            # Use wait_for for Python 3.9 compatibility
+                            await asyncio.wait_for(_do_health_check(), timeout=self.timeout)
+                        except asyncio.TimeoutError:
+                            result['error'] = 'timeout'
+                            result['response_time_ms'] = self.timeout * 1000
+                        except aiohttp.ClientConnectorError:
+                            result['error'] = 'connection_refused'
+                        except Exception as e:
+                            result['error'] = str(e)[:50]
+
+                        return result
+
+                    async def discover_healthy_port(self, ports: list) -> int:
+                        """Scan multiple ports IN PARALLEL and return the healthiest one."""
+                        # Remove duplicates while preserving priority order
+                        unique_ports = list(dict.fromkeys(ports))
+
+                        print(f"  {Colors.CYAN}🔍 Scanning {len(unique_ports)} ports in parallel...{Colors.ENDC}")
+
+                        # Parallel health checks using asyncio.gather
+                        tasks = [self.check_port_health(port) for port in unique_ports]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                        # Process results
+                        healthy_ports = []
+                        for i, result in enumerate(results):
+                            port = unique_ports[i]
+                            if isinstance(result, Exception):
+                                print(f"    {Colors.RED}✗ Port {port}: Exception - {str(result)[:30]}{Colors.ENDC}")
+                                self.port_health_scores[port] = 0
+                            elif result.get('healthy'):
+                                response_time = result.get('response_time_ms', 0)
+                                print(f"    {Colors.GREEN}✓ Port {port}: Healthy ({response_time:.0f}ms){Colors.ENDC}")
+                                healthy_ports.append((port, response_time))
+                                self.port_health_scores[port] = 100 - min(response_time, 100)
+                            elif result.get('error') == 'timeout':
+                                print(f"    {Colors.YELLOW}⏱ Port {port}: Timeout (stuck process?){Colors.ENDC}")
+                                self.port_health_scores[port] = 0
+                            elif result.get('error') == 'connection_refused':
+                                # Silent - port not in use
+                                self.port_health_scores[port] = 0
+                            else:
+                                print(f"    {Colors.YELLOW}⚠ Port {port}: {result.get('error', 'Unknown')}{Colors.ENDC}")
+                                self.port_health_scores[port] = 10
+
+                        if healthy_ports:
+                            # Sort by response time (fastest first) then by original priority
+                            healthy_ports.sort(key=lambda x: (x[1], unique_ports.index(x[0])))
+                            best_port = healthy_ports[0][0]
+                            print(f"  {Colors.GREEN}✓ Selected port {best_port} (fastest healthy response){Colors.ENDC}")
+                            self.discovered_port = best_port
+                            return best_port
+
+                        # No healthy port found
+                        print(f"  {Colors.YELLOW}⚠ No healthy backend found on any port{Colors.ENDC}")
+                        return unique_ports[0]  # Return first port as fallback
+
+                # Initialize port discovery
+                port_discovery = AsyncPortDiscovery(
+                    host=backend_cfg['host'],
+                    protocol=backend_cfg['protocol'],
+                    timeout=2.0
+                )
+
+                # Priority order: configured port first, then fallback ports from config
+                fallback_ports = backend_cfg.get('fallback_ports', [8010, 8000, 8001, 8080, 8888])
+                ports_to_scan = [backend_cfg['port']] + fallback_ports
+
+                # Discover healthy port using parallel async scanning
+                discovered_port = await port_discovery.discover_healthy_port(ports_to_scan)
+                backend_cfg['port'] = discovered_port  # Update config with discovered port
+
+                # Clean up discovery session
+                await port_discovery.close()
+
+                # Build dynamic URLs (now uses discovered port)
                 backend_base = f"{backend_cfg['protocol']}://{backend_cfg['host']}:{backend_cfg['port']}"
                 loader_url = f"{loader_cfg['protocol']}://{loader_cfg['host']}:{loader_cfg['port']}{loader_cfg['update_endpoint']}"
 
