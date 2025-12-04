@@ -1,10 +1,195 @@
-# JARVIS AI Assistant v17.9.0 - Voice Authentication Enhancement with Cost Optimization
+# JARVIS AI Assistant v17.9.5 - Physics-Aware Voice Authentication Framework
 
-An intelligent voice-activated AI assistant with **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition + 6-Layer Anti-Spoofing), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
-## ⚡ NEW in v17.9.0: Voice Authentication Enhancement with Cost Optimization
+## 🔬 NEW in v17.9.5: Physics-Aware Voice Authentication Framework
+
+JARVIS v17.9.5 introduces **Physics-Aware Voice Authentication** - a groundbreaking mathematical framework that moves beyond "sounds like you" to verify if audio is **"physically producible by your anatomy"**. This upgrade transforms JARVIS from a "Smart Assistant" to a **Security-Grade AI**.
+
+> **📖 Full Documentation:** [Physics-Aware Voice Authentication v2.5](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md)
+
+### Why Physics-Based Authentication?
+
+| Aspect | Standard ML (ECAPA-TDNN) | Physics-Aware (v2.5) |
+|--------|--------------------------|----------------------|
+| **Spoof Detection** | Weak (vulnerable to clones) | **Superior** (detects physical anomalies) |
+| **Noisy Environments** | Fails or Low Confidence | **Robust** (Bayesian noise-aware) |
+| **Verification Basis** | "Sounds like you" | **"Is physically you"** |
+| **Confidence Score** | Statistical pattern guess | **Calculated probability** |
+| **Deepfake Resistance** | Limited | **Strong** (physics violations) |
+
+### Physics Detection Capabilities
+
+#### 1. Reverberation Analysis (Anti-Replay)
+
+Detects replay attacks by analyzing sound physics:
+
+```
+Live Voice:     Room → Microphone → Single reverb signature
+Replay Attack:  Original Room → Recording → Your Room → Double reverb!
+
+Physics Detection:
+├─ RT60 Estimation (Schroeder backward integration)
+├─ Double-Reverb Detection (multi-exponential decay analysis)
+├─ Room Size Estimation (small/medium/large/open)
+└─ Impulse Response Peak Analysis
+```
+
+> **📖 Deep Dive:** [Reverberation Analysis](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md#reverberation-analysis)
+
+#### 2. Vocal Tract Length Verification (Biometric Uniqueness)
+
+Validates voice against your physical anatomy:
+
+```
+Mathematical Model: VTL = c / (2 × Δf)
+Where: c = speed of sound (343 m/s), Δf = formant spacing
+
+Human VTL Ranges:
+├─ Adult Male:   16-20 cm
+├─ Adult Female: 13-16 cm
+└─ Children:     10-13 cm
+
+Detection: If VTL outside human range → Voice conversion/TTS suspected
+```
+
+> **📖 Deep Dive:** [Vocal Tract Length Verification](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md#vocal-tract-length-verification)
+
+#### 3. Doppler Effect Analysis (Liveness Detection)
+
+Distinguishes live speakers from static recordings:
+
+```
+Physics: Δf = f × (v/c)
+Where: v = source velocity, c = speed of sound
+
+Live Speaker: Natural micro-movements → Frequency drift patterns
+Recording:    Static playback device → No Doppler signature
+
+Movement Patterns Detected:
+├─ natural  → Live speaking (2-5 Hz drift, micro-movements)
+├─ subtle   → Minimal movement (still likely live)
+├─ none     → Static source (SUSPICIOUS - possible recording)
+└─ erratic  → Unnatural patterns (possible manipulation)
+```
+
+> **📖 Deep Dive:** [Doppler Effect Analysis](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md#doppler-effect-analysis)
+
+#### 4. Bayesian Confidence Fusion (Multi-Factor Decision)
+
+Combines all evidence using mathematical probability:
+
+```
+P(authentic|evidence) = P(evidence|authentic) × P(authentic) / P(evidence)
+
+Evidence Sources:
+├─ ML Embedding Confidence (ECAPA-TDNN similarity)
+├─ Physics Verification (VTL, reverb, Doppler)
+├─ Behavioral Patterns (time-of-day, unlock frequency)
+└─ Environmental Context (location, device)
+
+Example Fusion:
+├─ ML Confidence:    72% (borderline - noisy audio)
+├─ Physics Score:    95% (VTL matches, natural movement)
+├─ Behavioral:       94% (typical unlock time)
+└─ Bayesian Result:  91% → AUTHENTICATED ✓
+```
+
+> **📖 Deep Dive:** [Bayesian Confidence Fusion](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md#bayesian-confidence-fusion)
+
+### 7-Layer Anti-Spoofing System
+
+```
+Layer 1: Replay Attack Detection      → Fingerprint + temporal matching
+Layer 2: Synthetic Voice Detection    → TTS artifact analysis
+Layer 3: Recording Playback Detection → Room acoustics analysis
+Layer 4: Voice Conversion Detection   → Formant manipulation check
+Layer 5: Liveness Detection           → Micro-variations + breathing
+Layer 6: Deepfake Detection           → Temporal inconsistencies
+Layer 7: Physics-Aware Detection ✨   → VTL + Reverb + Doppler [NEW]
+```
+
+### New Spoof Types Detected
+
+| Spoof Type | Description | Detection Method |
+|------------|-------------|------------------|
+| `DOUBLE_REVERB` | Replay attack via speaker playback | Multi-exponential decay curve |
+| `VTL_MISMATCH` | Voice conversion or TTS attack | Formant spacing physics |
+| `UNNATURAL_MOVEMENT` | Static/erratic frequency patterns | Doppler drift analysis |
+| `PHYSICS_VIOLATION` | Multiple physics anomalies | Combined physics score |
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Physics-Aware Authentication                    │
+├─────────────────────────────────────────────────────────────────┤
+│  Audio Input                                                     │
+│      │                                                           │
+│      ▼                                                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │           PhysicsAwareFeatureExtractor                    │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐         │   │
+│  │  │ReverbAnalyzer│ │VocalTract  │ │DopplerAnalyzer│        │   │
+│  │  │ • RT60      │ │Analyzer    │ │ • Freq drift │         │   │
+│  │  │ • Double-   │ │ • VTL (cm) │ │ • Movement   │         │   │
+│  │  │   reverb    │ │ • Formants │ │   pattern    │         │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘         │   │
+│  │                         │                                 │   │
+│  │                         ▼                                 │   │
+│  │              ┌─────────────────────┐                      │   │
+│  │              │BayesianConfidenceFusion│                   │   │
+│  │              │ P(auth|evidence)    │                      │   │
+│  │              └─────────────────────┘                      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                         │                                        │
+│                         ▼                                        │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │            AntiSpoofingDetector (7 Layers)                │   │
+│  │  Layers 1-6: Traditional    │  Layer 7: Physics-Aware    │   │
+│  │  (Replay, Synthetic, etc.)  │  (VTL, Reverb, Doppler)    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                         │                                        │
+│                         ▼                                        │
+│                  Authentication Decision                         │
+│                  (with physics_confidence)                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Configuration
+
+```bash
+# Physics-Aware Authentication (add to .env)
+export ANTISPOOFING_PHYSICS_ENABLED=true
+export ANTISPOOFING_PHYSICS_WEIGHT=0.35
+
+# Physics Parameters
+export PHYSICS_SPEED_OF_SOUND=343.0       # m/s at 20°C
+export VTL_MIN_CM=12.0                     # Female minimum
+export VTL_MAX_CM=20.0                     # Male maximum
+export VTL_TOLERANCE_CM=1.5                # Baseline deviation allowed
+export DOUBLE_REVERB_THRESHOLD=0.7         # Detection sensitivity
+
+# Bayesian Fusion Priors
+export BAYESIAN_PRIOR_AUTHENTIC=0.85
+export BAYESIAN_PRIOR_SPOOF=0.15
+```
+
+> **📖 Complete Configuration:** [Configuration Reference](docs/PHYSICS_AWARE_VOICE_AUTHENTICATION_v2.5.md#configuration-reference)
+
+### Files Added/Modified in v17.9.5
+
+| File | Changes |
+|------|---------|
+| `backend/voice_unlock/core/feature_extraction.py` | +1,335 lines: Physics analyzers (Reverb, VTL, Doppler, Bayesian) |
+| `backend/voice_unlock/core/anti_spoofing.py` | +250 lines: Layer 7 physics integration |
+| `.gitignore` | Whitelist `backend/voice_unlock/core/` and model files |
+
+---
+
+## ⚡ v17.9.0: Voice Authentication Enhancement with Cost Optimization
 
 JARVIS v17.9.0 introduces a **comprehensive voice authentication enhancement** with intelligent cost optimization, enterprise-grade security, and complete audit trail capabilities. This update reduces authentication costs by **90%** while adding 6-layer anti-spoofing protection.
 
