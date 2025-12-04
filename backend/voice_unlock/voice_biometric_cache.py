@@ -10,6 +10,7 @@ Architecture:
 - L2: Command Semantic Cache (unlock phrase variations)
 - L3: Session Authentication Cache (time-windowed auth tokens)
 - L4: Database Recording Layer (continuous voice learning)
+- L5: Behavioral Pattern Layer (unlock time/interval patterns)
 
 Performance Goals:
 - First unlock: Full biometric verification (2-5 seconds)
@@ -20,12 +21,19 @@ Security:
 - Session expires after configurable timeout (default: 30 minutes)
 - Invalidated on screen lock events
 - Voice embedding must match within similarity threshold
+- Behavioral anomaly detection for suspicious patterns
 
 Continuous Learning:
 - ALL authentication attempts (including cache hits) are recorded to SQLite
 - This enables JARVIS to continuously improve voice recognition
 - Cache provides SPEED, Database provides LEARNING
 - Fire-and-forget async recording to avoid latency impact
+
+Behavioral Pattern Recognition (v2.1):
+- Track typical unlock hours for behavioral scoring
+- Monitor unlock intervals for anomaly detection
+- Calculate behavioral confidence scores
+- Detect unusual access patterns
 """
 
 import asyncio
@@ -53,14 +61,23 @@ VoiceSampleRecorderCallback = Callable[..., "asyncio.coroutine"]
 
 
 # =============================================================================
-# CONFIGURATION CONSTANTS
+# CONFIGURATION CONSTANTS (Dynamic from environment)
 # =============================================================================
-VOICE_EMBEDDING_CACHE_SIZE_MB = 50
-VOICE_EMBEDDING_TTL_SECONDS = 1800  # 30 minutes
-VOICE_SIMILARITY_THRESHOLD = 0.90  # Must be very similar for security
-COMMAND_CACHE_TTL_SECONDS = 300  # 5 minutes for command phrases
-SESSION_AUTH_TTL_SECONDS = 1800  # 30 minutes session validity
-MAX_CACHE_ENTRIES = 100
+import os
+
+VOICE_EMBEDDING_CACHE_SIZE_MB = int(os.getenv("VOICE_CACHE_SIZE_MB", "50"))
+VOICE_EMBEDDING_TTL_SECONDS = int(os.getenv("VOICE_EMBEDDING_TTL", "1800"))  # 30 minutes
+VOICE_SIMILARITY_THRESHOLD = float(os.getenv("VOICE_SIMILARITY_THRESHOLD", "0.90"))
+COMMAND_CACHE_TTL_SECONDS = int(os.getenv("COMMAND_CACHE_TTL", "300"))  # 5 minutes
+SESSION_AUTH_TTL_SECONDS = int(os.getenv("SESSION_AUTH_TTL", "1800"))  # 30 minutes
+MAX_CACHE_ENTRIES = int(os.getenv("MAX_CACHE_ENTRIES", "100"))
+
+# Behavioral pattern configuration
+BEHAVIORAL_PATTERN_ENABLED = os.getenv("BEHAVIORAL_PATTERN_ENABLED", "true").lower() == "true"
+BEHAVIORAL_WEIGHT = float(os.getenv("BEHAVIORAL_WEIGHT", "0.15"))  # 15% weight in fusion
+MAX_UNLOCK_HISTORY = int(os.getenv("MAX_UNLOCK_HISTORY", "100"))
+UNUSUAL_HOUR_PENALTY = float(os.getenv("UNUSUAL_HOUR_PENALTY", "0.1"))
+UNUSUAL_INTERVAL_PENALTY = float(os.getenv("UNUSUAL_INTERVAL_PENALTY", "0.05"))
 
 
 class CacheHitType(Enum):
@@ -122,6 +139,230 @@ class BiometricCacheResult:
     session_id: Optional[str] = None
     cache_age_seconds: float = 0.0
     similarity_score: float = 0.0
+    # Behavioral analysis results (v2.1)
+    behavioral_score: float = 0.5  # Default neutral
+    time_of_day_normal: bool = True
+    interval_normal: bool = True
+    behavioral_reasons: List[str] = field(default_factory=list)
+
+
+# =============================================================================
+# BEHAVIORAL PATTERN ANALYZER
+# =============================================================================
+
+class BehavioralPatternAnalyzer:
+    """
+    Analyzes unlock patterns to provide behavioral confidence scores.
+
+    Tracks:
+    - Typical unlock hours (when does user usually unlock?)
+    - Unlock intervals (how often does user unlock?)
+    - Day-of-week patterns (weekday vs weekend)
+    - Session duration patterns
+
+    Used for multi-factor authentication fusion:
+    - High behavioral score + moderate voice score = likely authentic
+    - Low behavioral score + high voice score = verify carefully
+    - Low behavioral score + low voice score = deny
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.BehavioralAnalyzer")
+
+        # Unlock history: list of (datetime, speaker_name) tuples
+        self._unlock_history: List[Tuple[datetime, str]] = []
+
+        # Learned patterns per speaker
+        self._speaker_patterns: Dict[str, Dict[str, Any]] = {}
+
+        # Configuration
+        self._max_history = MAX_UNLOCK_HISTORY
+        self._enabled = BEHAVIORAL_PATTERN_ENABLED
+
+    def record_unlock(self, speaker_name: str, unlock_time: Optional[datetime] = None):
+        """
+        Record an unlock event for pattern learning.
+
+        Args:
+            speaker_name: Name of the authenticated speaker
+            unlock_time: Time of unlock (default: now)
+        """
+        unlock_time = unlock_time or datetime.now()
+
+        # Add to history
+        self._unlock_history.append((unlock_time, speaker_name))
+
+        # Trim history if needed
+        if len(self._unlock_history) > self._max_history:
+            self._unlock_history = self._unlock_history[-self._max_history:]
+
+        # Update speaker patterns
+        self._update_speaker_patterns(speaker_name, unlock_time)
+
+    def _update_speaker_patterns(self, speaker_name: str, unlock_time: datetime):
+        """Update learned patterns for a speaker"""
+        if speaker_name not in self._speaker_patterns:
+            self._speaker_patterns[speaker_name] = {
+                "typical_hours": [],
+                "typical_days": [],
+                "unlock_count": 0,
+                "avg_interval_hours": 0.0,
+                "last_unlock": None,
+            }
+
+        patterns = self._speaker_patterns[speaker_name]
+
+        # Track hour of day
+        hour = unlock_time.hour
+        if hour not in patterns["typical_hours"]:
+            patterns["typical_hours"].append(hour)
+            # Keep only most recent 12 hours
+            if len(patterns["typical_hours"]) > 12:
+                patterns["typical_hours"] = patterns["typical_hours"][-12:]
+
+        # Track day of week
+        day = unlock_time.weekday()
+        if day not in patterns["typical_days"]:
+            patterns["typical_days"].append(day)
+
+        # Update interval tracking
+        if patterns["last_unlock"]:
+            interval = (unlock_time - patterns["last_unlock"]).total_seconds() / 3600
+            # Exponential moving average for interval
+            alpha = 0.1
+            patterns["avg_interval_hours"] = (
+                alpha * interval + (1 - alpha) * patterns["avg_interval_hours"]
+            )
+
+        patterns["unlock_count"] += 1
+        patterns["last_unlock"] = unlock_time
+
+    def analyze_behavioral_context(
+        self,
+        speaker_name: str,
+        unlock_time: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze behavioral context for authentication decision.
+
+        Args:
+            speaker_name: Speaker attempting authentication
+            unlock_time: Time of authentication attempt
+
+        Returns:
+            Dict with behavioral analysis:
+            - behavioral_score: 0.0-1.0 (higher = more normal)
+            - time_of_day_normal: bool
+            - interval_normal: bool
+            - reasons: list of explanation strings
+        """
+        if not self._enabled:
+            return {
+                "behavioral_score": 0.5,
+                "time_of_day_normal": True,
+                "interval_normal": True,
+                "reasons": ["Behavioral analysis disabled"],
+            }
+
+        unlock_time = unlock_time or datetime.now()
+        patterns = self._speaker_patterns.get(speaker_name)
+
+        result = {
+            "behavioral_score": 0.5,  # Neutral default
+            "time_of_day_normal": True,
+            "interval_normal": True,
+            "reasons": [],
+        }
+
+        # If no history, can't analyze
+        if not patterns or patterns["unlock_count"] < 3:
+            result["reasons"].append("Insufficient history for behavioral analysis")
+            return result
+
+        score = 0.5
+        current_hour = unlock_time.hour
+        current_day = unlock_time.weekday()
+
+        # Check time of day
+        if patterns["typical_hours"]:
+            if current_hour in patterns["typical_hours"]:
+                score += 0.2
+                result["reasons"].append(f"Normal unlock hour ({current_hour})")
+            else:
+                # Check if within 2 hours of typical
+                close_to_typical = any(
+                    abs(current_hour - h) <= 2 or abs(current_hour - h) >= 22
+                    for h in patterns["typical_hours"]
+                )
+                if close_to_typical:
+                    score += 0.1
+                    result["reasons"].append(f"Close to typical hours ({current_hour})")
+                else:
+                    score -= UNUSUAL_HOUR_PENALTY
+                    result["time_of_day_normal"] = False
+                    result["reasons"].append(f"Unusual unlock hour ({current_hour})")
+
+        # Check day of week
+        if patterns["typical_days"]:
+            if current_day in patterns["typical_days"]:
+                score += 0.1
+                result["reasons"].append("Normal unlock day")
+            else:
+                score -= 0.05
+                result["reasons"].append(f"Unusual day (day={current_day})")
+
+        # Check interval since last unlock
+        if patterns["last_unlock"] and patterns["avg_interval_hours"] > 0:
+            hours_since = (unlock_time - patterns["last_unlock"]).total_seconds() / 3600
+            expected_interval = patterns["avg_interval_hours"]
+
+            # Within 2x expected interval is normal
+            if hours_since <= expected_interval * 2:
+                score += 0.1
+                result["reasons"].append("Normal unlock interval")
+            elif hours_since > expected_interval * 5:
+                score -= UNUSUAL_INTERVAL_PENALTY
+                result["interval_normal"] = False
+                result["reasons"].append(
+                    f"Long time since last unlock ({hours_since:.1f}h, expected ~{expected_interval:.1f}h)"
+                )
+
+        # Clamp score to 0.0-1.0
+        result["behavioral_score"] = max(0.0, min(1.0, score))
+
+        self.logger.debug(
+            f"Behavioral analysis for {speaker_name}: "
+            f"score={result['behavioral_score']:.2f}, "
+            f"time_normal={result['time_of_day_normal']}, "
+            f"interval_normal={result['interval_normal']}"
+        )
+
+        return result
+
+    def get_speaker_patterns(self, speaker_name: str) -> Optional[Dict[str, Any]]:
+        """Get learned patterns for a speaker"""
+        return self._speaker_patterns.get(speaker_name)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get behavioral analyzer statistics"""
+        return {
+            "enabled": self._enabled,
+            "total_unlocks_tracked": len(self._unlock_history),
+            "speakers_tracked": len(self._speaker_patterns),
+            "speaker_names": list(self._speaker_patterns.keys()),
+        }
+
+
+# Global behavioral analyzer instance
+_behavioral_analyzer: Optional[BehavioralPatternAnalyzer] = None
+
+
+def get_behavioral_analyzer() -> BehavioralPatternAnalyzer:
+    """Get or create the global behavioral pattern analyzer"""
+    global _behavioral_analyzer
+    if _behavioral_analyzer is None:
+        _behavioral_analyzer = BehavioralPatternAnalyzer()
+    return _behavioral_analyzer
 
 
 class VoiceBiometricCache:

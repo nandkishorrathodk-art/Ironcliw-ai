@@ -29,27 +29,51 @@ Key Features:
 3. SYNC real-time authentication results back to database
 4. LEARN from every unlock attempt to improve recognition
 5. OPTIMIZE with ChromaDB for semantic voice pattern matching
+6. ANTI-SPOOFING via behavioral pattern analysis
+7. VOICE EVOLUTION tracking for adaptive recognition
+8. COST OPTIMIZATION with Helicone-style semantic caching
 
 Performance Goals:
 - First unlock after startup: < 500ms (preloaded embedding match)
 - Subsequent unlocks in session: < 100ms (cache hit)
 - Cold start with model loading: < 5s (parallel loading)
+- Semantic cache hit: < 10ms (ChromaDB similarity search)
 """
 
 import asyncio
 import base64
+import hashlib
 import logging
 import os
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# CHROMADB INTEGRATION FOR SEMANTIC VOICE PATTERN CACHING
+# =============================================================================
+try:
+    import chromadb
+    from chromadb.config import Settings as ChromaSettings
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    logger.debug("ChromaDB not available - semantic pattern caching disabled")
+
+# Cost tracking integration
+try:
+    from core.cost_tracker import get_cost_tracker, CostTracker
+    COST_TRACKER_AVAILABLE = True
+except ImportError:
+    COST_TRACKER_AVAILABLE = False
+    logger.debug("CostTracker not available")
 
 
 # =============================================================================
@@ -178,26 +202,48 @@ def audio_data_to_numpy(audio_data, sample_rate: int = 16000) -> Optional[np.nda
 # CONFIGURATION
 # =============================================================================
 class CacheConfig:
-    """Unified cache configuration"""
+    """Unified cache configuration - Dynamic, no hardcoding"""
     # Embedding dimensions
-    EMBEDDING_DIM = 192
+    EMBEDDING_DIM = int(os.getenv("VOICE_EMBEDDING_DIM", "192"))
 
-    # Similarity thresholds
-    INSTANT_MATCH_THRESHOLD = 0.92   # Very high - instant unlock
-    STANDARD_MATCH_THRESHOLD = 0.85  # Standard verification
-    LEARNING_THRESHOLD = 0.75        # Record for learning, don't unlock
+    # Similarity thresholds (configurable via env)
+    INSTANT_MATCH_THRESHOLD = float(os.getenv("VBI_INSTANT_THRESHOLD", "0.92"))
+    STANDARD_MATCH_THRESHOLD = float(os.getenv("VBI_CONFIDENT_THRESHOLD", "0.85"))
+    LEARNING_THRESHOLD = float(os.getenv("VBI_LEARNING_THRESHOLD", "0.75"))
+    SPOOFING_DETECTION_THRESHOLD = float(os.getenv("VBI_SPOOFING_THRESHOLD", "0.65"))
 
     # Session settings
-    SESSION_TTL_SECONDS = 1800       # 30 minutes
-    PRELOAD_TIMEOUT_SECONDS = 10.0   # Max time to preload profiles
+    SESSION_TTL_SECONDS = int(os.getenv("VOICE_SESSION_TTL", "1800"))  # 30 minutes
+    PRELOAD_TIMEOUT_SECONDS = float(os.getenv("VOICE_PRELOAD_TIMEOUT", "10.0"))
 
     # Cache sizes
-    MAX_CACHED_EMBEDDINGS = 50
-    MAX_PATTERN_HISTORY = 100
+    MAX_CACHED_EMBEDDINGS = int(os.getenv("MAX_CACHED_EMBEDDINGS", "50"))
+    MAX_PATTERN_HISTORY = int(os.getenv("MAX_PATTERN_HISTORY", "100"))
+
+    # Semantic cache settings (Helicone-style)
+    SEMANTIC_CACHE_TTL_SECONDS = int(os.getenv("SEMANTIC_CACHE_TTL", "300"))  # 5 min
+    SEMANTIC_SIMILARITY_THRESHOLD = float(os.getenv("SEMANTIC_SIMILARITY", "0.95"))
+
+    # Anti-spoofing settings
+    REPLAY_DETECTION_WINDOW_SECONDS = int(os.getenv("REPLAY_WINDOW", "60"))
+    MAX_REPLAY_SIMILARITY = float(os.getenv("MAX_REPLAY_SIMILARITY", "0.99"))
+    MIN_VOICE_VARIATION = float(os.getenv("MIN_VOICE_VARIATION", "0.02"))
+
+    # Voice evolution tracking
+    VOICE_DRIFT_THRESHOLD = float(os.getenv("VOICE_DRIFT_THRESHOLD", "0.03"))
+    VOICE_DRIFT_WINDOW_DAYS = int(os.getenv("VOICE_DRIFT_WINDOW", "30"))
+
+    # Cost optimization
+    ENABLE_COST_TRACKING = os.getenv("ENABLE_COST_TRACKING", "true").lower() == "true"
+    COST_PER_EMBEDDING_EXTRACTION = float(os.getenv("COST_PER_EMBEDDING", "0.0001"))
 
     # Database paths
     DEFAULT_DB_PATH = os.path.expanduser("~/.jarvis/voice_unlock_metrics.db")
     DEFAULT_CHROMA_PATH = os.path.expanduser("~/.jarvis/chroma_voice_patterns")
+
+    # ChromaDB settings
+    CHROMA_COLLECTION_NAME = os.getenv("CHROMA_VOICE_COLLECTION", "voice_patterns")
+    CHROMA_PERSIST_ENABLED = os.getenv("CHROMA_PERSIST", "true").lower() == "true"
 
 
 class CacheState(Enum):
@@ -212,7 +258,7 @@ class CacheState(Enum):
 
 @dataclass
 class VoiceProfile:
-    """Cached voice profile with embedding and metadata"""
+    """Cached voice profile with embedding and metadata for intelligent recognition"""
     speaker_name: str
     embedding: np.ndarray
     embedding_dimensions: int = 192
@@ -222,23 +268,95 @@ class VoiceProfile:
     created_at: datetime = field(default_factory=datetime.now)
     source: str = "database"
 
+    # Voice evolution tracking
+    baseline_embedding: Optional[np.ndarray] = None
+    drift_percentage: float = 0.0
+    last_drift_check: Optional[datetime] = None
+
+    # Anti-spoofing metadata
+    known_microphones: List[str] = field(default_factory=list)
+    typical_snr_range: Tuple[float, float] = field(default_factory=lambda: (12.0, 25.0))
+    typical_f0_range: Tuple[float, float] = field(default_factory=lambda: (85.0, 180.0))
+
+    # Behavioral patterns
+    typical_unlock_hours: List[int] = field(default_factory=list)
+    avg_unlock_interval_hours: float = 0.0
+    total_unlocks: int = 0
+
+    # Environment signatures
+    known_environments: Dict[str, np.ndarray] = field(default_factory=dict)
+
     def is_valid(self) -> bool:
         """Check if profile has valid embedding"""
         return (
             self.embedding is not None and
-            len(self.embedding) == self.embedding_dimensions
+            len(self.embedding) >= 50  # Allow flexible dimensions
         )
+
+    def update_behavioral_stats(self, unlock_time: datetime):
+        """Update behavioral patterns from unlock event"""
+        hour = unlock_time.hour
+        if hour not in self.typical_unlock_hours:
+            self.typical_unlock_hours.append(hour)
+            # Keep only top 12 hours
+            if len(self.typical_unlock_hours) > 12:
+                self.typical_unlock_hours = self.typical_unlock_hours[-12:]
+
+        self.total_unlocks += 1
+
+        if self.last_verified:
+            interval = (unlock_time - self.last_verified).total_seconds() / 3600
+            # Exponential moving average for interval
+            alpha = 0.1
+            self.avg_unlock_interval_hours = (
+                alpha * interval + (1 - alpha) * self.avg_unlock_interval_hours
+            )
+
+    def check_voice_drift(self, new_embedding: np.ndarray) -> float:
+        """Check how much voice has drifted from baseline"""
+        if self.baseline_embedding is None:
+            self.baseline_embedding = self.embedding.copy()
+            return 0.0
+
+        # Compute drift as 1 - cosine_similarity
+        norm_new = np.linalg.norm(new_embedding)
+        norm_base = np.linalg.norm(self.baseline_embedding)
+        if norm_new == 0 or norm_base == 0:
+            return 0.0
+
+        similarity = np.dot(new_embedding, self.baseline_embedding) / (norm_new * norm_base)
+        drift = 1.0 - similarity
+        self.drift_percentage = drift
+        self.last_drift_check = datetime.now()
+        return drift
 
 
 @dataclass
 class MatchResult:
-    """Result of voice matching against cached profiles"""
+    """Result of voice matching against cached profiles with anti-spoofing analysis"""
     matched: bool
     speaker_name: Optional[str] = None
     similarity: float = 0.0
     match_type: str = "none"  # "instant", "standard", "learning", "none"
     match_time_ms: float = 0.0
-    profile_source: str = "none"  # "preloaded", "session_cache", "database"
+    profile_source: str = "none"  # "preloaded", "session_cache", "database", "chromadb"
+
+    # Anti-spoofing results
+    spoofing_detected: bool = False
+    spoofing_type: Optional[str] = None  # "replay", "synthetic", "voice_conversion"
+    spoofing_confidence: float = 0.0
+
+    # Cost tracking
+    cost_usd: float = 0.0
+    cache_saved_cost: float = 0.0
+
+    # Voice evolution
+    voice_drift_detected: bool = False
+    voice_drift_percentage: float = 0.0
+
+    # Behavioral analysis
+    behavioral_score: float = 0.0
+    time_of_day_normal: bool = True
 
     @property
     def is_instant_match(self) -> bool:
@@ -248,10 +366,32 @@ class MatchResult:
     def is_learning_only(self) -> bool:
         return self.match_type == "learning"
 
+    @property
+    def is_secure(self) -> bool:
+        """Check if match is secure (no spoofing detected)"""
+        return self.matched and not self.spoofing_detected
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for logging/API response"""
+        return {
+            "matched": self.matched,
+            "speaker_name": self.speaker_name,
+            "similarity": round(self.similarity, 4),
+            "match_type": self.match_type,
+            "match_time_ms": round(self.match_time_ms, 2),
+            "profile_source": self.profile_source,
+            "spoofing_detected": self.spoofing_detected,
+            "spoofing_type": self.spoofing_type,
+            "cost_usd": round(self.cost_usd, 6),
+            "cache_saved_cost": round(self.cache_saved_cost, 6),
+            "voice_drift_percentage": round(self.voice_drift_percentage, 4),
+            "behavioral_score": round(self.behavioral_score, 2),
+        }
+
 
 @dataclass
 class CacheStats:
-    """Comprehensive cache statistics"""
+    """Comprehensive cache statistics with cost and security metrics"""
     state: CacheState = CacheState.UNINITIALIZED
     profiles_preloaded: int = 0
     models_loaded: bool = False
@@ -263,15 +403,39 @@ class CacheStats:
     learning_matches: int = 0
     no_matches: int = 0
 
+    # ChromaDB semantic cache statistics
+    chromadb_enabled: bool = False
+    chromadb_lookups: int = 0
+    chromadb_hits: int = 0
+    chromadb_patterns_stored: int = 0
+
     # Timing
     avg_match_time_ms: float = 0.0
     total_time_saved_ms: float = 0.0
+    avg_chromadb_lookup_ms: float = 0.0
 
     # Learning
     samples_recorded: int = 0
     embedding_updates: int = 0
 
+    # Cost optimization (Helicone-style)
+    total_cost_usd: float = 0.0
+    total_cost_saved_usd: float = 0.0
+    cache_hit_savings_usd: float = 0.0
+    embeddings_extracted: int = 0
+    embeddings_from_cache: int = 0
+
+    # Anti-spoofing statistics
+    spoofing_attempts_detected: int = 0
+    replay_attacks_blocked: int = 0
+    synthetic_voice_blocked: int = 0
+
+    # Voice evolution
+    voice_drift_detections: int = 0
+    profiles_auto_updated: int = 0
+
     def to_dict(self) -> Dict[str, Any]:
+        total = max(1, self.total_lookups)
         return {
             "state": self.state.value,
             "profiles_preloaded": self.profiles_preloaded,
@@ -281,13 +445,33 @@ class CacheStats:
             "standard_matches": self.standard_matches,
             "learning_matches": self.learning_matches,
             "no_matches": self.no_matches,
-            "instant_match_rate": (
-                self.instant_matches / max(1, self.total_lookups)
-            ),
-            "avg_match_time_ms": self.avg_match_time_ms,
-            "total_time_saved_ms": self.total_time_saved_ms,
+            "instant_match_rate": self.instant_matches / total,
+            "overall_match_rate": (self.instant_matches + self.standard_matches) / total,
+            "avg_match_time_ms": round(self.avg_match_time_ms, 2),
+            "total_time_saved_ms": round(self.total_time_saved_ms, 0),
             "samples_recorded": self.samples_recorded,
             "embedding_updates": self.embedding_updates,
+            # ChromaDB stats
+            "chromadb_enabled": self.chromadb_enabled,
+            "chromadb_lookups": self.chromadb_lookups,
+            "chromadb_hits": self.chromadb_hits,
+            "chromadb_hit_rate": self.chromadb_hits / max(1, self.chromadb_lookups),
+            "chromadb_patterns_stored": self.chromadb_patterns_stored,
+            "avg_chromadb_lookup_ms": round(self.avg_chromadb_lookup_ms, 2),
+            # Cost stats
+            "total_cost_usd": round(self.total_cost_usd, 4),
+            "total_cost_saved_usd": round(self.total_cost_saved_usd, 4),
+            "cache_hit_savings_usd": round(self.cache_hit_savings_usd, 4),
+            "embeddings_extracted": self.embeddings_extracted,
+            "embeddings_from_cache": self.embeddings_from_cache,
+            "cache_efficiency": self.embeddings_from_cache / max(1, self.embeddings_extracted + self.embeddings_from_cache),
+            # Security stats
+            "spoofing_attempts_detected": self.spoofing_attempts_detected,
+            "replay_attacks_blocked": self.replay_attacks_blocked,
+            "synthetic_voice_blocked": self.synthetic_voice_blocked,
+            # Evolution stats
+            "voice_drift_detections": self.voice_drift_detections,
+            "profiles_auto_updated": self.profiles_auto_updated,
         }
 
 
@@ -313,7 +497,7 @@ class UnifiedVoiceCacheManager:
         config: Optional[CacheConfig] = None,
     ):
         """
-        Initialize the unified cache manager.
+        Initialize the unified cache manager with ChromaDB and cost tracking.
 
         Args:
             db_path: Path to SQLite database with voice embeddings
@@ -343,8 +527,28 @@ class UnifiedVoiceCacheManager:
         # Reference to voice biometric cache (for integration)
         self._biometric_cache = None
 
-        # Reference to ChromaDB collection (optional)
+        # =================================================================
+        # CHROMADB SEMANTIC CACHE (Helicone-style pattern caching)
+        # =================================================================
+        self._chroma_client = None
         self._chroma_collection = None
+        self._chromadb_initialized = False
+
+        # =================================================================
+        # ANTI-SPOOFING: Recent embeddings for replay detection
+        # =================================================================
+        self._recent_embeddings: List[Tuple[np.ndarray, datetime, str]] = []
+        self._max_recent_embeddings = 50
+
+        # =================================================================
+        # COST TRACKING
+        # =================================================================
+        self._cost_tracker: Optional[CostTracker] = None
+        if COST_TRACKER_AVAILABLE and CacheConfig.ENABLE_COST_TRACKING:
+            try:
+                self._cost_tracker = get_cost_tracker()
+            except Exception as e:
+                logger.debug(f"Cost tracker not initialized: {e}")
 
         # Statistics
         self._stats = CacheStats()
@@ -352,10 +556,15 @@ class UnifiedVoiceCacheManager:
         # Background task handles
         self._background_tasks: List[asyncio.Task] = []
 
+        # Voice evolution tracking
+        self._evolution_check_interval = timedelta(days=CacheConfig.VOICE_DRIFT_WINDOW_DAYS)
+
         logger.info(
             f"UnifiedVoiceCacheManager created "
             f"(db={self.db_path}, chroma={self.chroma_path})"
         )
+        logger.info(f"  ChromaDB available: {CHROMADB_AVAILABLE}")
+        logger.info(f"  Cost tracking enabled: {CacheConfig.ENABLE_COST_TRACKING}")
 
     @property
     def state(self) -> CacheState:
@@ -378,21 +587,24 @@ class UnifiedVoiceCacheManager:
         preload_profiles: bool = True,
         preload_models: bool = True,
         connect_biometric_cache: bool = True,
+        init_chromadb: bool = True,
         timeout: float = CacheConfig.PRELOAD_TIMEOUT_SECONDS,
     ) -> bool:
         """
-        Initialize the unified cache system.
+        Initialize the unified cache system with ChromaDB and cost tracking.
 
         This is the CRITICAL startup path that:
         1. Loads Derek's voice profile from SQLite
         2. Preloads ML models (via ParallelModelLoader)
         3. Connects to VoiceBiometricCache for session caching
-        4. Optionally connects to ChromaDB for patterns
+        4. Initializes ChromaDB for semantic pattern caching
+        5. Sets up cost tracking integration
 
         Args:
             preload_profiles: Load voice profiles from database
             preload_models: Prewarm ML models
             connect_biometric_cache: Connect to session cache
+            init_chromadb: Initialize ChromaDB semantic cache
             timeout: Maximum time for initialization
 
         Returns:
@@ -419,6 +631,9 @@ class UnifiedVoiceCacheManager:
                 if connect_biometric_cache:
                     tasks.append(self._connect_biometric_cache())
 
+                if init_chromadb and CHROMADB_AVAILABLE:
+                    tasks.append(self._initialize_chromadb())
+
                 # Execute all tasks with timeout
                 if tasks:
                     await asyncio.wait_for(
@@ -430,9 +645,10 @@ class UnifiedVoiceCacheManager:
                 init_time = (time.time() - start_time) * 1000
 
                 logger.info(
-                    f"UnifiedVoiceCacheManager initialized in {init_time:.0f}ms "
+                    f"✅ UnifiedVoiceCacheManager initialized in {init_time:.0f}ms "
                     f"(profiles={self.profiles_loaded}, "
-                    f"models_ready={self._stats.models_loaded})"
+                    f"models_ready={self._stats.models_loaded}, "
+                    f"chromadb={self._chromadb_initialized})"
                 )
                 return True
 
@@ -448,6 +664,431 @@ class UnifiedVoiceCacheManager:
                 self._state = CacheState.ERROR
                 logger.error(f"UnifiedVoiceCacheManager initialization failed: {e}")
                 return False
+
+    async def _initialize_chromadb(self) -> bool:
+        """
+        Initialize ChromaDB for semantic voice pattern caching.
+
+        ChromaDB provides:
+        - Fast similarity search for voice patterns
+        - Persistent storage of authentication patterns
+        - Anti-spoofing via pattern anomaly detection
+        - Cost optimization by caching similar requests
+
+        Returns:
+            True if ChromaDB initialized successfully
+        """
+        if not CHROMADB_AVAILABLE:
+            logger.debug("ChromaDB not available - skipping initialization")
+            return False
+
+        try:
+            # Create ChromaDB directory if needed
+            os.makedirs(self.chroma_path, exist_ok=True)
+
+            # Initialize persistent client
+            if CacheConfig.CHROMA_PERSIST_ENABLED:
+                self._chroma_client = chromadb.PersistentClient(
+                    path=self.chroma_path,
+                    settings=ChromaSettings(
+                        anonymized_telemetry=False,
+                        allow_reset=True,
+                    )
+                )
+            else:
+                self._chroma_client = chromadb.Client()
+
+            # Get or create voice patterns collection
+            self._chroma_collection = self._chroma_client.get_or_create_collection(
+                name=CacheConfig.CHROMA_COLLECTION_NAME,
+                metadata={
+                    "description": "Voice biometric patterns for semantic caching",
+                    "hnsw:space": "cosine",  # Use cosine similarity
+                    "created_at": datetime.now().isoformat(),
+                }
+            )
+
+            self._chromadb_initialized = True
+            self._stats.chromadb_enabled = True
+
+            # Get existing pattern count
+            count = self._chroma_collection.count()
+            self._stats.chromadb_patterns_stored = count
+
+            logger.info(
+                f"✅ ChromaDB initialized: {count} patterns stored "
+                f"(path={self.chroma_path})"
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(f"ChromaDB initialization failed: {e}")
+            self._chromadb_initialized = False
+            return False
+
+    async def semantic_cache_lookup(
+        self,
+        embedding: np.ndarray,
+        speaker_hint: Optional[str] = None,
+        n_results: int = 3,
+    ) -> Optional[MatchResult]:
+        """
+        Look up embedding in ChromaDB semantic cache.
+
+        This is the FAST PATH for voice pattern matching:
+        - Searches for similar patterns in ChromaDB
+        - Returns cached result if similarity > threshold
+        - Saves cost by avoiding redundant ML processing
+
+        Args:
+            embedding: Voice embedding to search for
+            speaker_hint: Optional speaker name hint
+            n_results: Number of results to retrieve
+
+        Returns:
+            MatchResult if cache hit, None otherwise
+        """
+        if not self._chromadb_initialized or self._chroma_collection is None:
+            return None
+
+        start_time = time.time()
+        self._stats.chromadb_lookups += 1
+
+        try:
+            # Normalize embedding
+            embedding_normalized = self._normalize_embedding(embedding)
+
+            # Query ChromaDB for similar patterns
+            results = self._chroma_collection.query(
+                query_embeddings=[embedding_normalized.tolist()],
+                n_results=n_results,
+                include=["metadatas", "distances"],
+            )
+
+            if not results["ids"] or not results["ids"][0]:
+                return None
+
+            # Check best match
+            best_distance = results["distances"][0][0] if results["distances"][0] else 1.0
+            best_similarity = 1.0 - best_distance  # Convert distance to similarity
+            best_metadata = results["metadatas"][0][0] if results["metadatas"][0] else {}
+
+            lookup_time_ms = (time.time() - start_time) * 1000
+
+            # Update stats
+            n = self._stats.chromadb_lookups
+            self._stats.avg_chromadb_lookup_ms = (
+                (self._stats.avg_chromadb_lookup_ms * (n - 1) + lookup_time_ms) / n
+            )
+
+            # Check if match is good enough
+            if best_similarity >= CacheConfig.SEMANTIC_SIMILARITY_THRESHOLD:
+                self._stats.chromadb_hits += 1
+
+                # Calculate cost savings
+                cost_saved = CacheConfig.COST_PER_EMBEDDING_EXTRACTION
+                self._stats.cache_hit_savings_usd += cost_saved
+
+                return MatchResult(
+                    matched=True,
+                    speaker_name=best_metadata.get("speaker_name", speaker_hint),
+                    similarity=best_similarity,
+                    match_type="instant" if best_similarity >= CacheConfig.INSTANT_MATCH_THRESHOLD else "standard",
+                    match_time_ms=lookup_time_ms,
+                    profile_source="chromadb",
+                    cost_usd=0.0,
+                    cache_saved_cost=cost_saved,
+                )
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"ChromaDB lookup error: {e}")
+            return None
+
+    async def semantic_cache_store(
+        self,
+        embedding: np.ndarray,
+        speaker_name: str,
+        confidence: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Store embedding in ChromaDB semantic cache.
+
+        Args:
+            embedding: Voice embedding to store
+            speaker_name: Speaker name
+            confidence: Verification confidence
+            metadata: Additional metadata
+
+        Returns:
+            True if stored successfully
+        """
+        if not self._chromadb_initialized or self._chroma_collection is None:
+            return False
+
+        try:
+            # Generate unique ID
+            embedding_hash = hashlib.md5(embedding.tobytes()).hexdigest()[:16]
+            doc_id = f"{speaker_name}_{embedding_hash}_{int(time.time())}"
+
+            # Normalize embedding
+            embedding_normalized = self._normalize_embedding(embedding)
+
+            # Prepare metadata
+            doc_metadata = {
+                "speaker_name": speaker_name,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat(),
+                "ttl_expires": (datetime.now() + timedelta(seconds=CacheConfig.SEMANTIC_CACHE_TTL_SECONDS)).isoformat(),
+                **(metadata or {})
+            }
+
+            # Add to collection
+            self._chroma_collection.add(
+                ids=[doc_id],
+                embeddings=[embedding_normalized.tolist()],
+                metadatas=[doc_metadata],
+            )
+
+            self._stats.chromadb_patterns_stored += 1
+            logger.debug(f"Stored pattern in ChromaDB: {doc_id}")
+            return True
+
+        except Exception as e:
+            logger.debug(f"ChromaDB store error: {e}")
+            return False
+
+    def _normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
+        """Normalize embedding to unit length for cosine similarity"""
+        norm = np.linalg.norm(embedding)
+        if norm == 0:
+            return embedding
+        return embedding / norm
+
+    # =========================================================================
+    # ANTI-SPOOFING DETECTION
+    # =========================================================================
+
+    async def detect_replay_attack(
+        self,
+        embedding: np.ndarray,
+        audio_fingerprint: Optional[str] = None,
+    ) -> Tuple[bool, float, str]:
+        """
+        Detect potential replay attacks by analyzing embedding patterns.
+
+        Replay attacks are detected by:
+        1. Exact embedding matches (recording playback)
+        2. Suspiciously similar consecutive attempts
+        3. Missing natural voice variation
+
+        Args:
+            embedding: Current voice embedding
+            audio_fingerprint: Optional audio fingerprint hash
+
+        Returns:
+            Tuple of (is_replay, confidence, reason)
+        """
+        current_time = datetime.now()
+
+        # Clean old entries from recent embeddings
+        window_start = current_time - timedelta(seconds=CacheConfig.REPLAY_DETECTION_WINDOW_SECONDS)
+        self._recent_embeddings = [
+            (emb, ts, fp) for emb, ts, fp in self._recent_embeddings
+            if ts > window_start
+        ]
+
+        # Check for suspiciously similar embeddings
+        for prev_embedding, prev_time, prev_fp in self._recent_embeddings:
+            similarity = self._compute_similarity(embedding, prev_embedding)
+
+            # Exact match - strong indicator of replay
+            if similarity >= CacheConfig.MAX_REPLAY_SIMILARITY:
+                self._stats.replay_attacks_blocked += 1
+                self._stats.spoofing_attempts_detected += 1
+                return (
+                    True,
+                    0.95,
+                    f"Exact embedding match detected ({similarity:.4f}) - possible recording"
+                )
+
+            # Audio fingerprint match
+            if audio_fingerprint and prev_fp and audio_fingerprint == prev_fp:
+                self._stats.replay_attacks_blocked += 1
+                self._stats.spoofing_attempts_detected += 1
+                return (
+                    True,
+                    0.90,
+                    "Audio fingerprint matches recent attempt - possible replay"
+                )
+
+        # Check for unnaturally consistent voice (no micro-variations)
+        if len(self._recent_embeddings) >= 3:
+            recent_similarities = []
+            for prev_emb, _, _ in self._recent_embeddings[-3:]:
+                sim = self._compute_similarity(embedding, prev_emb)
+                recent_similarities.append(sim)
+
+            # Natural voice has some variation between utterances
+            variation = np.std(recent_similarities)
+            if variation < CacheConfig.MIN_VOICE_VARIATION:
+                self._stats.spoofing_attempts_detected += 1
+                return (
+                    True,
+                    0.70,
+                    f"Unnaturally consistent voice pattern (variation={variation:.4f})"
+                )
+
+        # Store current embedding for future comparison
+        self._recent_embeddings.append((embedding.copy(), current_time, audio_fingerprint))
+
+        # Limit history size
+        if len(self._recent_embeddings) > self._max_recent_embeddings:
+            self._recent_embeddings.pop(0)
+
+        return (False, 0.0, "No replay attack detected")
+
+    async def detect_synthetic_voice(
+        self,
+        embedding: np.ndarray,
+        audio_features: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, float, str]:
+        """
+        Detect potential synthetic/deepfake voice.
+
+        Synthetic voice detection based on:
+        1. Embedding pattern analysis
+        2. Audio feature anomalies (if provided)
+        3. Comparison with known speaker baseline
+
+        Args:
+            embedding: Voice embedding to analyze
+            audio_features: Optional dict with f0, snr, spectral features
+
+        Returns:
+            Tuple of (is_synthetic, confidence, reason)
+        """
+        # Check audio features if provided
+        if audio_features:
+            # Check SNR range
+            snr = audio_features.get("snr_db", 15.0)
+            if snr > 40:  # Unrealistically clean audio
+                self._stats.synthetic_voice_blocked += 1
+                self._stats.spoofing_attempts_detected += 1
+                return (
+                    True,
+                    0.75,
+                    f"Suspiciously clean audio (SNR={snr:.1f}dB)"
+                )
+
+            # Check F0 (fundamental frequency) stability
+            f0_std = audio_features.get("f0_std", 10.0)
+            if f0_std < 2.0:  # Too stable pitch
+                self._stats.synthetic_voice_blocked += 1
+                self._stats.spoofing_attempts_detected += 1
+                return (
+                    True,
+                    0.70,
+                    f"Unnaturally stable pitch (F0 std={f0_std:.2f})"
+                )
+
+        # Check against known speaker profiles
+        for speaker_name, profile in self._preloaded_profiles.items():
+            if not profile.is_valid():
+                continue
+
+            similarity = self._compute_similarity(embedding, profile.embedding)
+
+            # If it matches a profile, check for synthetic indicators
+            if similarity >= CacheConfig.STANDARD_MATCH_THRESHOLD:
+                # Check voice drift from baseline
+                if profile.baseline_embedding is not None:
+                    drift = profile.check_voice_drift(embedding)
+                    if drift > CacheConfig.VOICE_DRIFT_THRESHOLD * 3:
+                        # Significant drift could indicate voice conversion
+                        return (
+                            True,
+                            0.60,
+                            f"Voice differs significantly from baseline (drift={drift:.4f})"
+                        )
+
+        return (False, 0.0, "No synthetic voice indicators detected")
+
+    async def analyze_behavioral_context(
+        self,
+        speaker_name: str,
+        unlock_time: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze behavioral context for authentication decision.
+
+        Args:
+            speaker_name: Speaker attempting authentication
+            unlock_time: Time of unlock attempt
+
+        Returns:
+            Dict with behavioral analysis scores
+        """
+        unlock_time = unlock_time or datetime.now()
+        profile = self._preloaded_profiles.get(speaker_name)
+
+        result = {
+            "behavioral_score": 0.5,  # Neutral default
+            "time_of_day_normal": True,
+            "interval_normal": True,
+            "reasons": [],
+        }
+
+        if not profile:
+            result["reasons"].append("No profile for behavioral analysis")
+            return result
+
+        score = 0.5
+
+        # Check time of day
+        current_hour = unlock_time.hour
+        if profile.typical_unlock_hours:
+            if current_hour in profile.typical_unlock_hours:
+                score += 0.2
+                result["reasons"].append(f"Normal unlock hour ({current_hour})")
+            else:
+                score -= 0.1
+                result["time_of_day_normal"] = False
+                result["reasons"].append(f"Unusual unlock hour ({current_hour})")
+
+        # Check interval since last unlock
+        if profile.last_verified and profile.avg_unlock_interval_hours > 0:
+            hours_since = (unlock_time - profile.last_verified).total_seconds() / 3600
+            expected_interval = profile.avg_unlock_interval_hours
+
+            # Within 2x expected interval is normal
+            if hours_since <= expected_interval * 2:
+                score += 0.15
+                result["reasons"].append("Normal unlock interval")
+            elif hours_since > expected_interval * 5:
+                score -= 0.1
+                result["interval_normal"] = False
+                result["reasons"].append(f"Long time since last unlock ({hours_since:.1f}h)")
+
+        # Clamp score
+        result["behavioral_score"] = max(0.0, min(1.0, score))
+        return result
+
+    def _compute_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Compute cosine similarity between two embeddings"""
+        if a is None or b is None:
+            return 0.0
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return float(np.dot(a, b) / (norm_a * norm_b))
+
+    # =========================================================================
+    # VOICE PROFILE LOADING
+    # =========================================================================
 
     async def _preload_voice_profiles(self) -> int:
         """

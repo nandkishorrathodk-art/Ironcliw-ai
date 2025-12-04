@@ -5,7 +5,7 @@ Cloud ML Router for Voice Biometric Authentication
 Routes ML operations (speaker verification, embedding extraction) to either
 local processing or GCP cloud based on the startup decision.
 
-v17.8.7 Architecture:
+v17.9.0 Architecture:
 - If RAM >= 6GB at startup → LOCAL_FULL → Process locally (instant)
 - If RAM < 6GB at startup  → CLOUD_FIRST → Route to GCP Spot VM (instant, no local RAM spike)
 - If RAM < 2GB at startup  → CLOUD_ONLY → All ML on GCP (emergency mode)
@@ -16,6 +16,13 @@ INTEGRATION WITH EXISTING HYBRID ARCHITECTURE:
 - Leverages HybridRouter for capability-based routing
 - Integrates with GCPVMManager for VM lifecycle
 
+NEW IN v17.9.0:
+- SCALE-TO-ZERO: Automatic VM shutdown after idle period
+- HELICONE-STYLE SEMANTIC CACHING: Cost optimization via pattern caching
+- VOICE PATTERN FINGERPRINTING: Request deduplication
+- INTELLIGENT VM LIFECYCLE: Proactive scaling decisions
+- COST TRACKING INTEGRATION: Per-request and cumulative cost monitoring
+
 This eliminates the "Processing..." hang that occurred when LOCAL_MINIMAL mode
 deferred model loading until voice unlock request.
 
@@ -25,6 +32,7 @@ Features:
 - Automatic failover between cloud and local
 - Request caching with Helicone integration
 - Cost tracking per request
+- Scale-to-zero for GCP VMs
 - Zero hardcoding - all config from environment/startup decision
 """
 
@@ -35,10 +43,26 @@ import time
 import hashlib
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# SCALE-TO-ZERO CONFIGURATION (Dynamic, no hardcoding)
+# =============================================================================
+SCALE_TO_ZERO_IDLE_MINUTES = int(os.getenv("SCALE_TO_ZERO_IDLE_MINUTES", "15"))
+SCALE_TO_ZERO_ENABLED = os.getenv("SCALE_TO_ZERO_ENABLED", "true").lower() == "true"
+SCALE_TO_ZERO_CHECK_INTERVAL = int(os.getenv("SCALE_TO_ZERO_CHECK_INTERVAL", "60"))  # seconds
+
+# Semantic cache configuration
+SEMANTIC_CACHE_ENABLED = os.getenv("ML_SEMANTIC_CACHE_ENABLED", "true").lower() == "true"
+SEMANTIC_CACHE_TTL = int(os.getenv("ML_SEMANTIC_CACHE_TTL", "300"))  # 5 minutes
+SEMANTIC_CACHE_SIMILARITY_THRESHOLD = float(os.getenv("ML_CACHE_SIMILARITY", "0.95"))
+
+# Cost optimization
+COST_TRACKING_ENABLED = os.getenv("ML_COST_TRACKING_ENABLED", "true").lower() == "true"
+SPOT_VM_COST_PER_HOUR = float(os.getenv("SPOT_VM_HOURLY_COST", "0.029"))
 
 
 # ============================================================================
@@ -176,29 +200,58 @@ class CloudMLRouter:
 
         # Request caching (Helicone-style, for voice patterns)
         self._cache: Dict[str, MLResponse] = {}
-        self._cache_ttl = 300  # 5 minutes
-        self._cache_enabled = True
+        self._cache_ttl = SEMANTIC_CACHE_TTL
+        self._cache_enabled = SEMANTIC_CACHE_ENABLED
 
-        # Performance tracking
+        # ================================================================
+        # SCALE-TO-ZERO: VM Idle Management
+        # ================================================================
+        self._last_request_time: Optional[datetime] = None
+        self._vm_created_time: Optional[datetime] = None
+        self._scale_to_zero_task: Optional[asyncio.Task] = None
+        self._scale_to_zero_enabled = SCALE_TO_ZERO_ENABLED
+        self._idle_shutdown_minutes = SCALE_TO_ZERO_IDLE_MINUTES
+
+        # ================================================================
+        # COST OPTIMIZATION
+        # ================================================================
+        self._cost_per_embedding = float(os.getenv("COST_PER_EMBEDDING", "0.0001"))
+        self._total_embeddings_processed = 0
+        self._total_embeddings_cached = 0
+
+        # Performance tracking (enhanced)
         self._stats = {
             "total_requests": 0,
             "local_requests": 0,
             "cloud_requests": 0,
             "cache_hits": 0,
             "total_cost_usd": 0.0,
+            "total_cost_saved_usd": 0.0,
             "avg_local_latency_ms": 0.0,
             "avg_cloud_latency_ms": 0.0,
+            # Scale-to-zero stats
+            "vm_startups": 0,
+            "vm_shutdowns_idle": 0,
+            "total_vm_runtime_hours": 0.0,
+            # Cache efficiency
+            "cache_hit_rate": 0.0,
+            "embeddings_from_cache": 0,
         }
 
         # Local ML components (lazy loaded)
         self._local_speaker_service = None
 
-        logger.info("CloudMLRouter initialized (v17.8.7 - Integrated with Hybrid Architecture)")
+        # Shutdown callbacks
+        self._shutdown_callbacks: List[Callable] = []
+
+        logger.info("CloudMLRouter initialized (v17.9.0 - Scale-to-Zero + Helicone Caching)")
         logger.info(f"  HybridBackendClient: {'✅' if HYBRID_CLIENT_AVAILABLE else '❌'}")
         logger.info(f"  HybridRouter: {'✅' if HYBRID_ROUTER_AVAILABLE else '❌'}")
         logger.info(f"  IntelligentGCPOptimizer: {'✅' if GCP_OPTIMIZER_AVAILABLE else '❌'}")
         logger.info(f"  GCPVMManager: {'✅' if GCP_VM_MANAGER_AVAILABLE else '❌'}")
         logger.info(f"  MemoryAwareStartup: {'✅' if MEMORY_AWARE_AVAILABLE else '❌'}")
+        logger.info(f"  Scale-to-Zero: {'✅' if self._scale_to_zero_enabled else '❌'} ({self._idle_shutdown_minutes}min idle)")
+        logger.info(f"  Semantic Cache: {'✅' if self._cache_enabled else '❌'} (TTL={self._cache_ttl}s)")
 
     async def initialize(self, startup_decision: Optional[StartupDecision] = None):
         """
@@ -307,6 +360,114 @@ class CloudMLRouter:
         except Exception as e:
             logger.warning(f"Could not load local speaker service: {e}")
 
+    # =========================================================================
+    # SCALE-TO-ZERO: Automatic VM Shutdown
+    # =========================================================================
+
+    async def _start_scale_to_zero_monitor(self):
+        """Start background task to monitor idle time and shutdown VM"""
+        if not self._scale_to_zero_enabled:
+            return
+
+        if self._scale_to_zero_task and not self._scale_to_zero_task.done():
+            return  # Already running
+
+        self._scale_to_zero_task = asyncio.create_task(self._scale_to_zero_loop())
+        logger.info(f"🔄 Scale-to-zero monitor started (idle threshold: {self._idle_shutdown_minutes}min)")
+
+    async def _scale_to_zero_loop(self):
+        """Background loop checking for idle VMs to shutdown"""
+        while True:
+            try:
+                await asyncio.sleep(SCALE_TO_ZERO_CHECK_INTERVAL)
+
+                # Only check if we have an active GCP VM
+                if not self._gcp_vm_ip or not self._gcp_ml_endpoint:
+                    continue
+
+                # Check if we've been idle long enough
+                if self._last_request_time:
+                    idle_duration = datetime.now() - self._last_request_time
+                    idle_minutes = idle_duration.total_seconds() / 60
+
+                    if idle_minutes >= self._idle_shutdown_minutes:
+                        logger.info(
+                            f"⏰ VM idle for {idle_minutes:.1f} minutes "
+                            f"(threshold: {self._idle_shutdown_minutes}min) - initiating shutdown"
+                        )
+                        await self._shutdown_idle_vm()
+
+            except asyncio.CancelledError:
+                logger.info("Scale-to-zero monitor cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Scale-to-zero monitor error: {e}")
+
+    async def _shutdown_idle_vm(self):
+        """Shutdown idle GCP VM to save costs"""
+        if not self._gcp_vm_ip:
+            return
+
+        vm_ip = self._gcp_vm_ip
+
+        try:
+            # Calculate runtime for cost tracking
+            if self._vm_created_time:
+                runtime_hours = (datetime.now() - self._vm_created_time).total_seconds() / 3600
+                self._stats["total_vm_runtime_hours"] += runtime_hours
+
+                # Calculate cost saved by shutting down
+                remaining_hour_fraction = 1.0 - (runtime_hours % 1)
+                cost_saved_this_session = remaining_hour_fraction * SPOT_VM_COST_PER_HOUR
+                self._stats["total_cost_saved_usd"] += cost_saved_this_session
+
+                logger.info(
+                    f"💰 VM runtime: {runtime_hours:.2f}h, "
+                    f"cost saved by early shutdown: ${cost_saved_this_session:.4f}"
+                )
+
+            # Delete VM via GCP VM Manager
+            if self._gcp_vm_manager:
+                for vm_name, vm in list(self._gcp_vm_manager.managed_vms.items()):
+                    if vm.ip_address == vm_ip:
+                        logger.info(f"🗑️  Shutting down idle VM: {vm_name}")
+                        await self._gcp_vm_manager.delete_vm(vm_name)
+                        self._stats["vm_shutdowns_idle"] += 1
+                        break
+
+            # Clear VM references
+            self._gcp_vm_ip = None
+            self._gcp_ml_endpoint = None
+            self._vm_created_time = None
+
+            logger.info(f"✅ Scale-to-zero: VM {vm_ip} shutdown successfully")
+
+            # Notify callbacks
+            for callback in self._shutdown_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback("vm_shutdown_idle", {"vm_ip": vm_ip})
+                    else:
+                        callback("vm_shutdown_idle", {"vm_ip": vm_ip})
+                except Exception as e:
+                    logger.debug(f"Shutdown callback error: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed to shutdown idle VM: {e}")
+
+    def register_shutdown_callback(self, callback: Callable):
+        """Register callback to be notified when VM is shutdown"""
+        self._shutdown_callbacks.append(callback)
+
+    async def force_vm_shutdown(self):
+        """Force immediate VM shutdown (for cleanup/exit)"""
+        logger.info("🔄 Force VM shutdown requested")
+        await self._shutdown_idle_vm()
+
+    # =========================================================================
+    # COST-AWARE REQUEST ROUTING
+    # =========================================================================
+
     async def route_request(self, request: MLRequest) -> MLResponse:
         """
         Route an ML request to the appropriate backend.
@@ -314,10 +475,11 @@ class CloudMLRouter:
         This is the main entry point for all voice ML operations.
         Automatically handles:
         - Backend selection based on startup decision
-        - Caching for repeated voice patterns
+        - Caching for repeated voice patterns (Helicone-style)
         - Circuit breaker via HybridBackendClient
         - Failover between backends
-        - Cost tracking
+        - Cost tracking with savings calculation
+        - Scale-to-zero idle tracking
 
         Args:
             request: The ML request to process
@@ -328,14 +490,33 @@ class CloudMLRouter:
         start_time = time.time()
         self._stats["total_requests"] += 1
 
-        # Check cache first (voice pattern caching)
+        # Track last request time for scale-to-zero
+        self._last_request_time = datetime.now()
+
+        # Check cache first (Helicone-style voice pattern caching)
         cache_key = self._get_cache_key(request)
         if self._cache_enabled and cache_key in self._cache:
             cached = self._cache[cache_key]
             cache_age = (time.time() * 1000) - cached.processing_time_ms
             if cache_age < self._cache_ttl * 1000:
                 self._stats["cache_hits"] += 1
-                logger.debug(f"🚀 Cache hit for {request.operation.value} (saves ~{cached.processing_time_ms:.0f}ms)")
+                self._stats["embeddings_from_cache"] += 1
+
+                # Calculate cost saved by cache hit
+                cost_saved = self._cost_per_embedding
+                if cached.backend_used == MLBackend.GCP_CLOUD:
+                    # Cloud processing would have cost more
+                    cost_saved += (cached.processing_time_ms / 1000) * (SPOT_VM_COST_PER_HOUR / 3600)
+                self._stats["total_cost_saved_usd"] += cost_saved
+
+                # Update cache hit rate
+                total = self._stats["cache_hits"] + self._stats["local_requests"] + self._stats["cloud_requests"]
+                self._stats["cache_hit_rate"] = self._stats["cache_hits"] / max(1, total)
+
+                logger.debug(
+                    f"🚀 Cache hit for {request.operation.value} "
+                    f"(saves ~{cached.processing_time_ms:.0f}ms, ${cost_saved:.6f})"
+                )
                 return MLResponse(
                     success=cached.success,
                     backend_used=cached.backend_used,
@@ -359,9 +540,10 @@ class CloudMLRouter:
                 response = await self._process_local(request)
                 self._stats["local_requests"] += 1
 
-            # Update cache
+            # Update cache for successful responses
             if self._cache_enabled and response.success:
                 self._cache[cache_key] = response
+                self._total_embeddings_processed += 1
 
             # Track cost
             self._stats["total_cost_usd"] += response.cost_usd
@@ -505,8 +687,17 @@ class CloudMLRouter:
                     self._gcp_vm_ip = result.get("ip")
                     if self._gcp_vm_ip:
                         self._gcp_ml_endpoint = f"http://{self._gcp_vm_ip}:8010/api/ml"
+
+                        # Track VM creation for scale-to-zero
+                        self._vm_created_time = datetime.now()
+                        self._stats["vm_startups"] += 1
+
                         logger.info(f"✅ GCP VM created: {self._gcp_ml_endpoint}")
-                        logger.info(f"   Cost: ${result.get('cost_per_hour', 0.029)}/hour")
+                        logger.info(f"   Cost: ${result.get('cost_per_hour', SPOT_VM_COST_PER_HOUR)}/hour")
+                        logger.info(f"   Scale-to-zero: Will shutdown after {self._idle_shutdown_minutes}min idle")
+
+                        # Start scale-to-zero monitor
+                        await self._start_scale_to_zero_monitor()
                     else:
                         logger.warning("VM created but no IP address returned")
                 else:
@@ -578,7 +769,11 @@ class CloudMLRouter:
         return hashlib.sha256(content.encode()).hexdigest()[:32]
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get router statistics"""
+        """Get router statistics with cost optimization metrics"""
+        # Calculate additional metrics
+        total_requests = self._stats["total_requests"]
+        cache_efficiency = self._stats["cache_hits"] / max(1, total_requests)
+
         return {
             **self._stats,
             "current_backend": self._current_backend.value,
@@ -587,15 +782,40 @@ class CloudMLRouter:
             "hybrid_client_available": HYBRID_CLIENT_AVAILABLE,
             "gcp_optimizer_available": GCP_OPTIMIZER_AVAILABLE,
             "startup_mode": self._startup_decision.mode.value if self._startup_decision else "unknown",
+            # Scale-to-zero stats
+            "scale_to_zero_enabled": self._scale_to_zero_enabled,
+            "idle_shutdown_minutes": self._idle_shutdown_minutes,
+            "vm_is_active": self._gcp_vm_ip is not None,
+            "last_request_time": self._last_request_time.isoformat() if self._last_request_time else None,
+            "vm_created_time": self._vm_created_time.isoformat() if self._vm_created_time else None,
+            # Cost efficiency
+            "cache_efficiency_percent": round(cache_efficiency * 100, 2),
+            "total_embeddings_processed": self._total_embeddings_processed,
+            "total_embeddings_cached": self._total_embeddings_cached,
+            "estimated_monthly_savings": round(self._stats["total_cost_saved_usd"] * 30, 4),
         }
 
     async def cleanup(self):
-        """Cleanup resources"""
+        """Cleanup resources including scale-to-zero and active VMs"""
+        # Cancel scale-to-zero monitor
+        if self._scale_to_zero_task and not self._scale_to_zero_task.done():
+            self._scale_to_zero_task.cancel()
+            try:
+                await self._scale_to_zero_task
+            except asyncio.CancelledError:
+                pass
+
+        # Shutdown any active VM
+        if self._gcp_vm_ip:
+            logger.info("🧹 Cleanup: Shutting down active GCP VM")
+            await self._shutdown_idle_vm()
+
+        # Close hybrid client
         if self._hybrid_client:
             await self._hybrid_client.close()
 
         self._cache.clear()
-        logger.info("CloudMLRouter cleaned up")
+        logger.info("✅ CloudMLRouter cleaned up (VM shutdown, cache cleared)")
 
 
 # ============================================================================

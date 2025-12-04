@@ -5,13 +5,15 @@ Voice Unlock System Integration
 Integrates the optimized ML system with the existing voice unlock components,
 providing a unified interface for JARVIS.
 
-Enhanced Features (v2.0):
+Enhanced Features (v2.1):
 - LangGraph adaptive authentication reasoning
 - Multi-factor authentication fusion
 - Anti-spoofing detection (replay attacks, voice cloning)
 - Progressive voice feedback
 - Intelligent caching for cost optimization
-- Full audit trail for authentication decisions
+- LANGFUSE audit trail for authentication decisions
+- Comprehensive cost tracking per authentication
+- Voice evolution and drift monitoring
 """
 
 import os
@@ -89,6 +91,29 @@ try:
 except ImportError:
     TYPEDDICT_AVAILABLE = False
 
+# =============================================================================
+# LANGFUSE AUDIT TRAIL INTEGRATION
+# =============================================================================
+try:
+    from langfuse import Langfuse
+    from langfuse.decorators import observe, langfuse_context
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+
+# Langfuse configuration (from environment)
+LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "true").lower() == "true"
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+# Cost tracking integration
+try:
+    from core.cost_tracker import get_cost_tracker
+    COST_TRACKER_AVAILABLE = True
+except ImportError:
+    COST_TRACKER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,6 +177,295 @@ class AdaptiveAuthState:
     def __post_init__(self):
         if self.environmental_issues is None:
             self.environmental_issues = []
+
+
+# =============================================================================
+# LANGFUSE AUTHENTICATION AUDIT TRAIL
+# =============================================================================
+
+class AuthenticationAuditTrail:
+    """
+    Comprehensive authentication audit trail using Langfuse.
+
+    Provides detailed tracing of every authentication decision including:
+    - Voice biometric analysis steps
+    - Confidence score progression
+    - Multi-factor fusion decisions
+    - Cost tracking per authentication
+    - Anti-spoofing detection events
+    - Voice evolution monitoring
+
+    Example trace output:
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Authentication Decision Trace - Unlock #1,847
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Step 1: Audio Capture (147ms)
+    Step 2: Voice Embedding Extraction (203ms)
+    Step 3: Speaker Verification (89ms)
+    Step 4: Behavioral Analysis (45ms)
+    Step 5: Contextual Intelligence (12ms)
+    Step 6: Fusion Decision (8ms)
+    Step 7: Unlock Execution (1,847ms)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.AuditTrail")
+        self._langfuse: Optional[Langfuse] = None
+        self._initialized = False
+        self._trace_count = 0
+
+        # Initialize Langfuse if available and configured
+        if LANGFUSE_AVAILABLE and LANGFUSE_ENABLED:
+            try:
+                if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+                    self._langfuse = Langfuse(
+                        public_key=LANGFUSE_PUBLIC_KEY,
+                        secret_key=LANGFUSE_SECRET_KEY,
+                        host=LANGFUSE_HOST,
+                    )
+                    self._initialized = True
+                    self.logger.info("✅ Langfuse audit trail initialized")
+                else:
+                    self.logger.debug("Langfuse keys not configured - audit trail disabled")
+            except Exception as e:
+                self.logger.warning(f"Langfuse initialization failed: {e}")
+
+    def start_authentication_trace(
+        self,
+        speaker_name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Start a new authentication trace.
+
+        Args:
+            speaker_name: Expected speaker name
+            metadata: Additional metadata (time, location, etc.)
+
+        Returns:
+            Trace context dict with trace_id
+        """
+        self._trace_count += 1
+        trace_id = f"auth_{self._trace_count}_{int(time.time()*1000)}"
+
+        trace_context = {
+            "trace_id": trace_id,
+            "started_at": datetime.now().isoformat(),
+            "speaker_name": speaker_name,
+            "steps": [],
+            "total_cost_usd": 0.0,
+            "total_time_ms": 0.0,
+            "metadata": metadata or {},
+        }
+
+        if self._initialized and self._langfuse:
+            try:
+                trace = self._langfuse.trace(
+                    name="voice_authentication",
+                    id=trace_id,
+                    metadata={
+                        "speaker_name": speaker_name,
+                        "trace_number": self._trace_count,
+                        **(metadata or {}),
+                    },
+                )
+                trace_context["_langfuse_trace"] = trace
+            except Exception as e:
+                self.logger.debug(f"Langfuse trace creation failed: {e}")
+
+        return trace_context
+
+    def log_step(
+        self,
+        trace_context: Dict[str, Any],
+        step_name: str,
+        duration_ms: float,
+        result: Dict[str, Any],
+        cost_usd: float = 0.0,
+        status: str = "success",
+    ):
+        """
+        Log a step in the authentication trace.
+
+        Args:
+            trace_context: Trace context from start_authentication_trace
+            step_name: Name of the step (e.g., "audio_capture", "speaker_verification")
+            duration_ms: Duration in milliseconds
+            result: Step result data
+            cost_usd: Cost of this step in USD
+            status: Step status (success, warning, error)
+        """
+        step_data = {
+            "name": step_name,
+            "duration_ms": round(duration_ms, 2),
+            "cost_usd": round(cost_usd, 6),
+            "status": status,
+            "result": result,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        trace_context["steps"].append(step_data)
+        trace_context["total_cost_usd"] += cost_usd
+        trace_context["total_time_ms"] += duration_ms
+
+        # Log to Langfuse if available
+        if self._initialized and "_langfuse_trace" in trace_context:
+            try:
+                trace = trace_context["_langfuse_trace"]
+                trace.span(
+                    name=step_name,
+                    input={"step": step_name},
+                    output=result,
+                    metadata={
+                        "duration_ms": duration_ms,
+                        "cost_usd": cost_usd,
+                        "status": status,
+                    },
+                )
+            except Exception as e:
+                self.logger.debug(f"Langfuse span creation failed: {e}")
+
+    def complete_trace(
+        self,
+        trace_context: Dict[str, Any],
+        decision: str,
+        confidence: float,
+        success: bool,
+        spoofing_detected: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Complete the authentication trace.
+
+        Args:
+            trace_context: Trace context from start_authentication_trace
+            decision: Final decision (GRANT, DENY, CHALLENGE, RETRY)
+            confidence: Final confidence score
+            success: Whether authentication succeeded
+            spoofing_detected: Whether spoofing was detected
+
+        Returns:
+            Complete trace summary
+        """
+        trace_context["completed_at"] = datetime.now().isoformat()
+        trace_context["decision"] = decision
+        trace_context["final_confidence"] = confidence
+        trace_context["success"] = success
+        trace_context["spoofing_detected"] = spoofing_detected
+
+        # Calculate risk level
+        if spoofing_detected:
+            risk_level = "HIGH"
+        elif confidence < 0.75:
+            risk_level = "MODERATE"
+        elif confidence < 0.85:
+            risk_level = "LOW"
+        else:
+            risk_level = "MINIMAL"
+
+        trace_context["risk_level"] = risk_level
+
+        # Log to Langfuse if available
+        if self._initialized and "_langfuse_trace" in trace_context:
+            try:
+                trace = trace_context["_langfuse_trace"]
+                trace.update(
+                    output={
+                        "decision": decision,
+                        "confidence": confidence,
+                        "success": success,
+                        "spoofing_detected": spoofing_detected,
+                        "risk_level": risk_level,
+                    },
+                    metadata={
+                        "total_cost_usd": trace_context["total_cost_usd"],
+                        "total_time_ms": trace_context["total_time_ms"],
+                        "steps_count": len(trace_context["steps"]),
+                    },
+                )
+                # Flush to ensure trace is sent
+                self._langfuse.flush()
+            except Exception as e:
+                self.logger.debug(f"Langfuse trace completion failed: {e}")
+
+        # Remove internal Langfuse objects before returning
+        trace_context.pop("_langfuse_trace", None)
+
+        self.logger.info(
+            f"🔐 Auth trace {trace_context['trace_id']}: "
+            f"{decision} (conf={confidence:.2%}, risk={risk_level}, "
+            f"time={trace_context['total_time_ms']:.0f}ms, "
+            f"cost=${trace_context['total_cost_usd']:.6f})"
+        )
+
+        return trace_context
+
+    def format_trace_report(self, trace_context: Dict[str, Any]) -> str:
+        """
+        Format a human-readable trace report.
+
+        Args:
+            trace_context: Completed trace context
+
+        Returns:
+            Formatted trace report string
+        """
+        lines = [
+            "",
+            "━" * 55,
+            f"Authentication Decision Trace - Unlock #{self._trace_count}",
+            "━" * 55,
+            "",
+        ]
+
+        for i, step in enumerate(trace_context.get("steps", []), 1):
+            status_icon = "✅" if step["status"] == "success" else "⚠️"
+            cost_str = f"${step['cost_usd']:.6f}" if step["cost_usd"] > 0 else "free"
+            lines.append(
+                f"Step {i}: {step['name']} ({step['duration_ms']:.0f}ms) {status_icon}"
+            )
+
+            # Add key result details
+            result = step.get("result", {})
+            if "confidence" in result:
+                lines.append(f"├─ Confidence: {result['confidence']:.2%}")
+            if "similarity" in result:
+                lines.append(f"├─ Similarity: {result['similarity']:.4f}")
+            if "speaker_name" in result:
+                lines.append(f"├─ Speaker: {result['speaker_name']}")
+            if cost_str != "free":
+                lines.append(f"└─ Cost: {cost_str}")
+
+        lines.append("")
+        lines.append(f"Total Time: {trace_context.get('total_time_ms', 0):.0f}ms")
+        lines.append(f"Total Cost: ${trace_context.get('total_cost_usd', 0):.6f}")
+        lines.append(f"Decision: {trace_context.get('decision', 'unknown').upper()}")
+        lines.append(f"Risk Level: {trace_context.get('risk_level', 'unknown')}")
+        lines.append("")
+        lines.append("━" * 55)
+
+        return "\n".join(lines)
+
+    def shutdown(self):
+        """Shutdown Langfuse client gracefully"""
+        if self._langfuse:
+            try:
+                self._langfuse.flush()
+                self._langfuse.shutdown()
+            except Exception as e:
+                self.logger.debug(f"Langfuse shutdown error: {e}")
+
+
+# Global audit trail instance
+_audit_trail: Optional[AuthenticationAuditTrail] = None
+
+
+def get_audit_trail() -> AuthenticationAuditTrail:
+    """Get or create the global authentication audit trail"""
+    global _audit_trail
+    if _audit_trail is None:
+        _audit_trail = AuthenticationAuditTrail()
+    return _audit_trail
 
 
 class AdaptiveAuthenticationEngine:
