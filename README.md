@@ -1,10 +1,382 @@
-# JARVIS AI Assistant v17.8.5 - Memory-Aware Hybrid Cloud Startup
+# JARVIS AI Assistant v17.8.6 - Dynamic Restart with UE State Detection & Self-Healing Port Fallback
 
-An intelligent voice-activated AI assistant with **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
-## ⚡ NEW in v17.8.5: Memory-Aware Hybrid Cloud Startup
+## ⚡ NEW in v17.8.6: Dynamic Restart with UE State Detection & Self-Healing Port Fallback
+
+JARVIS v17.8.6 introduces **intelligent handling of macOS Uninterruptible Sleep (UE) processes** that block ports and cannot be killed. When processes enter UE state during ML model loading, the system now detects them, skips the blocked ports, and automatically starts on a healthy fallback port.
+
+### Problems Solved in v17.8.6
+
+```
+Problem 4: Stuck Python Processes in Uninterruptible Sleep (UE State)
+─────────────────────────────────────────────────────────────────────
+Symptom:   Backend shows 0% CPU, port blocked, `kill -9` has no effect
+Cause:     macOS kernel-level I/O wait during ML model loading
+State:     Process stuck in 'D' (disk-sleep) or 'U' (uninterruptible)
+Impact:    Port remains occupied, `--restart` cannot free it
+Solution:  Detect UE processes → skip blocked ports → use fallback
+
+Problem 5: Hardcoded Port Configuration in Restart Cleanup
+─────────────────────────────────────────────────────────────────────
+Symptom:   Restart always tries the same ports even when blocked
+Cause:     Ports [3000, 3001, 8010, 5432] were hardcoded in cleanup
+Impact:    No automatic fallback when primary port is blocked
+Solution:  Dynamic port loading from startup_progress_config.json
+
+Problem 6: Voice Unlock "Processing..." Stuck Issue
+─────────────────────────────────────────────────────────────────────
+Symptom:   "unlock my screen" shows "Processing..." indefinitely
+Cause:     Voice unlock service not initialized (enabled: False)
+Status:    Backend healthy, but voice_unlock component not starting
+Root:      Async initialization timeout or model loading failure
+Impact:    Screen unlock via voice command doesn't work
+```
+
+### Understanding UE (Uninterruptible Sleep) State on macOS
+
+UE state is a **kernel-level process state** where the process is waiting on I/O that cannot be interrupted. This commonly occurs during:
+
+- **Heavy ML Model Loading**: PyTorch/SpeechBrain model initialization
+- **Disk I/O Operations**: Reading large model files from disk
+- **Memory-Mapped Files**: Loading shared libraries or model weights
+
+```
+Process State Codes (ps aux output):
+─────────────────────────────────────
+R   Running or runnable (on run queue)
+S   Sleeping (interruptible, waiting for event)
+D   Uninterruptible Sleep (waiting for I/O) ← CANNOT BE KILLED
+U   Uninterruptible Sleep (macOS variant) ← CANNOT BE KILLED
+T   Stopped (by signal or debugger)
+Z   Zombie (terminated but not reaped)
+
+CRITICAL: Processes in D/U state CANNOT be killed by:
+- kill -9 (SIGKILL)
+- kill -TERM (SIGTERM)
+- Any userspace signal
+- Only solution: System restart OR wait for I/O to complete
+```
+
+### Solution: Dynamic Restart with UE State Detection
+
+The enhanced `--restart` flag now includes three new components:
+
+#### 1. DynamicRestartConfig - Dynamic Port Configuration
+
+```python
+@dataclass
+class DynamicRestartConfig:
+    """Dynamic configuration for restart operations - loads from config file."""
+    primary_api_port: int = 8011
+    fallback_ports: List[int] = field(default_factory=lambda: [8010, 8000, 8001, 8080, 8888])
+    frontend_port: int = 3000
+    loading_server_port: int = 3001
+    database_port: int = 5432
+
+    # UE state indicators for detection
+    ue_state_indicators: List[str] = field(default_factory=lambda: [
+        'disk-sleep', 'uninterruptible', 'D', 'U', 'D+', 'U+', 'Ds', 'Us',
+    ])
+
+    # Timing configuration
+    graceful_timeout: float = 2.0      # Seconds to wait for SIGTERM
+    force_kill_timeout: float = 1.0    # Seconds to wait for SIGKILL
+    parallel_cleanup_timeout: float = 10.0  # Total cleanup timeout
+
+    # Self-healing settings
+    enable_self_healing: bool = True
+    max_kill_attempts: int = 3
+
+    def __post_init__(self):
+        # Load ports dynamically from startup_progress_config.json
+        self._load_from_config()
+
+    def get_all_ports(self) -> List[int]:
+        """Get all configured ports for cleanup."""
+        ports = {self.primary_api_port, self.frontend_port,
+                 self.loading_server_port, self.database_port}
+        ports.update(self.fallback_ports)
+        return sorted(list(ports))
+```
+
+#### 2. UEStateDetector - Detect Stuck Processes
+
+```python
+class UEStateDetector:
+    """Detects processes in Uninterruptible Sleep (UE) state on macOS."""
+
+    # psutil returns verbose states like 'disk-sleep', 'running'
+    PSUTIL_UE_STATES = ['disk-sleep', 'uninterruptible']
+
+    # ps command returns single-letter codes like 'D', 'U', 'R', 'S'
+    PS_UE_CODES = {'D', 'U', 'D+', 'U+', 'Ds', 'Us'}
+
+    def is_ue_state(self, status: str, is_ps_status: bool = False) -> bool:
+        """Check if a process status indicates UE state.
+
+        Args:
+            status: Process status string
+            is_ps_status: True if status is from `ps` command (single letter),
+                         False if from psutil (verbose string)
+
+        Returns:
+            True if process is in UE state
+        """
+        if is_ps_status:
+            # Exact match for single-letter ps codes
+            return status.strip() in self.PS_UE_CODES
+        else:
+            # Substring match for psutil verbose states
+            return any(ue_state in status.lower()
+                      for ue_state in self.PSUTIL_UE_STATES)
+
+    def check_process_state(self, pid: int) -> Tuple[bool, str]:
+        """Check if a specific PID is in UE state."""
+        # Uses both psutil and ps command for thorough detection
+        ...
+
+    def check_port_for_ue_process(self, port: int) -> Tuple[bool, Optional[int], str]:
+        """Check if a port is blocked by a UE process.
+
+        Returns: (has_ue_process, pid_if_ue, detailed_status)
+        """
+        ...
+```
+
+#### 3. AsyncRestartManager - Parallel Cleanup with Self-Healing
+
+```python
+class AsyncRestartManager:
+    """Async-capable restart manager with parallel cleanup and self-healing."""
+
+    def __init__(self, config: DynamicRestartConfig):
+        self.config = config
+        self.ue_detector = UEStateDetector()
+        self.blacklisted_ports: Set[int] = set()  # Ports with UE processes
+
+    async def cleanup_processes_parallel(
+        self,
+        processes: List[Dict]
+    ) -> List[Dict[str, Any]]:
+        """Kill multiple processes in parallel using asyncio.gather()."""
+        ...
+
+    async def verify_ports_free_async(
+        self,
+        ports: List[int]
+    ) -> Dict[int, Dict[str, Any]]:
+        """Verify ports are free in parallel, detect UE processes."""
+        ...
+
+    def get_healthy_port(
+        self,
+        exclude_blacklisted: bool = True
+    ) -> Optional[int]:
+        """Find the first available port that's not blocked by UE process."""
+        for port in [self.config.primary_api_port] + self.config.fallback_ports:
+            if exclude_blacklisted and port in self.blacklisted_ports:
+                continue
+            if not self._is_port_in_use(port):
+                return port
+        return None
+```
+
+### How the Enhanced --restart Works
+
+```
+python3 start_system.py --restart
+
+Step 1: Load Dynamic Configuration
+─────────────────────────────────────────────────
+✅ Loaded ports from backend/config/startup_progress_config.json
+   Primary: 8011, Fallback: [8010, 8000, 8001, 8080, 8888]
+
+Step 2: Detect Existing JARVIS Processes
+─────────────────────────────────────────────────
+Running 7 concurrent detection strategies:
+  • psutil_scan: Process enumeration
+  • ps_command: Shell command verification
+  • port_based: Dynamic port scanning
+  • network_connections: Active connections
+  • file_descriptor: Open file analysis
+  • parent_child: Process tree analysis
+  • command_line: Regex pattern matching
+
+✅ Detected 6 JARVIS processes
+
+Step 3: Scan for UE State Processes
+─────────────────────────────────────────────────
+⚠️ UE Process Detected: PID 70985 on port 8010 (state: UE)
+   → Cannot be killed, blacklisting port 8010
+⚠️ UE Process Detected: PID 85758 on port 8011 (state: UE)
+   → Cannot be killed, blacklisting port 8011
+
+Step 4: Kill Non-UE Processes
+─────────────────────────────────────────────────
+→ Terminating PID 85038... ✓
+→ Terminating PID 70985... forcing... ✗ Still alive (UE state)
+→ Terminating PID 85758... forcing... ✗ Still alive (UE state)
+→ Terminating PID 85224... ✓
+→ Terminating PID 88093... ✓
+
+Step 5: Select Healthy Fallback Port
+─────────────────────────────────────────────────
+Port 8011: ❌ Blocked by UE process (PID 85758)
+Port 8010: ❌ Blocked by UE process (PID 70985)
+Port 8000: ✅ Free and available
+
+✅ Using port 8000 for startup
+
+Step 6: Start Backend on Healthy Port
+─────────────────────────────────────────────────
+INFO - Using port 8000 for startup
+INFO - 🔧 Dynamic port selection: main_api=8000
+...
+INFO - Uvicorn running on http://0.0.0.0:8000
+
+Step 7: Update Frontend Configuration
+─────────────────────────────────────────────────
+Updated frontend/.env: REACT_APP_API_URL=http://localhost:8000
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/process_cleanup_manager.py` | Added `DynamicRestartConfig`, `UEStateDetector`, `AsyncRestartManager` classes |
+| `backend/config/startup_progress_config.json` | Source of dynamic port configuration |
+| `frontend/.env` | Updated to match backend port after fallback |
+
+### Known Limitation: UE Processes Require System Restart
+
+**UE state processes cannot be killed by any userspace program.** This is a fundamental macOS/Unix kernel limitation:
+
+```
+Why kill -9 doesn't work on UE processes:
+─────────────────────────────────────────────────
+
+1. Signals are delivered when process transitions from kernel → user space
+2. UE process is stuck IN kernel space (waiting for I/O)
+3. Signal delivery is queued but never executed
+4. Only the I/O completion (or system restart) can free the process
+
+The ONLY ways to clear UE processes:
+1. System restart (reboot)
+2. Wait for I/O operation to complete (may never happen)
+3. Fix the underlying I/O issue (e.g., reconnect network drive)
+```
+
+**Our solution doesn't try to kill UE processes** - instead, it detects them, warns the user, and automatically uses a healthy fallback port.
+
+---
+
+## 🔊 Known Issue: Voice Unlock "Processing..." Stuck
+
+### Symptom
+
+When saying "unlock my screen" to JARVIS, the UI shows:
+
+```
+JARVIS:
+⚙️ Processing...
+```
+
+And stays stuck indefinitely without unlocking the screen.
+
+### Diagnosis
+
+The backend health check reveals:
+
+```json
+{
+  "status": "healthy",
+  "voice_unlock": {
+    "enabled": false,
+    "initialized": false
+  }
+}
+```
+
+The `voice_unlock` component shows:
+- `enabled: false` - Service is not active
+- `initialized: false` - Initialization never completed
+
+### Root Cause Analysis
+
+The voice unlock system requires multiple components to initialize:
+
+```
+Voice Unlock Initialization Chain:
+─────────────────────────────────────────────────
+1. ECAPA-TDNN Model Loading (SpeechBrain)
+   └── Loads 192-dimensional embedding model
+   └── Requires ~300MB memory
+   └── Can take 10-30 seconds
+
+2. Voice Profile Cache Loading
+   └── Loads cached voiceprints from SQLite
+   └── Derek J. Russell: 238 samples
+
+3. LangGraph Integration
+   └── Multi-step authentication reasoning
+   └── Async initialization with timeout
+
+4. Audio Capture Setup
+   └── Microphone access
+   └── WebRTC VAD initialization
+```
+
+Potential failure points:
+1. **Async Timeout**: Initialization exceeds configured timeout
+2. **Model Loading Failure**: ECAPA-TDNN fails to load
+3. **Memory Pressure**: Insufficient RAM for ML models
+4. **Circular Import**: Module import order issues
+5. **Missing Dependency**: Required service not started
+
+### Current Workaround
+
+The voice unlock component is not initializing, but the rest of JARVIS works:
+- Backend API: ✅ Healthy on fallback port
+- Frontend: ✅ Connected and responsive
+- Chatbots: ✅ Available
+- Vision: ✅ Available (lazy loaded)
+- Memory: ✅ Available
+
+### Investigation Steps
+
+To debug the voice unlock initialization:
+
+```bash
+# 1. Check backend logs for voice unlock errors
+grep -i "voice_unlock\|VoiceUnlock\|ECAPA" /var/log/jarvis*.log
+
+# 2. Check if ECAPA-TDNN model exists
+ls -la pretrained_models/spkrec-ecapa-voxceleb/
+
+# 3. Test voice unlock service directly
+curl -s http://localhost:8000/voice/jarvis/status
+
+# 4. Check for initialization timeouts
+grep -i "timeout\|TimeoutError" backend/voice_unlock/*.log
+
+# 5. Check memory during startup
+vm_stat && sysctl hw.memsize
+```
+
+### Expected Fix
+
+The voice unlock initialization needs:
+1. Extended async timeouts for ML model loading
+2. Better error handling with fallback modes
+3. Lazy initialization (initialize on first voice command)
+4. Health check endpoint to diagnose specific failures
+
+---
+
+## ⚡ Previous: v17.8.5 - Memory-Aware Hybrid Cloud Startup
 
 JARVIS v17.8.5 fixes the **"Startup timeout - please check logs"** issue caused by loading heavy ML models on RAM-constrained systems. The system now intelligently detects available RAM and automatically activates the hybrid GCP cloud architecture when local resources are insufficient.
 
