@@ -3510,11 +3510,17 @@ class SemanticVoiceCacheManager:
         # Statistics
         self.cache_hits = 0
         self.cache_misses = 0
+        self.cache_expired = 0  # Entries that matched but were expired (TTL exceeded)
         self.total_queries = 0
         self.cost_saved_usd = 0.0
+        self.expired_entries_cleaned = 0  # Proactively cleaned expired entries
 
         # Cost per inference (approximate)
         self.cost_per_inference = float(os.getenv("ML_INFERENCE_COST_USD", "0.002"))
+
+        # Background cleanup settings
+        self._cleanup_interval_hours = float(os.getenv("SEMANTIC_CACHE_CLEANUP_INTERVAL_HOURS", "6"))
+        self._last_cleanup_time = 0.0
 
         # ChromaDB client (lazy loaded)
         self._chroma_client = None
@@ -3571,7 +3577,8 @@ class SemanticVoiceCacheManager:
     async def query_cache(
         self,
         embedding: List[float],
-        speaker_name: Optional[str] = None
+        speaker_name: Optional[str] = None,
+        trigger_cleanup: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
         Query cache for similar voice embedding.
@@ -3579,15 +3586,24 @@ class SemanticVoiceCacheManager:
         Args:
             embedding: 192-dimensional voice embedding
             speaker_name: Optional speaker to filter by
+            trigger_cleanup: Whether to trigger background cleanup if due
 
         Returns:
             Cached result if hit, None if miss
+
+        Note:
+            Statistics are only updated AFTER TTL validation to prevent
+            counting expired entries as hits.
         """
         if not self._initialized or not self._collection:
             self.cache_misses += 1
             return None
 
         self.total_queries += 1
+
+        # Trigger background cleanup if interval has passed
+        if trigger_cleanup:
+            await self._maybe_trigger_cleanup()
 
         try:
             # Build query filter
@@ -3600,7 +3616,7 @@ class SemanticVoiceCacheManager:
                 query_embeddings=[embedding],
                 n_results=1,
                 where=where_filter,
-                include=["metadatas", "distances"]
+                include=["metadatas", "distances", "documents"]
             )
 
             if results and results["distances"] and results["distances"][0]:
@@ -3609,21 +3625,40 @@ class SemanticVoiceCacheManager:
                 similarity = 1 / (1 + distance)  # Convert to 0-1 similarity
 
                 if similarity >= self.similarity_threshold:
-                    # Cache hit!
+                    # Potential cache hit - but must validate TTL first
+                    metadata = results["metadatas"][0][0] if results["metadatas"] else {}
+
+                    # CRITICAL: Check TTL BEFORE updating statistics
+                    cached_time = metadata.get("timestamp", 0)
+                    current_time = time.time()
+                    age_hours = (current_time - cached_time) / 3600
+
+                    if age_hours > self.ttl_hours:
+                        # Entry expired - track as expired, not as hit
+                        self.cache_expired += 1
+                        self.cache_misses += 1
+                        logger.debug(
+                            f"Cache entry expired: age={age_hours:.1f}h > TTL={self.ttl_hours}h, "
+                            f"similarity={similarity:.3f}"
+                        )
+
+                        # Schedule async cleanup of this expired entry
+                        entry_id = results.get("ids", [[]])[0]
+                        if entry_id:
+                            asyncio.create_task(
+                                self._delete_expired_entry(entry_id[0], age_hours)
+                            )
+                        return None
+
+                    # Valid cache hit - NOW safe to update statistics
                     self.cache_hits += 1
                     self.cost_saved_usd += self.cost_per_inference
 
-                    metadata = results["metadatas"][0][0] if results["metadatas"] else {}
+                    logger.debug(
+                        f"🎯 Cache HIT: similarity={similarity:.3f}, "
+                        f"age={age_hours:.1f}h, saved=${self.cost_per_inference:.4f}"
+                    )
 
-                    # Check TTL
-                    cached_time = metadata.get("timestamp", 0)
-                    age_hours = (time.time() - cached_time) / 3600
-                    if age_hours > self.ttl_hours:
-                        logger.debug(f"Cache entry expired ({age_hours:.1f}h old)")
-                        self.cache_misses += 1
-                        return None
-
-                    logger.debug(f"🎯 Cache HIT: similarity={similarity:.3f}")
                     return {
                         "cached": True,
                         "similarity": similarity,
@@ -3631,9 +3666,10 @@ class SemanticVoiceCacheManager:
                         "confidence": metadata.get("confidence", 0.0),
                         "verified": metadata.get("verified", False),
                         "cached_at": cached_time,
+                        "age_hours": age_hours,
                     }
 
-            # Cache miss
+            # Cache miss - no similar embedding found
             self.cache_misses += 1
             return None
 
@@ -3641,6 +3677,78 @@ class SemanticVoiceCacheManager:
             logger.error(f"Cache query failed: {e}")
             self.cache_misses += 1
             return None
+
+    async def _delete_expired_entry(self, entry_id: str, age_hours: float):
+        """Delete a single expired entry from the cache."""
+        try:
+            if self._collection:
+                self._collection.delete(ids=[entry_id])
+                self.expired_entries_cleaned += 1
+                logger.debug(f"Cleaned expired entry {entry_id} (age={age_hours:.1f}h)")
+        except Exception as e:
+            logger.warning(f"Failed to delete expired entry {entry_id}: {e}")
+
+    async def _maybe_trigger_cleanup(self):
+        """Trigger background cleanup if cleanup interval has passed."""
+        current_time = time.time()
+        hours_since_cleanup = (current_time - self._last_cleanup_time) / 3600
+
+        if hours_since_cleanup >= self._cleanup_interval_hours:
+            # Don't block the query - run cleanup in background
+            asyncio.create_task(self.cleanup_expired_entries())
+
+    async def cleanup_expired_entries(self) -> int:
+        """
+        Proactively clean up all expired entries from the cache.
+
+        Returns:
+            Number of entries cleaned
+        """
+        if not self._initialized or not self._collection:
+            return 0
+
+        self._last_cleanup_time = time.time()
+        cleaned_count = 0
+        current_time = time.time()
+        ttl_cutoff = current_time - (self.ttl_hours * 3600)
+
+        try:
+            # Get all entries to check timestamps
+            # Note: ChromaDB doesn't support timestamp-based queries directly
+            all_results = self._collection.get(
+                include=["metadatas"],
+                limit=self.max_entries
+            )
+
+            if not all_results or not all_results.get("ids"):
+                return 0
+
+            expired_ids = []
+            for i, entry_id in enumerate(all_results["ids"]):
+                metadata = all_results["metadatas"][i] if all_results.get("metadatas") else {}
+                cached_time = metadata.get("timestamp", 0)
+
+                if cached_time < ttl_cutoff:
+                    expired_ids.append(entry_id)
+
+            if expired_ids:
+                # Delete in batches for efficiency
+                batch_size = 100
+                for i in range(0, len(expired_ids), batch_size):
+                    batch = expired_ids[i:i + batch_size]
+                    self._collection.delete(ids=batch)
+                    cleaned_count += len(batch)
+
+                self.expired_entries_cleaned += cleaned_count
+                logger.info(
+                    f"🧹 Cache cleanup: removed {cleaned_count} expired entries "
+                    f"(TTL={self.ttl_hours}h, remaining={self._collection.count()})"
+                )
+
+        except Exception as e:
+            logger.error(f"Cache cleanup failed: {e}")
+
+        return cleaned_count
 
     async def store_result(
         self,
@@ -3711,20 +3819,100 @@ class SemanticVoiceCacheManager:
             logger.error(f"Cache cleanup failed: {e}")
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        hit_rate = self.cache_hits / self.total_queries if self.total_queries > 0 else 0.0
+        """
+        Get comprehensive cache statistics.
+
+        Returns accurate statistics with expired entry tracking.
+        Note: hit_rate is calculated from valid hits only (excludes expired entries).
+        """
+        # Calculate rates (excluding expired from hit calculation)
+        valid_responses = self.cache_hits + self.cache_misses
+        hit_rate = self.cache_hits / valid_responses if valid_responses > 0 else 0.0
+
+        # Expired rate shows what percentage of potential hits were expired
+        potential_hits = self.cache_hits + self.cache_expired
+        expired_rate = self.cache_expired / potential_hits if potential_hits > 0 else 0.0
+
+        # Hours since last cleanup
+        hours_since_cleanup = (
+            (time.time() - self._last_cleanup_time) / 3600
+            if self._last_cleanup_time > 0 else float('inf')
+        )
 
         return {
             "enabled": self.enabled,
             "initialized": self._initialized,
+            # Query statistics
             "total_queries": self.total_queries,
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
+            "cache_expired": self.cache_expired,
+            # Calculated rates
             "hit_rate": hit_rate,
+            "expired_rate": expired_rate,
+            # Cost tracking
             "cost_saved_usd": self.cost_saved_usd,
+            "cost_per_inference": self.cost_per_inference,
+            # Cache state
             "cached_entries": self._collection.count() if self._collection else 0,
+            "expired_entries_cleaned": self.expired_entries_cleaned,
+            # Configuration
             "ttl_hours": self.ttl_hours,
             "similarity_threshold": self.similarity_threshold,
+            "max_entries": self.max_entries,
+            # Maintenance
+            "cleanup_interval_hours": self._cleanup_interval_hours,
+            "hours_since_cleanup": hours_since_cleanup,
+            "cleanup_due": hours_since_cleanup >= self._cleanup_interval_hours,
+        }
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get cache health status for monitoring.
+
+        Returns:
+            Health metrics including warnings for potential issues.
+        """
+        stats = self.get_statistics()
+        warnings = []
+
+        # Check for high expired rate (indicates TTL may be too short)
+        if stats["expired_rate"] > 0.2:  # >20% expired
+            warnings.append(
+                f"High expired rate ({stats['expired_rate']:.1%}) - consider increasing TTL"
+            )
+
+        # Check for low hit rate (cache may not be effective)
+        if stats["total_queries"] > 100 and stats["hit_rate"] < 0.5:
+            warnings.append(
+                f"Low hit rate ({stats['hit_rate']:.1%}) - cache may not be effective"
+            )
+
+        # Check if cleanup is overdue (skip if never cleaned - initial state)
+        if (stats["cleanup_due"] and
+            stats["hours_since_cleanup"] != float('inf') and
+            stats["hours_since_cleanup"] > stats["cleanup_interval_hours"] * 2):
+            warnings.append(
+                f"Cleanup overdue by {stats['hours_since_cleanup'] - stats['cleanup_interval_hours']:.1f}h"
+            )
+
+        # Check cache utilization
+        if self._collection:
+            utilization = self._collection.count() / self.max_entries
+            if utilization > 0.9:
+                warnings.append(
+                    f"Cache near capacity ({utilization:.1%}) - consider increasing max_entries"
+                )
+
+        return {
+            "healthy": len(warnings) == 0,
+            "warnings": warnings,
+            "metrics": {
+                "hit_rate": stats["hit_rate"],
+                "expired_rate": stats["expired_rate"],
+                "cost_saved": stats["cost_saved_usd"],
+                "entries": stats["cached_entries"],
+            }
         }
 
 
