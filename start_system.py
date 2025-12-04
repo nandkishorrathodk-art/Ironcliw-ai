@@ -5199,6 +5199,12 @@ class AsyncSystemManager:
             "event_ui": 8888,  # Event-driven UI
         }
 
+        # Backwards compatibility aliases for port access
+        # These provide direct attribute access for code that expects manager.backend_port
+        self.backend_port = self.ports["main_api"]
+        self.frontend_port = self.ports["frontend"]
+        self.websocket_port = self.ports["websocket_router"]
+
         logger.info(f"🔧 Dynamic port selection: main_api={selected_api_port}")
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.claude_configured = False
@@ -11082,8 +11088,10 @@ except Exception as e:
                 # Update our ports if services found on different ports
                 if "backend" in name.lower():
                     self.ports["main_api"] = service.port
+                    self.backend_port = service.port  # Keep alias in sync
                 elif "frontend" in name.lower():
                     self.ports["frontend"] = service.port
+                    self.frontend_port = service.port  # Keep alias in sync
 
         # Start pre-warming imports early
         print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
