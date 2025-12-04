@@ -3958,8 +3958,7 @@ class SemanticVoiceCacheManager:
 
         # Verify statistics consistency
         stats_consistent = (
-            self.total_queries == self.cache_hits + self.cache_misses + self.cache_expired - self.queries_while_uninitialized
-            or self.total_queries >= self.cache_hits + self.cache_misses  # Allow for edge cases
+            self.total_queries == self.cache_hits + self.cache_misses
         )
 
         return {
