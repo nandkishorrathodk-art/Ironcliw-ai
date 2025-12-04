@@ -5,7 +5,7 @@ Voice Unlock System Integration
 Integrates the optimized ML system with the existing voice unlock components,
 providing a unified interface for JARVIS.
 
-Enhanced Features (v2.1):
+Enhanced Features (v2.5 - Physics-Aware Authentication):
 - LangGraph adaptive authentication reasoning
 - Multi-factor authentication fusion
 - Anti-spoofing detection (replay attacks, voice cloning)
@@ -14,6 +14,18 @@ Enhanced Features (v2.1):
 - LANGFUSE audit trail for authentication decisions
 - Comprehensive cost tracking per authentication
 - Voice evolution and drift monitoring
+
+Physics-Aware Voice Authentication v2.5:
+- Reverberation analysis (RT60, double-reverb detection for replay attacks)
+- Vocal tract length (VTL) verification from formant frequencies
+- Doppler effect analysis for natural movement/liveness detection
+- Bayesian confidence fusion combining ML + physics + behavioral evidence
+- 7-layer anti-spoofing integration with physics as Layer 7
+
+Mathematical Foundation:
+- VTL = c / (2 × Δf) where c = speed of sound, Δf = formant spacing
+- RT60 via Schroeder backward integration
+- Bayesian P(authentic|evidence) = P(evidence|authentic) × P(authentic) / P(evidence)
 """
 
 import os
@@ -114,6 +126,45 @@ try:
 except ImportError:
     COST_TRACKER_AVAILABLE = False
 
+# =============================================================================
+# PHYSICS-AWARE VOICE AUTHENTICATION (v2.5)
+# =============================================================================
+try:
+    from .core.feature_extraction import (
+        PhysicsAwareFeatureExtractor,
+        PhysicsAwareFeatures,
+        PhysicsConfidenceLevel,
+        PhysicsConfig,
+        get_physics_feature_extractor,
+        ReverbAnalysis,
+        VocalTractAnalysis,
+        DopplerAnalysis,
+        BayesianConfidenceFusion,
+    )
+    PHYSICS_AWARE_AVAILABLE = True
+except ImportError as e:
+    PHYSICS_AWARE_AVAILABLE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.debug(f"Physics-aware authentication not available: {e}")
+
+# Anti-spoofing with physics Layer 7
+try:
+    from .core.anti_spoofing import (
+        AntiSpoofingDetector,
+        SpoofingResult,
+        SpoofType,
+        get_anti_spoofing_detector,
+    )
+    ANTI_SPOOFING_AVAILABLE = True
+except ImportError:
+    ANTI_SPOOFING_AVAILABLE = False
+
+# Physics configuration from environment
+PHYSICS_ENABLED = os.getenv("PHYSICS_AWARE_ENABLED", "true").lower() == "true"
+PHYSICS_WEIGHT = float(os.getenv("PHYSICS_CONFIDENCE_WEIGHT", "0.35"))
+PHYSICS_THRESHOLD = float(os.getenv("PHYSICS_CONFIDENCE_THRESHOLD", "0.70"))
+BAYESIAN_FUSION_ENABLED = os.getenv("BAYESIAN_FUSION_ENABLED", "true").lower() == "true"
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,6 +177,16 @@ class AdaptiveAuthStateDict(TypedDict, total=False):
 
     Using TypedDict instead of dataclass for compatibility with langgraph 0.6.x+
     which requires proper state typing.
+
+    Physics-Aware Authentication v2.5 additions:
+    - physics_confidence: Overall physics verification score
+    - physics_level: PhysicsConfidenceLevel enum value
+    - vtl_estimated_cm: Vocal tract length in cm
+    - rt60_estimated: Room reverberation time in seconds
+    - double_reverb_detected: Replay attack indicator
+    - doppler_natural: Natural movement detected (liveness)
+    - bayesian_authentic_prob: P(authentic|all_evidence)
+    - physics_anomalies: List of detected physics violations
     """
     audio_data: bytes
     speaker_name: Optional[str]
@@ -153,6 +214,22 @@ class AdaptiveAuthStateDict(TypedDict, total=False):
     challenge_reason: Optional[str]
     awaiting_challenge_answer: bool
     hypothesis_confidence: float
+    # Physics-Aware Authentication v2.5 fields
+    physics_confidence: float
+    physics_level: Optional[str]  # PhysicsConfidenceLevel value
+    vtl_estimated_cm: float
+    vtl_baseline_cm: Optional[float]
+    vtl_deviation_cm: float
+    rt60_estimated: float
+    double_reverb_detected: bool
+    double_reverb_confidence: float
+    doppler_natural: bool
+    doppler_movement_pattern: Optional[str]
+    bayesian_authentic_prob: float
+    bayesian_spoof_prob: float
+    physics_anomalies: List[str]
+    physics_scores: Optional[Dict[str, float]]
+    physics_enabled: bool
 
 
 @dataclass
@@ -333,9 +410,10 @@ class AuthenticationAuditTrail:
         confidence: float,
         success: bool,
         spoofing_detected: bool = False,
+        physics_analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Complete the authentication trace.
+        Complete the authentication trace including physics-aware analysis.
 
         Args:
             trace_context: Trace context from start_authentication_trace
@@ -343,6 +421,7 @@ class AuthenticationAuditTrail:
             confidence: Final confidence score
             success: Whether authentication succeeded
             spoofing_detected: Whether spoofing was detected
+            physics_analysis: Optional physics-aware analysis results
 
         Returns:
             Complete trace summary
@@ -353,9 +432,28 @@ class AuthenticationAuditTrail:
         trace_context["success"] = success
         trace_context["spoofing_detected"] = spoofing_detected
 
-        # Calculate risk level
+        # Include physics analysis if available (v2.5)
+        if physics_analysis:
+            trace_context["physics_analysis"] = {
+                "physics_confidence": physics_analysis.get("physics_confidence", 0.0),
+                "physics_level": physics_analysis.get("physics_level", "unavailable"),
+                "vtl_cm": physics_analysis.get("vtl_cm", 0.0),
+                "rt60_seconds": physics_analysis.get("rt60_seconds", 0.0),
+                "double_reverb_detected": physics_analysis.get("double_reverb", False),
+                "doppler_natural": physics_analysis.get("doppler_natural", True),
+                "bayesian_authentic": physics_analysis.get("bayesian_authentic", 0.0),
+                "anomalies": physics_analysis.get("anomalies", []),
+                "spoof_detected": physics_analysis.get("spoof_detected", False),
+                "spoof_type": physics_analysis.get("spoof_type"),
+            }
+
+        # Calculate risk level (enhanced with physics)
         if spoofing_detected:
-            risk_level = "HIGH"
+            risk_level = "CRITICAL"  # Physics-detected spoofing is critical
+        elif physics_analysis and physics_analysis.get("double_reverb"):
+            risk_level = "HIGH"  # Double reverb is suspicious
+        elif physics_analysis and not physics_analysis.get("doppler_natural", True):
+            risk_level = "MODERATE"  # Static audio is concerning
         elif confidence < 0.75:
             risk_level = "MODERATE"
         elif confidence < 0.85:
@@ -402,7 +500,7 @@ class AuthenticationAuditTrail:
 
     def format_trace_report(self, trace_context: Dict[str, Any]) -> str:
         """
-        Format a human-readable trace report.
+        Format a human-readable trace report including physics analysis.
 
         Args:
             trace_context: Completed trace context
@@ -412,9 +510,9 @@ class AuthenticationAuditTrail:
         """
         lines = [
             "",
-            "━" * 55,
+            "━" * 60,
             f"Authentication Decision Trace - Unlock #{self._trace_count}",
-            "━" * 55,
+            "━" * 60,
             "",
         ]
 
@@ -436,13 +534,36 @@ class AuthenticationAuditTrail:
             if cost_str != "free":
                 lines.append(f"└─ Cost: {cost_str}")
 
+        # Physics Analysis Section (v2.5)
+        physics = trace_context.get("physics_analysis")
+        if physics:
+            lines.append("")
+            lines.append("🔬 Physics-Aware Analysis:")
+            lines.append(f"├─ Physics Confidence: {physics.get('physics_confidence', 0):.1%}")
+            lines.append(f"├─ Physics Level: {physics.get('physics_level', 'unknown')}")
+            lines.append(f"├─ Vocal Tract Length: {physics.get('vtl_cm', 0):.1f} cm")
+            lines.append(f"├─ Reverb Time (RT60): {physics.get('rt60_seconds', 0):.2f}s")
+            lines.append(f"├─ Double Reverb: {'⚠️ DETECTED' if physics.get('double_reverb_detected') else '✅ Not detected'}")
+            lines.append(f"├─ Doppler Natural: {'✅ Yes' if physics.get('doppler_natural', True) else '⚠️ No'}")
+            lines.append(f"├─ Bayesian P(authentic): {physics.get('bayesian_authentic', 0):.1%}")
+
+            anomalies = physics.get("anomalies", [])
+            if anomalies:
+                lines.append(f"└─ Anomalies: {', '.join(anomalies[:3])}")
+            else:
+                lines.append(f"└─ Anomalies: None")
+
+            if physics.get("spoof_detected"):
+                lines.append("")
+                lines.append(f"⚠️ SPOOF DETECTED: {physics.get('spoof_type', 'unknown')}")
+
         lines.append("")
         lines.append(f"Total Time: {trace_context.get('total_time_ms', 0):.0f}ms")
         lines.append(f"Total Cost: ${trace_context.get('total_cost_usd', 0):.6f}")
         lines.append(f"Decision: {trace_context.get('decision', 'unknown').upper()}")
         lines.append(f"Risk Level: {trace_context.get('risk_level', 'unknown')}")
         lines.append("")
-        lines.append("━" * 55)
+        lines.append("━" * 60)
 
         return "\n".join(lines)
 
@@ -1121,7 +1242,38 @@ class VoiceUnlockSystem:
         self._unified_cache_hits = 0
         self._unified_cache_misses = 0
 
-        logger.info("Voice Unlock System initialized with ML optimization and enhanced v2.0 features")
+        # ========================================================================
+        # Physics-Aware Authentication Components (v2.5)
+        # ========================================================================
+        self._physics_extractor: Optional['PhysicsAwareFeatureExtractor'] = None
+        self._anti_spoofing_detector: Optional['AntiSpoofingDetector'] = None
+        self._bayesian_fusion: Optional['BayesianConfidenceFusion'] = None
+
+        # Physics configuration from environment
+        self.physics_enabled = PHYSICS_ENABLED and PHYSICS_AWARE_AVAILABLE
+        self.physics_weight = PHYSICS_WEIGHT
+        self.physics_threshold = PHYSICS_THRESHOLD
+        self.bayesian_fusion_enabled = BAYESIAN_FUSION_ENABLED
+
+        # Physics baselines (learned from user's voice)
+        self._vtl_baseline_cm: Optional[float] = None
+        self._rt60_baseline_sec: Optional[float] = None
+
+        # Physics authentication statistics
+        self._physics_auth_count = 0
+        self._physics_spoof_detected_count = 0
+        self._double_reverb_detections = 0
+        self._vtl_mismatch_count = 0
+
+        if self.physics_enabled:
+            logger.info("✅ Physics-aware voice authentication enabled")
+            logger.info(f"   ├─ Physics weight: {self.physics_weight:.0%}")
+            logger.info(f"   ├─ Physics threshold: {self.physics_threshold:.0%}")
+            logger.info(f"   └─ Bayesian fusion: {'enabled' if self.bayesian_fusion_enabled else 'disabled'}")
+        else:
+            logger.info("⚠️ Physics-aware authentication disabled or unavailable")
+
+        logger.info("Voice Unlock System initialized with ML optimization and enhanced v2.5 physics-aware features")
         
     @property
     def audio_manager(self):
@@ -1189,12 +1341,277 @@ class VoiceUnlockSystem:
                 logger.debug(f"Unified voice cache connection failed: {e}")
         return self._unified_cache
 
+    @property
+    def physics_extractor(self) -> Optional['PhysicsAwareFeatureExtractor']:
+        """Lazy load physics-aware feature extractor."""
+        if self._physics_extractor is None and PHYSICS_AWARE_AVAILABLE and self.physics_enabled:
+            try:
+                self._physics_extractor = get_physics_feature_extractor(
+                    sample_rate=self.config.audio.sample_rate
+                )
+                logger.info("✅ Physics-aware feature extractor initialized")
+                logger.debug(f"   └─ Config: VTL range {PhysicsConfig.VTL_MIN_CM}-{PhysicsConfig.VTL_MAX_CM}cm")
+            except Exception as e:
+                logger.warning(f"Physics extractor initialization failed: {e}")
+        return self._physics_extractor
+
+    @property
+    def anti_spoofing_detector(self) -> Optional['AntiSpoofingDetector']:
+        """Lazy load anti-spoofing detector with physics Layer 7."""
+        if self._anti_spoofing_detector is None and ANTI_SPOOFING_AVAILABLE:
+            try:
+                self._anti_spoofing_detector = get_anti_spoofing_detector()
+                logger.info("✅ Anti-spoofing detector initialized (7-layer detection)")
+            except Exception as e:
+                logger.warning(f"Anti-spoofing detector initialization failed: {e}")
+        return self._anti_spoofing_detector
+
+    @property
+    def bayesian_fusion(self) -> Optional['BayesianConfidenceFusion']:
+        """Lazy load Bayesian confidence fusion engine."""
+        if self._bayesian_fusion is None and PHYSICS_AWARE_AVAILABLE and self.bayesian_fusion_enabled:
+            try:
+                self._bayesian_fusion = BayesianConfidenceFusion()
+                logger.info("✅ Bayesian confidence fusion initialized")
+            except Exception as e:
+                logger.warning(f"Bayesian fusion initialization failed: {e}")
+        return self._bayesian_fusion
+
     def set_tts_callback(self, callback: Callable[[str], Any]):
         """Set TTS callback for voice feedback."""
         self.tts_callback = callback
         if self.speaker_service:
             self.speaker_service.set_tts_callback(callback)
         logger.info("✅ TTS callback configured for voice unlock feedback")
+
+    # =========================================================================
+    # PHYSICS-AWARE AUTHENTICATION METHODS (v2.5)
+    # =========================================================================
+
+    async def analyze_physics_features(
+        self,
+        audio_data: bytes,
+        ml_confidence: Optional[float] = None,
+        behavioral_confidence: Optional[float] = None,
+        context_confidence: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze audio using physics-aware feature extraction.
+
+        Performs:
+        1. Reverberation analysis (RT60, double-reverb detection)
+        2. Vocal tract length estimation from formants
+        3. Doppler effect analysis for liveness
+        4. Bayesian fusion of all evidence sources
+
+        Args:
+            audio_data: Raw audio bytes
+            ml_confidence: Optional ML embedding confidence (0-1)
+            behavioral_confidence: Optional behavioral pattern confidence
+            context_confidence: Optional context confidence
+
+        Returns:
+            Dictionary with physics analysis results
+        """
+        result = {
+            "physics_enabled": self.physics_enabled,
+            "physics_confidence": 0.0,
+            "physics_level": "unavailable",
+            "vtl_cm": 0.0,
+            "rt60_seconds": 0.0,
+            "double_reverb": False,
+            "double_reverb_confidence": 0.0,
+            "doppler_natural": True,
+            "bayesian_authentic": 0.0,
+            "bayesian_spoof": 0.0,
+            "anomalies": [],
+            "spoof_detected": False,
+            "spoof_type": None,
+            "extraction_time_ms": 0.0,
+        }
+
+        if not self.physics_enabled or not self.physics_extractor:
+            result["physics_level"] = "disabled"
+            return result
+
+        try:
+            import time
+            start_time = time.time()
+
+            # Extract physics-aware features
+            physics_features = await self.physics_extractor.extract_physics_features_async(
+                audio_data,
+                ml_confidence=ml_confidence,
+                behavioral_confidence=behavioral_confidence,
+                context_confidence=context_confidence
+            )
+
+            # Populate result from physics features
+            result["physics_confidence"] = physics_features.physics_confidence
+            result["physics_level"] = physics_features.physics_level.value if physics_features.physics_level else "unknown"
+            result["physics_scores"] = physics_features.physics_scores
+
+            # Reverberation analysis
+            reverb = physics_features.reverb_analysis
+            result["rt60_seconds"] = reverb.rt60_estimated
+            result["double_reverb"] = reverb.double_reverb_detected
+            result["double_reverb_confidence"] = reverb.double_reverb_confidence
+            result["room_size"] = reverb.room_size_estimate
+            result["reverb_consistent"] = reverb.is_consistent_with_baseline
+
+            # Vocal tract analysis
+            vtl = physics_features.vocal_tract
+            result["vtl_cm"] = vtl.vtl_estimated_cm
+            result["vtl_human_range"] = vtl.is_within_human_range
+            result["vtl_consistent"] = vtl.is_consistent_with_baseline
+            result["vtl_deviation_cm"] = vtl.vtl_deviation_cm
+            result["formants_hz"] = vtl.formant_frequencies
+            result["speaker_sex_estimate"] = vtl.speaker_sex_estimate
+
+            # Doppler analysis
+            doppler = physics_features.doppler
+            result["doppler_natural"] = doppler.is_natural_movement
+            result["doppler_pattern"] = doppler.movement_pattern
+            result["doppler_stability"] = doppler.stability_score
+            result["micro_movements"] = doppler.micro_movements
+
+            # Bayesian fusion results
+            result["bayesian_authentic"] = physics_features.bayesian_authentic_probability
+            result["bayesian_spoof"] = physics_features.bayesian_spoof_probability
+
+            # Anomalies
+            result["anomalies"] = physics_features.anomalies_detected
+
+            # Determine if spoof was detected
+            if physics_features.physics_level == PhysicsConfidenceLevel.PHYSICS_FAILED:
+                result["spoof_detected"] = True
+                if reverb.double_reverb_detected:
+                    result["spoof_type"] = "replay_attack_double_reverb"
+                    self._double_reverb_detections += 1
+                elif not vtl.is_within_human_range:
+                    result["spoof_type"] = "vtl_outside_human_range"
+                    self._vtl_mismatch_count += 1
+                elif not doppler.is_natural_movement and doppler.movement_pattern == "none":
+                    result["spoof_type"] = "static_playback"
+                else:
+                    result["spoof_type"] = "physics_violation"
+                self._physics_spoof_detected_count += 1
+
+            # Update statistics
+            self._physics_auth_count += 1
+
+            # Update baselines if good sample
+            if physics_features.physics_confidence > 0.8:
+                if vtl.vtl_estimated_cm > 0:
+                    self._vtl_baseline_cm = vtl.vtl_estimated_cm
+                if reverb.rt60_estimated > 0:
+                    self._rt60_baseline_sec = reverb.rt60_estimated
+
+            result["extraction_time_ms"] = (time.time() - start_time) * 1000
+
+            logger.debug(
+                f"🔬 Physics analysis: conf={result['physics_confidence']:.1%}, "
+                f"VTL={result['vtl_cm']:.1f}cm, RT60={result['rt60_seconds']:.2f}s, "
+                f"double_reverb={result['double_reverb']}, doppler={result['doppler_pattern']}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Physics analysis error: {e}")
+            result["error"] = str(e)
+
+        return result
+
+    async def run_anti_spoofing_with_physics(
+        self,
+        audio_data: bytes,
+        speaker_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Run comprehensive anti-spoofing detection including physics Layer 7.
+
+        Layers:
+        1. Replay attack detection (spectral analysis)
+        2. Synthetic voice detection
+        3. Recording artifact detection
+        4. Voice conversion detection
+        5. Liveness detection
+        6. Deepfake detection
+        7. Physics-aware verification (VTL, reverb, Doppler)
+
+        Returns:
+            Anti-spoofing result with all layer scores
+        """
+        result = {
+            "is_spoof": False,
+            "spoof_probability": 0.0,
+            "spoof_type": None,
+            "layer_scores": {},
+            "physics_analysis": None,
+            "recommendation": "proceed",
+        }
+
+        if not self.anti_spoofing_detector:
+            result["status"] = "detector_unavailable"
+            return result
+
+        try:
+            # Run full anti-spoofing detection (includes physics Layer 7)
+            spoofing_result = await self.anti_spoofing_detector.detect_spoofing_async(
+                audio_data,
+                speaker_name=speaker_name,
+                baseline_vtl=self._vtl_baseline_cm
+            )
+
+            result["is_spoof"] = spoofing_result.is_spoof
+            result["spoof_probability"] = spoofing_result.spoof_probability
+            if spoofing_result.spoof_type:
+                result["spoof_type"] = spoofing_result.spoof_type.value
+
+            result["layer_scores"] = spoofing_result.layer_scores
+            result["detection_time_ms"] = spoofing_result.detection_time_ms
+
+            # Include physics analysis if available
+            if spoofing_result.physics_analysis:
+                result["physics_analysis"] = {
+                    "confidence": spoofing_result.physics_confidence,
+                    "bayesian_authentic": spoofing_result.bayesian_authentic_probability,
+                    "anomalies": [str(a) for a in result.get("anomalies", [])]
+                }
+
+            # Set recommendation
+            if spoofing_result.is_spoof:
+                result["recommendation"] = "deny"
+            elif spoofing_result.spoof_probability > 0.5:
+                result["recommendation"] = "challenge"
+            else:
+                result["recommendation"] = "proceed"
+
+            logger.info(
+                f"🛡️ Anti-spoofing: is_spoof={spoofing_result.is_spoof}, "
+                f"prob={spoofing_result.spoof_probability:.1%}, "
+                f"type={result['spoof_type']}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Anti-spoofing error: {e}")
+            result["error"] = str(e)
+
+        return result
+
+    def get_physics_statistics(self) -> Dict[str, Any]:
+        """Get physics-aware authentication statistics."""
+        return {
+            "enabled": self.physics_enabled,
+            "total_authentications": self._physics_auth_count,
+            "spoofs_detected": self._physics_spoof_detected_count,
+            "double_reverb_detections": self._double_reverb_detections,
+            "vtl_mismatches": self._vtl_mismatch_count,
+            "baseline_vtl_cm": self._vtl_baseline_cm,
+            "baseline_rt60_sec": self._rt60_baseline_sec,
+            "physics_weight": self.physics_weight,
+            "physics_threshold": self.physics_threshold,
+            "bayesian_fusion_enabled": self.bayesian_fusion_enabled,
+        }
 
     async def start(self):
         """Start the voice unlock system"""
@@ -1566,15 +1983,22 @@ class VoiceUnlockSystem:
         timeout: float = 10.0,
         require_watch: bool = False,
         max_attempts: int = 3,
-        use_adaptive: bool = True
+        use_adaptive: bool = True,
+        use_physics: bool = True
     ) -> Dict[str, Any]:
         """
-        Enhanced voice authentication with multi-factor fusion and adaptive retry.
+        Enhanced voice authentication with multi-factor fusion, adaptive retry,
+        and physics-aware verification.
 
-        This is the v2.0 authentication method that provides:
-        - Multi-factor authentication (voice + behavioral + context + proximity)
+        This is the v2.5 authentication method that provides:
+        - Multi-factor authentication (voice + behavioral + context + proximity + physics)
         - LangGraph adaptive retry with intelligent feedback
-        - Anti-spoofing detection (replay attacks, voice cloning)
+        - Anti-spoofing detection (replay attacks, voice cloning, deepfakes)
+        - Physics-aware verification:
+          * Reverberation analysis (RT60, double-reverb detection)
+          * Vocal tract length (VTL) biometric verification
+          * Doppler effect liveness detection
+          * Bayesian confidence fusion
         - Progressive voice feedback
         - Full audit trail with Langfuse sessions
 
@@ -1583,9 +2007,10 @@ class VoiceUnlockSystem:
             require_watch: Whether Apple Watch proximity is required
             max_attempts: Maximum number of retry attempts
             use_adaptive: Whether to use adaptive LangGraph reasoning
+            use_physics: Whether to use physics-aware verification (default: True)
 
         Returns:
-            Enhanced authentication result with feedback and trace
+            Enhanced authentication result with feedback, physics analysis, and trace
         """
         start_time = time.time()
         session_id = None
@@ -1597,13 +2022,25 @@ class VoiceUnlockSystem:
             'voice_confidence': 0.0,
             'behavioral_confidence': 0.0,
             'context_confidence': 0.0,
+            'physics_confidence': 0.0,
+            'bayesian_confidence': 0.0,
             'processing_time_ms': 0.0,
-            'method': 'enhanced_v2',
+            'method': 'enhanced_v2.5_physics',
             'watch_nearby': False,
             'feedback': None,
             'trace_id': None,
             'session_id': None,
-            'attempts': 0
+            'attempts': 0,
+            # Physics-aware authentication fields
+            'physics_enabled': self.physics_enabled and use_physics,
+            'physics_analysis': None,
+            'vtl_cm': 0.0,
+            'rt60_seconds': 0.0,
+            'double_reverb_detected': False,
+            'doppler_natural': True,
+            'physics_anomalies': [],
+            'spoof_detected': False,
+            'spoof_type': None,
         }
 
         try:
@@ -1656,7 +2093,59 @@ class VoiceUnlockSystem:
             else:
                 audio_bytes = audio_data
 
-            # Use enhanced verification
+            # ================================================================
+            # PHYSICS-AWARE VERIFICATION (v2.5)
+            # ================================================================
+            physics_analysis = None
+            physics_passed = True
+
+            if result['physics_enabled'] and self.physics_extractor:
+                logger.info("🔬 Running physics-aware verification...")
+
+                # Run physics analysis (can run in parallel with ML verification)
+                physics_analysis = await self.analyze_physics_features(
+                    audio_bytes,
+                    ml_confidence=None,  # Will be updated after ML verification
+                    behavioral_confidence=None,
+                    context_confidence=proximity_confidence
+                )
+
+                result['physics_analysis'] = physics_analysis
+                result['physics_confidence'] = physics_analysis.get('physics_confidence', 0.0)
+                result['vtl_cm'] = physics_analysis.get('vtl_cm', 0.0)
+                result['rt60_seconds'] = physics_analysis.get('rt60_seconds', 0.0)
+                result['double_reverb_detected'] = physics_analysis.get('double_reverb', False)
+                result['doppler_natural'] = physics_analysis.get('doppler_natural', True)
+                result['physics_anomalies'] = physics_analysis.get('anomalies', [])
+
+                # Check for physics-detected spoofing
+                if physics_analysis.get('spoof_detected'):
+                    result['spoof_detected'] = True
+                    result['spoof_type'] = physics_analysis.get('spoof_type')
+                    physics_passed = False
+                    logger.warning(
+                        f"⚠️ Physics spoof detected: {result['spoof_type']} "
+                        f"(confidence: {result['physics_confidence']:.1%})"
+                    )
+
+                # Check physics confidence threshold
+                if result['physics_confidence'] < self.physics_threshold:
+                    logger.info(
+                        f"🔬 Physics confidence below threshold: "
+                        f"{result['physics_confidence']:.1%} < {self.physics_threshold:.0%}"
+                    )
+                    # Don't fail immediately, but weight the final decision
+
+                logger.info(
+                    f"🔬 Physics analysis: VTL={result['vtl_cm']:.1f}cm, "
+                    f"RT60={result['rt60_seconds']:.2f}s, "
+                    f"double_reverb={result['double_reverb_detected']}, "
+                    f"doppler={result['doppler_natural']}"
+                )
+
+            # ================================================================
+            # ML + BEHAVIORAL VERIFICATION
+            # ================================================================
             if self.use_enhanced_verification and SPEAKER_SERVICE_AVAILABLE:
                 if use_adaptive and self.adaptive_auth:
                     # Use LangGraph adaptive authentication
@@ -1675,7 +2164,9 @@ class VoiceUnlockSystem:
                         context={
                             "environment": "default",
                             "proximity_confidence": proximity_confidence,
-                            "device": "mac_microphone"
+                            "device": "mac_microphone",
+                            "physics_confidence": result['physics_confidence'],
+                            "physics_passed": physics_passed
                         }
                     )
                 else:
@@ -1685,22 +2176,109 @@ class VoiceUnlockSystem:
                 # Fallback to basic verification
                 auth_result = await self._fallback_verification(audio_data)
 
-            # Extract results
-            result['authenticated'] = auth_result.get('verified', auth_result.get('authenticated', False))
-            result['confidence'] = auth_result.get('confidence', auth_result.get('fused_confidence', 0.0))
-            result['voice_confidence'] = auth_result.get('voice_confidence', result['confidence'])
-            result['behavioral_confidence'] = auth_result.get('behavioral_confidence', 0.0)
-            result['context_confidence'] = auth_result.get('context_confidence', 0.0)
-            result['user_id'] = auth_result.get('speaker_name', self.authorized_user) if result['authenticated'] else None
+            # ================================================================
+            # BAYESIAN FUSION (combine ML + Physics + Behavioral)
+            # ================================================================
+            ml_confidence = auth_result.get('confidence', auth_result.get('voice_confidence', 0.0))
+            behavioral_conf = auth_result.get('behavioral_confidence', 0.0)
+            context_conf = auth_result.get('context_confidence', proximity_confidence)
+
+            # Update physics analysis with ML confidence for Bayesian fusion
+            if result['physics_enabled'] and self.bayesian_fusion and physics_analysis:
+                bayesian_auth, bayesian_spoof, fusion_details = await self.bayesian_fusion.fuse_confidence_async(
+                    ml_confidence,
+                    physics_analysis.get('_physics_features') if physics_analysis else None,
+                    behavioral_conf,
+                    context_conf
+                )
+                result['bayesian_confidence'] = bayesian_auth
+                result['bayesian_spoof_probability'] = bayesian_spoof
+
+                # Use Bayesian fusion for final confidence if enabled
+                if self.bayesian_fusion_enabled:
+                    # Weighted fusion: ML (40%) + Physics (35%) + Behavioral (25%)
+                    fused_confidence = (
+                        ml_confidence * 0.40 +
+                        result['physics_confidence'] * self.physics_weight +
+                        behavioral_conf * (1.0 - 0.40 - self.physics_weight)
+                    )
+                    result['confidence'] = bayesian_auth  # Use Bayesian posterior
+                    logger.info(
+                        f"🔮 Bayesian fusion: P(authentic|evidence)={bayesian_auth:.1%}, "
+                        f"P(spoof|evidence)={bayesian_spoof:.1%}"
+                    )
+
+            # Extract results from ML verification
+            ml_authenticated = auth_result.get('verified', auth_result.get('authenticated', False))
+            result['voice_confidence'] = auth_result.get('voice_confidence', ml_confidence)
+            result['behavioral_confidence'] = auth_result.get('behavioral_confidence', behavioral_conf)
+            result['context_confidence'] = auth_result.get('context_confidence', context_conf)
             result['trace_id'] = auth_result.get('trace_id')
             result['attempts'] = auth_result.get('attempts', 1)
 
-            # Get feedback
-            feedback_data = auth_result.get('feedback', {})
-            if isinstance(feedback_data, dict):
-                result['feedback'] = feedback_data.get('message', auth_result.get('feedback', ''))
+            # ================================================================
+            # FINAL AUTHENTICATION DECISION (ML + Physics)
+            # ================================================================
+            # Physics can veto ML authentication if spoof detected
+            if result['spoof_detected']:
+                result['authenticated'] = False
+                result['user_id'] = None
+                result['threat_detected'] = result['spoof_type']
+                result['feedback'] = self._generate_physics_spoof_feedback(result['spoof_type'])
+                logger.warning(
+                    f"🚫 Authentication DENIED due to physics spoof detection: {result['spoof_type']}"
+                )
+            elif ml_authenticated:
+                # ML passed, check if physics confidence is acceptable
+                if result['physics_enabled']:
+                    if result['physics_confidence'] >= self.physics_threshold:
+                        # Full authentication: ML + Physics both pass
+                        result['authenticated'] = True
+                        result['user_id'] = auth_result.get('speaker_name', self.authorized_user)
+                        logger.info(
+                            f"✅ Full authentication: ML={ml_confidence:.1%}, "
+                            f"Physics={result['physics_confidence']:.1%}"
+                        )
+                    elif result['physics_confidence'] >= self.physics_threshold * 0.7:
+                        # Borderline physics - use Bayesian fusion decision
+                        if result.get('bayesian_confidence', 0) >= 0.80:
+                            result['authenticated'] = True
+                            result['user_id'] = auth_result.get('speaker_name', self.authorized_user)
+                            logger.info(
+                                f"✅ Bayesian authentication: P(authentic)={result['bayesian_confidence']:.1%}"
+                            )
+                        else:
+                            result['authenticated'] = False
+                            result['feedback'] = (
+                                "Voice sounds authentic but physical characteristics are unusual. "
+                                "Please try again or use password."
+                            )
+                    else:
+                        # Physics confidence too low - may be spoofing
+                        result['authenticated'] = False
+                        result['feedback'] = (
+                            "Voice verification inconclusive due to audio quality. "
+                            "Please speak closer to the microphone and try again."
+                        )
+                else:
+                    # Physics disabled - use ML result directly
+                    result['authenticated'] = True
+                    result['user_id'] = auth_result.get('speaker_name', self.authorized_user)
             else:
-                result['feedback'] = str(feedback_data) if feedback_data else ''
+                # ML failed
+                result['authenticated'] = False
+
+            # Update confidence with final weighted value
+            if not result.get('bayesian_confidence'):
+                result['confidence'] = auth_result.get('confidence', auth_result.get('fused_confidence', ml_confidence))
+
+            # Get feedback if not already set
+            if not result.get('feedback'):
+                feedback_data = auth_result.get('feedback', {})
+                if isinstance(feedback_data, dict):
+                    result['feedback'] = feedback_data.get('message', auth_result.get('feedback', ''))
+                else:
+                    result['feedback'] = str(feedback_data) if feedback_data else ''
 
             # Speak feedback via TTS
             if result['feedback'] and self.tts_callback:
@@ -1709,12 +2287,18 @@ class VoiceUnlockSystem:
             # Handle successful authentication
             if result['authenticated']:
                 await self._handle_successful_auth(result['user_id'], result)
-                logger.info(f"✅ Enhanced authentication successful: {result['user_id']} ({result['confidence']:.1%})")
+                logger.info(
+                    f"✅ Enhanced authentication successful: {result['user_id']} "
+                    f"(conf={result['confidence']:.1%}, physics={result['physics_confidence']:.1%})"
+                )
             else:
-                logger.info(f"❌ Enhanced authentication failed: confidence={result['confidence']:.1%}")
+                logger.info(
+                    f"❌ Enhanced authentication failed: conf={result['confidence']:.1%}, "
+                    f"physics={result['physics_confidence']:.1%}"
+                )
 
-            # Check for security threats
-            if auth_result.get('threat_detected'):
+            # Check for security threats from ML
+            if auth_result.get('threat_detected') and not result.get('threat_detected'):
                 result['threat_detected'] = auth_result['threat_detected']
                 logger.warning(f"⚠️ Security threat detected: {auth_result['threat_detected']}")
 
@@ -1751,6 +2335,52 @@ class VoiceUnlockSystem:
             }
 
         return {'verified': False, 'confidence': 0.0}
+
+    def _generate_physics_spoof_feedback(self, spoof_type: Optional[str]) -> str:
+        """
+        Generate user-friendly feedback message for physics-detected spoofing.
+
+        Provides clear, helpful messages that explain the security detection
+        without revealing too much about the detection methods.
+        """
+        messages = {
+            "replay_attack_double_reverb": (
+                "Security alert: I detected audio characteristics consistent with "
+                "a recording playback rather than a live voice. Access denied. "
+                "If you're the owner, please speak directly to the microphone."
+            ),
+            "vtl_outside_human_range": (
+                "Security alert: The voice doesn't match expected human vocal "
+                "characteristics. This may indicate a synthetic voice or audio "
+                "manipulation. Access denied."
+            ),
+            "static_playback": (
+                "Security alert: I detected unusually static audio with no natural "
+                "movement patterns. This could indicate a recording. Please speak "
+                "naturally and try again."
+            ),
+            "physics_violation": (
+                "Security alert: Audio analysis detected inconsistencies with "
+                "live human speech. Access denied for security reasons."
+            ),
+            "double_reverb_detected": (
+                "Security alert: Audio appears to have been recorded and played back. "
+                "For security, please use live voice authentication."
+            ),
+            "vtl_mismatch": (
+                "Security alert: Voice physical characteristics don't match your "
+                "registered profile. This may indicate voice impersonation."
+            ),
+            "unnatural_movement": (
+                "Security alert: Voice lacks natural micro-movements expected in "
+                "live speech. Please speak naturally and try again."
+            ),
+        }
+
+        return messages.get(
+            spoof_type,
+            "Security alert: Voice verification failed physics checks. Access denied."
+        )
 
     def get_authentication_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed authentication trace for debugging/display."""
@@ -1991,20 +2621,45 @@ class VoiceUnlockSystem:
         logger.info("System locked")
         
     def get_status(self) -> Dict[str, Any]:
-        """Get system status"""
+        """Get system status including physics-aware authentication statistics."""
         ml_status = self.ml_system.get_performance_report()
-        
-        return {
+
+        status = {
             'is_active': self.is_active,
             'is_locked': self.is_locked,
             'current_user': self.current_user,
             'last_auth_time': self.last_auth_time.isoformat() if self.last_auth_time else None,
             'ml_status': ml_status['system_health'],
             'recent_authentications': len([
-                a for a in self.auth_history 
+                a for a in self.auth_history
                 if (datetime.now() - a['timestamp']).seconds < 3600
-            ])
+            ]),
+            # Physics-aware authentication status (v2.5)
+            'physics_aware': {
+                'enabled': self.physics_enabled,
+                'weight': self.physics_weight,
+                'threshold': self.physics_threshold,
+                'bayesian_fusion': self.bayesian_fusion_enabled,
+                'total_physics_auths': self._physics_auth_count,
+                'spoofs_blocked': self._physics_spoof_detected_count,
+                'double_reverb_detections': self._double_reverb_detections,
+                'vtl_mismatches': self._vtl_mismatch_count,
+                'baseline_vtl_cm': self._vtl_baseline_cm,
+                'baseline_rt60_sec': self._rt60_baseline_sec,
+            },
+            # Cache statistics
+            'unified_cache': {
+                'hits': self._unified_cache_hits,
+                'misses': self._unified_cache_misses,
+                'hit_rate': (
+                    self._unified_cache_hits / (self._unified_cache_hits + self._unified_cache_misses)
+                    if (self._unified_cache_hits + self._unified_cache_misses) > 0 else 0.0
+                )
+            },
+            'version': '2.5_physics_aware',
         }
+
+        return status
         
     async def stop(self):
         """Stop the voice unlock system"""
