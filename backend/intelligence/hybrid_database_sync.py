@@ -2186,11 +2186,23 @@ class HybridDatabaseSync:
         if env_name and env_name not in search_names:
             search_names.append(env_name)
 
-        # Default fallback
+        # Dynamic fallback: If no hints available, use advanced heuristic-based discovery
         if not search_names:
-            search_names = ['Derek']  # Reasonable default for Derek's system
+            logger.info("🔍 No name hints available - using advanced dynamic owner discovery")
+            # Use the multi-heuristic discovery method which scores candidates based on:
+            # - Sample count (60% weight)
+            # - Recency (20% weight)
+            # - Embedding quality (20% weight)
+            discovered = await self.discover_primary_owner()
+            if discovered:
+                latency = (time.time() - start_time) * 1000
+                logger.info(f"✅ Found owner via heuristic discovery: '{discovered['name']}' in {latency:.2f}ms")
+                return discovered
+            else:
+                logger.warning("❌ No profiles found via heuristic discovery")
+                return None
 
-        # Try each name with exact match first
+        # Try each name with exact match first (only if we have hints)
         for name in search_names:
             profile = await self.read_voice_profile(name)
             if profile and profile.get('embedding') is not None:
@@ -2281,6 +2293,108 @@ class HybridDatabaseSync:
         except Exception as e:
             logger.error(f"Failed to list profiles: {e}")
         return profiles
+
+    async def discover_primary_owner(self) -> Optional[Dict[str, Any]]:
+        """
+        Dynamically discover the primary owner using multiple heuristics.
+
+        This method uses a scoring system to identify the most likely primary owner
+        without any hardcoded names. It's designed for single-user or primary-owner systems.
+
+        Heuristics (in order of weight):
+        1. Most voice samples (60% weight) - indicates primary user
+        2. Most recently updated (20% weight) - indicates active user
+        3. Embedding quality (20% weight) - well-normalized embeddings indicate proper enrollment
+
+        Returns:
+            Best candidate profile dict, or None if database is empty
+        """
+        start_time = time.time()
+
+        try:
+            # Get all profiles with full data
+            candidates = []
+            async with self.sqlite_conn.execute(
+                """SELECT speaker_id, speaker_name, voiceprint_embedding, acoustic_features,
+                          total_samples, last_updated, created_at
+                   FROM speaker_profiles
+                   WHERE voiceprint_embedding IS NOT NULL"""
+            ) as cursor:
+                async for row in cursor:
+                    profile = self._parse_profile_row(row)
+                    if profile.get('embedding') is not None:
+                        candidates.append(profile)
+
+            if not candidates:
+                logger.warning("🔍 No voice profiles found in database for primary owner discovery")
+                return None
+
+            if len(candidates) == 1:
+                # Single user system - return the only profile
+                latency = (time.time() - start_time) * 1000
+                logger.info(f"✅ Primary owner discovered: '{candidates[0]['name']}' (single profile) in {latency:.2f}ms")
+                return candidates[0]
+
+            # Score each candidate
+            scored_candidates = []
+
+            # Get normalization factors
+            max_samples = max(c.get('total_samples', 0) for c in candidates)
+
+            for candidate in candidates:
+                score = 0.0
+
+                # Heuristic 1: Sample count (60% weight)
+                samples = candidate.get('total_samples', 0)
+                if max_samples > 0:
+                    sample_score = (samples / max_samples) * 0.6
+                    score += sample_score
+
+                # Heuristic 2: Recency (20% weight) - more recent = higher score
+                last_updated = candidate.get('last_updated')
+                if last_updated:
+                    try:
+                        from datetime import datetime
+                        if isinstance(last_updated, str):
+                            updated_dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                        else:
+                            updated_dt = last_updated
+                        # Score based on days since update (max 30 days for full score)
+                        days_old = (datetime.now(updated_dt.tzinfo if updated_dt.tzinfo else None) - updated_dt).days
+                        recency_score = max(0, (30 - min(days_old, 30)) / 30) * 0.2
+                        score += recency_score
+                    except Exception:
+                        pass  # Skip recency scoring if date parsing fails
+
+                # Heuristic 3: Embedding quality (20% weight) - norm close to 1.0 is ideal
+                embedding = candidate.get('embedding')
+                if embedding is not None:
+                    norm = np.linalg.norm(embedding)
+                    # Ideal norm is 1.0 for normalized embeddings
+                    quality_score = max(0, 1 - abs(1.0 - norm)) * 0.2
+                    score += quality_score
+
+                scored_candidates.append((score, candidate))
+                logger.debug(f"📊 Candidate '{candidate['name']}': score={score:.4f} (samples={samples})")
+
+            # Sort by score descending
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+
+            best_candidate = scored_candidates[0][1]
+            best_score = scored_candidates[0][0]
+
+            latency = (time.time() - start_time) * 1000
+            logger.info(
+                f"✅ Primary owner discovered: '{best_candidate['name']}' "
+                f"(score={best_score:.4f}, samples={best_candidate.get('total_samples', 0)}) "
+                f"in {latency:.2f}ms"
+            )
+
+            return best_candidate
+
+        except Exception as e:
+            logger.error(f"❌ Primary owner discovery failed: {e}")
+            return None
 
     def _parse_profile_row(self, row: tuple) -> Dict[str, Any]:
         """Parse SQLite row into profile dict"""
