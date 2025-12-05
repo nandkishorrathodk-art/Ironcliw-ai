@@ -8961,17 +8961,24 @@ class AsyncSystemManager:
                 detector = AntiSpoofingDetector(fingerprint_cache_ttl=3600)
 
                 # Verify it's properly instantiated with all detection methods
+                # Note: Methods use _advanced suffix in the actual implementation
                 detection_methods = []
-                if hasattr(detector, '_detect_replay_attack'):
+                if hasattr(detector, '_detect_replay_attack_advanced'):
                     detection_methods.append('replay_detection')
-                if hasattr(detector, '_detect_synthetic_voice'):
+                if hasattr(detector, '_detect_synthetic_voice_advanced'):
                     detection_methods.append('synthesis_detection')
-                if hasattr(detector, '_detect_recording_playback'):
+                if hasattr(detector, '_detect_recording_playback_advanced'):
                     detection_methods.append('recording_playback_detection')
+                if hasattr(detector, '_detect_deepfake'):
+                    detection_methods.append('deepfake_detection')
+                if hasattr(detector, '_detect_voice_conversion'):
+                    detection_methods.append('voice_conversion_detection')
+                if hasattr(detector, '_detect_liveness'):
+                    detection_methods.append('liveness_detection')
                 if hasattr(detector, 'detect_spoofing'):
                     detection_methods.append('unified_detection')
 
-                anti_spoofing_available = len(detection_methods) >= 3
+                anti_spoofing_available = len(detection_methods) >= 4
 
                 status['detailed_checks']['anti_spoofing'] = {
                     'available': anti_spoofing_available,
@@ -8984,10 +8991,13 @@ class AsyncSystemManager:
                     logger.info("[VOICE UNLOCK]    ├─ Replay Attack Detection: ENABLED")
                     logger.info("[VOICE UNLOCK]    ├─ Synthetic Voice Detection: ENABLED")
                     logger.info("[VOICE UNLOCK]    ├─ Recording Playback Detection: ENABLED")
-                    logger.info(f"[VOICE UNLOCK]    └─ Spoof Types: {[st.value for st in SpoofType]}")
+                    logger.info("[VOICE UNLOCK]    ├─ Deepfake Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Voice Conversion Detection: ENABLED")
+                    logger.info("[VOICE UNLOCK]    ├─ Liveness Detection: ENABLED")
+                    logger.info(f"[VOICE UNLOCK]    └─ Detectors: {len(detection_methods)} active")
                 else:
                     logger.warning("[VOICE UNLOCK] ⚠️  Anti-Spoofing: PARTIALLY AVAILABLE")
-                    logger.warning(f"[VOICE UNLOCK]    └─ Available methods: {detection_methods}")
+                    logger.warning(f"[VOICE UNLOCK]    └─ Available: {detection_methods}")
             except ImportError as e:
                 status['detailed_checks']['anti_spoofing'] = {
                     'available': False,

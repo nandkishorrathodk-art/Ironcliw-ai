@@ -227,11 +227,27 @@ class VoiceMemoryAgent:
                     continue
 
                 # Cache voice characteristics in memory
+                # Calculate initial freshness based on last_trained date
+                last_trained = profile.get('last_trained')
+                initial_freshness = 1.0  # Default to fresh if unknown
+                if last_trained:
+                    try:
+                        if isinstance(last_trained, str):
+                            trained_dt = datetime.fromisoformat(last_trained.replace('Z', '+00:00'))
+                        else:
+                            trained_dt = last_trained
+                        age_days = (datetime.now(trained_dt.tzinfo) - trained_dt).days if trained_dt.tzinfo else (datetime.now() - trained_dt).days
+                        # Freshness decays over 30 days (max_age_days from manage_sample_freshness)
+                        initial_freshness = max(0.0, 1.0 - (age_days / 30.0))
+                    except Exception:
+                        initial_freshness = 0.5  # Default to 50% if parsing fails
+
                 self.voice_memory[speaker_name] = {
                     'speaker_id': profile.get('speaker_id'),
                     'total_samples': profile.get('total_samples', 0),
                     'last_trained': profile.get('last_trained'),
                     'confidence': profile.get('avg_confidence', 0.0),
+                    'freshness': initial_freshness,
                     'loaded_at': datetime.now().isoformat()
                 }
 

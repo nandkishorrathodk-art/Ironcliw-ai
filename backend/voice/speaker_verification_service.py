@@ -2852,7 +2852,12 @@ class SpeakerVerificationService:
                     logger.info("⏳ Waiting for encoder pre-load to complete...")
                     await encoder_task
 
-                logger.info("✅ Speaker encoder pre-loaded - unlock will be instant!")
+                # Mark encoder as preloaded (check the engine's state)
+                if self.speechbrain_engine.speaker_encoder_loaded:
+                    self._encoder_preloaded = True
+                    logger.info("✅ Speaker encoder pre-loaded - unlock will be instant!")
+                else:
+                    logger.warning("⚠️ Speaker encoder pre-load task completed but encoder not ready")
             else:
                 await self.speechbrain_engine.initialize()
                 # Load speaker profiles from database

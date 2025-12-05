@@ -60,6 +60,9 @@ logger = logging.getLogger(__name__)
 # Suppress MPS FFT fallback warnings (expected behavior for unsupported ops)
 warnings.filterwarnings("ignore", message=".*MPS backend.*", category=UserWarning)
 
+# Suppress torchaudio deprecation warning from SpeechBrain (cosmetic, works fine)
+warnings.filterwarnings("ignore", message="torchaudio._backend.list_audio_backends has been deprecated")
+
 # ============================================================================
 # TORCHAUDIO 2.9.0+ COMPATIBILITY PATCH
 # ============================================================================

@@ -42,8 +42,12 @@ import os
 import time
 import hashlib
 import threading
+import warnings
 import weakref
 from abc import ABC, abstractmethod
+
+# Suppress torchaudio deprecation warning from SpeechBrain (cosmetic, works fine)
+warnings.filterwarnings("ignore", message="torchaudio._backend.list_audio_backends has been deprecated")
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
