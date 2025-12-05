@@ -612,18 +612,26 @@ class SpeechBrainEngine(BaseSTTEngine):
                 self.use_fp16 = torch.cuda.get_device_capability()[0] >= 7
                 logger.info(f"   FP16 support: {self.use_fp16}")
 
-            # Load ASR model
+            # Load ASR model with fallback for missing custom.py
             model_source = self.model_config.model_path or "speechbrain/asr-crdnn-rnnlm-librispeech"
 
             loop = asyncio.get_event_loop()
-            self.asr_model = await loop.run_in_executor(
-                None,
-                lambda: EncoderDecoderASR.from_hparams(
-                    source=model_source,
-                    savedir=str(self.cache_dir / self.model_config.name),
-                    run_opts={"device": self.device},
-                ),
-            )
+
+            def _load_asr_model():
+                """Load ASR model with fallback for SpeechBrain 1.0 compatibility."""
+                try:
+                    return EncoderDecoderASR.from_hparams(
+                        source=model_source,
+                        savedir=str(self.cache_dir / self.model_config.name),
+                        run_opts={"device": self.device},
+                    )
+                except Exception as e:
+                    if "custom.py" in str(e) or "Entry Not Found" in str(e):
+                        logger.warning(f"   ⚠️ ASR model loading failed (missing custom.py), using fallback...")
+                        return self._load_asr_fallback(model_source, {"device": self.device})
+                    raise
+
+            self.asr_model = await loop.run_in_executor(None, _load_asr_model)
 
             # Apply quantization if on CPU for faster inference
             if self.device == "cpu" and hasattr(torch, "quantization"):
@@ -942,6 +950,102 @@ __all__ = ["EncoderClassifier"]
         )
 
         logger.info("   ✅ Model loaded via fallback method")
+        return model
+
+    def _load_asr_fallback(self, model_source: str, run_opts: dict):
+        """Fallback loader for ASR models when custom.py is missing.
+
+        SpeechBrain 1.0+ requires custom.py in model repos, but older models
+        don't have this file. This fallback downloads checkpoints directly
+        and loads the model using SpeechBrain's lower-level APIs.
+
+        Args:
+            model_source: HuggingFace model ID (e.g., 'speechbrain/asr-wav2vec2-commonvoice-en')
+            run_opts: Dictionary with device and other runtime options
+
+        Returns:
+            Loaded EncoderDecoderASR model
+        """
+        from pathlib import Path
+        import huggingface_hub
+
+        logger.info(f"   📥 Downloading ASR model files from {model_source}...")
+
+        # Create model-specific save directory
+        model_name = model_source.replace("/", "_")
+        save_dir = Path(self.cache_dir) / model_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get list of files in the repo
+        try:
+            repo_files = huggingface_hub.list_repo_files(model_source)
+        except Exception as e:
+            logger.error(f"   Failed to list repo files: {e}")
+            raise
+
+        # Download all necessary files (excluding large unnecessary ones)
+        skip_extensions = {'.md', '.txt', '.gitattributes', '.wav', '.flac', '.mp3'}
+        for filename in repo_files:
+            # Skip readme, examples, etc.
+            if any(filename.lower().endswith(ext) for ext in skip_extensions):
+                continue
+            if filename.startswith('.'):
+                continue
+
+            local_path = save_dir / filename
+            if not local_path.exists():
+                logger.info(f"   Downloading {filename}...")
+                try:
+                    huggingface_hub.hf_hub_download(
+                        repo_id=model_source,
+                        filename=filename,
+                        local_dir=str(save_dir),
+                        local_dir_use_symlinks=False,
+                    )
+                except Exception as e:
+                    logger.warning(f"   Could not download {filename}: {e}")
+
+        # Patch hyperparams.yaml to use local paths
+        hyperparams_path = save_dir / "hyperparams.yaml"
+        hyperparams_patched = save_dir / "hyperparams_local.yaml"
+
+        if hyperparams_path.exists() and not hyperparams_patched.exists():
+            logger.info("   Patching hyperparams.yaml for local loading...")
+            content = hyperparams_path.read_text()
+            # Replace any pretrained_path references with local directory
+            content = content.replace(f"pretrained_path: {model_source}", f"pretrained_path: {save_dir}")
+            # Also handle other common patterns
+            for pattern in [model_source, model_source.split('/')[-1]]:
+                if pattern in content:
+                    content = content.replace(pattern, str(save_dir))
+            hyperparams_patched.write_text(content)
+
+        # Create a minimal custom.py for SpeechBrain 1.0 compatibility
+        custom_py_path = save_dir / "custom.py"
+        if not custom_py_path.exists():
+            logger.info("   Creating SpeechBrain 1.0 compatibility module...")
+            custom_py_content = '''"""Auto-generated custom.py for SpeechBrain 1.0 compatibility."""
+from speechbrain.inference.ASR import EncoderDecoderASR
+
+# Re-export for from_hparams to find
+__all__ = ["EncoderDecoderASR"]
+'''
+            custom_py_path.write_text(custom_py_content)
+
+        # Load model from local directory
+        logger.info("   Loading ASR model from local directory...")
+        from speechbrain.inference.ASR import EncoderDecoderASR
+
+        hparams_file = str(hyperparams_patched) if hyperparams_patched.exists() else None
+
+        model = EncoderDecoderASR.from_hparams(
+            source=str(save_dir),
+            savedir=str(save_dir),
+            hparams_file=hparams_file,
+            run_opts=run_opts,
+        )
+
+        logger.info("   ✅ ASR model loaded via fallback method")
         return model
 
     def _get_optimal_device(self) -> str:
