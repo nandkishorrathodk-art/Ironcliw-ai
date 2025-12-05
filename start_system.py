@@ -535,6 +535,26 @@ _venv_activator.activate()
 del _venv_activator  # Clean up namespace
 
 # ============================================================================
+# CRITICAL: Python 3.9 Compatibility Patches
+# Must be applied BEFORE any packages that use Python 3.10+ features
+# Fixes: google-api-core packages_distributions() error
+# ============================================================================
+try:
+    from backend.utils.python39_compat import ensure_python39_compatibility, get_compat_status
+    _compat_results = ensure_python39_compatibility()
+    if sys.version_info < (3, 10):
+        _status = get_compat_status()
+        if _status.get('errors'):
+            print(f"⚠️  Python 3.9 compatibility warnings: {_status['errors']}")
+        else:
+            print(f"✅ Python {_status['python_version']} compatibility patches applied")
+except ImportError as e:
+    # Module not yet available, will be created
+    print(f"⚠️  Python 3.9 compatibility module not found: {e}")
+except Exception as e:
+    print(f"⚠️  Python 3.9 compatibility patch error: {e}")
+
+# ============================================================================
 # Environment is now verified and ready
 # ============================================================================
 
