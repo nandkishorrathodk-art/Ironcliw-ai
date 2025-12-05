@@ -1747,12 +1747,18 @@ class UnifiedVoiceCacheManager:
         2. Then check preloaded profiles (< 5ms)
         3. Fall back to database query (10-50ms)
 
+        IMPORTANT: Always returns the best similarity found, even if below
+        threshold. This enables:
+        - Progressive confidence communication (72% vs 0% makes a difference)
+        - Continuous learning from borderline cases
+        - Proper debugging and transparency
+
         Args:
             embedding: Voice embedding to match (192-dim)
             speaker_hint: Optional hint for expected speaker
 
         Returns:
-            MatchResult with match details
+            MatchResult with match details (always includes best similarity)
         """
         start_time = time.time()
         self._stats.total_lookups += 1
@@ -1762,6 +1768,9 @@ class UnifiedVoiceCacheManager:
 
         # Normalize embedding
         embedding = self._normalize_embedding(embedding)
+
+        # Track best result across all strategies (even if below threshold)
+        best_result: Optional[MatchResult] = None
 
         # Strategy 1: Session cache (fastest - recently verified)
         result = self._check_session_cache(embedding)
@@ -1780,6 +1789,9 @@ class UnifiedVoiceCacheManager:
             result.match_time_ms = (time.time() - start_time) * 1000
             self._update_match_stats(result)
             return result
+        # Track best result even if not matched (for progressive confidence)
+        if result.similarity > 0:
+            best_result = result
 
         # Strategy 3: Database fallback (slower but comprehensive)
         result = await self._check_database_profiles(embedding)
@@ -1787,15 +1799,26 @@ class UnifiedVoiceCacheManager:
             result.match_time_ms = (time.time() - start_time) * 1000
             self._update_match_stats(result)
             return result
+        # Check if database gave us a better similarity
+        if result.similarity > (best_result.similarity if best_result else 0):
+            best_result = result
 
-        # No match found
-        result = MatchResult(
+        # No match found - but return the best similarity we found
+        # This is CRITICAL for progressive confidence communication
+        self._stats.no_matches += 1
+        match_time_ms = (time.time() - start_time) * 1000
+
+        if best_result and best_result.similarity > 0:
+            # Return the best partial match with updated timing
+            best_result.match_time_ms = match_time_ms
+            return best_result
+
+        # Truly no matches found
+        return MatchResult(
             matched=False,
             match_type="none",
-            match_time_ms=(time.time() - start_time) * 1000,
+            match_time_ms=match_time_ms,
         )
-        self._stats.no_matches += 1
-        return result
 
     def _normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
         """Normalize embedding to unit length"""
