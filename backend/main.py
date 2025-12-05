@@ -1283,15 +1283,38 @@ async def lifespan(app: FastAPI):
     else:
         try:
             logger.info("🔥 Prewarming Voice Unlock ML models (Whisper + ECAPA-TDNN)...")
-            from voice_unlock.ml_model_prewarmer import prewarm_voice_unlock_models_background
 
-            # Start prewarming in background - doesn't block startup but models will be ready
-            # by the time user says "unlock my screen"
-            await prewarm_voice_unlock_models_background()
-            logger.info("   → ML model prewarming started in background")
-            logger.info("   → First 'unlock my screen' will be instant once prewarming completes")
+            # Use the new blocking ML Engine Registry for proper singleton pattern
+            # This BLOCKS startup until all models are loaded - preventing runtime hangs
+            from voice_unlock.ml_engine_registry import (
+                prewarm_voice_unlock_models_blocking,
+                get_ml_registry,
+            )
+
+            # Get registry status for logging
+            registry = await get_ml_registry()
+            logger.info(f"   → ML Engine Registry initialized with engines: {list(registry._engines.keys())}")
+
+            # BLOCKING prewarm - ensures models are ready before accepting requests
+            prewarm_status = await prewarm_voice_unlock_models_blocking()
+
+            if prewarm_status.is_ready:
+                logger.info(f"   ✅ ML prewarm complete in {prewarm_status.prewarm_duration_ms:.0f}ms")
+                logger.info(f"   → {prewarm_status.ready_count}/{prewarm_status.total_count} engines ready")
+                logger.info("   → Voice unlock will be INSTANT - no runtime model loading!")
+            else:
+                logger.warning(f"   ⚠️ ML prewarm partial: {prewarm_status.ready_count}/{prewarm_status.total_count} ready")
+                logger.warning(f"   → Errors: {prewarm_status.errors}")
+
         except ImportError as e:
-            logger.debug(f"ML model prewarmer not available: {e}")
+            logger.debug(f"ML Engine Registry not available: {e}")
+            # Fallback to legacy prewarmer if registry not available
+            try:
+                from voice_unlock.ml_model_prewarmer import prewarm_voice_unlock_models_background
+                await prewarm_voice_unlock_models_background()
+                logger.info("   → Using legacy background prewarmer")
+            except Exception:
+                pass
         except Exception as e:
             logger.warning(f"⚠️ ML model prewarming skipped: {e}")
 

@@ -165,6 +165,24 @@ PHYSICS_WEIGHT = float(os.getenv("PHYSICS_CONFIDENCE_WEIGHT", "0.35"))
 PHYSICS_THRESHOLD = float(os.getenv("PHYSICS_CONFIDENCE_THRESHOLD", "0.70"))
 BAYESIAN_FUSION_ENABLED = os.getenv("BAYESIAN_FUSION_ENABLED", "true").lower() == "true"
 
+# =============================================================================
+# ML ENGINE REGISTRY - Ensures models are loaded before processing
+# =============================================================================
+try:
+    from .ml_engine_registry import (
+        is_voice_unlock_ready,
+        wait_for_voice_unlock_ready,
+        get_ml_registry_sync,
+    )
+    ML_REGISTRY_AVAILABLE = True
+except ImportError:
+    ML_REGISTRY_AVAILABLE = False
+    # Fallback functions
+    def is_voice_unlock_ready() -> bool:
+        return True  # Assume ready if registry not available
+    async def wait_for_voice_unlock_ready(timeout: float = 60.0) -> bool:
+        return True
+
 logger = logging.getLogger(__name__)
 
 
@@ -1076,6 +1094,28 @@ class AdaptiveAuthenticationEngine:
         Returns:
             Authentication result with feedback
         """
+        # =====================================================================
+        # ML READINESS GATE - Ensure models are loaded before processing
+        # This prevents hangs from runtime HuggingFace downloads
+        # =====================================================================
+        if not is_voice_unlock_ready():
+            self.logger.info("⏳ ML models still loading, waiting up to 30s...")
+
+            # Wait for models with timeout
+            ready = await wait_for_voice_unlock_ready(timeout=30.0)
+
+            if not ready:
+                self.logger.warning("⚠️ ML models not ready after 30s timeout")
+                return {
+                    "verified": False,
+                    "error": "Voice unlock models still initializing. Please try again in a moment.",
+                    "feedback_message": "I'm still warming up my voice recognition. Give me just a moment and try again.",
+                    "retry_suggested": True,
+                    "ml_ready": False,
+                }
+
+            self.logger.info("✅ ML models ready, proceeding with authentication")
+
         if not self._graph or not LANGGRAPH_AVAILABLE:
             # Fallback to direct verification
             if self.speaker_service:

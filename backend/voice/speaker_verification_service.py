@@ -184,6 +184,25 @@ except ImportError:
     LANGGRAPH_AVAILABLE = False
     logger.info("LangGraph not available - using fallback reasoning")
 
+# ML Engine Registry for singleton ECAPA-TDNN engine
+# This prevents multiple instances and runtime HuggingFace downloads
+try:
+    from voice_unlock.ml_engine_registry import (
+        get_ml_registry_sync,
+        get_ecapa_encoder_async,
+        is_voice_unlock_ready,
+        extract_speaker_embedding as registry_extract_embedding,
+    )
+    ML_REGISTRY_AVAILABLE = True
+    logger.info("ML Engine Registry available - using singleton ECAPA-TDNN")
+except ImportError:
+    ML_REGISTRY_AVAILABLE = False
+    get_ml_registry_sync = None
+    get_ecapa_encoder_async = None
+    is_voice_unlock_ready = lambda: True
+    registry_extract_embedding = None
+    logger.info("ML Engine Registry not available - using local engine instance")
+
 
 # ============================================================================
 # Enhanced Authentication Enums and Types
@@ -2677,7 +2696,7 @@ class SpeakerVerificationService:
             if is_verified and self._pattern_store_initialized:
                 audio_fingerprint = hashlib.sha256(audio_data).hexdigest()
                 try:
-                    embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+                    embedding = await self._extract_speaker_embedding(audio_data)
                     await self.voice_pattern_store.store_audio_fingerprint(
                         speaker_name or "unknown",
                         audio_fingerprint,
@@ -2795,35 +2814,90 @@ class SpeakerVerificationService:
             model_path="speechbrain/asr-wav2vec2-commonvoice-en",
         )
 
-        self.speechbrain_engine = SpeechBrainEngine(model_config)
+        # =====================================================================
+        # ML ENGINE REGISTRY INTEGRATION
+        # If the global registry has already loaded ECAPA-TDNN, use that
+        # instead of creating a duplicate engine instance
+        # =====================================================================
+        self._use_registry_encoder = False
 
-        # OPTIMIZED: Initialize engine and start encoder pre-load in PARALLEL
-        # This significantly reduces startup time
-        if preload_encoder:
-            logger.info("🚀 Starting parallel initialization (engine + encoder + profiles)...")
-
-            # Start encoder pre-loading in background (non-blocking)
+        if ML_REGISTRY_AVAILABLE and is_voice_unlock_ready():
+            logger.info("✅ ML Engine Registry has ECAPA-TDNN loaded - using singleton!")
+            self._use_registry_encoder = True
+            # Still create SpeechBrain engine for other features (ASR, etc)
+            # but skip the encoder preload since registry already has it
+            self.speechbrain_engine = SpeechBrainEngine(model_config)
             await self.speechbrain_engine.initialize()
-            encoder_task = await self.speechbrain_engine.preload_speaker_encoder_async()
-
-            # Load speaker profiles while encoder loads
+            # Load speaker profiles
             await self._load_speaker_profiles()
-
-            # Wait for encoder if it's still loading
-            if encoder_task and not encoder_task.done():
-                logger.info("⏳ Waiting for encoder pre-load to complete...")
-                await encoder_task
-
-            logger.info("✅ Speaker encoder pre-loaded - unlock will be instant!")
+            logger.info("✅ Using registry ECAPA-TDNN - unlock will be instant!")
         else:
-            await self.speechbrain_engine.initialize()
-            # Load speaker profiles from database
-            await self._load_speaker_profiles()
+            # Fallback: Load our own engine if registry not available
+            self.speechbrain_engine = SpeechBrainEngine(model_config)
+
+            # OPTIMIZED: Initialize engine and start encoder pre-load in PARALLEL
+            # This significantly reduces startup time
+            if preload_encoder:
+                logger.info("🚀 Starting parallel initialization (engine + encoder + profiles)...")
+
+                # Start encoder pre-loading in background (non-blocking)
+                await self.speechbrain_engine.initialize()
+                encoder_task = await self.speechbrain_engine.preload_speaker_encoder_async()
+
+                # Load speaker profiles while encoder loads
+                await self._load_speaker_profiles()
+
+                # Wait for encoder if it's still loading
+                if encoder_task and not encoder_task.done():
+                    logger.info("⏳ Waiting for encoder pre-load to complete...")
+                    await encoder_task
+
+                logger.info("✅ Speaker encoder pre-loaded - unlock will be instant!")
+            else:
+                await self.speechbrain_engine.initialize()
+                # Load speaker profiles from database
+                await self._load_speaker_profiles()
 
         self.initialized = True
         logger.info(
             f"✅ Speaker Verification Service ready ({len(self.speaker_profiles)} profiles loaded)"
         )
+        if self._use_registry_encoder:
+            logger.info("   → Using ML Engine Registry singleton (no duplicate models)")
+
+    async def _extract_speaker_embedding(self, audio_data: bytes):
+        """
+        Extract speaker embedding using the best available engine.
+
+        If ML Engine Registry is available and ready, uses the singleton ECAPA-TDNN.
+        Otherwise falls back to the local speechbrain_engine.
+
+        This ensures:
+        - No duplicate model instances
+        - No runtime HuggingFace downloads
+        - Consistent embedding quality
+
+        Args:
+            audio_data: Raw audio bytes (16kHz, mono)
+
+        Returns:
+            Embedding tensor or None on failure
+        """
+        try:
+            # Prefer registry if available and we're configured to use it
+            if self._use_registry_encoder and ML_REGISTRY_AVAILABLE:
+                embedding = await registry_extract_embedding(audio_data)
+                if embedding is not None:
+                    return embedding
+                # Fallback to local engine if registry fails
+                logger.warning("Registry embedding failed, falling back to local engine")
+
+            # Fallback to local SpeechBrain engine
+            return await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+
+        except Exception as e:
+            logger.error(f"Embedding extraction failed: {e}")
+            return None
 
     async def _detect_current_model_dimension(self):
         """
