@@ -1293,39 +1293,80 @@ class VoiceBiometricIntelligence:
 
     async def _verify_speaker(
         self,
-        audio_data
+        audio_data,
+        retry_count: int = 0,
+        diagnostics: Optional[Dict[str, Any]] = None
     ) -> Tuple[Optional[str], float, bool]:
         """
         Verify speaker identity from audio using FAST unified cache.
 
-        ENHANCED: Handles all audio input types (bytes, base64 string, numpy, tensor).
+        ENHANCED v2.0 with:
+        - Intelligent retry with progressive noise filtering
+        - Comprehensive diagnostics for 0% confidence scenarios
+        - Speaker engine readiness checking with wait/retry
+        - Multi-factor fallback when voice confidence is low
+        - Hot cache embedding comparison as final fallback
 
         Returns:
             Tuple of (speaker_name, confidence, was_cached)
         """
+        MAX_RETRIES = int(os.getenv('VBI_MAX_RETRIES', '2'))
+        RETRY_DELAY = float(os.getenv('VBI_RETRY_DELAY', '0.3'))
+
+        # Initialize diagnostics for tracking failure reasons
+        if diagnostics is None:
+            diagnostics = {
+                'audio_normalized': False,
+                'audio_length_bytes': 0,
+                'unified_cache_available': False,
+                'unified_cache_profiles': 0,
+                'speaker_engine_available': False,
+                'speaker_engine_ready': False,
+                'hot_cache_available': False,
+                'failure_reasons': [],
+                'retry_count': retry_count,
+            }
+
         # =================================================================
         # AUDIO NORMALIZATION: Handle all input types
         # =================================================================
         try:
-            # Import helper from unified cache manager
             from voice_unlock.unified_voice_cache_manager import normalize_audio_data
             normalized_audio = normalize_audio_data(audio_data)
             if normalized_audio is None:
+                diagnostics['failure_reasons'].append('audio_normalization_failed')
                 logger.warning("⚠️ Failed to normalize audio data for speaker verification")
-                return None, 0.0, False
+                # Try manual normalization as fallback
+                if isinstance(audio_data, str):
+                    try:
+                        import base64
+                        normalized_audio = base64.b64decode(audio_data)
+                    except Exception:
+                        logger.warning("⚠️ Audio data is string but not valid base64")
+                        return None, 0.0, False
+                elif isinstance(audio_data, bytes):
+                    normalized_audio = audio_data
+                else:
+                    return None, 0.0, False
             audio_data = normalized_audio
+            diagnostics['audio_normalized'] = True
         except ImportError:
             # Fallback: inline conversion if import fails
             if isinstance(audio_data, str):
                 try:
                     import base64
                     audio_data = base64.b64decode(audio_data)
+                    diagnostics['audio_normalized'] = True
                 except Exception:
+                    diagnostics['failure_reasons'].append('base64_decode_failed')
                     logger.warning("⚠️ Audio data is string but not valid base64")
                     return None, 0.0, False
 
+        diagnostics['audio_length_bytes'] = len(audio_data) if audio_data else 0
+
         # Validate audio length (at least 0.5s at 16kHz = 16000 bytes for 16-bit audio)
         if len(audio_data) < 16000:
+            diagnostics['failure_reasons'].append('audio_too_short')
             logger.warning(
                 f"⚠️ Audio too short for verification: {len(audio_data)} bytes "
                 f"(need at least 16000 for 0.5s)"
@@ -1333,19 +1374,86 @@ class VoiceBiometricIntelligence:
             # Continue anyway - the model may still work with padding
 
         # =================================================================
-        # FAST PATH: Use unified voice cache (< 100ms when cached!)
+        # HOT CACHE FAST PATH: Direct embedding comparison (<10ms)
         # =================================================================
+        if self._reference_embedding is not None and self._owner_name:
+            diagnostics['hot_cache_available'] = True
+            try:
+                import numpy as np
+
+                # Extract embedding from current audio using ML registry
+                try:
+                    from voice_unlock.ml_engine_registry import extract_speaker_embedding
+                    current_embedding = await extract_speaker_embedding(audio_data)
+
+                    if current_embedding is not None and len(current_embedding) > 0:
+                        # Ensure embeddings are same shape
+                        if current_embedding.shape == self._reference_embedding.shape:
+                            # Compute cosine similarity
+                            norm1 = np.linalg.norm(current_embedding)
+                            norm2 = np.linalg.norm(self._reference_embedding)
+
+                            if norm1 > 1e-6 and norm2 > 1e-6:
+                                similarity = float(np.dot(current_embedding, self._reference_embedding) / (norm1 * norm2))
+
+                                # Hot cache threshold (dynamic from config)
+                                hot_cache_threshold = float(os.getenv('VBI_HOT_CACHE_THRESHOLD', '0.75'))
+
+                                if similarity >= hot_cache_threshold:
+                                    logger.info(
+                                        f"🔥 HOT CACHE MATCH: {self._owner_name} "
+                                        f"({similarity:.1%}) - instant recognition!"
+                                    )
+                                    return (self._owner_name, similarity, True)
+                                else:
+                                    logger.debug(
+                                        f"🔥 Hot cache similarity below threshold: "
+                                        f"{similarity:.1%} < {hot_cache_threshold:.1%}"
+                                    )
+                            else:
+                                diagnostics['failure_reasons'].append('embedding_zero_norm')
+                                logger.warning("⚠️ Embedding has zero norm - audio may be silent")
+                        else:
+                            diagnostics['failure_reasons'].append('embedding_dimension_mismatch')
+                            logger.warning(
+                                f"⚠️ Embedding dimension mismatch: "
+                                f"current={current_embedding.shape}, ref={self._reference_embedding.shape}"
+                            )
+                except Exception as e:
+                    logger.debug(f"Hot cache embedding extraction failed: {e}")
+
+            except Exception as e:
+                logger.debug(f"Hot cache comparison failed: {e}")
+
+        # =================================================================
+        # UNIFIED CACHE PATH: Fast voice verification (< 100ms when cached!)
+        # =================================================================
+        diagnostics['unified_cache_available'] = self._unified_cache is not None
+
         if self._unified_cache:
             try:
-                # Log cache state for debugging
                 profiles_count = self._unified_cache.profiles_loaded
+                diagnostics['unified_cache_profiles'] = profiles_count
                 cache_state = self._unified_cache.state.value if hasattr(self._unified_cache.state, 'value') else str(self._unified_cache.state)
 
                 if profiles_count == 0:
+                    diagnostics['failure_reasons'].append('no_profiles_in_cache')
                     logger.warning(
                         f"⚠️ Unified cache has NO profiles (state={cache_state}). "
-                        "Voice verification will fail!"
+                        "Attempting to reload profiles..."
                     )
+                    # Try to reload profiles
+                    try:
+                        if hasattr(self._unified_cache, 'reload_profiles'):
+                            await asyncio.wait_for(
+                                self._unified_cache.reload_profiles(),
+                                timeout=3.0
+                            )
+                            profiles_count = self._unified_cache.profiles_loaded
+                            diagnostics['unified_cache_profiles'] = profiles_count
+                            logger.info(f"✅ Reloaded {profiles_count} profiles into cache")
+                    except Exception as reload_err:
+                        logger.warning(f"Profile reload failed: {reload_err}")
                 else:
                     logger.debug(
                         f"🔐 Unified cache ready: {profiles_count} profiles, state={cache_state}"
@@ -1357,7 +1465,7 @@ class VoiceBiometricIntelligence:
                         audio_data=audio_data,
                         sample_rate=16000,
                     ),
-                    timeout=2.0  # Allow 2s for embedding extraction + matching
+                    timeout=3.0  # Allow 3s for embedding extraction + matching
                 )
 
                 if cache_result and cache_result.matched:
@@ -1373,23 +1481,63 @@ class VoiceBiometricIntelligence:
                 else:
                     similarity = cache_result.similarity if cache_result else 0
                     match_type = cache_result.match_type if cache_result else "none"
-                    logger.info(
-                        f"📊 Unified cache NO MATCH: similarity={similarity:.1%}, "
-                        f"type={match_type}, threshold needed={0.75:.1%}"
-                    )
+                    diagnostics['cache_similarity'] = similarity
+                    diagnostics['cache_match_type'] = match_type
+
+                    # If we got a non-zero similarity, log for debugging
+                    if similarity > 0:
+                        diagnostics['failure_reasons'].append(f'below_threshold_{similarity:.0%}')
+                        logger.info(
+                            f"📊 Unified cache partial match: similarity={similarity:.1%}, "
+                            f"type={match_type}, threshold needed=75%"
+                        )
+                    else:
+                        diagnostics['failure_reasons'].append('zero_similarity')
+                        logger.warning(
+                            f"📊 Unified cache NO MATCH: similarity=0%, type={match_type}"
+                        )
+
             except asyncio.TimeoutError:
-                logger.warning("⏱️ Unified cache verification timed out after 2s")
+                diagnostics['failure_reasons'].append('cache_timeout')
+                logger.warning("⏱️ Unified cache verification timed out after 3s")
             except AttributeError as e:
+                diagnostics['failure_reasons'].append('cache_not_initialized')
                 logger.warning(f"⚠️ Unified cache not properly initialized: {e}")
             except Exception as e:
+                diagnostics['failure_reasons'].append(f'cache_error_{type(e).__name__}')
                 logger.warning(f"⚠️ Unified cache error: {e}")
 
         # =================================================================
-        # FALLBACK: Use speaker engine (slower, but more thorough)
+        # SPEAKER ENGINE FALLBACK: Full verification (slower, but thorough)
         # =================================================================
+        diagnostics['speaker_engine_available'] = self._speaker_engine is not None
+
         if self._speaker_engine:
             try:
-                # Check if speaker engine has unified cache for fast path
+                # Check if speaker engine is ready (encoder loaded)
+                engine_ready = False
+                if hasattr(self._speaker_engine, 'speechbrain_engine'):
+                    sb_engine = self._speaker_engine.speechbrain_engine
+                    if sb_engine and hasattr(sb_engine, 'speaker_encoder'):
+                        engine_ready = sb_engine.speaker_encoder is not None
+
+                    # Wait for encoder if not ready (with timeout)
+                    if not engine_ready:
+                        logger.info("⏳ Waiting for speaker encoder to load...")
+                        for wait_attempt in range(5):  # Wait up to 2.5s
+                            await asyncio.sleep(0.5)
+                            if sb_engine and hasattr(sb_engine, 'speaker_encoder'):
+                                engine_ready = sb_engine.speaker_encoder is not None
+                                if engine_ready:
+                                    logger.info("✅ Speaker encoder now ready!")
+                                    break
+                        if not engine_ready:
+                            diagnostics['failure_reasons'].append('encoder_not_loaded')
+                            logger.warning("⚠️ Speaker encoder still not loaded after waiting")
+
+                diagnostics['speaker_engine_ready'] = engine_ready
+
+                # Try speaker engine's unified cache first
                 if hasattr(self._speaker_engine, 'unified_cache') and self._speaker_engine.unified_cache:
                     try:
                         result = await asyncio.wait_for(
@@ -1397,7 +1545,7 @@ class VoiceBiometricIntelligence:
                                 audio_data=audio_data,
                                 sample_rate=16000,
                             ),
-                            timeout=2.0
+                            timeout=3.0
                         )
                         if result and result.matched:
                             return (
@@ -1411,19 +1559,101 @@ class VoiceBiometricIntelligence:
                 # Full speaker verification (slower)
                 result = await asyncio.wait_for(
                     self._speaker_engine.verify_speaker(audio_data, None),
-                    timeout=self._config.fast_verify_timeout
+                    timeout=self._config.fast_verify_timeout + 2.0  # Extra time for thorough check
                 )
 
                 if result:
-                    return (
-                        result.get('speaker_name'),
-                        result.get('confidence', 0.0),
-                        False
-                    )
+                    confidence = result.get('confidence', 0.0)
+                    speaker_name = result.get('speaker_name')
+
+                    if confidence > 0:
+                        logger.info(
+                            f"🔐 Speaker engine result: {speaker_name} ({confidence:.1%})"
+                        )
+                        return (speaker_name, confidence, False)
+                    else:
+                        diagnostics['failure_reasons'].append('speaker_engine_zero_confidence')
+                        # Check for specific error conditions
+                        if result.get('error') == 'enrollment_required':
+                            diagnostics['failure_reasons'].append('enrollment_required')
+                            logger.warning(
+                                "⚠️ Voice enrollment required - say 'JARVIS, learn my voice'"
+                            )
+                        elif result.get('error') == 'corrupted_profile':
+                            diagnostics['failure_reasons'].append('corrupted_profile')
+                            logger.error(
+                                "❌ Voice profile corrupted - re-enrollment needed"
+                            )
+
             except asyncio.TimeoutError:
-                logger.warning("Speaker verification timed out")
+                diagnostics['failure_reasons'].append('speaker_engine_timeout')
+                logger.warning("⏱️ Speaker engine verification timed out")
             except Exception as e:
+                diagnostics['failure_reasons'].append(f'speaker_engine_error_{type(e).__name__}')
                 logger.error(f"Speaker verification error: {e}")
+
+        # =================================================================
+        # INTELLIGENT RETRY: Apply noise filtering and try again
+        # =================================================================
+        if retry_count < MAX_RETRIES:
+            try:
+                import numpy as np
+                from scipy import signal
+
+                logger.info(
+                    f"🔄 Attempting retry {retry_count + 1}/{MAX_RETRIES} with noise filtering..."
+                )
+
+                # Convert to numpy for processing
+                audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+
+                # Apply progressive noise filtering based on retry count
+                if retry_count == 0:
+                    # First retry: High-pass filter to remove low-frequency noise
+                    b, a = signal.butter(4, 100 / 8000, btype='high')
+                    filtered = signal.filtfilt(b, a, audio_array)
+                else:
+                    # Second retry: More aggressive noise reduction
+                    # Bandpass filter focusing on voice frequencies (100Hz - 4000Hz)
+                    b, a = signal.butter(4, [100 / 8000, 4000 / 8000], btype='band')
+                    filtered = signal.filtfilt(b, a, audio_array)
+                    # Also normalize audio level
+                    max_val = np.max(np.abs(filtered))
+                    if max_val > 1e-6:
+                        filtered = filtered / max_val * 0.9
+
+                # Convert back to bytes
+                filtered_audio = (filtered * 32767).astype(np.int16).tobytes()
+
+                await asyncio.sleep(RETRY_DELAY)
+
+                # Recursive retry with filtered audio
+                return await self._verify_speaker(
+                    filtered_audio,
+                    retry_count=retry_count + 1,
+                    diagnostics=diagnostics
+                )
+
+            except Exception as e:
+                logger.debug(f"Retry filtering failed: {e}")
+
+        # =================================================================
+        # FINAL FALLBACK: Log comprehensive diagnostics
+        # =================================================================
+        logger.warning(
+            f"❌ Voice verification FAILED after all attempts. Diagnostics:\n"
+            f"   Audio normalized: {diagnostics['audio_normalized']}\n"
+            f"   Audio length: {diagnostics['audio_length_bytes']} bytes\n"
+            f"   Unified cache: {'available' if diagnostics['unified_cache_available'] else 'unavailable'} "
+            f"({diagnostics['unified_cache_profiles']} profiles)\n"
+            f"   Speaker engine: {'ready' if diagnostics['speaker_engine_ready'] else 'not ready'}\n"
+            f"   Hot cache: {'available' if diagnostics['hot_cache_available'] else 'unavailable'}\n"
+            f"   Failure reasons: {', '.join(diagnostics['failure_reasons']) or 'unknown'}\n"
+            f"   Retries attempted: {retry_count}"
+        )
+
+        # Store diagnostics for potential feedback to user
+        self._last_verification_diagnostics = diagnostics
 
         return None, 0.0, False
 
@@ -1498,61 +1728,329 @@ class VoiceBiometricIntelligence:
         self,
         context: Optional[Dict[str, Any]]
     ) -> BehavioralContext:
-        """Get behavioral and contextual factors."""
+        """
+        Get behavioral and contextual factors with ENHANCED v2.0 analysis.
+
+        ENHANCED with:
+        - Network-based location detection (same WiFi = trusted)
+        - Time pattern analysis (learns typical unlock times)
+        - Recent activity correlation (was device used recently?)
+        - Device movement detection (accelerometer proxy via last activity)
+        - Comprehensive context scoring for low-confidence recovery
+        """
         behavioral = BehavioralContext()
 
         try:
-            # Check time of day
-            hour = datetime.now().hour
-            # Typical work hours
-            behavioral.is_typical_time = 6 <= hour <= 23
+            now = datetime.now()
+            hour = now.hour
+            day_of_week = now.weekday()  # 0=Monday, 6=Sunday
 
-            # Get from context
-            if context:
-                behavioral.hours_since_last_unlock = context.get(
-                    'hours_since_last_unlock', 0
-                )
-                behavioral.consecutive_failures = context.get(
-                    'consecutive_failures', 0
-                )
-                behavioral.device_trusted = context.get('device_trusted', True)
-
-            # Calculate behavioral confidence
-            if behavioral.is_typical_time and behavioral.device_trusted:
-                behavioral.behavioral_confidence = 0.85
-            elif behavioral.is_typical_time or behavioral.device_trusted:
-                behavioral.behavioral_confidence = 0.7
+            # =================================================================
+            # TIME PATTERN ANALYSIS
+            # =================================================================
+            # Dynamic typical hours based on day of week
+            is_weekday = day_of_week < 5
+            if is_weekday:
+                # Weekday: 6 AM - 11 PM typical
+                behavioral.is_typical_time = 6 <= hour <= 23
+                time_confidence = 0.9 if 7 <= hour <= 22 else 0.7
             else:
-                behavioral.behavioral_confidence = 0.5
+                # Weekend: 8 AM - 1 AM typical (later nights OK)
+                behavioral.is_typical_time = 8 <= hour <= 25 % 24  # Wrap around midnight
+                if hour >= 8 or hour <= 1:
+                    behavioral.is_typical_time = True
+                    time_confidence = 0.85
+                else:
+                    time_confidence = 0.5
 
-            # Reduce for consecutive failures
-            if behavioral.consecutive_failures > 0:
-                behavioral.behavioral_confidence *= (0.9 ** behavioral.consecutive_failures)
+            # Unusual hours get lower confidence
+            if 2 <= hour <= 5:
+                time_confidence = 0.3  # Very unusual - might not be owner
+
+            # =================================================================
+            # CONTEXT-BASED FACTORS
+            # =================================================================
+            hours_since_last = 0.0
+            consecutive_failures = 0
+            device_trusted = True
+            is_same_network = True
+            recent_activity = False
+            location_confidence = 0.5
+
+            if context:
+                hours_since_last = context.get('hours_since_last_unlock', 0)
+                consecutive_failures = context.get('consecutive_failures', 0)
+                device_trusted = context.get('device_trusted', True)
+                is_same_network = context.get('is_same_network', True)
+                recent_activity = context.get('recent_activity', False)
+
+                # Network-based location trust
+                if is_same_network:
+                    location_confidence = 0.95  # Same WiFi = likely same location
+                elif context.get('known_network', False):
+                    location_confidence = 0.8  # Known network (office, home)
+                else:
+                    location_confidence = 0.4  # Unknown network - be cautious
+
+            behavioral.hours_since_last_unlock = hours_since_last
+            behavioral.consecutive_failures = consecutive_failures
+            behavioral.device_trusted = device_trusted
+            behavioral.is_typical_location = is_same_network or location_confidence > 0.7
+
+            # =================================================================
+            # RECENT ACTIVITY PATTERNS
+            # =================================================================
+            activity_confidence = 0.5
+            if recent_activity:
+                # Device was recently active - strong indicator
+                activity_confidence = 0.9
+            elif hours_since_last < 0.5:  # Less than 30 minutes since last unlock
+                activity_confidence = 0.95  # Very likely same person
+            elif hours_since_last < 2:
+                activity_confidence = 0.85
+            elif hours_since_last < 8:
+                activity_confidence = 0.7  # Normal work session gap
+            elif hours_since_last < 16:
+                activity_confidence = 0.6  # Overnight - expected
+            else:
+                activity_confidence = 0.5  # Long gap - slightly unusual
+
+            # =================================================================
+            # COMPREHENSIVE BEHAVIORAL CONFIDENCE CALCULATION
+            # =================================================================
+            # Weighted combination of all factors
+            weights = {
+                'time': float(os.getenv('VBI_BEHAVIORAL_TIME_WEIGHT', '0.25')),
+                'location': float(os.getenv('VBI_BEHAVIORAL_LOCATION_WEIGHT', '0.30')),
+                'activity': float(os.getenv('VBI_BEHAVIORAL_ACTIVITY_WEIGHT', '0.25')),
+                'device': float(os.getenv('VBI_BEHAVIORAL_DEVICE_WEIGHT', '0.20')),
+            }
+
+            device_confidence = 0.95 if device_trusted else 0.3
+
+            base_confidence = (
+                time_confidence * weights['time'] +
+                location_confidence * weights['location'] +
+                activity_confidence * weights['activity'] +
+                device_confidence * weights['device']
+            )
+
+            # =================================================================
+            # PENALTY FOR FAILURES, BONUS FOR CONSISTENCY
+            # =================================================================
+            if consecutive_failures > 0:
+                # Exponential decay for consecutive failures
+                failure_penalty = 0.85 ** consecutive_failures
+                base_confidence *= failure_penalty
+                logger.debug(
+                    f"Applied failure penalty: {consecutive_failures} failures, "
+                    f"multiplier={failure_penalty:.2f}"
+                )
+
+            # Bonus for very consistent patterns
+            if (behavioral.is_typical_time and behavioral.is_typical_location and
+                    device_trusted and hours_since_last < 16):
+                base_confidence = min(1.0, base_confidence * 1.1)
+                logger.debug("Applied consistency bonus (+10%)")
+
+            behavioral.behavioral_confidence = max(0.0, min(1.0, base_confidence))
+
+            logger.debug(
+                f"Behavioral context: time={time_confidence:.2f}, "
+                f"location={location_confidence:.2f}, activity={activity_confidence:.2f}, "
+                f"device={device_confidence:.2f} → final={behavioral.behavioral_confidence:.2f}"
+            )
 
         except Exception as e:
-            logger.debug(f"Behavioral context error: {e}")
+            logger.warning(f"Behavioral context error: {e}")
+            # Fallback to conservative defaults
+            behavioral.behavioral_confidence = 0.5
 
         return behavioral
 
     def _fuse_confidences(self, result: VerificationResult) -> float:
-        """Fuse voice and behavioral confidences."""
+        """
+        ENHANCED v2.0: Intelligent multi-factor confidence fusion with
+        low-confidence recovery.
+
+        KEY FEATURES:
+        - Dynamic weight adjustment based on signal quality
+        - Low-confidence recovery when behavioral is very strong
+        - Environment-aware fusion (noisy = trust behavioral more)
+        - Bayesian-style probability combination
+        - Audio quality factor integration
+        """
         if not self._config.use_behavioral_fusion:
             return result.voice_confidence
 
-        # Weighted fusion
-        voice_weight = 0.7
-        behavioral_weight = 0.3
+        voice_conf = result.voice_confidence
+        behavioral_conf = result.behavioral.behavioral_confidence
+        audio_quality = self._get_audio_quality_factor(result)
 
-        fused = (
-            result.voice_confidence * voice_weight +
-            result.behavioral.behavioral_confidence * behavioral_weight
+        # =================================================================
+        # DYNAMIC WEIGHT CALCULATION
+        # =================================================================
+        # Base weights (configurable via environment)
+        base_voice_weight = float(os.getenv('VBI_FUSION_VOICE_WEIGHT', '0.65'))
+        base_behavioral_weight = float(os.getenv('VBI_FUSION_BEHAVIORAL_WEIGHT', '0.35'))
+
+        # Adjust weights based on signal quality
+        # If audio quality is poor, trust behavioral more
+        if audio_quality < 0.5:
+            # Poor audio - shift weight toward behavioral
+            voice_weight = base_voice_weight * (0.5 + audio_quality)  # 0.325 to 0.4875
+            behavioral_weight = 1.0 - voice_weight
+            logger.debug(
+                f"Audio quality low ({audio_quality:.2f}), adjusted weights: "
+                f"voice={voice_weight:.2f}, behavioral={behavioral_weight:.2f}"
+            )
+        elif audio_quality > 0.8:
+            # Excellent audio - trust voice more
+            voice_weight = min(0.85, base_voice_weight * 1.2)
+            behavioral_weight = 1.0 - voice_weight
+        else:
+            voice_weight = base_voice_weight
+            behavioral_weight = base_behavioral_weight
+
+        # =================================================================
+        # LOW-CONFIDENCE RECOVERY
+        # =================================================================
+        # When voice confidence is low but behavioral is very high,
+        # we can still authenticate with modified thresholds
+        low_voice_threshold = float(os.getenv('VBI_LOW_VOICE_THRESHOLD', '0.40'))
+        high_behavioral_threshold = float(os.getenv('VBI_HIGH_BEHAVIORAL_THRESHOLD', '0.90'))
+        recovery_boost = float(os.getenv('VBI_RECOVERY_BOOST', '0.15'))
+
+        recovery_applied = False
+
+        if voice_conf < low_voice_threshold and behavioral_conf >= high_behavioral_threshold:
+            # Very low voice but excellent behavioral context
+            # This might be: sick voice, different mic, unusual environment
+            logger.info(
+                f"🔄 Low-confidence recovery triggered: voice={voice_conf:.1%}, "
+                f"behavioral={behavioral_conf:.1%}"
+            )
+
+            # Apply recovery boost - but cap the recovered confidence
+            # We don't want to fully bypass voice verification
+            max_recovery_confidence = float(os.getenv('VBI_MAX_RECOVERY_CONFIDENCE', '0.80'))
+
+            # Calculate base fusion first
+            base_fused = voice_conf * voice_weight + behavioral_conf * behavioral_weight
+
+            # Apply recovery boost
+            recovered = min(max_recovery_confidence, base_fused + recovery_boost)
+            recovery_applied = True
+
+            logger.info(
+                f"🔄 Recovery applied: base={base_fused:.1%} + {recovery_boost:.1%} "
+                f"= {recovered:.1%} (capped at {max_recovery_confidence:.1%})"
+            )
+
+            return recovered
+
+        # =================================================================
+        # STANDARD WEIGHTED FUSION
+        # =================================================================
+        fused = voice_conf * voice_weight + behavioral_conf * behavioral_weight
+
+        # =================================================================
+        # CONFIDENCE BOOSTING
+        # =================================================================
+        # Both high: synergy boost
+        if voice_conf > 0.8 and behavioral_conf > 0.8:
+            synergy_boost = float(os.getenv('VBI_SYNERGY_BOOST', '0.05'))
+            fused = min(1.0, fused * (1.0 + synergy_boost))
+            logger.debug(f"Applied synergy boost: +{synergy_boost:.0%}")
+
+        # Very high voice alone: slight boost even without behavioral
+        elif voice_conf > 0.92:
+            high_voice_boost = float(os.getenv('VBI_HIGH_VOICE_BOOST', '0.03'))
+            fused = min(1.0, fused + high_voice_boost)
+            logger.debug(f"Applied high-voice boost: +{high_voice_boost:.0%}")
+
+        # Moderate voice + good behavioral: small boost for consistency
+        elif 0.6 <= voice_conf <= 0.8 and behavioral_conf > 0.75:
+            consistency_boost = float(os.getenv('VBI_CONSISTENCY_BOOST', '0.02'))
+            fused = min(1.0, fused + consistency_boost)
+            logger.debug(f"Applied consistency boost: +{consistency_boost:.0%}")
+
+        # =================================================================
+        # ENVIRONMENT-AWARE PENALTY
+        # =================================================================
+        # If audio quality is very poor and voice is borderline, penalize
+        if audio_quality < 0.3 and voice_conf < 0.7:
+            poor_quality_penalty = float(os.getenv('VBI_POOR_QUALITY_PENALTY', '0.05'))
+            fused = max(0.0, fused - poor_quality_penalty)
+            logger.debug(f"Applied poor quality penalty: -{poor_quality_penalty:.0%}")
+
+        logger.debug(
+            f"Fusion result: voice={voice_conf:.1%}×{voice_weight:.2f} + "
+            f"behavioral={behavioral_conf:.1%}×{behavioral_weight:.2f} = {fused:.1%}"
         )
 
-        # Boost if both are high
-        if result.voice_confidence > 0.8 and result.behavioral.behavioral_confidence > 0.8:
-            fused = min(1.0, fused * 1.05)
+        return max(0.0, min(1.0, fused))
 
-        return fused
+    def _get_audio_quality_factor(self, result: VerificationResult) -> float:
+        """
+        Calculate audio quality factor (0-1) from analysis.
+
+        Used to adjust fusion weights - poor audio means
+        we should trust behavioral signals more.
+        """
+        quality = 0.5  # Default moderate
+
+        try:
+            if hasattr(result, 'audio') and result.audio:
+                audio = result.audio
+
+                # SNR-based quality
+                if audio.snr_db >= 25:
+                    snr_quality = 1.0
+                elif audio.snr_db >= 18:
+                    snr_quality = 0.8
+                elif audio.snr_db >= 12:
+                    snr_quality = 0.6
+                elif audio.snr_db >= 6:
+                    snr_quality = 0.4
+                else:
+                    snr_quality = 0.2
+
+                # Environment quality
+                env_quality = {
+                    EnvironmentQuality.EXCELLENT: 1.0,
+                    EnvironmentQuality.GOOD: 0.8,
+                    EnvironmentQuality.FAIR: 0.6,
+                    EnvironmentQuality.POOR: 0.4,
+                    EnvironmentQuality.NOISY: 0.2,
+                }.get(audio.environment, 0.5)
+
+                # Voice quality
+                voice_quality = {
+                    VoiceQuality.CLEAR: 1.0,
+                    VoiceQuality.MUFFLED: 0.6,
+                    VoiceQuality.HOARSE: 0.7,
+                    VoiceQuality.TIRED: 0.8,
+                    VoiceQuality.STRESSED: 0.7,
+                    VoiceQuality.WHISPER: 0.4,
+                }.get(audio.voice_quality, 0.6)
+
+                # Issues penalty
+                issues_penalty = len(audio.issues) * 0.1
+
+                # Weighted combination
+                quality = (
+                    snr_quality * 0.4 +
+                    env_quality * 0.3 +
+                    voice_quality * 0.3
+                ) - issues_penalty
+
+                quality = max(0.0, min(1.0, quality))
+
+        except Exception as e:
+            logger.debug(f"Audio quality factor calculation error: {e}")
+
+        return quality
 
     def _determine_level(self, result: VerificationResult) -> RecognitionLevel:
         """Determine recognition level from confidence."""
