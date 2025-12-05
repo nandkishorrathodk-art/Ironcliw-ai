@@ -13033,8 +13033,8 @@ async def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Backend port (default: 8000)",
+        default=8010,
+        help="Backend port (default: 8010)",
     )
     parser.add_argument(
         "--frontend-port",
@@ -14316,6 +14316,23 @@ async def main():
 
 
 if __name__ == "__main__":
+    # ============================================================================
+    # ROBUST STARTUP: Ensure script works from any location
+    # ============================================================================
+    # Always change to the script's directory so relative paths work correctly
+    _script_dir = Path(__file__).parent.resolve()
+    os.chdir(_script_dir)
+
+    # Ensure PYTHONPATH includes both project root and backend for imports
+    if str(_script_dir) not in sys.path:
+        sys.path.insert(0, str(_script_dir))
+    _backend_dir = _script_dir / "backend"
+    if _backend_dir.exists() and str(_backend_dir) not in sys.path:
+        sys.path.insert(0, str(_backend_dir))
+
+    # Set PYTHONPATH environment variable for subprocesses
+    os.environ["PYTHONPATH"] = f"{_script_dir}:{_backend_dir}:{os.environ.get('PYTHONPATH', '')}"
+
     # Global to track if we successfully initialized (for cleanup)
     _jarvis_initialized = False
     _hybrid_coordinator = None
