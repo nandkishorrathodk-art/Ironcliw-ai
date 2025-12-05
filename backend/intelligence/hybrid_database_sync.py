@@ -931,8 +931,8 @@ class HybridDatabaseSync:
 
     def __init__(
         self,
-        sqlite_path: Path,
-        cloudsql_config: Dict[str, Any],
+        sqlite_path: Optional[Path] = None,
+        cloudsql_config: Optional[Dict[str, Any]] = None,
         sync_interval_seconds: int = 30,
         max_retry_attempts: int = 5,
         batch_size: int = 50,
@@ -948,8 +948,8 @@ class HybridDatabaseSync:
         Initialize advanced hybrid sync system with Phase 2 features.
 
         Args:
-            sqlite_path: Path to local SQLite database
-            cloudsql_config: CloudSQL connection config
+            sqlite_path: Path to local SQLite database (auto-configured if None)
+            cloudsql_config: CloudSQL connection config (auto-configured if None)
             sync_interval_seconds: Interval between sync runs
             max_retry_attempts: Maximum retry attempts
             batch_size: Records per sync batch
@@ -961,6 +961,25 @@ class HybridDatabaseSync:
             prometheus_port: Prometheus HTTP server port
             redis_url: Redis connection URL
         """
+        # Auto-configure from DatabaseConfig if not provided
+        if sqlite_path is None or cloudsql_config is None:
+            from intelligence.cloud_database_adapter import DatabaseConfig
+            config = DatabaseConfig()
+
+            if sqlite_path is None:
+                sqlite_path = config.sqlite_path
+                logger.debug(f"Auto-configured sqlite_path: {sqlite_path}")
+
+            if cloudsql_config is None:
+                cloudsql_config = {
+                    "host": config.db_host,
+                    "port": config.db_port,
+                    "database": config.db_name,
+                    "user": config.db_user,
+                    "password": config.db_password,
+                }
+                logger.debug(f"Auto-configured cloudsql_config for database: {config.db_name}")
+
         self.sqlite_path = sqlite_path
         self.cloudsql_config = cloudsql_config
         self.sync_interval = sync_interval_seconds
@@ -1032,6 +1051,15 @@ class HybridDatabaseSync:
         logger.info(f"   Prometheus: {'Enabled' if self.prometheus else 'Disabled'}")
         logger.info(f"   Redis: {'Enabled' if self.redis else 'Disabled'}")
         logger.info(f"   ML Prefetcher: {'Enabled' if self.ml_prefetcher else 'Disabled'}")
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if the hybrid sync system is fully initialized with CloudSQL."""
+        return (
+            self.connection_manager is not None
+            and self.connection_manager.is_initialized
+            and self.sqlite_conn is not None
+        )
 
     async def initialize(self):
         """Initialize database connections and start background sync"""
@@ -1127,6 +1155,16 @@ class HybridDatabaseSync:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Schema migration: Add acoustic_features column if missing (for existing tables)
+            try:
+                await self.sqlite_conn.execute(
+                    "ALTER TABLE speaker_profiles ADD COLUMN acoustic_features TEXT DEFAULT '{}'"
+                )
+                logger.info("📦 Added acoustic_features column to speaker_profiles table")
+            except Exception:
+                # Column already exists, ignore
+                pass
 
             await self.sqlite_conn.commit()
 
