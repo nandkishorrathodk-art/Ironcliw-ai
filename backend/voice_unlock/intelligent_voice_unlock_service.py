@@ -24,32 +24,415 @@ PERFORMANCE OPTIMIZATIONS (v2.0):
 import asyncio
 import hashlib
 import logging
+import os
+import subprocess
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# TIMEOUT CONSTANTS - Tune these for optimal latency vs reliability
+# DYNAMIC TIMEOUT CONFIGURATION - Environment-configurable with smart defaults
 # =============================================================================
-TOTAL_UNLOCK_TIMEOUT = 25.0      # Max total time for unlock (was infinite!)
-TRANSCRIPTION_TIMEOUT = 10.0     # Max time for STT transcription
-SPEAKER_ID_TIMEOUT = 8.0         # Max time for speaker identification
-BIOMETRIC_TIMEOUT = 10.0         # Max time for voice biometric verification (was 30s!)
-HALLUCINATION_CHECK_TIMEOUT = 2.0  # Max time for STT hallucination check
-INTENT_VERIFY_TIMEOUT = 1.0      # Max time for intent verification
-OWNER_CHECK_TIMEOUT = 2.0        # Max time for owner database lookup
-VAD_PREPROCESS_TIMEOUT = 3.0     # Max time for VAD audio preprocessing
+# Base timeouts (can be overridden via environment variables)
+# These are INCREASED to handle first-inference warmup of ML models
+
+def _get_timeout(env_var: str, default: float) -> float:
+    """Get timeout from environment with fallback to default."""
+    try:
+        return float(os.getenv(env_var, str(default)))
+    except ValueError:
+        return default
+
+# Core timeouts - INCREASED for model warmup scenarios
+TOTAL_UNLOCK_TIMEOUT = _get_timeout("JARVIS_UNLOCK_TOTAL_TIMEOUT", 35.0)
+TRANSCRIPTION_TIMEOUT = _get_timeout("JARVIS_TRANSCRIPTION_TIMEOUT", 20.0)  # Increased from 10s
+SPEAKER_ID_TIMEOUT = _get_timeout("JARVIS_SPEAKER_ID_TIMEOUT", 15.0)  # Increased from 8s
+BIOMETRIC_TIMEOUT = _get_timeout("JARVIS_BIOMETRIC_TIMEOUT", 15.0)  # Increased from 10s
+
+# Quick operation timeouts
+HALLUCINATION_CHECK_TIMEOUT = _get_timeout("JARVIS_HALLUCINATION_TIMEOUT", 3.0)
+INTENT_VERIFY_TIMEOUT = _get_timeout("JARVIS_INTENT_TIMEOUT", 2.0)
+OWNER_CHECK_TIMEOUT = _get_timeout("JARVIS_OWNER_CHECK_TIMEOUT", 3.0)
+VAD_PREPROCESS_TIMEOUT = _get_timeout("JARVIS_VAD_TIMEOUT", 5.0)
+
 # Additional timeout constants for complete coverage
-SECURITY_ANALYSIS_TIMEOUT = 3.0   # Max time for SAI security analysis
-SECURITY_RESPONSE_TIMEOUT = 2.0   # Max time for generating security responses
-FAILURE_ANALYSIS_TIMEOUT = 3.0    # Max time for analyzing verification failures
-RECORD_ATTEMPT_TIMEOUT = 2.0      # Max time for database recording
-PERFORM_UNLOCK_TIMEOUT = 15.0     # Max time for actual unlock execution
-CONTEXT_ANALYSIS_TIMEOUT = 5.0    # Max time for parallel context/scenario analysis
-PROFILE_UPDATE_TIMEOUT = 2.0      # Max time for speaker profile updates
+SECURITY_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_SECURITY_ANALYSIS_TIMEOUT", 5.0)
+SECURITY_RESPONSE_TIMEOUT = _get_timeout("JARVIS_SECURITY_RESPONSE_TIMEOUT", 3.0)
+FAILURE_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_FAILURE_ANALYSIS_TIMEOUT", 5.0)
+RECORD_ATTEMPT_TIMEOUT = _get_timeout("JARVIS_RECORD_ATTEMPT_TIMEOUT", 3.0)
+PERFORM_UNLOCK_TIMEOUT = _get_timeout("JARVIS_PERFORM_UNLOCK_TIMEOUT", 20.0)
+CONTEXT_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_CONTEXT_ANALYSIS_TIMEOUT", 8.0)
+PROFILE_UPDATE_TIMEOUT = _get_timeout("JARVIS_PROFILE_UPDATE_TIMEOUT", 3.0)
+
+# Dynamic timeout multiplier for cold start scenarios
+COLD_START_TIMEOUT_MULTIPLIER = _get_timeout("JARVIS_COLD_START_MULTIPLIER", 2.0)
+
+# Track model warmup state for adaptive timeouts
+_models_warmed_up = False
+_first_unlock_attempt = True
+
+
+# =============================================================================
+# DYNAMIC TIMEOUT MANAGER - Adaptive timeouts based on model/system state
+# =============================================================================
+
+class DynamicTimeoutManager:
+    """
+    Intelligent timeout management that adapts to system state.
+
+    Features:
+    - Cold start detection (first inference gets extra time)
+    - ML model warmup state integration
+    - System load awareness (CPU, memory pressure)
+    - Automatic timeout decay after warmup
+    - Failure tracking with recovery mode
+    - Performance trend analysis
+    - Environment-configurable base timeouts
+    """
+
+    # Constants for adaptive behavior
+    WARMUP_THRESHOLD = 3  # Number of inferences to complete warmup
+    FAILURE_THRESHOLD = 3  # Consecutive failures to enter recovery mode
+    RECOVERY_MULTIPLIER = 1.5  # Multiplier during recovery
+    LOAD_CHECK_INTERVAL_S = 30  # How often to check system load
+    MAX_TIMEOUT_MULTIPLIER = 3.0  # Cap on timeout scaling
+
+    def __init__(self):
+        # Core state
+        self._cold_start = True
+        self._inference_count = 0
+        self._warmup_complete = False
+        self._ml_registry_checked = False
+
+        # Performance tracking
+        self._last_transcription_time: Optional[float] = None
+        self._avg_transcription_time: float = 5.0  # Initial estimate
+        self._transcription_times: List[float] = []  # Recent history for trend analysis
+        self._max_history_size = 10
+
+        # Failure tracking
+        self._consecutive_failures = 0
+        self._total_failures = 0
+        self._recovery_mode = False
+        self._last_failure_time: Optional[datetime] = None
+
+        # System load tracking
+        self._last_load_check: Optional[datetime] = None
+        self._system_load_factor: float = 1.0  # 1.0 = normal, >1.0 = high load
+        self._cached_memory_pressure: bool = False
+
+        # Cloud mode tracking
+        self._using_cloud_ml: bool = False
+
+    def _check_system_load(self) -> float:
+        """
+        Check system load and return a multiplier for timeouts.
+
+        Returns:
+            float: Multiplier (1.0 = normal, up to 2.0 for high load)
+        """
+        now = datetime.now()
+
+        # Use cached value if recent
+        if (self._last_load_check and
+            (now - self._last_load_check).total_seconds() < self.LOAD_CHECK_INTERVAL_S):
+            return self._system_load_factor
+
+        try:
+            # Check memory pressure on macOS using vm_stat
+            result = subprocess.run(
+                ["vm_stat"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            if result.returncode == 0:
+                output = result.stdout
+                # Parse free pages
+                import re
+                page_size = 16384  # macOS default
+                free_match = re.search(r'Pages free:\s+(\d+)', output)
+                inactive_match = re.search(r'Pages inactive:\s+(\d+)', output)
+
+                if free_match and inactive_match:
+                    free_pages = int(free_match.group(1))
+                    inactive_pages = int(inactive_match.group(1))
+                    available_gb = (free_pages + inactive_pages) * page_size / (1024**3)
+
+                    # Apply load factor based on available RAM
+                    if available_gb < 4.0:
+                        self._system_load_factor = 2.0  # Very high load
+                        self._cached_memory_pressure = True
+                    elif available_gb < 6.0:
+                        self._system_load_factor = 1.5  # High load
+                        self._cached_memory_pressure = True
+                    elif available_gb < 8.0:
+                        self._system_load_factor = 1.2  # Moderate load
+                        self._cached_memory_pressure = False
+                    else:
+                        self._system_load_factor = 1.0  # Normal
+                        self._cached_memory_pressure = False
+
+                    logger.debug(f"System load check: {available_gb:.1f}GB available, factor={self._system_load_factor}")
+
+            self._last_load_check = now
+
+        except Exception as e:
+            logger.debug(f"System load check failed: {e}")
+            # Return cached or default value on failure
+
+        return self._system_load_factor
+
+    def _calculate_adaptive_multiplier(self) -> float:
+        """
+        Calculate the final timeout multiplier based on all factors.
+
+        Returns:
+            float: Combined multiplier (capped at MAX_TIMEOUT_MULTIPLIER)
+        """
+        multiplier = 1.0
+
+        # Factor 1: Cold start
+        if self._cold_start and self._inference_count < self.WARMUP_THRESHOLD:
+            multiplier *= COLD_START_TIMEOUT_MULTIPLIER
+
+        # Factor 2: Recovery mode (after failures)
+        if self._recovery_mode:
+            multiplier *= self.RECOVERY_MULTIPLIER
+
+        # Factor 3: System load
+        multiplier *= self._check_system_load()
+
+        # Factor 4: Cloud mode (cloud has network latency)
+        if self._using_cloud_ml:
+            multiplier *= 1.3  # Extra 30% for network overhead
+
+        # Cap the multiplier
+        return min(multiplier, self.MAX_TIMEOUT_MULTIPLIER)
+
+    def get_transcription_timeout(self) -> float:
+        """
+        Get adaptive timeout for STT transcription.
+
+        Returns higher timeout for cold start, system load, and recovery mode.
+        Reduces after warmup based on observed performance.
+        """
+        base_timeout = TRANSCRIPTION_TIMEOUT
+        multiplier = self._calculate_adaptive_multiplier()
+
+        # After warmup: use adaptive timeout based on observed performance
+        if self._warmup_complete and self._avg_transcription_time > 0 and not self._recovery_mode:
+            # Add 80% buffer to average time for safety margin
+            adaptive = self._avg_transcription_time * 1.8
+            # But don't go below a minimum or above base * multiplier
+            timeout = max(min(adaptive, base_timeout * multiplier), 5.0)
+        else:
+            timeout = base_timeout * multiplier
+
+        logger.debug(
+            f"Transcription timeout: {timeout:.1f}s "
+            f"(base={base_timeout}, mult={multiplier:.2f}, "
+            f"cold={self._cold_start}, recovery={self._recovery_mode})"
+        )
+        return timeout
+
+    def get_speaker_id_timeout(self) -> float:
+        """Get adaptive timeout for speaker identification."""
+        base_timeout = SPEAKER_ID_TIMEOUT
+        multiplier = self._calculate_adaptive_multiplier()
+        return base_timeout * multiplier
+
+    def get_biometric_timeout(self) -> float:
+        """Get adaptive timeout for biometric verification."""
+        base_timeout = BIOMETRIC_TIMEOUT
+        multiplier = self._calculate_adaptive_multiplier()
+        return base_timeout * multiplier
+
+    def record_transcription_time(self, duration_ms: float) -> None:
+        """Record actual transcription time to improve estimates."""
+        duration_s = duration_ms / 1000.0
+        self._inference_count += 1
+
+        # Track history for trend analysis
+        self._transcription_times.append(duration_s)
+        if len(self._transcription_times) > self._max_history_size:
+            self._transcription_times.pop(0)
+
+        # Update running average (exponential moving average)
+        if self._last_transcription_time is None:
+            self._avg_transcription_time = duration_s
+        else:
+            alpha = 0.3
+            self._avg_transcription_time = (
+                alpha * duration_s + (1 - alpha) * self._avg_transcription_time
+            )
+
+        self._last_transcription_time = duration_s
+
+        # Success resets failure counter
+        self._consecutive_failures = 0
+        if self._recovery_mode:
+            self._recovery_mode = False
+            logger.info("✅ Recovery mode disabled - transcription succeeded")
+
+        # Mark warmup complete after threshold
+        if self._inference_count >= self.WARMUP_THRESHOLD and not self._warmup_complete:
+            self._warmup_complete = True
+            self._cold_start = False
+            logger.info(
+                f"🔥 Model warmup complete after {self._inference_count} inferences. "
+                f"Avg transcription: {self._avg_transcription_time:.2f}s"
+            )
+
+    def record_failure(self, operation: str, error: Optional[str] = None) -> None:
+        """
+        Record a failed operation for adaptive recovery.
+
+        Args:
+            operation: The operation that failed (e.g., "transcription", "speaker_id")
+            error: Optional error message
+        """
+        self._consecutive_failures += 1
+        self._total_failures += 1
+        self._last_failure_time = datetime.now()
+
+        logger.warning(
+            f"⚠️ {operation} failure #{self._consecutive_failures} "
+            f"(total: {self._total_failures})"
+        )
+
+        # Enter recovery mode after threshold failures
+        if self._consecutive_failures >= self.FAILURE_THRESHOLD and not self._recovery_mode:
+            self._recovery_mode = True
+            logger.warning(
+                f"🔄 Entering recovery mode after {self._consecutive_failures} consecutive failures. "
+                f"Timeouts will be increased by {self.RECOVERY_MULTIPLIER}x"
+            )
+
+    def set_cloud_mode(self, using_cloud: bool) -> None:
+        """Update cloud mode status for timeout calculations."""
+        if using_cloud != self._using_cloud_ml:
+            self._using_cloud_ml = using_cloud
+            logger.info(f"☁️ Cloud ML mode: {using_cloud}")
+
+    def get_performance_trend(self) -> str:
+        """
+        Analyze recent transcription times to determine performance trend.
+
+        Returns:
+            str: "improving", "stable", "degrading", or "unknown"
+        """
+        if len(self._transcription_times) < 3:
+            return "unknown"
+
+        recent = self._transcription_times[-3:]
+        older = self._transcription_times[:-3] if len(self._transcription_times) > 3 else []
+
+        if not older:
+            return "stable"
+
+        recent_avg = sum(recent) / len(recent)
+        older_avg = sum(older) / len(older)
+
+        if recent_avg < older_avg * 0.8:
+            return "improving"
+        elif recent_avg > older_avg * 1.2:
+            return "degrading"
+        else:
+            return "stable"
+
+    async def check_ml_registry_ready(self) -> bool:
+        """
+        Check if ML Engine Registry models are ready.
+
+        Integrates with the hybrid cloud ML registry for readiness checks.
+        """
+        if self._ml_registry_checked and self._warmup_complete:
+            return True
+
+        try:
+            from .ml_engine_registry import is_voice_unlock_ready, get_ml_registry_sync
+
+            if is_voice_unlock_ready():
+                self._ml_registry_checked = True
+                registry = get_ml_registry_sync()
+                if registry:
+                    if not registry.is_using_cloud:
+                        # Local models are loaded, reduce cold start factor
+                        self._cold_start = False
+                        self._using_cloud_ml = False
+                        logger.info("✅ ML Registry reports local models ready - reducing timeouts")
+                    else:
+                        self._using_cloud_ml = True
+                        logger.info("☁️ ML Registry using cloud - adjusting timeouts for latency")
+                return True
+            else:
+                logger.debug("ML Registry: Models still loading")
+                return False
+
+        except ImportError:
+            logger.debug("ML Engine Registry not available")
+            return True  # Assume ready if registry not available
+        except Exception as e:
+            logger.warning(f"ML Registry check failed: {e}")
+            return True
+
+    def get_timeout_status(self) -> Dict[str, Any]:
+        """Get comprehensive timeout configuration status."""
+        return {
+            # Core state
+            "cold_start": self._cold_start,
+            "inference_count": self._inference_count,
+            "warmup_complete": self._warmup_complete,
+
+            # Performance metrics
+            "avg_transcription_time_s": round(self._avg_transcription_time, 3),
+            "last_transcription_time_s": round(self._last_transcription_time, 3) if self._last_transcription_time else None,
+            "performance_trend": self.get_performance_trend(),
+
+            # Failure tracking
+            "consecutive_failures": self._consecutive_failures,
+            "total_failures": self._total_failures,
+            "recovery_mode": self._recovery_mode,
+
+            # System state
+            "system_load_factor": round(self._system_load_factor, 2),
+            "memory_pressure": self._cached_memory_pressure,
+            "using_cloud_ml": self._using_cloud_ml,
+
+            # Current timeouts
+            "current_transcription_timeout": round(self.get_transcription_timeout(), 1),
+            "current_speaker_id_timeout": round(self.get_speaker_id_timeout(), 1),
+            "current_biometric_timeout": round(self.get_biometric_timeout(), 1),
+            "adaptive_multiplier": round(self._calculate_adaptive_multiplier(), 2),
+
+            # Base configuration
+            "base_transcription_timeout": TRANSCRIPTION_TIMEOUT,
+            "base_speaker_id_timeout": SPEAKER_ID_TIMEOUT,
+            "base_biometric_timeout": BIOMETRIC_TIMEOUT,
+            "cold_start_multiplier": COLD_START_TIMEOUT_MULTIPLIER,
+        }
+
+    def reset_cold_start(self) -> None:
+        """Force reset to cold start state (useful after long idle periods)."""
+        self._cold_start = True
+        self._warmup_complete = False
+        self._inference_count = 0
+        self._ml_registry_checked = False
+        logger.info("🔄 Timeout manager reset to cold start state")
+
+
+# Global timeout manager instance
+_timeout_manager = DynamicTimeoutManager()
+
+
+def get_timeout_manager() -> DynamicTimeoutManager:
+    """Get the global timeout manager."""
+    return _timeout_manager
 
 
 @dataclass
@@ -741,19 +1124,29 @@ class IntelligentVoiceUnlockService:
             parallel_with="transcription"
         )
 
+        # Get dynamic timeouts (adapts to cold start, warmup state, etc.)
+        stt_timeout = _timeout_manager.get_transcription_timeout()
+        spkr_timeout = _timeout_manager.get_speaker_id_timeout()
+
+        logger.info(f"⏱️ Dynamic timeouts: STT={stt_timeout:.1f}s, Speaker={spkr_timeout:.1f}s")
+
+        # Check ML registry readiness for better timeout decisions
+        await _timeout_manager.check_ml_registry_ready()
+
         # Create parallel tasks - both use audio_data, neither depends on the other
+        stt_start_time = datetime.now()
         stt_task = asyncio.create_task(
             asyncio.wait_for(
                 self._transcribe_audio_with_retry(
                     audio_data, diagnostics, sample_rate=sample_rate
                 ),
-                timeout=TRANSCRIPTION_TIMEOUT
+                timeout=stt_timeout
             )
         )
         speaker_id_task = asyncio.create_task(
             asyncio.wait_for(
                 self._identify_speaker(audio_data),
-                timeout=SPEAKER_ID_TIMEOUT
+                timeout=spkr_timeout
             )
         )
 
@@ -775,22 +1168,31 @@ class IntelligentVoiceUnlockService:
             # Process STT result
             if isinstance(results[0], Exception):
                 if isinstance(results[0], asyncio.TimeoutError):
-                    logger.error(f"⏱️ Transcription timed out after {TRANSCRIPTION_TIMEOUT}s")
-                    stage_transcription.complete(success=False, error_message="Transcription timeout")
+                    logger.error(f"⏱️ Transcription timed out after {stt_timeout:.1f}s (cold_start={_timeout_manager._cold_start})")
+                    stage_transcription.complete(success=False, error_message=f"Transcription timeout ({stt_timeout:.1f}s)")
+                    _timeout_manager.record_failure("transcription", f"Timeout after {stt_timeout:.1f}s")
                 else:
                     logger.error(f"❌ Transcription failed: {results[0]}")
                     stage_transcription.complete(success=False, error_message=str(results[0]))
+                    _timeout_manager.record_failure("transcription", str(results[0]))
             else:
                 transcription_result = results[0]
+                # Record successful transcription time for adaptive timeout learning
+                stt_duration_ms = (datetime.now() - stt_start_time).total_seconds() * 1000
+                _timeout_manager.record_transcription_time(stt_duration_ms)
+                logger.info(f"✅ Transcription completed in {stt_duration_ms:.0f}ms (timeout was {stt_timeout:.1f}s)")
+                stage_transcription.complete(success=True, processing_time_ms=stt_duration_ms)
 
             # Process Speaker ID result (save for later use)
             if isinstance(results[1], Exception):
                 if isinstance(results[1], asyncio.TimeoutError):
-                    logger.warning(f"⏱️ Parallel Speaker ID timed out after {SPEAKER_ID_TIMEOUT}s")
-                    stage_speaker_id_parallel.complete(success=False, error_message="Timeout")
+                    logger.warning(f"⏱️ Parallel Speaker ID timed out after {spkr_timeout:.1f}s (cold_start={_timeout_manager._cold_start})")
+                    stage_speaker_id_parallel.complete(success=False, error_message=f"Timeout ({spkr_timeout:.1f}s)")
+                    _timeout_manager.record_failure("speaker_id", f"Timeout after {spkr_timeout:.1f}s")
                 else:
                     logger.warning(f"⚠️ Parallel Speaker ID failed: {results[1]}")
                     stage_speaker_id_parallel.complete(success=False, error_message=str(results[1]))
+                    _timeout_manager.record_failure("speaker_id", str(results[1]))
                 parallel_speaker_result = (None, 0.0)
             else:
                 parallel_speaker_result = results[1]
