@@ -676,7 +676,7 @@ class IntelligentVoiceUnlockService:
                 _init_with_timeout(self._initialize_sai(), "Scenario-Aware Intelligence"),
                 _init_with_timeout(self._initialize_ml_engine(), "ML Learning Engine"),
                 # Owner profile (Phase 3) - now parallel with Phase 1 & 2
-                _init_with_timeout(self._load_owner_profile(), "Owner Profile", timeout=3.0),
+                _init_with_timeout(self._load_owner_profile(), "Owner Profile", timeout=10.0),
             )
 
         try:

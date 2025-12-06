@@ -505,12 +505,13 @@ class PasswordTypingLearner:
                         await self.failure_predictor.initialize()
 
                         # Load character metrics for training
+                        # Note: char_start_time_ms used for ordering (timestamp column doesn't exist)
                         cursor.execute("""
                             SELECT
                                 char_position, char_type, requires_shift, success,
-                                total_duration_ms, system_load_at_char, timestamp
+                                total_duration_ms, system_load_at_char, char_start_time_ms
                             FROM character_typing_metrics
-                            ORDER BY timestamp DESC
+                            ORDER BY id DESC
                             LIMIT 1000
                         """)
 
@@ -524,7 +525,7 @@ class PasswordTypingLearner:
                                     'success': c[3],
                                     'total_duration_ms': c[4],
                                     'system_load_at_char': c[5] or 0,
-                                    'timestamp': c[6],
+                                    'char_start_time_ms': c[6],  # Use char_start_time_ms instead of timestamp
                                     'historical_failures': failure_points.get(c[0], 0),
                                     'avg_duration_at_pos': c[4]
                                 }
