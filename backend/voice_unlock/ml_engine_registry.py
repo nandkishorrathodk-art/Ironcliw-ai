@@ -1908,12 +1908,42 @@ async def get_ml_registry() -> MLEngineRegistry:
     return _registry
 
 
-def get_ml_registry_sync() -> Optional[MLEngineRegistry]:
+_sync_registry_lock = threading.Lock()
+
+
+def get_ml_registry_sync(auto_create: bool = True) -> Optional[MLEngineRegistry]:
     """
-    Get the registry synchronously (returns None if not initialized).
+    Get the registry synchronously with optional auto-creation.
+
+    CRITICAL FIX v2.0: Now auto-creates registry if not initialized.
+    This ensures voice unlock components can always access the registry,
+    even if main.py startup didn't initialize it first.
+
+    Args:
+        auto_create: If True (default), creates registry if it doesn't exist.
+                    Set to False to only return existing registry.
 
     Use this in sync code paths where you can't await.
+
+    Thread Safety:
+        Uses a threading.Lock to prevent race conditions during creation.
     """
+    global _registry
+
+    if _registry is not None:
+        return _registry
+
+    if not auto_create:
+        return None
+
+    # Thread-safe lazy initialization
+    with _sync_registry_lock:
+        # Double-check pattern
+        if _registry is None:
+            logger.info("🔧 [SYNC] Auto-creating ML Engine Registry (lazy init)")
+            _registry = MLEngineRegistry()
+            logger.info("✅ [SYNC] ML Engine Registry created successfully")
+
     return _registry
 
 
@@ -1969,6 +1999,126 @@ def prewarm_voice_unlock_models_background(
         startup_decision=startup_decision,
         on_complete=on_complete,
     )
+
+
+async def ensure_ecapa_available(
+    timeout: float = 60.0,
+    allow_cloud: bool = True,
+) -> Tuple[bool, str, Optional[Any]]:
+    """
+    CRITICAL FIX v2.0: Ensures ECAPA-TDNN is available for voice verification.
+
+    This function MUST be called before any voice verification attempt.
+    It ensures ECAPA is loaded (either locally or via cloud).
+
+    Orchestration Flow:
+    1. Get or create ML Registry (lazy init)
+    2. Check if ECAPA is already loaded → return immediately
+    3. If cloud mode: verify cloud backend is ready
+    4. If local mode: trigger ECAPA loading
+    5. Wait for ECAPA to be available (with timeout)
+
+    Args:
+        timeout: Maximum seconds to wait for ECAPA to load
+        allow_cloud: If True, cloud mode is acceptable
+
+    Returns:
+        Tuple[bool, str, Optional[encoder]]:
+        - success: True if ECAPA is available
+        - message: Status/error message
+        - encoder: The ECAPA encoder if available locally (None for cloud mode)
+
+    Usage:
+        success, message, encoder = await ensure_ecapa_available()
+        if not success:
+            return {"error": f"Voice verification unavailable: {message}"}
+    """
+    global _registry
+
+    start_time = time.time()
+    logger.info("🔍 [ENSURE_ECAPA] Starting ECAPA availability check...")
+
+    # Step 1: Get or create registry
+    registry = get_ml_registry_sync(auto_create=True)
+    if registry is None:
+        return False, "Failed to create ML Engine Registry", None
+
+    # Step 2: Check if already in cloud mode with verified backend
+    if registry.is_using_cloud:
+        cloud_verified = getattr(registry, '_cloud_verified', False)
+        if cloud_verified:
+            logger.info("✅ [ENSURE_ECAPA] Cloud mode active and verified")
+            return True, "Cloud ECAPA available", None
+        else:
+            # Cloud mode but not verified - try to verify
+            logger.info("🔄 [ENSURE_ECAPA] Cloud mode active but not verified, checking...")
+            if hasattr(registry, '_verify_cloud_backend_ready'):
+                verified, verify_msg = await registry._verify_cloud_backend_ready(
+                    timeout=min(10.0, timeout / 2),
+                    test_extraction=True,
+                )
+                if verified:
+                    logger.info("✅ [ENSURE_ECAPA] Cloud backend verified successfully")
+                    return True, "Cloud ECAPA verified and available", None
+                else:
+                    logger.warning(f"⚠️ [ENSURE_ECAPA] Cloud verification failed: {verify_msg}")
+                    # Fall through to try local loading
+
+    # Step 3: Check if ECAPA engine is already loaded locally
+    # Use get_wrapper() which is safe (doesn't throw)
+    ecapa_wrapper = registry.get_wrapper("ecapa_tdnn")
+    if ecapa_wrapper and ecapa_wrapper.is_loaded:
+        logger.info("✅ [ENSURE_ECAPA] Local ECAPA already loaded")
+        return True, "Local ECAPA available", ecapa_wrapper.get_engine()
+
+    # Step 4: Need to load ECAPA - trigger prewarm if not already running
+    logger.info("🔄 [ENSURE_ECAPA] ECAPA not loaded, triggering load...")
+
+    # Check if prewarm is already running
+    if registry.is_warming_up:
+        logger.info("   Prewarm already in progress, waiting...")
+    else:
+        # Trigger ECAPA load specifically
+        if ecapa_wrapper:
+            try:
+                # Load ECAPA engine directly
+                load_task = asyncio.create_task(ecapa_wrapper.load())
+                # Don't await here, we'll wait in the loop below
+            except Exception as e:
+                logger.warning(f"   Failed to trigger ECAPA load: {e}")
+
+    # Step 5: Wait for ECAPA to become available
+    poll_interval = 0.5
+    while (time.time() - start_time) < timeout:
+        # Check local ECAPA (use get_wrapper for safe access)
+        ecapa_wrapper = registry.get_wrapper("ecapa_tdnn")
+        if ecapa_wrapper and ecapa_wrapper.is_loaded:
+            elapsed = time.time() - start_time
+            logger.info(f"✅ [ENSURE_ECAPA] ECAPA loaded successfully in {elapsed:.1f}s")
+            return True, f"Local ECAPA loaded in {elapsed:.1f}s", ecapa_wrapper.get_engine()
+
+        # Check if cloud mode became available
+        if registry.is_using_cloud and getattr(registry, '_cloud_verified', False):
+            elapsed = time.time() - start_time
+            logger.info(f"✅ [ENSURE_ECAPA] Cloud ECAPA became available in {elapsed:.1f}s")
+            return True, f"Cloud ECAPA available in {elapsed:.1f}s", None
+
+        await asyncio.sleep(poll_interval)
+
+    # Timeout reached
+    elapsed = time.time() - start_time
+    error_msg = f"ECAPA load timeout after {elapsed:.1f}s"
+    logger.error(f"❌ [ENSURE_ECAPA] {error_msg}")
+
+    # Last resort: check cloud if allowed
+    if allow_cloud and not registry.is_using_cloud:
+        logger.info("🔄 [ENSURE_ECAPA] Trying cloud fallback...")
+        if hasattr(registry, '_fallback_to_cloud'):
+            fallback_ok = await registry._fallback_to_cloud("Local ECAPA timeout")
+            if fallback_ok:
+                return True, "Fell back to cloud ECAPA", None
+
+    return False, error_msg, None
 
 
 def get_ml_warmup_status() -> Dict[str, Any]:

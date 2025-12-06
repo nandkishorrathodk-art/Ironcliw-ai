@@ -1327,12 +1327,58 @@ class UnifiedVoiceCacheManager:
         failure_reasons = []
 
         # =========================================================================
-        # STEP 1: Check ML Registry cloud status
+        # STEP 1: Use ensure_ecapa_available() for robust ECAPA initialization
+        # CRITICAL FIX v2.0: This ensures registry is created + ECAPA is loaded
         # =========================================================================
         try:
-            from voice_unlock.ml_engine_registry import get_ml_registry_sync, is_using_cloud_ml
+            from voice_unlock.ml_engine_registry import (
+                ensure_ecapa_available,
+                get_ml_registry_sync,
+            )
 
-            registry = get_ml_registry_sync()
+            # This single call handles:
+            # - Registry creation if not exists
+            # - Cloud mode verification
+            # - Local ECAPA loading with retry
+            # - Timeout handling
+            logger.info("🔍 Using ensure_ecapa_available() for ECAPA initialization...")
+
+            ecapa_timeout = float(os.getenv("JARVIS_ECAPA_ENSURE_TIMEOUT", "45.0"))
+            success, message, encoder = await ensure_ecapa_available(
+                timeout=ecapa_timeout,
+                allow_cloud=True,
+            )
+
+            if success:
+                logger.info(f"✅ ECAPA available via ensure_ecapa_available(): {message}")
+                self._stats.models_loaded = True
+
+                # Store the encoder if provided (local mode)
+                if encoder is not None:
+                    self._direct_ecapa_encoder = encoder
+                    self._using_cloud_ecapa = False
+                else:
+                    # Cloud mode - encoder is remote
+                    self._using_cloud_ecapa = True
+
+                return True
+            else:
+                logger.warning(f"⚠️ ensure_ecapa_available() failed: {message}")
+                failure_reasons.append(f"ensure_ecapa_available failed: {message}")
+
+        except ImportError as ie:
+            logger.debug(f"ensure_ecapa_available not available: {ie} - using fallback")
+        except Exception as e:
+            logger.warning(f"⚠️ ensure_ecapa_available() error: {e}")
+            failure_reasons.append(f"ensure_ecapa_available error: {e}")
+
+        # =========================================================================
+        # STEP 1b: Fallback - Check ML Registry directly (if ensure failed)
+        # =========================================================================
+        try:
+            from voice_unlock.ml_engine_registry import get_ml_registry_sync
+
+            registry = get_ml_registry_sync(auto_create=True)
 
             if registry is not None:
                 # Check if registry is using cloud mode
