@@ -2211,11 +2211,12 @@ class HybridDatabaseSync:
                 return profile
 
         # Strategy 4-6: Fuzzy matching via SQLite queries
+        # Use explicit column selection to avoid schema mismatch issues
         try:
             for name in search_names:
                 # Case-insensitive match
                 async with self.sqlite_conn.execute(
-                    "SELECT * FROM speaker_profiles WHERE LOWER(speaker_name) = LOWER(?)",
+                    f"SELECT {self.PROFILE_COLUMNS} FROM speaker_profiles WHERE LOWER(speaker_name) = LOWER(?)",
                     (name,)
                 ) as cursor:
                     row = await cursor.fetchone()
@@ -2228,7 +2229,7 @@ class HybridDatabaseSync:
 
                 # Partial/prefix match - name starts with hint (e.g., "Derek" matches "Derek J. Russell")
                 async with self.sqlite_conn.execute(
-                    "SELECT * FROM speaker_profiles WHERE speaker_name LIKE ? || '%'",
+                    f"SELECT {self.PROFILE_COLUMNS} FROM speaker_profiles WHERE speaker_name LIKE ? || '%'",
                     (name,)
                 ) as cursor:
                     row = await cursor.fetchone()
@@ -2241,7 +2242,7 @@ class HybridDatabaseSync:
 
                 # LIKE query - name contains hint anywhere
                 async with self.sqlite_conn.execute(
-                    "SELECT * FROM speaker_profiles WHERE speaker_name LIKE '%' || ? || '%'",
+                    f"SELECT {self.PROFILE_COLUMNS} FROM speaker_profiles WHERE speaker_name LIKE '%' || ? || '%'",
                     (name,)
                 ) as cursor:
                     row = await cursor.fetchone()
@@ -2254,7 +2255,7 @@ class HybridDatabaseSync:
 
             # Strategy 6: Fallback - get profile with most samples (single-user systems)
             async with self.sqlite_conn.execute(
-                "SELECT * FROM speaker_profiles ORDER BY total_samples DESC LIMIT 1"
+                f"SELECT {self.PROFILE_COLUMNS} FROM speaker_profiles ORDER BY total_samples DESC LIMIT 1"
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
@@ -2266,6 +2267,8 @@ class HybridDatabaseSync:
 
         except Exception as e:
             logger.error(f"Fuzzy profile search failed: {e}")
+            import traceback
+            logger.debug(f"Fuzzy search traceback: {traceback.format_exc()}")
 
         latency = (time.time() - start_time) * 1000
         logger.warning(f"❌ No owner profile found after {latency:.2f}ms (tried: {search_names})")
@@ -2396,19 +2399,68 @@ class HybridDatabaseSync:
             logger.error(f"❌ Primary owner discovery failed: {e}")
             return None
 
+    # SQL query column list for explicit selection (avoids SELECT * schema mismatch)
+    PROFILE_COLUMNS = """speaker_id, speaker_name, voiceprint_embedding,
+                         total_samples, created_at, last_updated, acoustic_features"""
+
     def _parse_profile_row(self, row: tuple) -> Dict[str, Any]:
-        """Parse SQLite row into profile dict"""
-        return {
-            "speaker_id": row[0],
-            "speaker_name": row[1],
-            "name": row[1],  # Compatibility alias
-            "embedding": np.frombuffer(row[2], dtype=np.float32) if row[2] else None,
-            "voiceprint_embedding": np.frombuffer(row[2], dtype=np.float32) if row[2] else None,  # Compatibility alias
-            "acoustic_features": json.loads(row[3]) if row[3] else {},
-            "total_samples": row[4] if len(row) > 4 else 0,
-            "last_updated": row[5] if len(row) > 5 else None,
-            "created_at": row[6] if len(row) > 6 else None
-        }
+        """
+        Parse SQLite row into profile dict.
+
+        Expected column order (from PROFILE_COLUMNS):
+        0: speaker_id (INTEGER)
+        1: speaker_name (TEXT)
+        2: voiceprint_embedding (BLOB)
+        3: total_samples (INTEGER)
+        4: created_at (TIMESTAMP)
+        5: last_updated (TIMESTAMP)
+        6: acoustic_features (TEXT/JSON) - optional
+        """
+        try:
+            # Parse embedding from BLOB
+            embedding = None
+            if len(row) > 2 and row[2]:
+                try:
+                    embedding = np.frombuffer(row[2], dtype=np.float32)
+                except Exception as e:
+                    logger.warning(f"Failed to parse embedding: {e}")
+
+            # Parse acoustic_features safely - handle various types
+            acoustic_features = {}
+            if len(row) > 6 and row[6]:
+                af_value = row[6]
+                if isinstance(af_value, str):
+                    try:
+                        acoustic_features = json.loads(af_value)
+                    except json.JSONDecodeError:
+                        acoustic_features = {}
+                elif isinstance(af_value, dict):
+                    acoustic_features = af_value
+                # Skip if it's an int or other non-JSON type
+
+            return {
+                "speaker_id": row[0] if len(row) > 0 else None,
+                "speaker_name": row[1] if len(row) > 1 else None,
+                "name": row[1] if len(row) > 1 else None,  # Compatibility alias
+                "embedding": embedding,
+                "voiceprint_embedding": embedding,  # Compatibility alias
+                "total_samples": row[3] if len(row) > 3 else 0,
+                "created_at": row[4] if len(row) > 4 else None,
+                "last_updated": row[5] if len(row) > 5 else None,
+                "acoustic_features": acoustic_features,
+            }
+        except Exception as e:
+            logger.error(f"Error parsing profile row: {e}, row length: {len(row)}")
+            # Return minimal valid profile to avoid total failure
+            return {
+                "speaker_id": row[0] if len(row) > 0 else None,
+                "speaker_name": row[1] if len(row) > 1 else "Unknown",
+                "name": row[1] if len(row) > 1 else "Unknown",
+                "embedding": None,
+                "voiceprint_embedding": None,
+                "total_samples": 0,
+                "acoustic_features": {},
+            }
 
     def _compute_hash(self, embedding: np.ndarray, features: Dict[str, Any]) -> str:
         """Compute hash of data for conflict detection"""
