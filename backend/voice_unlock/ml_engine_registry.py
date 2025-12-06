@@ -1444,17 +1444,23 @@ class MLEngineRegistry:
     async def _verify_cloud_backend_ready(
         self,
         timeout: float = None,
-        retry_count: int = None
+        retry_count: int = None,
+        test_extraction: bool = None
     ) -> Tuple[bool, str]:
         """
-        Verify that the cloud backend is actually reachable and working.
+        Verify that the cloud backend is actually reachable and ECAPA works.
 
         This is CRITICAL: We must verify the cloud endpoint works BEFORE
         marking the registry as ready. Otherwise, voice unlock fails with 0% confidence.
 
+        Two-phase verification:
+        1. Health check (fast) - verify endpoint is reachable
+        2. Test extraction (optional) - verify ECAPA actually works
+
         Args:
             timeout: Request timeout in seconds (default from env JARVIS_ECAPA_CLOUD_TIMEOUT)
             retry_count: Number of retry attempts (default from env JARVIS_ECAPA_CLOUD_RETRIES)
+            test_extraction: Actually test embedding extraction (default from env JARVIS_ECAPA_CLOUD_TEST_EXTRACTION)
 
         Returns:
             Tuple of (is_ready: bool, reason: str)
@@ -1463,6 +1469,7 @@ class MLEngineRegistry:
         timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "10.0"))
         retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
         fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
+        test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
 
         if not self._cloud_endpoint:
             return False, "Cloud endpoint not configured"
@@ -1471,8 +1478,12 @@ class MLEngineRegistry:
 
         import aiohttp
 
-        # Health check endpoint
+        # =====================================================================
+        # PHASE 1: Health check (fast verification)
+        # =====================================================================
         health_endpoint = f"{self._cloud_endpoint.rstrip('/')}/health"
+        health_check_passed = False
+        reason = "Unknown error"
 
         for attempt in range(1, retry_count + 1):
             try:
@@ -1487,19 +1498,17 @@ class MLEngineRegistry:
                                 data = await response.json()
                                 # Check for specific readiness indicators
                                 if data.get("ecapa_ready", True) and data.get("status") in ("healthy", "ready", "ok", None):
-                                    logger.info(f"✅ Cloud backend verified: {data}")
-                                    self._cloud_verified = True
-                                    self._cloud_last_verified = time.time()
-                                    return True, "Cloud backend healthy and ECAPA ready"
+                                    logger.info(f"✅ Cloud health check passed: {data}")
+                                    health_check_passed = True
+                                    break  # Exit health check loop, proceed to phase 2
                                 else:
                                     reason = f"Cloud responded but not ready: {data}"
                                     logger.warning(f"⚠️ {reason}")
                             except Exception:
                                 # JSON parse failed but HTTP 200 - assume healthy
                                 logger.info("✅ Cloud backend responded (non-JSON)")
-                                self._cloud_verified = True
-                                self._cloud_last_verified = time.time()
-                                return True, "Cloud backend responding"
+                                health_check_passed = True
+                                break  # Exit health check loop, proceed to phase 2
                         else:
                             reason = f"Cloud returned HTTP {response.status}"
                             logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason}")
@@ -1519,16 +1528,84 @@ class MLEngineRegistry:
                 backoff = min(2 ** (attempt - 1), 5)
                 logger.info(f"   Retrying in {backoff}s...")
                 await asyncio.sleep(backoff)
+        else:
+            health_check_passed = False
 
-        # All retries exhausted
-        self._cloud_verified = False
-        logger.error(f"❌ Cloud backend verification FAILED after {retry_count} attempts")
-        logger.error(f"   Last error: {reason}")
+        # If health check failed, return early
+        if not health_check_passed:
+            self._cloud_verified = False
+            logger.error(f"❌ Cloud health check FAILED after {retry_count} attempts")
+            logger.error(f"   Last error: {reason}")
+            if fallback_enabled:
+                logger.warning("🔄 Cloud verification failed - fallback to local ECAPA enabled")
+            return False, reason
 
-        if fallback_enabled:
-            logger.warning("🔄 Cloud verification failed - fallback to local ECAPA enabled")
+        # =====================================================================
+        # PHASE 2: Test actual embedding extraction (ensures ECAPA works)
+        # =====================================================================
+        if test_extraction:
+            logger.info("🧪 Testing cloud ECAPA embedding extraction...")
 
-        return False, reason
+            try:
+                # Generate minimal test audio (100ms of silence at 16kHz)
+                import numpy as np
+                import base64
+
+                test_audio = np.zeros(1600, dtype=np.float32)  # 100ms at 16kHz
+                test_audio_bytes = test_audio.tobytes()
+                test_audio_b64 = base64.b64encode(test_audio_bytes).decode('utf-8')
+
+                embed_endpoint = f"{self._cloud_endpoint.rstrip('/')}/speaker_embedding"
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        embed_endpoint,
+                        json={
+                            "audio_data": test_audio_b64,
+                            "sample_rate": 16000,
+                            "format": "float32",
+                            "test_mode": True  # Signal this is a verification test
+                        },
+                        timeout=aiohttp.ClientTimeout(total=timeout * 2),  # Allow more time for extraction
+                        headers={"Accept": "application/json"}
+                    ) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            if result.get("success") or result.get("embedding"):
+                                embedding_size = len(result.get("embedding", []))
+                                logger.info(f"✅ Cloud ECAPA extraction verified (embedding size: {embedding_size})")
+                                self._cloud_verified = True
+                                self._cloud_last_verified = time.time()
+                                return True, f"Cloud ECAPA verified (health + extraction test)"
+                            else:
+                                reason = f"Cloud extraction returned no embedding: {result}"
+                                logger.warning(f"⚠️ {reason}")
+                        else:
+                            reason = f"Cloud extraction returned HTTP {response.status}"
+                            logger.warning(f"⚠️ {reason}")
+
+            except asyncio.TimeoutError:
+                reason = f"Cloud extraction test timed out after {timeout * 2}s"
+                logger.warning(f"⏱️ {reason}")
+            except Exception as e:
+                reason = f"Cloud extraction test error: {e}"
+                logger.warning(f"❌ {reason}")
+
+            # Extraction test failed - cloud is reachable but ECAPA doesn't work
+            logger.error("❌ Cloud ECAPA extraction test FAILED")
+            logger.error("   The cloud endpoint is reachable but ECAPA embedding extraction failed.")
+            logger.error("   This would cause 0% confidence if we marked cloud as ready.")
+
+            if fallback_enabled:
+                logger.warning("🔄 Falling back to local ECAPA...")
+
+            self._cloud_verified = False
+            return False, reason
+
+        # No extraction test - just use health check result
+        self._cloud_verified = True
+        self._cloud_last_verified = time.time()
+        return True, "Cloud backend healthy (extraction test skipped)"
 
     async def _fallback_to_local_ecapa(self, reason: str) -> bool:
         """
