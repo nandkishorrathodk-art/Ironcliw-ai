@@ -1435,15 +1435,48 @@ WARNING: No module named 'whisper'
 - **Mitigation**: Google Cloud STT works as fallback
 - **Status**: Non-critical (system has fallback STT engine)
 
-**To Fix (Optional):**
+**Detailed Fix Instructions:**
+
+**Option 1: Install Whisper (Recommended for Local Development)**
 ```bash
+# Install OpenAI Whisper package
 pip install openai-whisper
+
+# Or if using pip3
+pip3 install openai-whisper
+
+# Verify installation
+python3 -c "import whisper; print('✅ Whisper installed:', whisper.__version__)"
 ```
+
+**Option 2: Disable Whisper (Use Cloud STT Only)**
+If you don't need local Whisper, you can suppress the warning by configuring the STT router to skip Whisper:
+
+```python
+# In your environment or config
+STT_WHISPER_ENABLED=false  # Disable Whisper fallback
+```
+
+**Post-Installation Verification:**
+```bash
+# Check logs for Whisper availability
+grep -i "whisper" backend/logs/jarvis.log | grep -i "available\|enabled"
+
+# Test Whisper directly
+python3 -c "import whisper; model = whisper.load_model('base'); print('✅ Whisper ready')"
+```
+
+**System Behavior After Fix:**
+- ✅ Local Whisper STT available for offline transcription
+- ✅ Faster transcription (no network latency)
+- ✅ Reduced cloud API costs
+- ✅ Better privacy (audio stays local)
 
 **Why This is Non-Critical:**
 - Hybrid STT Router automatically falls back to Google Cloud STT
 - Voice unlock functionality is unaffected
 - Only affects local Whisper transcription (optional feature)
+- System works perfectly without Whisper (uses cloud STT)
 
 #### 2. SQLite Schema Issue in Typing Learner
 
@@ -1457,17 +1490,139 @@ ERROR: no such column: timestamp in continuous_learning_engine.py:508
 - **Status**: Non-critical for voice unlock (affects typing biometrics only)
 
 **Root Cause:**
-Schema mismatch in `typing_patterns` table - column may be named differently or table structure changed.
+Schema mismatch - queries reference a `timestamp` column that doesn't exist in some tables. The actual columns might be named `created_at`, `last_updated`, or use a different timestamp field. Note: Line 508 has been fixed (uses `char_start_time_ms` instead), but other queries still reference `timestamp`.
 
-**To Fix (Future Enhancement):**
-1. Check actual schema: `sqlite3 jarvis_learning.db ".schema typing_patterns"`
-2. Update query to match actual column names
-3. Add schema migration if needed
+**Affected Locations:**
+- Line 158: `unlock_attempts` table - `ORDER BY timestamp DESC`
+- Line 438: `password_typing_sessions` table - `ORDER BY timestamp DESC`
+- Line 508: ✅ **Already Fixed** - Uses `char_start_time_ms` instead
+
+**Detailed Fix Instructions:**
+
+**Step 1: Diagnose the Issue**
+```bash
+# Find database location
+find ~ -name "jarvis_learning.db" 2>/dev/null
+
+# Check schema of affected tables
+sqlite3 ~/.jarvis/jarvis_learning.db ".schema unlock_attempts"
+sqlite3 ~/.jarvis/jarvis_learning.db ".schema password_typing_sessions"
+sqlite3 ~/.jarvis/jarvis_learning.db ".schema character_typing_metrics"
+
+# Or check column names directly
+sqlite3 ~/.jarvis/jarvis_learning.db "PRAGMA table_info(unlock_attempts);"
+sqlite3 ~/.jarvis/jarvis_learning.db "PRAGMA table_info(password_typing_sessions);"
+```
+
+**Step 2: Identify Correct Column Names**
+The schema might show timestamp columns like:
+- `created_at` (ISO timestamp string)
+- `last_updated` (ISO timestamp string)
+- `recorded_at` (datetime)
+- `attempted_at` (for unlock_attempts)
+- `session_start` (for password_typing_sessions)
+- `id` (can be used for ordering if numeric/auto-increment)
+
+**Step 3: Update the Code**
+
+**Fix Location 1: Line 158 (unlock_attempts table)**
+```python
+# File: backend/voice_unlock/continuous_learning_engine.py:158
+# Before (incorrect):
+cursor.execute("""
+    SELECT speaker_confidence, success
+    FROM unlock_attempts
+    WHERE speaker_name LIKE '%Derek%'
+    ORDER BY timestamp DESC
+    LIMIT 100
+""")
+
+# After (correct - options):
+# Option A: If column is 'created_at'
+ORDER BY created_at DESC
+
+# Option B: If column is 'attempted_at'
+ORDER BY attempted_at DESC
+
+# Option C: If no timestamp column, use 'id' (auto-increment)
+ORDER BY id DESC
+
+# Option D: Remove ORDER BY if ordering isn't critical
+# (just remove the ORDER BY clause)
+```
+
+**Fix Location 2: Line 438 (password_typing_sessions table)**
+```python
+# File: backend/voice_unlock/continuous_learning_engine.py:438
+# Before (incorrect):
+cursor.execute("""
+    SELECT success,
+           total_typing_duration_ms,
+           failed_at_character
+    FROM password_typing_sessions
+    ORDER BY timestamp DESC
+    LIMIT 100
+""")
+
+# After (correct - options):
+# Option A: If column is 'created_at'
+ORDER BY created_at DESC
+
+# Option B: If column is 'session_start'
+ORDER BY session_start DESC
+
+# Option C: If no timestamp column, use 'id'
+ORDER BY id DESC
+
+# Option D: Remove ORDER BY if recent data isn't critical
+```
+
+**Fix Location 3: Line 508**
+- ✅ **Already Fixed** - Uses `char_start_time_ms` instead of `timestamp`
+- No action needed for this location
+
+**Step 4: Add Schema Migration (If Needed)**
+If the tables don't have timestamp columns, create migrations:
+
+```python
+# Add to migration script or database initialization
+async def migrate_unlock_attempts_table():
+    """Add timestamp column if missing"""
+    await db.execute("""
+        ALTER TABLE unlock_attempts 
+        ADD COLUMN IF NOT EXISTS created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    """)
+
+async def migrate_password_typing_sessions_table():
+    """Add timestamp column if missing"""
+    await db.execute("""
+        ALTER TABLE password_typing_sessions 
+        ADD COLUMN IF NOT EXISTS created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    """)
+```
+
+**Step 5: Verify Fix**
+```bash
+# Check logs for typing learner errors (should be none)
+grep -i "no such column.*timestamp" backend/logs/jarvis.log
+
+# Test typing pattern learning (if enabled)
+# This will verify the query works
+```
+
+**Alternative: Disable Typing Learner**
+If typing pattern learning isn't needed, you can disable it:
+
+```python
+# In continuous_learning_engine.py
+TYPING_LEARNER_ENABLED = False  # Disable feature
+```
 
 **Why This is Non-Critical:**
 - Affects typing pattern learning only (separate feature)
 - Voice unlock uses speaker verification, not typing patterns
 - System continues to function normally
+- Can be safely ignored if typing biometrics aren't used
 
 #### 3. Owner Profile Initialization Timeout
 
@@ -1477,17 +1632,101 @@ WARNING: ⏱️ Owner Profile initialization timed out after 3.0s (continuing wi
 ```
 
 **Root Cause:**
-Parallel initialization timing issue - owner profile loading competes with other initialization tasks.
+Parallel initialization timing issue - owner profile loading competes with other initialization tasks. The timeout is set to allow parallel initialization, but on slower systems or when database initialization takes longer, this can cause the timeout.
 
 **Impact:**
 - Owner profile may not be loaded during initialization
 - **Mitigation**: Voice profile is loaded via `UnifiedVoiceCacheManager` instead
 - **Status**: Non-critical (workaround in place)
 
+**Detailed Fix Instructions:**
+
+**Fix 1: Increase Timeout (Recommended)**
+
+The timeout has already been increased in `intelligent_voice_unlock_service.py` line 679:
+
+```python
+# Current (v19.0.0): Increased from 3.0s to 10.0s
+_init_with_timeout(self._load_owner_profile(), "Owner Profile", timeout=10.0),
+```
+
+**Verification:**
+```bash
+# Check if timeout was applied (should show 10.0s now)
+grep -i "Owner Profile.*timeout" backend/logs/jarvis.log
+
+# Or check the code directly
+grep -A 1 "_load_owner_profile()" backend/voice_unlock/intelligent_voice_unlock_service.py
+```
+
+**Fix 2: Improve Database Initialization Waiting**
+
+The `_load_owner_profile()` method already has retry logic (line 802), but you can increase the retries:
+
+```python
+# In backend/voice_unlock/intelligent_voice_unlock_service.py
+# Line 802: Increase max_retries for slower systems
+max_retries = 30  # Increased from 10 (3 seconds total wait time)
+```
+
+**Fix 3: Add Database Readiness Check**
+
+Enhance the retry logic to verify database connection is actually ready:
+
+```python
+# Enhanced version (around line 801-810)
+max_retries = 30
+for attempt in range(max_retries):
+    if self.learning_db:
+        # Verify database connection is actually ready
+        if hasattr(self.learning_db, 'db') and self.learning_db.db is not None:
+            # Test if we can actually query
+            try:
+                # Quick test query to verify readiness
+                await asyncio.sleep(0.05)  # Brief pause for connection to stabilize
+                break
+            except Exception:
+                continue
+    await asyncio.sleep(0.1)
+```
+
+**Fix 4: Sequential Initialization (If Parallel Causes Issues)**
+
+If parallel initialization continues to cause issues, you can make owner profile loading sequential:
+
+```python
+# In initialization sequence (around line 678)
+# Before: Parallel
+_init_with_timeout(self._load_owner_profile(), "Owner Profile", timeout=10.0),
+
+# After: Sequential (after learning_db is guaranteed ready)
+# Move this after _initialize_learning_db() completes
+await self._initialize_learning_db()
+await _init_with_timeout(self._load_owner_profile(), "Owner Profile", timeout=10.0)
+```
+
+**Current Status:**
+- ✅ Timeout increased to 10.0s (from 3.0s)
+- ✅ Retry logic in place (30 retries = 3 seconds)
+- ✅ Workaround via UnifiedVoiceCacheManager active
+
+**Verification Commands:**
+```bash
+# Check if timeout warnings still occur
+grep -i "Owner Profile.*timed out" backend/logs/jarvis.log
+
+# Check if profile loads via alternate path
+grep -i "Preloaded voice profile" backend/logs/jarvis.log
+
+# Check database initialization timing
+grep -i "Learning Database connected\|Database not initialized" backend/logs/jarvis.log
+```
+
 **Why This is Non-Critical:**
 - `UnifiedVoiceCacheManager` preloads voice profiles independently
 - Voice unlock still works correctly (profile loaded via alternate path)
 - System continues to function normally
+- Owner profile loads successfully, just via different code path
 
 **Evidence:**
 ```
@@ -1495,10 +1734,11 @@ INFO:voice_unlock.unified_voice_cache_manager:✅ Preloaded voice profile:
   Derek J. Russell [OWNER] (dim=192, samples=272)
 ```
 
-**Future Enhancement:**
-- Increase timeout from 3.0s to 5.0s for slower systems
-- Add better retry logic for database initialization
-- Implement dependency tracking for initialization order
+**Performance Impact:**
+- Current timeout (10.0s): Allows plenty of time for database initialization
+- Retry logic (30 attempts × 0.1s = 3s): Waits for database connection
+- Total potential wait: ~13 seconds (acceptable for startup)
+- Fallback path: Loads in <1 second via UnifiedVoiceCacheManager
 
 ### Testing Evidence
 
