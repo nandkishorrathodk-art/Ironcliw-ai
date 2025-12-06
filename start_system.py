@@ -13015,6 +13015,228 @@ async def ensure_cloud_sql_proxy():
         return False
 
 
+async def ensure_docker_ecapa_service(force_rebuild: bool = False) -> dict:
+    """
+    Ensure Docker ECAPA cloud service is running locally.
+    This provides a local alternative to GCP Cloud Run for ECAPA embeddings.
+
+    Architecture:
+    - Builds and runs the ECAPA service in Docker
+    - Exposes port 8010 for HTTP requests
+    - CloudECAPAClient connects to http://localhost:8010/api/ml
+
+    Args:
+        force_rebuild: Force rebuild the Docker image even if it exists
+
+    Returns:
+        dict with status information
+    """
+    import subprocess
+    from pathlib import Path
+
+    result = {
+        "success": False,
+        "container_running": False,
+        "endpoint": None,
+        "error": None,
+    }
+
+    print(f"\n{Colors.CYAN}🐳 Docker ECAPA Service Setup{Colors.ENDC}")
+
+    # Check if Docker is available
+    try:
+        docker_check = subprocess.run(
+            ["docker", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if docker_check.returncode != 0:
+            result["error"] = "Docker not installed"
+            print(f"  {Colors.FAIL}✗ Docker not installed{Colors.ENDC}")
+            print(f"    Install Docker Desktop: https://www.docker.com/products/docker-desktop")
+            return result
+        print(f"  {Colors.GREEN}✓ Docker available: {docker_check.stdout.strip()}{Colors.ENDC}")
+    except FileNotFoundError:
+        result["error"] = "Docker not found in PATH"
+        print(f"  {Colors.FAIL}✗ Docker not found in PATH{Colors.ENDC}")
+        return result
+    except subprocess.TimeoutExpired:
+        result["error"] = "Docker check timed out"
+        print(f"  {Colors.FAIL}✗ Docker check timed out{Colors.ENDC}")
+        return result
+
+    # Check if Docker daemon is running
+    try:
+        daemon_check = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if daemon_check.returncode != 0:
+            result["error"] = "Docker daemon not running"
+            print(f"  {Colors.FAIL}✗ Docker daemon not running{Colors.ENDC}")
+            print(f"    Please start Docker Desktop")
+            return result
+        print(f"  {Colors.GREEN}✓ Docker daemon running{Colors.ENDC}")
+    except subprocess.TimeoutExpired:
+        result["error"] = "Docker daemon check timed out"
+        print(f"  {Colors.FAIL}✗ Docker daemon check timed out - is Docker Desktop running?{Colors.ENDC}")
+        return result
+
+    # Path to docker-compose.yml
+    cloud_services_dir = Path(__file__).parent / "backend" / "cloud_services"
+    docker_compose_path = cloud_services_dir / "docker-compose.yml"
+
+    if not docker_compose_path.exists():
+        result["error"] = f"docker-compose.yml not found at {docker_compose_path}"
+        print(f"  {Colors.FAIL}✗ docker-compose.yml not found{Colors.ENDC}")
+        return result
+
+    print(f"  {Colors.CYAN}→ Using: {docker_compose_path}{Colors.ENDC}")
+
+    # Check if container is already running
+    try:
+        container_check = subprocess.run(
+            ["docker", "ps", "--filter", "name=jarvis-ecapa-cloud", "--format", "{{.Status}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=cloud_services_dir
+        )
+
+        if container_check.stdout.strip() and "Up" in container_check.stdout:
+            print(f"  {Colors.GREEN}✓ ECAPA container already running{Colors.ENDC}")
+            result["success"] = True
+            result["container_running"] = True
+            result["endpoint"] = "http://localhost:8010/api/ml"
+
+            # Verify health
+            health_check = subprocess.run(
+                ["curl", "-sf", "http://localhost:8010/health"],
+                capture_output=True,
+                timeout=5
+            )
+            if health_check.returncode == 0:
+                print(f"  {Colors.GREEN}✓ Health check passed{Colors.ENDC}")
+            else:
+                print(f"  {Colors.YELLOW}⚠️  Health check pending (container may be starting){Colors.ENDC}")
+
+            return result
+
+    except subprocess.TimeoutExpired:
+        print(f"  {Colors.YELLOW}⚠️  Container check timed out{Colors.ENDC}")
+
+    # Start the container using docker-compose
+    print(f"  {Colors.CYAN}→ Starting ECAPA Docker container...{Colors.ENDC}")
+
+    try:
+        # Build if needed or forced
+        if force_rebuild:
+            print(f"  {Colors.CYAN}→ Building Docker image (this may take a few minutes)...{Colors.ENDC}")
+            build_result = subprocess.run(
+                ["docker-compose", "build"],
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute timeout for build
+                cwd=cloud_services_dir
+            )
+            if build_result.returncode != 0:
+                print(f"  {Colors.FAIL}✗ Docker build failed{Colors.ENDC}")
+                print(f"    Error: {build_result.stderr[:500]}")
+                result["error"] = f"Docker build failed: {build_result.stderr[:200]}"
+                return result
+            print(f"  {Colors.GREEN}✓ Docker image built{Colors.ENDC}")
+
+        # Start container in detached mode
+        start_result = subprocess.run(
+            ["docker-compose", "up", "-d"],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout for start
+            cwd=cloud_services_dir
+        )
+
+        if start_result.returncode != 0:
+            print(f"  {Colors.FAIL}✗ Failed to start container{Colors.ENDC}")
+            print(f"    Error: {start_result.stderr[:500]}")
+            result["error"] = f"Docker start failed: {start_result.stderr[:200]}"
+            return result
+
+        print(f"  {Colors.GREEN}✓ Container started{Colors.ENDC}")
+
+        # Wait for container to be healthy
+        print(f"  {Colors.CYAN}→ Waiting for container health check (up to 90s)...{Colors.ENDC}")
+
+        for i in range(18):  # 18 * 5 = 90 seconds max
+            await asyncio.sleep(5)
+
+            try:
+                health_check = subprocess.run(
+                    ["curl", "-sf", "http://localhost:8010/health"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if health_check.returncode == 0:
+                    print(f"  {Colors.GREEN}✓ ECAPA service healthy!{Colors.ENDC}")
+                    result["success"] = True
+                    result["container_running"] = True
+                    result["endpoint"] = "http://localhost:8010/api/ml"
+
+                    # Set environment for CloudECAPAClient to use local Docker
+                    os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
+                    os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+                    print(f"  {Colors.GREEN}✓ Set JARVIS_CLOUD_ML_ENDPOINT=http://localhost:8010/api/ml{Colors.ENDC}")
+
+                    return result
+            except:
+                pass
+
+            print(f"  {Colors.CYAN}  ...still starting ({(i+1)*5}s){Colors.ENDC}")
+
+        print(f"  {Colors.YELLOW}⚠️  Container started but health check not passing yet{Colors.ENDC}")
+        print(f"    Check logs: docker-compose -f {docker_compose_path} logs -f")
+        result["error"] = "Container started but health check failed"
+        result["container_running"] = True
+        result["endpoint"] = "http://localhost:8010/api/ml"
+
+        # Still set the endpoint - it might become healthy soon
+        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
+        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+
+        return result
+
+    except subprocess.TimeoutExpired:
+        result["error"] = "Docker operation timed out"
+        print(f"  {Colors.FAIL}✗ Docker operation timed out{Colors.ENDC}")
+        return result
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"  {Colors.FAIL}✗ Error: {e}{Colors.ENDC}")
+        return result
+
+
+async def stop_docker_ecapa_service() -> bool:
+    """Stop the Docker ECAPA service if running."""
+    import subprocess
+    from pathlib import Path
+
+    cloud_services_dir = Path(__file__).parent / "backend" / "cloud_services"
+
+    try:
+        stop_result = subprocess.run(
+            ["docker-compose", "down"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cloud_services_dir
+        )
+        return stop_result.returncode == 0
+    except:
+        return False
+
+
 async def main():
     """Main entry point"""
     global _manager
@@ -13112,6 +13334,23 @@ async def main():
         "--disable-automation",
         action="store_true",
         help="Disable Goal Inference automation (suggestions only)",
+    )
+
+    # Docker ECAPA Service Configuration
+    parser.add_argument(
+        "--local-docker",
+        action="store_true",
+        help="Start local Docker ECAPA service for voice authentication (alternative to GCP Cloud Run)",
+    )
+    parser.add_argument(
+        "--no-docker",
+        action="store_true",
+        help="Skip Docker ECAPA service initialization (use cloud or local ECAPA only)",
+    )
+    parser.add_argument(
+        "--docker-rebuild",
+        action="store_true",
+        help="Force rebuild Docker ECAPA container before starting",
     )
 
     args = parser.parse_args()
@@ -13522,6 +13761,58 @@ async def main():
         print(f"{Colors.YELLOW}⚠️  CloudSQL proxy not available - voice biometrics may be degraded{Colors.ENDC}")
 
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DOCKER ECAPA SERVICE - Local Docker Container for Voice Authentication
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Alternative to GCP Cloud Run - runs ECAPA service locally in Docker
+    # Usage: python start_system.py --restart --local-docker
+    # ═══════════════════════════════════════════════════════════════════════════
+    docker_ecapa_enabled = False
+    docker_ecapa_status = {"started": False, "endpoint": None, "error": None}
+
+    # Check if Docker ECAPA is requested (via args or environment)
+    use_local_docker = getattr(args, 'local_docker', False) or \
+                       os.getenv("JARVIS_USE_LOCAL_DOCKER", "false").lower() == "true"
+    skip_docker = getattr(args, 'no_docker', False)
+    docker_rebuild = getattr(args, 'docker_rebuild', False)
+
+    if use_local_docker and not skip_docker:
+        print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.CYAN}🐳 Docker ECAPA Service Initialization{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
+
+        try:
+            docker_result = await ensure_docker_ecapa_service(force_rebuild=docker_rebuild)
+
+            if docker_result.get("success"):
+                docker_ecapa_enabled = True
+                docker_ecapa_status["started"] = True
+                docker_ecapa_status["endpoint"] = docker_result.get("endpoint")
+
+                print(f"{Colors.GREEN}✅ Docker ECAPA service running{Colors.ENDC}")
+                print(f"{Colors.GREEN}   → Container: {docker_result.get('container_name', 'ecapa-cloud-service')}{Colors.ENDC}")
+                print(f"{Colors.GREEN}   → Endpoint: {docker_result.get('endpoint')}{Colors.ENDC}")
+                print(f"{Colors.GREEN}   → Health: {'Healthy' if docker_result.get('healthy') else 'Pending'}{Colors.ENDC}")
+
+                # Set environment for Cloud ECAPA client to use Docker endpoint
+                if docker_result.get("endpoint"):
+                    os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = docker_result["endpoint"]
+                    os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+            else:
+                error_msg = docker_result.get("error", "Unknown error")
+                docker_ecapa_status["error"] = error_msg
+                print(f"{Colors.YELLOW}⚠️  Docker ECAPA not started: {error_msg}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}   → Will use GCP Cloud Run or local ECAPA{Colors.ENDC}")
+
+        except Exception as e:
+            docker_ecapa_status["error"] = str(e)
+            print(f"{Colors.FAIL}❌ Docker ECAPA error: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   → Will fallback to Cloud Run or local{Colors.ENDC}")
+
+        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
+    elif skip_docker:
+        print(f"\n{Colors.CYAN}🐳 Docker ECAPA: Skipped (--no-docker flag){Colors.ENDC}")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # CLOUD ECAPA CLIENT v18.2.0 - Hybrid Cloud ML Backend with Spot VM Support
