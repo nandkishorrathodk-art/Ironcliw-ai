@@ -2280,6 +2280,8 @@ async def lifespan(app: FastAPI):
             success = await init_system()
             if success:
                 app.state.voice_unlock_system = voice_unlock["startup_manager"]
+                # Also set app.state.voice_unlock so health check reports correct status
+                app.state.voice_unlock = voice_unlock
                 logger.info("✅ Voice Unlock system started")
                 logger.info("   Say 'Hey JARVIS, unlock my mac' when screen is locked")
             else:
@@ -2935,6 +2937,7 @@ try:
             logger.info(f"   - {vr}")
         if len(_voice_routes) > 3:
             logger.info(f"   ... and {len(_voice_routes) - 3} more")
+
 except ImportError as e:
     logger.warning(f"⚠️  Voice Unlock API not available: {e}")
 except Exception as e:
