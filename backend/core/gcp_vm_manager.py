@@ -275,7 +275,10 @@ class GCPVMManager:
             return
 
         if not COMPUTE_AVAILABLE:
-            logger.error("❌ Google Cloud Compute Engine API not available")
+            logger.info(
+                "ℹ️  GCP Compute Engine API not available. "
+                "Spot VM creation disabled. Install with: pip install google-cloud-compute"
+            )
             raise RuntimeError("google-cloud-compute package not installed")
 
         logger.info("🚀 Initializing GCP VM Manager...")

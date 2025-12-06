@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 Audio Format Converter
-Ensures audio data is in the correct format for STT processing
+Ensures audio data is in the correct format for STT processing.
+
+CRITICAL FIX: Handles WebM, MP3, OGG, and other compressed formats
+that browsers send. Uses pydub + FFmpeg for proper transcoding.
 """
 
 import base64
@@ -11,8 +14,39 @@ import json
 import struct
 import wave
 import io
+import tempfile
+import os
+import subprocess
+import shutil
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Check FFmpeg availability at module load
+FFMPEG_AVAILABLE = shutil.which('ffmpeg') is not None
+PYDUB_AVAILABLE = False
+
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except ImportError:
+    logger.warning("pydub not installed - falling back to basic audio handling")
+
+# Audio format magic bytes for detection
+# Note: Order matters - more specific signatures should come first
+AUDIO_SIGNATURES = {
+    b'\x1a\x45\xdf\xa3': 'webm',      # WebM/Matroska
+    b'OggS': 'ogg',                    # OGG Vorbis/Opus
+    b'\xff\xfb': 'mp3',                # MP3 (MPEG Audio Layer 3)
+    b'\xff\xfa': 'mp3',                # MP3 variant
+    b'\xff\xf3': 'mp3',                # MP3 variant
+    b'\xff\xf2': 'mp3',                # MP3 variant
+    b'ID3': 'mp3',                     # MP3 with ID3 tag
+    b'RIFF': 'wav',                    # WAV
+    b'fLaC': 'flac',                   # FLAC
+    # Note: MP4/M4A detection is handled separately in detect_audio_format()
+    # because the 'ftyp' box appears at byte 4, not at the start
+}
 
 class AudioFormatConverter:
     """Convert various audio formats to standard format for STT"""
@@ -163,39 +197,249 @@ class AudioFormatConverter:
             return b''
 
     @staticmethod
-    def ensure_pcm_format(audio_bytes: bytes, sample_rate: int = 16000) -> bytes:
+    def detect_audio_format(audio_bytes: bytes) -> str:
         """
-        Ensure audio bytes are in PCM format suitable for STT.
+        Detect the audio format from magic bytes.
+
+        Returns:
+            str: Format name ('webm', 'mp3', 'ogg', 'wav', 'flac', 'mp4', 'raw_pcm')
+        """
+        if not audio_bytes or len(audio_bytes) < 4:
+            return 'raw_pcm'
+
+        # Check magic bytes
+        for signature, format_name in AUDIO_SIGNATURES.items():
+            if audio_bytes.startswith(signature):
+                return format_name
+
+        # Special check for MP4/M4A (ftyp usually at byte 4)
+        if len(audio_bytes) > 8 and audio_bytes[4:8] == b'ftyp':
+            return 'mp4'
+
+        # If no match, assume raw PCM
+        return 'raw_pcm'
+
+    @staticmethod
+    def transcode_with_pydub(audio_bytes: bytes, detected_format: str,
+                             sample_rate: int = 16000) -> Optional[bytes]:
+        """
+        Transcode audio to PCM using pydub + FFmpeg.
 
         Args:
-            audio_bytes: Raw audio bytes
+            audio_bytes: Compressed audio bytes
+            detected_format: Format name from detect_audio_format()
+            sample_rate: Target sample rate
+
+        Returns:
+            bytes: Raw PCM bytes (16-bit, mono, target sample rate) or None on failure
+        """
+        if not PYDUB_AVAILABLE:
+            logger.warning("pydub not available for transcoding")
+            return None
+
+        if not FFMPEG_AVAILABLE:
+            logger.warning("FFmpeg not available for transcoding")
+            return None
+
+        try:
+            # Map format names to pydub format strings
+            format_map = {
+                'webm': 'webm',
+                'ogg': 'ogg',
+                'mp3': 'mp3',
+                'flac': 'flac',
+                'mp4': 'mp4',
+                'm4a': 'm4a',
+            }
+
+            pydub_format = format_map.get(detected_format, detected_format)
+
+            # Create temp file for input
+            with tempfile.NamedTemporaryFile(suffix=f'.{pydub_format}', delete=False) as tmp_in:
+                tmp_in.write(audio_bytes)
+                tmp_in_path = tmp_in.name
+
+            try:
+                # Load audio with pydub
+                audio = AudioSegment.from_file(tmp_in_path, format=pydub_format)
+
+                # Convert to mono, target sample rate, 16-bit
+                audio = audio.set_channels(1)
+                audio = audio.set_frame_rate(sample_rate)
+                audio = audio.set_sample_width(2)  # 16-bit = 2 bytes
+
+                # Get raw PCM data
+                pcm_bytes = audio.raw_data
+
+                logger.info(f"Transcoded {detected_format} to PCM: {len(audio_bytes)} -> {len(pcm_bytes)} bytes, "
+                           f"{audio.frame_rate}Hz, {audio.channels}ch, {audio.sample_width*8}bit")
+
+                return pcm_bytes
+
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_in_path)
+                except:
+                    pass
+
+        except Exception as e:
+            logger.error(f"pydub transcode failed for {detected_format}: {e}")
+            return None
+
+    @staticmethod
+    def transcode_with_ffmpeg_direct(audio_bytes: bytes, detected_format: str,
+                                     sample_rate: int = 16000) -> Optional[bytes]:
+        """
+        Fallback: Transcode using FFmpeg directly via subprocess.
+
+        Args:
+            audio_bytes: Compressed audio bytes
+            detected_format: Format name
+            sample_rate: Target sample rate
+
+        Returns:
+            bytes: Raw PCM bytes or None on failure
+        """
+        if not FFMPEG_AVAILABLE:
+            logger.warning("FFmpeg not available")
+            return None
+
+        try:
+            # Create temp files
+            suffix = f'.{detected_format}' if detected_format != 'raw_pcm' else '.bin'
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_in:
+                tmp_in.write(audio_bytes)
+                tmp_in_path = tmp_in.name
+
+            tmp_out_path = tmp_in_path + '.wav'
+
+            try:
+                # Run FFmpeg to convert to WAV
+                cmd = [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+                    '-i', tmp_in_path,
+                    '-ar', str(sample_rate),  # Sample rate
+                    '-ac', '1',                # Mono
+                    '-acodec', 'pcm_s16le',   # 16-bit PCM
+                    '-f', 'wav',
+                    tmp_out_path
+                ]
+
+                result = subprocess.run(cmd, capture_output=True, timeout=30)
+
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg failed: {result.stderr.decode()}")
+                    return None
+
+                # Read the output WAV and extract PCM
+                with open(tmp_out_path, 'rb') as f:
+                    wav_data = f.read()
+
+                # Extract PCM from WAV (skip 44-byte header)
+                if wav_data.startswith(b'RIFF'):
+                    with io.BytesIO(wav_data) as wav_io:
+                        with wave.open(wav_io, 'rb') as wav:
+                            pcm_bytes = wav.readframes(wav.getnframes())
+                            logger.info(f"FFmpeg transcoded {detected_format}: {len(audio_bytes)} -> {len(pcm_bytes)} bytes")
+                            return pcm_bytes
+
+                return None
+
+            finally:
+                # Clean up temp files
+                for path in [tmp_in_path, tmp_out_path]:
+                    try:
+                        os.unlink(path)
+                    except:
+                        pass
+
+        except subprocess.TimeoutExpired:
+            logger.error("FFmpeg transcode timed out")
+            return None
+        except Exception as e:
+            logger.error(f"FFmpeg direct transcode failed: {e}")
+            return None
+
+    @staticmethod
+    def ensure_pcm_format(audio_bytes: bytes, sample_rate: int = 16000) -> bytes:
+        """
+        Ensure audio bytes are in PCM format suitable for STT and biometric processing.
+
+        CRITICAL: This method now properly handles compressed formats (WebM, MP3, OGG)
+        that browsers send. Previously, compressed audio was passed through as-is,
+        causing voice biometric failures (0% confidence).
+
+        Args:
+            audio_bytes: Raw or compressed audio bytes
             sample_rate: Target sample rate (default 16000 Hz)
 
         Returns:
             bytes: PCM audio data at 16kHz, 16-bit, mono
         """
-
         if not audio_bytes:
             return b''
 
-        # Check if it's a WAV file
-        if audio_bytes.startswith(b'RIFF'):
+        # Detect the audio format
+        detected_format = AudioFormatConverter.detect_audio_format(audio_bytes)
+        logger.debug(f"Detected audio format: {detected_format} ({len(audio_bytes)} bytes)")
+
+        # If it's already a WAV file, extract the PCM data
+        if detected_format == 'wav':
             try:
-                # Parse WAV file
                 with io.BytesIO(audio_bytes) as wav_io:
                     with wave.open(wav_io, 'rb') as wav:
-                        frames = wav.readframes(wav.getnframes())
-                        return frames
-            except:
-                pass
+                        # Check if resampling/conversion is needed
+                        if wav.getnchannels() == 1 and wav.getframerate() == sample_rate and wav.getsampwidth() == 2:
+                            # Already in the right format, just extract frames
+                            return wav.readframes(wav.getnframes())
+                        else:
+                            # Need to resample/convert - use pydub
+                            if PYDUB_AVAILABLE:
+                                audio = AudioSegment.from_wav(wav_io)
+                                audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
+                                return audio.raw_data
+                            else:
+                                # Fallback: just extract frames as-is
+                                return wav.readframes(wav.getnframes())
+            except Exception as e:
+                logger.warning(f"WAV parsing failed, will try transcoding: {e}")
 
-        # Check if it's already proper PCM
-        # PCM should have even number of bytes (16-bit samples)
-        if len(audio_bytes) % 2 == 0:
+        # If it's a compressed format, transcode to PCM
+        if detected_format in ['webm', 'ogg', 'mp3', 'flac', 'mp4', 'm4a']:
+            logger.info(f"Transcoding {detected_format} audio to PCM ({len(audio_bytes)} bytes)")
+
+            # Try pydub first (faster, more reliable)
+            pcm_data = AudioFormatConverter.transcode_with_pydub(audio_bytes, detected_format, sample_rate)
+            if pcm_data:
+                return pcm_data
+
+            # Fallback to direct FFmpeg
+            pcm_data = AudioFormatConverter.transcode_with_ffmpeg_direct(audio_bytes, detected_format, sample_rate)
+            if pcm_data:
+                return pcm_data
+
+            logger.error(f"Failed to transcode {detected_format} audio - returning empty bytes")
+            return b''
+
+        # If it's raw PCM, validate and return
+        if detected_format == 'raw_pcm':
+            # PCM should have even number of bytes (16-bit samples)
+            if len(audio_bytes) % 2 != 0:
+                audio_bytes = audio_bytes + b'\x00'
             return audio_bytes
 
-        # Pad with zero if odd number of bytes
-        return audio_bytes + b'\x00'
+        # Unknown format - try transcoding anyway
+        logger.warning(f"Unknown audio format, attempting transcode: {detected_format}")
+        pcm_data = AudioFormatConverter.transcode_with_pydub(audio_bytes, detected_format, sample_rate)
+        if pcm_data:
+            return pcm_data
+
+        # Last resort - return as-is (may cause issues)
+        logger.warning("Could not transcode audio - returning as-is")
+        if len(audio_bytes) % 2 != 0:
+            audio_bytes = audio_bytes + b'\x00'
+        return audio_bytes
 
     @staticmethod
     def create_wav_header(audio_bytes: bytes, sample_rate: int = 16000, channels: int = 1) -> bytes:

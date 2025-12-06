@@ -261,6 +261,12 @@ class CloudECAPAClientConfig:
     CONNECT_TIMEOUT = float(os.getenv("CLOUD_ECAPA_CONNECT_TIMEOUT", "5.0"))
     REQUEST_TIMEOUT = float(os.getenv("CLOUD_ECAPA_REQUEST_TIMEOUT", "30.0"))
 
+    # ECAPA model initialization wait settings
+    # Cloud Run cold starts can take 30-120s for ECAPA model loading
+    ECAPA_WAIT_FOR_READY = os.getenv("CLOUD_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
+    ECAPA_READY_TIMEOUT = float(os.getenv("CLOUD_ECAPA_READY_TIMEOUT", "120.0"))  # Max wait time
+    ECAPA_READY_POLL_INTERVAL = float(os.getenv("CLOUD_ECAPA_READY_POLL", "5.0"))  # Poll every 5s
+
     # Retries
     MAX_RETRIES = int(os.getenv("CLOUD_ECAPA_MAX_RETRIES", "3"))
     RETRY_BACKOFF_BASE = float(os.getenv("CLOUD_ECAPA_BACKOFF_BASE", "1.0"))
@@ -369,21 +375,42 @@ class SpotVMBackend:
             return True
 
         if not CloudECAPAClientConfig.SPOT_VM_ENABLED:
-            logger.info("Spot VM backend disabled by configuration")
+            logger.info("ℹ️  Spot VM backend disabled by configuration")
             return False
 
         try:
             # Import GCP VM Manager (lazy import to avoid circular deps)
-            from core.gcp_vm_manager import get_gcp_vm_manager
+            from core.gcp_vm_manager import get_gcp_vm_manager, COMPUTE_AVAILABLE
+
+            if not COMPUTE_AVAILABLE:
+                logger.info(
+                    "ℹ️  Spot VM backend unavailable (google-cloud-compute not installed). "
+                    "Using Cloud Run only. Install with: pip install google-cloud-compute"
+                )
+                return False
+
             self._vm_manager = await get_gcp_vm_manager()
             self._initialized = True
             logger.info("✅ Spot VM backend initialized")
             return True
         except ImportError as e:
-            logger.warning(f"GCP VM Manager not available: {e}")
+            logger.info(
+                f"ℹ️  Spot VM backend unavailable: {e}. "
+                "Cloud Run will be used as primary backend."
+            )
+            return False
+        except RuntimeError as e:
+            # This is expected when google-cloud-compute isn't installed
+            if "not installed" in str(e).lower():
+                logger.info(
+                    "ℹ️  Spot VM backend unavailable (GCP Compute API not configured). "
+                    "Using Cloud Run as primary backend."
+                )
+            else:
+                logger.warning(f"⚠️  Spot VM backend initialization error: {e}")
             return False
         except Exception as e:
-            logger.error(f"Failed to initialize Spot VM backend: {e}")
+            logger.warning(f"⚠️  Spot VM backend initialization failed: {e}")
             return False
 
     async def ensure_vm_available(self) -> bool:
@@ -827,11 +854,13 @@ class CloudECAPAClient:
             logger.error("aiohttp not available. Install with: pip install aiohttp")
             return False
 
-        # Verify at least one endpoint is healthy
-        healthy = await self._discover_healthy_endpoint()
+        # Verify at least one endpoint is healthy (with wait-for-ready for cold starts)
+        logger.info("🔍 Checking Cloud Run endpoint availability...")
+        healthy = await self._discover_healthy_endpoint(wait_for_ready=True)
 
         if healthy:
             self._initialized = True
+            self._active_backend = BackendType.CLOUD_RUN
             logger.info(f"✅ Cloud ECAPA Client ready (primary: {self._healthy_endpoint})")
 
             # Start background health monitoring
@@ -840,21 +869,60 @@ class CloudECAPAClient:
             # Start idle check for Spot VMs
             self._idle_check_task = asyncio.create_task(self._idle_check_loop())
 
+            # Initialize Spot VM backend in background (non-blocking, optional fallback)
+            asyncio.create_task(self._init_spot_vm_background())
+
             return True
 
-        # No Cloud Run endpoints - try Spot VM if enabled
-        if CloudECAPAClientConfig.SPOT_VM_ENABLED:
-            logger.info("Cloud Run unavailable, trying Spot VM backend...")
-            self._spot_vm_backend = await get_spot_vm_backend()
-            if await self._spot_vm_backend.ensure_vm_available():
-                self._active_backend = BackendType.SPOT_VM
-                self._initialized = True
-                logger.info("✅ Cloud ECAPA Client ready (Spot VM backend)")
-                return True
+        # No Cloud Run endpoints available - try Spot VM if enabled
+        logger.info("⚠️  Cloud Run endpoints not available, checking fallback options...")
 
-        logger.warning("⚠️ No healthy endpoints found, but client initialized for retry")
+        if CloudECAPAClientConfig.SPOT_VM_ENABLED:
+            logger.info("🔄 Trying Spot VM backend...")
+            self._spot_vm_backend = await get_spot_vm_backend()
+            if self._spot_vm_backend and await self._spot_vm_backend.initialize():
+                if await self._spot_vm_backend.ensure_vm_available():
+                    self._active_backend = BackendType.SPOT_VM
+                    self._initialized = True
+                    logger.info("✅ Cloud ECAPA Client ready (Spot VM backend)")
+                    return True
+
+        # Check if local fallback is possible
+        try:
+            import psutil
+            available_gb = psutil.virtual_memory().available / (1024**3)
+            if available_gb >= CloudECAPAClientConfig.RAM_THRESHOLD_LOCAL_GB:
+                logger.info(
+                    f"✅ Cloud ECAPA Client ready (local fallback available, "
+                    f"{available_gb:.1f}GB RAM free)"
+                )
+                self._active_backend = BackendType.LOCAL
+                self._initialized = True
+
+                # Start background task to periodically check for Cloud Run availability
+                self._health_check_task = asyncio.create_task(self._health_check_loop())
+                return True
+        except Exception:
+            pass
+
+        logger.warning(
+            "⚠️  No healthy backends found. Client initialized for retry. "
+            "Requests will attempt Cloud Run with wait-for-ready or local fallback."
+        )
         self._initialized = True
+
+        # Start health check loop to detect when endpoints become available
+        self._health_check_task = asyncio.create_task(self._health_check_loop())
+
         return False
+
+    async def _init_spot_vm_background(self):
+        """Initialize Spot VM backend in background (non-blocking)."""
+        try:
+            self._spot_vm_backend = await get_spot_vm_backend()
+            await self._spot_vm_backend.initialize()
+        except Exception as e:
+            logger.debug(f"Background Spot VM initialization: {e}")
 
     async def _idle_check_loop(self):
         """Background task to check for idle Spot VMs."""
@@ -936,64 +1004,144 @@ class CloudECAPAClient:
 
         return BackendType.LOCAL, None
 
-    async def _discover_healthy_endpoint(self) -> bool:
-        """Find a healthy endpoint with extraction test."""
+    async def _discover_healthy_endpoint(self, wait_for_ready: bool = True) -> bool:
+        """
+        Find a healthy endpoint with extraction test.
+
+        Args:
+            wait_for_ready: Whether to wait for ECAPA model to become ready
+                           (handles Cloud Run cold start)
+
+        Returns:
+            True if a healthy endpoint was found
+        """
+        should_wait = wait_for_ready and CloudECAPAClientConfig.ECAPA_WAIT_FOR_READY
+
         for endpoint in self._endpoints:
             try:
-                healthy = await self._check_endpoint_health(endpoint, test_extraction=True)
+                # First check: quick health check without waiting
+                # to see if any endpoint is already ready
+                healthy = await self._check_endpoint_health(
+                    endpoint,
+                    test_extraction=False,
+                    wait_for_ready=False
+                )
                 if healthy:
                     self._healthy_endpoint = endpoint
+                    logger.info(f"✅ Found ready endpoint: {endpoint}")
                     return True
             except Exception as e:
-                logger.warning(f"Endpoint {endpoint} unhealthy: {e}")
+                logger.debug(f"Quick check for {endpoint} failed: {e}")
+
+        # No endpoint immediately ready - try waiting for first one if configured
+        if should_wait:
+            logger.info("⏳ No endpoints immediately ready, waiting for ECAPA initialization...")
+            for endpoint in self._endpoints:
+                try:
+                    healthy = await self._check_endpoint_health(
+                        endpoint,
+                        test_extraction=False,
+                        wait_for_ready=True
+                    )
+                    if healthy:
+                        self._healthy_endpoint = endpoint
+                        return True
+                except Exception as e:
+                    logger.warning(f"Endpoint {endpoint} unhealthy after waiting: {e}")
 
         return False
 
     async def _check_endpoint_health(
         self,
         endpoint: str,
-        test_extraction: bool = False
+        test_extraction: bool = False,
+        wait_for_ready: bool = False
     ) -> bool:
-        """Check if an endpoint is healthy."""
+        """
+        Check if an endpoint is healthy.
+
+        Args:
+            endpoint: The endpoint URL to check
+            test_extraction: Whether to test actual extraction
+            wait_for_ready: Whether to wait for ECAPA model to become ready
+
+        Returns:
+            True if endpoint is healthy and ECAPA is ready
+        """
         if not self._session:
             return False
 
         health_url = f"{endpoint.rstrip('/')}/health"
+        start_time = time.time()
+        max_wait = CloudECAPAClientConfig.ECAPA_READY_TIMEOUT if wait_for_ready else 0
+        poll_interval = CloudECAPAClientConfig.ECAPA_READY_POLL_INTERVAL
 
-        try:
-            async with self._session.get(
-                health_url,
-                timeout=CloudECAPAClientConfig.HEALTH_CHECK_TIMEOUT
-            ) as response:
-                if response.status != 200:
-                    logger.debug(f"Endpoint {endpoint} returned HTTP {response.status}")
-                    return False
+        while True:
+            try:
+                async with self._session.get(
+                    health_url,
+                    timeout=CloudECAPAClientConfig.HEALTH_CHECK_TIMEOUT
+                ) as response:
+                    if response.status != 200:
+                        logger.debug(f"Endpoint {endpoint} returned HTTP {response.status}")
+                        return False
 
-                data = await response.json()
-                status = data.get("status", "unknown")
-                ecapa_ready = data.get("ecapa_ready", True)
+                    data = await response.json()
+                    status = data.get("status", "unknown")
+                    ecapa_ready = data.get("ecapa_ready", True)
 
-                if not ecapa_ready:
-                    # Service is reachable but ECAPA model not ready (likely still loading)
-                    logger.info(f"Endpoint {endpoint} reachable but ECAPA not ready (status: {status})")
-                    return False
+                    if ecapa_ready:
+                        # ECAPA is ready!
+                        if wait_for_ready and time.time() - start_time > 0.1:
+                            elapsed = time.time() - start_time
+                            logger.info(f"✅ ECAPA model ready on {endpoint} (waited {elapsed:.1f}s)")
 
-            # Optional: test actual extraction
-            if test_extraction:
-                test_audio = np.zeros(1600, dtype=np.float32)  # 100ms silence
-                embedding = await self._extract_from_endpoint(
-                    endpoint,
-                    test_audio.tobytes(),
-                    sample_rate=16000
-                )
-                if embedding is None:
-                    return False
+                        # Optional: test actual extraction
+                        if test_extraction:
+                            test_audio = np.zeros(1600, dtype=np.float32)  # 100ms silence
+                            embedding = await self._extract_from_endpoint(
+                                endpoint,
+                                test_audio.tobytes(),
+                                sample_rate=16000
+                            )
+                            if embedding is None:
+                                return False
 
-            return True
+                        return True
 
-        except Exception as e:
-            logger.debug(f"Health check failed for {endpoint}: {e}")
-            return False
+                    # ECAPA not ready yet
+                    if not wait_for_ready:
+                        logger.info(f"Endpoint {endpoint} reachable but ECAPA not ready (status: {status})")
+                        return False
+
+                    # Wait and retry
+                    elapsed = time.time() - start_time
+                    if elapsed >= max_wait:
+                        logger.warning(
+                            f"⏰ Timeout waiting for ECAPA on {endpoint} "
+                            f"(waited {elapsed:.1f}s, status: {status})"
+                        )
+                        return False
+
+                    remaining = max_wait - elapsed
+                    logger.info(
+                        f"⏳ ECAPA initializing on {endpoint} (status: {status}, "
+                        f"waited {elapsed:.1f}s, max {remaining:.0f}s remaining)..."
+                    )
+                    await asyncio.sleep(poll_interval)
+
+            except asyncio.TimeoutError:
+                if wait_for_ready and (time.time() - start_time) < max_wait:
+                    logger.debug(f"Health check timeout for {endpoint}, retrying...")
+                    await asyncio.sleep(poll_interval)
+                    continue
+                return False
+            except Exception as e:
+                logger.debug(f"Health check failed for {endpoint}: {e}")
+                if wait_for_ready and (time.time() - start_time) < max_wait:
+                    await asyncio.sleep(poll_interval)
+                    continue
+                return False
 
     async def _health_check_loop(self):
         """Background task to monitor endpoint health."""
@@ -1155,11 +1303,36 @@ class CloudECAPAClient:
 
                 logger.warning(f"Backend {backend_type.value} failed: {e}")
 
-                # Fallback: try other backends
-                embedding = await self._fallback_extraction(
-                    audio_data, sample_rate, format,
-                    exclude_backend=backend_type
-                )
+                # Check if endpoint might just be initializing (cold start)
+                # and wait for it to become ready
+                if backend_type == BackendType.CLOUD_RUN and endpoint:
+                    logger.info("🔄 Checking if Cloud Run is still initializing...")
+                    became_ready = await self._check_endpoint_health(
+                        endpoint,
+                        test_extraction=False,
+                        wait_for_ready=True
+                    )
+                    if became_ready:
+                        # Retry extraction now that endpoint is ready
+                        try:
+                            embedding = await self._extract_from_endpoint(
+                                endpoint, audio_data, sample_rate, format
+                            )
+                            if embedding is not None:
+                                self._consecutive_failures = 0
+                                self._healthy_endpoint = endpoint
+                                if endpoint in self._circuit_breakers:
+                                    self._circuit_breakers[endpoint].record_success()
+                                logger.info("✅ Extraction succeeded after waiting for ECAPA")
+                        except Exception as retry_error:
+                            logger.warning(f"Retry after wait failed: {retry_error}")
+
+                # Fallback: try other backends if still no embedding
+                if embedding is None:
+                    embedding = await self._fallback_extraction(
+                        audio_data, sample_rate, format,
+                        exclude_backend=backend_type
+                    )
 
         # Update stats
         latency_ms = (time.time() - start_time) * 1000
@@ -1344,7 +1517,14 @@ class CloudECAPAClient:
         if not self._session:
             return None
 
-        url = f"{endpoint.rstrip('/')}/speaker_embedding"
+        # Construct the correct URL based on endpoint format
+        # Cloud Run service has /api/ml/speaker_embedding as the extraction endpoint
+        endpoint_stripped = endpoint.rstrip('/')
+        if endpoint_stripped.endswith('/api/ml'):
+            url = f"{endpoint_stripped}/speaker_embedding"
+        else:
+            url = f"{endpoint_stripped}/api/ml/speaker_embedding"
+
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
         payload = {
@@ -1427,9 +1607,17 @@ class CloudECAPAClient:
 
     def _update_latency(self, latency_ms: float):
         """Update average latency stat."""
+        # Note: This is called BEFORE successful_requests is incremented,
+        # so we need to handle the case where n would be 0
         n = self._stats["successful_requests"]
         old_avg = self._stats["avg_latency_ms"]
-        self._stats["avg_latency_ms"] = (old_avg * (n - 1) + latency_ms) / n
+
+        if n == 0:
+            # First request - just set the latency directly
+            self._stats["avg_latency_ms"] = latency_ms
+        else:
+            # Running average: new_avg = (old_avg * n + new_value) / (n + 1)
+            self._stats["avg_latency_ms"] = (old_avg * n + latency_ms) / (n + 1)
 
     def get_stats(self) -> Dict[str, Any]:
         """Get client statistics."""

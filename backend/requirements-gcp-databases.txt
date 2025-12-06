@@ -10,6 +10,9 @@ cloud-sql-python-connector[asyncpg]>=1.7.0
 # Google Cloud Storage (for ChromaDB)
 google-cloud-storage>=2.14.0
 
+# Google Cloud Compute Engine (for Spot VM management)
+google-cloud-compute>=1.40.0
+
 # Environment management
 python-dotenv>=1.0.0
 
