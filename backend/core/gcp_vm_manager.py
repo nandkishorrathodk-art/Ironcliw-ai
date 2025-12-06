@@ -24,16 +24,30 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 # Google Cloud Compute Engine API
-try:
-    from google.cloud import compute_v1
+# Use TYPE_CHECKING to allow type hints without requiring the library at runtime
+COMPUTE_AVAILABLE = False
+compute_v1: Any = None  # Module placeholder for runtime
 
+try:
+    from google.cloud import compute_v1 as _compute_v1
+    compute_v1 = _compute_v1
     COMPUTE_AVAILABLE = True
 except ImportError:
-    COMPUTE_AVAILABLE = False
     logging.warning("google-cloud-compute not installed. VM creation disabled.")
+
+# Type aliases for when compute_v1 is not available
+if TYPE_CHECKING:
+    from google.cloud import compute_v1 as compute_v1_types
+    InstancesClientType = compute_v1_types.InstancesClient
+    ZonesClientType = compute_v1_types.ZonesClient
+    InstanceType = compute_v1_types.Instance
+else:
+    InstancesClientType = Any
+    ZonesClientType = Any
+    InstanceType = Any
 
 # Import with fallback for different import contexts
 try:
@@ -228,8 +242,9 @@ class GCPVMManager:
         self.config = config or VMManagerConfig()
 
         # API clients (initialized lazily)
-        self.instances_client: Optional[compute_v1.InstancesClient] = None
-        self.zones_client: Optional[compute_v1.ZonesClient] = None
+        # Use type aliases that work even when compute_v1 is not available
+        self.instances_client: Optional[InstancesClientType] = None
+        self.zones_client: Optional[ZonesClientType] = None
 
         # Integrations
         self.cost_tracker = None
@@ -465,7 +480,7 @@ class GCPVMManager:
 
     def _build_instance_config(
         self, vm_name: str, components: List[str], trigger_reason: str, metadata: Dict
-    ) -> compute_v1.Instance:
+    ) -> InstanceType:
         """Build GCP Instance configuration"""
 
         # Machine type URL
