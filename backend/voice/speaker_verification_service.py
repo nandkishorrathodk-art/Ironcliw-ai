@@ -3088,7 +3088,7 @@ class SpeakerVerificationService:
             for sample in samples_with_audio:
                 try:
                     audio_data = sample.get("audio_data")
-                    if audio_data:
+                    if audio_data is not None and (not hasattr(audio_data, '__len__') or len(audio_data) > 0):
                         # Extract embedding with current model
                         embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
                         if embedding.shape[0] == self.current_model_dimension:
@@ -4463,9 +4463,10 @@ class SpeakerVerificationService:
             await self.initialize()
 
         # Debug audio data (reduced logging for speed)
-        audio_size = len(audio_data) if audio_data else 0
+        # Use proper None check for numpy arrays (avoids "ambiguous truth value" error)
+        audio_size = len(audio_data) if audio_data is not None and len(audio_data) > 0 else 0
         logger.info(f"🎤 Verifying speaker from {audio_size} bytes of audio...")
-        if audio_data and len(audio_data) > 0:
+        if audio_data is not None and len(audio_data) > 0:
             # Check if audio is not silent
             import numpy as np
             # JARVIS sends int16 PCM audio, not float32
@@ -4491,7 +4492,7 @@ class SpeakerVerificationService:
         # The SpeechBrain engine expects int16 PCM or standard audio formats with headers.
         # Converting to float32 bytes strips headers and causes audio decoding to fail.
         # The engine's _audio_bytes_to_tensor() handles format conversion internally.
-        logger.info(f"🎤 AUDIO DEBUG: Passing {len(audio_data) if audio_data else 0} bytes to engine (int16 PCM format preserved)")
+        logger.info(f"🎤 AUDIO DEBUG: Passing {len(audio_data) if audio_data is not None and len(audio_data) > 0 else 0} bytes to engine (int16 PCM format preserved)")
 
         # 🚀 UNIFIED CACHE FAST-PATH: Try instant recognition before expensive SpeechBrain verification
         # This provides ~1ms matching vs 200-500ms for full model inference
@@ -5304,7 +5305,7 @@ class SpeakerVerificationService:
                     confidence=confidence,
                     was_verified=verified,
                     audio_quality=quality_score,
-                    snr_db=self._estimate_snr(np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0) if audio_data else 15.0,
+                    snr_db=self._estimate_snr(np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0) if audio_data is not None and len(audio_data) > 0 else 15.0,
                     sample_source="unlock_attempt",
                     environment_type=environment_type or "unknown",
                     threshold_used=self.verification_threshold,
