@@ -1,6 +1,6 @@
-# JARVIS AI Assistant v17.9.7 - Async-Safe Statistics & Session Management
+# JARVIS AI Assistant v19.0.0 - Intelligent ECAPA Backend Orchestration
 
-An intelligent voice-activated AI assistant with **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Intelligent ECAPA Backend Orchestrator v19.0.0** (Zero-Configuration Backend Selection + Concurrent Probing + Auto-Start Docker + Intelligent Fallback), **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Cloud ECAPA Client v18.2.0** (Intelligent Hybrid Cloud Voice Processing + Spot VM Auto-Creation + Cost-Aware Routing + 60% Cache Savings), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
@@ -142,6 +142,66 @@ print(f"Stale sessions removed: {stats['stale_sessions_removed']}")
 ```
 
 📚 **Deep Dive:** [docs/core/global-session-manager.md](docs/core/global-session-manager.md)
+
+---
+
+## 🧠 NEW in v19.0.0: Intelligent ECAPA Backend Orchestrator
+
+JARVIS v19.0.0 introduces **Intelligent ECAPA Backend Orchestrator** - a zero-configuration system that automatically detects, probes, and selects the optimal ECAPA backend at startup. This eliminates manual configuration and ensures optimal voice authentication performance.
+
+### What's New
+
+**Automatic Backend Selection:**
+- ✅ **Concurrent Probing**: Docker, Cloud Run, and Local ECAPA probed simultaneously (async)
+- ✅ **Health Verification**: All backends health-checked with latency measurement
+- ✅ **Intelligent Selection**: Chooses best backend based on availability and performance
+- ✅ **Auto-Start Docker**: Automatically starts Docker container if available but not running
+- ✅ **Zero Configuration**: Works out-of-the-box with sensible defaults
+
+**Three-Phase Orchestration:**
+
+```
+Phase 1: Concurrent Backend Probing
+├─ Docker: Check installation, daemon, container, health
+├─ Cloud Run: Probe endpoint, measure latency, verify service
+└─ Local: Check RAM (2GB+), verify speechbrain installation
+
+Phase 2: Intelligent Selection
+├─ Priority: Docker (if healthy) → Cloud Run (if healthy) → Docker (auto-start) → Local
+└─ Factors: Health status, latency, user preferences, availability
+
+Phase 3: Auto-Configuration
+├─ Sets JARVIS_CLOUD_ML_ENDPOINT automatically
+├─ Sets JARVIS_ECAPA_BACKEND (docker | cloud_run | local)
+└─ Cloud ECAPA Client uses these for runtime routing
+```
+
+**Example Usage:**
+```bash
+# Zero configuration - orchestrator handles everything!
+python start_system.py --restart
+
+# Output:
+# 🧠 Intelligent ECAPA Backend Orchestrator v19.0.0
+#    Phase 1: Probing available backends...
+#    ✅ Docker: Healthy (15ms)
+#    ✅ Cloud Run: Healthy (234ms)
+#    ✅ Local ECAPA: Ready
+#    Phase 2: Selecting optimal backend...
+#    Phase 3: Configuring selected backend...
+#    ✅ Selected: Docker ECAPA
+#       → Endpoint: http://localhost:8010/api/ml
+#       → Reason: Docker healthy with 15ms latency (best performance)
+```
+
+**Override Options:**
+- `--local-docker`: Force Docker backend
+- `--no-docker`: Skip Docker completely
+- `--docker-rebuild`: Rebuild Docker image before starting
+
+📚 **Full Documentation:** See [Intelligent ECAPA Backend Orchestrator v19.0.0](#-intelligent-ecapa-backend-orchestrator-v1900---zero-configuration-backend-selection) section below
+
+---
 
 ### AsyncSystemManager Port Compatibility
 
@@ -5491,6 +5551,642 @@ except Exception as e:
 **Related Documentation:**
 - See `GCP_INFRASTRUCTURE_GAP_ANALYSIS.md` for full cost optimization strategy
 - Spot VMs save 91% vs regular VMs ($0.029/hr vs $0.32/hr) when managed correctly
+
+---
+
+## 🧠 Intelligent ECAPA Backend Orchestrator v19.0.0 - Zero-Configuration Backend Selection
+
+JARVIS v19.0.0 introduces **Intelligent ECAPA Backend Orchestrator** - an advanced startup-time system that automatically detects, probes, and selects the optimal ECAPA backend (Docker, Cloud Run, or Local) with zero manual configuration. This orchestrator runs at system startup and intelligently configures the Cloud ECAPA Client for optimal performance.
+
+### 🎯 Overview
+
+The orchestrator eliminates the need for manual backend configuration by:
+
+- **Automatic Detection**: Probes all available backends concurrently (async)
+- **Health Verification**: Checks endpoint health and measures latency
+- **Intelligent Selection**: Chooses the best backend based on availability and performance
+- **Auto-Configuration**: Sets environment variables automatically for the Cloud ECAPA Client
+- **Zero Flags Required**: Works out-of-the-box with sensible defaults
+- **Override Options**: Manual flags available when needed
+
+### 🏗️ Architecture
+
+**Three-Phase Orchestration Process:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Phase 1: Concurrent Backend Probing (Async, Parallel)               │
+├─────────────────────────────────────────────────────────────────────┤
+│ • Docker ECAPA Backend                                              │
+│   ├─ Check Docker installation                                      │
+│   ├─ Check Docker daemon status                                     │
+│   ├─ Check container running status                                 │
+│   └─ Measure health check latency                                   │
+│                                                                     │
+│ • Cloud Run ECAPA Backend                                           │
+│   ├─ Probe health endpoint                                          │
+│   ├─ Measure response latency                                       │
+│   └─ Verify ECAPA service availability                              │
+│                                                                     │
+│ • Local ECAPA Backend                                               │
+│   ├─ Check available RAM (need 2GB+)                                │
+│   ├─ Verify speechbrain installation                                │
+│   └─ Check dependency availability                                  │
+│                                                                     │
+│ All probes run concurrently (async.gather) for maximum speed       │
+└─────────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Phase 2: Intelligent Backend Selection                              │
+├─────────────────────────────────────────────────────────────────────┤
+│ Priority Order (Highest to Lowest):                                 │
+│                                                                     │
+│ 1. Docker (if healthy)                                              │
+│    └─ Lowest latency (15-50ms), best for development               │
+│                                                                     │
+│ 2. Cloud Run (if healthy)                                           │
+│    └─ Auto-scaling, best for production                             │
+│                                                                     │
+│ 3. Docker (auto-start)                                              │
+│    └─ If available but not running, start container automatically   │
+│                                                                     │
+│ 4. Local ECAPA                                                      │
+│    └─ Emergency fallback (~2GB RAM required)                        │
+│                                                                     │
+│ Decision Factors:                                                   │
+│ • Health status (must pass health check)                            │
+│ • Latency (lower is better)                                         │
+│ • User preferences (--local-docker flag)                            │
+│ • Availability (fallback if primary fails)                          │
+└─────────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Phase 3: Auto-Configuration                                         │
+├─────────────────────────────────────────────────────────────────────┤
+│ Sets Environment Variables:                                         │
+│                                                                     │
+│ • JARVIS_CLOUD_ML_ENDPOINT → Selected endpoint URL                 │
+│ • JARVIS_ECAPA_BACKEND → "docker" | "cloud_run" | "local"          │
+│ • JARVIS_DOCKER_ECAPA_ACTIVE → "true" | "false"                    │
+│                                                                     │
+│ Cloud ECAPA Client automatically uses these variables               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 🔍 Phase 1: Concurrent Backend Probing
+
+**What Happens:**
+
+All three backends are probed **simultaneously** using `asyncio.gather()` for maximum speed:
+
+#### Docker Backend Probe
+
+```python
+Checks Performed:
+├─ Docker Installation: "docker --version" command
+├─ Docker Daemon: "docker info" command (must return success)
+├─ Container Status: Check if "jarvis-ecapa-cloud" container is running
+├─ Health Check: HTTP GET to http://localhost:8010/health
+└─ Latency Measurement: Time from request to response
+
+Possible Results:
+├─ ✅ Healthy: Container running, health check passes, <50ms latency
+├─ 🔄 Available: Docker installed, container not running (can auto-start)
+└─ ❌ Unavailable: Docker not installed, daemon not running, or error
+```
+
+**Example Output:**
+```
+✅ Docker: Healthy (15ms)
+🔄 Docker: Available (container not running)
+❌ Docker: Docker daemon not running
+```
+
+#### Cloud Run Backend Probe
+
+```python
+Checks Performed:
+├─ Network Connectivity: Can reach Cloud Run endpoint
+├─ Health Endpoint: GET /health (must return 200 OK)
+├─ ECAPA Service: Verify "ecapa_ready" in health response
+└─ Latency Measurement: Round-trip time from probe to response
+
+Possible Results:
+├─ ✅ Healthy: Endpoint reachable, health check passes, <500ms latency
+└─ ❌ Unavailable: Network error, timeout, or health check fails
+```
+
+**Example Output:**
+```
+✅ Cloud Run: Healthy (234ms)
+❌ Cloud Run: Connection error: Connection refused
+❌ Cloud Run: Health check timed out
+```
+
+#### Local ECAPA Backend Probe
+
+```python
+Checks Performed:
+├─ Memory Availability: psutil.virtual_memory().available >= 2GB
+├─ Dependency Check: import speechbrain (must succeed)
+└─ System Resources: CPU available for ML inference
+
+Possible Results:
+├─ ✅ Ready: Memory OK (2GB+), speechbrain installed
+└─ ❌ Unavailable: Low memory (<2GB) or missing dependencies
+```
+
+**Example Output:**
+```
+✅ Local ECAPA: Ready
+❌ Local ECAPA: Low memory: 1.2GB available (need 2GB)
+❌ Local ECAPA: speechbrain not installed
+```
+
+### 🎯 Phase 2: Intelligent Backend Selection
+
+**Selection Algorithm:**
+
+The orchestrator uses a **priority-based selection algorithm** that considers multiple factors:
+
+```python
+def select_backend(docker_probe, cloud_probe, local_probe, user_preferences):
+    """
+    Select optimal backend with intelligent fallback chain.
+    
+    Priority Order:
+    1. User Override (--local-docker flag)
+    2. Docker (if healthy) - Best latency
+    3. Cloud Run (if healthy) - Best for production
+    4. Docker (auto-start) - If available but not running
+    5. Local ECAPA - Emergency fallback
+    """
+    
+    # User override takes precedence
+    if user_preferences.force_docker:
+        if docker_probe.healthy:
+            return "docker", docker_probe.endpoint, "User requested Docker, container healthy"
+        elif docker_probe.available:
+            # Auto-start Docker container
+            docker_result = start_docker_container()
+            if docker_result.success:
+                return "docker", docker_result.endpoint, "User requested Docker, container started"
+        return None, None, "Docker requested but unavailable"
+    
+    # Automatic selection based on health and performance
+    if docker_probe.healthy:
+        # Docker is running and healthy - use it (lowest latency)
+        return "docker", docker_probe.endpoint, \
+            f"Docker healthy with {docker_probe.latency_ms}ms latency (best performance)"
+    
+    elif cloud_probe.healthy and user_preferences.prefer_cloud:
+        # Cloud Run is healthy - use it (best for production)
+        return "cloud_run", cloud_probe.endpoint, \
+            f"Cloud Run healthy with {cloud_probe.latency_ms}ms latency"
+    
+    elif docker_probe.available and not user_preferences.skip_docker:
+        # Docker available but not running - try to start it
+        docker_result = start_docker_container()
+        if docker_result.success:
+            return "docker", docker_result.endpoint, \
+                "Docker auto-started successfully (best local performance)"
+        elif cloud_probe.healthy:
+            # Docker start failed, fallback to Cloud Run
+            return "cloud_run", cloud_probe.endpoint, \
+                "Docker start failed, using Cloud Run fallback"
+    
+    elif cloud_probe.healthy:
+        # Only Cloud Run available
+        return "cloud_run", cloud_probe.endpoint, \
+            "Cloud Run is the only healthy backend"
+    
+    elif local_probe.available and local_probe.memory_ok:
+        # Final fallback to local ECAPA
+        return "local", None, \
+            "Using local ECAPA as emergency fallback"
+    
+    # No backend available
+    return None, None, "No ECAPA backend available"
+```
+
+**Selection Criteria:**
+
+| Factor | Weight | Impact |
+|--------|--------|--------|
+| Health Status | **Required** | Backend must pass health check |
+| Latency | High | Lower latency = better choice |
+| User Preference | Highest | `--local-docker` flag overrides auto-selection |
+| Availability | Medium | Must be available to be selected |
+| Auto-Start Capability | Low | Docker can auto-start if available |
+
+### ⚙️ Phase 3: Auto-Configuration
+
+**Environment Variables Set:**
+
+Once a backend is selected, the orchestrator automatically configures the system:
+
+```bash
+# Selected Backend Type
+JARVIS_ECAPA_BACKEND="docker" | "cloud_run" | "local"
+
+# Cloud ML Endpoint (for Docker or Cloud Run)
+JARVIS_CLOUD_ML_ENDPOINT="http://localhost:8010/api/ml"  # Docker
+JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-...run.app/api/ml"  # Cloud Run
+
+# Docker Status Flag
+JARVIS_DOCKER_ECAPA_ACTIVE="true" | "false"
+
+# Additional Configuration
+CLOUD_ECAPA_INITIALIZED="true"  # Set when Cloud ECAPA Client initializes
+CLOUD_ECAPA_BACKEND="docker" | "cloud_run" | "local"  # Client reads this
+```
+
+**How Cloud ECAPA Client Uses These:**
+
+The Cloud ECAPA Client automatically reads these environment variables during initialization:
+
+```python
+# In CloudECAPAClient.initialize()
+cloud_ml_endpoint = os.getenv(
+    "JARVIS_CLOUD_ML_ENDPOINT",
+    "https://jarvis-ml-jarvis-473803.us-central1.run.app/api/ml"
+)
+
+backend_type = os.getenv("JARVIS_ECAPA_BACKEND", "cloud_run")
+docker_active = os.getenv("JARVIS_DOCKER_ECAPA_ACTIVE", "false") == "true"
+```
+
+This means **no manual configuration is required** - the orchestrator handles everything!
+
+### 🚀 Usage
+
+**Default Behavior (Zero Configuration):**
+
+```bash
+python start_system.py --restart
+```
+
+**What Happens:**
+1. Orchestrator probes all backends concurrently
+2. Selects best backend automatically (Docker if healthy, else Cloud Run, else Local)
+3. Auto-configures environment variables
+4. Cloud ECAPA Client initializes with selected backend
+
+**Example Output:**
+```
+============================================================
+🧠 Intelligent ECAPA Backend Orchestrator v19.0.0
+============================================================
+   Phase 1: Probing available backends...
+   ✅ Docker: Healthy (15ms)
+   ✅ Cloud Run: Healthy (234ms)
+   ✅ Local ECAPA: Ready
+
+   Phase 2: Selecting optimal backend...
+
+   Phase 3: Configuring selected backend...
+   ✅ Selected: Docker ECAPA
+      → Endpoint: http://localhost:8010/api/ml
+      → Reason: Docker healthy with 15ms latency (best performance)
+============================================================
+```
+
+### 🎛️ Override Flags
+
+**Force Docker Backend:**
+
+```bash
+python start_system.py --restart --local-docker
+```
+
+**Behavior:**
+- Probes Docker first
+- If Docker container not running, auto-starts it
+- Uses Docker even if Cloud Run is faster
+- Useful for development/testing
+
+**Skip Docker Completely:**
+
+```bash
+python start_system.py --restart --no-docker
+```
+
+**Behavior:**
+- Skips Docker probe entirely
+- Selects from Cloud Run or Local only
+- Useful if Docker not available or not desired
+
+**Rebuild Docker Image:**
+
+```bash
+python start_system.py --restart --docker-rebuild
+```
+
+**Behavior:**
+- Forces Docker image rebuild before starting
+- Useful after code changes or dependency updates
+- Rebuilds even if image already exists
+
+**Environment Variable Overrides:**
+
+```bash
+# Prefer Cloud Run even if Docker is available
+export JARVIS_PREFER_CLOUD_RUN=true
+python start_system.py --restart
+
+# Skip Docker (same as --no-docker)
+export JARVIS_SKIP_DOCKER=true
+python start_system.py --restart
+
+# Force Docker (same as --local-docker)
+export JARVIS_USE_LOCAL_DOCKER=true
+python start_system.py --restart
+```
+
+### 📊 Backend Comparison
+
+**Performance Characteristics:**
+
+| Backend | Latency | Setup | Cost | Best For |
+|---------|---------|-------|------|----------|
+| **Docker** | 15-50ms | Medium | $0.00 | Development, testing, low latency |
+| **Cloud Run** | 100-500ms | None | $0.05/hr | Production, auto-scaling |
+| **Local** | 200-1000ms | High | $0.00 | Emergency fallback, no network |
+
+**Selection Matrix:**
+
+```
+┌──────────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
+│ Scenario         │ Docker       │ Cloud Run    │ Local        │ Decision     │
+├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ Docker healthy   │ ✅ Healthy   │ ✅ Healthy   │ ✅ Ready     │ Docker       │
+│                  │   15ms       │   234ms      │              │ (lowest      │
+│                  │              │              │              │  latency)    │
+├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ Docker down      │ ❌ Unavail   │ ✅ Healthy   │ ✅ Ready     │ Cloud Run    │
+│                  │              │   234ms      │              │ (production) │
+├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ Cloud Run down   │ ✅ Healthy   │ ❌ Unavail   │ ✅ Ready     │ Docker       │
+│                  │   15ms       │              │              │ (fallback)   │
+├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ Both down        │ ❌ Unavail   │ ❌ Unavail   │ ✅ Ready     │ Local        │
+│                  │              │              │              │ (emergency)  │
+├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ All available,   │ ✅ Healthy   │ ✅ Healthy   │ ✅ Ready     │ Docker       │
+│ user prefers     │   15ms       │   234ms      │              │ (--local-    │
+│ --local-docker   │              │              │              │  docker)     │
+└──────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+```
+
+### 🔧 Docker ECAPA Service Management
+
+**Auto-Start Process:**
+
+When Docker is selected but the container is not running, the orchestrator automatically starts it:
+
+```python
+Docker Container Startup Flow:
+├─ 1. Check Docker installation
+│   └─ "docker --version" command
+│
+├─ 2. Check Docker daemon
+│   └─ "docker info" command
+│
+├─ 3. Check docker-compose.yml
+│   └─ backend/cloud_services/docker-compose.yml must exist
+│
+├─ 4. Check if container already running
+│   └─ "docker ps --filter name=jarvis-ecapa-cloud"
+│   └─ If running → Use existing container
+│
+├─ 5. Build Docker image (if needed or --docker-rebuild)
+│   └─ "docker-compose build" (timeout: 10 min)
+│
+├─ 6. Start container
+│   └─ "docker-compose up -d" (timeout: 5 min)
+│
+├─ 7. Wait for health check
+│   └─ Poll http://localhost:8010/health every 5s
+│   └─ Max wait: 90 seconds (18 attempts)
+│
+└─ 8. Configure environment
+    └─ Set JARVIS_CLOUD_ML_ENDPOINT=http://localhost:8010/api/ml
+    └─ Set JARVIS_DOCKER_ECAPA_ACTIVE=true
+```
+
+**Container Health Check:**
+
+```bash
+# Health check endpoint
+curl http://localhost:8010/health
+
+# Expected response
+{
+  "status": "healthy",
+  "ecapa_ready": true,
+  "version": "1.0.0"
+}
+```
+
+**Manual Container Management:**
+
+```bash
+# Start container manually
+cd backend/cloud_services
+docker-compose up -d
+
+# Stop container
+docker-compose down
+
+# View logs
+docker-compose logs -f jarvis-ecapa-cloud
+
+# Rebuild image
+docker-compose build --no-cache
+```
+
+### 🛠️ Troubleshooting
+
+**Problem: Docker probe always fails**
+
+**Symptoms:**
+```
+❌ Docker: Docker daemon not running
+```
+
+**Diagnosis:**
+```bash
+# Check Docker installation
+docker --version
+
+# Check Docker daemon
+docker info
+
+# Check Docker Desktop (macOS)
+ps aux | grep -i docker
+```
+
+**Solutions:**
+1. Install Docker Desktop: https://www.docker.com/products/docker-desktop
+2. Start Docker Desktop application
+3. Wait for Docker daemon to start (takes 10-30 seconds)
+4. Verify: `docker info` should return success
+
+**Problem: Docker container won't start**
+
+**Symptoms:**
+```
+🔄 Docker: Available (container not running)
+→ Starting Docker container...
+✗ Failed to start container
+```
+
+**Diagnosis:**
+```bash
+# Check docker-compose.yml exists
+ls backend/cloud_services/docker-compose.yml
+
+# Check Docker logs
+cd backend/cloud_services
+docker-compose logs jarvis-ecapa-cloud
+
+# Check port conflict
+lsof -i :8010
+```
+
+**Solutions:**
+1. Verify `docker-compose.yml` exists at `backend/cloud_services/docker-compose.yml`
+2. Check port 8010 is not in use: `lsof -i :8010`
+3. Check Docker logs: `docker-compose logs jarvis-ecapa-cloud`
+4. Try manual start: `cd backend/cloud_services && docker-compose up -d`
+5. Rebuild image: `python start_system.py --restart --docker-rebuild`
+
+**Problem: Cloud Run probe times out**
+
+**Symptoms:**
+```
+❌ Cloud Run: Health check timed out
+```
+
+**Diagnosis:**
+```bash
+# Test Cloud Run endpoint manually
+curl https://jarvis-ml-jarvis-473803.us-central1.run.app/health
+
+# Check network connectivity
+ping 8.8.8.8
+
+# Check GCP authentication
+gcloud auth list
+```
+
+**Solutions:**
+1. Verify internet connection
+2. Check Cloud Run service is deployed: `gcloud run services list`
+3. Verify endpoint URL in environment: `echo $JARVIS_CLOUD_ML_ENDPOINT`
+4. Check firewall/VPN blocking GCP endpoints
+5. Use `--local-docker` to skip Cloud Run
+
+**Problem: All backends unavailable**
+
+**Symptoms:**
+```
+❌ No ECAPA backend available!
+   → Docker: Docker daemon not running
+   → Cloud Run: Connection error
+   → Local: speechbrain not installed
+```
+
+**Solutions:**
+1. **Quick fix - Install Docker:**
+   ```bash
+   # Install Docker Desktop
+   # macOS: brew install --cask docker
+   # Then start Docker Desktop application
+   ```
+
+2. **Quick fix - Install Local ECAPA:**
+   ```bash
+   pip install speechbrain torch numpy
+   # Need 2GB+ free RAM
+   ```
+
+3. **Quick fix - Deploy Cloud Run:**
+   ```bash
+   # Deploy ECAPA service to Cloud Run
+   # See: backend/cloud_services/README.md
+   ```
+
+4. **Check logs for detailed error messages:**
+   ```bash
+   grep "ECAPA Backend" backend/logs/jarvis.log
+   ```
+
+### 📈 Performance Impact
+
+**Startup Time Overhead:**
+
+| Scenario | Probe Time | Selection Time | Total Overhead |
+|----------|-----------|----------------|----------------|
+| All backends healthy | ~200ms | <10ms | **~210ms** |
+| Docker unavailable | ~500ms | <10ms | **~510ms** |
+| All backends timeout | ~1000ms | <10ms | **~1010ms** |
+
+**Optimization:**
+- Probes run **concurrently** (not sequentially)
+- Health checks use **short timeouts** (5-10s)
+- Cached results reused when possible
+
+**Runtime Performance:**
+
+| Backend | First Request | Subsequent Requests | Memory Usage |
+|---------|--------------|---------------------|--------------|
+| Docker | 15-50ms | 15-50ms | ~2GB (container) |
+| Cloud Run | 200-500ms | 100-300ms | 0GB (serverless) |
+| Local | 500-2000ms | 200-1000ms | ~2GB (host) |
+
+### 🔗 Integration with Cloud ECAPA Client
+
+**Relationship:**
+
+```
+Startup Flow:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Intelligent ECAPA Backend Orchestrator v19.0.0                      │
+│ (Runs at startup, probes backends, selects optimal)                 │
+│                                                                     │
+│ Sets: JARVIS_CLOUD_ML_ENDPOINT, JARVIS_ECAPA_BACKEND                │
+└─────────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Cloud ECAPA Client v18.2.0                                          │
+│ (Reads environment variables, initializes with selected backend)    │
+│                                                                     │
+│ Uses: JARVIS_CLOUD_ML_ENDPOINT for primary endpoint                 │
+│       JARVIS_ECAPA_BACKEND for backend type                         │
+└─────────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Voice Unlock Request                                                │
+│                                                                     │
+│ Cloud ECAPA Client routes to:                                       │
+│ • Docker: http://localhost:8010/api/ml                              │
+│ • Cloud Run: https://jarvis-ml-...run.app/api/ml                    │
+│ • Local: Direct ECAPA encoder call                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+- Orchestrator runs **once at startup** (configuration phase)
+- Cloud ECAPA Client runs **continuously** (runtime phase)
+- Orchestrator **configures** the client via environment variables
+- Client **uses** the configured backend for all requests
+
+### 📚 Related Documentation
+
+- **Cloud ECAPA Client v18.2.0**: Runtime routing and cost optimization (see section below)
+- **Docker ECAPA Service**: Container implementation details (`backend/cloud_services/README.md`)
+- **GCP Spot VM Integration**: Auto-scaling for high load (`GCP_VM_AUTO_CREATION_IMPLEMENTATION.md`)
 
 ---
 

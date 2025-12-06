@@ -13763,63 +13763,325 @@ async def main():
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # DOCKER ECAPA SERVICE - Local Docker Container for Voice Authentication
+    # INTELLIGENT ECAPA BACKEND ORCHESTRATOR v19.0.0
     # ═══════════════════════════════════════════════════════════════════════════
-    # Alternative to GCP Cloud Run - runs ECAPA service locally in Docker
-    # Usage: python start_system.py --restart --local-docker
+    # Automatically detects and selects the best ECAPA backend:
+    #   1. Docker (local) - Best for development, no network latency
+    #   2. Cloud Run (GCP) - Best for production, auto-scaling
+    #   3. Local ECAPA - Emergency fallback, uses system RAM
+    #
+    # All detection and selection happens automatically - no flags needed!
+    # Override with: --local-docker (force Docker), --no-docker (skip Docker)
     # ═══════════════════════════════════════════════════════════════════════════
-    docker_ecapa_enabled = False
-    docker_ecapa_status = {"started": False, "endpoint": None, "error": None}
+    print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
+    print(f"{Colors.CYAN}🧠 Intelligent ECAPA Backend Orchestrator v19.0.0{Colors.ENDC}")
+    print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
 
-    # Check if Docker ECAPA is requested (via args or environment)
-    use_local_docker = getattr(args, 'local_docker', False) or \
-                       os.getenv("JARVIS_USE_LOCAL_DOCKER", "false").lower() == "true"
-    skip_docker = getattr(args, 'no_docker', False)
+    # Backend selection state
+    ecapa_backend_status = {
+        "selected_backend": None,
+        "docker": {"available": False, "healthy": False, "endpoint": None, "latency_ms": None, "error": None},
+        "cloud_run": {"available": False, "healthy": False, "endpoint": None, "latency_ms": None, "error": None},
+        "local": {"available": False, "memory_ok": False, "error": None},
+        "decision_reason": None,
+    }
+
+    # Get configuration from args/environment (with smart defaults)
+    force_docker = getattr(args, 'local_docker', False) or os.getenv("JARVIS_USE_LOCAL_DOCKER", "").lower() == "true"
+    skip_docker = getattr(args, 'no_docker', False) or os.getenv("JARVIS_SKIP_DOCKER", "").lower() == "true"
     docker_rebuild = getattr(args, 'docker_rebuild', False)
+    prefer_cloud = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
 
-    if use_local_docker and not skip_docker:
-        print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
-        print(f"{Colors.CYAN}🐳 Docker ECAPA Service Initialization{Colors.ENDC}")
-        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
+    # Get Cloud Run endpoint from environment
+    cloud_run_endpoint = os.getenv(
+        "JARVIS_CLOUD_ML_ENDPOINT",
+        "https://jarvis-ml-jarvis-473803.us-central1.run.app/api/ml"
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PHASE 1: Concurrent Backend Probing (async for speed)
+    # ─────────────────────────────────────────────────────────────────────────
+    print(f"{Colors.CYAN}   Phase 1: Probing available backends...{Colors.ENDC}")
+
+    async def probe_docker_backend() -> dict:
+        """Probe Docker ECAPA backend availability and health."""
+        result = {"available": False, "healthy": False, "endpoint": None, "latency_ms": None, "error": None}
+
+        if skip_docker:
+            result["error"] = "Skipped by --no-docker flag"
+            return result
 
         try:
-            docker_result = await ensure_docker_ecapa_service(force_rebuild=docker_rebuild)
+            import subprocess
+            import time
 
-            if docker_result.get("success"):
-                docker_ecapa_enabled = True
-                docker_ecapa_status["started"] = True
-                docker_ecapa_status["endpoint"] = docker_result.get("endpoint")
+            # Check if Docker is available
+            docker_check = subprocess.run(
+                ["docker", "--version"],
+                capture_output=True, text=True, timeout=5
+            )
+            if docker_check.returncode != 0:
+                result["error"] = "Docker not installed"
+                return result
 
-                print(f"{Colors.GREEN}✅ Docker ECAPA service running{Colors.ENDC}")
-                print(f"{Colors.GREEN}   → Container: {docker_result.get('container_name', 'ecapa-cloud-service')}{Colors.ENDC}")
-                print(f"{Colors.GREEN}   → Endpoint: {docker_result.get('endpoint')}{Colors.ENDC}")
-                print(f"{Colors.GREEN}   → Health: {'Healthy' if docker_result.get('healthy') else 'Pending'}{Colors.ENDC}")
+            # Check if Docker daemon is running
+            daemon_check = subprocess.run(
+                ["docker", "info"],
+                capture_output=True, text=True, timeout=10
+            )
+            if daemon_check.returncode != 0:
+                result["error"] = "Docker daemon not running"
+                return result
 
-                # Set environment for Cloud ECAPA client to use Docker endpoint
-                if docker_result.get("endpoint"):
-                    os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = docker_result["endpoint"]
-                    os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+            result["available"] = True
+
+            # Check if container is already running
+            container_check = subprocess.run(
+                ["docker", "ps", "--filter", "name=jarvis-ecapa-cloud", "--format", "{{.Status}}"],
+                capture_output=True, text=True, timeout=5
+            )
+
+            if container_check.stdout.strip() and "Up" in container_check.stdout:
+                # Container running - check health
+                start_time = time.time()
+                health_check = subprocess.run(
+                    ["curl", "-sf", "http://localhost:8010/health"],
+                    capture_output=True, timeout=5
+                )
+                latency = (time.time() - start_time) * 1000
+
+                if health_check.returncode == 0:
+                    result["healthy"] = True
+                    result["endpoint"] = "http://localhost:8010/api/ml"
+                    result["latency_ms"] = latency
             else:
-                error_msg = docker_result.get("error", "Unknown error")
-                docker_ecapa_status["error"] = error_msg
-                print(f"{Colors.YELLOW}⚠️  Docker ECAPA not started: {error_msg}{Colors.ENDC}")
-                print(f"{Colors.YELLOW}   → Will use GCP Cloud Run or local ECAPA{Colors.ENDC}")
+                # Container not running - we can start it
+                result["error"] = "Container not running (will auto-start)"
+
+        except FileNotFoundError:
+            result["error"] = "Docker not in PATH"
+        except subprocess.TimeoutExpired:
+            result["error"] = "Docker probe timed out"
+        except Exception as e:
+            result["error"] = str(e)
+
+        return result
+
+    async def probe_cloud_run_backend() -> dict:
+        """Probe Cloud Run ECAPA backend availability and health."""
+        result = {"available": False, "healthy": False, "endpoint": cloud_run_endpoint, "latency_ms": None, "error": None}
+
+        try:
+            import aiohttp
+            import time
+
+            # Quick health check with timeout
+            start_time = time.time()
+            timeout = aiohttp.ClientTimeout(total=10)
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                # Try health endpoint
+                health_url = cloud_run_endpoint.replace("/api/ml", "/health")
+                async with session.get(health_url) as response:
+                    latency = (time.time() - start_time) * 1000
+
+                    if response.status == 200:
+                        result["available"] = True
+                        result["healthy"] = True
+                        result["latency_ms"] = latency
+                    else:
+                        result["error"] = f"Health check returned {response.status}"
+
+        except asyncio.TimeoutError:
+            result["error"] = "Cloud Run health check timed out"
+        except aiohttp.ClientError as e:
+            result["error"] = f"Connection error: {str(e)[:50]}"
+        except Exception as e:
+            result["error"] = str(e)[:50]
+
+        return result
+
+    async def probe_local_backend() -> dict:
+        """Probe local ECAPA availability (check memory/dependencies)."""
+        result = {"available": False, "memory_ok": False, "error": None}
+
+        try:
+            import psutil
+
+            # Check available memory (ECAPA needs ~2GB)
+            mem = psutil.virtual_memory()
+            available_gb = mem.available / (1024 ** 3)
+
+            if available_gb >= 2.0:
+                result["memory_ok"] = True
+            else:
+                result["error"] = f"Low memory: {available_gb:.1f}GB available (need 2GB)"
+
+            # Check if speechbrain is importable
+            try:
+                import speechbrain
+                result["available"] = True
+            except ImportError:
+                result["error"] = "speechbrain not installed"
+                result["available"] = False
 
         except Exception as e:
-            docker_ecapa_status["error"] = str(e)
-            print(f"{Colors.FAIL}❌ Docker ECAPA error: {e}{Colors.ENDC}")
-            print(f"{Colors.YELLOW}   → Will fallback to Cloud Run or local{Colors.ENDC}")
+            result["error"] = str(e)
 
-        print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
-    elif skip_docker:
-        print(f"\n{Colors.CYAN}🐳 Docker ECAPA: Skipped (--no-docker flag){Colors.ENDC}")
+        return result
+
+    # Run all probes concurrently
+    docker_probe, cloud_probe, local_probe = await asyncio.gather(
+        probe_docker_backend(),
+        probe_cloud_run_backend(),
+        probe_local_backend(),
+        return_exceptions=True
+    )
+
+    # Handle any exceptions from probes
+    if isinstance(docker_probe, Exception):
+        docker_probe = {"available": False, "error": str(docker_probe)}
+    if isinstance(cloud_probe, Exception):
+        cloud_probe = {"available": False, "error": str(cloud_probe)}
+    if isinstance(local_probe, Exception):
+        local_probe = {"available": False, "error": str(local_probe)}
+
+    ecapa_backend_status["docker"] = docker_probe
+    ecapa_backend_status["cloud_run"] = cloud_probe
+    ecapa_backend_status["local"] = local_probe
+
+    # Print probe results
+    docker_icon = "✅" if docker_probe.get("healthy") else ("🔄" if docker_probe.get("available") else "❌")
+    cloud_icon = "✅" if cloud_probe.get("healthy") else "❌"
+    local_icon = "✅" if local_probe.get("available") and local_probe.get("memory_ok") else "❌"
+
+    docker_latency = f" ({docker_probe.get('latency_ms', 0):.0f}ms)" if docker_probe.get("latency_ms") else ""
+    cloud_latency = f" ({cloud_probe.get('latency_ms', 0):.0f}ms)" if cloud_probe.get("latency_ms") else ""
+
+    print(f"   {docker_icon} Docker: {'Healthy' + docker_latency if docker_probe.get('healthy') else ('Available' if docker_probe.get('available') else docker_probe.get('error', 'Unavailable'))}")
+    print(f"   {cloud_icon} Cloud Run: {'Healthy' + cloud_latency if cloud_probe.get('healthy') else cloud_probe.get('error', 'Unavailable')}")
+    print(f"   {local_icon} Local ECAPA: {'Ready' if local_probe.get('available') and local_probe.get('memory_ok') else local_probe.get('error', 'Unavailable')}")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PHASE 2: Intelligent Backend Selection
+    # ─────────────────────────────────────────────────────────────────────────
+    print(f"\n{Colors.CYAN}   Phase 2: Selecting optimal backend...{Colors.ENDC}")
+
+    selected_backend = None
+    selected_endpoint = None
+    decision_reason = None
+
+    # Decision logic with scoring
+    if force_docker:
+        # User explicitly wants Docker
+        if docker_probe.get("healthy"):
+            selected_backend = "docker"
+            selected_endpoint = docker_probe.get("endpoint")
+            decision_reason = "User requested Docker (--local-docker), container healthy"
+        elif docker_probe.get("available"):
+            # Start Docker container
+            print(f"   {Colors.CYAN}→ Starting Docker container (user requested)...{Colors.ENDC}")
+            docker_result = await ensure_docker_ecapa_service(force_rebuild=docker_rebuild)
+            if docker_result.get("success"):
+                selected_backend = "docker"
+                selected_endpoint = docker_result.get("endpoint")
+                decision_reason = "User requested Docker, container started successfully"
+                ecapa_backend_status["docker"]["healthy"] = True
+                ecapa_backend_status["docker"]["endpoint"] = selected_endpoint
+            else:
+                print(f"   {Colors.YELLOW}⚠️  Docker start failed: {docker_result.get('error')}{Colors.ENDC}")
+                decision_reason = f"Docker requested but failed: {docker_result.get('error')}"
+        else:
+            decision_reason = f"Docker requested but unavailable: {docker_probe.get('error')}"
+    else:
+        # Automatic selection based on availability and performance
+        # Priority: Docker (if healthy) > Cloud Run (if healthy) > Docker (start) > Local
+
+        if docker_probe.get("healthy"):
+            # Docker is running and healthy - use it (lowest latency)
+            selected_backend = "docker"
+            selected_endpoint = docker_probe.get("endpoint")
+            decision_reason = f"Docker healthy with {docker_probe.get('latency_ms', 0):.0f}ms latency (best performance)"
+
+        elif cloud_probe.get("healthy") and prefer_cloud:
+            # Cloud Run is healthy - use it
+            selected_backend = "cloud_run"
+            selected_endpoint = cloud_probe.get("endpoint")
+            decision_reason = f"Cloud Run healthy with {cloud_probe.get('latency_ms', 0):.0f}ms latency"
+
+        elif docker_probe.get("available") and not skip_docker:
+            # Docker is available but not running - try to start it
+            print(f"   {Colors.CYAN}→ Auto-starting Docker container...{Colors.ENDC}")
+            docker_result = await ensure_docker_ecapa_service(force_rebuild=docker_rebuild)
+            if docker_result.get("success"):
+                selected_backend = "docker"
+                selected_endpoint = docker_result.get("endpoint")
+                decision_reason = "Docker auto-started successfully (best local performance)"
+                ecapa_backend_status["docker"]["healthy"] = True
+                ecapa_backend_status["docker"]["endpoint"] = selected_endpoint
+            elif cloud_probe.get("healthy"):
+                # Docker failed to start, fallback to Cloud Run
+                selected_backend = "cloud_run"
+                selected_endpoint = cloud_probe.get("endpoint")
+                decision_reason = f"Docker start failed, using Cloud Run fallback"
+            else:
+                decision_reason = f"Docker start failed: {docker_result.get('error')}"
+
+        elif cloud_probe.get("healthy"):
+            # Only Cloud Run available
+            selected_backend = "cloud_run"
+            selected_endpoint = cloud_probe.get("endpoint")
+            decision_reason = "Cloud Run is the only healthy backend"
+
+        # Final fallback to local if nothing else works
+        if not selected_backend and local_probe.get("available") and local_probe.get("memory_ok"):
+            selected_backend = "local"
+            decision_reason = "Using local ECAPA as emergency fallback"
+
+    ecapa_backend_status["selected_backend"] = selected_backend
+    ecapa_backend_status["decision_reason"] = decision_reason
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PHASE 3: Configure Selected Backend
+    # ─────────────────────────────────────────────────────────────────────────
+    print(f"\n{Colors.CYAN}   Phase 3: Configuring selected backend...{Colors.ENDC}")
+
+    if selected_backend == "docker":
+        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = selected_endpoint
+        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+        os.environ["JARVIS_ECAPA_BACKEND"] = "docker"
+        print(f"   {Colors.GREEN}✅ Selected: Docker ECAPA{Colors.ENDC}")
+        print(f"   {Colors.GREEN}   → Endpoint: {selected_endpoint}{Colors.ENDC}")
+        print(f"   {Colors.GREEN}   → Reason: {decision_reason}{Colors.ENDC}")
+
+    elif selected_backend == "cloud_run":
+        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = selected_endpoint
+        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+        os.environ["JARVIS_ECAPA_BACKEND"] = "cloud_run"
+        print(f"   {Colors.GREEN}✅ Selected: Cloud Run ECAPA{Colors.ENDC}")
+        print(f"   {Colors.GREEN}   → Endpoint: {selected_endpoint}{Colors.ENDC}")
+        print(f"   {Colors.GREEN}   → Reason: {decision_reason}{Colors.ENDC}")
+
+    elif selected_backend == "local":
+        os.environ["JARVIS_ECAPA_BACKEND"] = "local"
+        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+        print(f"   {Colors.YELLOW}⚠️  Selected: Local ECAPA (fallback){Colors.ENDC}")
+        print(f"   {Colors.YELLOW}   → Uses system RAM (~2GB){Colors.ENDC}")
+        print(f"   {Colors.YELLOW}   → Reason: {decision_reason}{Colors.ENDC}")
+
+    else:
+        print(f"   {Colors.FAIL}❌ No ECAPA backend available!{Colors.ENDC}")
+        print(f"   {Colors.FAIL}   → Docker: {docker_probe.get('error', 'Unknown')}{Colors.ENDC}")
+        print(f"   {Colors.FAIL}   → Cloud Run: {cloud_probe.get('error', 'Unknown')}{Colors.ENDC}")
+        print(f"   {Colors.FAIL}   → Local: {local_probe.get('error', 'Unknown')}{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}   Voice authentication may not work properly{Colors.ENDC}")
+
+    print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # CLOUD ECAPA CLIENT v18.2.0 - Hybrid Cloud ML Backend with Spot VM Support
     # ═══════════════════════════════════════════════════════════════════════════
-    # Architecture: Cloud Run (primary) → Spot VM (fallback) → Local (emergency)
-    # Cost: Cloud Run ~$0.05/hr, Spot VM ~$0.029/hr (96% cheaper than regular)
-    # Features: Auto-scaling, intelligent backend selection, cost tracking
+    # (Now pre-configured by the Intelligent Backend Orchestrator above)
     # ═══════════════════════════════════════════════════════════════════════════
     print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
     print(f"{Colors.CYAN}☁️  Cloud ECAPA Backend Initialization (v18.2.0){Colors.ENDC}")
