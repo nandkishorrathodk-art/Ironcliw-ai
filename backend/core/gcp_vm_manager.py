@@ -35,8 +35,14 @@ except ImportError:
     COMPUTE_AVAILABLE = False
     logging.warning("google-cloud-compute not installed. VM creation disabled.")
 
-from cost_tracker import get_cost_tracker
-from intelligent_gcp_optimizer import get_gcp_optimizer
+# Import with fallback for different import contexts
+try:
+    from core.cost_tracker import get_cost_tracker
+    from core.intelligent_gcp_optimizer import get_gcp_optimizer
+except ImportError:
+    # Fallback for when running from within core directory
+    from .cost_tracker import get_cost_tracker
+    from .intelligent_gcp_optimizer import get_gcp_optimizer
 
 logger = logging.getLogger(__name__)
 

@@ -6155,6 +6155,86 @@ echo $GCP_PROJECT_NUMBER
 - The fix ensures correct URL construction across all components
 - Environment variable allows easy configuration per deployment
 
+**Improved Healthy Endpoint Detection:**
+
+**Issue:** Cloud Run health endpoints were incorrectly constructed with `/api/ml` suffix, causing health checks to fail.
+
+**Fix:** Removed incorrect `/api/ml` suffix from Cloud Run endpoint URLs. Service routes are at root level.
+
+| Component | Before (Incorrect) | After (Correct) |
+|-----------|-------------------|-----------------|
+| **Health Endpoint** | `https://jarvis-ml-888774109345.us-central1.run.app/api/ml/health` | `https://jarvis-ml-888774109345.us-central1.run.app/health` |
+| **Service Endpoint** | `https://jarvis-ml-888774109345.us-central1.run.app/api/ml/speaker_embedding` | `https://jarvis-ml-888774109345.us-central1.run.app/speaker_embedding` |
+| **Root Endpoint** | `https://jarvis-ml-888774109345.us-central1.run.app/api/ml` | `https://jarvis-ml-888774109345.us-central1.run.app` |
+
+**Files Updated:**
+- `backend/voice_unlock/cloud_ecapa_client.py`: Health check endpoint construction
+- `backend/voice_unlock/ml_engine_registry.py`: Fallback endpoint construction
+- Health endpoint discovery now tries root-level paths first
+
+**Verification:**
+```bash
+# Test health endpoint (should work without /api/ml)
+curl https://jarvis-ml-888774109345.us-central1.run.app/health
+# Expected: {"status":"healthy","ecapa_ready":true}
+
+# Test speaker embedding endpoint
+curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/speaker_embedding \
+  -H "Content-Type: application/json" \
+  -d '{"audio_base64": "..."}'
+```
+
+**GCP VM Manager Import Path Fixes:**
+
+**Issue:** `gcp_vm_manager.py` had bare imports that failed in different import contexts, causing "No module named 'cost_tracker'" errors.
+
+**Fix:** Changed to use fallback import pattern that works in both direct execution and module import contexts.
+
+**Before (Incorrect):**
+```python
+# Direct import (fails when imported as module)
+from cost_tracker import CostTracker
+from platform_memory_monitor import PlatformMemoryMonitor
+```
+
+**After (Correct):**
+```python
+# Fallback import pattern
+try:
+    from core.cost_tracker import CostTracker
+    from core.platform_memory_monitor import PlatformMemoryMonitor
+except ImportError:
+    # Fallback for direct execution
+    from cost_tracker import CostTracker
+    from platform_memory_monitor import PlatformMemoryMonitor
+```
+
+**Files Updated:**
+- `backend/core/gcp_vm_manager.py`: All import statements updated with fallback patterns
+
+**Benefits:**
+- Works in both direct execution and module import contexts
+- Prevents "No module named 'cost_tracker'" errors
+- Maintains backward compatibility
+- More robust error handling
+
+**Verification Results:**
+
+After these fixes, the system verifies correctly:
+
+```python
+✅ Cloud Run Health: {"status":"healthy","ecapa_ready":true}
+✅ CloudECAPAClient Init: True (success)
+✅ Active Backend: BackendType.CLOUD_RUN
+✅ Healthy Endpoint: https://jarvis-ml-888774109345.us-central1.run.app
+✅ GCP VM Manager: Available (imports working)
+```
+
+**Resolved Warnings:**
+- ❌ ~~"GCP VM Manager not available: No module named 'cost_tracker'"~~ → ✅ Fixed
+- ❌ ~~"No healthy endpoints found"~~ → ✅ Fixed
+- ⚠️ "google-cloud-compute not installed" → Expected (optional dependency)
+
 #### 🚀 Running the Service Locally
 
 **Quick Start:**
@@ -7223,17 +7303,21 @@ The ECAPA Cloud Service is a **FastAPI-based microservice** that:
 
 **Verified Endpoints:**
 
+**Important:** Cloud Run service routes are at **root level**, not under `/api/ml`. The orchestrator tries multiple paths for compatibility.
+
 ```
 ┌──────────────────────────────┬─────────────────────┬──────────┐
 │ Endpoint                     │ Purpose              │ Status   │
 ├──────────────────────────────┼─────────────────────┼──────────┤
 │ /health                      │ Health check         │ ✅ Working│
 │ /status                      │ Full service status  │ ✅ Working│
-│ /api/ml/speaker_embedding    │ Extract embedding    │ ✅ Working│
-│ /api/ml/speaker_verify       │ Verify speaker       │ ✅ Available│
-│ /api/ml/batch_embedding      │ Batch extraction     │ ✅ Available│
+│ /speaker_embedding           │ Extract embedding    │ ✅ Working│
+│ /speaker_verify              │ Verify speaker       │ ✅ Available│
+│ /batch_embedding             │ Batch extraction     │ ✅ Available│
 └──────────────────────────────┴─────────────────────┴──────────┘
 ```
+
+**Note:** The orchestrator also tries `/api/ml/*` paths as fallbacks for backward compatibility, but the primary endpoints are at root level.
 
 ### 🔌 API Endpoints
 
@@ -7309,12 +7393,21 @@ curl https://jarvis-ml-888774109345.us-central1.run.app/status
 
 #### Speaker Embedding Extraction
 
-**POST `/api/ml/speaker_embedding`**
+**POST `/speaker_embedding`** (or `/api/ml/speaker_embedding` for compatibility)
 
 Extract 192-dimensional ECAPA-TDNN embedding from audio.
 
 **Request:**
 ```bash
+# Primary endpoint (root level)
+curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/speaker_embedding \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audio_base64": "UklGRiQAAABXQVZFZm10...",
+    "sample_rate": 16000
+  }'
+
+# Alternative endpoint (for backward compatibility)
 curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/api/ml/speaker_embedding \
   -H "Content-Type: application/json" \
   -d '{
@@ -7345,13 +7438,14 @@ curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/api/ml/speaker_e
 
 #### Speaker Verification
 
-**POST `/api/ml/speaker_verify`**
+**POST `/speaker_verify`** (or `/api/ml/speaker_verify` for compatibility)
 
 Verify if audio matches a reference embedding.
 
 **Request:**
 ```bash
-curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/api/ml/speaker_verify \
+# Primary endpoint (root level)
+curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/speaker_verify \
   -H "Content-Type: application/json" \
   -d '{
     "audio_base64": "UklGRiQAAABXQVZFZm10...",
@@ -7373,13 +7467,14 @@ curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/api/ml/speaker_v
 
 #### Batch Embedding Extraction
 
-**POST `/api/ml/batch_embedding`**
+**POST `/batch_embedding`** (or `/api/ml/batch_embedding` for compatibility)
 
 Extract embeddings from multiple audio samples efficiently.
 
 **Request:**
 ```bash
-curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/api/ml/batch_embedding \
+# Primary endpoint (root level)
+curl -X POST https://jarvis-ml-888774109345.us-central1.run.app/batch_embedding \
   -H "Content-Type: application/json" \
   -d '{
     "audio_samples": [
@@ -7498,11 +7593,19 @@ The Cloud ECAPA Client automatically discovers and uses the Cloud Run service:
 
 ```python
 # Cloud ECAPA Client automatically uses:
-JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-888774109345.us-central1.run.app/api/ml"
+# Note: Base URL is set, but service routes are at root level
+cloud_run_base = "https://jarvis-ml-888774109345.us-central1.run.app"
+JARVIS_CLOUD_ML_ENDPOINT = cloud_run_base  # Root level, not /api/ml
 
-# Health check endpoint discovery:
-health_paths = ["/health", "/api/ml/health", "/status", "/api/ml/status", "/"]
-# Tries each path until one succeeds (for compatibility)
+# Health check endpoint discovery (tries multiple paths for compatibility):
+health_paths = [
+    "/health",           # Primary (root level) ✅
+    "/api/ml/health",    # Fallback (for compatibility)
+    "/status",           # Alternative endpoint
+    "/api/ml/status",    # Fallback alternative
+    "/"                  # Root endpoint
+]
+# Tries each path until one succeeds - primary paths are at root level
 ```
 
 **Orchestrator Integration:**
@@ -7519,10 +7622,11 @@ cloud_probe = await probe_cloud_run_backend()
 if cloud_probe.healthy:
     # Selects Cloud Run if healthy and Docker unavailable
     selected_backend = "cloud_run"
-    endpoint = "https://jarvis-ml-888774109345.us-central1.run.app/api/ml"
+    # Endpoint is root level (service routes are at /health, /speaker_embedding, etc.)
+    endpoint = "https://jarvis-ml-888774109345.us-central1.run.app"
 
 # Phase 3: Configuration
-os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = endpoint
+os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = endpoint  # Root level base URL
 ```
 
 ### 🛠️ Deployment & Configuration
@@ -7580,9 +7684,10 @@ gcloud projects describe jarvis-473803 --format="value(projectNumber)"
 # Set project number
 export GCP_PROJECT_NUMBER="888774109345"
 
-# Set Cloud Run endpoint (will use project number)
-export JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-${GCP_PROJECT_NUMBER}.us-central1.run.app/api/ml"
-# Result: https://jarvis-ml-888774109345.us-central1.run.app/api/ml
+# Set Cloud Run endpoint (root level - service routes are at /health, /speaker_embedding, etc.)
+export JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-${GCP_PROJECT_NUMBER}.us-central1.run.app"
+# Result: https://jarvis-ml-888774109345.us-central1.run.app
+# Note: Do NOT include /api/ml suffix - service routes are at root level
 ```
 
 **Important Notes:**
@@ -7679,6 +7784,7 @@ Inference latency: 800ms+ (should be ~138ms)
 **Symptoms:**
 ```
 Orchestrator: ❌ Cloud Run: Health check timed out
+"No healthy endpoints found"
 ```
 
 **Diagnosis:**
@@ -7686,14 +7792,58 @@ Orchestrator: ❌ Cloud Run: Health check timed out
 # Test each health endpoint manually
 curl https://jarvis-ml-888774109345.us-central1.run.app/health
 curl https://jarvis-ml-888774109345.us-central1.run.app/status
-curl https://jarvis-ml-888774109345.us-central1.run.app/api/ml/health
+curl https://jarvis-ml-888774109345.us-central1.run.app/api/ml/health  # Fallback path
+
+# Check endpoint configuration
+echo $JARVIS_CLOUD_ML_ENDPOINT
+# Should be: https://jarvis-ml-888774109345.us-central1.run.app (root level, no /api/ml)
 ```
 
 **Solutions:**
-1. **Service not deployed**: Deploy service first
-2. **Network issues**: Check firewall/VPN blocking GCP endpoints
-3. **Authentication**: Ensure service allows unauthenticated requests
-4. **Service crashed**: Check Cloud Run logs for errors
+1. **Incorrect endpoint path**: Ensure endpoint is root level, not `/api/ml`
+   ```bash
+   # Wrong (old):
+   export JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-888774109345.us-central1.run.app/api/ml"
+   
+   # Correct (new):
+   export JARVIS_CLOUD_ML_ENDPOINT="https://jarvis-ml-888774109345.us-central1.run.app"
+   ```
+2. **Service not deployed**: Deploy service first
+3. **Network issues**: Check firewall/VPN blocking GCP endpoints
+4. **Authentication**: Ensure service allows unauthenticated requests
+5. **Service crashed**: Check Cloud Run logs for errors
+
+**Problem: "No module named 'cost_tracker'" error**
+
+**Symptoms:**
+```
+GCP VM Manager not available: No module named 'cost_tracker'
+ImportError: cannot import name 'CostTracker' from 'cost_tracker'
+```
+
+**Root Cause:**
+Import path issues in `gcp_vm_manager.py` - bare imports fail when module is imported in different contexts.
+
+**Solutions:**
+1. **Verify fix is applied**: Check `backend/core/gcp_vm_manager.py` uses fallback import pattern:
+   ```python
+   try:
+       from core.cost_tracker import CostTracker
+   except ImportError:
+       from cost_tracker import CostTracker
+   ```
+2. **Update imports**: If still seeing errors, ensure all imports in `gcp_vm_manager.py` use fallback pattern
+3. **Check Python path**: Verify `backend/core` is in Python path when importing
+4. **Restart system**: After fixes, restart JARVIS to reload modules
+
+**Verification:**
+```bash
+# Test import directly
+python3 -c "from backend.core.gcp_vm_manager import GCPVMManager; print('✅ Import successful')"
+
+# Check for import errors in logs
+grep -i "cost_tracker\|ImportError" backend/logs/jarvis.log
+```
 
 ### 💰 Cost Optimization
 

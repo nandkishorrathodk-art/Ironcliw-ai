@@ -251,9 +251,10 @@ class CloudECAPAClientConfig:
     GCP_REGION = os.getenv("GCP_REGION", "us-central1")
 
     # Primary endpoint - uses project number for Cloud Run URL
+    # Note: No path suffix - service routes are at root level (/health, /speaker_embedding)
     PRIMARY_ENDPOINT = os.getenv(
         "JARVIS_CLOUD_ML_ENDPOINT",
-        f"https://jarvis-ml-{GCP_PROJECT_NUMBER}.{GCP_REGION}.run.app/api/ml"
+        f"https://jarvis-ml-{GCP_PROJECT_NUMBER}.{GCP_REGION}.run.app"
     )
 
     # Timeouts
@@ -965,10 +966,16 @@ class CloudECAPAClient:
                 timeout=CloudECAPAClientConfig.HEALTH_CHECK_TIMEOUT
             ) as response:
                 if response.status != 200:
+                    logger.debug(f"Endpoint {endpoint} returned HTTP {response.status}")
                     return False
 
                 data = await response.json()
-                if not data.get("ecapa_ready", True):
+                status = data.get("status", "unknown")
+                ecapa_ready = data.get("ecapa_ready", True)
+
+                if not ecapa_ready:
+                    # Service is reachable but ECAPA model not ready (likely still loading)
+                    logger.info(f"Endpoint {endpoint} reachable but ECAPA not ready (status: {status})")
                     return False
 
             # Optional: test actual extraction

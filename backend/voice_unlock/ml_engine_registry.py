@@ -1415,7 +1415,8 @@ class MLEngineRegistry:
                     if self._startup_decision:
                         result = await startup_manager.activate_cloud_ml_backend()
                         if result.get("success"):
-                            self._cloud_endpoint = f"http://{result.get('ip')}:8010/api/ml"
+                            # Note: No /api/ml suffix - service routes are at root level
+                            self._cloud_endpoint = f"http://{result.get('ip')}:8010"
                             logger.info(f"   Cloud backend activated: {self._cloud_endpoint}")
             except ImportError:
                 logger.debug("MemoryAwareStartup not available")
@@ -1427,9 +1428,10 @@ class MLEngineRegistry:
                 gcp_region = os.getenv("GCP_REGION", "us-central1")
 
                 # Try Cloud Run endpoint first (uses project number for URL)
+                # Note: No /api/ml suffix - service routes are at root level
                 self._cloud_endpoint = os.getenv(
                     "JARVIS_CLOUD_ML_ENDPOINT",
-                    f"https://jarvis-ml-{gcp_project_number}.{gcp_region}.run.app/api/ml"
+                    f"https://jarvis-ml-{gcp_project_number}.{gcp_region}.run.app"
                 )
                 logger.info(f"   Using fallback cloud endpoint: {self._cloud_endpoint}")
 
