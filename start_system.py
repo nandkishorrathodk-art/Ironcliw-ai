@@ -14511,12 +14511,22 @@ async def main():
 
         return ecapa_verification_result
 
-    # Run the verification
-    try:
-        ecapa_verification_result = await verify_ecapa_pipeline()
-    except Exception as e:
-        print(f"{Colors.FAIL}   ❌ ECAPA verification failed with exception: {e}{Colors.ENDC}")
-        ecapa_verification_result["errors"].append(f"Verification exception: {str(e)}")
+    # Run the verification with retries (HARD REQUIREMENT)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            ecapa_verification_result = await verify_ecapa_pipeline()
+            if ecapa_verification_result["verification_pipeline_ready"]:
+                break
+            
+            if attempt < max_retries - 1:
+                print(f"\n{Colors.YELLOW}   ⚠️  Pipeline not ready, retrying in 5s... (Attempt {attempt + 1}/{max_retries}){Colors.ENDC}")
+                await asyncio.sleep(5)
+        except Exception as e:
+            print(f"{Colors.FAIL}   ❌ ECAPA verification failed with exception: {e}{Colors.ENDC}")
+            ecapa_verification_result["errors"].append(f"Verification exception: {str(e)}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(5)
 
     # Summary
     print(f"\n{Colors.CYAN}   ═══ ECAPA Verification Summary ═══{Colors.ENDC}")
@@ -14532,6 +14542,18 @@ async def main():
     os.environ["JARVIS_ECAPA_EMBEDDING_TESTED"] = "true" if ecapa_verification_result["embedding_extraction_tested"] else "false"
 
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
+
+    # CRITICAL: Fail startup if ECAPA is not ready
+    # This prevents the "0% confidence" voice unlock failure mode
+    if not ecapa_verification_result["verification_pipeline_ready"]:
+        print(f"{Colors.FAIL}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.FAIL}❌ FATAL STARTUP ERROR: ECAPA PIPELINE NOT READY{Colors.ENDC}")
+        print(f"{Colors.FAIL}   Voice unlock requires ECAPA encoder to be available.{Colors.ENDC}")
+        print(f"{Colors.FAIL}   The system cannot verify your voice without it.{Colors.ENDC}")
+        print(f"{Colors.FAIL}   Please check logs or try restarting.{Colors.ENDC}")
+        print(f"{Colors.FAIL}{'='*60}{Colors.ENDC}")
+        sys.exit(1)
+
 
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")

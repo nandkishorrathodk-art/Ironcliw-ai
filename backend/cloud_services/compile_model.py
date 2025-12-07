@@ -549,7 +549,29 @@ class JITTraceOptimizer(BaseOptimizer):
                 with torch.no_grad():
                     _ = traced_model(test_features)
 
-            # Measure inference time
+            # ==================================================================
+            # CRITICAL FIX: Force JIT Compilation & Freezing
+            # ==================================================================
+            # Without this, PyTorch JIT lazily compiles on first runtime inference,
+            # causing a 60s+ delay. We force it here during build time.
+            self.log.subsection("Optimizing & Freezing JIT Graph")
+            
+            self.log.info("1. Optimizing for inference (fusion, folding)...")
+            traced_model = torch.jit.optimize_for_inference(traced_model)
+            
+            self.log.info("2. Freezing model (making constants immutable)...")
+            traced_model = torch.jit.freeze(traced_model)
+            
+            self.log.info("3. Running extensive warmup to trigger ALL kernels...")
+            # Run enough passes to ensure all code paths are compiled
+            warmup_start = time.time()
+            for _ in range(20):
+                with torch.no_grad():
+                    _ = traced_model(example_features)
+            warmup_time = (time.time() - warmup_start) * 1000
+            self.log.info(f"   Warmup complete in {warmup_time:.0f}ms")
+
+            # Measure inference time (now fully compiled)
             log.start_timer("inference")
             with torch.no_grad():
                 for _ in range(10):

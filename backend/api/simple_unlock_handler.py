@@ -748,13 +748,22 @@ async def _execute_screen_action(
                             f"🚫 Voice verification failed for {speaker_name} - unlock denied"
                         )
                         context["status_message"] = "Voice verification failed - access denied"
+                        
+                        # Improved error message for 0% confidence (system failure vs rejection)
+                        if confidence == 0.0:
+                            error_msg = "Voice verification system error. The biometric model may not be ready."
+                            if verification_result.get("error"):
+                                error_msg += f" (Error: {verification_result['error']})"
+                        else:
+                            error_msg = (
+                                f"I'm sorry, I couldn't verify your voice biometrics. "
+                                f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security."
+                            )
+
                         return {
                             "success": False,
                             "error": "voice_verification_failed",
-                            "message": (
-                                f"I'm sorry, I couldn't verify your voice biometrics. "
-                                f"Confidence was {confidence:.0%}, but I need at least 75% to unlock your screen for security."
-                            ),
+                            "message": error_msg,
                         }
 
                     # Check if speaker is the device owner

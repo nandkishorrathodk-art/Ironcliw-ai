@@ -16,7 +16,7 @@
 #   ./deploy_cloud_run.sh --local-build      # Build locally, push to GCR
 #   ./deploy_cloud_run.sh --dry-run          # Show commands without executing
 #
-# v18.2.0
+# v20.3.0 - JIT Pre-Compilation Support
 # =============================================================================
 
 set -e
@@ -180,7 +180,7 @@ fi
 
 # Build image
 IMAGE_URI="${AR_LOCATION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/${IMAGE_NAME}:latest"
-IMAGE_URI_TAGGED="${AR_LOCATION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/${IMAGE_NAME}:$(date +%Y%m%d-%H%M%S)"
+IMAGE_URI_TAGGED="${AR_LOCATION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/${IMAGE_NAME}:v20.3.0"
 
 if [ "$SKIP_BUILD" = false ]; then
     if [ "$LOCAL_BUILD" = true ]; then
@@ -197,10 +197,13 @@ if [ "$SKIP_BUILD" = false ]; then
         run_cmd docker push "$IMAGE_URI"
         run_cmd docker push "$IMAGE_URI_TAGGED"
     else
-        log "Building image with Cloud Build..."
+        log "Building image with Cloud Build (JIT Optimization included)..."
+        # Increase timeout for JIT compilation during build
         run_cmd gcloud builds submit \
             --tag "$IMAGE_URI" \
-            --timeout=1800s \
+            --tag "$IMAGE_URI_TAGGED" \
+            --timeout=3600s \
+            --machine-type=E2_HIGHCPU_8 \
             .
     fi
 else
@@ -220,7 +223,7 @@ run_cmd gcloud run deploy "$SERVICE_NAME" \
     --concurrency "$CONCURRENCY" \
     --timeout "$TIMEOUT" \
     --allow-unauthenticated \
-    --set-env-vars "ECAPA_DEVICE=cpu,ECAPA_WARMUP_ON_START=true,ECAPA_CACHE_TTL=3600" \
+    --set-env-vars "ECAPA_DEVICE=cpu,ECAPA_WARMUP_ON_START=true,ECAPA_CACHE_TTL=3600,ECAPA_USE_OPTIMIZED=true" \
     --port 8010
 
 # Get service URL
