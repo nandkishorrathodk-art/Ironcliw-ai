@@ -755,9 +755,15 @@ class CloudECAPAClient:
     - Comprehensive telemetry
     - GCP Spot VM integration with scale-to-zero
     - Intelligent cost-aware backend routing
+    - v19.0.0: Pre-warm endpoint support for fast cold starts
+
+    v19.0.0 Enhancements:
+    - Pre-warm API to trigger model initialization before first request
+    - Manifest-based instant cache verification in Cloud Run
+    - Parallel warmup patterns
     """
 
-    VERSION = "18.2.0"
+    VERSION = "19.0.0"
 
     def __init__(self):
         self._endpoints: List[str] = []
@@ -1212,6 +1218,57 @@ class CloudECAPAClient:
     # =========================================================================
     # MAIN API
     # =========================================================================
+
+    async def prewarm(self, endpoint: str = None) -> Dict[str, Any]:
+        """
+        Pre-warm the cloud ECAPA model for faster subsequent requests.
+
+        v19.0.0 Enhancement:
+        - Calls /api/ml/prewarm endpoint to trigger model initialization
+        - Returns detailed timing and diagnostics
+        - Useful for triggering cold start before actual requests
+
+        Args:
+            endpoint: Specific endpoint to pre-warm (uses healthy endpoint if None)
+
+        Returns:
+            Pre-warm result with timing information
+        """
+        if not self._initialized:
+            if not await self.initialize():
+                return {"success": False, "error": "Client not initialized"}
+
+        target_endpoint = endpoint or self._healthy_endpoint
+        if not target_endpoint:
+            return {"success": False, "error": "No healthy endpoint available"}
+
+        # Construct pre-warm URL
+        endpoint_stripped = target_endpoint.rstrip('/')
+        if endpoint_stripped.endswith('/api/ml'):
+            url = f"{endpoint_stripped}/prewarm"
+        else:
+            url = f"{endpoint_stripped}/api/ml/prewarm"
+
+        try:
+            async with self._session.post(url, json={}) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    logger.info(
+                        f"Pre-warm completed: {result.get('total_time_ms', 0):.0f}ms "
+                        f"(init: {result.get('initialization_time_ms', 0):.0f}ms, "
+                        f"warmup: {result.get('warmup_time_ms', 0):.0f}ms)"
+                    )
+                    return result
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "error": f"HTTP {response.status}: {error_text}"
+                    }
+
+        except Exception as e:
+            logger.error(f"Pre-warm failed: {e}")
+            return {"success": False, "error": str(e)}
 
     async def extract_embedding(
         self,

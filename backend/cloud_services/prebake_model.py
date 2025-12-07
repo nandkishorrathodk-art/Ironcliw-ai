@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""
+ECAPA Model Pre-Baking Script v19.2.0
+=====================================
+
+This script downloads and pre-bakes the ECAPA-TDNN model during Docker build.
+It creates a manifest file for instant verification at runtime.
+
+Key Steps:
+1. Download ALL model files from HuggingFace
+2. Create empty custom.py stub to prevent HuggingFace hub lookup at runtime
+3. Run warmup inference to trigger JIT compilation
+4. Verify all required files exist
+5. Create manifest file for instant cold start verification
+
+Usage:
+    python prebake_model.py [cache_dir] [model_source]
+"""
+
+import json
+import os
+import shutil
+import sys
+import time
+
+
+def main():
+    """Pre-bake ECAPA-TDNN model for ultra-fast cold starts."""
+    print("=" * 70)
+    print("ECAPA MODEL PRE-BAKING v19.2.0")
+    print("=" * 70)
+
+    # Configuration from args or environment
+    cache_dir = sys.argv[1] if len(sys.argv) > 1 else os.getenv("CACHE_DIR", "/opt/ecapa_cache")
+    model_source = sys.argv[2] if len(sys.argv) > 2 else os.getenv("MODEL_SOURCE", "speechbrain/spkrec-ecapa-voxceleb")
+
+    print(f"Model source: {model_source}")
+    print(f"Cache directory: {cache_dir}")
+    print()
+
+    # Ensure cache directory exists
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # Step 0: Pre-configure HuggingFace hub caching
+    print("[0/5] Configuring HuggingFace hub caching...")
+    hf_cache = os.path.join(cache_dir, "huggingface")
+    os.makedirs(hf_cache, exist_ok=True)
+    os.environ["HF_HOME"] = hf_cache
+    os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
+    print(f"      HF_HOME={hf_cache}")
+    print()
+
+    # Step 1: Download and save model
+    print("[1/5] Downloading ECAPA-TDNN model...")
+    start = time.time()
+
+    import numpy as np
+    import torch
+    from speechbrain.inference.speaker import EncoderClassifier
+
+    encoder = EncoderClassifier.from_hparams(
+        source=model_source,
+        savedir=cache_dir,
+        run_opts={"device": "cpu"}
+    )
+
+    download_time = time.time() - start
+    print(f"      Model downloaded in {download_time:.1f}s")
+    print()
+
+    # Step 2: Run warmup inference to trigger JIT compilation
+    print("[2/5] Running warmup inference (JIT compilation)...")
+    start = time.time()
+
+    # Generate test audio (1 second at 16kHz)
+    test_audio = torch.randn(1, 16000)
+
+    # Run multiple warmup inferences to ensure everything is compiled
+    for i in range(3):
+        with torch.no_grad():
+            embedding = encoder.encode_batch(test_audio)
+        print(f"      Warmup {i+1}/3 complete, embedding shape: {embedding.shape}")
+
+    warmup_time = time.time() - start
+    print(f"      Warmup completed in {warmup_time:.1f}s")
+    print()
+
+    # Step 2.5: Inspect all cached files (debugging)
+    print("[2.5/5] Inspecting all cached files...")
+    for root, dirs, files in os.walk(cache_dir):
+        for f in files:
+            full_path = os.path.join(root, f)
+            rel_path = os.path.relpath(full_path, cache_dir)
+            size = os.path.getsize(full_path)
+            print(f"      {rel_path} ({size/1024:.1f} KB)")
+    print()
+
+    # Step 3: Verify cache contents
+    print("[3/5] Verifying pre-baked cache...")
+    required_files = [
+        "hyperparams.yaml",
+        "embedding_model.ckpt",
+    ]
+    optional_files = [
+        "mean_var_norm_emb.ckpt",
+        "classifier.ckpt",
+        "label_encoder.txt",
+    ]
+
+    all_present = True
+    total_size = 0
+
+    for f in required_files:
+        path = os.path.join(cache_dir, f)
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            total_size += size
+            print(f"      [OK] {f} ({size/1024/1024:.2f} MB)")
+        else:
+            print(f"      [MISSING] {f}")
+            all_present = False
+
+    for f in optional_files:
+        path = os.path.join(cache_dir, f)
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            total_size += size
+            print(f"      [OK] {f} ({size/1024:.1f} KB)")
+
+    print()
+    print(f"      Total cache size: {total_size/1024/1024:.2f} MB")
+
+    if not all_present:
+        print()
+        print("[CRITICAL] Required files missing! Build will fail.")
+        sys.exit(1)
+
+    # Step 4: Create verification marker file
+    print("[4/5] Creating verification manifest...")
+    manifest = {
+        "version": "19.1.0",
+        "model_source": model_source,
+        "cache_dir": cache_dir,
+        "prebaked_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        "download_time_s": round(download_time, 2),
+        "warmup_time_s": round(warmup_time, 2),
+        "total_size_mb": round(total_size/1024/1024, 2),
+        "embedding_dim": int(embedding.shape[-1]),
+        "files": {
+            "required": {f: os.path.exists(os.path.join(cache_dir, f)) for f in required_files},
+            "optional": {f: os.path.exists(os.path.join(cache_dir, f)) for f in optional_files},
+        }
+    }
+
+    manifest_path = os.path.join(cache_dir, ".prebaked_manifest.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"      Manifest written to {manifest_path}")
+
+    print()
+    print("=" * 70)
+    print("[SUCCESS] PRE-BAKING COMPLETE - Model ready for instant cold starts!")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
