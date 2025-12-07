@@ -3051,8 +3051,17 @@ class SpeakerVerificationService:
             if self._use_registry_encoder and ML_REGISTRY_AVAILABLE:
                 embedding = await registry_extract_embedding(audio_data)
                 if embedding is not None:
-                    # CRITICAL: Validate embedding for NaN values
-                    if np.any(np.isnan(embedding)):
+                    # CRITICAL: Validate embedding for NaN values (handle both numpy and torch)
+                    try:
+                        import torch
+                        if isinstance(embedding, torch.Tensor):
+                            has_nan = torch.isnan(embedding).any().item()
+                        else:
+                            has_nan = np.any(np.isnan(np.asarray(embedding)))
+                    except:
+                        has_nan = np.any(np.isnan(np.asarray(embedding).flatten()))
+
+                    if has_nan:
                         logger.warning("⚠️ Registry embedding contains NaN - falling back to local engine")
                     else:
                         return embedding
@@ -3062,10 +3071,20 @@ class SpeakerVerificationService:
             # Fallback to local SpeechBrain engine
             embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
 
-            # Validate local embedding too
-            if embedding is not None and np.any(np.isnan(embedding)):
-                logger.error("❌ Local embedding also contains NaN!")
-                return None
+            # Validate local embedding too (handle both numpy and torch)
+            if embedding is not None:
+                try:
+                    import torch
+                    if isinstance(embedding, torch.Tensor):
+                        has_nan = torch.isnan(embedding).any().item()
+                    else:
+                        has_nan = np.any(np.isnan(np.asarray(embedding)))
+                except:
+                    has_nan = np.any(np.isnan(np.asarray(embedding).flatten()))
+
+                if has_nan:
+                    logger.error("❌ Local embedding also contains NaN!")
+                    return None
 
             return embedding
 

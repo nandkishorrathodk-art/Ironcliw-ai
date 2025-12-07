@@ -2170,16 +2170,26 @@ __all__ = ["EncoderDecoderASR"]
             else:
                 logger.info("   📊 Extracting test embedding locally...")
                 test_embedding = await self.extract_speaker_embedding(audio_data)
-            test_norm = np.linalg.norm(test_embedding)
+            # Convert to numpy if torch tensor for validation
+            if isinstance(test_embedding, torch.Tensor):
+                test_emb_np = test_embedding.detach().cpu().numpy().flatten()
+            else:
+                test_emb_np = np.asarray(test_embedding).flatten()
+
+            test_norm = np.linalg.norm(test_emb_np)
             logger.info(f"   ✅ Test embedding: shape={test_embedding.shape}, norm={test_norm:.4f}")
 
             # CRITICAL: Validate test embedding BEFORE proceeding - check for NaN and zero
-            if np.isnan(test_norm) or np.any(np.isnan(test_embedding)):
+            if np.isnan(test_norm) or np.any(np.isnan(test_emb_np)):
                 logger.error(f"❌ CRITICAL: Test embedding contains NaN values!")
                 logger.error(f"   Pre-extracted embedding is invalid - falling back to local extraction")
                 # Try local extraction as fallback
                 test_embedding = await self.extract_speaker_embedding(audio_data)
-                test_norm = np.linalg.norm(test_embedding)
+                if isinstance(test_embedding, torch.Tensor):
+                    test_emb_np = test_embedding.detach().cpu().numpy().flatten()
+                else:
+                    test_emb_np = np.asarray(test_embedding).flatten()
+                test_norm = np.linalg.norm(test_emb_np)
                 if np.isnan(test_norm):
                     logger.error(f"❌ Local extraction also returned NaN - returning failure")
                     return (False, 0.0)
