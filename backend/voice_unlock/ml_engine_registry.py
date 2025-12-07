@@ -1909,6 +1909,11 @@ class MLEngineRegistry:
                             embedding_list = result["embedding"]
                             embedding = np.array(embedding_list, dtype=np.float32)
 
+                            # CRITICAL: Validate for NaN values
+                            if np.any(np.isnan(embedding)):
+                                logger.error("❌ Cloud embedding contains NaN values!")
+                                return None
+
                             import torch
                             embedding_tensor = torch.tensor(embedding).unsqueeze(0)
 

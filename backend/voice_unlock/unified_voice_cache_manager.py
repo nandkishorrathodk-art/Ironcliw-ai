@@ -862,8 +862,13 @@ class UnifiedVoiceCacheManager:
 
     def _normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
         """Normalize embedding to unit length for cosine similarity"""
+        # Handle NaN values - replace with zeros
+        if np.any(np.isnan(embedding)):
+            logger.warning("⚠️ Embedding contains NaN values - replacing with zeros")
+            embedding = np.nan_to_num(embedding, nan=0.0)
+
         norm = np.linalg.norm(embedding)
-        if norm == 0:
+        if norm == 0 or np.isnan(norm):
             return embedding
         return embedding / norm
 
@@ -2225,8 +2230,12 @@ class UnifiedVoiceCacheManager:
 
     def _normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
         """Normalize embedding to unit length"""
+        # Handle NaN values
+        if np.any(np.isnan(embedding)):
+            embedding = np.nan_to_num(embedding, nan=0.0)
+
         norm = np.linalg.norm(embedding)
-        if norm > 0:
+        if norm > 0 and not np.isnan(norm):
             return embedding / norm
         return embedding
 

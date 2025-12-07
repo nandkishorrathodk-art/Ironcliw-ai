@@ -2173,7 +2173,18 @@ __all__ = ["EncoderDecoderASR"]
             test_norm = np.linalg.norm(test_embedding)
             logger.info(f"   ✅ Test embedding: shape={test_embedding.shape}, norm={test_norm:.4f}")
 
-            # CRITICAL: Validate test embedding norm BEFORE proceeding
+            # CRITICAL: Validate test embedding BEFORE proceeding - check for NaN and zero
+            if np.isnan(test_norm) or np.any(np.isnan(test_embedding)):
+                logger.error(f"❌ CRITICAL: Test embedding contains NaN values!")
+                logger.error(f"   Pre-extracted embedding is invalid - falling back to local extraction")
+                # Try local extraction as fallback
+                test_embedding = await self.extract_speaker_embedding(audio_data)
+                test_norm = np.linalg.norm(test_embedding)
+                if np.isnan(test_norm):
+                    logger.error(f"❌ Local extraction also returned NaN - returning failure")
+                    return (False, 0.0)
+                logger.info(f"   ✅ Local extraction succeeded: norm={test_norm:.4f}")
+
             if test_norm == 0 or test_norm < 1e-6:
                 logger.error(f"❌ CRITICAL: Test embedding has zero norm!")
                 logger.error(f"   Audio data: {len(audio_data)} bytes, tensor: {len(audio_tensor)} samples")

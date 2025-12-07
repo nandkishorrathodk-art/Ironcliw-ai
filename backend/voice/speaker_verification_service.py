@@ -3051,12 +3051,23 @@ class SpeakerVerificationService:
             if self._use_registry_encoder and ML_REGISTRY_AVAILABLE:
                 embedding = await registry_extract_embedding(audio_data)
                 if embedding is not None:
-                    return embedding
+                    # CRITICAL: Validate embedding for NaN values
+                    if np.any(np.isnan(embedding)):
+                        logger.warning("⚠️ Registry embedding contains NaN - falling back to local engine")
+                    else:
+                        return embedding
                 # Fallback to local engine if registry fails
                 logger.warning("Registry embedding failed, falling back to local engine")
 
             # Fallback to local SpeechBrain engine
-            return await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+            embedding = await self.speechbrain_engine.extract_speaker_embedding(audio_data)
+
+            # Validate local embedding too
+            if embedding is not None and np.any(np.isnan(embedding)):
+                logger.error("❌ Local embedding also contains NaN!")
+                return None
+
+            return embedding
 
         except Exception as e:
             logger.error(f"Embedding extraction failed: {e}")
