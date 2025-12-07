@@ -14,12 +14,15 @@
 set -e  # Exit on error
 
 # =============================================================================
-# CONFIGURATION
+# CONFIGURATION - v18.4.0
 # =============================================================================
 SOURCE_CACHE="${ECAPA_SOURCE_CACHE:-/opt/ecapa_cache}"
 RUNTIME_CACHE="${ECAPA_CACHE_DIR:-/tmp/ecapa_cache}"
 FALLBACK_CACHE="${HOME}/.cache/ecapa"
 LOG_PREFIX="[ENTRYPOINT]"
+
+# Required files for ECAPA model
+REQUIRED_FILES="hyperparams.yaml embedding_model.ckpt"
 
 # =============================================================================
 # LOGGING FUNCTIONS
@@ -156,7 +159,7 @@ verify_cache() {
 
 main() {
     log_info "=============================================="
-    log_info "ECAPA Cloud Service Startup - v18.3.0"
+    log_info "ECAPA Cloud Service Startup - v18.4.0"
     log_info "=============================================="
     log_info "User: $(whoami) (UID: $(id -u))"
     log_info "Working directory: $(pwd)"
@@ -164,22 +167,39 @@ main() {
     log_info "Runtime cache: $RUNTIME_CACHE"
     log_info "=============================================="
 
-    # Step 1: Setup runtime cache directory
-    log_info "Step 1: Setting up runtime cache..."
+    # Step 1: Check if source cache can be used directly
+    log_info "Step 1: Checking pre-baked cache..."
 
     CACHE_READY=false
     FINAL_CACHE_DIR=""
 
-    # Try primary location: /tmp/ecapa_cache
-    if copy_cache "$SOURCE_CACHE" "$RUNTIME_CACHE"; then
-        if verify_cache "$RUNTIME_CACHE"; then
-            FINAL_CACHE_DIR="$RUNTIME_CACHE"
+    # FIRST: Try to use source cache directly (fastest - no copy needed)
+    if verify_cache "$SOURCE_CACHE"; then
+        # Check if source cache is readable
+        if [ -r "$SOURCE_CACHE/hyperparams.yaml" ] && [ -r "$SOURCE_CACHE/embedding_model.ckpt" ]; then
+            FINAL_CACHE_DIR="$SOURCE_CACHE"
             CACHE_READY=true
-            log_info "Primary cache setup successful: $RUNTIME_CACHE"
+            log_info "✅ Using pre-baked cache directly: $SOURCE_CACHE"
+            # Tell Python to use the source cache directly
+            export ECAPA_CACHE_DIR="$SOURCE_CACHE"
+        else
+            log_warn "Pre-baked cache files not readable, will try copying..."
         fi
     fi
 
-    # Try fallback location if primary failed
+    # SECOND: Try copying to runtime location if direct use failed
+    if [ "$CACHE_READY" = "false" ]; then
+        log_info "Copying cache to runtime location..."
+        if copy_cache "$SOURCE_CACHE" "$RUNTIME_CACHE"; then
+            if verify_cache "$RUNTIME_CACHE"; then
+                FINAL_CACHE_DIR="$RUNTIME_CACHE"
+                CACHE_READY=true
+                log_info "Primary cache setup successful: $RUNTIME_CACHE"
+            fi
+        fi
+    fi
+
+    # THIRD: Try fallback location if primary failed
     if [ "$CACHE_READY" = "false" ]; then
         log_warn "Primary cache setup failed, trying fallback..."
 
@@ -193,9 +213,9 @@ main() {
         fi
     fi
 
-    # If no pre-downloaded cache works, let SpeechBrain download fresh
+    # LAST RESORT: Let SpeechBrain download fresh
     if [ "$CACHE_READY" = "false" ]; then
-        log_warn "Pre-downloaded cache not available, will download fresh"
+        log_warn "⚠️ Pre-downloaded cache not available, will download fresh (slow startup!)"
 
         # Create empty writable cache directory
         create_writable_dir "$RUNTIME_CACHE"

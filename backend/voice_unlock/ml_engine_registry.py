@@ -1445,7 +1445,9 @@ class MLEngineRegistry:
         self,
         timeout: float = None,
         retry_count: int = None,
-        test_extraction: bool = None
+        test_extraction: bool = None,
+        wait_for_ecapa: bool = None,
+        ecapa_wait_timeout: float = None
     ) -> Tuple[bool, str]:
         """
         Verify that the cloud backend is actually reachable and ECAPA works.
@@ -1453,37 +1455,48 @@ class MLEngineRegistry:
         This is CRITICAL: We must verify the cloud endpoint works BEFORE
         marking the registry as ready. Otherwise, voice unlock fails with 0% confidence.
 
-        Two-phase verification:
+        Three-phase verification:
         1. Health check (fast) - verify endpoint is reachable
-        2. Test extraction (optional) - verify ECAPA actually works
+        2. Wait for ECAPA ready (optional) - poll until model is loaded
+        3. Test extraction (optional) - verify ECAPA actually works
 
         Args:
             timeout: Request timeout in seconds (default from env JARVIS_ECAPA_CLOUD_TIMEOUT)
             retry_count: Number of retry attempts (default from env JARVIS_ECAPA_CLOUD_RETRIES)
-            test_extraction: Actually test embedding extraction (default from env JARVIS_ECAPA_CLOUD_TEST_EXTRACTION)
+            test_extraction: Actually test embedding extraction (default from env)
+            wait_for_ecapa: Wait for ECAPA to become ready (default from env)
+            ecapa_wait_timeout: Max time to wait for ECAPA ready (default from env)
 
         Returns:
             Tuple of (is_ready: bool, reason: str)
         """
         # Dynamic configuration from environment
-        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "10.0"))
+        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "15.0"))
         retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
         fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
         test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
+
+        # NEW: Wait for ECAPA to become ready (handles cold starts)
+        wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
+        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "60.0"))  # 60s for pre-baked cache cold start
+        ecapa_poll_interval = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL", "3.0"))
 
         if not self._cloud_endpoint:
             return False, "Cloud endpoint not configured"
 
         logger.info(f"🔍 Verifying cloud backend: {self._cloud_endpoint}")
+        logger.info(f"   Wait for ECAPA: {wait_for_ecapa}, Timeout: {ecapa_wait_timeout}s")
 
         import aiohttp
 
         # =====================================================================
-        # PHASE 1: Health check (fast verification)
+        # PHASE 1: Health check (verify endpoint is reachable)
         # =====================================================================
         health_endpoint = f"{self._cloud_endpoint.rstrip('/')}/health"
-        health_check_passed = False
+        endpoint_reachable = False
+        ecapa_ready = False
         reason = "Unknown error"
+        last_health_data = {}
 
         for attempt in range(1, retry_count + 1):
             try:
@@ -1496,19 +1509,25 @@ class MLEngineRegistry:
                         if response.status == 200:
                             try:
                                 data = await response.json()
-                                # Check for specific readiness indicators
-                                if data.get("ecapa_ready", True) and data.get("status") in ("healthy", "ready", "ok", None):
-                                    logger.info(f"✅ Cloud health check passed: {data}")
-                                    health_check_passed = True
-                                    break  # Exit health check loop, proceed to phase 2
+                                last_health_data = data
+                                endpoint_reachable = True
+
+                                # Check if ECAPA is already ready
+                                if data.get("ecapa_ready", False):
+                                    ecapa_ready = True
+                                    load_source = data.get("load_source", "unknown")
+                                    logger.info(f"✅ Cloud ECAPA already ready! Source: {load_source}")
+                                    break
                                 else:
-                                    reason = f"Cloud responded but not ready: {data}"
-                                    logger.warning(f"⚠️ {reason}")
+                                    status = data.get("status", "unknown")
+                                    logger.info(f"☁️  Cloud endpoint reachable, ECAPA initializing (status: {status})")
+                                    break  # Exit retry loop, proceed to wait phase
+
                             except Exception:
-                                # JSON parse failed but HTTP 200 - assume healthy
+                                # JSON parse failed but HTTP 200 - endpoint reachable
+                                endpoint_reachable = True
                                 logger.info("✅ Cloud backend responded (non-JSON)")
-                                health_check_passed = True
-                                break  # Exit health check loop, proceed to phase 2
+                                break
                         else:
                             reason = f"Cloud returned HTTP {response.status}"
                             logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason}")
@@ -1528,8 +1547,56 @@ class MLEngineRegistry:
                 backoff = min(2 ** (attempt - 1), 5)
                 logger.info(f"   Retrying in {backoff}s...")
                 await asyncio.sleep(backoff)
-        else:
-            health_check_passed = False
+
+        # =====================================================================
+        # PHASE 2: Wait for ECAPA to become ready (handles cold starts)
+        # =====================================================================
+        if endpoint_reachable and not ecapa_ready and wait_for_ecapa:
+            logger.info(f"⏳ Waiting for Cloud ECAPA to initialize (max {ecapa_wait_timeout}s)...")
+            wait_start = time.time()
+
+            while time.time() - wait_start < ecapa_wait_timeout:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            health_endpoint,
+                            timeout=aiohttp.ClientTimeout(total=timeout),
+                            headers={"Accept": "application/json"}
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                last_health_data = data
+
+                                if data.get("ecapa_ready", False):
+                                    ecapa_ready = True
+                                    elapsed = time.time() - wait_start
+                                    load_source = data.get("load_source", "unknown")
+                                    load_time_ms = data.get("load_time_ms", "N/A")
+                                    logger.info(f"✅ Cloud ECAPA ready after {elapsed:.1f}s wait")
+                                    logger.info(f"   Load source: {load_source}")
+                                    logger.info(f"   Model load time: {load_time_ms}ms")
+                                    break
+                                else:
+                                    status = data.get("status", "unknown")
+                                    elapsed = time.time() - wait_start
+                                    remaining = ecapa_wait_timeout - elapsed
+                                    logger.info(f"   [{elapsed:.0f}s] ECAPA status: {status} (waiting up to {remaining:.0f}s more)")
+
+                except Exception as e:
+                    logger.warning(f"   Health poll error: {e}")
+
+                await asyncio.sleep(ecapa_poll_interval)
+
+            if not ecapa_ready:
+                elapsed = time.time() - wait_start
+                reason = f"ECAPA not ready after {elapsed:.1f}s wait (last status: {last_health_data.get('status', 'unknown')})"
+                logger.warning(f"⏱️ {reason}")
+
+        # Determine if health check passed
+        health_check_passed = endpoint_reachable and ecapa_ready
+
+        if not health_check_passed and not ecapa_ready and endpoint_reachable:
+            reason = f"Cloud endpoint reachable but ECAPA not ready after {ecapa_wait_timeout}s"
 
         # If health check failed, return early
         if not health_check_passed:

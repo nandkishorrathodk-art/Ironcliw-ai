@@ -18,7 +18,7 @@
 # GCP Deployment:
 #   ./deploy_cloud_run.sh
 #
-# v18.3.0 - Robust entrypoint script with fallback cache handling
+# v18.4.0 - Fixed permissions, direct pre-baked cache usage
 
 # =============================================================================
 # Stage 1: Build dependencies
@@ -54,7 +54,7 @@ FROM python:3.11-slim-bookworm AS production
 
 # Labels
 LABEL maintainer="JARVIS AI Agent Team"
-LABEL version="18.0.0"
+LABEL version="18.4.0"
 LABEL description="ECAPA-TDNN Cloud Speaker Embedding Service"
 
 # Install runtime dependencies only
@@ -72,8 +72,23 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy pre-downloaded model cache
 COPY --from=builder /opt/ecapa_cache /opt/ecapa_cache
 
-# Create non-root user for security
-RUN groupadd -r ecapa && useradd -r -g ecapa ecapa
+# Create non-root user for security with home directory
+RUN groupadd -r ecapa && useradd -r -g ecapa -m -d /home/ecapa ecapa
+
+# Create all required directories and set proper permissions BEFORE switching user
+# This ensures ecapa user can read/write to all necessary locations
+RUN mkdir -p /home/ecapa/.cache/ecapa && \
+    mkdir -p /tmp/ecapa_cache && \
+    chown -R ecapa:ecapa /home/ecapa && \
+    chown -R ecapa:ecapa /tmp/ecapa_cache && \
+    chmod -R 755 /home/ecapa && \
+    chmod -R 777 /tmp/ecapa_cache
+
+# Set permissions on pre-baked cache - MUST be readable by ecapa user
+# Use 755 for directories and 644 for files to ensure readability
+RUN chown -R ecapa:ecapa /opt/ecapa_cache && \
+    find /opt/ecapa_cache -type d -exec chmod 755 {} \; && \
+    find /opt/ecapa_cache -type f -exec chmod 644 {} \;
 
 # Create app directory
 WORKDIR /app
@@ -83,10 +98,8 @@ COPY ecapa_cloud_service.py .
 COPY __init__.py .
 COPY entrypoint.sh .
 
-# Set ownership and permissions
-# Note: 775 ensures ecapa user/group can write; speechbrain needs write access for lock files
-RUN chown -R ecapa:ecapa /app /opt/ecapa_cache && \
-    chmod -R 775 /opt/ecapa_cache && \
+# Set ownership and permissions for app
+RUN chown -R ecapa:ecapa /app && \
     chmod +x /app/entrypoint.sh
 
 # Switch to non-root user

@@ -74,10 +74,24 @@ logger = logging.getLogger("ecapa_cloud_service")
 # =============================================================================
 
 class CloudECAPAConfig:
-    """Dynamic configuration from environment variables."""
+    """
+    Dynamic configuration from environment variables.
+
+    Supports robust pre-baked model cache detection with automatic fallback.
+    Priority order for cache locations:
+    1. ECAPA_SOURCE_CACHE (Docker pre-baked: /opt/ecapa_cache)
+    2. ECAPA_CACHE_DIR (Runtime: /tmp/ecapa_cache)
+    3. Home directory fallback (~/.cache/ecapa)
+    4. Fresh download from HuggingFace (last resort)
+    """
 
     MODEL_PATH = os.getenv("ECAPA_MODEL_PATH", "speechbrain/spkrec-ecapa-voxceleb")
-    CACHE_DIR = os.getenv("ECAPA_CACHE_DIR", "/tmp/ecapa_cache")
+
+    # Cache locations (priority order)
+    SOURCE_CACHE = os.getenv("ECAPA_SOURCE_CACHE", "/opt/ecapa_cache")  # Docker pre-baked
+    CACHE_DIR = os.getenv("ECAPA_CACHE_DIR", "/tmp/ecapa_cache")  # Runtime cache
+    HOME_CACHE = os.path.expanduser("~/.cache/ecapa")  # Fallback
+
     DEVICE = os.getenv("ECAPA_DEVICE", "cpu")  # cpu, cuda, mps
     BATCH_SIZE = int(os.getenv("ECAPA_BATCH_SIZE", "8"))
     CACHE_TTL = int(os.getenv("ECAPA_CACHE_TTL", "3600"))  # 1 hour
@@ -93,15 +107,150 @@ class CloudECAPAConfig:
     REQUEST_TIMEOUT = float(os.getenv("ECAPA_REQUEST_TIMEOUT", "30.0"))
     SAMPLE_RATE = int(os.getenv("ECAPA_SAMPLE_RATE", "16000"))
 
+    # Pre-baked cache settings
+    SKIP_HF_DOWNLOAD = os.getenv("ECAPA_SKIP_HF_DOWNLOAD", "true").lower() == "true"
+    CACHE_VERIFICATION_ENABLED = os.getenv("ECAPA_VERIFY_CACHE", "true").lower() == "true"
+
+    # Required files for a valid pre-baked cache
+    REQUIRED_CACHE_FILES = [
+        "hyperparams.yaml",
+        "embedding_model.ckpt",
+    ]
+
+    # Optional but expected files
+    OPTIONAL_CACHE_FILES = [
+        "mean_var_norm_emb.ckpt",
+        "classifier.ckpt",
+        "label_encoder.txt",
+    ]
+
+    @classmethod
+    def get_cache_locations(cls) -> List[str]:
+        """Get all possible cache locations in priority order."""
+        locations = []
+
+        # Priority 1: Docker pre-baked source cache
+        if cls.SOURCE_CACHE:
+            locations.append(cls.SOURCE_CACHE)
+
+        # Priority 2: Runtime cache (may have been populated by entrypoint.sh)
+        if cls.CACHE_DIR and cls.CACHE_DIR != cls.SOURCE_CACHE:
+            locations.append(cls.CACHE_DIR)
+
+        # Priority 3: Home directory fallback
+        if cls.HOME_CACHE not in locations:
+            locations.append(cls.HOME_CACHE)
+
+        return locations
+
+    @classmethod
+    def verify_cache_integrity(cls, cache_path: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Verify that a cache directory contains all required model files.
+
+        Returns:
+            Tuple of (is_valid, message, diagnostics)
+        """
+        diagnostics = {
+            "path": cache_path,
+            "exists": os.path.isdir(cache_path),
+            "required_files": {},
+            "optional_files": {},
+            "total_size_mb": 0,
+        }
+
+        if not os.path.isdir(cache_path):
+            return False, f"Cache directory does not exist: {cache_path}", diagnostics
+
+        # Check required files
+        missing_required = []
+        for filename in cls.REQUIRED_CACHE_FILES:
+            filepath = os.path.join(cache_path, filename)
+            exists = os.path.isfile(filepath)
+            # Get file size safely (handle permission errors)
+            file_size_kb = 0
+            if exists:
+                try:
+                    file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
+                except (OSError, PermissionError) as e:
+                    logger.debug(f"Could not get size of {filepath}: {e}")
+                    file_size_kb = -1  # Indicate error but file exists
+
+            diagnostics["required_files"][filename] = {
+                "exists": exists,
+                "size_kb": file_size_kb,
+            }
+            if not exists:
+                missing_required.append(filename)
+
+        # Check optional files
+        for filename in cls.OPTIONAL_CACHE_FILES:
+            filepath = os.path.join(cache_path, filename)
+            exists = os.path.isfile(filepath)
+            file_size_kb = 0
+            if exists:
+                try:
+                    file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
+                except (OSError, PermissionError) as e:
+                    logger.debug(f"Could not get size of {filepath}: {e}")
+                    file_size_kb = -1
+            diagnostics["optional_files"][filename] = {
+                "exists": exists,
+                "size_kb": file_size_kb,
+            }
+
+        # Calculate total size (with permission error handling)
+        total_size = 0
+        for root, dirs, files in os.walk(cache_path):
+            for f in files:
+                try:
+                    total_size += os.path.getsize(os.path.join(root, f))
+                except (OSError, PermissionError):
+                    pass  # Skip files we can't read
+        diagnostics["total_size_mb"] = round(total_size / (1024 * 1024), 2)
+
+        if missing_required:
+            return False, f"Missing required files: {missing_required}", diagnostics
+
+        return True, "Cache verified successfully", diagnostics
+
+    @classmethod
+    def find_valid_cache(cls) -> Tuple[Optional[str], str, Dict[str, Any]]:
+        """
+        Find the first valid cache location with all required files.
+
+        Returns:
+            Tuple of (cache_path or None, message, diagnostics)
+        """
+        all_diagnostics = {}
+
+        for cache_path in cls.get_cache_locations():
+            is_valid, message, diag = cls.verify_cache_integrity(cache_path)
+            all_diagnostics[cache_path] = diag
+
+            if is_valid:
+                logger.info(f"✅ Found valid pre-baked cache: {cache_path}")
+                logger.info(f"   Size: {diag['total_size_mb']}MB")
+                return cache_path, message, all_diagnostics
+            else:
+                logger.debug(f"Cache not valid at {cache_path}: {message}")
+
+        return None, "No valid pre-baked cache found", all_diagnostics
+
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:
+        valid_cache, cache_msg, _ = cls.find_valid_cache()
         return {
             "model_path": cls.MODEL_PATH,
             "cache_dir": cls.CACHE_DIR,
+            "source_cache": cls.SOURCE_CACHE,
+            "valid_cache_found": valid_cache,
+            "cache_status": cache_msg,
             "device": cls.DEVICE,
             "batch_size": cls.BATCH_SIZE,
             "cache_ttl": cls.CACHE_TTL,
             "warmup_on_start": cls.WARMUP_ON_START,
+            "skip_hf_download": cls.SKIP_HF_DOWNLOAD,
             "port": cls.PORT,
         }
 
@@ -249,12 +398,26 @@ class TTLCache:
 class ECAPAModelManager:
     """
     Manages ECAPA-TDNN model lifecycle with lazy loading and caching.
+
+    Features:
+    - Automatic pre-baked cache detection (Docker-optimized)
+    - Multi-location cache fallback
+    - HuggingFace download bypass when cache is valid
+    - Thread-safe async loading
+    - Comprehensive telemetry
     """
 
     def __init__(self):
         self.model = None
         self.device = CloudECAPAConfig.DEVICE
         self.model_path = CloudECAPAConfig.MODEL_PATH
+
+        # Cache discovery - find the best available cache
+        self._prebaked_cache: Optional[str] = None
+        self._cache_diagnostics: Dict[str, Any] = {}
+        self._using_prebaked = False
+
+        # Will be set during initialization after cache discovery
         self.cache_dir = CloudECAPAConfig.CACHE_DIR
 
         self._loading = False
@@ -267,6 +430,7 @@ class ECAPAModelManager:
         self.warmup_time_ms: Optional[float] = None
         self.inference_count = 0
         self.total_inference_time_ms = 0.0
+        self.load_source: str = "unknown"  # "prebaked", "runtime_cache", "fresh_download"
 
         # Circuit breaker
         self.circuit_breaker = CircuitBreaker()
@@ -353,10 +517,44 @@ class ECAPAModelManager:
             raise
 
     def _load_model_sync(self):
-        """Synchronous model loading. torch/speechbrain already imported at module level."""
-        logger.info("_load_model_sync: Function entered")
+        """
+        Synchronous model loading with pre-baked cache detection.
 
-        # Set device (torch already imported at module level)
+        Priority:
+        1. Use pre-baked Docker cache if available (fastest - no download)
+        2. Use runtime cache if populated by entrypoint.sh
+        3. Fall back to fresh HuggingFace download (slowest)
+        """
+        logger.info("_load_model_sync: Function entered")
+        logger.info("=" * 50)
+        logger.info("ECAPA MODEL LOADING - Cache Detection")
+        logger.info("=" * 50)
+
+        # Step 1: Detect best available cache
+        prebaked_cache, cache_msg, all_diag = CloudECAPAConfig.find_valid_cache()
+        self._cache_diagnostics = all_diag
+
+        if prebaked_cache:
+            logger.info(f"✅ PRE-BAKED CACHE DETECTED: {prebaked_cache}")
+            self._prebaked_cache = prebaked_cache
+            self._using_prebaked = True
+            self.cache_dir = prebaked_cache
+            self.load_source = "prebaked"
+
+            # Set HuggingFace offline mode to prevent any downloads
+            if CloudECAPAConfig.SKIP_HF_DOWNLOAD:
+                os.environ["HF_HUB_OFFLINE"] = "1"
+                os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                logger.info("   HuggingFace download disabled (using pre-baked cache)")
+        else:
+            logger.warning(f"⚠️ No pre-baked cache found: {cache_msg}")
+            logger.info("   Will attempt fresh download from HuggingFace")
+            self.load_source = "fresh_download"
+
+            # Ensure runtime cache directory exists
+            os.makedirs(self.cache_dir, exist_ok=True)
+
+        # Step 2: Determine device
         if self.device == "mps" and torch.backends.mps.is_available():
             device = "mps"
         elif self.device == "cuda" and torch.cuda.is_available():
@@ -364,16 +562,59 @@ class ECAPAModelManager:
         else:
             device = "cpu"
 
-        logger.info(f"Loading ECAPA-TDNN model on {device}...")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Cache dir: {self.cache_dir}")
+        logger.info(f"   Model source: {self.model_path}")
+        logger.info("=" * 50)
 
-        self.model = EncoderClassifier.from_hparams(
-            source=self.model_path,
-            savedir=self.cache_dir,
-            run_opts={"device": device}
-        )
+        # Step 3: Load model
+        load_start = time.time()
 
-        self.device = device
-        logger.info(f"ECAPA-TDNN loaded successfully on {device}")
+        try:
+            logger.info("Loading ECAPA-TDNN model...")
+
+            self.model = EncoderClassifier.from_hparams(
+                source=self.model_path,
+                savedir=self.cache_dir,
+                run_opts={"device": device}
+            )
+
+            load_duration = (time.time() - load_start) * 1000
+            self.device = device
+
+            logger.info("=" * 50)
+            logger.info(f"✅ ECAPA-TDNN LOADED SUCCESSFULLY")
+            logger.info(f"   Device: {device}")
+            logger.info(f"   Source: {self.load_source}")
+            logger.info(f"   Load time: {load_duration:.0f}ms")
+            logger.info("=" * 50)
+
+        except Exception as e:
+            logger.error(f"❌ Model loading failed: {e}")
+
+            # If pre-baked cache failed, try fresh download as fallback
+            if self._using_prebaked:
+                logger.warning("🔄 Pre-baked cache load failed, attempting fresh download...")
+
+                # Disable offline mode
+                os.environ.pop("HF_HUB_OFFLINE", None)
+                os.environ.pop("TRANSFORMERS_OFFLINE", None)
+
+                # Use runtime cache for fresh download
+                self.cache_dir = CloudECAPAConfig.CACHE_DIR
+                os.makedirs(self.cache_dir, exist_ok=True)
+                self.load_source = "fresh_download_fallback"
+
+                self.model = EncoderClassifier.from_hparams(
+                    source=self.model_path,
+                    savedir=self.cache_dir,
+                    run_opts={"device": device}
+                )
+
+                self.device = device
+                logger.info(f"✅ ECAPA-TDNN loaded via fresh download fallback on {device}")
+            else:
+                raise
 
     async def _warmup(self):
         """Run warmup inference to ensure model is fully loaded."""
@@ -496,7 +737,7 @@ class ECAPAModelManager:
         return float(np.dot(embedding1, embedding2) / (norm1 * norm2))
 
     def status(self) -> Dict[str, Any]:
-        """Get detailed model status."""
+        """Get detailed model status including cache diagnostics."""
         return {
             "ready": self.is_ready,
             "loading": self._loading,
@@ -508,7 +749,15 @@ class ECAPAModelManager:
             "inference_count": self.inference_count,
             "avg_inference_ms": round(self.avg_inference_ms, 2),
             "circuit_breaker": self.circuit_breaker.to_dict(),
-            "cache": self.embedding_cache.stats(),
+            "embedding_cache": self.embedding_cache.stats(),
+            # Pre-baked cache information
+            "model_cache": {
+                "cache_dir": self.cache_dir,
+                "load_source": self.load_source,
+                "using_prebaked": self._using_prebaked,
+                "prebaked_cache_path": self._prebaked_cache,
+                "diagnostics": self._cache_diagnostics,
+            },
         }
 
 
@@ -636,14 +885,22 @@ if FASTAPI_AVAILABLE:
 
     @app.get("/health")
     async def health_check():
-        """Health check endpoint."""
+        """Health check endpoint with cache status."""
         manager = get_model_manager()
 
-        return {
+        response = {
             "status": "healthy" if manager.is_ready else "initializing",
             "ecapa_ready": manager.is_ready,
             "timestamp": datetime.utcnow().isoformat(),
         }
+
+        # Include cache info if model is loaded
+        if manager.is_ready:
+            response["load_source"] = manager.load_source
+            response["using_prebaked_cache"] = manager._using_prebaked
+            response["load_time_ms"] = manager.load_time_ms
+
+        return response
 
     @app.get("/status")
     async def get_status():
