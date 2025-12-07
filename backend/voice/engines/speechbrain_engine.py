@@ -1568,8 +1568,10 @@ __all__ = ["EncoderDecoderASR"]
                 with torch.no_grad():
                     # Encode the waveform
                     embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
-                    # Convert to numpy
-                    return embeddings[0].cpu().numpy()
+                    # CRITICAL: Convert to numpy with COPY to avoid memory corruption
+                    # .numpy() shares memory with PyTorch - must clone before returning to main thread
+                    embedding_safe = embeddings[0].detach().clone().cpu()
+                    return np.array(embedding_safe.numpy(), dtype=np.float32, copy=True)
 
             # Run blocking encode_batch in thread pool
             loop = asyncio.get_running_loop()

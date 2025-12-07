@@ -2100,6 +2100,7 @@ class UnifiedVoiceCacheManager:
         Synchronous embedding extraction - runs in thread pool.
 
         CRITICAL: This runs CPU-intensive PyTorch operations off the event loop.
+        IMPORTANT: Must return OWNED numpy array (copy), not shared memory with torch!
 
         Handles all audio input types via audio_data_to_numpy helper.
         """
@@ -2134,8 +2135,12 @@ class UnifiedVoiceCacheManager:
             with torch.no_grad():
                 embedding = encoder.encode_batch(waveform)
 
-            # Convert to numpy and flatten
-            embedding_np = embedding.squeeze().cpu().numpy()
+            # CRITICAL FIX: Convert to numpy with COPY to avoid memory corruption
+            # .numpy() shares memory with PyTorch tensor - if the tensor is freed
+            # (e.g., when thread pool worker exits), the numpy array becomes invalid.
+            # Using .clone().detach() ensures we have our own copy of the data.
+            embedding_safe = embedding.squeeze().detach().clone().cpu()
+            embedding_np = np.array(embedding_safe.numpy(), dtype=np.float32, copy=True)
 
             # Validate embedding dimensions
             if embedding_np.shape[-1] != 192:
