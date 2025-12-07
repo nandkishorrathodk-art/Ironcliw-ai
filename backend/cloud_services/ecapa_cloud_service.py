@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Cloud ECAPA Speaker Embedding Service v19.3.0
+Cloud ECAPA Speaker Embedding Service v20.0.0
 ==============================================
 
 Ultra-fast, production-ready cloud service for ECAPA-TDNN speaker embeddings.
-Designed for GCP Cloud Run with <5s cold starts using TorchScript JIT models.
+Designed for GCP Cloud Run with <2s cold starts using optimized models.
 
 Key Features:
+- MULTI-STRATEGY OPTIMIZATION: JIT, ONNX, Quantization with auto-selection
 - TORCHSCRIPT JIT: Pre-compiled model loads in <2s (vs 140s standard)
+- ONNX RUNTIME: Portable, optimized inference with ONNXRuntime
+- DYNAMIC QUANTIZATION: Reduced model size with int8 weights
 - STRICT OFFLINE MODE: Zero network calls at runtime
 - PRE-BAKED MODEL: Model weights baked into Docker image
 - ASYNC PARALLEL LOADING: Non-blocking initialization
@@ -17,7 +20,7 @@ Key Features:
 - Embedding caching with TTL
 - Comprehensive metrics and telemetry
 
-v19.3.0 - TorchScript JIT for Ultra-Fast Cold Starts (<5s)
+v20.0.0 - Multi-Strategy Optimization for Ultra-Fast Cold Starts (<2s)
 
 Endpoints:
     GET  /health              - Health check with ECAPA readiness
@@ -33,6 +36,8 @@ Environment Variables:
     ECAPA_DEVICE            - Device to run on (cpu/cuda/mps)
     ECAPA_STRICT_OFFLINE    - Enforce strict offline mode (no network)
     ECAPA_SKIP_HF_DOWNLOAD  - Skip HuggingFace downloads
+    ECAPA_USE_OPTIMIZED     - Use optimized models (jit/onnx/quantized)
+    ECAPA_PREFERRED_STRATEGY - Preferred optimization strategy
     PORT                    - Server port (default: 8010)
 """
 
@@ -146,6 +151,19 @@ class CloudECAPAConfig:
     SKIP_HF_DOWNLOAD = os.getenv("ECAPA_SKIP_HF_DOWNLOAD", "true").lower() == "true"
     CACHE_VERIFICATION_ENABLED = os.getenv("ECAPA_VERIFY_CACHE", "true").lower() == "true"
     PREBAKED_MANIFEST = os.getenv("ECAPA_PREBAKED_MANIFEST", "/opt/ecapa_cache/.prebaked_manifest.json")
+
+    # OPTIMIZED MODEL SETTINGS (v20.0.0)
+    USE_OPTIMIZED = os.getenv("ECAPA_USE_OPTIMIZED", "true").lower() == "true"
+    PREFERRED_STRATEGY = os.getenv("ECAPA_PREFERRED_STRATEGY", "auto")  # auto, jit, onnx, quantized
+    OPTIMIZATION_MANIFEST = os.getenv("ECAPA_OPTIMIZATION_MANIFEST", "/opt/ecapa_cache/.optimization_manifest.json")
+
+    # Known optimized model files
+    OPTIMIZED_MODEL_FILES = {
+        "jit_trace": "ecapa_jit_traced.pt",
+        "jit_script": "ecapa_jit_scripted.pt",
+        "onnx": "ecapa_model.onnx",
+        "quantize_dynamic": "ecapa_quantized_dynamic.pt",
+    }
 
     # Required files for a valid pre-baked cache
     REQUIRED_CACHE_FILES = [
@@ -456,6 +474,358 @@ class TTLCache:
 
 
 # =============================================================================
+# OPTIMIZED MODEL LOADER v20.0.0
+# =============================================================================
+
+class OptimizedModelLoader:
+    """
+    Loader for optimized ECAPA models (JIT, ONNX, Quantized).
+
+    Supports multiple optimization strategies with automatic fallback:
+    1. TorchScript JIT (traced or scripted)
+    2. ONNX Runtime
+    3. Dynamic Quantization
+    4. Standard SpeechBrain (fallback)
+
+    v20.0.0 Features:
+    - Auto-detection of available optimized models
+    - Manifest-based model selection
+    - Comprehensive timing and telemetry
+    - Graceful fallback to standard loading
+    """
+
+    def __init__(self, cache_dir: str, device: str = "cpu"):
+        self.cache_dir = cache_dir
+        self.device = device
+
+        # Model instances
+        self._jit_model = None
+        self._onnx_session = None
+        self._quantized_model = None
+        self._speechbrain_encoder = None
+
+        # Feature extraction components (for JIT/quantized models)
+        self._compute_features = None
+        self._mean_var_norm = None
+
+        # State
+        self.active_strategy: Optional[str] = None
+        self.requires_feature_extraction: bool = False
+
+        # Telemetry
+        self.load_time_ms: float = 0.0
+        self.model_size_mb: float = 0.0
+        self.optimization_manifest: Optional[Dict[str, Any]] = None
+
+    def _load_optimization_manifest(self) -> Optional[Dict[str, Any]]:
+        """Load the optimization manifest created during compilation."""
+        manifest_paths = [
+            CloudECAPAConfig.OPTIMIZATION_MANIFEST,
+            os.path.join(self.cache_dir, ".optimization_manifest.json"),
+        ]
+
+        for path in manifest_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r') as f:
+                        manifest = json.load(f)
+                    logger.info(f"Loaded optimization manifest from {path}")
+                    logger.info(f"   Version: {manifest.get('version', 'unknown')}")
+                    logger.info(f"   Best strategy: {manifest.get('best_strategy', 'none')}")
+                    return manifest
+                except Exception as e:
+                    logger.warning(f"Failed to load manifest from {path}: {e}")
+
+        return None
+
+    def _find_optimized_models(self) -> Dict[str, str]:
+        """Find all available optimized model files."""
+        available = {}
+
+        for strategy, filename in CloudECAPAConfig.OPTIMIZED_MODEL_FILES.items():
+            path = os.path.join(self.cache_dir, filename)
+            if os.path.exists(path):
+                size_mb = os.path.getsize(path) / (1024 * 1024)
+                available[strategy] = path
+                logger.debug(f"Found optimized model: {strategy} ({size_mb:.2f} MB)")
+
+        return available
+
+    def _select_best_strategy(self, available: Dict[str, str]) -> Optional[str]:
+        """Select the best optimization strategy based on preference and availability."""
+        preferred = CloudECAPAConfig.PREFERRED_STRATEGY.lower()
+
+        # If specific strategy requested, use it if available
+        strategy_mapping = {
+            "jit": ["jit_trace", "jit_script"],
+            "onnx": ["onnx"],
+            "quantized": ["quantize_dynamic"],
+            "quantize": ["quantize_dynamic"],
+        }
+
+        if preferred != "auto" and preferred in strategy_mapping:
+            for strategy in strategy_mapping[preferred]:
+                if strategy in available:
+                    return strategy
+            logger.warning(f"Preferred strategy '{preferred}' not available")
+
+        # Auto selection: prioritize based on manifest recommendation or default order
+        if self.optimization_manifest:
+            best = self.optimization_manifest.get("best_strategy")
+            if best and best in available:
+                return best
+
+        # Default priority order
+        priority = ["jit_trace", "onnx", "quantize_dynamic", "jit_script"]
+        for strategy in priority:
+            if strategy in available:
+                return strategy
+
+        return None
+
+    def load_jit_model(self, model_path: str) -> bool:
+        """Load a TorchScript JIT model."""
+        logger.info(f"Loading JIT model from {model_path}...")
+        start = time.time()
+
+        try:
+            self._jit_model = torch.jit.load(model_path, map_location=self.device)
+            self._jit_model.eval()
+
+            # Run warmup inference
+            with torch.no_grad():
+                test_audio = torch.randn(1, 32000)
+                _ = self._jit_model(test_audio)
+
+            self.load_time_ms = (time.time() - start) * 1000
+            self.model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+            self.requires_feature_extraction = False  # Full pipeline JIT
+
+            logger.info(f"JIT model loaded in {self.load_time_ms:.1f}ms ({self.model_size_mb:.2f} MB)")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load JIT model: {e}")
+            logger.debug(traceback.format_exc())
+            return False
+
+    def load_onnx_model(self, model_path: str) -> bool:
+        """Load an ONNX model with ONNXRuntime."""
+        logger.info(f"Loading ONNX model from {model_path}...")
+        start = time.time()
+
+        try:
+            import onnxruntime as ort
+
+            # Configure ONNX Runtime session
+            sess_options = ort.SessionOptions()
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.intra_op_num_threads = 4
+            sess_options.inter_op_num_threads = 2
+
+            # Use CPU execution provider (Cloud Run doesn't have GPU)
+            providers = ["CPUExecutionProvider"]
+
+            self._onnx_session = ort.InferenceSession(
+                model_path,
+                sess_options,
+                providers=providers
+            )
+
+            # Run warmup inference
+            test_audio = np.random.randn(1, 32000).astype(np.float32) * 0.1
+            _ = self._onnx_session.run(["embedding"], {"audio": test_audio})
+
+            self.load_time_ms = (time.time() - start) * 1000
+            self.model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+            self.requires_feature_extraction = False  # Full pipeline ONNX
+
+            logger.info(f"ONNX model loaded in {self.load_time_ms:.1f}ms ({self.model_size_mb:.2f} MB)")
+            logger.info(f"   ONNXRuntime version: {ort.__version__}")
+            return True
+
+        except ImportError:
+            logger.error("ONNXRuntime not installed. Install with: pip install onnxruntime")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load ONNX model: {e}")
+            logger.debug(traceback.format_exc())
+            return False
+
+    def load_quantized_model(self, model_path: str) -> bool:
+        """Load a quantized PyTorch model."""
+        logger.info(f"Loading quantized model from {model_path}...")
+        start = time.time()
+
+        try:
+            self._quantized_model = torch.jit.load(model_path, map_location=self.device)
+            self._quantized_model.eval()
+
+            # Quantized models typically require feature extraction
+            self.requires_feature_extraction = True
+
+            self.load_time_ms = (time.time() - start) * 1000
+            self.model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+
+            logger.info(f"Quantized model loaded in {self.load_time_ms:.1f}ms ({self.model_size_mb:.2f} MB)")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load quantized model: {e}")
+            logger.debug(traceback.format_exc())
+            return False
+
+    def load_speechbrain_encoder(self) -> bool:
+        """Load standard SpeechBrain encoder as fallback."""
+        logger.info("Loading standard SpeechBrain encoder (fallback)...")
+        start = time.time()
+
+        try:
+            self._speechbrain_encoder = EncoderClassifier.from_hparams(
+                source=CloudECAPAConfig.MODEL_PATH,
+                savedir=self.cache_dir,
+                run_opts={"device": self.device}
+            )
+
+            # Store feature extraction components for quantized model fallback
+            self._compute_features = self._speechbrain_encoder.mods.compute_features
+            self._mean_var_norm = self._speechbrain_encoder.mods.mean_var_norm
+
+            self.load_time_ms = (time.time() - start) * 1000
+            self.requires_feature_extraction = False
+
+            logger.info(f"SpeechBrain encoder loaded in {self.load_time_ms:.1f}ms")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load SpeechBrain encoder: {e}")
+            logger.debug(traceback.format_exc())
+            return False
+
+    def extract_features(self, audio: torch.Tensor) -> torch.Tensor:
+        """Extract mel features for quantized model inference."""
+        if self._compute_features is None or self._mean_var_norm is None:
+            raise RuntimeError("Feature extraction components not loaded")
+
+        with torch.no_grad():
+            feats = self._compute_features(audio)
+            lens = torch.ones(feats.shape[0], device=feats.device)
+            feats = self._mean_var_norm(feats, lens)
+            return feats
+
+    def load(self) -> bool:
+        """
+        Load the best available optimized model.
+
+        Priority:
+        1. Check optimization manifest for recommended model
+        2. Try to load preferred strategy
+        3. Fall back to available optimized models
+        4. Fall back to standard SpeechBrain loading
+        """
+        logger.info("=" * 60)
+        logger.info("OPTIMIZED MODEL LOADING v20.0.0")
+        logger.info("=" * 60)
+
+        # Skip optimization if disabled
+        if not CloudECAPAConfig.USE_OPTIMIZED:
+            logger.info("Optimized loading disabled, using standard SpeechBrain")
+            if self.load_speechbrain_encoder():
+                self.active_strategy = "speechbrain"
+                return True
+            return False
+
+        # Load manifest
+        self.optimization_manifest = self._load_optimization_manifest()
+
+        # Find available optimized models
+        available = self._find_optimized_models()
+        logger.info(f"Available optimized models: {list(available.keys())}")
+
+        if not available:
+            logger.info("No optimized models found, falling back to SpeechBrain")
+            if self.load_speechbrain_encoder():
+                self.active_strategy = "speechbrain"
+                return True
+            return False
+
+        # Select best strategy
+        selected = self._select_best_strategy(available)
+        logger.info(f"Selected strategy: {selected}")
+
+        if selected is None:
+            logger.warning("No suitable strategy found, falling back to SpeechBrain")
+            if self.load_speechbrain_encoder():
+                self.active_strategy = "speechbrain"
+                return True
+            return False
+
+        # Try to load selected model
+        model_path = available[selected]
+        success = False
+
+        if selected in ["jit_trace", "jit_script"]:
+            success = self.load_jit_model(model_path)
+        elif selected == "onnx":
+            success = self.load_onnx_model(model_path)
+        elif selected == "quantize_dynamic":
+            success = self.load_quantized_model(model_path)
+            # Quantized models need feature extraction, load SpeechBrain for that
+            if success and self.requires_feature_extraction:
+                logger.info("Loading feature extraction components...")
+                self.load_speechbrain_encoder()
+
+        if success:
+            self.active_strategy = selected
+            logger.info(f"Model loaded successfully with strategy: {selected}")
+            return True
+
+        # Fallback to SpeechBrain
+        logger.warning(f"Failed to load {selected}, falling back to SpeechBrain")
+        if self.load_speechbrain_encoder():
+            self.active_strategy = "speechbrain"
+            return True
+
+        return False
+
+    def encode(self, audio: torch.Tensor) -> torch.Tensor:
+        """
+        Extract speaker embedding from audio.
+
+        Automatically uses the loaded optimized model.
+        """
+        with torch.no_grad():
+            if self.active_strategy in ["jit_trace", "jit_script"]:
+                return self._jit_model(audio).squeeze()
+
+            elif self.active_strategy == "onnx":
+                audio_np = audio.numpy() if isinstance(audio, torch.Tensor) else audio
+                result = self._onnx_session.run(["embedding"], {"audio": audio_np})
+                return torch.tensor(result[0]).squeeze()
+
+            elif self.active_strategy == "quantize_dynamic":
+                features = self.extract_features(audio)
+                return self._quantized_model(features).squeeze()
+
+            elif self.active_strategy == "speechbrain":
+                return self._speechbrain_encoder.encode_batch(audio).squeeze()
+
+            else:
+                raise RuntimeError(f"No model loaded (strategy: {self.active_strategy})")
+
+    def status(self) -> Dict[str, Any]:
+        """Get loader status and telemetry."""
+        return {
+            "active_strategy": self.active_strategy,
+            "load_time_ms": round(self.load_time_ms, 2),
+            "model_size_mb": round(self.model_size_mb, 2),
+            "requires_feature_extraction": self.requires_feature_extraction,
+            "optimization_manifest_loaded": self.optimization_manifest is not None,
+            "available_strategies": list(self._find_optimized_models().keys()),
+        }
+
+
+# =============================================================================
 # ECAPA MODEL MANAGER
 # =============================================================================
 
@@ -463,11 +833,12 @@ class ECAPAModelManager:
     """
     Manages ECAPA-TDNN model lifecycle with async parallel loading and caching.
 
-    v19.0.0 Features:
-    - INSTANT STARTUP: Uses pre-baked manifest for cache verification (no file scanning)
+    v20.0.0 Features:
+    - MULTI-STRATEGY OPTIMIZATION: JIT, ONNX, Quantization with auto-selection
+    - INSTANT STARTUP: Uses optimized models for <2s cold starts
     - PARALLEL LOADING: Async initialization with thread pool execution
     - STRICT OFFLINE: Fast-fails if no valid cache (no network fallback)
-    - PRE-WARMED: JIT compilation already done during Docker build
+    - PRE-WARMED: JIT/ONNX compilation already done during Docker build
     - Thread-safe async loading with proper locking
     - Comprehensive telemetry and diagnostics
     """
@@ -480,11 +851,15 @@ class ECAPAModelManager:
         self.device = CloudECAPAConfig.DEVICE
         self.model_path = CloudECAPAConfig.MODEL_PATH
 
+        # Optimized model loader (v20.0.0)
+        self._optimized_loader: Optional[OptimizedModelLoader] = None
+
         # Pre-baked manifest (instant cache verification)
         self._prebaked_manifest: Optional[Dict[str, Any]] = None
         self._prebaked_cache: Optional[str] = None
         self._cache_diagnostics: Dict[str, Any] = {}
         self._using_prebaked = False
+        self._using_optimized = False
 
         # Will be set during initialization after cache discovery
         self.cache_dir = CloudECAPAConfig.CACHE_DIR
@@ -500,7 +875,7 @@ class ECAPAModelManager:
         self.warmup_time_ms: Optional[float] = None
         self.inference_count = 0
         self.total_inference_time_ms = 0.0
-        self.load_source: str = "unknown"  # "prebaked", "runtime_cache", "fresh_download"
+        self.load_source: str = "unknown"  # "jit_trace", "onnx", "quantized", "speechbrain"
 
         # Circuit breaker
         self.circuit_breaker = CircuitBreaker()
@@ -516,6 +891,9 @@ class ECAPAModelManager:
 
     @property
     def is_ready(self) -> bool:
+        # Ready if we have an optimized loader with a strategy, or a standard model
+        if self._optimized_loader and self._optimized_loader.active_strategy:
+            return self._ready
         return self._ready and self.model is not None
 
     @property
@@ -628,15 +1006,68 @@ class ECAPAModelManager:
                 self._loading = False
 
     async def _load_model(self):
-        """Load the ECAPA-TDNN model (runs in thread pool)."""
-        logger.info("Starting model load in thread pool...")
+        """Load the ECAPA-TDNN model using optimized loader (runs in thread pool)."""
+        logger.info("Starting optimized model load in thread pool...")
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._load_model_sync)
+            await loop.run_in_executor(None, self._load_model_optimized)
             logger.info("Thread pool model load completed")
         except Exception as e:
             logger.error(f"Thread pool model load failed: {e}")
             raise
+
+    def _load_model_optimized(self):
+        """
+        Load model using OptimizedModelLoader (v20.0.0).
+
+        This is the new primary loading path that tries:
+        1. TorchScript JIT (fastest, <2s)
+        2. ONNX Runtime (fast, portable)
+        3. Quantized model (smaller, fast)
+        4. Standard SpeechBrain (fallback)
+        """
+        logger.info("=" * 60)
+        logger.info("ECAPA MODEL LOADING v20.0.0 - Optimized Path")
+        logger.info("=" * 60)
+
+        # Determine cache directory
+        if self._using_prebaked and self._prebaked_cache:
+            cache_dir = self._prebaked_cache
+        else:
+            # Find valid cache
+            cache_dir, _, _ = CloudECAPAConfig.find_valid_cache()
+            if not cache_dir:
+                cache_dir = CloudECAPAConfig.CACHE_DIR
+
+        logger.info(f"Using cache directory: {cache_dir}")
+        self.cache_dir = cache_dir
+
+        # Create optimized loader
+        self._optimized_loader = OptimizedModelLoader(
+            cache_dir=cache_dir,
+            device=self.device
+        )
+
+        # Load model
+        load_start = time.time()
+        success = self._optimized_loader.load()
+
+        if success:
+            self._using_optimized = True
+            self.load_source = self._optimized_loader.active_strategy
+            self.load_time_ms = self._optimized_loader.load_time_ms
+
+            logger.info("=" * 60)
+            logger.info(f"ECAPA MODEL LOADED - Strategy: {self.load_source}")
+            logger.info(f"   Load time: {self.load_time_ms:.1f}ms")
+            logger.info(f"   Model size: {self._optimized_loader.model_size_mb:.2f}MB")
+            logger.info("=" * 60)
+        else:
+            # Fall back to legacy loading
+            logger.warning("Optimized loading failed, trying legacy path...")
+            self._load_model_sync()
+
+            self._using_optimized = False
 
     def _load_model_sync(self):
         """
@@ -875,8 +1306,6 @@ class ECAPAModelManager:
         start_time = time.time()
 
         try:
-            import torch
-
             # Ensure audio is normalized float32
             if audio_data.dtype != np.float32:
                 audio_data = audio_data.astype(np.float32)
@@ -889,12 +1318,21 @@ class ECAPAModelManager:
             # Convert to tensor
             audio_tensor = torch.tensor(audio_data).unsqueeze(0)
 
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_running_loop()
-            embedding = await loop.run_in_executor(
-                None,
-                lambda: self.model.encode_batch(audio_tensor).squeeze().cpu().numpy()
-            )
+            # Use optimized loader if available (v20.0.0)
+            if self._using_optimized and self._optimized_loader:
+                # Run in thread pool to avoid blocking
+                loop = asyncio.get_running_loop()
+                embedding = await loop.run_in_executor(
+                    None,
+                    lambda: self._optimized_loader.encode(audio_tensor).cpu().numpy()
+                )
+            else:
+                # Legacy path using standard SpeechBrain model
+                loop = asyncio.get_running_loop()
+                embedding = await loop.run_in_executor(
+                    None,
+                    lambda: self.model.encode_batch(audio_tensor).squeeze().cpu().numpy()
+                )
 
             # Update stats
             inference_time = (time.time() - start_time) * 1000
@@ -935,8 +1373,8 @@ class ECAPAModelManager:
         return float(np.dot(embedding1, embedding2) / (norm1 * norm2))
 
     def status(self) -> Dict[str, Any]:
-        """Get detailed model status including cache diagnostics."""
-        return {
+        """Get detailed model status including cache and optimization diagnostics."""
+        status_dict = {
             "ready": self.is_ready,
             "loading": self._loading,
             "error": self._error,
@@ -956,7 +1394,14 @@ class ECAPAModelManager:
                 "prebaked_cache_path": self._prebaked_cache,
                 "diagnostics": self._cache_diagnostics,
             },
+            # Optimized model loader information (v20.0.0)
+            "optimization": {
+                "using_optimized": self._using_optimized,
+                "loader_status": self._optimized_loader.status() if self._optimized_loader else None,
+            },
         }
+
+        return status_dict
 
 
 # =============================================================================
@@ -993,8 +1438,8 @@ if FASTAPI_AVAILABLE:
 
     app = FastAPI(
         title="ECAPA Cloud Service",
-        description="Cloud ECAPA-TDNN Speaker Embedding Service - Ultra-Fast Cold Starts",
-        version="19.0.0",
+        description="Cloud ECAPA-TDNN Speaker Embedding Service - Ultra-Fast Cold Starts with JIT/ONNX/Quantization",
+        version="20.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -1102,15 +1547,16 @@ if FASTAPI_AVAILABLE:
 
     @app.get("/status")
     async def get_status():
-        """Detailed service status."""
+        """Detailed service status with optimization info."""
         manager = get_model_manager()
 
         return {
             "service": "ecapa_cloud_service",
-            "version": "19.0.0",
+            "version": "20.0.0",
             "config": CloudECAPAConfig.to_dict(),
             "model": manager.status(),
             "prebaked_manifest": manager._prebaked_manifest,
+            "optimization_manifest": manager._optimized_loader.optimization_manifest if manager._optimized_loader else None,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -1462,7 +1908,8 @@ def main():
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info("ECAPA Cloud Service v19.0.0 - Ultra-Fast Cold Starts")
+    logger.info("ECAPA Cloud Service v20.0.0 - Ultra-Fast Cold Starts")
+    logger.info("  Optimization: JIT | ONNX | Quantization")
     logger.info("=" * 60)
     logger.info(f"Configuration: {CloudECAPAConfig.to_dict()}")
 

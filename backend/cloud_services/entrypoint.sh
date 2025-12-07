@@ -1,20 +1,22 @@
 #!/bin/bash
 # =============================================================================
-# ECAPA Cloud Service Entrypoint Script
+# ECAPA Cloud Service Entrypoint Script v20.0.0
 # =============================================================================
 # Robust startup script that handles:
+# - Optimized model detection (JIT/ONNX/Quantized)
 # - Cache directory creation and permissions
+# - Manifest verification for instant startup
 # - Fallback mechanisms for model loading
 # - Comprehensive error handling and logging
 # - Health pre-checks before service start
 #
-# v18.3.0
+# v20.0.0 - Support for multi-strategy optimization (JIT/ONNX/Quantization)
 # =============================================================================
 
 set -e  # Exit on error
 
 # =============================================================================
-# CONFIGURATION - v18.4.0
+# CONFIGURATION
 # =============================================================================
 SOURCE_CACHE="${ECAPA_SOURCE_CACHE:-/opt/ecapa_cache}"
 RUNTIME_CACHE="${ECAPA_CACHE_DIR:-/tmp/ecapa_cache}"
@@ -23,6 +25,12 @@ LOG_PREFIX="[ENTRYPOINT]"
 
 # Required files for ECAPA model
 REQUIRED_FILES="hyperparams.yaml embedding_model.ckpt"
+
+# Optimized model files (v20.0.0)
+JIT_MODEL="ecapa_jit_traced.pt"
+ONNX_MODEL="ecapa_model.onnx"
+QUANTIZED_MODEL="ecapa_quantized_dynamic.pt"
+OPTIMIZATION_MANIFEST=".optimization_manifest.json"
 
 # =============================================================================
 # LOGGING FUNCTIONS
@@ -45,6 +53,10 @@ log_debug() {
     fi
 }
 
+log_success() {
+    echo "${LOG_PREFIX} [OK] $(date '+%Y-%m-%d %H:%M:%S') $1"
+}
+
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
@@ -62,19 +74,13 @@ is_writable() {
 # Create directory with proper permissions
 create_writable_dir() {
     local dir="$1"
-    log_info "Creating directory: $dir"
+    log_debug "Creating directory: $dir"
 
-    # Remove if exists (start fresh)
-    rm -rf "$dir" 2>/dev/null || true
-
-    # Create new directory
-    mkdir -p "$dir"
-
-    # Set permissive permissions
-    chmod 777 "$dir" 2>/dev/null || chmod 755 "$dir" 2>/dev/null || true
+    mkdir -p "$dir" 2>/dev/null || true
+    chmod 755 "$dir" 2>/dev/null || true
 
     if is_writable "$dir"; then
-        log_info "Directory $dir is writable"
+        log_debug "Directory $dir is writable"
         return 0
     else
         log_warn "Directory $dir may not be writable"
@@ -82,41 +88,58 @@ create_writable_dir() {
     fi
 }
 
-# Copy cache with proper permissions
-copy_cache() {
-    local src="$1"
-    local dst="$2"
+# Check for optimized model files
+check_optimized_models() {
+    local cache_dir="$1"
+    local found_models=""
 
-    log_info "Copying cache from $src to $dst"
+    log_info "Checking for optimized model files..."
 
-    # Create destination directory fresh
-    create_writable_dir "$dst"
-
-    # Check if source exists
-    if [ ! -d "$src" ]; then
-        log_warn "Source cache not found: $src"
-        return 1
+    # Check JIT model
+    if [ -f "$cache_dir/$JIT_MODEL" ]; then
+        local size=$(du -h "$cache_dir/$JIT_MODEL" 2>/dev/null | cut -f1)
+        log_success "JIT model found: $JIT_MODEL ($size)"
+        found_models="$found_models jit"
     fi
 
-    # Copy contents (not the directory itself)
-    if [ -d "$src" ] && [ "$(ls -A $src 2>/dev/null)" ]; then
-        # Use cp with dereference to handle symlinks
-        cp -rL "$src"/* "$dst"/ 2>/dev/null || cp -r "$src"/* "$dst"/ 2>/dev/null
+    # Check ONNX model
+    if [ -f "$cache_dir/$ONNX_MODEL" ]; then
+        local size=$(du -h "$cache_dir/$ONNX_MODEL" 2>/dev/null | cut -f1)
+        log_success "ONNX model found: $ONNX_MODEL ($size)"
+        found_models="$found_models onnx"
+    fi
 
-        # Set permissions on all files and directories
-        chmod -R 777 "$dst" 2>/dev/null || chmod -R 755 "$dst" 2>/dev/null || true
+    # Check quantized model
+    if [ -f "$cache_dir/$QUANTIZED_MODEL" ]; then
+        local size=$(du -h "$cache_dir/$QUANTIZED_MODEL" 2>/dev/null | cut -f1)
+        log_success "Quantized model found: $QUANTIZED_MODEL ($size)"
+        found_models="$found_models quantized"
+    fi
 
-        # Specifically ensure yaml and pickle files are readable/writable
-        find "$dst" -type f \( -name "*.yaml" -o -name "*.pkl" -o -name "*.ckpt" -o -name "*.pt" \) \
-            -exec chmod 666 {} \; 2>/dev/null || true
+    # Check optimization manifest
+    if [ -f "$cache_dir/$OPTIMIZATION_MANIFEST" ]; then
+        log_success "Optimization manifest found"
+        # Parse best strategy from manifest
+        if command -v python &> /dev/null; then
+            local best_strategy=$(python -c "
+import json
+try:
+    with open('$cache_dir/$OPTIMIZATION_MANIFEST') as f:
+        m = json.load(f)
+        print(m.get('best_strategy', 'unknown'))
+except:
+    print('unknown')
+" 2>/dev/null)
+            log_info "Best optimization strategy: $best_strategy"
+        fi
+    fi
 
-        log_info "Cache copy complete. Contents:"
-        ls -la "$dst" 2>/dev/null || true
-
-        return 0
-    else
-        log_warn "Source cache is empty: $src"
+    if [ -z "$found_models" ]; then
+        log_warn "No optimized models found - will use standard SpeechBrain loading"
         return 1
+    else
+        log_info "Optimized models available:$found_models"
+        return 0
     fi
 }
 
@@ -149,7 +172,7 @@ verify_cache() {
         return 1
     fi
 
-    log_info "Cache verification passed"
+    log_success "Cache verification passed"
     return 0
 }
 
@@ -159,63 +182,91 @@ verify_cache() {
 
 main() {
     log_info "=============================================="
-    log_info "ECAPA Cloud Service Startup - v18.5.0"
+    log_info "ECAPA Cloud Service Startup v20.0.0"
+    log_info "  Multi-Strategy Optimization Support"
     log_info "=============================================="
     log_info "User: $(whoami) (UID: $(id -u))"
     log_info "Working directory: $(pwd)"
     log_info "Pre-baked cache: $SOURCE_CACHE"
     log_info "HF_HOME: ${HF_HOME:-not set}"
     log_info "HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-not set}"
+    log_info "ECAPA_USE_OPTIMIZED: ${ECAPA_USE_OPTIMIZED:-not set}"
+    log_info "ECAPA_PREFERRED_STRATEGY: ${ECAPA_PREFERRED_STRATEGY:-auto}"
     log_info "=============================================="
 
+    # ==========================================================================
     # Step 1: Verify pre-baked cache exists
+    # ==========================================================================
     log_info "Step 1: Verifying pre-baked cache..."
 
-    # Check HuggingFace cache exists (this is where the model actually lives)
+    # Check HuggingFace cache exists
     HF_CACHE_PATH="${HF_HOME:-/opt/ecapa_cache/huggingface}"
     if [ -d "$HF_CACHE_PATH" ]; then
-        log_info "✅ HuggingFace cache found: $HF_CACHE_PATH"
-        # List contents for debugging
-        HF_CACHE_CONTENTS=$(find "$HF_CACHE_PATH" -type f -name "*.yaml" -o -name "*.ckpt" 2>/dev/null | head -5)
-        if [ -n "$HF_CACHE_CONTENTS" ]; then
-            log_info "✅ Model files found in HuggingFace cache"
-            log_debug "Files: $HF_CACHE_CONTENTS"
-        else
-            log_warn "⚠️ No model files found in HuggingFace cache"
-        fi
+        log_success "HuggingFace cache found: $HF_CACHE_PATH"
     else
-        log_warn "⚠️ HuggingFace cache not found: $HF_CACHE_PATH"
+        log_warn "HuggingFace cache not found: $HF_CACHE_PATH"
     fi
 
-    # Also check savedir
+    # Check source cache
     if [ -d "$SOURCE_CACHE" ]; then
-        log_info "✅ Source cache exists: $SOURCE_CACHE"
+        log_success "Source cache exists: $SOURCE_CACHE"
         ls -la "$SOURCE_CACHE" 2>/dev/null | head -10 || true
     else
-        log_warn "⚠️ Source cache not found: $SOURCE_CACHE"
+        log_warn "Source cache not found: $SOURCE_CACHE"
     fi
 
-    # Step 2: Create writable temp directories
-    log_info "Step 2: Creating temp directories..."
+    # Verify cache has required files
+    if verify_cache "$SOURCE_CACHE"; then
+        log_success "Base model files verified"
+    else
+        log_error "Base model files missing - service may fail to start"
+    fi
 
-    mkdir -p /tmp/torch_cache /tmp/xdg_cache /tmp/speechbrain_cache 2>/dev/null || true
+    # ==========================================================================
+    # Step 2: Check for optimized models (v20.0.0)
+    # ==========================================================================
+    log_info "Step 2: Checking for optimized models..."
+
+    if check_optimized_models "$SOURCE_CACHE"; then
+        log_success "Optimized models available for ultra-fast cold start"
+        export ECAPA_USE_OPTIMIZED="true"
+    else
+        log_info "No optimized models - using standard loading"
+        export ECAPA_USE_OPTIMIZED="false"
+    fi
+
+    # ==========================================================================
+    # Step 3: Create writable temp directories
+    # ==========================================================================
+    log_info "Step 3: Creating temp directories..."
+
+    create_writable_dir /tmp/torch_cache
+    create_writable_dir /tmp/xdg_cache
+    create_writable_dir /tmp/speechbrain_cache
 
     log_info "Environment configured:"
     log_info "  ECAPA_CACHE_DIR=${ECAPA_CACHE_DIR:-not set}"
     log_info "  HF_HOME=${HF_HOME:-not set}"
     log_info "  HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-not set}"
+    log_info "  ECAPA_USE_OPTIMIZED=${ECAPA_USE_OPTIMIZED:-not set}"
 
-    # Step 3: Pre-flight checks
-    log_info "Step 3: Running pre-flight checks..."
+    # ==========================================================================
+    # Step 4: Pre-flight checks
+    # ==========================================================================
+    log_info "Step 4: Running pre-flight checks..."
 
     # Check Python
     if command -v python &> /dev/null; then
         PYTHON_VERSION=$(python --version 2>&1)
-        log_info "Python: $PYTHON_VERSION"
+        log_success "Python: $PYTHON_VERSION"
     else
         log_error "Python not found!"
         exit 1
     fi
+
+    # Check PyTorch
+    TORCH_VERSION=$(python -c "import torch; print(f'{torch.__version__}')" 2>/dev/null || echo "NOT FOUND")
+    log_info "  PyTorch: $TORCH_VERSION"
 
     # Check if main script exists
     if [ ! -f "ecapa_cloud_service.py" ]; then
@@ -223,8 +274,13 @@ main() {
         exit 1
     fi
 
+    # ==========================================================================
+    # Step 5: Start service
+    # ==========================================================================
     log_info "=============================================="
     log_info "Starting ECAPA Cloud Service..."
+    log_info "  Optimization: ${ECAPA_USE_OPTIMIZED:-auto}"
+    log_info "  Strategy: ${ECAPA_PREFERRED_STRATEGY:-auto}"
     log_info "=============================================="
 
     # Start the service

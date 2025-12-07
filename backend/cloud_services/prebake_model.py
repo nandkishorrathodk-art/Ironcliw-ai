@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ECAPA Model Pre-Baking Script v19.2.0
+ECAPA Model Pre-Baking Script v20.0.0
 =====================================
 
 This script downloads and pre-bakes the ECAPA-TDNN model during Docker build.
@@ -12,68 +12,109 @@ Key Steps:
 3. Run warmup inference to trigger JIT compilation
 4. Verify all required files exist
 5. Create manifest file for instant cold start verification
+6. Optionally trigger model optimization (JIT/ONNX/Quantization)
 
 Usage:
-    python prebake_model.py [cache_dir] [model_source]
+    python prebake_model.py [cache_dir] [model_source] [--optimize]
+
+v20.0.0 - Integration with Model Optimization Suite
 """
 
+import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
+from typing import Dict, List, Optional, Tuple
 
 
-def main():
-    """Pre-bake ECAPA-TDNN model for ultra-fast cold starts."""
-    print("=" * 70)
-    print("ECAPA MODEL PRE-BAKING v19.2.0")
-    print("=" * 70)
+def log(message: str, level: str = "INFO"):
+    """Structured logging."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{timestamp} | {level:8} | prebake_model | {message}", flush=True)
 
-    # Configuration from args or environment
-    cache_dir = sys.argv[1] if len(sys.argv) > 1 else os.getenv("CACHE_DIR", "/opt/ecapa_cache")
-    model_source = sys.argv[2] if len(sys.argv) > 2 else os.getenv("MODEL_SOURCE", "speechbrain/spkrec-ecapa-voxceleb")
 
-    print(f"Model source: {model_source}")
-    print(f"Cache directory: {cache_dir}")
-    print()
+def section(title: str):
+    """Print section header."""
+    print("=" * 70, flush=True)
+    print(f" {title}", flush=True)
+    print("=" * 70, flush=True)
 
-    # Ensure cache directory exists
-    os.makedirs(cache_dir, exist_ok=True)
 
-    # Step 0: Pre-configure HuggingFace hub caching
-    print("[0/5] Configuring HuggingFace hub caching...")
-    hf_cache = os.path.join(cache_dir, "huggingface")
-    os.makedirs(hf_cache, exist_ok=True)
-    os.environ["HF_HOME"] = hf_cache
-    os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
-    print(f"      HF_HOME={hf_cache}")
-    print()
+def verify_cache_files(
+    cache_dir: str,
+    required_files: List[str],
+    optional_files: List[str]
+) -> Tuple[bool, Dict[str, any]]:
+    """Verify cache contains all required files."""
+    diagnostics = {
+        "required": {},
+        "optional": {},
+        "total_size_mb": 0,
+        "all_present": True,
+    }
 
-    # Step 1: Download and save model
-    print("[1/5] Downloading ECAPA-TDNN model...")
-    start = time.time()
+    total_size = 0
 
-    import numpy as np
-    import torch
-    from speechbrain.inference.speaker import EncoderClassifier
+    # Check required files
+    for f in required_files:
+        path = os.path.join(cache_dir, f)
+        exists = os.path.exists(path)
+        size = 0
 
-    encoder = EncoderClassifier.from_hparams(
-        source=model_source,
-        savedir=cache_dir,
-        run_opts={"device": "cpu"}
-    )
+        if exists:
+            try:
+                size = os.path.getsize(path)
+                total_size += size
+            except OSError:
+                pass
 
-    download_time = time.time() - start
-    print(f"      Model downloaded in {download_time:.1f}s")
-    print()
+        diagnostics["required"][f] = {
+            "exists": exists,
+            "size_mb": round(size / (1024 * 1024), 2) if size > 0 else 0,
+        }
 
-    # Step 1.5: Create custom.py stub to prevent HuggingFace hub lookup at runtime
-    # SpeechBrain always checks for custom.py even when not used
-    print("[1.5/5] Creating custom.py stub file...")
-    custom_py_path = os.path.join(cache_dir, "custom.py")
+        if not exists:
+            diagnostics["all_present"] = False
+            log(f"[MISSING] {f}", "WARN")
+        else:
+            log(f"[OK] {f} ({size/1024/1024:.2f} MB)")
+
+    # Check optional files
+    for f in optional_files:
+        path = os.path.join(cache_dir, f)
+        exists = os.path.exists(path)
+        size = 0
+
+        if exists:
+            try:
+                size = os.path.getsize(path)
+                total_size += size
+            except OSError:
+                pass
+
+            diagnostics["optional"][f] = {
+                "exists": exists,
+                "size_kb": round(size / 1024, 2) if size > 0 else 0,
+            }
+            log(f"[OK] {f} ({size/1024:.1f} KB)")
+
+    diagnostics["total_size_mb"] = round(total_size / (1024 * 1024), 2)
+
+    return diagnostics["all_present"], diagnostics
+
+
+def create_custom_py_stub(cache_dir: str) -> str:
+    """
+    Create custom.py stub to prevent HuggingFace hub lookup at runtime.
+
+    SpeechBrain always checks for custom.py even when not used. This stub
+    prevents the ~45-60 second delay from HuggingFace hub lookups.
+    """
     custom_py_content = '''"""
-SpeechBrain custom.py stub file (auto-generated by prebake_model.py v19.2.0)
+SpeechBrain custom.py stub file (auto-generated by prebake_model.py v20.0.0)
 
 This empty stub prevents SpeechBrain from attempting to fetch custom.py
 from HuggingFace hub at runtime, which would cause ~45-60 second delays.
@@ -83,44 +124,179 @@ directly, so no custom modules are needed here.
 """
 # No custom modules required for ECAPA-TDNN speaker verification
 '''
+
+    custom_py_path = os.path.join(cache_dir, "custom.py")
     with open(custom_py_path, "w") as f:
         f.write(custom_py_content)
-    print(f"      Created custom.py stub at {custom_py_path}")
+
+    log(f"Created custom.py stub at {custom_py_path}")
+    return custom_py_path
+
+
+def run_optimization(cache_dir: str, model_source: str, strategy: str = "all") -> bool:
+    """
+    Run model optimization suite (JIT/ONNX/Quantization).
+
+    This is optional during prebaking - the Dockerfile will also run it separately.
+    """
+    log(f"Running model optimization with strategy: {strategy}")
+
+    compile_script = os.path.join(os.path.dirname(__file__), "compile_model.py")
+
+    if not os.path.exists(compile_script):
+        log("compile_model.py not found, skipping optimization", "WARN")
+        return False
+
+    try:
+        result = subprocess.run(
+            [sys.executable, compile_script, cache_dir, model_source, f"--strategy={strategy}"],
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+        )
+
+        if result.returncode == 0:
+            log("Model optimization completed successfully")
+            # Print optimization output
+            for line in result.stdout.split('\n')[-20:]:  # Last 20 lines
+                if line.strip():
+                    print(f"  {line}")
+            return True
+        else:
+            log(f"Model optimization failed with code {result.returncode}", "WARN")
+            log(f"Error: {result.stderr[:500]}", "WARN")
+            return False
+
+    except subprocess.TimeoutExpired:
+        log("Model optimization timed out after 10 minutes", "WARN")
+        return False
+    except Exception as e:
+        log(f"Model optimization error: {e}", "WARN")
+        return False
+
+
+def main():
+    """Pre-bake ECAPA-TDNN model for ultra-fast cold starts."""
+    parser = argparse.ArgumentParser(
+        description="Pre-bake ECAPA-TDNN model for ultra-fast cold starts"
+    )
+    parser.add_argument(
+        "cache_dir",
+        nargs="?",
+        default=os.getenv("CACHE_DIR", "/opt/ecapa_cache"),
+        help="Directory for model cache"
+    )
+    parser.add_argument(
+        "model_source",
+        nargs="?",
+        default=os.getenv("MODEL_SOURCE", "speechbrain/spkrec-ecapa-voxceleb"),
+        help="Model source (HuggingFace hub or local path)"
+    )
+    parser.add_argument(
+        "--optimize",
+        action="store_true",
+        help="Also run model optimization (JIT/ONNX/Quantization)"
+    )
+    parser.add_argument(
+        "--strategy",
+        default="jit",
+        choices=["all", "jit", "onnx", "quantize"],
+        help="Optimization strategy to use"
+    )
+
+    args = parser.parse_args()
+
+    section("ECAPA MODEL PRE-BAKING v20.0.0")
+
+    log(f"Model source: {args.model_source}")
+    log(f"Cache directory: {args.cache_dir}")
+    log(f"Optimize: {args.optimize}")
     print()
 
-    # Step 2: Run warmup inference to trigger JIT compilation
-    print("[2/5] Running warmup inference (JIT compilation)...")
+    # Ensure cache directory exists
+    os.makedirs(args.cache_dir, exist_ok=True)
+
+    # ==========================================================================
+    # Step 0: Pre-configure HuggingFace hub caching
+    # ==========================================================================
+    log("[0/6] Configuring HuggingFace hub caching...")
+    hf_cache = os.path.join(args.cache_dir, "huggingface")
+    os.makedirs(hf_cache, exist_ok=True)
+    os.environ["HF_HOME"] = hf_cache
+    os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
+    log(f"      HF_HOME={hf_cache}")
+    print()
+
+    # ==========================================================================
+    # Step 1: Download and save model
+    # ==========================================================================
+    log("[1/6] Downloading ECAPA-TDNN model...")
+    start = time.time()
+
+    import numpy as np
+    import torch
+    from speechbrain.inference.speaker import EncoderClassifier
+
+    encoder = EncoderClassifier.from_hparams(
+        source=args.model_source,
+        savedir=args.cache_dir,
+        run_opts={"device": "cpu"}
+    )
+
+    download_time = time.time() - start
+    log(f"      Model downloaded in {download_time:.1f}s")
+    print()
+
+    # ==========================================================================
+    # Step 2: Create custom.py stub
+    # ==========================================================================
+    log("[2/6] Creating custom.py stub file...")
+    create_custom_py_stub(args.cache_dir)
+    print()
+
+    # ==========================================================================
+    # Step 3: Run warmup inference
+    # ==========================================================================
+    log("[3/6] Running warmup inference (JIT compilation)...")
     start = time.time()
 
     # Generate test audio (1 second at 16kHz)
     test_audio = torch.randn(1, 16000)
 
     # Run multiple warmup inferences to ensure everything is compiled
+    embedding = None
     for i in range(3):
         with torch.no_grad():
             embedding = encoder.encode_batch(test_audio)
-        print(f"      Warmup {i+1}/3 complete, embedding shape: {embedding.shape}")
+        log(f"      Warmup {i+1}/3 complete, embedding shape: {embedding.shape}")
 
     warmup_time = time.time() - start
-    print(f"      Warmup completed in {warmup_time:.1f}s")
+    log(f"      Warmup completed in {warmup_time:.1f}s")
     print()
 
-    # Step 2.5: Inspect all cached files (debugging)
-    print("[2.5/5] Inspecting all cached files...")
-    for root, dirs, files in os.walk(cache_dir):
+    # ==========================================================================
+    # Step 4: Inspect all cached files
+    # ==========================================================================
+    log("[4/6] Inspecting all cached files...")
+    file_count = 0
+    for root, dirs, files in os.walk(args.cache_dir):
         for f in files:
             full_path = os.path.join(root, f)
-            rel_path = os.path.relpath(full_path, cache_dir)
+            rel_path = os.path.relpath(full_path, args.cache_dir)
             size = os.path.getsize(full_path)
-            print(f"      {rel_path} ({size/1024:.1f} KB)")
+            log(f"      {rel_path} ({size/1024:.1f} KB)")
+            file_count += 1
+    log(f"      Total files: {file_count}")
     print()
 
-    # Step 3: Verify cache contents
-    print("[3/5] Verifying pre-baked cache...")
+    # ==========================================================================
+    # Step 5: Verify cache contents
+    # ==========================================================================
+    log("[5/6] Verifying pre-baked cache...")
     required_files = [
         "hyperparams.yaml",
         "embedding_model.ckpt",
-        "custom.py",  # Our stub file to prevent HuggingFace hub lookup
+        "custom.py",
     ]
     optional_files = [
         "mean_var_norm_emb.ckpt",
@@ -128,60 +304,71 @@ directly, so no custom modules are needed here.
         "label_encoder.txt",
     ]
 
-    all_present = True
-    total_size = 0
+    all_present, diagnostics = verify_cache_files(
+        args.cache_dir, required_files, optional_files
+    )
 
-    for f in required_files:
-        path = os.path.join(cache_dir, f)
-        if os.path.exists(path):
-            size = os.path.getsize(path)
-            total_size += size
-            print(f"      [OK] {f} ({size/1024/1024:.2f} MB)")
-        else:
-            print(f"      [MISSING] {f}")
-            all_present = False
-
-    for f in optional_files:
-        path = os.path.join(cache_dir, f)
-        if os.path.exists(path):
-            size = os.path.getsize(path)
-            total_size += size
-            print(f"      [OK] {f} ({size/1024:.1f} KB)")
-
-    print()
-    print(f"      Total cache size: {total_size/1024/1024:.2f} MB")
+    log(f"      Total cache size: {diagnostics['total_size_mb']:.2f} MB")
 
     if not all_present:
         print()
-        print("[CRITICAL] Required files missing! Build will fail.")
+        log("[CRITICAL] Required files missing! Build will fail.", "ERROR")
         sys.exit(1)
+    print()
 
-    # Step 4: Create verification marker file
-    print("[4/5] Creating verification manifest...")
+    # ==========================================================================
+    # Step 6: Create verification manifest
+    # ==========================================================================
+    log("[6/6] Creating verification manifest...")
     manifest = {
-        "version": "19.2.0",
-        "model_source": model_source,
-        "cache_dir": cache_dir,
+        "version": "20.0.0",
+        "model_source": args.model_source,
+        "cache_dir": args.cache_dir,
         "prebaked_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         "download_time_s": round(download_time, 2),
         "warmup_time_s": round(warmup_time, 2),
-        "total_size_mb": round(total_size/1024/1024, 2),
-        "embedding_dim": int(embedding.shape[-1]),
+        "total_size_mb": diagnostics["total_size_mb"],
+        "embedding_dim": int(embedding.shape[-1]) if embedding is not None else 192,
         "files": {
-            "required": {f: os.path.exists(os.path.join(cache_dir, f)) for f in required_files},
-            "optional": {f: os.path.exists(os.path.join(cache_dir, f)) for f in optional_files},
-        }
+            "required": {f: os.path.exists(os.path.join(args.cache_dir, f)) for f in required_files},
+            "optional": {f: os.path.exists(os.path.join(args.cache_dir, f)) for f in optional_files},
+        },
+        "optimization_pending": args.optimize,
     }
 
-    manifest_path = os.path.join(cache_dir, ".prebaked_manifest.json")
+    manifest_path = os.path.join(args.cache_dir, ".prebaked_manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
-    print(f"      Manifest written to {manifest_path}")
-
+    log(f"      Manifest written to {manifest_path}")
     print()
-    print("=" * 70)
-    print("[SUCCESS] PRE-BAKING COMPLETE - Model ready for instant cold starts!")
-    print("=" * 70)
+
+    # ==========================================================================
+    # Optional: Run model optimization
+    # ==========================================================================
+    if args.optimize:
+        section("RUNNING MODEL OPTIMIZATION")
+        optimization_success = run_optimization(
+            args.cache_dir, args.model_source, args.strategy
+        )
+
+        # Update manifest with optimization status
+        manifest["optimization_completed"] = optimization_success
+        manifest["optimization_strategy"] = args.strategy
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        print()
+
+    # ==========================================================================
+    # Done!
+    # ==========================================================================
+    section("[SUCCESS] PRE-BAKING COMPLETE")
+    log("Model ready for instant cold starts!")
+    log(f"   Cache: {args.cache_dir}")
+    log(f"   Size: {diagnostics['total_size_mb']:.2f} MB")
+    log(f"   Embedding dim: {manifest['embedding_dim']}")
+
+    if args.optimize:
+        log(f"   Optimization: {'completed' if manifest.get('optimization_completed') else 'pending'}")
 
 
 if __name__ == "__main__":
