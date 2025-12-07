@@ -4548,7 +4548,7 @@ class SpeakerVerificationService:
             logger.info("🔄 Attempting Cloud SQL bootstrap for voice profiles...")
 
             # Create a new instance for bootstrap
-            hybrid_sync = HybridDatabaseSync()
+            hybrid_sync = HybridDatabaseSync.get_instance()
 
             # Initialize with Cloud SQL connection
             logger.info("   Initializing HybridDatabaseSync for Cloud SQL access...")

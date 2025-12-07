@@ -32,6 +32,7 @@ import logging
 import mmap
 import os
 import random
+import threading
 import time
 from collections import deque, defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -928,7 +929,31 @@ class HybridDatabaseSync:
     - Zero live queries during authentication
     - Self-healing and auto-recovery
     - Comprehensive metrics and telemetry
+
+    SINGLETON: Use get_instance() to get the shared instance.
     """
+
+    # Singleton instance
+    _instance: Optional['HybridDatabaseSync'] = None
+    _instance_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls, **kwargs) -> 'HybridDatabaseSync':
+        """Get singleton instance of HybridDatabaseSync."""
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls(**kwargs)
+                    logger.info("🔧 HybridDatabaseSync singleton created")
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls):
+        """Reset singleton instance (for testing)."""
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance._shutdown = True
+                cls._instance = None
 
     def __init__(
         self,

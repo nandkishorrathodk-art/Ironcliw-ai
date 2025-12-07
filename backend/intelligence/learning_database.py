@@ -2154,7 +2154,7 @@ class JARVISLearningDatabase:
 
             # Initialize ADVANCED hybrid sync V2.0 with Phase 2 features
             sqlite_sync_path = self.db_dir / "voice_biometrics_sync.db"
-            self.hybrid_sync = HybridDatabaseSync(
+            self.hybrid_sync = HybridDatabaseSync.get_instance(
                 sqlite_path=sqlite_sync_path,
                 cloudsql_config=cloudsql_config,
                 sync_interval_seconds=30,

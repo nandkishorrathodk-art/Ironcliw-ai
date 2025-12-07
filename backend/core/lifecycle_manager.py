@@ -101,7 +101,7 @@ class LifecycleManager:
         try:
             from intelligence.hybrid_database_sync import HybridDatabaseSync
 
-            self.hybrid_sync = HybridDatabaseSync(
+            self.hybrid_sync = HybridDatabaseSync.get_instance(
                 sqlite_path=sqlite_path,
                 cloudsql_config=cloudsql_config,
                 max_connections=3,  # Strict limit for db-f1-micro

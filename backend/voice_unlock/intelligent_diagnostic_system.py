@@ -437,7 +437,7 @@ class IntelligentDiagnosticSystem:
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from intelligence.hybrid_database_sync import HybridDatabaseSync
             
-            db = HybridDatabaseSync()
+            db = HybridDatabaseSync.get_instance()
             await db.initialize()
             
             profile = await db.find_owner_profile()

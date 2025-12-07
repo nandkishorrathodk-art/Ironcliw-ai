@@ -760,7 +760,7 @@ class VoiceBiometricIntelligence:
             try:
                 import numpy as np
                 from intelligence.hybrid_database_sync import HybridDatabaseSync
-                db = HybridDatabaseSync()
+                db = HybridDatabaseSync.get_instance()
                 await db.initialize()
 
                 # Get owner name hint from environment (optional)
