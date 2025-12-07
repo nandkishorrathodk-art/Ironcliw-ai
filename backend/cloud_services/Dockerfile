@@ -1,4 +1,4 @@
-# ECAPA Cloud Service Dockerfile v19.1.0
+# ECAPA Cloud Service Dockerfile v19.2.0
 # =======================================
 #
 # Production-ready container for ECAPA-TDNN speaker embedding service.
@@ -7,6 +7,7 @@
 # Key Features:
 # - Multi-stage build for minimal image size (~2GB)
 # - FULLY PRE-BAKED model weights (no runtime downloads)
+# - Custom.py stub file prevents HuggingFace hub lookups at runtime
 # - Pre-warmed PyTorch/SpeechBrain compilation cache
 # - Pre-run warmup inference during build (JIT compilation done)
 # - Strict offline mode (zero network calls at runtime)
@@ -15,7 +16,7 @@
 # Build: docker build -t ecapa-cloud-service .
 # Run:   docker run -p 8010:8010 ecapa-cloud-service
 #
-# v19.1.0 - Ultra-fast cold starts with complete pre-baking (incl. custom.py)
+# v19.2.0 - Custom.py stub prevents runtime HuggingFace lookups
 
 # =============================================================================
 # BUILD ARGUMENTS - Dynamic configuration
@@ -94,8 +95,8 @@ ARG HF_CACHE_DIR
 
 # Labels
 LABEL maintainer="JARVIS AI Agent Team"
-LABEL version="19.1.0"
-LABEL description="ECAPA-TDNN Cloud Speaker Embedding Service - Ultra-Fast Cold Starts (incl. custom.py)"
+LABEL version="19.2.0"
+LABEL description="ECAPA-TDNN Cloud Speaker Embedding Service - Ultra-Fast Cold Starts with custom.py stub"
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
