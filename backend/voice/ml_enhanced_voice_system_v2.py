@@ -553,8 +553,9 @@ class MLEnhancedVoiceSystem:
                 # Forward pass through LSTM and attention
                 lstm_out, _ = self.wake_word_nn.lstm(mel_tensor)
                 attn_out, _ = self.wake_word_nn.attention(lstm_out, lstm_out, lstm_out)
-                embedding = torch.mean(attn_out, dim=1).numpy()
-            
+                # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+                embedding = torch.mean(attn_out, dim=1).cpu().numpy().copy()
+
             return embedding[0]
             
         except Exception as e:

@@ -227,8 +227,9 @@ class MetalAccelerator:
         # Convert to PyTorch and use Metal
         tensor = self.to_device(torch.from_numpy(audio_data))
         fft_result = torch.fft.fft(tensor)
-        
-        return fft_result.cpu().numpy()
+
+        # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+        return fft_result.cpu().numpy().copy()
     
     def accelerated_conv1d(self, signal: np.ndarray, kernel: np.ndarray) -> np.ndarray:
         """Accelerated 1D convolution using Metal"""
@@ -242,8 +243,9 @@ class MetalAccelerator:
         # Pad signal
         padding = len(kernel) // 2
         result = torch.nn.functional.conv1d(signal_tensor, kernel_tensor, padding=padding)
-        
-        return result.squeeze().cpu().numpy()
+
+        # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+        return result.squeeze().cpu().numpy().copy()
 
 class UnifiedAccelerator:
     """

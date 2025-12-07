@@ -333,7 +333,10 @@ class IntelligentVoiceRouter:
                 audio_array, sr = librosa.load(io.BytesIO(audio_data), sr=16000)
                 with torch.no_grad():
                     waveform = torch.from_numpy(audio_array).unsqueeze(0)
-                    embedding = self.pyannote_model(waveform).squeeze().numpy()
+                    # CRITICAL: Use .copy() to avoid memory corruption!
+                    # .numpy() shares memory with tensor - must copy before returning
+                    result = self.pyannote_model(waveform).squeeze()
+                    embedding = np.array(result.cpu().numpy(), dtype=np.float32, copy=True)
                 return embedding
 
             embedding = await asyncio.to_thread(_extract_embedding_sync)

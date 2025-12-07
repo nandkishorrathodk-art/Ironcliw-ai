@@ -102,7 +102,8 @@ class AdvancedFeatureExtractor:
         from voice.advanced_biometric_verification import VoiceBiometricFeatures
 
         # Convert to numpy (quick operation)
-        audio_np = audio_tensor.cpu().numpy() if torch.is_tensor(audio_tensor) else audio_tensor
+        # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+        audio_np = audio_tensor.cpu().numpy().copy() if torch.is_tensor(audio_tensor) else np.asarray(audio_tensor)
 
         # Extract all features in parallel using thread pool
         # Each extraction runs in its own thread, truly parallel

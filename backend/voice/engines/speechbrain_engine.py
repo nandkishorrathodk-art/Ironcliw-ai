@@ -2173,10 +2173,12 @@ __all__ = ["EncoderDecoderASR"]
                 logger.info("   📊 Extracting test embedding locally...")
                 test_embedding = await self.extract_speaker_embedding(audio_data)
             # Convert to numpy if torch tensor for validation
+            # CRITICAL: Use copy=True to avoid memory corruption!
+            # .numpy() shares memory with tensor - if tensor is GC'd, array is invalid
             if isinstance(test_embedding, torch.Tensor):
-                test_emb_np = test_embedding.detach().cpu().numpy().flatten()
+                test_emb_np = np.array(test_embedding.detach().cpu().numpy(), dtype=np.float32, copy=True).flatten()
             else:
-                test_emb_np = np.asarray(test_embedding).flatten()
+                test_emb_np = np.array(test_embedding, dtype=np.float32, copy=True).flatten()
 
             test_norm = np.linalg.norm(test_emb_np)
             logger.info(f"   ✅ Test embedding: shape={test_embedding.shape}, norm={test_norm:.4f}")
@@ -2188,9 +2190,9 @@ __all__ = ["EncoderDecoderASR"]
                 # Try local extraction as fallback
                 test_embedding = await self.extract_speaker_embedding(audio_data)
                 if isinstance(test_embedding, torch.Tensor):
-                    test_emb_np = test_embedding.detach().cpu().numpy().flatten()
+                    test_emb_np = np.array(test_embedding.detach().cpu().numpy(), dtype=np.float32, copy=True).flatten()
                 else:
-                    test_emb_np = np.asarray(test_embedding).flatten()
+                    test_emb_np = np.array(test_embedding, dtype=np.float32, copy=True).flatten()
                 test_norm = np.linalg.norm(test_emb_np)
                 if np.isnan(test_norm):
                     logger.error(f"❌ Local extraction also returned NaN - returning failure")
@@ -2384,7 +2386,8 @@ __all__ = ["EncoderDecoderASR"]
         """
         try:
             # Convert to numpy for analysis
-            audio_np = audio_tensor.cpu().numpy() if isinstance(audio_tensor, torch.Tensor) else audio_tensor
+            # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+            audio_np = audio_tensor.cpu().numpy().copy() if isinstance(audio_tensor, torch.Tensor) else np.asarray(audio_tensor)
 
             # 1. Signal-to-Noise Ratio (SNR) estimation
             # Estimate noise from quietest 10% of frames

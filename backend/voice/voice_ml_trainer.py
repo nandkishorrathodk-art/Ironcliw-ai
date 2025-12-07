@@ -252,8 +252,9 @@ class VoiceMLTrainer:
             # Get embeddings
             with torch.no_grad():
                 outputs = self.wav2vec_model(**inputs)
-                embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
-            
+                # CRITICAL: Use .copy() to avoid memory corruption when tensor is GC'd
+                embeddings = outputs.last_hidden_state.mean(dim=1).cpu().numpy().copy()
+
             return embeddings[0]
             
         except Exception as e:

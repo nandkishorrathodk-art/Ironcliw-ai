@@ -577,7 +577,10 @@ class SpeakerRecognitionEngine:
 
                 audio_tensor = torch.FloatTensor(audio_array).unsqueeze(0)
                 with torch.no_grad():  # Disable gradient computation for inference
-                    embedding = self.model.encode_batch(audio_tensor).squeeze().cpu().numpy()
+                    # CRITICAL: Use .copy() to avoid memory corruption!
+                    # .numpy() shares memory with tensor - must copy before returning
+                    result = self.model.encode_batch(audio_tensor).squeeze().cpu()
+                    embedding = np.array(result.numpy(), dtype=np.float32, copy=True)
             elif hasattr(self.model, "embed_utterance"):
                 # Resemblyzer
                 embedding = self.model.embed_utterance(audio_array)

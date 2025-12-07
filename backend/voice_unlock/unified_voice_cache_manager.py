@@ -133,7 +133,10 @@ def normalize_audio_data(audio_data) -> Optional[bytes]:
         # Torch tensor - convert via numpy
         if hasattr(audio_data, 'numpy'):  # Duck-type check for torch tensor
             try:
-                np_array = audio_data.cpu().numpy() if hasattr(audio_data, 'cpu') else audio_data.numpy()
+                # CRITICAL: Use .copy() to avoid memory corruption!
+                # .numpy() shares memory with PyTorch tensor - if tensor is GC'd,
+                # the numpy array points to freed memory (use-after-free)
+                np_array = audio_data.detach().cpu().numpy().copy() if hasattr(audio_data, 'cpu') else audio_data.numpy().copy()
                 return normalize_audio_data(np_array)  # Recursive call
             except Exception as e:
                 logger.warning(f"Failed to convert tensor to bytes: {e}")
@@ -186,7 +189,10 @@ def audio_data_to_numpy(audio_data, sample_rate: int = 16000) -> Optional[np.nda
         # Handle torch tensor
         if hasattr(audio_data, 'numpy'):
             try:
-                np_array = audio_data.cpu().numpy() if hasattr(audio_data, 'cpu') else audio_data.numpy()
+                # CRITICAL: Use .copy() to avoid memory corruption!
+                # .numpy() shares memory with PyTorch tensor - if tensor is GC'd,
+                # the numpy array points to freed memory (use-after-free)
+                np_array = audio_data.detach().cpu().numpy().copy() if hasattr(audio_data, 'cpu') else audio_data.numpy().copy()
                 return audio_data_to_numpy(np_array, sample_rate)
             except Exception:
                 return None
@@ -872,16 +878,19 @@ class UnifiedVoiceCacheManager:
         try:
             import torch
             if isinstance(embedding, torch.Tensor):
-                # Proper conversion: detach from graph, move to CPU, convert to numpy
-                embedding = embedding.detach().cpu().numpy()
+                # CRITICAL: Use .clone() and copy=True to avoid memory corruption!
+                # .numpy() shares memory with PyTorch tensor - if tensor is GC'd
+                # (especially in thread pool workers), the numpy array points to
+                # freed memory causing "memory corruption of free block" crash.
+                embedding = np.array(embedding.detach().clone().cpu().numpy(), dtype=np.float32, copy=True)
         except ImportError:
             pass
         except Exception as e:
             logger.warning(f"⚠️ Torch conversion warning: {e}")
 
-        # Ensure numpy array and flatten
+        # Ensure numpy array and flatten - ALWAYS copy to guarantee memory safety
         try:
-            embedding_np = np.asarray(embedding, dtype=np.float32).flatten()
+            embedding_np = np.array(embedding, dtype=np.float32, copy=True).flatten()
         except Exception as e:
             logger.error(f"❌ Failed to convert embedding to numpy: {e}")
             return None
