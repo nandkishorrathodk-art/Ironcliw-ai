@@ -73,8 +73,8 @@ const configPromise = new Promise((resolve) => {
     if (!configReady) {
       console.log('JarvisVoice: Using fallback config after timeout');
       handleConfigReady({
-        API_BASE_URL: 'http://localhost:8010',
-        WS_BASE_URL: 'ws://localhost:8010'
+        API_BASE_URL: 'http://localhost:8000',
+        WS_BASE_URL: 'ws://localhost:8000'
       });
     }
   }, 1000);
@@ -123,7 +123,7 @@ class VisionConnection {
       }
 
       // Use main backend port for vision WebSocket
-      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
+      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8000';
       const wsUrl = `${wsBaseUrl}/vision/ws`;  // Use consistent WebSocket URL
       console.log('VisionConnection: Connecting to', wsUrl);
       this.socket = new WebSocket(wsUrl);
@@ -1072,7 +1072,7 @@ const JarvisVoice = () => {
     }
 
     try {
-      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
+      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8000';
       const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
       console.log(`[WS-ADVANCED] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
 

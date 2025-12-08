@@ -40,8 +40,8 @@ class ConfigAwareStartup {
       console.error('[ConfigAwareStartup] Config discovery timeout:', error);
       // Use fallback config
       this.config = {
-        API_BASE_URL: 'http://localhost:8010',
-        WS_BASE_URL: 'ws://localhost:8010'
+        API_BASE_URL: 'http://localhost:8000',
+        WS_BASE_URL: 'ws://localhost:8000'
       };
       this.configReady = true;
       console.log('[ConfigAwareStartup] Using fallback config:', this.config);
@@ -69,7 +69,7 @@ class ConfigAwareStartup {
       await this.waitForReady();
     }
     
-    const baseUrl = this.config.API_BASE_URL || 'http://localhost:8010';
+    const baseUrl = this.config.API_BASE_URL || 'http://localhost:8000';
     return endpoint ? `${baseUrl}/${endpoint.replace(/^\//, '')}` : baseUrl;
   }
   
@@ -81,7 +81,7 @@ class ConfigAwareStartup {
       await this.waitForReady();
     }
     
-    const baseUrl = this.config.WS_BASE_URL || 'ws://localhost:8010';
+    const baseUrl = this.config.WS_BASE_URL || 'ws://localhost:8000';
     return endpoint ? `${baseUrl}/${endpoint.replace(/^\//, '')}` : baseUrl;
   }
   

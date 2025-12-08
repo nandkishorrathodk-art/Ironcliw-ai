@@ -18,9 +18,9 @@ class DynamicConfigService {
     };
 
     // Discovery configuration
-    // Prioritize 8010 (JARVIS backend port) first
-    // 8011 added as fallback when 8010 has stuck processes
-    this.commonPorts = [8010, 8011, 8000, 8001, 3001, 8080, 8888];
+    // Prioritize 8000 (JARVIS backend port) first
+    // 8010/8011 as fallbacks
+    this.commonPorts = [8000, 8010, 8011, 8001, 3001, 8080, 8888];
     // Skip ports with known CORS issues: 5000 (Control Center)
     this.excludedPorts = [5000, 5001];
     this.discoveryTimeout = 500; // ms per port
