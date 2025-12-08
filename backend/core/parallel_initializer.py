@@ -108,6 +108,7 @@ class ParallelInitializer:
         # Phase 3: Voice System (parallel)
         self._add_component("speaker_verification", priority=30, dependencies=["learning_database"])
         self._add_component("voice_unlock_api", priority=31, dependencies=["speaker_verification"])
+        self._add_component("jarvis_voice_api", priority=32)  # JARVIS voice interface for frontend
 
         # Phase 4: Intelligence Systems (parallel, can be slow)
         self._add_component("neural_mesh", priority=40)
@@ -443,7 +444,7 @@ class ParallelInitializer:
             logger.warning(f"Speaker verification failed: {e}")
 
     async def _init_voice_unlock_api(self):
-        """Ensure voice unlock API is mounted"""
+        """Ensure voice unlock API is mounted and components dict is populated"""
         try:
             from api.voice_unlock_api import router as voice_unlock_router
 
@@ -454,10 +455,78 @@ class ParallelInitializer:
             )
             if not existing:
                 self.app.include_router(voice_unlock_router, tags=["voice_unlock"])
+
+            # Populate global components dict for voice_unlock
+            import main
+            main.components["voice_unlock"] = {
+                "router": voice_unlock_router,
+                "available": True,
+                "initialized": True
+            }
+
+            # Also set app.state for health check
+            self.app.state.voice_unlock = {
+                "initialized": True,
+                "available": True
+            }
+
             logger.info("   Voice unlock API mounted")
 
         except Exception as e:
             logger.warning(f"Voice unlock API failed: {e}")
+
+    async def _init_jarvis_voice_api(self):
+        """Initialize JARVIS voice API and populate global components dict"""
+        try:
+            # Import the global components dict from main
+            import main
+
+            # Import voice system components
+            voice = {}
+
+            try:
+                from api.voice_api import VoiceAPI
+                voice["api"] = VoiceAPI
+                voice["available"] = True
+            except ImportError:
+                voice["available"] = False
+
+            try:
+                from api.enhanced_voice_routes import router as enhanced_voice_router
+                voice["enhanced_router"] = enhanced_voice_router
+                voice["enhanced_available"] = True
+            except ImportError:
+                voice["enhanced_available"] = False
+
+            try:
+                from api.jarvis_voice_api import jarvis_api, router as jarvis_voice_router
+                voice["jarvis_router"] = jarvis_voice_router
+                voice["jarvis_api"] = jarvis_api
+                voice["jarvis_available"] = True
+
+                # Mount the JARVIS voice router if not already mounted
+                existing = any(
+                    hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
+                    for r in self.app.routes
+                )
+                if not existing:
+                    self.app.include_router(jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"])
+                    logger.info("   JARVIS voice router mounted at /voice/jarvis")
+
+            except ImportError as e:
+                voice["jarvis_available"] = False
+                logger.debug(f"JARVIS voice API import failed: {e}")
+
+            # Populate the global components dict
+            main.components["voice"] = voice
+
+            if voice.get("jarvis_available"):
+                logger.info("   JARVIS voice API ready (jarvis_available=True)")
+            else:
+                logger.warning("   JARVIS voice API loaded but jarvis_available=False")
+
+        except Exception as e:
+            logger.warning(f"JARVIS voice API failed: {e}")
 
     async def _init_neural_mesh(self):
         """Initialize neural mesh multi-agent system"""

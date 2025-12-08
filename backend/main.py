@@ -1313,6 +1313,14 @@ async def lifespan(app: FastAPI):
             else:
                 logger.warning("   ⚠️ voice_unlock loaded but router not available")
 
+            # IMPORTANT: Voice system must be loaded for JARVIS voice interface
+            # This provides jarvis_available, jarvis_router, etc. for /voice/jarvis/* endpoints
+            components["voice"] = import_voice_system()
+            if components["voice"] and components["voice"].get("jarvis_available"):
+                logger.info("   ✅ voice system loaded (JARVIS available)")
+            else:
+                logger.warning("   ⚠️ voice system loaded but JARVIS not available")
+
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
             for comp_name in core_components:
