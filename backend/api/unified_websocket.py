@@ -1062,34 +1062,61 @@ class UnifiedWebSocketManager:
                         f"sample_rate={sample_rate_received}Hz, mime_type={mime_type_received}"
                     )
                 else:
-                    logger.warning("[WS] No audio data in message from frontend")
+                    logger.debug("[WS] No audio data in message from frontend (text command)")
 
-                result = await self.pipeline.process_async(
-                    text=message.get("text", message.get("command", "")),
-                    audio_data=audio_data_received,
-                    speaker_name=message.get("speaker_name"),
-                    metadata={
-                        "message": message,
-                        "client_id": client_id,
-                        "websocket": websocket,
-                        "stream_mode": message.get("stream", False),
-                        "audio_sample_rate": sample_rate_received,
-                        "audio_mime_type": mime_type_received,
-                    },
-                )
+                # For command types, process directly through JARVIS API
+                # This bypasses the pipeline stages which aren't properly integrated
+                if msg_type in ("command", "voice_command", "jarvis_command"):
+                    try:
+                        from .jarvis_voice_api import JARVISCommand, jarvis_api
 
-                # 🛡️ STREAMING SAFEGUARD: Check transcription for command detection
-                if self.safeguard_enabled and client_id in connection_safeguards:
+                        command_text = message.get("text", message.get("command", ""))
+                        command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
+
+                        logger.info(f"[WS] Processing command directly via jarvis_api: {command_text}")
+                        jarvis_result = await jarvis_api.process_command(command_obj)
+
+                        result = {
+                            "response": jarvis_result.get("response", ""),
+                            "success": jarvis_result.get("status") == "success",
+                            "command_type": jarvis_result.get("command_type", "unknown"),
+                            "metadata": jarvis_result,
+                        }
+                        logger.info(f"[WS] JARVIS response: {result.get('response', '')[:100]}")
+                    except ImportError as e:
+                        logger.error(f"[WS] Failed to import jarvis_voice_api: {e}")
+                        result = {"response": "", "success": False, "error": str(e)}
+                    except Exception as e:
+                        logger.error(f"[WS] Error processing command: {e}", exc_info=True)
+                        result = {"response": f"Error processing command: {e}", "success": False}
+                else:
+                    # For non-command types (vision), use the pipeline
+                    result = await self.pipeline.process_async(
+                        text=message.get("text", message.get("command", "")),
+                        audio_data=audio_data_received,
+                        speaker_name=message.get("speaker_name"),
+                        metadata={
+                            "message": message,
+                            "client_id": client_id,
+                            "websocket": websocket,
+                            "stream_mode": message.get("stream", False),
+                            "audio_sample_rate": sample_rate_received,
+                            "audio_mime_type": mime_type_received,
+                        },
+                    )
+
+                # 🛡️ STREAMING SAFEGUARD: Only check AUDIO STREAM transcriptions for commands
+                # This safeguard is for detecting when a command appears in live audio transcription
+                # NOT for checking regular text command responses (which naturally contain command words)
+                is_audio_stream = msg_type == "ml_audio_stream" or bool(audio_data_received)
+                if is_audio_stream and self.safeguard_enabled and client_id in connection_safeguards:
                     safeguard = connection_safeguards[client_id]
 
-                    # Extract transcription text from result
-                    transcription_text = result.get("response", "")
-                    if not transcription_text:
-                        # Try alternate locations
-                        transcription_text = result.get("text", "")
+                    # Extract TRANSCRIPTION text (not response) - only relevant for audio streams
+                    transcription_text = result.get("transcription", result.get("text", ""))
 
                     if transcription_text:
-                        # Check for command detection
+                        # Check for command detection in transcription
                         detection_event = await safeguard.check_transcription(
                             transcription=transcription_text,
                             confidence=result.get("confidence"),
@@ -1567,14 +1594,27 @@ class UnifiedWebSocketManager:
         }
 
 
-# Create global manager instance
-ws_manager = UnifiedWebSocketManager()
+# Create global manager instance - LAZY initialization to avoid asyncio issues at import time
+_ws_manager: Optional[UnifiedWebSocketManager] = None
+
+
+def get_ws_manager() -> UnifiedWebSocketManager:
+    """Get or create the WebSocket manager (lazy initialization)"""
+    global _ws_manager
+    if _ws_manager is None:
+        _ws_manager = UnifiedWebSocketManager()
+    return _ws_manager
+
+
+# Alias for backward compatibility
+ws_manager = None  # Will be set lazily
 
 
 def set_jarvis_instance(jarvis_api):
     """Set the JARVIS instance for the WebSocket pipeline"""
-    if ws_manager and ws_manager.pipeline:
-        ws_manager.pipeline.jarvis = jarvis_api
+    manager = get_ws_manager()
+    if manager and manager.pipeline:
+        manager.pipeline.jarvis = jarvis_api
         logger.info("✅ JARVIS instance set in unified WebSocket pipeline")
 
 
@@ -1583,7 +1623,10 @@ async def unified_websocket_endpoint(websocket: WebSocket):
     """Single unified WebSocket endpoint for all communication with advanced self-healing"""
     client_id = f"client_{id(websocket)}_{datetime.now().timestamp()}"
 
-    await ws_manager.connect(websocket, client_id)
+    # Get the manager lazily (now safe since we're in an async context with event loop)
+    manager = get_ws_manager()
+
+    await manager.connect(websocket, client_id)
 
     try:
         while True:
@@ -1591,8 +1634,8 @@ async def unified_websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
 
             # Update health metrics
-            if client_id in ws_manager.connection_health:
-                health = ws_manager.connection_health[client_id]
+            if client_id in manager.connection_health:
+                health = manager.connection_health[client_id]
                 health.last_message_time = time.time()
                 health.messages_received += 1
 
@@ -1616,7 +1659,7 @@ async def unified_websocket_endpoint(websocket: WebSocket):
                 )
                 logger.debug(
                     f"[UNIFIED-WS] 🏓 Received ping from {client_id}, sent pong | "
-                    f"Health: {ws_manager.connection_health[client_id].health_score:.1f}"
+                    f"Health: {manager.connection_health[client_id].health_score:.1f}"
                 )
                 continue
 
@@ -1627,11 +1670,11 @@ async def unified_websocket_endpoint(websocket: WebSocket):
                 )
 
             # Handle message
-            response = await ws_manager.handle_message(client_id, data)
+            response = await manager.handle_message(client_id, data)
 
             # Update health metrics for sent message
-            if client_id in ws_manager.connection_health:
-                health = ws_manager.connection_health[client_id]
+            if client_id in manager.connection_health:
+                health = manager.connection_health[client_id]
                 health.messages_sent += 1
 
             # Log outgoing response for debugging lock/unlock
@@ -1647,13 +1690,13 @@ async def unified_websocket_endpoint(websocket: WebSocket):
         logger.error(f"[UNIFIED-WS] WebSocket error for {client_id}: {e}", exc_info=True)
 
         # Increment error count
-        if client_id in ws_manager.connection_health:
-            health = ws_manager.connection_health[client_id]
+        if client_id in manager.connection_health:
+            health = manager.connection_health[client_id]
             health.errors += 1
             health.last_error = str(e)
             health.health_score = max(0, health.health_score - 10)
 
             # Increment circuit breaker failures
-            ws_manager.circuit_failures += 1
+            manager.circuit_failures += 1
     finally:
-        await ws_manager.disconnect(client_id)
+        await manager.disconnect(client_id)

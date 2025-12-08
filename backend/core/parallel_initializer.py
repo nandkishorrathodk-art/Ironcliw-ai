@@ -109,6 +109,7 @@ class ParallelInitializer:
         self._add_component("speaker_verification", priority=30, dependencies=["learning_database"])
         self._add_component("voice_unlock_api", priority=31, dependencies=["speaker_verification"])
         self._add_component("jarvis_voice_api", priority=32)  # JARVIS voice interface for frontend
+        self._add_component("unified_websocket", priority=33)  # WebSocket for frontend communication
 
         # Phase 4: Intelligence Systems (parallel, can be slow)
         self._add_component("neural_mesh", priority=40)
@@ -527,6 +528,34 @@ class ParallelInitializer:
 
         except Exception as e:
             logger.warning(f"JARVIS voice API failed: {e}")
+
+    async def _init_unified_websocket(self):
+        """Initialize unified WebSocket for frontend communication"""
+        try:
+            from api.unified_websocket import router as unified_ws_router
+
+            # Check if already mounted - look for exact /ws path in WebSocket routes
+            existing = any(
+                hasattr(r, 'path') and r.path == '/ws'
+                for r in self.app.routes
+            )
+            if not existing:
+                self.app.include_router(unified_ws_router, tags=["websocket"])
+                logger.info("   ✅ Unified WebSocket mounted at /ws")
+            else:
+                logger.info("   ✅ Unified WebSocket /ws already mounted")
+
+        except ImportError as e:
+            logger.warning(f"   Could not import unified WebSocket router: {e}")
+            # Try fallback
+            try:
+                from api.vision_websocket import router as vision_ws_router
+                self.app.include_router(vision_ws_router, prefix="/vision", tags=["vision"])
+                logger.info("   Vision WebSocket mounted (fallback)")
+            except ImportError:
+                logger.warning("   No WebSocket router available")
+        except Exception as e:
+            logger.warning(f"Unified WebSocket failed: {e}")
 
     async def _init_neural_mesh(self):
         """Initialize neural mesh multi-agent system"""
