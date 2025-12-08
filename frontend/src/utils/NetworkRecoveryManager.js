@@ -122,7 +122,7 @@ class NetworkRecoveryManager {
     async strategy_dnsFlush(error, recognition, context) {
         // Signal backend to help with network diagnostics
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             const response = await fetch(`${apiUrl}/network/diagnose`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -200,7 +200,7 @@ class NetworkRecoveryManager {
 
         try {
             // Check if JARVIS WebSocket is available
-            const wsUrl = configService.getWebSocketUrl('voice/jarvis/stream') || `${window.WS_URL || 'ws://localhost:8010'}/voice/jarvis/stream`;
+            const wsUrl = configService.getWebSocketUrl('voice/jarvis/stream') || `${window.WS_URL || 'ws://localhost:8000'}/voice/jarvis/stream`;
             const ws = new WebSocket(wsUrl);
 
             return new Promise((resolve) => {
@@ -258,7 +258,7 @@ class NetworkRecoveryManager {
         console.log('🤖 Requesting ML backend assistance...');
 
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             const response = await fetch(`${apiUrl}/network/ml/advanced-recovery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -441,7 +441,7 @@ class NetworkRecoveryManager {
 
     async logRecoverySuccess(strategy, result) {
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             const response = await fetch(`${apiUrl}/network/ml/recovery-success`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

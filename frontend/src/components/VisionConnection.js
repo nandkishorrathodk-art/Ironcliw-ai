@@ -31,7 +31,7 @@ class VisionConnection {
             await configService.waitForConfig();
             
             // Use dynamic WebSocket URL
-            const wsBaseUrl = configService.getWebSocketUrl() || 'ws://localhost:8010';
+            const wsBaseUrl = configService.getWebSocketUrl() || 'ws://localhost:8000';
             const wsUrl = `${wsBaseUrl}/vision/ws/vision`;
             console.log('Using Vision WebSocket URL:', wsUrl);
             

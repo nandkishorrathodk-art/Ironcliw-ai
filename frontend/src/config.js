@@ -6,7 +6,7 @@
 import configService from './services/DynamicConfigService';
 
 // Dynamic API URL - will be updated when config service discovers backend
-let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8010';
+let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 let WS_BASE_URL = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
 // Update URLs when config service is ready

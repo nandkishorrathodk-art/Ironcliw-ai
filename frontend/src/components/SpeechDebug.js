@@ -103,7 +103,7 @@ const SpeechDebug = () => {
 
   const testBackendSpeech = async () => {
     try {
-      const apiUrl = configService.getApiUrl() || 'http://localhost:8010';
+      const apiUrl = configService.getApiUrl() || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/voice/jarvis/speak`, {
         method: 'POST',
         headers: {
