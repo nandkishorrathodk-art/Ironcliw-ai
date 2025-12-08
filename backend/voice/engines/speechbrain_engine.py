@@ -552,8 +552,20 @@ class SpeechBrainEngine(BaseSTTEngine):
 
         # Lazy loading flags
         self.speaker_encoder_loaded = False
-        self._encoder_loading_lock = asyncio.Lock()
+        self._encoder_loading_lock = asyncio.Lock()  # Async lock for same-event-loop coordination
         self._encoder_load_task: Optional[asyncio.Task] = None
+
+        # CRITICAL: Threading locks for thread-safe operations
+        # PyTorch models are NOT thread-safe - concurrent operations cause segfaults
+        import threading
+
+        # Model LOADING lock - protects from concurrent loads across different event loops/threads
+        # This is essential because background preloader thread has its own event loop
+        self._model_loading_lock = threading.Lock()
+
+        # Model INFERENCE locks - protects from concurrent inference calls
+        self._speaker_encoder_lock = threading.Lock()  # For ECAPA-TDNN speaker encoder
+        self._asr_model_lock = threading.Lock()  # For ASR transcribe_batch
 
         # Performance optimization: LRU cache for recent embeddings
         self._embedding_lru_cache: Dict[str, Tuple[np.ndarray, float]] = {}
@@ -772,59 +784,70 @@ class SpeechBrainEngine(BaseSTTEngine):
             # SAFETY: Capture references BEFORE defining sync function to prevent segfaults
             cache_dir_ref = self.cache_dir
             load_ecapa_fallback_ref = self._load_ecapa_fallback
+            loading_lock_ref = self._model_loading_lock  # CRITICAL: Thread-safe loading lock
 
             def _load_model_sync():
-                """Synchronous model loading function to run in dedicated thread."""
-                # Set thread-local PyTorch settings to avoid conflicts
-                torch.set_num_threads(1)  # Prevent thread pool exhaustion
+                """Synchronous model loading function to run in dedicated thread.
 
-                import os
-                old_mps_fallback = None
+                CRITICAL: Uses loading_lock_ref to prevent concurrent model loads
+                from different threads/event loops. This is essential because:
+                1. Background preloader thread has its own event loop
+                2. Main async code may also try to load
+                3. PyTorch model loading is NOT thread-safe
+                """
+                # CRITICAL: Acquire loading lock to prevent concurrent loads
+                # This lock protects against segfaults from concurrent model loading
+                with loading_lock_ref:
+                    # Set thread-local PyTorch settings to avoid conflicts
+                    torch.set_num_threads(1)  # Prevent thread pool exhaustion
 
-                try:
-                    # Apply PyTorch workarounds if needed
-                    if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
-                        logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
-                        old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
-                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+                    import os
+                    old_mps_fallback = None
 
-                        if hasattr(torch.backends, 'mps'):
-                            torch.backends.mps.is_built = lambda: False
-
-                    # Load model with appropriate run_opts
-                    run_opts = {"device": "cpu"}
-                    if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
-                        run_opts.update({
-                            "data_parallel_backend": False,
-                            "distributed_launch": False,
-                        })
-
-                    logger.info(f"   Loading from thread: {threading.current_thread().name}")
-
-                    # Try standard from_hparams first
                     try:
-                        # Use captured cache_dir_ref instead of self.cache_dir
-                        model = EncoderClassifier.from_hparams(
-                            source="speechbrain/spkrec-ecapa-voxceleb",
-                            savedir=str(cache_dir_ref / "speaker_encoder"),
-                            run_opts=run_opts,
-                        )
-                        logger.info("   ✅ Model loaded successfully in dedicated thread")
-                        return model
-                    except Exception as e:
-                        if "custom.py" in str(e) or "Entry Not Found" in str(e):
-                            logger.warning(f"   ⚠️ Standard loading failed (missing custom.py), using fallback loader...")
-                            # Use captured fallback function instead of self._load_ecapa_fallback
-                            return load_ecapa_fallback_ref(run_opts)
-                        else:
-                            raise
+                        # Apply PyTorch workarounds if needed
+                        if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                            logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
+                            old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
+                            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
 
-                finally:
-                    # Restore environment
-                    if old_mps_fallback is not None:
-                        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
-                    elif 'PYTORCH_MPS_HIGH_WATERMARK_RATIO' in os.environ:
-                        os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
+                            if hasattr(torch.backends, 'mps'):
+                                torch.backends.mps.is_built = lambda: False
+
+                        # Load model with appropriate run_opts
+                        run_opts = {"device": "cpu"}
+                        if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                            run_opts.update({
+                                "data_parallel_backend": False,
+                                "distributed_launch": False,
+                            })
+
+                        logger.info(f"   Loading from thread: {threading.current_thread().name}")
+
+                        # Try standard from_hparams first
+                        try:
+                            # Use captured cache_dir_ref instead of self.cache_dir
+                            model = EncoderClassifier.from_hparams(
+                                source="speechbrain/spkrec-ecapa-voxceleb",
+                                savedir=str(cache_dir_ref / "speaker_encoder"),
+                                run_opts=run_opts,
+                            )
+                            logger.info("   ✅ Model loaded successfully in dedicated thread")
+                            return model
+                        except Exception as e:
+                            if "custom.py" in str(e) or "Entry Not Found" in str(e):
+                                logger.warning(f"   ⚠️ Standard loading failed (missing custom.py), using fallback loader...")
+                                # Use captured fallback function instead of self._load_ecapa_fallback
+                                return load_ecapa_fallback_ref(run_opts)
+                            else:
+                                raise
+
+                    finally:
+                        # Restore environment
+                        if old_mps_fallback is not None:
+                            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
+                        elif 'PYTORCH_MPS_HIGH_WATERMARK_RATIO' in os.environ:
+                            os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
 
             try:
                 # Load model with timeout to prevent infinite hangs
@@ -1584,8 +1607,9 @@ __all__ = ["EncoderDecoderASR"]
             if encoder_ref is None:
                 raise RuntimeError("Speaker encoder not loaded - cannot extract embedding")
 
-            # Also capture the audio tensor reference
+            # Also capture the audio tensor reference and inference lock
             audio_input = audio_tensor.unsqueeze(0)
+            inference_lock = self._speaker_encoder_lock
 
             def _encode_sync():
                 """
@@ -1593,18 +1617,24 @@ __all__ = ["EncoderDecoderASR"]
 
                 Uses captured encoder_ref to prevent null pointer access if
                 encoder is unloaded during extraction.
+
+                CRITICAL: Uses inference_lock to ensure thread-safe model access.
+                PyTorch models are NOT thread-safe - concurrent calls cause segfaults.
                 """
                 # Double-check reference is valid
                 if encoder_ref is None:
                     raise RuntimeError("Encoder reference became None during extraction")
 
-                with torch.no_grad():
-                    # Encode the waveform using captured reference
-                    embeddings = encoder_ref.encode_batch(audio_input)
-                    # CRITICAL: Convert to numpy with COPY to avoid memory corruption
-                    # .numpy() shares memory with PyTorch - must clone before returning to main thread
-                    embedding_safe = embeddings[0].detach().clone().cpu()
-                    return np.array(embedding_safe.numpy(), dtype=np.float32, copy=True)
+                # CRITICAL: Acquire lock before model inference
+                # This prevents concurrent encode_batch calls which cause SIGSEGV
+                with inference_lock:
+                    with torch.no_grad():
+                        # Encode the waveform using captured reference
+                        embeddings = encoder_ref.encode_batch(audio_input)
+                        # CRITICAL: Convert to numpy with COPY to avoid memory corruption
+                        # .numpy() shares memory with PyTorch - must clone before returning to main thread
+                        embedding_safe = embeddings[0].detach().clone().cpu()
+                        return np.array(embedding_safe.numpy(), dtype=np.float32, copy=True)
 
             # Run blocking encode_batch in thread pool
             loop = asyncio.get_running_loop()
