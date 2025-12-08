@@ -620,18 +620,27 @@ class SpeechBrainEngine(BaseSTTEngine):
 
             loop = asyncio.get_event_loop()
 
+            # SAFETY: Capture references BEFORE defining sync function to prevent segfaults
+            cache_dir_ref = self.cache_dir
+            model_config_name_ref = self.model_config.name
+            device_ref = self.device
+            load_fallback_ref = self._load_asr_fallback
+
             def _load_asr_model():
                 """Load ASR model with fallback for SpeechBrain 1.0 compatibility."""
+                # Use captured references instead of self attributes
+                if cache_dir_ref is None or model_config_name_ref is None:
+                    raise RuntimeError("Model config references became None during loading")
                 try:
                     return EncoderDecoderASR.from_hparams(
                         source=model_source,
-                        savedir=str(self.cache_dir / self.model_config.name),
-                        run_opts={"device": self.device},
+                        savedir=str(cache_dir_ref / model_config_name_ref),
+                        run_opts={"device": device_ref},
                     )
                 except Exception as e:
                     if "custom.py" in str(e) or "Entry Not Found" in str(e):
                         logger.warning(f"   ⚠️ ASR model loading failed (missing custom.py), using fallback...")
-                        return self._load_asr_fallback(model_source, {"device": self.device})
+                        return load_fallback_ref(model_source, {"device": device_ref})
                     raise
 
             self.asr_model = await loop.run_in_executor(None, _load_asr_model)
@@ -760,6 +769,10 @@ class SpeechBrainEngine(BaseSTTEngine):
                     thread_name_prefix="speechbrain_loader"
                 )
 
+            # SAFETY: Capture references BEFORE defining sync function to prevent segfaults
+            cache_dir_ref = self.cache_dir
+            load_ecapa_fallback_ref = self._load_ecapa_fallback
+
             def _load_model_sync():
                 """Synchronous model loading function to run in dedicated thread."""
                 # Set thread-local PyTorch settings to avoid conflicts
@@ -790,9 +803,10 @@ class SpeechBrainEngine(BaseSTTEngine):
 
                     # Try standard from_hparams first
                     try:
+                        # Use captured cache_dir_ref instead of self.cache_dir
                         model = EncoderClassifier.from_hparams(
                             source="speechbrain/spkrec-ecapa-voxceleb",
-                            savedir=str(self.cache_dir / "speaker_encoder"),
+                            savedir=str(cache_dir_ref / "speaker_encoder"),
                             run_opts=run_opts,
                         )
                         logger.info("   ✅ Model loaded successfully in dedicated thread")
@@ -800,7 +814,8 @@ class SpeechBrainEngine(BaseSTTEngine):
                     except Exception as e:
                         if "custom.py" in str(e) or "Entry Not Found" in str(e):
                             logger.warning(f"   ⚠️ Standard loading failed (missing custom.py), using fallback loader...")
-                            return self._load_ecapa_fallback(run_opts)
+                            # Use captured fallback function instead of self._load_ecapa_fallback
+                            return load_ecapa_fallback_ref(run_opts)
                         else:
                             raise
 
@@ -1995,20 +2010,33 @@ __all__ = ["EncoderDecoderASR"]
         try:
             loop = asyncio.get_running_loop()
 
+            # SAFETY: Capture preprocessor reference BEFORE defining sync functions
+            # to prevent segfaults if preprocessor is modified during thread execution
+            preprocessor_ref = self.preprocessor
+            if preprocessor_ref is None:
+                logger.warning("Preprocessor not available, using original audio")
+                return audio_tensor
+
             # Stage 1: Spectral subtraction (noise reduction) - must run first
             # Run in thread pool to avoid blocking
             def _spectral_sub():
-                return self.preprocessor.spectral_subtraction(audio_tensor)
+                if preprocessor_ref is None:
+                    raise RuntimeError("Preprocessor reference became None during spectral subtraction")
+                return preprocessor_ref.spectral_subtraction(audio_tensor)
 
             audio_tensor = await loop.run_in_executor(None, _spectral_sub)
 
             # Stage 2: Run AGC and bandpass filter IN PARALLEL (both operate on audio independently)
             # Then apply VAD at the end
             def _agc():
-                return self.preprocessor.automatic_gain_control(audio_tensor)
+                if preprocessor_ref is None:
+                    raise RuntimeError("Preprocessor reference became None during AGC")
+                return preprocessor_ref.automatic_gain_control(audio_tensor)
 
             def _bandpass():
-                return self.preprocessor.apply_bandpass_filter(audio_tensor)
+                if preprocessor_ref is None:
+                    raise RuntimeError("Preprocessor reference became None during bandpass")
+                return preprocessor_ref.apply_bandpass_filter(audio_tensor)
 
             # Run AGC and bandpass in parallel - both read from audio_tensor
             agc_future = loop.run_in_executor(None, _agc)
@@ -2020,13 +2048,17 @@ __all__ = ["EncoderDecoderASR"]
             # Combine results: use AGC output, then apply bandpass characteristics
             # AGC normalizes amplitude, bandpass filters frequency - apply AGC then bandpass
             def _apply_bandpass_to_agc():
-                return self.preprocessor.apply_bandpass_filter(agc_result)
+                if preprocessor_ref is None:
+                    raise RuntimeError("Preprocessor reference became None during bandpass application")
+                return preprocessor_ref.apply_bandpass_filter(agc_result)
 
             audio_tensor = await loop.run_in_executor(None, _apply_bandpass_to_agc)
 
             # Stage 3: VAD (voice activity detection) - runs last to trim silence
             def _vad():
-                return self.preprocessor.voice_activity_detection(audio_tensor)
+                if preprocessor_ref is None:
+                    raise RuntimeError("Preprocessor reference became None during VAD")
+                return preprocessor_ref.voice_activity_detection(audio_tensor)
 
             audio_tensor, vad_ratio = await loop.run_in_executor(None, _vad)
 

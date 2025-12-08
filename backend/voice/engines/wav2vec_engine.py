@@ -119,9 +119,15 @@ class Wav2VecEngine(BaseSTTEngine):
             audio_array = await self._bytes_to_audio_array(audio_data)
             audio_duration_ms = len(audio_array) / self.sample_rate * 1000
 
+            # SAFETY: Capture model and processor references BEFORE spawning threads
+            model_ref = self.model
+            processor_ref = self.processor
+            if model_ref is None or processor_ref is None:
+                raise RuntimeError("Wav2Vec model or processor not loaded")
+
             # Preprocess audio
             inputs = await asyncio.to_thread(
-                self.processor,
+                processor_ref,
                 audio_array,
                 sampling_rate=self.sample_rate,
                 return_tensors="pt",
@@ -133,14 +139,19 @@ class Wav2VecEngine(BaseSTTEngine):
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
             # Run inference (no gradients needed)
+            def _run_inference():
+                if model_ref is None:
+                    raise RuntimeError("Model reference became None during inference")
+                return model_ref(**inputs).logits
+
             with torch.no_grad():
-                logits = await asyncio.to_thread(lambda: self.model(**inputs).logits)
+                logits = await asyncio.to_thread(_run_inference)
 
             # Decode predictions
             predicted_ids = await asyncio.to_thread(lambda: torch.argmax(logits, dim=-1))
 
             # Convert IDs to text
-            transcription = await asyncio.to_thread(self.processor.batch_decode, predicted_ids)
+            transcription = await asyncio.to_thread(processor_ref.batch_decode, predicted_ids)
             transcription_text = transcription[0] if transcription else ""
 
             # Calculate confidence (average softmax probability)

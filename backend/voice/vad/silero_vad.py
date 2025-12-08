@@ -243,7 +243,57 @@ class AsyncSileroVAD(SileroVAD):
         Returns:
             Tuple of (is_speech: bool, confidence: float)
         """
-        return await asyncio.to_thread(self.is_speech, frame)
+        # SAFETY: Capture references BEFORE spawning thread to prevent segfaults
+        # if model is unloaded during processing
+        model_ref = self.model
+        sample_rate_ref = self.sample_rate
+        config_ref = self.config
+
+        if model_ref is None:
+            logger.warning("Silero model not loaded")
+            return False, 0.0
+
+        def _is_speech_sync():
+            """Run speech detection with captured references."""
+            if model_ref is None:
+                return False, 0.0
+
+            # Validate frame
+            if len(frame) == 0:
+                return False, 0.0
+
+            try:
+                # Silero expects exactly 512 samples (16kHz) or 256 samples (8kHz)
+                chunk_size = 512 if sample_rate_ref == 16000 else 256
+                frame_processed = frame
+
+                # Pad or truncate frame to expected size
+                if len(frame_processed) < chunk_size:
+                    frame_processed = np.pad(frame_processed, (0, chunk_size - len(frame_processed)), mode='constant')
+                elif len(frame_processed) > chunk_size:
+                    frame_processed = frame_processed[:chunk_size]
+
+                # Convert to torch tensor
+                audio_tensor = torch.from_numpy(frame_processed).float()
+
+                # Silero expects batch dimension: (batch, samples)
+                if audio_tensor.dim() == 1:
+                    audio_tensor = audio_tensor.unsqueeze(0)
+
+                # Run inference with captured model reference
+                with torch.no_grad():
+                    speech_prob = model_ref(audio_tensor, sample_rate_ref).item()
+
+                # Apply threshold using captured config
+                is_speech = speech_prob >= config_ref.speech_threshold
+
+                return is_speech, speech_prob
+
+            except Exception as e:
+                logger.error(f"Silero inference error: {e}")
+                return False, 0.0
+
+        return await asyncio.to_thread(_is_speech_sync)
 
     async def process_audio_async(self, audio: np.ndarray) -> list[SpeechSegment]:
         """
@@ -255,8 +305,78 @@ class AsyncSileroVAD(SileroVAD):
         Returns:
             List of detected speech segments
         """
+        # SAFETY: Capture references BEFORE spawning thread to prevent segfaults
+        # if model is unloaded during processing
+        model_ref = self.model
+        sample_rate_ref = self.sample_rate
+        config_ref = self.config
+        get_speech_timestamps_ref = self.get_speech_timestamps
+
+        if model_ref is None:
+            logger.warning("Silero model not loaded")
+            return []
+
         def _process_sync():
-            return list(self.process_audio(audio))
+            """Process audio with captured references to prevent segfaults."""
+            if model_ref is None:
+                return []
+
+            if len(audio) == 0:
+                return []
+
+            try:
+                segments = []
+                # Convert to torch tensor
+                audio_tensor = torch.from_numpy(audio).float()
+
+                # Get speech timestamps from Silero using captured references
+                speech_timestamps = get_speech_timestamps_ref(
+                    audio_tensor,
+                    model_ref,
+                    sampling_rate=sample_rate_ref,
+                    threshold=config_ref.speech_threshold,
+                    min_speech_duration_ms=config_ref.min_speech_duration_ms,
+                    max_speech_duration_s=30,
+                    min_silence_duration_ms=config_ref.max_silence_duration_ms,
+                    window_size_samples=512,
+                    speech_pad_ms=config_ref.padding_duration_ms
+                )
+
+                # Convert timestamps to SpeechSegment objects
+                for timestamp in speech_timestamps:
+                    start_sample = timestamp['start']
+                    end_sample = timestamp['end']
+                    segment_audio = audio[start_sample:end_sample]
+                    duration_ms = (len(segment_audio) / sample_rate_ref) * 1000
+
+                    # Get average confidence for this segment
+                    chunk_size = 512 if sample_rate_ref == 16000 else 256
+                    confidences = []
+
+                    for i in range(0, len(segment_audio), chunk_size):
+                        chunk = segment_audio[i:i + chunk_size]
+                        if len(chunk) < chunk_size:
+                            chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
+                        chunk_tensor = torch.from_numpy(chunk).float().unsqueeze(0)
+                        with torch.no_grad():
+                            chunk_confidence = model_ref(chunk_tensor, sample_rate_ref).item()
+                            confidences.append(chunk_confidence)
+
+                    confidence = np.mean(confidences) if confidences else config_ref.speech_threshold
+
+                    segments.append(SpeechSegment(
+                        start_sample=start_sample,
+                        end_sample=end_sample,
+                        audio_data=segment_audio,
+                        confidence=confidence,
+                        duration_ms=duration_ms
+                    ))
+
+                return segments
+
+            except Exception as e:
+                logger.error(f"Silero process_audio error: {e}")
+                return []
 
         return await asyncio.to_thread(_process_sync)
 
@@ -270,4 +390,56 @@ class AsyncSileroVAD(SileroVAD):
         Returns:
             Filtered audio with silence removed
         """
-        return await asyncio.to_thread(self.filter_silence, audio)
+        # SAFETY: Capture references BEFORE spawning thread to prevent segfaults
+        # Note: filter_silence uses process_audio internally, so we need
+        # all the same references
+        model_ref = self.model
+        sample_rate_ref = self.sample_rate
+        config_ref = self.config
+        get_speech_timestamps_ref = self.get_speech_timestamps
+
+        if model_ref is None:
+            logger.warning("Silero model not loaded")
+            return audio
+
+        def _filter_silence_sync():
+            """Filter silence with captured references to prevent segfaults."""
+            if model_ref is None or len(audio) == 0:
+                return audio
+
+            try:
+                # Convert to torch tensor
+                audio_tensor = torch.from_numpy(audio).float()
+
+                # Get speech timestamps using captured references
+                speech_timestamps = get_speech_timestamps_ref(
+                    audio_tensor,
+                    model_ref,
+                    sampling_rate=sample_rate_ref,
+                    threshold=config_ref.speech_threshold,
+                    min_speech_duration_ms=config_ref.min_speech_duration_ms,
+                    max_speech_duration_s=30,
+                    min_silence_duration_ms=config_ref.max_silence_duration_ms,
+                    window_size_samples=512,
+                    speech_pad_ms=config_ref.padding_duration_ms
+                )
+
+                if not speech_timestamps:
+                    return audio
+
+                # Concatenate all speech segments
+                speech_segments = []
+                for timestamp in speech_timestamps:
+                    start_sample = timestamp['start']
+                    end_sample = timestamp['end']
+                    speech_segments.append(audio[start_sample:end_sample])
+
+                if speech_segments:
+                    return np.concatenate(speech_segments)
+                return audio
+
+            except Exception as e:
+                logger.error(f"Silero filter_silence error: {e}")
+                return audio
+
+        return await asyncio.to_thread(_filter_silence_sync)

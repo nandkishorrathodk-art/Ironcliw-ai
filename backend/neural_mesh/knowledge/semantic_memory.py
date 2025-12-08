@@ -300,18 +300,26 @@ class SentenceTransformerProvider(EmbeddingProvider):
         """Generate embedding for text."""
         await self._ensure_model()
         loop = asyncio.get_event_loop()
+        # SAFETY: Capture model reference BEFORE passing to executor
+        model_ref = self._model
+        if model_ref is None:
+            raise RuntimeError("Model not loaded for embedding")
         return await loop.run_in_executor(
             None,
-            lambda: self._model.encode(text, convert_to_numpy=True)
+            lambda: model_ref.encode(text, convert_to_numpy=True)
         )
 
     async def embed_batch(self, texts: List[str]) -> List[np.ndarray]:
         """Generate embeddings for multiple texts."""
         await self._ensure_model()
         loop = asyncio.get_event_loop()
+        # SAFETY: Capture model reference BEFORE passing to executor
+        model_ref = self._model
+        if model_ref is None:
+            raise RuntimeError("Model not loaded for batch embedding")
         embeddings = await loop.run_in_executor(
             None,
-            lambda: self._model.encode(texts, convert_to_numpy=True)
+            lambda: model_ref.encode(texts, convert_to_numpy=True)
         )
         return list(embeddings)
 

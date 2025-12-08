@@ -1443,20 +1443,34 @@ class ECAPAModelManager:
 
             # Use optimized loader if available (v20.0.0)
             if self._using_optimized and self._optimized_loader:
+                # SAFETY: Capture loader reference BEFORE thread spawn to prevent segfaults
+                loader_ref = self._optimized_loader
+                if loader_ref is None:
+                    raise RuntimeError("Optimized loader became None after check")
+
                 # Run in thread pool to avoid blocking
                 # CRITICAL: Use np.array with copy=True to avoid memory corruption
                 # when tensor is GC'd after thread pool worker exits
                 def _encode_optimized():
-                    result = self._optimized_loader.encode(audio_tensor).cpu()
+                    if loader_ref is None:
+                        raise RuntimeError("Loader reference became None during encoding")
+                    result = loader_ref.encode(audio_tensor).cpu()
                     return np.array(result.numpy(), dtype=np.float32, copy=True)
 
                 loop = asyncio.get_running_loop()
                 embedding = await loop.run_in_executor(None, _encode_optimized)
             else:
+                # SAFETY: Capture model reference BEFORE thread spawn to prevent segfaults
+                model_ref = self.model
+                if model_ref is None:
+                    raise RuntimeError("Model became None for legacy encoding")
+
                 # Legacy path using standard SpeechBrain model
                 # CRITICAL: Use np.array with copy=True to avoid memory corruption
                 def _encode_legacy():
-                    result = self.model.encode_batch(audio_tensor).squeeze().cpu()
+                    if model_ref is None:
+                        raise RuntimeError("Model reference became None during encoding")
+                    result = model_ref.encode_batch(audio_tensor).squeeze().cpu()
                     return np.array(result.numpy(), dtype=np.float32, copy=True)
 
                 loop = asyncio.get_running_loop()

@@ -308,10 +308,25 @@ class Pyttsx3TTSEngine(BaseTTSEngine):
             os.close(temp_fd)  # Close FD, we'll use the path
             temp_file = Path(temp_path)
 
+            # SAFETY: Capture engine reference BEFORE spawning threads
+            engine_ref = self.engine
+            if engine_ref is None:
+                raise RuntimeError("TTS engine not initialized")
+
+            def _save_to_file():
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None during synthesis")
+                engine_ref.save_to_file(text, str(temp_file))
+
+            def _run_and_wait():
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None during synthesis")
+                engine_ref.runAndWait()
+
             # Synthesize to file
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: self.engine.save_to_file(text, str(temp_file)))
-            await loop.run_in_executor(None, self.engine.runAndWait)
+            await loop.run_in_executor(None, _save_to_file)
+            await loop.run_in_executor(None, _run_and_wait)
 
             # Read audio file
             audio_data, sample_rate = sf.read(temp_file)
