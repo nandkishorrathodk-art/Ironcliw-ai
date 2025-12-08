@@ -43,6 +43,71 @@ Traditional voice authentication follows a sequential flow:
 
 ### 1.2 The Solution: Neural Parallel Architecture
 
+```mermaid
+flowchart TB
+    subgraph input["🎤 Audio Input"]
+        A["Voice Command<br/>(unlock my screen)"]
+    end
+
+    A --> split["⚡ PARALLEL DISPATCH"]
+
+    subgraph parallel["Parallel Verification Engines"]
+        direction LR
+        subgraph stt["STT"]
+            B["Whisper<br/>~200ms"]
+        end
+        subgraph ml["ML"]
+            C["ECAPA-TDNN<br/>~150ms"]
+        end
+        subgraph physics["Physics"]
+            D["PAVA<br/>~100ms"]
+        end
+        subgraph context["Context"]
+            E["Time/Location<br/>~50ms"]
+        end
+        subgraph behavioral["Behavioral"]
+            F["Patterns<br/>~50ms"]
+        end
+    end
+
+    split --> B
+    split --> C
+    split --> D
+    split --> E
+    split --> F
+
+    B --> fusion
+    C --> fusion
+    D --> fusion
+    E --> fusion
+    F --> fusion
+
+    subgraph fusion_block["🧠 Bayesian Fusion Brain"]
+        fusion["Confidence Merger<br/>P(auth|evidence)"]
+    end
+
+    fusion --> decision
+
+    subgraph decision_block["Decision"]
+        decision{{"Authenticate?<br/>≥85% → ✅ Unlock<br/>&lt;40% → ❌ Reject"}}
+    end
+
+    style input fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style parallel fill:#f5f5f5,stroke:#424242,stroke-width:2px
+    style stt fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style ml fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style physics fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style context fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style behavioral fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style fusion_block fill:#fff8e1,stroke:#ff6f00,stroke-width:2px
+    style decision_block fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+**Total: ~250ms (parallel) vs ~2.8s (sequential) = 13.6x faster**
+
+<details>
+<summary>📊 ASCII Diagram (for terminals without Mermaid support)</summary>
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                   NEURAL PARALLEL ARCHITECTURE (v20.5.0)                │
@@ -86,6 +151,8 @@ Traditional voice authentication follows a sequential flow:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+</details>
+
 ### 1.3 Key Design Principles
 
 | Principle | Description |
@@ -102,6 +169,59 @@ Traditional voice authentication follows a sequential flow:
 ## 2. System Design Deep Dive
 
 ### 2.1 High-Level System Architecture
+
+```mermaid
+flowchart TB
+    subgraph macos["🍎 macOS Frontend"]
+        audio["🎤 Audio Capture"]
+        screen["🖥️ Screen Lock State"]
+        keychain["🔐 Keychain Password"]
+    end
+
+    subgraph backend["🐍 JARVIS Backend (Python)"]
+        subgraph unlock_service["IntelligentVoiceUnlockService"]
+            subgraph parallel_engine["Parallel Verification Engine"]
+                stt["STT Router"]
+                ecapa_client["ECAPA Client"]
+                pava["Physics PAVA"]
+                ctx["Context Engine"]
+                behavior["Behavior Engine"]
+                bayesian["Bayesian Fusion"]
+            end
+        end
+
+        subgraph data_layer["📊 Data Layer"]
+            sqlite[("SQLite<br/>Learning DB")]
+            voice_cache[("Voice<br/>Profiles")]
+            metrics[("Metrics<br/>Database")]
+        end
+    end
+
+    subgraph gcp["☁️ GCP Cloud Run"]
+        subgraph ecapa_cloud["ECAPA Cloud Service v20.4.0"]
+            jit["JIT Model<br/>&lt;2s load"]
+            onnx["ONNX Model<br/>Portable"]
+            quantized["Quantized<br/>Smallest"]
+            cache_dir["Pre-baked Cache<br/>/opt/ecapa_cache"]
+        end
+    end
+
+    audio --> unlock_service
+    unlock_service --> screen
+    unlock_service --> keychain
+    parallel_engine --> data_layer
+    ecapa_client -->|"HTTPS/gRPC"| ecapa_cloud
+
+    style macos fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style backend fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style gcp fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style parallel_engine fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style data_layer fill:#fafafa,stroke:#616161,stroke-width:1px
+    style ecapa_cloud fill:#fff8e1,stroke:#ff6f00,stroke-width:2px
+```
+
+<details>
+<summary>📊 ASCII Diagram (for terminals without Mermaid support)</summary>
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -122,9 +242,9 @@ Traditional voice authentication follows a sequential flow:
 │  │ │  Lock   │◄┼────┼──│  │  │ Router │  │ Client │  │  PAVA  │  │   │    │     │
 │  │ │ State   │ │    │  │  │  └────────┘  └────────┘  └────────┘  │   │    │     │
 │  │ └─────────┘ │    │  │  │       │          │           │       │   │    │     │
-│  │             │    │  │  │  ┌────────┐  ┌────────┐  ┌────────┐  │   │    │     │ 
+│  │             │    │  │  │  ┌────────┐  ┌────────┐  ┌────────┐  │   │    │     │
 │  │ ┌─────────┐ │    │  │  │  │Context │  │Behavior│  │Bayesian│  │   │    │     │
-│  │ │Keychain │◄┼────┼──│  │  │ Engine │  │ Engine │  │ Fusion │  │   │    │     │ 
+│  │ │Keychain │◄┼────┼──│  │  │ Engine │  │ Engine │  │ Fusion │  │   │    │     │
 │  │ │Password │ │    │  │  │  └────────┘  └────────┘  └────────┘  │   │    │     │
 │  │ └─────────┘ │    │  │  └──────────────────────────────────────┘   │    │     │
 │  └─────────────┘    │  └─────────────────────────────────────────────┘    │     │
@@ -159,7 +279,53 @@ Traditional voice authentication follows a sequential flow:
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+</details>
+
 ### 2.2 Data Flow Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant mac as 🍎 macOS
+    participant backend as 🐍 Backend
+    participant cloud as ☁️ Cloud ECAPA
+    participant fusion as 🧠 Bayesian Fusion
+
+    mac->>backend: Audio (16kHz PCM via WebSocket)
+
+    Note over backend: asyncio.gather() - Parallel Dispatch
+
+    par Parallel Tasks
+        backend->>cloud: Task A: Extract embedding
+        cloud-->>backend: ML Confidence (0.92)
+    and
+        backend->>backend: Task B: Physics PAVA
+        Note right of backend: VTL, Doppler, Reverb
+    and
+        backend->>backend: Task C: Context
+        Note right of backend: Time, Location, Device
+    and
+        backend->>backend: Task D: Behavioral
+        Note right of backend: Pattern Matching
+    end
+
+    backend->>fusion: Collect Results
+    Note over fusion: Weights: ML=40%, Physics=30%,<br/>Behavioral=20%, Context=10%
+
+    fusion-->>backend: P(auth|evidence) = 0.91
+
+    alt P(auth) >= 85%
+        backend->>mac: AUTHENTICATE - Unlock
+        mac->>mac: Keychain → AppleScript → Unlock
+    else 40% <= P(auth) < 85%
+        backend->>mac: CHALLENGE - Retry
+    else P(auth) < 40%
+        backend->>mac: REJECT - Deny
+    end
+```
+
+<details>
+<summary>📊 ASCII Diagram (for terminals without Mermaid support)</summary>
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -182,14 +348,14 @@ Traditional voice authentication follows a sequential flow:
 │  3. RESULTS COLLECTION                                                          │
 │     ├── ML Confidence: 0.0 - 1.0 (ECAPA cosine similarity)                      │
 │     ├── Physics Confidence: 0.0 - 1.0 (VTL, Doppler, Reverb)                    │
-│     ├── Context Confidence: 0.0 - 1.0 (time/location match)                     │ 
+│     ├── Context Confidence: 0.0 - 1.0 (time/location match)                     │
 │     └── Behavioral Confidence: 0.0 - 1.0 (pattern match)                        │
 │                                                                                 │
 │  4. BAYESIAN FUSION                                                             │
 │     ├── Weights: ML=40%, Physics=30%, Behavioral=20%, Context=10%               │
 │     ├── Adaptive exclusion of unavailable sources                               │
 │     ├── Dynamic threshold adjustment                                            │
-│     └── Output: P(authentic|evidence) probability                               │ 
+│     └── Output: P(authentic|evidence) probability                               │
 │                                                                                 │
 │  5. DECISION                                                                    │
 │     ├── AUTHENTICATE: P(auth) >= 85% → Unlock screen                            │
@@ -197,13 +363,15 @@ Traditional voice authentication follows a sequential flow:
 │     ├── REJECT: P(auth) < 40% → Deny access                                     │
 │     └── ESCALATE: Anomaly detected → Security alert                             │
 │                                                                                 │
-│  6. UNLOCK EXECUTION (if authenticated)                                        │
-│     ├── Retrieve password from macOS Keychain                                  │
-│     ├── AppleScript/CGEvent keyboard simulation                                │
-│     └── Verify screen unlocked via Quartz                                      │
+│  6. UNLOCK EXECUTION (if authenticated)                                         │
+│     ├── Retrieve password from macOS Keychain                                   │
+│     ├── AppleScript/CGEvent keyboard simulation                                 │
+│     └── Verify screen unlocked via Quartz                                       │
 │                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ---
 
@@ -515,6 +683,32 @@ async def verify_command_parallel(audio_data: bytes) -> FusionResult:
 
 ### 4.2 Execution Timeline
 
+```mermaid
+gantt
+    title Parallel Execution Timeline (~205ms total)
+    dateFormat X
+    axisFormat %Lms
+
+    section Input
+    Audio Capture           :done, audio, 0, 10
+
+    section Parallel Tasks
+    STT (Whisper)          :active, stt, 10, 190
+    ECAPA ML (Cloud)       :active, ecapa, 10, 130
+    Physics PAVA           :active, physics, 10, 90
+    Context (DB)           :active, ctx, 10, 40
+    Behavioral (DB)        :active, behavior, 10, 40
+
+    section Fusion
+    Bayesian Fusion        :crit, fusion, 190, 210
+    Decision               :crit, decision, 210, 215
+```
+
+**Key insight:** The longest task (STT Whisper at ~180ms) determines total time. All other tasks complete within that window, running truly in parallel.
+
+<details>
+<summary>📊 ASCII Diagram (for terminals without Mermaid support)</summary>
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        EXECUTION TIMELINE (PARALLEL)                        │
@@ -558,6 +752,8 @@ async def verify_command_parallel(audio_data: bytes) -> FusionResult:
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ---
 
@@ -820,6 +1016,41 @@ gcloud run deploy jarvis-ml \
 
 ### 7.2 Hybrid Cloud Strategy
 
+```mermaid
+flowchart TD
+    A["🎤 Voice Command"] --> B{{"Local RAM<br/>&gt; 8GB?"}}
+
+    B -->|"✅ YES"| C["🖥️ Local ECAPA<br/>$0.00"]
+    B -->|"❌ NO"| D{{"Cloud Service<br/>Available?"}}
+
+    D -->|"✅ YES"| E["☁️ Cloud ECAPA<br/>~$0.01/1000 req"]
+    D -->|"❌ NO"| F["⚠️ Graceful Degradation<br/>Physics + Behavioral only"]
+
+    C --> G["✅ Authenticated"]
+    E --> G
+    F --> G
+
+    style A fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style B fill:#fff8e1,stroke:#ff6f00,stroke-width:2px
+    style C fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style D fill:#fff8e1,stroke:#ff6f00,stroke-width:2px
+    style E fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style F fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style G fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+**Cost Breakdown:**
+| Mode | Usage | Cost |
+|------|-------|------|
+| Local ECAPA | 80% (at desk) | $0.00 |
+| Cloud ECAPA | 15% (memory pressure) | ~$0.01/1000 req |
+| Degraded | 5% (both unavailable) | $0.00 |
+
+**Estimated Monthly:** $0.00 - $0.05 (essentially free)
+
+<details>
+<summary>📊 ASCII Diagram (for terminals without Mermaid support)</summary>
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        HYBRID CLOUD COST OPTIMIZATION                       │
@@ -849,15 +1080,10 @@ gcloud run deploy jarvis-ml \
 │  │ (Skip ML)       │  Still secure, lower confidence                      │
 │  └─────────────────┘                                                       │
 │                                                                             │
-│  COST BREAKDOWN:                                                           │
-│  ├── 80% local (free): When working at desk with MacBook                  │
-│  ├── 15% cloud (~$0.01): When device is memory-constrained                │
-│  └── 5% degraded (free): When both unavailable                            │
-│                                                                             │
-│  ESTIMATED MONTHLY: $0.00 - $0.05 (essentially free)                       │
-│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ### 7.3 Embedding Cache Strategy
 
