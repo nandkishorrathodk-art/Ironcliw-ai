@@ -103,6 +103,7 @@ class ParallelInitializer:
         self._add_component("memory_aware_startup", priority=20)
         self._add_component("cloud_ml_router", priority=21, dependencies=["memory_aware_startup"])
         self._add_component("cloud_ecapa_client", priority=22)
+        self._add_component("vbi_prewarm", priority=23, dependencies=["cloud_ecapa_client"])  # VBI pre-warming after ECAPA client
         self._add_component("ml_engine_registry", priority=25)
 
         # Phase 3: Voice System (parallel)
@@ -398,6 +399,87 @@ class ParallelInitializer:
 
         except Exception as e:
             logger.warning(f"CloudECAPAClient failed: {e}")
+
+    async def _init_vbi_prewarm(self):
+        """
+        Initialize VBI (Voice Biometric Intelligence) Pre-Warming
+
+        This ensures ECAPA embedding extraction is ready BEFORE any unlock requests.
+        Eliminates cold starts during 'unlock my screen' commands.
+        """
+        try:
+            from core.vbi_debug_tracer import (
+                prewarm_vbi_at_startup,
+                get_prewarmer,
+                get_orchestrator,
+                get_tracer
+            )
+
+            logger.info("=" * 60)
+            logger.info("VBI PRE-WARMING SEQUENCE")
+            logger.info("=" * 60)
+
+            # Initialize the VBI components
+            prewarmer = get_prewarmer()
+            orchestrator = get_orchestrator()
+            tracer = get_tracer()
+
+            # Store references in app state for access throughout the application
+            self.app.state.vbi_prewarmer = prewarmer
+            self.app.state.vbi_orchestrator = orchestrator
+            self.app.state.vbi_tracer = tracer
+
+            # Perform the pre-warm (this triggers Cloud ECAPA model loading)
+            logger.info("   Starting ECAPA pre-warm (eliminates cold starts)...")
+
+            # Set a generous timeout for initial pre-warm (model may need to load)
+            prewarm_timeout = float(os.environ.get("VBI_PREWARM_TIMEOUT", "45"))
+
+            try:
+                prewarm_result = await asyncio.wait_for(
+                    prewarmer.warmup(force=True),
+                    timeout=prewarm_timeout
+                )
+
+                if prewarm_result.get("status") == "success":
+                    warmup_ms = prewarm_result.get("total_duration_ms", 0)
+                    logger.info(f"   ✅ VBI pre-warm COMPLETE in {warmup_ms:.0f}ms")
+                    logger.info(f"   ✅ ECAPA is now HOT - no cold starts during unlock!")
+
+                    # Store pre-warm status
+                    self.app.state.vbi_prewarm_status = {
+                        "status": "success",
+                        "warmup_ms": warmup_ms,
+                        "timestamp": time.time(),
+                        "endpoint": prewarm_result.get("stages", [{}])[0].get("endpoint", "unknown")
+                    }
+                else:
+                    logger.warning(f"   ⚠️ VBI pre-warm incomplete: {prewarm_result.get('status')}")
+                    self.app.state.vbi_prewarm_status = {
+                        "status": prewarm_result.get("status", "unknown"),
+                        "error": prewarm_result.get("error"),
+                        "timestamp": time.time()
+                    }
+
+            except asyncio.TimeoutError:
+                logger.warning(f"   ⚠️ VBI pre-warm timed out after {prewarm_timeout}s")
+                logger.warning("   Voice unlock will work but may have initial delay")
+                self.app.state.vbi_prewarm_status = {
+                    "status": "timeout",
+                    "timeout_seconds": prewarm_timeout,
+                    "timestamp": time.time()
+                }
+
+            logger.info("=" * 60)
+
+        except ImportError as e:
+            logger.warning(f"VBI pre-warmer not available: {e}")
+            logger.warning("Voice unlock will work but may have cold start delays")
+
+        except Exception as e:
+            logger.error(f"VBI pre-warm failed: {e}")
+            logger.error(f"   This is non-fatal - voice unlock will still work")
+            # Don't raise - this is not critical for server operation
 
     async def _init_ml_engine_registry(self):
         """Initialize ML engine registry"""

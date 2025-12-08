@@ -1328,6 +1328,64 @@ const JarvisVoice = () => {
       case 'voice_unlock':
         // Handle voice unlock responses
         console.log('Voice unlock response received:', data);
+
+        // 🔍 VBI TRACE DISPLAY - Show detailed Voice Biometric Intelligence trace data
+        if (data.vbi_trace) {
+          const trace = data.vbi_trace;
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════', 'color: #00ff88; font-weight: bold');
+          console.log('%c📊 VBI TRACE: ' + (trace.trace_id || 'unknown'), 'color: #00ff88; font-size: 14px; font-weight: bold');
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════', 'color: #00ff88; font-weight: bold');
+
+          // Overall status
+          console.log(`%cStatus: ${trace.status || 'unknown'} | Duration: ${(trace.total_duration_ms || 0).toFixed(1)}ms`,
+            trace.status === 'success' ? 'color: #00ff88' : 'color: #ff6b6b');
+
+          // Speaker info
+          if (trace.speaker_name) {
+            console.log(`%c👤 Speaker: ${trace.speaker_name} (Confidence: ${((trace.confidence || 0) * 100).toFixed(1)}%)`,
+              'color: #00bfff; font-weight: bold');
+          }
+
+          // Step-by-step breakdown
+          if (trace.steps && trace.steps.length > 0) {
+            console.log('%c\n📋 PIPELINE STEPS:', 'color: #ffa500; font-weight: bold');
+            trace.steps.forEach((step, idx) => {
+              const statusIcon = step.status === 'success' ? '✅' : step.status === 'error' ? '❌' : step.status === 'skipped' ? '⏭️' : '⏳';
+              const duration = step.duration_ms ? `${step.duration_ms.toFixed(1)}ms` : 'N/A';
+              const color = step.status === 'success' ? 'color: #00ff88' : step.status === 'error' ? 'color: #ff6b6b' : 'color: #888';
+
+              console.log(`%c  ${idx + 1}. ${statusIcon} ${step.step_name || 'unnamed'} [${duration}]`, color);
+
+              // Show step details if present
+              if (step.details) {
+                Object.entries(step.details).forEach(([key, value]) => {
+                  const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
+                  console.log(`%c      └─ ${key}: ${displayValue}`, 'color: #aaa');
+                });
+              }
+
+              // Show error message if present
+              if (step.error) {
+                console.log(`%c      └─ ERROR: ${step.error}`, 'color: #ff6b6b; font-weight: bold');
+              }
+            });
+          }
+
+          // Metadata summary
+          if (trace.metadata) {
+            console.log('%c\n📦 METADATA:', 'color: #da70d6; font-weight: bold');
+            Object.entries(trace.metadata).slice(0, 10).forEach(([key, value]) => {
+              const displayValue = typeof value === 'object' ? JSON.stringify(value).substring(0, 100) : value;
+              console.log(`%c  • ${key}: ${displayValue}`, 'color: #ccc');
+            });
+          }
+
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════\n', 'color: #00ff88; font-weight: bold');
+        } else if (data.trace_id) {
+          // Minimal trace info if full trace not included
+          console.log(`%c🔍 VBI Trace ID: ${data.trace_id} (full trace available in backend logs)`, 'color: #888');
+        }
+
         const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
         setResponse(voiceUnlockText);
         setIsProcessing(false);
@@ -1401,6 +1459,29 @@ const JarvisVoice = () => {
       case 'command_response':
         // Handle new async pipeline responses
         console.log('WebSocket command_response received:', data);
+
+        // 🔍 VBI TRACE DISPLAY - Check for VBI trace in command responses too
+        if (data.vbi_trace) {
+          const trace = data.vbi_trace;
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════', 'color: #00ff88; font-weight: bold');
+          console.log('%c📊 VBI TRACE (via command_response): ' + (trace.trace_id || 'unknown'), 'color: #00ff88; font-size: 14px; font-weight: bold');
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════', 'color: #00ff88; font-weight: bold');
+          console.log(`%cStatus: ${trace.status || 'unknown'} | Duration: ${(trace.total_duration_ms || 0).toFixed(1)}ms`,
+            trace.status === 'success' ? 'color: #00ff88' : 'color: #ff6b6b');
+          if (trace.speaker_name) {
+            console.log(`%c👤 Speaker: ${trace.speaker_name} (Confidence: ${((trace.confidence || 0) * 100).toFixed(1)}%)`,
+              'color: #00bfff; font-weight: bold');
+          }
+          if (trace.steps && trace.steps.length > 0) {
+            console.log('%c\n📋 PIPELINE STEPS:', 'color: #ffa500; font-weight: bold');
+            trace.steps.forEach((step, idx) => {
+              const statusIcon = step.status === 'success' ? '✅' : step.status === 'error' ? '❌' : '⏳';
+              console.log(`%c  ${idx + 1}. ${statusIcon} ${step.step_name || 'unnamed'} [${step.duration_ms?.toFixed(1) || 'N/A'}ms]`,
+                step.status === 'success' ? 'color: #00ff88' : 'color: #ff6b6b');
+            });
+          }
+          console.log('%c═══════════════════════════════════════════════════════════════════════════════\n', 'color: #00ff88; font-weight: bold');
+        }
 
         if (data.response) {
           // Update the UI with the response
@@ -2297,11 +2378,13 @@ const JarvisVoice = () => {
     const commandStartTime = Date.now();
 
     // 🎤 Stop audio capture and get the recorded audio for voice biometrics
+    console.log(`🎤 [VoiceCapture] isRecordingVoiceRef.current = ${isRecordingVoiceRef.current}`);
     const audioData = await stopVoiceAudioCapture();
     if (audioData) {
-      console.log(`🎤 [VoiceCapture] Audio captured for command: ${audioData.audio?.length || 0} chars, ${audioData.sampleRate}Hz`);
+      console.log(`🎤 [VoiceCapture] ✅ Audio captured for command: ${audioData.audio?.length || 0} chars, ${audioData.sampleRate}Hz, ${audioData.mimeType}`);
     } else {
-      console.log('🎤 [VoiceCapture] No audio data captured (may not affect functionality)');
+      console.warn('🎤 [VoiceCapture] ⚠️ No audio data captured - voice unlock commands will fail!');
+      console.warn('🎤 [VoiceCapture] Make sure audio capture started before speaking the command');
     }
 
     // 🎤 Restart audio capture if continuous listening is still active
@@ -2509,9 +2592,12 @@ const JarvisVoice = () => {
       return;
     }
 
-    try {
-      console.log('🎤 [VoiceCapture] Starting audio capture for voice biometrics...');
+    // CRITICAL: Set flag IMMEDIATELY to prevent race conditions
+    // This ensures stopVoiceAudioCapture waits for recording to actually start
+    isRecordingVoiceRef.current = true;
+    console.log('🎤 [VoiceCapture] Recording flag set - starting audio capture for voice biometrics...');
 
+    try {
       // Get microphone access
       voiceAudioStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -2552,20 +2638,37 @@ const JarvisVoice = () => {
 
       // Start recording with 100ms chunks for continuous capture
       voiceAudioRecorderRef.current.start(100);
-      isRecordingVoiceRef.current = true;
+      // Note: isRecordingVoiceRef.current was set at the top of this function
 
       console.log(`🎤 [VoiceCapture] Recording started (${selectedMimeType || 'default'})`);
     } catch (error) {
       console.error('🎤 [VoiceCapture] Failed to start recording:', error);
+      // Reset flag on error
+      isRecordingVoiceRef.current = false;
     }
   };
 
   const stopVoiceAudioCapture = async () => {
     if (!isRecordingVoiceRef.current) {
+      console.log('🎤 [VoiceCapture] Not recording - no audio to capture');
       return null;
     }
 
     console.log('🎤 [VoiceCapture] Stopping audio capture...');
+
+    // Wait for recorder to be initialized if it's still starting
+    let waitAttempts = 0;
+    while (!voiceAudioRecorderRef.current && waitAttempts < 20) {
+      console.log('🎤 [VoiceCapture] Waiting for recorder to initialize...');
+      await new Promise(resolve => setTimeout(resolve, 50));
+      waitAttempts++;
+    }
+
+    if (!voiceAudioRecorderRef.current) {
+      console.warn('🎤 [VoiceCapture] Recorder never initialized, no audio captured');
+      isRecordingVoiceRef.current = false;
+      return null;
+    }
 
     return new Promise((resolve) => {
       if (voiceAudioRecorderRef.current && voiceAudioRecorderRef.current.state !== 'inactive') {

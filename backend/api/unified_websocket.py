@@ -26,6 +26,20 @@ from typing import Any, Dict, List, Optional, Set
 from core.async_pipeline import get_async_pipeline
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+# Import VBI Debug Tracer for comprehensive voice unlock logging
+try:
+    from core.vbi_debug_tracer import (
+        get_tracer,
+        get_orchestrator,
+        VBIStage,
+        VBIStatus
+    )
+    VBI_TRACER_AVAILABLE = True
+    logger.info("[WS] VBI Debug Tracer available")
+except ImportError as e:
+    VBI_TRACER_AVAILABLE = False
+    logger.warning(f"[WS] VBI Debug Tracer not available: {e}")
+
 # Import streaming safeguard for command detection
 try:
     from voice.streaming_safeguard import (
@@ -1067,28 +1081,115 @@ class UnifiedWebSocketManager:
                 # For command types, process directly through JARVIS API
                 # This bypasses the pipeline stages which aren't properly integrated
                 if msg_type in ("command", "voice_command", "jarvis_command"):
-                    try:
-                        from .jarvis_voice_api import JARVISCommand, jarvis_api
+                    # Enhanced VBI Debug Logging
+                    command_start_time = time.time()
+                    command_text = message.get("text", message.get("command", ""))
 
-                        command_text = message.get("text", message.get("command", ""))
-                        command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
+                    logger.info("=" * 70)
+                    logger.info(f"[WS-VBI] COMMAND RECEIVED")
+                    logger.info("=" * 70)
+                    logger.info(f"   Type: {msg_type}")
+                    logger.info(f"   Text: '{command_text}'")
+                    logger.info(f"   Client: {client_id}")
+                    logger.info(f"   Audio Data: {'YES' if audio_data_received else 'NO'}")
+                    if audio_data_received:
+                        logger.info(f"   Audio Size: {len(audio_data_received)} bytes")
+                        logger.info(f"   Sample Rate: {sample_rate_received}Hz")
+                        logger.info(f"   MIME Type: {mime_type_received}")
+                    logger.info("=" * 70)
 
-                        logger.info(f"[WS] Processing command directly via jarvis_api: {command_text}")
-                        jarvis_result = await jarvis_api.process_command(command_obj)
+                    # Check if this is a voice unlock command
+                    is_unlock_command = any(
+                        keyword in command_text.lower()
+                        for keyword in ["unlock", "lock my screen", "screen unlock", "voice unlock"]
+                    )
 
-                        result = {
-                            "response": jarvis_result.get("response", ""),
-                            "success": jarvis_result.get("success", jarvis_result.get("status") == "success"),
-                            "command_type": jarvis_result.get("command_type", "unknown"),
-                            "metadata": jarvis_result,
-                        }
-                        logger.info(f"[WS] JARVIS response: {result.get('response', '')[:100]}")
-                    except ImportError as e:
-                        logger.error(f"[WS] Failed to import jarvis_voice_api: {e}")
-                        result = {"response": "", "success": False, "error": str(e)}
-                    except Exception as e:
-                        logger.error(f"[WS] Error processing command: {e}", exc_info=True)
-                        result = {"response": f"Error processing command: {e}", "success": False}
+                    if is_unlock_command and audio_data_received and VBI_TRACER_AVAILABLE:
+                        # Use VBI Pipeline Orchestrator for voice unlock with full tracing
+                        logger.info(f"[WS-VBI] Using VBI Pipeline Orchestrator for voice unlock")
+                        try:
+                            orchestrator = get_orchestrator()
+                            vbi_result = await orchestrator.process_voice_unlock(
+                                command=command_text,
+                                audio_data=audio_data_received,
+                                sample_rate=sample_rate_received or 16000,
+                                mime_type=mime_type_received or "audio/webm"
+                            )
+
+                            # Get full trace data for frontend display
+                            trace_id = vbi_result.get("trace_id", "")
+                            vbi_trace = None
+                            if trace_id and VBI_TRACER_AVAILABLE:
+                                try:
+                                    tracer = get_tracer()
+                                    # Get the most recent completed trace
+                                    recent_traces = tracer.get_recent_traces(1)
+                                    if recent_traces:
+                                        vbi_trace = recent_traces[0]
+                                except Exception as trace_err:
+                                    logger.warning(f"[WS-VBI] Could not get trace data: {trace_err}")
+
+                            result = {
+                                "type": "voice_unlock",  # CRITICAL: Frontend uses this to route to correct handler
+                                "response": vbi_result.get("response", ""),
+                                "message": vbi_result.get("response", ""),  # Alias for frontend compatibility
+                                "success": vbi_result.get("success", False),
+                                "command_type": "voice_unlock",
+                                "speaker_name": vbi_result.get("speaker_name", ""),
+                                "confidence": vbi_result.get("confidence", 0.0),
+                                "trace_id": trace_id,
+                                "vbi_trace": vbi_trace,  # Full trace for frontend display
+                                "metadata": vbi_result
+                            }
+
+                            logger.info(f"[WS-VBI] VBI Pipeline Result:")
+                            logger.info(f"   Success: {result['success']}")
+                            logger.info(f"   Response: {result['response'][:100]}")
+                            logger.info(f"   Speaker: {result.get('speaker_name', 'N/A')}")
+                            logger.info(f"   Confidence: {result.get('confidence', 0):.1%}")
+                            logger.info(f"   Trace ID: {trace_id}")
+                            logger.info(f"   Trace Data: {'Included' if vbi_trace else 'Not available'}")
+
+                        except Exception as vbi_error:
+                            logger.error(f"[WS-VBI] VBI Pipeline Error: {vbi_error}", exc_info=True)
+                            # Fall back to standard processing
+                            logger.info(f"[WS-VBI] Falling back to standard JARVIS API")
+                            result = None
+
+                    else:
+                        result = None  # Will process through standard path
+
+                    # Standard JARVIS API processing (for non-unlock or no audio)
+                    if result is None:
+                        try:
+                            from .jarvis_voice_api import JARVISCommand, jarvis_api
+
+                            command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
+
+                            logger.info(f"[WS] Processing command via jarvis_api: {command_text}")
+                            jarvis_result = await jarvis_api.process_command(command_obj)
+
+                            result = {
+                                "response": jarvis_result.get("response", ""),
+                                "success": jarvis_result.get("success", jarvis_result.get("status") == "success"),
+                                "command_type": jarvis_result.get("command_type", "unknown"),
+                                "metadata": jarvis_result,
+                            }
+
+                            logger.info(f"[WS] JARVIS response: {result.get('response', '')[:100]}")
+
+                        except ImportError as e:
+                            logger.error(f"[WS] Failed to import jarvis_voice_api: {e}")
+                            result = {"response": "", "success": False, "error": str(e)}
+                        except Exception as e:
+                            logger.error(f"[WS] Error processing command: {e}", exc_info=True)
+                            result = {"response": f"Error processing command: {e}", "success": False}
+
+                    # Log final timing
+                    command_duration = (time.time() - command_start_time) * 1000
+                    logger.info(f"[WS-VBI] COMMAND COMPLETED in {command_duration:.0f}ms")
+                    logger.info("=" * 70)
+
                 else:
                     # For non-command types (vision), use the pipeline
                     result = await self.pipeline.process_async(
