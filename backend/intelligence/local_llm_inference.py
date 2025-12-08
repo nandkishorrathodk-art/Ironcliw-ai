@@ -399,48 +399,71 @@ class LocalLLMInference:
 
         logger.debug(f"Processing batch of {len(batch)} requests")
 
+        # SAFETY: Capture model and tokenizer references BEFORE spawning any threads
+        # This prevents segfaults if model/tokenizer are unloaded during processing
+        model_ref = self.model
+        tokenizer_ref = self.tokenizer
+
+        if model_ref is None or tokenizer_ref is None:
+            logger.error("Model or tokenizer not loaded - cannot process batch")
+            for request in batch:
+                if request.request_id in self.response_futures:
+                    future = self.response_futures.pop(request.request_id)
+                    if not future.done():
+                        future.set_exception(RuntimeError("Model not loaded"))
+            return
+
         try:
             start_time = time.time()
 
             # Get generation config
             gen_config = self.llm_config.get("generation", {})
 
+            # Capture device reference for thread-safe access
+            device_ref = model_ref.device
+
             # Process each request (TODO: add true batching)
             for request in batch:
                 try:
-                    # Tokenize
-                    inputs = await asyncio.to_thread(
-                        self.tokenizer,
-                        request.prompt,
-                        return_tensors="pt",
-                    )
-                    inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+                    # Tokenize using captured reference
+                    def _tokenize_sync():
+                        return tokenizer_ref(
+                            request.prompt,
+                            return_tensors="pt",
+                        )
 
-                    # Generate
+                    inputs = await asyncio.to_thread(_tokenize_sync)
+                    inputs = {k: v.to(device_ref) for k, v in inputs.items()}
+
+                    # Generate using captured reference
                     max_tokens = request.max_tokens or gen_config.get("max_new_tokens", 512)
                     temperature = request.temperature or gen_config.get("temperature", 0.7)
                     top_p = request.top_p or gen_config.get("top_p", 0.9)
                     top_k = request.top_k or gen_config.get("top_k", 50)
 
-                    outputs = await asyncio.to_thread(
-                        self.model.generate,
-                        inputs["input_ids"],
-                        max_new_tokens=max_tokens,
-                        temperature=temperature,
-                        top_p=top_p,
-                        top_k=top_k,
-                        do_sample=gen_config.get("do_sample", True),
-                        repetition_penalty=gen_config.get("repetition_penalty", 1.1),
-                        num_beams=gen_config.get("num_beams", 1),
-                        use_cache=self.llm_config.get("optimization", {}).get("use_cache", True),
-                    )
+                    def _generate_sync():
+                        return model_ref.generate(
+                            inputs["input_ids"],
+                            max_new_tokens=max_tokens,
+                            temperature=temperature,
+                            top_p=top_p,
+                            top_k=top_k,
+                            do_sample=gen_config.get("do_sample", True),
+                            repetition_penalty=gen_config.get("repetition_penalty", 1.1),
+                            num_beams=gen_config.get("num_beams", 1),
+                            use_cache=self.llm_config.get("optimization", {}).get("use_cache", True),
+                        )
 
-                    # Decode
-                    generated_text = await asyncio.to_thread(
-                        self.tokenizer.decode,
-                        outputs[0],
-                        skip_special_tokens=True,
-                    )
+                    outputs = await asyncio.to_thread(_generate_sync)
+
+                    # Decode using captured reference
+                    def _decode_sync():
+                        return tokenizer_ref.decode(
+                            outputs[0],
+                            skip_special_tokens=True,
+                        )
+
+                    generated_text = await asyncio.to_thread(_decode_sync)
 
                     # Remove prompt from output
                     if generated_text.startswith(request.prompt):

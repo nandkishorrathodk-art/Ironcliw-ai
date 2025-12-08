@@ -133,6 +133,9 @@ class VoskEngine(BaseSTTEngine):
 
         Returns:
             STTResult with transcription and confidence
+
+        Raises:
+            RuntimeError: If recognizer is not initialized
         """
         if not self.initialized:
             await self.initialize()
@@ -144,14 +147,22 @@ class VoskEngine(BaseSTTEngine):
             audio_array = await self._bytes_to_pcm16(audio_data)
             audio_duration_ms = len(audio_array) / (self.sample_rate * 2) * 1000
 
-            # Reset recognizer state
-            await asyncio.to_thread(self.recognizer.Reset)
+            # SAFETY: Capture recognizer reference BEFORE spawning threads
+            # to prevent segfaults if recognizer is cleaned up during processing
+            recognizer_ref = self.recognizer
+            if recognizer_ref is None:
+                raise RuntimeError("Vosk recognizer not initialized")
 
-            # Feed audio data to recognizer
-            await asyncio.to_thread(self.recognizer.AcceptWaveform, audio_array.tobytes())
+            # Prepare audio bytes before thread operations
+            audio_bytes = audio_array.tobytes()
 
-            # Get final result
-            result_json = await asyncio.to_thread(self.recognizer.FinalResult)
+            def _transcribe_sync():
+                """Run Vosk transcription with captured reference."""
+                recognizer_ref.Reset()
+                recognizer_ref.AcceptWaveform(audio_bytes)
+                return recognizer_ref.FinalResult()
+
+            result_json = await asyncio.to_thread(_transcribe_sync)
             result = json.loads(result_json)
 
             # Extract text and confidence
@@ -277,34 +288,56 @@ class VoskEngine(BaseSTTEngine):
 
         Yields:
             Partial transcription results
+
+        Raises:
+            RuntimeError: If recognizer is not initialized
         """
         if not self.initialized:
             await self.initialize()
 
-        await asyncio.to_thread(self.recognizer.Reset)
+        # SAFETY: Capture recognizer reference BEFORE spawning threads
+        recognizer_ref = self.recognizer
+        if recognizer_ref is None:
+            raise RuntimeError("Vosk recognizer not initialized")
+
+        def _reset_sync():
+            recognizer_ref.Reset()
+
+        await asyncio.to_thread(_reset_sync)
 
         async for chunk in audio_stream:
             # Convert chunk to PCM16
             audio_pcm16 = await self._bytes_to_pcm16(chunk)
+            audio_bytes = audio_pcm16.tobytes()
 
-            # Feed to recognizer
-            is_final = await asyncio.to_thread(
-                self.recognizer.AcceptWaveform, audio_pcm16.tobytes()
-            )
+            # Feed to recognizer with captured reference
+            def _accept_waveform_sync():
+                return recognizer_ref.AcceptWaveform(audio_bytes)
+
+            is_final = await asyncio.to_thread(_accept_waveform_sync)
 
             if is_final:
                 # Final result for this chunk
-                result_json = await asyncio.to_thread(self.recognizer.Result)
+                def _get_result_sync():
+                    return recognizer_ref.Result()
+
+                result_json = await asyncio.to_thread(_get_result_sync)
                 result = json.loads(result_json)
                 yield result.get("text", "")
             else:
                 # Partial result
-                partial_json = await asyncio.to_thread(self.recognizer.PartialResult)
+                def _get_partial_sync():
+                    return recognizer_ref.PartialResult()
+
+                partial_json = await asyncio.to_thread(_get_partial_sync)
                 partial = json.loads(partial_json)
                 yield partial.get("partial", "")
 
         # Get final result
-        final_json = await asyncio.to_thread(self.recognizer.FinalResult)
+        def _get_final_sync():
+            return recognizer_ref.FinalResult()
+
+        final_json = await asyncio.to_thread(_get_final_sync)
         final = json.loads(final_json)
         yield final.get("text", "")
 

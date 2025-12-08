@@ -165,19 +165,33 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
     async def embed(self, text: str) -> np.ndarray:
         """Generate embedding using sentence transformer.
-        
+
         Runs in executor to avoid blocking the event loop since
         sentence transformers are synchronous.
-        
+
         Args:
             text: Input text to embed
-            
+
         Returns:
             NumPy array containing the embedding vector
+
+        Raises:
+            RuntimeError: If model is not loaded
         """
         import asyncio
+
+        # SAFETY: Capture model reference BEFORE spawning thread to prevent
+        # segfaults if model is unloaded during encoding
+        model_ref = self._model
+        if model_ref is None:
+            raise RuntimeError("SentenceTransformer model not loaded")
+
+        def _encode_sync():
+            """Run encoding with captured model reference."""
+            return model_ref.encode(text)
+
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._model.encode, text)
+        return await loop.run_in_executor(None, _encode_sync)
 
     @property
     def dimension(self) -> int:

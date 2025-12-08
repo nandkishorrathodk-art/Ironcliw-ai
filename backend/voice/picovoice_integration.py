@@ -325,7 +325,10 @@ class PicovoiceWakeWordDetector:
         Returns:
             keyword index if detected, None otherwise
         """
-        if not self.porcupine:
+        # SAFETY: Capture porcupine reference at method start to prevent
+        # segfaults if cleanup() is called during processing
+        porcupine_ref = self.porcupine
+        if not porcupine_ref:
             return None
 
         # Ensure audio is in the correct format
@@ -351,9 +354,9 @@ class PicovoiceWakeWordDetector:
             for _ in range(self.frame_length):
                 self.audio_buffer.popleft()
 
-            # Process frame
+            # Process frame using captured reference
             try:
-                result = self.porcupine.process(frame)
+                result = porcupine_ref.process(frame)
                 self.metrics.total_frames_processed += 1
 
                 if result >= 0:
