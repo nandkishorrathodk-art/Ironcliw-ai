@@ -7471,6 +7471,10 @@ class AsyncSystemManager:
         env["VOICE_BIOMETRIC_ENABLED"] = "true"  # Enable voice biometrics
         env["SPEAKER_VERIFICATION_PRELOADED"] = "true"  # Mark as pre-loaded
 
+        # CRITICAL: Enable parallel startup mode (v1.0.0)
+        # This makes uvicorn start immediately and run heavy init in background
+        env["JARVIS_PARALLEL_STARTUP"] = "true"
+
         # Set Swift library path
         swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
         if platform.system() == "Darwin":
@@ -7508,23 +7512,75 @@ class AsyncSystemManager:
 
         self.processes.append(process)
 
-        # Use dynamic health checking instead of fixed wait
+        # =========================================================================
+        # PARALLEL STARTUP v1.0.0 - Server starts IMMEDIATELY
+        # =========================================================================
+        # With parallel startup, uvicorn binds the port within 1-2 seconds.
+        # Heavy initialization runs in background - check /health/startup for progress.
+        # =========================================================================
         print(
-            f"{Colors.YELLOW}Waiting for backend to initialize (parallel startup enabled)...{Colors.ENDC}"
+            f"{Colors.GREEN}Parallel Startup Mode enabled - server should be available immediately{Colors.ENDC}"
         )
 
         # Quick initial wait for process to start
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
 
-        # Check if backend is accessible
-        backend_url = f"http://localhost:{self.ports['main_api']}/health"
-        print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
-        # Increased timeout for voice component loading on low RAM systems (can take 180-300s with memory pressure)
-        backend_ready = await self.wait_for_service(backend_url, timeout=300)
+        # Check if backend is accessible using fast /health/ping endpoint
+        # This responds immediately even while heavy init is running in background
+        ping_url = f"http://localhost:{self.ports['main_api']}/health/ping"
+        print(f"{Colors.CYAN}Checking server at {ping_url}...{Colors.ENDC}")
+
+        # Fast timeout - parallel startup should respond within 10 seconds
+        backend_ready = await self.wait_for_service(ping_url, timeout=30)
+
+        if backend_ready:
+            print(f"{Colors.GREEN}Server is responding to requests{Colors.ENDC}")
+
+            # Now check startup progress
+            startup_url = f"http://localhost:{self.ports['main_api']}/health/startup"
+            print(f"{Colors.CYAN}Checking initialization progress at {startup_url}...{Colors.ENDC}")
+
+            # Monitor startup progress for up to 120 seconds
+            import aiohttp
+            start_monitor = asyncio.get_event_loop().time()
+            full_mode_reached = False
+
+            async with aiohttp.ClientSession() as session:
+                while asyncio.get_event_loop().time() - start_monitor < 120:
+                    try:
+                        async with session.get(startup_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                phase = data.get("phase", "UNKNOWN")
+                                progress = data.get("progress", 0)
+                                components = data.get("components", {})
+
+                                if phase == "FULL_MODE":
+                                    print(f"\n{Colors.GREEN}FULL MODE reached!{Colors.ENDC}")
+                                    full_mode_reached = True
+                                    break
+                                elif phase == "DEGRADED":
+                                    print(f"\n{Colors.YELLOW}DEGRADED MODE - some components failed{Colors.ENDC}")
+                                    full_mode_reached = True  # Still functional
+                                    break
+                                else:
+                                    # Show progress
+                                    ready = components.get("ready", 0)
+                                    total = components.get("total", 1)
+                                    print(f"\r{Colors.CYAN}  Progress: {progress*100:.0f}% ({ready}/{total} components) - {phase}{Colors.ENDC}", end="", flush=True)
+
+                    except Exception as e:
+                        pass  # Ignore transient errors
+
+                    await asyncio.sleep(2)
+
+            if not full_mode_reached:
+                print(f"\n{Colors.YELLOW}Initialization still in progress (timeout reached){Colors.ENDC}")
+                print(f"{Colors.CYAN}System is functional - full features will activate automatically{Colors.ENDC}")
 
         if not backend_ready:
             print(
-                f"{Colors.WARNING}Backend did not respond at {backend_url} after 300 seconds{Colors.ENDC}"
+                f"{Colors.WARNING}Backend did not respond at {ping_url} after 30 seconds{Colors.ENDC}"
             )
             print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
 

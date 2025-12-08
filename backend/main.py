@@ -1046,6 +1046,65 @@ async def memory_pressure_callback(pressure_level: str):
         logger.error(f"Error in memory pressure callback: {e}", exc_info=True)
 
 
+# =============================================================================
+# PARALLEL STARTUP MODE (v1.0.0) - Server starts IMMEDIATELY
+# =============================================================================
+# Enable via: JARVIS_PARALLEL_STARTUP=true
+# This mode starts the server within 1-2 seconds and runs heavy initialization
+# in background tasks. The /health/startup endpoint tracks progress.
+# =============================================================================
+PARALLEL_STARTUP_ENABLED = os.getenv("JARVIS_PARALLEL_STARTUP", "true").lower() == "true"
+
+
+@asynccontextmanager
+async def parallel_lifespan(app: FastAPI):
+    """
+    Parallel lifespan handler - server starts IMMEDIATELY.
+
+    All heavy initialization runs in background tasks after the server
+    starts serving requests. This enables:
+    - Health endpoint available within 1-2 seconds
+    - Progressive loading of ML models
+    - Graceful degradation if components fail
+    """
+    from core.parallel_initializer import ParallelInitializer
+
+    logger.info("=" * 60)
+    logger.info("PARALLEL STARTUP MODE v1.0.0")
+    logger.info("=" * 60)
+    logger.info("Server will be ready immediately for health checks.")
+    logger.info("Heavy initialization runs in background.")
+    logger.info("=" * 60)
+
+    # Create parallel initializer
+    initializer = ParallelInitializer(app)
+
+    # Minimal setup - server ready in <2s
+    await initializer.minimal_setup()
+
+    # =========================================================================
+    # YIELD - Server starts serving requests NOW
+    # =========================================================================
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("SERVER IS NOW ACCEPTING REQUESTS")
+    logger.info("  - /health/ping   -> Liveness probe")
+    logger.info("  - /health/startup -> Initialization progress")
+    logger.info("  - /health        -> Full status (after init)")
+    logger.info("=" * 60)
+    logger.info("")
+
+    try:
+        yield
+    finally:
+        # Shutdown
+        logger.info("Shutting down parallel startup...")
+        await initializer.shutdown()
+
+        # Clean up any remaining state
+        logger.info("Parallel startup shutdown complete")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
@@ -2893,12 +2952,14 @@ try:
 except Exception as e:
     logger.warning(f"Could not reload vision handler: {e}")
 
-# Create FastAPI app
-logger.info("Creating optimized FastAPI app...")
+# Create FastAPI app with appropriate lifespan
+# PARALLEL_STARTUP_ENABLED is True by default for fast startup
+selected_lifespan = parallel_lifespan if PARALLEL_STARTUP_ENABLED else lifespan
+logger.info(f"Creating FastAPI app (parallel_startup={PARALLEL_STARTUP_ENABLED})...")
 app = FastAPI(
     title="JARVIS Backend (Optimized)",
-    version="13.4.0-browser-automation",
-    lifespan=lifespan,
+    version="13.5.0-parallel-startup",
+    lifespan=selected_lifespan,
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -3080,6 +3141,37 @@ except Exception as e:
 # =============================================================================
 # Lightweight Health Check Endpoints (Non-blocking)
 # =============================================================================
+
+@app.get("/health/startup")
+async def health_startup():
+    """
+    Startup progress endpoint - shows detailed initialization status.
+
+    Use this to monitor parallel initialization progress.
+    Returns immediately even during initialization.
+    """
+    # Check for parallel initializer
+    if hasattr(app.state, "parallel_initializer"):
+        return app.state.parallel_initializer.get_status()
+
+    # Fallback to basic status
+    phase = getattr(app.state, "startup_phase", "UNKNOWN")
+    progress = getattr(app.state, "startup_progress", 0.0)
+    ready = getattr(app.state, "components_ready", set())
+    failed = getattr(app.state, "components_failed", set())
+
+    return {
+        "phase": phase,
+        "progress": progress,
+        "components": {
+            "ready": list(ready),
+            "failed": list(failed),
+        },
+        "ready_for_requests": True,
+        "full_mode": phase == "FULL_MODE",
+    }
+
+
 @app.get("/health/ping")
 async def health_ping():
     """
