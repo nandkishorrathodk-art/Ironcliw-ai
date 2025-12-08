@@ -592,7 +592,7 @@ def import_monitoring():
 
 
 def import_voice_unlock():
-    """Import voice unlock components"""
+    """Import voice unlock components including enhanced VBI (v4.0)"""
     import logging
 
     logger = logging.getLogger(__name__)
@@ -630,6 +630,35 @@ def import_voice_unlock():
         except ImportError:
             logger.warning("  ⚠️  Voice Unlock startup integration not available")
             voice_unlock["startup_integration"] = False
+
+        # Import Enhanced VBI (v4.0) - LangGraph, ChromaDB, Langfuse, Cost Tracking
+        try:
+            from voice_unlock.voice_biometric_intelligence import (
+                get_voice_biometric_intelligence,
+            )
+            voice_unlock["vbi_available"] = True
+            voice_unlock["get_vbi"] = get_voice_biometric_intelligence
+            logger.info("  ✅ Voice Biometric Intelligence (VBI v4.0) available")
+
+            # Import enhanced modules status
+            from voice_unlock import (
+                get_voice_auth_reasoning_graph,
+                get_voice_pattern_memory,
+                get_voice_auth_orchestrator,
+                get_voice_auth_tracer,
+                get_voice_auth_cost_tracker,
+            )
+            voice_unlock["enhanced_modules"] = {
+                "reasoning_graph": get_voice_auth_reasoning_graph,
+                "pattern_memory": get_voice_pattern_memory,
+                "orchestrator": get_voice_auth_orchestrator,
+                "langfuse_tracer": get_voice_auth_tracer,
+                "cost_tracker": get_voice_auth_cost_tracker,
+            }
+            logger.info("  ✅ VBI Enhanced Modules (LangGraph, ChromaDB, Langfuse, Cost) imported")
+        except ImportError as e:
+            logger.warning(f"  ⚠️  VBI v4.0 not available: {e}")
+            voice_unlock["vbi_available"] = False
 
     except ImportError as e:
         logger.warning(f"  ⚠️  Voice Unlock not available: {e}")

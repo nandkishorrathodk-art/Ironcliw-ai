@@ -1324,7 +1324,79 @@ class AdvancedAsyncPipeline:
                     success, message = await controller.lock_screen()
                     action = "locked"
                 else:  # unlock
-                    # Use intelligent voice unlock service (most advanced)
+                    # =====================================================================
+                    # ENHANCED VOICE BIOMETRIC INTELLIGENCE INTEGRATION (v4.0)
+                    # =====================================================================
+                    # Use VBI first for enhanced verification with:
+                    # - LangGraph reasoning for borderline cases
+                    # - ChromaDB pattern memory for voice evolution
+                    # - Langfuse audit trails
+                    # - Helicone-style cost tracking
+                    # - Voice drift detection and adaptation
+                    # =====================================================================
+                    logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Attempting enhanced VBI verification...")
+
+                    vbi_verified = False
+                    vbi_result = None
+
+                    if audio_data:
+                        try:
+                            from backend.voice_unlock.voice_biometric_intelligence import (
+                                get_voice_biometric_intelligence,
+                            )
+
+                            vbi = await get_voice_biometric_intelligence()
+
+                            # Create context for VBI
+                            vbi_context = {
+                                "text": text,
+                                "user_name": user_name,
+                                "speaker_name": speaker_name,
+                                "source": "async_pipeline_unlock",
+                                "command_type": "unlock",
+                                **(metadata or {}),
+                            }
+
+                            # Run enhanced verification (includes reasoning, pattern storage, tracing)
+                            vbi_result = await vbi.verify_and_announce(
+                                audio_data=audio_data,
+                                context=vbi_context,
+                                speak=False,  # Don't speak here, we'll handle response
+                            )
+
+                            vbi_verified = vbi_result.verified
+                            vbi_confidence = vbi_result.confidence
+                            vbi_announcement = vbi_result.announcement
+
+                            logger.info(
+                                f"🔐 [VBI-RESULT] verified={vbi_verified}, confidence={vbi_confidence:.1%}, "
+                                f"level={vbi_result.level.value if hasattr(vbi_result.level, 'value') else str(vbi_result.level)}, "
+                                f"method={vbi_result.verification_method.value if hasattr(vbi_result.verification_method, 'value') else str(vbi_result.verification_method)}"
+                            )
+
+                            if vbi_result.spoofing_detected:
+                                logger.warning(f"🚨 [VBI-SECURITY] Spoofing detected: {vbi_result.spoofing_reason}")
+                                return False, f"Security alert: {vbi_result.spoofing_reason}", "blocked", step_times
+
+                            if vbi_verified:
+                                # Use VBI result for unlock
+                                logger.info(f"✅ [VBI-VERIFIED] Voice verified via VBI - proceeding with unlock")
+                                step_times["vbi_verify"] = (time.time() - step_start) * 1000
+
+                                # Track enhanced module usage
+                                step_times["vbi_stats"] = {
+                                    "reasoning_used": vbi._stats.get('reasoning_invocations', 0) > 0,
+                                    "patterns_stored": vbi._stats.get('pattern_stores', 0) > 0,
+                                    "drift_detected": vbi._stats.get('drift_detections', 0) > 0,
+                                }
+
+                        except ImportError as e:
+                            logger.debug(f"🔐 [VBI-UNAVAILABLE] VBI not available: {e}")
+                        except Exception as e:
+                            logger.warning(f"🔐 [VBI-ERROR] VBI verification failed: {e}")
+
+                    # If VBI verified, proceed with unlock using intelligent service
+                    # If VBI not verified or not available, fall back to standard flow
                     logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Using intelligent voice unlock service...")
                     try:
                         from backend.voice_unlock.intelligent_voice_unlock_service import (
@@ -1346,11 +1418,40 @@ class AdvancedAsyncPipeline:
                             "metadata": metadata or {},
                             # Pass sample_rate from metadata if available
                             "audio_sample_rate": metadata.get("audio_sample_rate") if metadata else None,
-                            "audio_mime_type": metadata.get("audio_mime_type") if metadata else None
+                            "audio_mime_type": metadata.get("audio_mime_type") if metadata else None,
+                            # Pass VBI verification result if available
+                            "vbi_verified": vbi_verified,
+                            "vbi_confidence": vbi_result.confidence if vbi_result else None,
+                            "vbi_announcement": vbi_result.announcement if vbi_result else None,
                         }
 
-                        # If we have audio data, use it; otherwise create a text-only request
-                        if audio_data:
+                        # If VBI already verified, we can use that result
+                        if vbi_verified and vbi_result:
+                            logger.info(f"🔓 [LOCK-UNLOCK-VBI] Using VBI verification result for unlock")
+                            # Direct unlock using VBI-verified context
+                            context_analysis = {
+                                "unlock_type": "vbi_verified",
+                                "verification_score": vbi_result.confidence,
+                                "confidence": vbi_result.confidence,
+                                "speaker_verified": True,
+                                "vbi_level": vbi_result.level.value if hasattr(vbi_result.level, 'value') else str(vbi_result.level),
+                                "vbi_method": vbi_result.verification_method.value if hasattr(vbi_result.verification_method, 'value') else str(vbi_result.verification_method),
+                            }
+                            scenario_analysis = {
+                                "scenario": "vbi_verified_unlock",
+                                "risk_level": "low" if vbi_result.confidence > 0.85 else "medium",
+                                "unlock_allowed": True,
+                                "reason": f"VBI verified at {vbi_result.confidence:.1%} confidence"
+                            }
+                            result = await unlock_service._perform_unlock(
+                                speaker_name=vbi_result.speaker_name or speaker_name or user_name,
+                                context_analysis=context_analysis,
+                                scenario_analysis=scenario_analysis
+                            )
+                            # Use VBI announcement if available
+                            if vbi_result.announcement:
+                                result["message"] = vbi_result.announcement
+                        elif audio_data:
                             result = await unlock_service.process_voice_unlock_command(
                                 audio_data=audio_data,
                                 context=context
@@ -1358,11 +1459,24 @@ class AdvancedAsyncPipeline:
                         else:
                             # Text-only unlock (no audio available)
                             logger.info(f"🔓 [LOCK-UNLOCK-TEXT] Text-only unlock request: '{text}'")
-                            # Direct unlock using internal method
+                            # Direct unlock using internal method with proper context dicts
+                            context_analysis = {
+                                "unlock_type": "text_command",
+                                "verification_score": 0.95,
+                                "confidence": 0.95,
+                                "speaker_verified": True,
+                                "text_command": text
+                            }
+                            scenario_analysis = {
+                                "scenario": "text_unlock",
+                                "risk_level": "low",
+                                "unlock_allowed": True,
+                                "reason": "text_command_from_authenticated_session"
+                            }
                             result = await unlock_service._perform_unlock(
                                 speaker_name=speaker_name or user_name,
-                                verification_score=0.95,  # High confidence for text commands
-                                unlock_reason="text_command"
+                                context_analysis=context_analysis,
+                                scenario_analysis=scenario_analysis
                             )
 
                         success = result.get("success", False)

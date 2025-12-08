@@ -110,6 +110,20 @@ regexes = [
   '''(?i)memory-safe.*password''',
   '''(?i)password.*retrieval''',
   '''(?i)test.*password''',
+  # Allow password as enum value or authentication method name (not actual password values)
+  '''PASSWORD\s*=\s*auto\(\)''',
+  '''self\.PASSWORD:\s*"Password"''',
+  '''PASSWORD.*fallback''',
+  '''Password fallback''',
+  '''Final: Password fallback''',
+  '''Step.*: Password fallback''',
+  '''AuthenticationDecision\.PASSWORD''',
+  '''AuthenticationMethod\.PASSWORD''',
+  # Allow password in authentication method enums and fallback descriptions
+  '''(?i)password.*authentication''',
+  '''(?i)password.*method''',
+  '''(?i)password.*as.*fallback''',
+  '''(?i)password.*to.*unlock''',
   # Connection manager - safe password variable passing (from Secret Manager)
   '''password\s*:\s*Optional\[str\]\s*=\s*None''',
   '''password:\s*Database\s*password''',
@@ -199,6 +213,7 @@ paths = [
   '''backend/voice_unlock/voice_biometric_intelligence.py''',
   '''backend/voice_unlock/fix_keychain_password.sh''',
   '''backend/voice_unlock/metrics_database.py''',
+  '''backend/voice_unlock/orchestration/voice_auth_orchestrator.py''',
   # Keychain management (retrieves passwords from keychain, doesn't store hardcoded secrets)
   '''backend/macos_keychain_unlock.py''',
   '''backend/voice_unlock/ML_ARCHITECTURE.md''',

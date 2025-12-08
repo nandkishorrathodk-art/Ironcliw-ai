@@ -91,6 +91,108 @@ def _get_bayesian_fusion():
 
 
 # =============================================================================
+# ENHANCED MODULES INTEGRATION (v4.0)
+# =============================================================================
+# Lazy imports for LangGraph reasoning, ChromaDB memory, orchestration, and observability
+_reasoning_graph = None
+_voice_pattern_memory = None
+_voice_auth_orchestrator = None
+_langfuse_tracer = None
+_cost_tracker = None
+_drift_detector = None
+
+
+async def _get_reasoning_graph():
+    """Lazy-load Voice Auth Reasoning Graph for intelligent authentication."""
+    global _reasoning_graph
+    if _reasoning_graph is None:
+        try:
+            from voice_unlock.reasoning import get_voice_auth_reasoning_graph
+            _reasoning_graph = await get_voice_auth_reasoning_graph()
+            logger.info("✅ Voice Auth Reasoning Graph loaded")
+        except ImportError as e:
+            logger.debug(f"Voice Auth Reasoning Graph not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Reasoning Graph: {e}")
+    return _reasoning_graph
+
+
+async def _get_voice_pattern_memory():
+    """Lazy-load ChromaDB voice pattern memory for persistence."""
+    global _voice_pattern_memory
+    if _voice_pattern_memory is None:
+        try:
+            from voice_unlock.memory import get_voice_pattern_memory
+            _voice_pattern_memory = await get_voice_pattern_memory()
+            logger.info("✅ Voice Pattern Memory loaded")
+        except ImportError as e:
+            logger.debug(f"Voice Pattern Memory not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Pattern Memory: {e}")
+    return _voice_pattern_memory
+
+
+async def _get_voice_auth_orchestrator():
+    """Lazy-load Voice Auth Orchestrator for multi-factor fallback."""
+    global _voice_auth_orchestrator
+    if _voice_auth_orchestrator is None:
+        try:
+            from voice_unlock.orchestration import get_voice_auth_orchestrator
+            _voice_auth_orchestrator = await get_voice_auth_orchestrator()
+            logger.info("✅ Voice Auth Orchestrator loaded")
+        except ImportError as e:
+            logger.debug(f"Voice Auth Orchestrator not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Auth Orchestrator: {e}")
+    return _voice_auth_orchestrator
+
+
+async def _get_langfuse_tracer():
+    """Lazy-load Langfuse tracer for audit trails."""
+    global _langfuse_tracer
+    if _langfuse_tracer is None:
+        try:
+            from voice_unlock.observability import get_langfuse_tracer
+            _langfuse_tracer = await get_langfuse_tracer()
+            logger.info("✅ Langfuse Tracer loaded")
+        except ImportError as e:
+            logger.debug(f"Langfuse Tracer not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Langfuse Tracer: {e}")
+    return _langfuse_tracer
+
+
+async def _get_cost_tracker():
+    """Lazy-load Helicone-style cost tracker."""
+    global _cost_tracker
+    if _cost_tracker is None:
+        try:
+            from voice_unlock.observability import get_cost_tracker
+            _cost_tracker = await get_cost_tracker()
+            logger.info("✅ Cost Tracker loaded")
+        except ImportError as e:
+            logger.debug(f"Cost Tracker not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Cost Tracker: {e}")
+    return _cost_tracker
+
+
+async def _get_drift_detector():
+    """Lazy-load Voice Drift Detector for evolution tracking."""
+    global _drift_detector
+    if _drift_detector is None:
+        try:
+            from voice_unlock.memory import get_drift_detector
+            _drift_detector = await get_drift_detector()
+            logger.info("✅ Voice Drift Detector loaded")
+        except ImportError as e:
+            logger.debug(f"Voice Drift Detector not available: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Drift Detector: {e}")
+    return _drift_detector
+
+
+# =============================================================================
 # DYNAMIC CONFIGURATION
 # =============================================================================
 class VBIConfig:
@@ -171,6 +273,45 @@ class VBIConfig:
         # Adaptive physics learning
         self.physics_learning_enabled = os.getenv('VBI_PHYSICS_LEARNING', 'true').lower() == 'true'
         self.physics_baseline_samples = int(os.getenv('VBI_PHYSICS_BASELINE_SAMPLES', '10'))
+
+        # =======================================================================
+        # ENHANCED MODULES INTEGRATION (v4.0)
+        # =======================================================================
+
+        # LangGraph Reasoning - intelligent multi-step authentication reasoning
+        self.enable_reasoning_graph = os.getenv('VBI_REASONING_GRAPH', 'false').lower() == 'true'
+        self.reasoning_graph_timeout = float(os.getenv('VBI_REASONING_TIMEOUT', '5.0'))
+        self.reasoning_for_borderline = os.getenv('VBI_REASONING_BORDERLINE', 'true').lower() == 'true'
+        self.reasoning_max_depth = int(os.getenv('VBI_REASONING_MAX_DEPTH', '5'))
+
+        # ChromaDB Pattern Memory - persistent voice pattern storage
+        self.enable_pattern_memory = os.getenv('VBI_PATTERN_MEMORY', 'true').lower() == 'true'
+        self.pattern_store_on_success = os.getenv('VBI_PATTERN_STORE_SUCCESS', 'true').lower() == 'true'
+        self.pattern_store_on_failure = os.getenv('VBI_PATTERN_STORE_FAILURE', 'true').lower() == 'true'
+        self.pattern_behavioral_boost = float(os.getenv('VBI_PATTERN_BEHAVIORAL_BOOST', '0.05'))
+
+        # Voice Drift Detection - track voice evolution over time
+        self.enable_drift_detection = os.getenv('VBI_DRIFT_DETECTION', 'true').lower() == 'true'
+        self.drift_threshold = float(os.getenv('VBI_DRIFT_THRESHOLD', '0.05'))
+        self.drift_auto_adapt = os.getenv('VBI_DRIFT_AUTO_ADAPT', 'true').lower() == 'true'
+        self.drift_adaptation_rate = float(os.getenv('VBI_DRIFT_ADAPTATION_RATE', '0.10'))
+
+        # Multi-Factor Orchestration - fallback chain with challenge/proximity
+        self.enable_orchestration = os.getenv('VBI_ORCHESTRATION', 'false').lower() == 'true'
+        self.orchestration_fallback_enabled = os.getenv('VBI_ORCHESTRATION_FALLBACK', 'true').lower() == 'true'
+        self.orchestration_challenge_enabled = os.getenv('VBI_ORCHESTRATION_CHALLENGE', 'true').lower() == 'true'
+        self.orchestration_proximity_enabled = os.getenv('VBI_ORCHESTRATION_PROXIMITY', 'true').lower() == 'true'
+
+        # Langfuse Audit Trail - complete authentication tracing
+        self.enable_langfuse_tracing = os.getenv('VBI_LANGFUSE_TRACING', 'true').lower() == 'true'
+        self.langfuse_trace_all = os.getenv('VBI_LANGFUSE_TRACE_ALL', 'false').lower() == 'true'
+        self.langfuse_trace_failures = os.getenv('VBI_LANGFUSE_TRACE_FAILURES', 'true').lower() == 'true'
+        self.langfuse_sample_rate = float(os.getenv('VBI_LANGFUSE_SAMPLE_RATE', '1.0'))
+
+        # Helicone Cost Tracking - per-operation cost analysis
+        self.enable_cost_tracking = os.getenv('VBI_COST_TRACKING', 'true').lower() == 'true'
+        self.cost_cache_enabled = os.getenv('VBI_COST_CACHE', 'true').lower() == 'true'
+        self.cost_cache_similarity_threshold = float(os.getenv('VBI_COST_CACHE_THRESHOLD', '0.98'))
 
     def __getattr__(self, name: str):
         """Fallback for missing config attributes - provides sensible defaults."""
@@ -703,7 +844,54 @@ class VoiceBiometricIntelligence:
         self._reference_embedding = None
         self._owner_name = None
 
-        logger.info("VoiceBiometricIntelligence initialized with performance optimizations")
+        # =======================================================================
+        # ENHANCED MODULES STATE (v4.0)
+        # =======================================================================
+
+        # LangGraph Reasoning Graph - intelligent multi-step authentication
+        self._reasoning_graph = None
+        self._reasoning_available = False
+
+        # ChromaDB Pattern Memory - persistent voice pattern storage
+        self._pattern_memory = None
+        self._pattern_memory_available = False
+
+        # Voice Drift Detector - track voice evolution over time
+        self._drift_detector = None
+        self._drift_detector_available = False
+
+        # Multi-Factor Orchestrator - fallback chain with challenge/proximity
+        self._orchestrator = None
+        self._orchestrator_available = False
+
+        # Langfuse Tracer - audit trails and observability
+        self._langfuse_tracer = None
+        self._langfuse_available = False
+        self._current_trace = None  # Active trace for current verification
+
+        # Helicone Cost Tracker - per-operation cost analysis
+        self._cost_tracker = None
+        self._cost_tracking_available = False
+
+        # Voice Transparency Engine - debugging, decision traces, verbose mode
+        self._transparency_engine = None
+        self._transparency_available = False
+        self._current_transparency_trace = None
+
+        # Enhanced stats
+        self._stats.update({
+            'reasoning_invocations': 0,
+            'pattern_stores': 0,
+            'drift_detections': 0,
+            'orchestration_fallbacks': 0,
+            'traces_recorded': 0,
+            'transparency_traces': 0,
+            'verbose_announcements': 0,
+            'cache_savings': 0.0,
+            'total_cost': 0.0,
+        })
+
+        logger.info("VoiceBiometricIntelligence initialized with performance optimizations and enhanced modules")
 
     async def initialize(self) -> bool:
         """Initialize components for voice verification."""
@@ -732,12 +920,40 @@ class VoiceBiometricIntelligence:
         if perf_tasks:
             await asyncio.gather(*perf_tasks, return_exceptions=True)
 
+        # Initialize enhanced modules (non-blocking)
+        enhanced_tasks = []
+        if self._config.enable_reasoning_graph:
+            enhanced_tasks.append(self._init_reasoning_graph())
+        if self._config.enable_pattern_memory:
+            enhanced_tasks.append(self._init_pattern_memory())
+        if self._config.enable_drift_detection:
+            enhanced_tasks.append(self._init_drift_detector())
+        if self._config.enable_orchestration:
+            enhanced_tasks.append(self._init_orchestrator())
+        if self._config.enable_langfuse_tracing:
+            enhanced_tasks.append(self._init_langfuse_tracer())
+        if self._config.enable_cost_tracking:
+            enhanced_tasks.append(self._init_cost_tracker())
+
+        # Always try to initialize transparency engine (for debugging)
+        enhanced_tasks.append(self._init_transparency_engine())
+
+        if enhanced_tasks:
+            await asyncio.gather(*enhanced_tasks, return_exceptions=True)
+
         self._initialized = True
         init_time = (time.time() - init_start) * 1000
         logger.info(f"✅ Voice Biometric Intelligence initialized in {init_time:.0f}ms")
         logger.info(f"   Performance options: early_exit={self._config.enable_early_exit}, "
                    f"speculative_unlock={self._config.enable_speculative_unlock}, "
                    f"profile_preload={self._config.enable_profile_preloading}")
+        logger.info(f"   Enhanced modules: reasoning={self._reasoning_available}, "
+                   f"pattern_memory={self._pattern_memory_available}, "
+                   f"drift_detection={self._drift_detector_available}, "
+                   f"orchestration={self._orchestrator_available}, "
+                   f"langfuse={self._langfuse_available}, "
+                   f"cost_tracking={self._cost_tracking_available}, "
+                   f"transparency={self._transparency_available}")
 
         return True
 
@@ -898,6 +1114,593 @@ class VoiceBiometricIntelligence:
         except Exception as e:
             logger.debug(f"Voice communicator not available: {e}")
 
+    # =========================================================================
+    # ENHANCED MODULE INITIALIZERS (v4.0)
+    # =========================================================================
+
+    async def _init_reasoning_graph(self):
+        """Initialize LangGraph reasoning graph for intelligent authentication."""
+        try:
+            self._reasoning_graph = await _get_reasoning_graph()
+            if self._reasoning_graph:
+                self._reasoning_available = True
+                logger.info("✅ Reasoning Graph available for borderline authentication")
+        except Exception as e:
+            logger.warning(f"⚠️ Reasoning Graph initialization failed: {e}")
+            self._reasoning_available = False
+
+    async def _init_pattern_memory(self):
+        """Initialize ChromaDB pattern memory for persistent storage."""
+        try:
+            self._pattern_memory = await _get_voice_pattern_memory()
+            if self._pattern_memory:
+                self._pattern_memory_available = True
+                logger.info("✅ Pattern Memory available for voice pattern persistence")
+        except Exception as e:
+            logger.warning(f"⚠️ Pattern Memory initialization failed: {e}")
+            self._pattern_memory_available = False
+
+    async def _init_drift_detector(self):
+        """Initialize voice drift detector for evolution tracking."""
+        try:
+            self._drift_detector = await _get_drift_detector()
+            if self._drift_detector:
+                self._drift_detector_available = True
+                logger.info("✅ Drift Detector available for voice evolution tracking")
+        except Exception as e:
+            logger.warning(f"⚠️ Drift Detector initialization failed: {e}")
+            self._drift_detector_available = False
+
+    async def _init_orchestrator(self):
+        """Initialize multi-factor orchestrator for fallback chains."""
+        try:
+            self._orchestrator = await _get_voice_auth_orchestrator()
+            if self._orchestrator:
+                self._orchestrator_available = True
+                logger.info("✅ Orchestrator available for multi-factor authentication")
+        except Exception as e:
+            logger.warning(f"⚠️ Orchestrator initialization failed: {e}")
+            self._orchestrator_available = False
+
+    async def _init_langfuse_tracer(self):
+        """Initialize Langfuse tracer for audit trails."""
+        try:
+            self._langfuse_tracer = await _get_langfuse_tracer()
+            if self._langfuse_tracer:
+                self._langfuse_available = True
+                logger.info("✅ Langfuse Tracer available for audit trails")
+        except Exception as e:
+            logger.warning(f"⚠️ Langfuse Tracer initialization failed: {e}")
+            self._langfuse_available = False
+
+    async def _init_cost_tracker(self):
+        """Initialize cost tracker for per-operation cost analysis."""
+        try:
+            self._cost_tracker = await _get_cost_tracker()
+            if self._cost_tracker:
+                self._cost_tracking_available = True
+                logger.info("✅ Cost Tracker available for cost optimization")
+        except Exception as e:
+            logger.warning(f"⚠️ Cost Tracker initialization failed: {e}")
+            self._cost_tracking_available = False
+
+    async def _init_transparency_engine(self):
+        """
+        Initialize Voice Transparency Engine for debugging and verbose mode.
+
+        The transparency engine provides:
+        - Decision traces with full reasoning chain
+        - Verbose announcements explaining WHY decisions were made
+        - Infrastructure status monitoring (Docker, GCP, VM Spot)
+        - Debug announcements for troubleshooting
+        """
+        try:
+            from voice_unlock.transparency import get_transparency_engine
+
+            self._transparency_engine = await get_transparency_engine()
+            if self._transparency_engine:
+                self._transparency_available = True
+
+                # Set up speak callback so transparency can use VBI's TTS
+                self._transparency_engine.set_speak_callback(self._speak)
+
+                logger.info("✅ Transparency Engine available for debugging and verbose mode")
+        except ImportError as e:
+            logger.debug(f"Transparency Engine not available (import): {e}")
+            self._transparency_available = False
+        except Exception as e:
+            logger.warning(f"⚠️ Transparency Engine initialization failed: {e}")
+            self._transparency_available = False
+
+    # =========================================================================
+    # ENHANCED MODULE HELPERS (v4.0)
+    # =========================================================================
+
+    async def _start_trace(
+        self,
+        user_id: str = "owner",
+        session_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Start tracing for the current verification.
+
+        Starts both:
+        - Langfuse trace for audit trails (if available)
+        - Transparency trace for debugging and verbose mode (if available)
+        """
+        trace_id = None
+
+        # Start Langfuse trace for audit trails
+        if self._langfuse_available and self._langfuse_tracer:
+            try:
+                import random
+                if random.random() <= self._config.langfuse_sample_rate:
+                    trace_id = await self._langfuse_tracer.start_session(
+                        user_id=user_id,
+                        session_metadata={
+                            'session_id': session_id or self._current_session_id,
+                            'timestamp': datetime.now().isoformat(),
+                        }
+                    )
+                    self._current_trace = trace_id
+                    self._stats['traces_recorded'] += 1
+            except Exception as e:
+                logger.debug(f"Failed to start Langfuse trace: {e}")
+
+        # Start Transparency trace for debugging and verbose mode
+        if self._transparency_available and self._transparency_engine:
+            try:
+                self._current_transparency_trace = self._transparency_engine.start_trace(
+                    user_id=user_id,
+                    session_id=session_id or self._current_session_id,
+                )
+                self._stats['transparency_traces'] += 1
+
+                # Check infrastructure status in background
+                asyncio.create_task(
+                    self._transparency_engine.check_infrastructure()
+                )
+            except Exception as e:
+                logger.debug(f"Failed to start transparency trace: {e}")
+
+        return trace_id
+
+    async def _add_trace_span(
+        self,
+        name: str,
+        duration_ms: float,
+        metadata: Optional[Dict[str, Any]] = None,
+        status: str = "success"
+    ):
+        """Add a span to the current trace."""
+        if not self._current_trace or not self._langfuse_tracer:
+            return
+
+        try:
+            await self._langfuse_tracer.log_verification_phase(
+                session_id=self._current_trace,
+                phase_name=name,
+                duration_ms=duration_ms,
+                phase_data=metadata or {},
+                success=status == "success"
+            )
+        except Exception as e:
+            logger.debug(f"Failed to add trace span: {e}")
+
+    async def _end_trace(
+        self,
+        result: VerificationResult,
+        status: str = "success"
+    ):
+        """
+        End tracing for the current verification.
+
+        Completes both:
+        - Langfuse trace with session metadata
+        - Transparency trace with full decision details for debugging
+        """
+        # Complete Langfuse trace
+        if self._current_trace and self._langfuse_tracer:
+            try:
+                await self._langfuse_tracer.complete_session(
+                    session_id=self._current_trace,
+                    final_decision="authenticate" if result.verified else "reject",
+                    confidence=result.confidence,
+                    processing_time_ms=result.verification_time_ms,
+                    session_metadata={
+                        'verified': result.verified,
+                        'level': result.level.value if hasattr(result.level, 'value') else str(result.level),
+                        'method': result.verification_method.value if hasattr(result.verification_method, 'value') else str(result.verification_method),
+                        'spoofing_detected': result.spoofing_detected,
+                        'bayesian_decision': result.bayesian_decision,
+                        'announcement': result.announcement,
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"Failed to end Langfuse trace: {e}")
+            finally:
+                self._current_trace = None
+
+        # Complete Transparency trace with full details
+        if self._current_transparency_trace and self._transparency_engine:
+            try:
+                from voice_unlock.transparency import DecisionOutcome
+
+                # Record confidence breakdown
+                self._transparency_engine.record_confidence_breakdown(
+                    ml_confidence=result.voice_confidence,
+                    physics_confidence=result.physics_confidence,
+                    behavioral_confidence=result.behavioral.behavioral_confidence if result.behavioral else 0.0,
+                    contextual_confidence=getattr(result, 'contextual_confidence', 0.0),
+                    bayesian_prob=result.bayesian_authentic_prob,
+                )
+
+                # Record decision factors
+                self._transparency_engine.record_decision_factors(
+                    factors={
+                        'voice': result.voice_confidence,
+                        'physics': result.physics_confidence,
+                        'behavioral': result.behavioral.behavioral_confidence if result.behavioral else 0.0,
+                        'bayesian': result.bayesian_authentic_prob,
+                    },
+                    threshold=self._config.confident_threshold,
+                    final_confidence=result.confidence,
+                )
+
+                # Record spoofing detection if any
+                if result.spoofing_detected:
+                    self._transparency_engine.record_spoofing_detection(
+                        detected=True,
+                        spoof_type=result.spoofing_reason,
+                    )
+
+                # Map result level to outcome
+                if result.spoofing_detected:
+                    outcome = DecisionOutcome.REJECTED
+                elif result.verified:
+                    outcome = DecisionOutcome.AUTHENTICATED
+                elif result.level == RecognitionLevel.BORDERLINE:
+                    outcome = DecisionOutcome.CHALLENGED
+                else:
+                    outcome = DecisionOutcome.REJECTED
+
+                # Complete the trace
+                self._transparency_engine.complete_trace(
+                    outcome=outcome,
+                    confidence=result.confidence,
+                    speaker_name=result.speaker_name,
+                )
+
+                # Store the announcement for debugging
+                if self._current_transparency_trace:
+                    self._current_transparency_trace.primary_announcement = result.announcement
+                    self._current_transparency_trace.retry_guidance = result.retry_guidance
+
+            except Exception as e:
+                logger.debug(f"Failed to end transparency trace: {e}")
+            finally:
+                self._current_transparency_trace = None
+
+    async def _track_operation_cost(
+        self,
+        operation: str,
+        audio_data: Optional[bytes] = None,
+        embedding: Optional[Any] = None,
+    ) -> float:
+        """Track cost for an operation and check for cache savings."""
+        if not self._cost_tracking_available or not self._cost_tracker:
+            return 0.0
+
+        try:
+            # Check for cache hit first
+            if self._config.cost_cache_enabled and embedding is not None:
+                cached_result = await self._cost_tracker.check_cache(
+                    audio_data=audio_data,
+                    embedding=embedding,
+                )
+                if cached_result:
+                    savings = cached_result.get('savings', 0.0)
+                    self._stats['cache_savings'] += savings
+                    logger.debug(f"💰 Cache hit! Saved ${savings:.4f}")
+                    return 0.0
+
+            # Record operation cost
+            cost = await self._cost_tracker.track_operation(
+                operation_type=operation,
+                audio_duration_seconds=len(audio_data) / 32000 if audio_data else 0,
+                embedding_size=192 if embedding is not None else 0,
+            )
+            self._stats['total_cost'] += cost
+            return cost
+        except Exception as e:
+            logger.debug(f"Cost tracking failed: {e}")
+            return 0.0
+
+    async def _store_verification_pattern(
+        self,
+        result: VerificationResult,
+        audio_data: bytes,
+        embedding: Optional[Any] = None,
+    ):
+        """Store verification pattern in ChromaDB memory."""
+        if not self._pattern_memory_available or not self._pattern_memory:
+            return
+
+        try:
+            # Only store on success if configured
+            if result.verified and not self._config.pattern_store_on_success:
+                return
+            if not result.verified and not self._config.pattern_store_on_failure:
+                return
+
+            # Store behavioral pattern
+            await self._pattern_memory.store_behavioral_pattern(
+                user_id=result.speaker_name or "unknown",
+                pattern_data={
+                    'hour': datetime.now().hour,
+                    'day_of_week': datetime.now().weekday(),
+                    'confidence': result.confidence,
+                    'voice_confidence': result.voice_confidence,
+                    'behavioral_confidence': result.behavioral.behavioral_confidence,
+                    'environment': result.audio.environment.value if hasattr(result.audio.environment, 'value') else str(result.audio.environment),
+                    'verified': result.verified,
+                    'method': result.verification_method.value if hasattr(result.verification_method, 'value') else str(result.verification_method),
+                },
+            )
+
+            # Store voice evolution if embedding available
+            if embedding is not None and result.verified:
+                await self._pattern_memory.store_voice_evolution(
+                    user_id=result.speaker_name or "unknown",
+                    embedding=embedding,
+                    metadata={
+                        'confidence': result.voice_confidence,
+                        'snr_db': result.audio.snr_db,
+                        'environment': result.audio.environment.value if hasattr(result.audio.environment, 'value') else str(result.audio.environment),
+                    },
+                )
+
+            self._stats['pattern_stores'] += 1
+            logger.debug(f"📦 Pattern stored for {result.speaker_name}")
+
+        except Exception as e:
+            logger.debug(f"Pattern storage failed: {e}")
+
+    async def _store_attack_pattern(
+        self,
+        result: VerificationResult,
+        audio_data: bytes,
+    ):
+        """Store detected attack pattern for future detection."""
+        if not self._pattern_memory_available or not self._pattern_memory:
+            return
+
+        if not result.spoofing_detected:
+            return
+
+        try:
+            await self._pattern_memory.store_attack_pattern(
+                attack_type=result.spoofing_reason or "unknown",
+                audio_data=audio_data,
+                detection_scores={
+                    'confidence': result.confidence,
+                    'physics_confidence': result.physics_confidence,
+                    'bayesian_authentic_prob': result.bayesian_authentic_prob,
+                },
+                metadata={
+                    'timestamp': datetime.now().isoformat(),
+                    'physics_analysis': result.physics_analysis,
+                },
+            )
+            logger.info(f"🚨 Attack pattern stored: {result.spoofing_reason}")
+        except Exception as e:
+            logger.debug(f"Attack pattern storage failed: {e}")
+
+    async def _check_voice_drift(
+        self,
+        result: VerificationResult,
+        embedding: Optional[Any] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Check for voice drift and potentially adapt baseline."""
+        if not self._drift_detector_available or not self._drift_detector:
+            return None
+
+        if not result.verified or embedding is None:
+            return None
+
+        try:
+            drift_result = await self._drift_detector.analyze_drift(
+                user_id=result.speaker_name or "unknown",
+                current_embedding=embedding,
+                reference_embedding=self._reference_embedding,
+            )
+
+            if drift_result and drift_result.get('drift_detected', False):
+                self._stats['drift_detections'] += 1
+                drift_magnitude = drift_result.get('drift_magnitude', 0)
+
+                logger.info(
+                    f"📊 Voice drift detected: {drift_magnitude:.1%} "
+                    f"(threshold: {self._config.drift_threshold:.1%})"
+                )
+
+                # Auto-adapt if enabled and drift is within safe range
+                if (self._config.drift_auto_adapt and
+                    drift_magnitude <= self._config.drift_adaptation_rate):
+                    await self._adapt_voice_baseline(embedding, drift_magnitude)
+
+                return drift_result
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Drift check failed: {e}")
+            return None
+
+    async def _adapt_voice_baseline(
+        self,
+        new_embedding: Any,
+        drift_magnitude: float,
+    ):
+        """Adapt voice baseline with exponential moving average."""
+        if self._reference_embedding is None:
+            return
+
+        try:
+            import numpy as np
+
+            # Calculate adaptation weight based on drift magnitude
+            # Lower weight for larger drifts (more conservative adaptation)
+            weight = min(self._config.drift_adaptation_rate, 1.0 - drift_magnitude)
+
+            # Exponential moving average
+            self._reference_embedding = (
+                (1 - weight) * self._reference_embedding +
+                weight * np.array(new_embedding)
+            )
+
+            # Update hot cache
+            async with self._hot_cache_lock:
+                if 'owner' in self._hot_voiceprint_cache:
+                    self._hot_voiceprint_cache['owner']['embedding'] = self._reference_embedding
+
+            logger.info(f"🔄 Voice baseline adapted (weight: {weight:.2f})")
+
+        except Exception as e:
+            logger.debug(f"Baseline adaptation failed: {e}")
+
+    async def _run_reasoning_for_borderline(
+        self,
+        result: VerificationResult,
+        audio_data: bytes,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        """Run LangGraph reasoning for borderline cases."""
+        if not self._reasoning_available or not self._reasoning_graph:
+            return result
+
+        if not self._config.reasoning_for_borderline:
+            return result
+
+        # Only use reasoning for borderline cases
+        if result.level not in [RecognitionLevel.BORDERLINE, RecognitionLevel.GOOD]:
+            return result
+
+        try:
+            logger.info("🧠 Running reasoning graph for borderline case...")
+            self._stats['reasoning_invocations'] += 1
+
+            reasoning_start = time.time()
+
+            # Run reasoning graph
+            reasoning_result = await asyncio.wait_for(
+                self._reasoning_graph.authenticate(
+                    audio_data=audio_data,
+                    user_id=result.speaker_name or "unknown",
+                    context={
+                        **(context or {}),
+                        'voice_confidence': result.voice_confidence,
+                        'behavioral_confidence': result.behavioral.behavioral_confidence,
+                        'physics_confidence': result.physics_confidence,
+                        'environment': result.audio.environment.value if hasattr(result.audio.environment, 'value') else str(result.audio.environment),
+                        'snr_db': result.audio.snr_db,
+                    },
+                ),
+                timeout=self._config.reasoning_graph_timeout,
+            )
+
+            reasoning_time = (time.time() - reasoning_start) * 1000
+            logger.info(f"🧠 Reasoning completed in {reasoning_time:.0f}ms")
+
+            # Update result with reasoning output
+            if reasoning_result:
+                # Check if reasoning upgraded the decision
+                if reasoning_result.get('decision') == 'authenticate':
+                    result.verified = True
+                    result.should_proceed = True
+                    # Add reasoning explanation to announcement
+                    reasoning_explanation = reasoning_result.get('explanation', '')
+                    if reasoning_explanation:
+                        result.learned_something = True
+                        result.learning_note = reasoning_explanation
+
+                # Store reasoning trace
+                result.bayesian_reasoning.extend(
+                    reasoning_result.get('reasoning_steps', [])
+                )
+
+                # Add trace span for reasoning
+                await self._add_trace_span(
+                    name="reasoning_graph",
+                    duration_ms=reasoning_time,
+                    metadata={
+                        'decision': reasoning_result.get('decision'),
+                        'confidence_delta': reasoning_result.get('confidence_delta', 0),
+                        'hypothesis': reasoning_result.get('hypothesis'),
+                    },
+                )
+
+            return result
+
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Reasoning graph timed out after {self._config.reasoning_graph_timeout}s")
+            return result
+        except Exception as e:
+            logger.warning(f"⚠️ Reasoning graph failed: {e}")
+            return result
+
+    async def _run_orchestration_fallback(
+        self,
+        result: VerificationResult,
+        audio_data: bytes,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        """Run multi-factor orchestration for failed verification."""
+        if not self._orchestrator_available or not self._orchestrator:
+            return result
+
+        if not self._config.orchestration_fallback_enabled:
+            return result
+
+        # Only run fallback if verification failed but wasn't spoofing
+        if result.verified or result.spoofing_detected:
+            return result
+
+        try:
+            logger.info("🔄 Running multi-factor fallback orchestration...")
+            self._stats['orchestration_fallbacks'] += 1
+
+            orchestration_result = await self._orchestrator.authenticate(
+                audio_data=audio_data,
+                user_id=result.speaker_name or "unknown",
+                context={
+                    **(context or {}),
+                    'voice_confidence': result.voice_confidence,
+                    'behavioral_confidence': result.behavioral.behavioral_confidence,
+                },
+                enable_challenge=self._config.orchestration_challenge_enabled,
+                enable_proximity=self._config.orchestration_proximity_enabled,
+            )
+
+            if orchestration_result and orchestration_result.get('authenticated', False):
+                result.verified = True
+                result.should_proceed = True
+                result.verification_method = VerificationMethod.MULTI_FACTOR
+                result.confidence = orchestration_result.get('confidence', result.confidence)
+
+                # Update announcement
+                fallback_method = orchestration_result.get('method', 'multi-factor')
+                result.announcement = (
+                    f"Voice alone wasn't enough, but {fallback_method} "
+                    f"confirmed it's you, {result.speaker_name or 'there'}. Unlocking now."
+                )
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"⚠️ Orchestration fallback failed: {e}")
+            return result
+
     async def verify_and_announce(
         self,
         audio_data: bytes,
@@ -932,6 +1735,17 @@ class VoiceBiometricIntelligence:
             timestamp=datetime.now(),
             session_id=self._current_session_id,
         )
+
+        # =======================================================================
+        # ENHANCED MODULES: Start trace and track costs (v4.0)
+        # =======================================================================
+        await self._start_trace(
+            user_id=self._owner_name or "owner",
+            session_id=self._current_session_id,
+        )
+
+        # Track embedding extraction cost
+        embedding_for_cost_tracking = None
 
         try:
             # =====================================================================
@@ -1159,6 +1973,35 @@ class VoiceBiometricIntelligence:
             # Check for learning opportunities
             result.learned_something, result.learning_note = self._check_learning(result)
 
+            # =================================================================
+            # ENHANCED MODULES PROCESSING (v4.0)
+            # =================================================================
+
+            # Run reasoning graph for borderline cases
+            if (self._reasoning_available and
+                result.level in [RecognitionLevel.BORDERLINE, RecognitionLevel.GOOD]):
+                result = await self._run_reasoning_for_borderline(
+                    result, audio_data, context
+                )
+                # Regenerate announcement if reasoning changed decision
+                if result.verified and result.learned_something:
+                    result.announcement = self._announcer.generate_announcement(result)
+
+            # Run orchestration fallback for failed cases
+            if (self._orchestrator_available and
+                not result.verified and
+                not result.spoofing_detected):
+                result = await self._run_orchestration_fallback(
+                    result, audio_data, context
+                )
+
+            # Track embedding extraction cost
+            await self._track_operation_cost(
+                operation="embedding_extraction",
+                audio_data=audio_data,
+                embedding=embedding_for_cost_tracking,
+            )
+
         except asyncio.TimeoutError:
             logger.warning("Voice verification timed out")
             result.announcement = (
@@ -1183,6 +2026,36 @@ class VoiceBiometricIntelligence:
         self._recent_verifications.append(result)
         if len(self._recent_verifications) > self._max_history:
             self._recent_verifications.pop(0)
+
+        # =====================================================================
+        # ENHANCED MODULES: Post-verification processing (v4.0)
+        # =====================================================================
+
+        # Store verification pattern for learning (non-blocking)
+        if self._pattern_memory_available:
+            asyncio.create_task(
+                self._store_verification_pattern(
+                    result, audio_data, embedding_for_cost_tracking
+                )
+            )
+
+        # Store attack pattern if spoofing detected (non-blocking)
+        if result.spoofing_detected and self._pattern_memory_available:
+            asyncio.create_task(
+                self._store_attack_pattern(result, audio_data)
+            )
+
+        # Check for voice drift and adapt baseline (non-blocking)
+        if result.verified and self._drift_detector_available:
+            asyncio.create_task(
+                self._check_voice_drift(result, embedding_for_cost_tracking)
+            )
+
+        # End Langfuse trace
+        await self._end_trace(
+            result,
+            status="success" if result.verified else "rejected"
+        )
 
         # Speak announcement if requested
         if speak and result.announcement:
@@ -2563,6 +3436,22 @@ class VoiceBiometricIntelligence:
             **self._stats,
             'announcer_stats': self._announcer._stats,
             'recent_levels': [r.level.value for r in self._recent_verifications[-10:]],
+            # Enhanced module stats (v4.0)
+            'enhanced_modules': {
+                'reasoning_available': self._reasoning_available,
+                'reasoning_invocations': self._stats.get('reasoning_invocations', 0),
+                'pattern_memory_available': self._pattern_memory_available,
+                'pattern_stores': self._stats.get('pattern_stores', 0),
+                'drift_detector_available': self._drift_detector_available,
+                'drift_detections': self._stats.get('drift_detections', 0),
+                'orchestrator_available': self._orchestrator_available,
+                'orchestration_fallbacks': self._stats.get('orchestration_fallbacks', 0),
+                'langfuse_available': self._langfuse_available,
+                'traces_recorded': self._stats.get('traces_recorded', 0),
+                'cost_tracking_available': self._cost_tracking_available,
+                'total_cost': self._stats.get('total_cost', 0.0),
+                'cache_savings': self._stats.get('cache_savings', 0.0),
+            },
         }
 
     async def health_check(self) -> Dict[str, Any]:
@@ -2621,6 +3510,41 @@ class VoiceBiometricIntelligence:
         if total > 0:
             early_exit_rate = self._stats.get('early_exits', 0) / total
             components['optimizations']['early_exit_rate'] = round(early_exit_rate * 100, 1)
+
+        # Enhanced modules status (v4.0)
+        components['enhanced_modules'] = {
+            'reasoning_graph': {
+                'enabled': self._config.enable_reasoning_graph,
+                'available': self._reasoning_available,
+                'invocations': self._stats.get('reasoning_invocations', 0),
+            },
+            'pattern_memory': {
+                'enabled': self._config.enable_pattern_memory,
+                'available': self._pattern_memory_available,
+                'stores': self._stats.get('pattern_stores', 0),
+            },
+            'drift_detector': {
+                'enabled': self._config.enable_drift_detection,
+                'available': self._drift_detector_available,
+                'detections': self._stats.get('drift_detections', 0),
+            },
+            'orchestrator': {
+                'enabled': self._config.enable_orchestration,
+                'available': self._orchestrator_available,
+                'fallbacks': self._stats.get('orchestration_fallbacks', 0),
+            },
+            'langfuse_tracer': {
+                'enabled': self._config.enable_langfuse_tracing,
+                'available': self._langfuse_available,
+                'traces': self._stats.get('traces_recorded', 0),
+            },
+            'cost_tracker': {
+                'enabled': self._config.enable_cost_tracking,
+                'available': self._cost_tracking_available,
+                'total_cost': round(self._stats.get('total_cost', 0.0), 4),
+                'cache_savings': round(self._stats.get('cache_savings', 0.0), 4),
+            },
+        }
 
         healthy = len(issues) == 0 and self._speaker_engine is not None
         score = 1.0 - (len(issues) * 0.25)

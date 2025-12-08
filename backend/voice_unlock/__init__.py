@@ -172,6 +172,83 @@ def check_dependencies() -> Dict[str, bool]:
 
 
 # ============================================================================
+# Enhanced Module Imports (v2.1)
+# ============================================================================
+
+# Lazy imports for new modules to prevent import errors
+_reasoning_graph = None
+_voice_pattern_memory = None
+_voice_auth_orchestrator = None
+_langfuse_tracer = None
+_cost_tracker = None
+
+
+async def get_voice_auth_reasoning_graph():
+    """Get the LangGraph-based voice authentication reasoning graph."""
+    global _reasoning_graph
+    if _reasoning_graph is None:
+        try:
+            from .reasoning import get_voice_auth_reasoning_graph as _get_graph
+            _reasoning_graph = await _get_graph()
+            logger.info("✅ Voice Auth Reasoning Graph initialized")
+        except Exception as e:
+            logger.warning(f"Voice Auth Reasoning Graph not available: {e}")
+    return _reasoning_graph
+
+
+async def get_voice_pattern_memory():
+    """Get the ChromaDB-based voice pattern memory."""
+    global _voice_pattern_memory
+    if _voice_pattern_memory is None:
+        try:
+            from .memory import get_voice_pattern_memory as _get_memory
+            _voice_pattern_memory = await _get_memory()
+            logger.info("✅ Voice Pattern Memory initialized")
+        except Exception as e:
+            logger.warning(f"Voice Pattern Memory not available: {e}")
+    return _voice_pattern_memory
+
+
+async def get_voice_auth_orchestrator():
+    """Get the LangChain-based voice auth orchestrator with fallback chain."""
+    global _voice_auth_orchestrator
+    if _voice_auth_orchestrator is None:
+        try:
+            from .orchestration import get_voice_auth_orchestrator as _get_orch
+            _voice_auth_orchestrator = await _get_orch()
+            logger.info("✅ Voice Auth Orchestrator initialized")
+        except Exception as e:
+            logger.warning(f"Voice Auth Orchestrator not available: {e}")
+    return _voice_auth_orchestrator
+
+
+async def get_voice_auth_tracer():
+    """Get the Langfuse-based audit trail tracer."""
+    global _langfuse_tracer
+    if _langfuse_tracer is None:
+        try:
+            from .observability import get_langfuse_tracer as _get_tracer
+            _langfuse_tracer = await _get_tracer()
+            logger.info("✅ Voice Auth Langfuse Tracer initialized")
+        except Exception as e:
+            logger.warning(f"Voice Auth Langfuse Tracer not available: {e}")
+    return _langfuse_tracer
+
+
+async def get_voice_auth_cost_tracker():
+    """Get the Helicone-style cost tracker."""
+    global _cost_tracker
+    if _cost_tracker is None:
+        try:
+            from .observability import get_cost_tracker as _get_tracker
+            _cost_tracker = await _get_tracker()
+            logger.info("✅ Voice Auth Cost Tracker initialized")
+        except Exception as e:
+            logger.warning(f"Voice Auth Cost Tracker not available: {e}")
+    return _cost_tracker
+
+
+# ============================================================================
 # Public API
 # ============================================================================
 __all__ = [
@@ -184,4 +261,10 @@ __all__ = [
     # Status & utilities
     'get_voice_unlock_status',
     'check_dependencies',
+    # Enhanced modules (v2.1)
+    'get_voice_auth_reasoning_graph',
+    'get_voice_pattern_memory',
+    'get_voice_auth_orchestrator',
+    'get_voice_auth_tracer',
+    'get_voice_auth_cost_tracker',
 ]

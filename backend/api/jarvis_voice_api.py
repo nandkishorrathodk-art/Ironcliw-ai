@@ -1371,9 +1371,21 @@ class JARVISVoiceAPI:
             # Process command through async pipeline for better performance and alignment
             logger.info(f"[JARVIS API] Processing command through async pipeline: '{command.text}'")
 
+            # CRITICAL: Decode audio_data from base64 for voice biometric verification (VIBA/PAVA)
+            audio_bytes = None
+            if command.audio_data:
+                try:
+                    import base64
+                    audio_bytes = base64.b64decode(command.audio_data)
+                    logger.info(f"[JARVIS API] Decoded audio data for VIBA/PAVA: {len(audio_bytes)} bytes")
+                except Exception as e:
+                    logger.warning(f"[JARVIS API] Failed to decode audio data: {e}")
+            else:
+                logger.debug("[JARVIS API] No audio data in command (text-only)")
+
             # Use async pipeline for all commands - ensures consistent handling
             try:
-                # Process through pipeline with proper metadata
+                # Process through pipeline with proper metadata AND audio_data for voice biometrics
                 pipeline_result = await asyncio.wait_for(
                     self.pipeline.process_async(
                         command.text,
@@ -1381,6 +1393,7 @@ class JARVISVoiceAPI:
                             getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir"
                         ),
                         metadata={"source": "voice_api", "jarvis_instance": self.jarvis},
+                        audio_data=audio_bytes,  # CRITICAL: Pass audio for VIBA/PAVA voice verification
                     ),
                     timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
                 )
@@ -3067,3 +3080,436 @@ async def get_coreml_status():
             "async_queue": coreml_engine is not None,
         },
     }
+
+
+# =============================================================================
+# ENHANCED VOICE BIOMETRIC ENDPOINTS (v4.0)
+# =============================================================================
+# These endpoints integrate the enhanced VoiceBiometricIntelligence with:
+# - LangGraph reasoning for borderline cases
+# - ChromaDB pattern memory for voice evolution
+# - Langfuse audit trails
+# - Helicone-style cost tracking
+# - Voice drift detection and adaptation
+# =============================================================================
+
+# Lazy-load VBI to prevent circular imports
+_vbi_instance = None
+
+
+async def _get_vbi():
+    """Get the VoiceBiometricIntelligence instance lazily."""
+    global _vbi_instance
+    if _vbi_instance is None:
+        try:
+            from voice_unlock.voice_biometric_intelligence import (
+                get_voice_biometric_intelligence,
+            )
+            _vbi_instance = await get_voice_biometric_intelligence()
+            logger.info("✅ VoiceBiometricIntelligence loaded for API")
+        except Exception as e:
+            logger.error(f"❌ Failed to load VBI: {e}")
+            raise HTTPException(status_code=503, detail=f"VBI not available: {e}")
+    return _vbi_instance
+
+
+class EnhancedVerificationRequest(BaseModel):
+    """Enhanced voice verification request with additional options."""
+    audio_data: str  # Base64-encoded audio
+    context: Optional[Dict[str, Any]] = None
+    speak: bool = False  # Whether to speak the announcement
+    use_reasoning: bool = True  # Enable LangGraph reasoning for borderline
+    use_orchestration: bool = True  # Enable multi-factor fallback
+    store_patterns: bool = True  # Store patterns in ChromaDB
+
+
+class EnhancedVerificationResponse(BaseModel):
+    """Enhanced voice verification response with full details."""
+    verified: bool
+    speaker_name: Optional[str] = None
+    confidence: float
+    level: str  # instant, confident, good, borderline, unknown, spoofing
+
+    # Detailed confidence scores
+    voice_confidence: float
+    behavioral_confidence: float
+    fused_confidence: float
+    physics_confidence: float = 0.0
+
+    # Verification method
+    verification_method: str  # voice_only, voice_behavioral, multi_factor, cached
+
+    # Timing
+    verification_time_ms: float
+    was_cached: bool
+
+    # Announcement
+    announcement: str
+    should_proceed: bool
+    retry_guidance: Optional[str] = None
+
+    # Security
+    spoofing_detected: bool
+    spoofing_reason: Optional[str] = None
+
+    # Bayesian fusion
+    bayesian_decision: Optional[str] = None
+    bayesian_authentic_prob: float = 0.0
+    bayesian_reasoning: list = []
+
+    # Enhanced module usage
+    reasoning_used: bool = False
+    orchestration_used: bool = False
+    patterns_stored: bool = False
+    drift_detected: bool = False
+
+    # Trace ID for audit
+    trace_id: Optional[str] = None
+
+
+@router.post("/voice/biometric/verify-enhanced", response_model=EnhancedVerificationResponse)
+async def verify_voice_enhanced(request: EnhancedVerificationRequest):
+    """
+    Enhanced voice biometric verification with LangGraph reasoning and multi-factor auth.
+
+    Features:
+    - **LangGraph Reasoning**: Intelligent multi-step reasoning for borderline cases
+    - **Multi-Factor Orchestration**: Fallback chain with challenge/proximity auth
+    - **ChromaDB Memory**: Persistent voice pattern storage and evolution tracking
+    - **Langfuse Tracing**: Complete audit trail for security investigation
+    - **Cost Tracking**: Per-operation cost analysis with caching optimization
+
+    Request:
+    - **audio_data**: Base64-encoded raw audio bytes (16kHz mono float32)
+    - **context**: Optional context dict (location, device, etc.)
+    - **speak**: Whether to speak the announcement via TTS
+    - **use_reasoning**: Enable LangGraph for borderline cases (default: true)
+    - **use_orchestration**: Enable multi-factor fallback (default: true)
+    - **store_patterns**: Store patterns in ChromaDB (default: true)
+
+    Returns:
+    - Complete verification result with confidence scores, timing, and audit trail
+    """
+    try:
+        vbi = await _get_vbi()
+
+        # Decode audio
+        import base64
+        audio_bytes = base64.b64decode(request.audio_data)
+
+        # Set context with request options
+        context = request.context or {}
+        context['use_reasoning'] = request.use_reasoning
+        context['use_orchestration'] = request.use_orchestration
+        context['store_patterns'] = request.store_patterns
+
+        # Run verification
+        result = await vbi.verify_and_announce(
+            audio_data=audio_bytes,
+            context=context,
+            speak=request.speak,
+        )
+
+        # Build response
+        return EnhancedVerificationResponse(
+            verified=result.verified,
+            speaker_name=result.speaker_name,
+            confidence=result.confidence,
+            level=result.level.value if hasattr(result.level, 'value') else str(result.level),
+            voice_confidence=result.voice_confidence,
+            behavioral_confidence=result.behavioral.behavioral_confidence if result.behavioral else 0.0,
+            fused_confidence=result.fused_confidence,
+            physics_confidence=result.physics_confidence,
+            verification_method=result.verification_method.value if hasattr(result.verification_method, 'value') else str(result.verification_method),
+            verification_time_ms=result.verification_time_ms,
+            was_cached=result.was_cached,
+            announcement=result.announcement,
+            should_proceed=result.should_proceed,
+            retry_guidance=result.retry_guidance,
+            spoofing_detected=result.spoofing_detected,
+            spoofing_reason=result.spoofing_reason,
+            bayesian_decision=result.bayesian_decision,
+            bayesian_authentic_prob=result.bayesian_authentic_prob,
+            bayesian_reasoning=result.bayesian_reasoning,
+            reasoning_used=vbi._stats.get('reasoning_invocations', 0) > 0,
+            orchestration_used=vbi._stats.get('orchestration_fallbacks', 0) > 0,
+            patterns_stored=vbi._stats.get('pattern_stores', 0) > 0,
+            drift_detected=vbi._stats.get('drift_detections', 0) > 0,
+            trace_id=vbi._current_trace,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Enhanced verification error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+
+@router.get("/voice/biometric/status")
+async def get_vbi_status():
+    """
+    Get VoiceBiometricIntelligence status including enhanced modules.
+
+    Returns comprehensive status of:
+    - Core components (speaker engine, cache)
+    - Enhanced modules (reasoning, memory, tracing, cost tracking)
+    - Performance statistics
+    """
+    try:
+        vbi = await _get_vbi()
+        stats = vbi.get_stats()
+
+        return {
+            "available": True,
+            "initialized": vbi._initialized,
+            "stats": stats,
+            "enhanced_modules": stats.get('enhanced_modules', {}),
+            "config": {
+                "reasoning_enabled": vbi._config.enable_reasoning_graph,
+                "pattern_memory_enabled": vbi._config.enable_pattern_memory,
+                "drift_detection_enabled": vbi._config.enable_drift_detection,
+                "orchestration_enabled": vbi._config.enable_orchestration,
+                "langfuse_enabled": vbi._config.enable_langfuse_tracing,
+                "cost_tracking_enabled": vbi._config.enable_cost_tracking,
+                "thresholds": {
+                    "instant": vbi._config.instant_recognition_threshold,
+                    "confident": vbi._config.confident_threshold,
+                    "borderline": vbi._config.borderline_threshold,
+                    "rejection": vbi._config.rejection_threshold,
+                },
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VBI status error: {e}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+
+@router.get("/voice/biometric/health")
+async def get_vbi_health():
+    """
+    Comprehensive health check for VoiceBiometricIntelligence.
+
+    Returns:
+    - **healthy**: Overall health status
+    - **score**: Health score (0-1)
+    - **components**: Status of each component
+    - **issues**: List of any issues detected
+    """
+    try:
+        vbi = await _get_vbi()
+        health = await vbi.health_check()
+
+        return health
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VBI health check error: {e}")
+        return {
+            "healthy": False,
+            "score": 0.0,
+            "message": f"Health check failed: {str(e)}",
+            "components": {},
+            "issues": [str(e)],
+        }
+
+
+@router.get("/voice/biometric/traces")
+async def get_recent_traces(limit: int = 10, user_id: Optional[str] = None):
+    """
+    Get recent Langfuse audit traces for voice authentication.
+
+    Args:
+    - **limit**: Maximum number of traces to return (default: 10)
+    - **user_id**: Filter by user ID (optional)
+
+    Returns:
+    - List of recent authentication traces with decision details
+    """
+    try:
+        vbi = await _get_vbi()
+
+        if not vbi._langfuse_available or not vbi._langfuse_tracer:
+            return {
+                "available": False,
+                "message": "Langfuse tracing not enabled",
+                "traces": [],
+            }
+
+        # Get traces from Langfuse
+        traces = await vbi._langfuse_tracer.get_recent_sessions(
+            limit=limit,
+            user_id=user_id,
+        )
+
+        return {
+            "available": True,
+            "count": len(traces),
+            "traces": traces,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Traces retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=f"Traces retrieval failed: {str(e)}")
+
+
+@router.get("/voice/biometric/cost-report")
+async def get_cost_report(period: str = "today"):
+    """
+    Get voice authentication cost report.
+
+    Args:
+    - **period**: Time period for report (today, week, month, all)
+
+    Returns:
+    - Cost breakdown by operation type
+    - Cache hit rate and savings
+    - Recommendations for optimization
+    """
+    try:
+        vbi = await _get_vbi()
+
+        if not vbi._cost_tracking_available or not vbi._cost_tracker:
+            return {
+                "available": False,
+                "message": "Cost tracking not enabled",
+                "costs": {},
+            }
+
+        # Get cost report
+        report = await vbi._cost_tracker.get_report(period=period)
+
+        # Add VBI-level stats
+        report['vbi_stats'] = {
+            'total_cost': vbi._stats.get('total_cost', 0.0),
+            'cache_savings': vbi._stats.get('cache_savings', 0.0),
+            'total_verifications': vbi._stats.get('total_verifications', 0),
+        }
+
+        return report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cost report error: {e}")
+        raise HTTPException(status_code=500, detail=f"Cost report failed: {str(e)}")
+
+
+@router.post("/voice/biometric/query-patterns")
+async def query_voice_patterns(
+    user_id: str,
+    query_type: str = "behavioral",
+    time_range_hours: int = 24,
+    limit: int = 10,
+):
+    """
+    Query stored voice patterns from ChromaDB memory.
+
+    Args:
+    - **user_id**: User ID to query patterns for
+    - **query_type**: Type of patterns (behavioral, evolution, attacks, environmental)
+    - **time_range_hours**: Time range in hours (default: 24)
+    - **limit**: Maximum patterns to return (default: 10)
+
+    Returns:
+    - Matching patterns with metadata
+    """
+    try:
+        vbi = await _get_vbi()
+
+        if not vbi._pattern_memory_available or not vbi._pattern_memory:
+            return {
+                "available": False,
+                "message": "Pattern memory not enabled",
+                "patterns": [],
+            }
+
+        # Query patterns based on type
+        if query_type == "behavioral":
+            patterns = await vbi._pattern_memory.query_behavioral_patterns(
+                user_id=user_id,
+                time_range_hours=time_range_hours,
+                limit=limit,
+            )
+        elif query_type == "evolution":
+            patterns = await vbi._pattern_memory.query_voice_evolution(
+                user_id=user_id,
+                limit=limit,
+            )
+        elif query_type == "attacks":
+            patterns = await vbi._pattern_memory.query_attack_patterns(
+                limit=limit,
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown query type: {query_type}. Use: behavioral, evolution, attacks"
+            )
+
+        return {
+            "available": True,
+            "query_type": query_type,
+            "user_id": user_id,
+            "count": len(patterns),
+            "patterns": patterns,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Pattern query error: {e}")
+        raise HTTPException(status_code=500, detail=f"Pattern query failed: {str(e)}")
+
+
+@router.get("/voice/biometric/drift-status")
+async def get_drift_status(user_id: Optional[str] = None):
+    """
+    Get voice drift detection status and history.
+
+    Args:
+    - **user_id**: User ID to get drift status for (optional, defaults to owner)
+
+    Returns:
+    - Current drift status
+    - Drift history
+    - Baseline adaptation history
+    """
+    try:
+        vbi = await _get_vbi()
+
+        if not vbi._drift_detector_available or not vbi._drift_detector:
+            return {
+                "available": False,
+                "message": "Drift detection not enabled",
+                "drift_status": {},
+            }
+
+        # Get drift status
+        status = await vbi._drift_detector.get_status(
+            user_id=user_id or vbi._owner_name or "owner"
+        )
+
+        return {
+            "available": True,
+            "user_id": user_id or vbi._owner_name,
+            "drift_status": status,
+            "config": {
+                "threshold": vbi._config.drift_threshold,
+                "auto_adapt": vbi._config.drift_auto_adapt,
+                "adaptation_rate": vbi._config.drift_adaptation_rate,
+            },
+            "stats": {
+                "drift_detections": vbi._stats.get('drift_detections', 0),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Drift status error: {e}")
+        raise HTTPException(status_code=500, detail=f"Drift status failed: {str(e)}")

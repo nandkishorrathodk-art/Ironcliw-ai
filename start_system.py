@@ -78,6 +78,15 @@ The JARVIS backend loads 11 critical components + 6 intelligent systems:
    • Apple Watch alternative - no additional hardware needed
    • Accuracy: ~95%+ (FAR <0.1%, FRR <2%)
 
+   🔍 Voice Transparency Engine (v4.0 - NEW!):
+     - Decision Traces: Full audit trail of WHY decisions were made
+     - Verbose Mode: Detailed spoken feedback ("ML at 78%, Physics at 92%...")
+     - Debug Voice: Phase-by-phase announcements during authentication
+     - Hypothesis Explanations: Explains borderline cases (noise, sick voice, etc.)
+     - Infrastructure Status: Monitors Docker, GCP Cloud Run, VM Spot instances
+     - Decision Factors: Records confidence breakdown for troubleshooting
+     - Environment-driven: JARVIS_VERBOSE_MODE, JARVIS_DEBUG_VOICE, etc.
+
 8. WAKE_WORD - Hands-free 'Hey JARVIS' activation
    • Always-listening mode with zero clicks required
    • Multi-engine detection (Porcupine, Vosk, WebRTC)
@@ -9211,12 +9220,30 @@ class AsyncSystemManager:
                             'source': profile.source
                         })
 
+                    # Check enhanced modules (v4.0)
+                    enhanced_modules = {}
+                    if hasattr(vbi, '_reasoning_available'):
+                        enhanced_modules['reasoning_graph'] = vbi._reasoning_available
+                    if hasattr(vbi, '_pattern_memory_available'):
+                        enhanced_modules['pattern_memory'] = vbi._pattern_memory_available
+                    if hasattr(vbi, '_drift_detector_available'):
+                        enhanced_modules['drift_detector'] = vbi._drift_detector_available
+                    if hasattr(vbi, '_orchestrator_available'):
+                        enhanced_modules['orchestrator'] = vbi._orchestrator_available
+                    if hasattr(vbi, '_langfuse_available'):
+                        enhanced_modules['langfuse_tracer'] = vbi._langfuse_available
+                    if hasattr(vbi, '_cost_tracking_available'):
+                        enhanced_modules['cost_tracker'] = vbi._cost_tracking_available
+                    if hasattr(vbi, '_transparency_available'):
+                        enhanced_modules['transparency_engine'] = vbi._transparency_available
+
                     status['detailed_checks']['voice_biometric_intelligence'] = {
                         'available': True,
                         'cache_state': cache_state,
                         'profiles_loaded': profiles_loaded,
                         'has_owner_profile': has_owner,
-                        'profiles': profile_details
+                        'profiles': profile_details,
+                        'enhanced_modules': enhanced_modules,
                     }
 
                     if profiles_loaded > 0 and has_owner:
@@ -9227,6 +9254,13 @@ class AsyncSystemManager:
                                 f"[VOICE UNLOCK]    ├─ {pd['name']}{owner_tag} "
                                 f"(dim={pd['dimensions']}, samples={pd['samples']})"
                             )
+                        # Log enhanced modules status (v4.0)
+                        if enhanced_modules:
+                            enabled_count = sum(1 for v in enhanced_modules.values() if v)
+                            logger.info(f"[VOICE UNLOCK]    └─ Enhanced Modules (v4.0): {enabled_count}/{len(enhanced_modules)} active")
+                            for mod_name, mod_enabled in enhanced_modules.items():
+                                symbol = "✓" if mod_enabled else "○"
+                                logger.info(f"[VOICE UNLOCK]       {symbol} {mod_name}")
                     elif profiles_loaded > 0:
                         logger.warning(f"[VOICE UNLOCK] ⚠️  VBI: {profiles_loaded} profiles but NO OWNER detected")
                         status['issues'].append('VBI has profiles but no owner profile - voice unlock may fail')
@@ -9254,6 +9288,65 @@ class AsyncSystemManager:
                 }
                 status['issues'].append(f'VBI check failed: {e}')
                 logger.error(f"[VOICE UNLOCK] ❌ VBI: CHECK FAILED - {e}")
+
+            # ═══════════════════════════════════════════════════════════
+            # 12b. CHECK VOICE TRANSPARENCY ENGINE (v4.0)
+            # ═══════════════════════════════════════════════════════════
+            logger.info("[VOICE UNLOCK] 🔍 Checking Voice Transparency Engine...")
+            try:
+                from voice_unlock.transparency import (
+                    TransparencyConfig,
+                    get_transparency_engine,
+                )
+
+                # Get configuration
+                transparency_config = {
+                    'enabled': TransparencyConfig.is_enabled(),
+                    'verbose_mode': TransparencyConfig.verbose_mode(),
+                    'debug_voice': TransparencyConfig.debug_voice(),
+                    'trace_retention_hours': TransparencyConfig.trace_retention_hours(),
+                    'cloud_status_enabled': TransparencyConfig.cloud_status_enabled(),
+                    'explain_decisions': TransparencyConfig.explain_decisions(),
+                    'announce_confidence': TransparencyConfig.announce_confidence(),
+                    'announce_latency': TransparencyConfig.announce_latency(),
+                    'announce_infrastructure': TransparencyConfig.announce_infrastructure(),
+                }
+
+                status['detailed_checks']['transparency_engine'] = {
+                    'available': True,
+                    'config': transparency_config,
+                }
+
+                if transparency_config['enabled']:
+                    logger.info("[VOICE UNLOCK] ✅ Transparency Engine: ENABLED")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Verbose Mode: {'ON' if transparency_config['verbose_mode'] else 'OFF'}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Debug Voice: {'ON' if transparency_config['debug_voice'] else 'OFF'}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Explain Decisions: {'ON' if transparency_config['explain_decisions'] else 'OFF'}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Announce Confidence: {transparency_config['announce_confidence']}")
+                    logger.info(f"[VOICE UNLOCK]    ├─ Cloud Status: {'ON' if transparency_config['cloud_status_enabled'] else 'OFF'}")
+                    logger.info(f"[VOICE UNLOCK]    └─ Trace Retention: {transparency_config['trace_retention_hours']}h")
+
+                    # Additional verbose tips
+                    if not transparency_config['verbose_mode']:
+                        logger.info("[VOICE UNLOCK]    💡 TIP: Set JARVIS_VERBOSE_MODE=true for detailed spoken feedback")
+                    if not transparency_config['debug_voice']:
+                        logger.info("[VOICE UNLOCK]    💡 TIP: Set JARVIS_DEBUG_VOICE=true for phase-by-phase announcements")
+                else:
+                    logger.warning("[VOICE UNLOCK] ⚠️  Transparency Engine: DISABLED")
+                    logger.info("[VOICE UNLOCK]    💡 Set JARVIS_TRANSPARENCY_ENABLED=true to enable")
+
+            except ImportError as e:
+                status['detailed_checks']['transparency_engine'] = {
+                    'available': False,
+                    'error': f'Module not found: {e}'
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Transparency Engine: MODULE NOT FOUND - {e}")
+            except Exception as e:
+                status['detailed_checks']['transparency_engine'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+                logger.warning(f"[VOICE UNLOCK] ⚠️  Transparency Engine: CHECK FAILED - {e}")
 
             # ═══════════════════════════════════════════════════════════
             # 13. CHECK HYBRID DATABASE SYNC SYSTEM

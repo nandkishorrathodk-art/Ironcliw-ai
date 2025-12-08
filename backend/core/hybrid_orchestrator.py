@@ -37,6 +37,7 @@ class IntelligenceMode(Enum):
     ENHANCED = "enhanced"  # Enhanced with LangGraph chain-of-thought reasoning
     UNIFIED = "unified"    # Full UnifiedIntelligenceOrchestrator coordination
     REASONING_GRAPH = "reasoning_graph"  # Multi-branch reasoning with failure recovery
+    VOICE_AUTH = "voice_auth"  # Voice biometric authentication with intelligent reasoning
 
 
 # UAE/SAI/CAI Integration (lazy loaded)
@@ -61,6 +62,10 @@ _llm_inference = None
 _model_registry = None
 _lifecycle_manager = None
 _model_selector = None
+
+# Voice Auth Intelligence (lazy loaded)
+_voice_auth_orchestrator = None
+_voice_auth_reasoning_graph = None
 
 
 def _get_uae():
@@ -341,6 +346,58 @@ async def _get_tts_callback():
     return _tts_handler
 
 
+# ============== VOICE AUTH INTELLIGENCE ==============
+
+async def _get_voice_auth_orchestrator():
+    """Lazy load Voice Auth Orchestrator for intelligent voice authentication.
+
+    The VoiceAuthOrchestrator provides multi-factor authentication with:
+    - Primary voice biometric verification (85% threshold)
+    - Behavioral fusion fallback (80% threshold)
+    - Challenge question fallback
+    - Apple Watch proximity fallback
+    - Password final fallback
+
+    Returns:
+        VoiceAuthOrchestrator or None: Orchestrator if available
+    """
+    global _voice_auth_orchestrator
+    if _voice_auth_orchestrator is None:
+        try:
+            from voice_unlock.orchestration import get_voice_auth_orchestrator
+
+            _voice_auth_orchestrator = await get_voice_auth_orchestrator()
+            logger.info("✅ VoiceAuthOrchestrator with fallback chain loaded")
+        except Exception as e:
+            logger.warning(f"VoiceAuthOrchestrator not available: {e}")
+    return _voice_auth_orchestrator
+
+
+async def _get_voice_auth_reasoning_graph():
+    """Lazy load Voice Auth Reasoning Graph for intelligent authentication reasoning.
+
+    The VoiceAuthenticationReasoningGraph provides LangGraph-based reasoning:
+    - Multi-phase verification pipeline (PERCEIVING -> DECIDING)
+    - Hypothesis-driven reasoning for borderline cases
+    - Early exit optimization for high-confidence cases
+    - Comprehensive error recovery
+    - Real-time metrics and observability
+
+    Returns:
+        VoiceAuthenticationReasoningGraph or None: Graph if available
+    """
+    global _voice_auth_reasoning_graph
+    if _voice_auth_reasoning_graph is None:
+        try:
+            from voice_unlock.reasoning import get_voice_auth_reasoning_graph
+
+            _voice_auth_reasoning_graph = await get_voice_auth_reasoning_graph()
+            logger.info("✅ VoiceAuthenticationReasoningGraph loaded")
+        except Exception as e:
+            logger.warning(f"VoiceAuthenticationReasoningGraph not available: {e}")
+    return _voice_auth_reasoning_graph
+
+
 def set_intelligence_mode(mode: IntelligenceMode) -> None:
     """Set the intelligence system operation mode.
 
@@ -349,6 +406,8 @@ def set_intelligence_mode(mode: IntelligenceMode) -> None:
             - STANDARD: Original UAE/SAI/CAI without chain-of-thought
             - ENHANCED: Enhanced systems with LangGraph chain-of-thought
             - UNIFIED: Full UnifiedIntelligenceOrchestrator coordination
+            - REASONING_GRAPH: Multi-branch reasoning with failure recovery
+            - VOICE_AUTH: Voice biometric authentication with intelligent reasoning
     """
     global _intelligence_mode
     _intelligence_mode = mode
@@ -623,6 +682,75 @@ class HybridOrchestrator:
                     return context  # Reasoning graph mode handles everything
                 except Exception as e:
                     logger.warning(f"ReasoningGraphEngine failed, falling back to unified: {e}")
+                    mode = IntelligenceMode.UNIFIED  # Fallback
+
+        # ============== VOICE_AUTH MODE: Voice Biometric Authentication ==============
+        if mode == IntelligenceMode.VOICE_AUTH:
+            # First try the reasoning graph for voice authentication
+            reasoning_graph = await _get_voice_auth_reasoning_graph()
+            if reasoning_graph:
+                try:
+                    # Get audio data from context if available
+                    audio_data = context.get("audio_data")
+                    user_id = context.get("user_id", "owner")
+
+                    if audio_data:
+                        # Run voice authentication reasoning graph
+                        voice_result = await reasoning_graph.authenticate(
+                            audio_data=audio_data,
+                            user_id=user_id,
+                            context={"rule": rule, "command": command},
+                        )
+                        context["voice_auth_reasoning"] = {
+                            "decision": voice_result.get("decision"),
+                            "confidence": voice_result.get("confidence", 0.0),
+                            "verified": voice_result.get("verified", False),
+                            "speaker_name": voice_result.get("speaker_name"),
+                            "level": voice_result.get("level"),
+                            "hypothesis": voice_result.get("hypothesis"),
+                            "reasoning_steps": voice_result.get("reasoning_steps", []),
+                            "processing_time_ms": voice_result.get("processing_time_ms", 0),
+                        }
+                        logger.debug(
+                            f"🎤 VoiceAuthReasoning: verified={voice_result.get('verified')}, "
+                            f"confidence={voice_result.get('confidence', 0):.2f}, "
+                            f"level={voice_result.get('level')}"
+                        )
+                        return context  # Voice auth reasoning handles everything
+                except Exception as e:
+                    logger.warning(f"VoiceAuthReasoningGraph failed, trying orchestrator: {e}")
+
+            # Fallback to orchestrator if reasoning graph unavailable or failed
+            orchestrator = await _get_voice_auth_orchestrator()
+            if orchestrator:
+                try:
+                    audio_data = context.get("audio_data")
+                    user_id = context.get("user_id", "owner")
+
+                    if audio_data:
+                        auth_result = await orchestrator.authenticate(
+                            audio_data=audio_data,
+                            user_id=user_id,
+                            context={"rule": rule, "command": command},
+                        )
+                        context["voice_auth_orchestrator"] = {
+                            "decision": auth_result.decision.value if hasattr(auth_result.decision, 'value') else str(auth_result.decision),
+                            "final_confidence": auth_result.final_confidence,
+                            "authenticated_user": auth_result.authenticated_user,
+                            "final_level": auth_result.final_level.display_name if hasattr(auth_result.final_level, 'display_name') else str(auth_result.final_level),
+                            "levels_attempted": auth_result.levels_attempted,
+                            "total_duration_ms": auth_result.total_duration_ms,
+                            "response_text": auth_result.response_text,
+                            "spoofing_suspected": auth_result.spoofing_suspected,
+                        }
+                        logger.debug(
+                            f"🎤 VoiceAuthOrchestrator: decision={auth_result.decision}, "
+                            f"confidence={auth_result.final_confidence:.2f}, "
+                            f"levels_attempted={auth_result.levels_attempted}"
+                        )
+                        return context  # Voice auth orchestrator handles everything
+                except Exception as e:
+                    logger.warning(f"VoiceAuthOrchestrator failed, falling back to unified: {e}")
                     mode = IntelligenceMode.UNIFIED  # Fallback
 
         # ============== UNIFIED MODE: Full Orchestrated Intelligence ==============
@@ -1367,14 +1495,14 @@ def get_orchestrator() -> HybridOrchestrator:
 
 async def get_orchestrator_async() -> HybridOrchestrator:
     """Get or create and start the global Hybrid Orchestrator instance.
-    
+
     Similar to get_orchestrator() but ensures the orchestrator is started
     before returning. Useful for async contexts where you want to guarantee
     the orchestrator is ready to use.
-    
+
     Returns:
         HybridOrchestrator: The global orchestrator instance (started)
-        
+
     Example:
         >>> orchestrator = await get_orchestrator_async()
         >>> result = await orchestrator.execute_command("search for AI news")
@@ -1383,3 +1511,140 @@ async def get_orchestrator_async() -> HybridOrchestrator:
     if not orchestrator.is_running:
         await orchestrator.start()
     return orchestrator
+
+
+# ============================================================================
+# VOICE AUTHENTICATION CONVENIENCE FUNCTIONS
+# ============================================================================
+
+async def authenticate_voice(
+    audio_data: bytes,
+    user_id: str = "owner",
+    use_reasoning: bool = True,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Convenience function for voice biometric authentication.
+
+    Provides easy access to JARVIS's voice authentication system with:
+    - LangGraph reasoning for borderline cases
+    - Multi-factor fallback chain
+    - ChromaDB pattern memory
+    - Langfuse audit trails
+
+    Args:
+        audio_data: Raw audio bytes (16kHz mono)
+        user_id: User ID to authenticate against
+        use_reasoning: Whether to use LangGraph reasoning for borderline cases
+        context: Additional context (location, device, etc.)
+
+    Returns:
+        Dict containing:
+            - verified: Whether authentication succeeded
+            - confidence: Confidence score (0-1)
+            - speaker_name: Identified speaker name
+            - decision: Authentication decision
+            - response_text: Response message
+            - method: Authentication method used
+            - processing_time_ms: Processing time
+
+    Example:
+        >>> result = await authenticate_voice(audio_bytes, user_id="derek")
+        >>> if result["verified"]:
+        ...     print(f"Welcome back, {result['speaker_name']}!")
+    """
+    result = {
+        "verified": False,
+        "confidence": 0.0,
+        "speaker_name": None,
+        "decision": "error",
+        "response_text": "Authentication not available",
+        "method": "none",
+        "processing_time_ms": 0.0,
+    }
+
+    import time
+    start_time = time.time()
+
+    try:
+        # Try reasoning graph first if enabled
+        if use_reasoning:
+            reasoning_graph = await _get_voice_auth_reasoning_graph()
+            if reasoning_graph:
+                try:
+                    voice_result = await reasoning_graph.authenticate(
+                        audio_data=audio_data,
+                        user_id=user_id,
+                        context=context or {},
+                    )
+                    result["verified"] = voice_result.get("verified", False)
+                    result["confidence"] = voice_result.get("confidence", 0.0)
+                    result["speaker_name"] = voice_result.get("speaker_name")
+                    result["decision"] = voice_result.get("decision", "unknown")
+                    result["response_text"] = voice_result.get("announcement", "")
+                    result["method"] = "reasoning_graph"
+                    result["reasoning_steps"] = voice_result.get("reasoning_steps", [])
+                    result["processing_time_ms"] = (time.time() - start_time) * 1000
+                    return result
+                except Exception as e:
+                    logger.warning(f"Reasoning graph failed: {e}")
+
+        # Fall back to orchestrator
+        orchestrator = await _get_voice_auth_orchestrator()
+        if orchestrator:
+            auth_result = await orchestrator.authenticate(
+                audio_data=audio_data,
+                user_id=user_id,
+                context=context or {},
+            )
+            result["verified"] = auth_result.decision.value == "authenticated" if hasattr(auth_result.decision, 'value') else str(auth_result.decision) == "authenticated"
+            result["confidence"] = auth_result.final_confidence
+            result["speaker_name"] = auth_result.authenticated_user
+            result["decision"] = auth_result.decision.value if hasattr(auth_result.decision, 'value') else str(auth_result.decision)
+            result["response_text"] = auth_result.response_text
+            result["method"] = auth_result.final_level.display_name if hasattr(auth_result.final_level, 'display_name') else str(auth_result.final_level)
+            result["levels_attempted"] = auth_result.levels_attempted
+
+    except Exception as e:
+        logger.error(f"Voice authentication error: {e}")
+        result["response_text"] = f"Authentication error: {str(e)}"
+
+    result["processing_time_ms"] = (time.time() - start_time) * 1000
+    return result
+
+
+async def get_voice_auth_status() -> Dict[str, Any]:
+    """Get voice authentication system status.
+
+    Returns:
+        Dict containing availability and configuration of voice auth components
+    """
+    status = {
+        "reasoning_graph_available": False,
+        "orchestrator_available": False,
+        "vbi_available": False,
+    }
+
+    try:
+        reasoning_graph = await _get_voice_auth_reasoning_graph()
+        status["reasoning_graph_available"] = reasoning_graph is not None
+    except Exception:
+        pass
+
+    try:
+        orchestrator = await _get_voice_auth_orchestrator()
+        status["orchestrator_available"] = orchestrator is not None
+    except Exception:
+        pass
+
+    try:
+        from backend.voice_unlock.voice_biometric_intelligence import (
+            get_voice_biometric_intelligence,
+        )
+        vbi = await get_voice_biometric_intelligence()
+        status["vbi_available"] = vbi is not None and vbi._initialized
+        if vbi:
+            status["vbi_stats"] = vbi.get_stats().get("enhanced_modules", {})
+    except Exception:
+        pass
+
+    return status
