@@ -60,8 +60,9 @@ class WhisperAudioHandler:
         self._async_model_load_lock = asyncio.Lock() if asyncio.get_event_loop().is_running() else None
         self._model_load_event = threading.Event()
 
-        # Thread pool for CPU-bound model loading (avoid blocking event loop)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_loader")
+        # Thread pool removed for macOS stability
+        # self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_loader")
+        self._executor = None
 
         # Initialize VAD pipeline (lazy-loaded)
         self.vad_pipeline = None
@@ -372,25 +373,23 @@ class WhisperAudioHandler:
             self._model_load_event.clear()
 
             try:
-                logger.info("Loading Whisper model (async, non-blocking)...")
+                logger.info("Loading Whisper model (synchronous on main thread)...")
 
                 def _load_model_sync():
-                    """Synchronous model loading function for thread pool."""
+                    """Synchronous model loading function."""
                     return whisper.load_model("base")
 
-                # Run in thread pool to avoid blocking event loop
-                loop = asyncio.get_running_loop()
-                self.model = await asyncio.wait_for(
-                    loop.run_in_executor(self._executor, _load_model_sync),
-                    timeout=timeout
-                )
+                # Run synchronously to prevent segfaults on macOS
+                # loop = asyncio.get_running_loop()
+                # self.model = await asyncio.wait_for(
+                #    loop.run_in_executor(self._executor, _load_model_sync),
+                #    timeout=timeout
+                # )
+                self.model = _load_model_sync()
 
-                logger.info("Whisper model loaded (async)")
+                logger.info("Whisper model loaded (sync)")
                 return True
 
-            except asyncio.TimeoutError:
-                logger.error(f"Whisper model loading timed out after {timeout}s")
-                return False
             except Exception as e:
                 logger.error(f"Failed to load Whisper model: {e}")
                 return False
@@ -657,7 +656,9 @@ class WhisperAudioHandler:
                 logger.info(f"   Raw Whisper result: {result}")
                 return result["text"].strip() # Strip leading/trailing whitespace from text
 
-            text = await asyncio.to_thread(_transcribe_sync)
+            # Run synchronously on main thread (macOS stability)
+            # text = await asyncio.to_thread(_transcribe_sync)
+            text = _transcribe_sync()
 
             logger.info(f"✅ Transcribed: '{text}'")
 

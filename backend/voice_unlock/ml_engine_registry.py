@@ -613,23 +613,22 @@ class ECAPATDNNWrapper(MLEngineWrapper):
 
             return model
 
-        # Run in thread pool to avoid blocking
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_loader") as executor:
-            model = await loop.run_in_executor(executor, _load_sync)
+        # Run synchronously on main thread (macOS stability)
+        # loop = asyncio.get_running_loop()
+        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_loader") as executor:
+        #    model = await loop.run_in_executor(executor, _load_sync)
+        model = _load_sync()
 
         self._encoder_loaded = True
         return model
 
     async def _warmup_impl(self) -> bool:
         """
-        Run a test embedding extraction (non-blocking via ThreadPoolExecutor).
+        Run a test embedding extraction (synchronous on main thread).
 
-        CRITICAL: Captures engine reference before spawning thread to prevent
-        segfaults if engine is unloaded/modified while thread is running.
+        CRITICAL: Run synchronously to prevent segfaults on macOS/Apple Silicon.
         """
-        # SAFETY: Capture engine reference BEFORE spawning thread
-        # This prevents accessing self._engine which could become None
+        # SAFETY: Capture engine reference
         engine_ref = self._engine
         engine_name = self.name
 
@@ -659,8 +658,7 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 with torch.no_grad():
                     embedding = engine_ref.encode_batch(test_audio)
 
-                    # CRITICAL: Clone result before returning to prevent
-                    # memory issues when tensor is GC'd in other thread
+                    # CRITICAL: Clone result before returning
                     if hasattr(embedding, 'clone'):
                         _ = embedding.clone().detach().cpu()
 
@@ -674,12 +672,11 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 return False
 
         try:
-            loop = asyncio.get_running_loop()
-            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_warmup") as executor:
-                result = await loop.run_in_executor(executor, _warmup_sync)
+            # Run synchronously
+            result = _warmup_sync()
             return result
         except Exception as e:
-            logger.warning(f"   [{self.name}] Async warmup wrapper failed: {e}")
+            logger.warning(f"   [{self.name}] Warmup wrapper failed: {e}")
             return False
 
 
@@ -722,20 +719,21 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
 
             return model
 
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt_loader") as executor:
-            model = await loop.run_in_executor(executor, _load_sync)
+        # Run synchronously on main thread (macOS stability)
+        # loop = asyncio.get_running_loop()
+        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt_loader") as executor:
+        #    model = await loop.run_in_executor(executor, _load_sync)
+        model = _load_sync()
 
         return model
 
     async def _warmup_impl(self) -> bool:
         """
-        Run a test transcription (non-blocking via ThreadPoolExecutor).
+        Run a test transcription (synchronous on main thread).
 
-        CRITICAL: Captures engine reference before spawning thread to prevent
-        segfaults if engine is unloaded/modified while thread is running.
+        CRITICAL: Run synchronously to prevent segfaults on macOS/Apple Silicon.
         """
-        # SAFETY: Capture engine reference BEFORE spawning thread
+        # SAFETY: Capture engine reference
         engine_ref = self._engine
         engine_name = self.name
 
@@ -770,12 +768,11 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
                 return False
 
         try:
-            loop = asyncio.get_running_loop()
-            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt_warmup") as executor:
-                result = await loop.run_in_executor(executor, _warmup_sync)
+            # Run synchronously
+            result = _warmup_sync()
             return result
         except Exception as e:
-            logger.warning(f"   [{self.name}] Async warmup wrapper failed: {e}")
+            logger.warning(f"   [{self.name}] Warmup wrapper failed: {e}")
             return False
 
 
@@ -806,20 +803,21 @@ class WhisperWrapper(MLEngineWrapper):
 
             return model
 
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_loader") as executor:
-            model = await loop.run_in_executor(executor, _load_sync)
+        # Run synchronously on main thread (macOS stability)
+        # loop = asyncio.get_running_loop()
+        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_loader") as executor:
+        #    model = await loop.run_in_executor(executor, _load_sync)
+        model = _load_sync()
 
         return model
 
     async def _warmup_impl(self) -> bool:
         """
-        Run a test transcription (non-blocking via ThreadPoolExecutor).
+        Run a test transcription (synchronous on main thread).
 
-        CRITICAL: Captures engine reference before spawning thread to prevent
-        segfaults if engine is unloaded/modified while thread is running.
+        CRITICAL: Run synchronously to prevent segfaults on macOS/Apple Silicon.
         """
-        # SAFETY: Capture engine reference BEFORE spawning thread
+        # SAFETY: Capture engine reference
         engine_ref = self._engine
         engine_name = self.name
 
@@ -857,12 +855,11 @@ class WhisperWrapper(MLEngineWrapper):
                 return False
 
         try:
-            loop = asyncio.get_running_loop()
-            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_warmup") as executor:
-                result = await loop.run_in_executor(executor, _warmup_sync)
+            # Run synchronously
+            result = _warmup_sync()
             return result
         except Exception as e:
-            logger.warning(f"   [{self.name}] Async warmup wrapper failed: {e}")
+            logger.warning(f"   [{self.name}] Warmup wrapper failed: {e}")
             return False
 
 

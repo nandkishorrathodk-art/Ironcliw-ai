@@ -964,8 +964,9 @@ class ECAPAModelManager:
     - Comprehensive telemetry and diagnostics
     """
 
-    # Thread pool for parallel model loading
-    _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="ecapa_loader")
+    # Thread pool removed for macOS stability
+    # _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="ecapa_loader")
+    _executor = None
 
     def __init__(self):
         self.model = None
@@ -1130,8 +1131,10 @@ class ECAPAModelManager:
         """Load the ECAPA-TDNN model using optimized loader (runs in thread pool)."""
         logger.info("Starting optimized model load in thread pool...")
         try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._load_model_optimized)
+            # Run synchronously on main thread (macOS stability)
+            # loop = asyncio.get_running_loop()
+            # await loop.run_in_executor(None, self._load_model_optimized)
+            self._load_model_optimized()
             logger.info("Thread pool model load completed")
         except Exception as e:
             logger.error(f"Thread pool model load failed: {e}")
@@ -1458,7 +1461,9 @@ class ECAPAModelManager:
                     return np.array(result.numpy(), dtype=np.float32, copy=True)
 
                 loop = asyncio.get_running_loop()
-                embedding = await loop.run_in_executor(None, _encode_optimized)
+                # Run synchronously on main thread (macOS stability)
+                # embedding = await loop.run_in_executor(None, _encode_optimized)
+                embedding = _encode_optimized()
             else:
                 # SAFETY: Capture model reference BEFORE thread spawn to prevent segfaults
                 model_ref = self.model
@@ -1474,7 +1479,9 @@ class ECAPAModelManager:
                     return np.array(result.numpy(), dtype=np.float32, copy=True)
 
                 loop = asyncio.get_running_loop()
-                embedding = await loop.run_in_executor(None, _encode_legacy)
+                # Run synchronously on main thread (macOS stability)
+                # embedding = await loop.run_in_executor(None, _encode_legacy)
+                embedding = _encode_legacy()
 
             # Update stats
             inference_time = (time.time() - start_time) * 1000
