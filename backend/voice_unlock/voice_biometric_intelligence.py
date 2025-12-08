@@ -1278,12 +1278,21 @@ class VoiceBiometricIntelligence:
                 return None
 
             def _extract_sync():
-                """Run blocking PyTorch operations in thread pool."""
+                """
+                Run blocking PyTorch operations in thread pool.
+
+                Uses captured encoder reference to prevent null pointer access
+                if encoder is unloaded during extraction.
+                """
+                # SAFETY: Check encoder reference is still valid
+                if encoder is None:
+                    raise RuntimeError("Encoder reference became None during extraction")
+
                 # Convert audio bytes to tensor
                 audio_array = np.frombuffer(audio_data, dtype=np.float32)
                 audio_tensor = torch.tensor(audio_array).unsqueeze(0)
 
-                # Extract embedding
+                # Extract embedding using captured reference
                 with torch.no_grad():
                     embedding = encoder.encode_batch(audio_tensor)
 

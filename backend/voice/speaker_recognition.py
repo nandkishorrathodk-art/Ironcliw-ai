@@ -548,8 +548,18 @@ class SpeakerRecognitionEngine:
         - librosa.load() for audio decoding
         - torch.FloatTensor() and model.encode_batch() for ECAPA embedding
         - librosa.feature.mfcc() for fallback embedding
+
+        THREAD SAFETY: Captures model reference at start to prevent segfaults
+        if model is unloaded during extraction.
         """
         try:
+            # SAFETY: Capture model reference at start of method
+            # This prevents segfaults if model is set to None during extraction
+            model_ref = self.model
+            if model_ref is None:
+                logger.warning("Model reference is None - cannot extract embedding")
+                return None
+
             # Convert audio bytes to numpy array
             import io
 
@@ -567,10 +577,15 @@ class SpeakerRecognitionEngine:
                     audio_array = audio_array.mean(axis=1)
                 audio_array = audio_array.astype(np.float32) / 32768.0
 
-            # Extract embedding with model
-            if hasattr(self.model, "encode_batch"):
+            # Extract embedding with model using captured reference
+            if hasattr(model_ref, "encode_batch"):
                 # SpeechBrain ECAPA-TDNN
                 import torch
+
+                # Double-check reference is still valid
+                if model_ref is None:
+                    logger.warning("Model reference became None during extraction")
+                    return None
 
                 # Limit torch threads to prevent CPU overload
                 torch.set_num_threads(1)
@@ -579,11 +594,11 @@ class SpeakerRecognitionEngine:
                 with torch.no_grad():  # Disable gradient computation for inference
                     # CRITICAL: Use .copy() to avoid memory corruption!
                     # .numpy() shares memory with tensor - must copy before returning
-                    result = self.model.encode_batch(audio_tensor).squeeze().cpu()
+                    result = model_ref.encode_batch(audio_tensor).squeeze().cpu()
                     embedding = np.array(result.numpy(), dtype=np.float32, copy=True)
-            elif hasattr(self.model, "embed_utterance"):
+            elif hasattr(model_ref, "embed_utterance"):
                 # Resemblyzer
-                embedding = self.model.embed_utterance(audio_array)
+                embedding = model_ref.embed_utterance(audio_array)
             else:
                 # Fallback: use MFCC features as simple embedding
                 import librosa

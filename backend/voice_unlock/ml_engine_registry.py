@@ -305,10 +305,21 @@ class RegistryStatus:
 # ENGINE WRAPPER - Base class for all ML engines
 # =============================================================================
 
+class EngineNotAvailableError(RuntimeError):
+    """Raised when engine is not available for use (unloaded/unloading)."""
+    pass
+
+
 class MLEngineWrapper(ABC):
     """
     Abstract base class for ML engine wrappers.
     Provides consistent interface and lifecycle management.
+
+    Thread-Safety Guarantees:
+    - Reference counting prevents engine unload while in use
+    - RLock allows recursive locking from same thread
+    - Condition variable coordinates unload with active users
+    - All public methods are thread-safe
     """
 
     def __init__(self, name: str):
@@ -317,6 +328,96 @@ class MLEngineWrapper(ABC):
         self._engine: Any = None
         self._lock = asyncio.Lock()
         self._thread_lock = threading.Lock()
+
+        # Thread-safe reference counting for engine access
+        # Prevents segfaults from engine being unloaded while in use
+        self._engine_use_count: int = 0
+        self._engine_use_lock = threading.RLock()  # RLock for recursive safety
+        self._unload_condition = threading.Condition(self._engine_use_lock)
+        self._is_unloading: bool = False
+
+    def acquire_engine(self) -> Any:
+        """
+        Thread-safe acquisition of engine reference.
+
+        Increments use count and returns the engine.
+        MUST be paired with release_engine() call.
+
+        Returns:
+            The loaded engine instance
+
+        Raises:
+            EngineNotAvailableError: If engine is None, unloading, or not ready
+        """
+        with self._engine_use_lock:
+            # Check if engine is available
+            if self._is_unloading:
+                raise EngineNotAvailableError(
+                    f"Engine {self.name} is being unloaded"
+                )
+
+            if self._engine is None:
+                raise EngineNotAvailableError(
+                    f"Engine {self.name} is not loaded"
+                )
+
+            if self.metrics.state != EngineState.READY:
+                raise EngineNotAvailableError(
+                    f"Engine {self.name} is in state {self.metrics.state.value}, not READY"
+                )
+
+            # Increment use count
+            self._engine_use_count += 1
+
+            # Return the engine reference
+            return self._engine
+
+    def release_engine(self) -> None:
+        """
+        Release engine reference after use.
+
+        Decrements use count and notifies unload waiters if count reaches 0.
+        Safe to call even if acquire failed (will be a no-op).
+        """
+        with self._engine_use_lock:
+            if self._engine_use_count > 0:
+                self._engine_use_count -= 1
+
+                # Notify unload() if it's waiting and count is now 0
+                if self._engine_use_count == 0:
+                    self._unload_condition.notify_all()
+
+    class _EngineContext:
+        """Context manager for safe engine access."""
+
+        def __init__(self, wrapper: 'MLEngineWrapper'):
+            self._wrapper = wrapper
+            self._engine: Any = None
+            self._acquired = False
+
+        def __enter__(self) -> Any:
+            self._engine = self._wrapper.acquire_engine()
+            self._acquired = True
+            return self._engine
+
+        def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+            if self._acquired:
+                self._wrapper.release_engine()
+                self._acquired = False
+            return False  # Don't suppress exceptions
+
+    def use_engine(self) -> '_EngineContext':
+        """
+        Context manager for safe engine access.
+
+        Usage:
+            with wrapper.use_engine() as engine:
+                result = engine.encode_batch(audio)
+
+        The engine is guaranteed to remain valid within the context.
+        Protects against concurrent unload() calls.
+        """
+        return self._EngineContext(self)
 
     @property
     def is_loaded(self) -> bool:
@@ -391,7 +492,12 @@ class MLEngineWrapper(ABC):
                 return False
 
     def get_engine(self) -> Any:
-        """Get the loaded engine instance (thread-safe)."""
+        """
+        Get the loaded engine instance (thread-safe).
+
+        WARNING: This returns a raw reference. For thread-safe access
+        that prevents concurrent unload, use use_engine() context manager instead.
+        """
         with self._thread_lock:
             if not self.is_loaded:
                 raise RuntimeError(f"Engine {self.name} not loaded")
@@ -399,18 +505,72 @@ class MLEngineWrapper(ABC):
             self.metrics.use_count += 1
             return self._engine
 
-    async def unload(self):
-        """Unload the engine and free resources."""
+    def get_use_count(self) -> int:
+        """Get current number of active engine users (for debugging)."""
+        with self._engine_use_lock:
+            return self._engine_use_count
+
+    async def unload(self, timeout: float = 30.0):
+        """
+        Unload the engine and free resources.
+
+        Waits for all active users to release the engine before unloading.
+        This prevents segfaults from engine being freed while in use.
+
+        Args:
+            timeout: Maximum seconds to wait for active users (default 30s)
+
+        Raises:
+            TimeoutError: If active users don't release within timeout
+        """
         async with self._lock:
-            if self._engine is not None:
-                self.metrics.state = EngineState.UNLOADING
-                try:
-                    # Allow garbage collection
-                    self._engine = None
-                    self.metrics.state = EngineState.UNINITIALIZED
-                    logger.info(f"🧹 [{self.name}] Engine unloaded")
-                except Exception as e:
-                    logger.error(f"❌ [{self.name}] Unload error: {e}")
+            if self._engine is None:
+                return  # Already unloaded
+
+            self.metrics.state = EngineState.UNLOADING
+
+            # Signal that we're unloading (blocks new acquire_engine calls)
+            with self._engine_use_lock:
+                self._is_unloading = True
+
+                # Wait for all active users to release
+                if self._engine_use_count > 0:
+                    logger.info(
+                        f"🔄 [{self.name}] Waiting for {self._engine_use_count} "
+                        f"active user(s) to release engine..."
+                    )
+
+                    # Wait with timeout
+                    wait_start = time.time()
+                    while self._engine_use_count > 0:
+                        remaining = timeout - (time.time() - wait_start)
+                        if remaining <= 0:
+                            # Timeout - force unload anyway (risky but better than deadlock)
+                            logger.warning(
+                                f"⚠️ [{self.name}] Timeout waiting for {self._engine_use_count} "
+                                f"user(s) to release. Forcing unload."
+                            )
+                            break
+
+                        # Wait for condition signal with timeout
+                        self._unload_condition.wait(timeout=min(1.0, remaining))
+
+            try:
+                # Clear the engine reference
+                self._engine = None
+                self.metrics.state = EngineState.UNINITIALIZED
+
+                # Reset unloading flag
+                with self._engine_use_lock:
+                    self._is_unloading = False
+                    self._engine_use_count = 0  # Reset in case of timeout
+
+                logger.info(f"🧹 [{self.name}] Engine unloaded successfully")
+
+            except Exception as e:
+                logger.error(f"❌ [{self.name}] Unload error: {e}")
+                with self._engine_use_lock:
+                    self._is_unloading = False
 
 
 # =============================================================================
@@ -462,12 +622,30 @@ class ECAPATDNNWrapper(MLEngineWrapper):
         return model
 
     async def _warmup_impl(self) -> bool:
-        """Run a test embedding extraction (non-blocking via ThreadPoolExecutor)."""
+        """
+        Run a test embedding extraction (non-blocking via ThreadPoolExecutor).
+
+        CRITICAL: Captures engine reference before spawning thread to prevent
+        segfaults if engine is unloaded/modified while thread is running.
+        """
+        # SAFETY: Capture engine reference BEFORE spawning thread
+        # This prevents accessing self._engine which could become None
+        engine_ref = self._engine
+        engine_name = self.name
+
+        if engine_ref is None:
+            logger.warning(f"   [{engine_name}] Cannot warmup - engine is None")
+            return False
 
         def _warmup_sync() -> bool:
+            # Use captured engine_ref, NOT self._engine
             try:
                 import numpy as np
                 import torch
+
+                # Double-check reference is valid (extra safety)
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None")
 
                 # Generate 1 second of test audio
                 sample_rate = 16000
@@ -477,15 +655,22 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 white = np.random.randn(len(t)).astype(np.float32)
                 test_audio = torch.tensor(white * 0.3).unsqueeze(0)
 
-                # Extract embedding
+                # Extract embedding using captured reference
                 with torch.no_grad():
-                    embedding = self._engine.encode_batch(test_audio)
+                    embedding = engine_ref.encode_batch(test_audio)
 
-                logger.info(f"   [{self.name}] Warmup embedding shape: {embedding.shape}")
+                    # CRITICAL: Clone result before returning to prevent
+                    # memory issues when tensor is GC'd in other thread
+                    if hasattr(embedding, 'clone'):
+                        _ = embedding.clone().detach().cpu()
+
+                logger.info(f"   [{engine_name}] Warmup embedding shape: {embedding.shape}")
                 return True
 
             except Exception as e:
-                logger.warning(f"   [{self.name}] Warmup failed: {e}")
+                logger.warning(f"   [{engine_name}] Warmup failed: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 return False
 
         try:
@@ -544,26 +729,44 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
         return model
 
     async def _warmup_impl(self) -> bool:
-        """Run a test transcription (non-blocking via ThreadPoolExecutor)."""
+        """
+        Run a test transcription (non-blocking via ThreadPoolExecutor).
+
+        CRITICAL: Captures engine reference before spawning thread to prevent
+        segfaults if engine is unloaded/modified while thread is running.
+        """
+        # SAFETY: Capture engine reference BEFORE spawning thread
+        engine_ref = self._engine
+        engine_name = self.name
+
+        if engine_ref is None:
+            logger.warning(f"   [{engine_name}] Cannot warmup - engine is None")
+            return False
 
         def _warmup_sync() -> bool:
+            # Use captured engine_ref, NOT self._engine
             try:
-                import numpy as np
                 import torch
+
+                # Double-check reference is valid
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None")
 
                 # Generate 1 second of silence (quick warmup)
                 sample_rate = 16000
                 test_audio = torch.zeros(1, sample_rate)
 
-                # Transcribe
+                # Transcribe using captured reference
                 with torch.no_grad():
-                    _ = self._engine.transcribe_batch(test_audio, torch.tensor([1.0]))
+                    _ = engine_ref.transcribe_batch(test_audio, torch.tensor([1.0]))
 
-                logger.info(f"   [{self.name}] Warmup transcription complete")
+                logger.info(f"   [{engine_name}] Warmup transcription complete")
                 return True
 
             except Exception as e:
-                logger.warning(f"   [{self.name}] Warmup failed: {e}")
+                logger.warning(f"   [{engine_name}] Warmup failed: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 return False
 
         try:
@@ -610,28 +813,47 @@ class WhisperWrapper(MLEngineWrapper):
         return model
 
     async def _warmup_impl(self) -> bool:
-        """Run a test transcription (non-blocking via ThreadPoolExecutor)."""
+        """
+        Run a test transcription (non-blocking via ThreadPoolExecutor).
+
+        CRITICAL: Captures engine reference before spawning thread to prevent
+        segfaults if engine is unloaded/modified while thread is running.
+        """
+        # SAFETY: Capture engine reference BEFORE spawning thread
+        engine_ref = self._engine
+        engine_name = self.name
+
+        if engine_ref is None:
+            logger.warning(f"   [{engine_name}] Cannot warmup - engine is None")
+            return False
 
         def _warmup_sync() -> bool:
+            # Use captured engine_ref, NOT self._engine
             try:
                 import numpy as np
+
+                # Double-check reference is valid
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None")
 
                 # Generate 1 second of silence
                 sample_rate = 16000
                 test_audio = np.zeros(sample_rate, dtype=np.float32)
 
-                # Transcribe (this warms up the model)
-                _ = self._engine.transcribe(
+                # Transcribe using captured reference (this warms up the model)
+                _ = engine_ref.transcribe(
                     test_audio,
                     language="en",
                     fp16=False,
                 )
 
-                logger.info(f"   [{self.name}] Warmup transcription complete")
+                logger.info(f"   [{engine_name}] Warmup transcription complete")
                 return True
 
             except Exception as e:
-                logger.warning(f"   [{self.name}] Warmup failed: {e}")
+                logger.warning(f"   [{engine_name}] Warmup failed: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 return False
 
         try:
@@ -2504,14 +2726,26 @@ async def _extract_local_embedding(
         if ecapa_engine is not None:
             import torch
 
+            # SAFETY: Capture engine reference for thread closure
+            engine_ref = ecapa_engine
+
             def _extract_sync():
-                """Run blocking PyTorch operations in thread pool."""
+                """
+                Run blocking PyTorch operations in thread pool.
+
+                Uses captured engine_ref to prevent null pointer access if
+                engine is unloaded during extraction.
+                """
+                # Double-check engine reference is valid
+                if engine_ref is None:
+                    raise RuntimeError("Engine reference became None during extraction")
+
                 # Audio should be float32, 16kHz, mono
                 audio_array = np.frombuffer(audio_data, dtype=np.float32)
                 audio_tensor = torch.tensor(audio_array).unsqueeze(0)
 
                 with torch.no_grad():
-                    embedding = ecapa_engine.encode_batch(audio_tensor)
+                    embedding = engine_ref.encode_batch(audio_tensor)
 
                 # CRITICAL: Return a copy to avoid memory issues when tensor is GC'd
                 return embedding.squeeze().detach().clone().cpu().numpy().copy()
@@ -2521,8 +2755,10 @@ async def _extract_local_embedding(
 
             logger.debug(f"Local embedding extracted via ML Registry: shape {embedding.shape}")
             return embedding
-    except RuntimeError:
-        pass  # Engine not loaded in registry, try fallback
+    except RuntimeError as e:
+        logger.debug(f"ML Registry engine not available: {e}")
+    except EngineNotAvailableError as e:
+        logger.debug(f"ML Registry engine not available: {e}")
     except Exception as e:
         logger.debug(f"ML Registry extraction failed: {e}")
 

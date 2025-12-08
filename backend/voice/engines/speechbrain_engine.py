@@ -1563,11 +1563,29 @@ __all__ = ["EncoderDecoderASR"]
             # Extract embedding - run in thread pool to avoid blocking event loop
             logger.info("   Encoding speaker embedding with ECAPA-TDNN...")
 
+            # SAFETY: Capture encoder reference BEFORE spawning thread
+            # This prevents segfaults if encoder is unloaded during extraction
+            encoder_ref = self.speaker_encoder
+            if encoder_ref is None:
+                raise RuntimeError("Speaker encoder not loaded - cannot extract embedding")
+
+            # Also capture the audio tensor reference
+            audio_input = audio_tensor.unsqueeze(0)
+
             def _encode_sync():
-                """Run ECAPA-TDNN encoding in thread to avoid blocking event loop."""
+                """
+                Run ECAPA-TDNN encoding in thread to avoid blocking event loop.
+
+                Uses captured encoder_ref to prevent null pointer access if
+                encoder is unloaded during extraction.
+                """
+                # Double-check reference is valid
+                if encoder_ref is None:
+                    raise RuntimeError("Encoder reference became None during extraction")
+
                 with torch.no_grad():
-                    # Encode the waveform
-                    embeddings = self.speaker_encoder.encode_batch(audio_tensor.unsqueeze(0))
+                    # Encode the waveform using captured reference
+                    embeddings = encoder_ref.encode_batch(audio_input)
                     # CRITICAL: Convert to numpy with COPY to avoid memory corruption
                     # .numpy() shares memory with PyTorch - must clone before returning to main thread
                     embedding_safe = embeddings[0].detach().clone().cpu()

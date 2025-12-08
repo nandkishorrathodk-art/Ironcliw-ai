@@ -2111,10 +2111,18 @@ class UnifiedVoiceCacheManager:
         CRITICAL: This runs CPU-intensive PyTorch operations off the event loop.
         IMPORTANT: Must return OWNED numpy array (copy), not shared memory with torch!
 
+        THREAD SAFETY: Encoder is passed in as parameter (captured before thread spawn)
+        to prevent segfaults if engine is unloaded during extraction.
+
         Handles all audio input types via audio_data_to_numpy helper.
         """
         try:
             import torch
+
+            # SAFETY: Validate encoder reference at start of sync method
+            if encoder is None:
+                logger.warning("Encoder reference is None - cannot extract embedding")
+                return None
 
             # Use robust audio conversion helper
             audio_np = audio_data_to_numpy(audio_data)
