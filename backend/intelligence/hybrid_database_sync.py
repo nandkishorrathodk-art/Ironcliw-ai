@@ -1584,12 +1584,15 @@ class HybridDatabaseSync:
                         # Trigger immediate sync of pending changes
                         asyncio.create_task(self._reconcile_pending_syncs())
 
-                # Health check ping
-                elif self.cloudsql_pool:
+                # Health check ping - use connection_manager (not cloudsql_pool which doesn't exist)
+                elif self.connection_manager is not None:
                     try:
-                        async with self.cloudsql_pool.acquire() as conn:
-                            await conn.fetchval("SELECT 1")
-                        self.last_health_check = datetime.now()
+                        # Use the connection manager to verify CloudSQL connectivity
+                        pool = await self.connection_manager.get_pool()
+                        if pool:
+                            async with pool.acquire() as conn:
+                                await conn.fetchval("SELECT 1")
+                            self.last_health_check = datetime.now()
                     except Exception as e:
                         logger.warning(f"⚠️  CloudSQL health check failed: {e}")
                         self.cloudsql_healthy = False

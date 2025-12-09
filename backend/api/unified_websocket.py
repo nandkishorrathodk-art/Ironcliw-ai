@@ -1287,13 +1287,32 @@ class UnifiedWebSocketManager:
                 # Return response from pipeline
                 # First check if we have a direct response
                 if result.get("response"):
-                    # Include speak flag for voice output
-                    response_dict = {
-                        "type": "command_response",
-                        "response": result.get("response"),
-                        "success": result.get("success", True),
-                        "speak": True,  # Enable text-to-speech for all responses
-                    }
+                    # CRITICAL: Preserve original type for voice_unlock so frontend can route correctly
+                    # The frontend looks for type: "voice_unlock" to handle VBI responses
+                    original_type = result.get("type")
+                    if original_type == "voice_unlock":
+                        # Voice unlock response - preserve all VBI data for frontend
+                        response_dict = {
+                            "type": "voice_unlock",  # MUST be voice_unlock for frontend routing
+                            "response": result.get("response"),
+                            "message": result.get("response"),  # Alias for compatibility
+                            "success": result.get("success", True),
+                            "speak": False,  # NO AUDIO for voice unlock (prevent feedback loop)
+                            "command_type": "voice_unlock",
+                            "speaker_name": result.get("speaker_name", ""),
+                            "confidence": result.get("confidence", 0.0),
+                            "trace_id": result.get("trace_id", ""),
+                            "vbi_trace": result.get("vbi_trace"),
+                        }
+                        logger.info(f"[WS-VBI] Sending voice_unlock response to frontend: success={response_dict['success']}")
+                    else:
+                        # Standard command response
+                        response_dict = {
+                            "type": "command_response",
+                            "response": result.get("response"),
+                            "success": result.get("success", True),
+                            "speak": True,  # Enable text-to-speech for all responses
+                        }
 
                     # Add additional metadata for lock/unlock commands
                     if result.get("metadata", {}).get("lock_unlock_result"):
