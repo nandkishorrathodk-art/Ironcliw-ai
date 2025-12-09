@@ -27,7 +27,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -1450,12 +1450,15 @@ class IntelligentVoiceUnlockService:
             return False
 
     async def process_voice_unlock_command(
-        self, audio_data, context: Optional[Dict[str, Any]] = None
+        self, audio_data, context: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
         """
-        Process voice unlock command with full intelligence stack.
+        Process voice unlock command with full intelligence stack and Cloud-First routing (v3.0.0).
 
         Features:
+        - CLOUD-FIRST: Routes to cloud ECAPA first (non-blocking, saves RAM)
+        - PROGRESS CALLBACKS: Real-time UI updates ("Checking cloud...", "Verifying...")
         - SEMANTIC CACHING: Instant unlock for repeated requests within session
         - GLOBAL TIMEOUT: Prevents infinite hangs (25s max)
         - Retry logic with exponential backoff
@@ -1466,6 +1469,8 @@ class IntelligentVoiceUnlockService:
         Args:
             audio_data: Audio data in any format (bytes, string, base64, etc.)
             context: Optional context (screen state, time, location, etc.)
+            progress_callback: Optional async callback for real-time progress updates
+                              Signature: async callback({"stage": str, "progress": int, "message": str})
 
         Returns:
             Result dict with success, speaker, reason, and diagnostics
@@ -1500,7 +1505,7 @@ class IntelligentVoiceUnlockService:
         # =============================================================================
         if self.voice_biometric_intelligence:
             try:
-                # Verify voice and announce result FIRST
+                # Verify voice and announce result FIRST with Cloud-First routing
                 vbi_result = await asyncio.wait_for(
                     self.voice_biometric_intelligence.verify_and_announce(
                         audio_data=audio_data,
@@ -1509,8 +1514,9 @@ class IntelligentVoiceUnlockService:
                             'device_trusted': True,
                         },
                         speak=True,  # Announce "Voice verified, Derek. 94% confidence. Unlocking now..."
+                        progress_callback=progress_callback,  # Real-time UI updates
                     ),
-                    timeout=3.0  # Quick timeout for upfront verification
+                    timeout=5.0  # Extended timeout for cloud-first routing
                 )
 
                 self.stats["voice_announced_first"] += 1

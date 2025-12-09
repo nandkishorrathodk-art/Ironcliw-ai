@@ -196,9 +196,12 @@ async def _get_drift_detector():
 # DYNAMIC CONFIGURATION
 # =============================================================================
 class VBIConfig:
-    """Dynamic configuration for Voice Biometric Intelligence."""
+    """Dynamic configuration for Voice Biometric Intelligence with Cloud-First support."""
 
     def __init__(self):
+        # Load JSON config if available
+        self._json_config = self._load_json_config()
+        
         # Timeouts
         self.fast_verify_timeout = float(os.getenv('VBI_FAST_VERIFY_TIMEOUT', '2.0'))
         self.full_verify_timeout = float(os.getenv('VBI_FULL_VERIFY_TIMEOUT', '5.0'))
@@ -209,6 +212,84 @@ class VBIConfig:
         self.confident_threshold = float(os.getenv('VBI_CONFIDENT_THRESHOLD', '0.85'))
         self.borderline_threshold = float(os.getenv('VBI_BORDERLINE_THRESHOLD', '0.75'))
         self.rejection_threshold = float(os.getenv('VBI_REJECTION_THRESHOLD', '0.60'))
+        
+        # ==========================================================================
+        # CLOUD-FIRST CONFIGURATION (v6.0.0)
+        # ==========================================================================
+        cloud_cfg = self._json_config.get('cloud_first', {})
+        self.cloud_first_enabled = self._get_bool_config(
+            'JARVIS_VBI_CLOUD_FIRST', cloud_cfg.get('enabled', True)
+        )
+        self.force_local = self._get_bool_config(
+            'JARVIS_VBI_FORCE_LOCAL', cloud_cfg.get('force_local', False)
+        )
+        self.progress_updates_enabled = self._get_bool_config(
+            'JARVIS_VBI_PROGRESS_UPDATES', cloud_cfg.get('progress_updates_enabled', True)
+        )
+        
+        # Cloud endpoints
+        endpoints_cfg = self._json_config.get('cloud_endpoints', {})
+        self.cloud_endpoint = os.getenv(
+            'JARVIS_CLOUD_ML_ENDPOINT',
+            endpoints_cfg.get('primary', 'https://jarvis-ml-888774109345.us-central1.run.app')
+        )
+        
+        # Timeouts from JSON config
+        timeouts_cfg = self._json_config.get('timeouts', {})
+        self.cloud_health_timeout = float(os.getenv(
+            'VBI_CLOUD_HEALTH_TIMEOUT',
+            str(timeouts_cfg.get('cloud_health_check_ms', 2000) / 1000)
+        ))
+        self.cloud_extraction_timeout = float(os.getenv(
+            'VBI_CLOUD_EXTRACTION_TIMEOUT',
+            str(timeouts_cfg.get('cloud_extraction_ms', 3000) / 1000)
+        ))
+        self.local_extraction_timeout = float(os.getenv(
+            'VBI_LOCAL_EXTRACTION_TIMEOUT',
+            str(timeouts_cfg.get('local_extraction_ms', 5000) / 1000)
+        ))
+        
+        # Fallback thresholds
+        fallback_cfg = self._json_config.get('fallback', {})
+        self.local_ram_threshold_gb = float(os.getenv(
+            'VBI_LOCAL_RAM_THRESHOLD_GB',
+            str(fallback_cfg.get('local_ram_threshold_gb', 6.0))
+        ))
+        self.memory_pressure_threshold_gb = float(os.getenv(
+            'VBI_MEMORY_THRESHOLD_GB',
+            str(fallback_cfg.get('memory_pressure_threshold_gb', 3.0))
+        ))
+        self.enable_local_fallback = fallback_cfg.get('enable_local_fallback', True)
+        
+        # Progress stage definitions
+        self.progress_stages = self._json_config.get('progress_stages', {})
+    
+    def _load_json_config(self) -> dict:
+        """Load configuration from JSON file if available."""
+        config_paths = [
+            os.path.join(os.path.dirname(__file__), '..', 'config', 'cloud_first_config.json'),
+            '/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/config/cloud_first_config.json',
+        ]
+        
+        for config_path in config_paths:
+            try:
+                if os.path.exists(config_path):
+                    import json
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                        logger.debug(f"Loaded cloud-first config from {config_path}")
+                        return config
+            except Exception as e:
+                logger.debug(f"Could not load config from {config_path}: {e}")
+        
+        return {}
+    
+    def _get_bool_config(self, env_key: str, default: bool) -> bool:
+        """Get boolean config from env var or default."""
+        env_val = os.getenv(env_key)
+        if env_val is not None:
+            return env_val.lower() in ('true', '1', 'yes', 'on')
+        return default
 
         # Behavior
         self.announce_confidence = os.getenv('VBI_ANNOUNCE_CONFIDENCE', 'borderline').lower()
@@ -1706,11 +1787,19 @@ class VoiceBiometricIntelligence:
         audio_data: bytes,
         context: Optional[Dict[str, Any]] = None,
         speak: bool = True,
+        progress_callback: Optional[Callable] = None,
     ) -> VerificationResult:
         """
-        Verify voice biometrics and announce the result.
+        Verify voice biometrics and announce the result with Cloud-First routing (v6.0.0).
 
-        PERFORMANCE OPTIMIZED (v2.0):
+        CLOUD-FIRST NEURAL PARALLEL ARCHITECTURE:
+        - Cloud ECAPA first (non-blocking, offloads RAM)
+        - Real-time progress callbacks for UI feedback
+        - Parallel execution of all verification tasks
+        - Graceful degradation with local fallback
+        - No more "Processing..." stuck states
+
+        PERFORMANCE OPTIMIZED:
         - Early high-confidence exit: Proceeds immediately when ML confidence >95%
         - Speculative unlock: Starts unlock prep while final checks complete
         - Hot cache: Uses preloaded voiceprint for sub-10ms matching
@@ -1720,6 +1809,8 @@ class VoiceBiometricIntelligence:
             audio_data: Raw audio bytes
             context: Optional context (screen state, location, etc.)
             speak: Whether to speak the announcement
+            progress_callback: Optional async callback for real-time progress updates
+                               Signature: async callback({"stage": str, "progress": int, "message": str})
 
         Returns:
             VerificationResult with complete analysis and announcement
@@ -1729,6 +1820,28 @@ class VoiceBiometricIntelligence:
 
         start_time = time.time()
         self._stats['total_verifications'] += 1
+
+        # Helper to emit progress updates
+        async def emit_progress(stage: str, progress: int, message: str, **kwargs):
+            """Emit progress update if callback provided."""
+            if progress_callback:
+                try:
+                    update = {
+                        "stage": stage,
+                        "progress": progress,
+                        "message": message,
+                        "timestamp": time.time(),
+                        **kwargs
+                    }
+                    if asyncio.iscoroutinefunction(progress_callback):
+                        await progress_callback(update)
+                    else:
+                        progress_callback(update)
+                except Exception as e:
+                    logger.debug(f"Progress callback error: {e}")
+
+        # Emit initial progress
+        await emit_progress("initializing", 5, "Starting voice verification...")
 
         # Create result object
         result = VerificationResult(
@@ -1751,6 +1864,8 @@ class VoiceBiometricIntelligence:
             # =====================================================================
             # FAST PATH: Try hot cache first (sub-10ms if cached)
             # =====================================================================
+            await emit_progress("cache_check", 10, "Checking voice cache...")
+            
             hot_cache_result = await self._check_hot_cache(audio_data)
             if hot_cache_result:
                 speaker_name, voice_confidence = hot_cache_result
@@ -1763,6 +1878,9 @@ class VoiceBiometricIntelligence:
                 if self._config.enable_early_exit and voice_confidence >= self._config.early_exit_threshold:
                     logger.info(f"⚡ HOT CACHE EARLY EXIT: {speaker_name} ({voice_confidence:.1%})")
                     self._stats['early_exits'] += 1
+                    
+                    await emit_progress("cache_hit", 90, f"Voice recognized: {speaker_name}", 
+                                       confidence=voice_confidence, cached=True)
 
                     result.fused_confidence = voice_confidence
                     result.confidence = voice_confidence
@@ -1785,6 +1903,9 @@ class VoiceBiometricIntelligence:
                     result.verification_time_ms = (time.time() - start_time) * 1000
                     self._update_timing_stats(result.verification_time_ms)
                     self._log_result(result)
+                    
+                    await emit_progress("complete", 100, "Voice verified. Unlocking...",
+                                       speaker=speaker_name, confidence=voice_confidence)
 
                     if speak and result.announcement:
                         asyncio.create_task(self._speak(result.announcement))
@@ -1792,8 +1913,18 @@ class VoiceBiometricIntelligence:
                     return result
 
             # =====================================================================
-            # PARALLEL VERIFICATION: Run all checks concurrently
+            # CLOUD-FIRST NEURAL PARALLEL: Run all checks concurrently (v6.0.0)
             # =====================================================================
+            await emit_progress("parallel_dispatch", 20, "Starting parallel verification engines...")
+            
+            # Check cloud health first for intelligent routing
+            cloud_available = await self._check_cloud_health()
+            local_safe = self._has_sufficient_ram()
+            
+            routing_mode = "cloud" if cloud_available else ("local" if local_safe else "degraded")
+            await emit_progress("routing", 25, f"Using {routing_mode} verification...", 
+                               cloud_available=cloud_available, local_safe=local_safe)
+            
             verify_task = asyncio.create_task(
                 self._verify_speaker(audio_data)
             )
@@ -1810,6 +1941,8 @@ class VoiceBiometricIntelligence:
                 physics_task = asyncio.create_task(
                     self._check_spoofing(audio_data, result)
                 )
+            
+            await emit_progress("extracting", 35, "Extracting voice features...")
 
             # =====================================================================
             # EARLY EXIT CHECK: Check if ML verification completes with high confidence
@@ -1828,6 +1961,9 @@ class VoiceBiometricIntelligence:
                         if voice_confidence >= self._config.early_exit_threshold and speaker_name:
                             logger.info(f"⚡ EARLY EXIT: {speaker_name} ({voice_confidence:.1%})")
                             self._stats['early_exits'] += 1
+                            
+                            await emit_progress("early_exit", 85, f"Voice recognized: {speaker_name}",
+                                               confidence=voice_confidence)
 
                             result.fused_confidence = voice_confidence
                             result.confidence = voice_confidence
@@ -1852,6 +1988,9 @@ class VoiceBiometricIntelligence:
                             result.verification_time_ms = (time.time() - start_time) * 1000
                             self._update_timing_stats(result.verification_time_ms)
                             self._log_result(result)
+                            
+                            await emit_progress("complete", 100, "Voice verified. Unlocking...",
+                                               speaker=speaker_name, confidence=voice_confidence)
 
                             if speak and result.announcement:
                                 asyncio.create_task(self._speak(result.announcement))
@@ -1859,11 +1998,13 @@ class VoiceBiometricIntelligence:
                             return result
 
                 except asyncio.TimeoutError:
-                    pass  # Continue with standard flow
+                    await emit_progress("timeout_fallback", 45, "Extending verification timeout...")
 
             # =====================================================================
-            # STANDARD FLOW: Wait for all tasks
+            # STANDARD FLOW: Wait for all tasks with progress tracking
             # =====================================================================
+            await emit_progress("parallel_wait", 50, "Waiting for verification engines...")
+            
             all_tasks = [verify_task, audio_task, behavioral_task]
             if physics_task:
                 all_tasks.append(physics_task)
@@ -1873,6 +2014,8 @@ class VoiceBiometricIntelligence:
                 timeout=self._config.full_verify_timeout,
                 return_when=asyncio.ALL_COMPLETED
             )
+            
+            await emit_progress("results_processing", 70, "Processing verification results...")
 
             # Cancel any pending tasks
             for task in pending:
@@ -1887,6 +2030,8 @@ class VoiceBiometricIntelligence:
                     result.was_cached = was_cached
                     if was_cached:
                         self._stats['cached_hits'] += 1
+                    await emit_progress("voice_complete", 75, f"Voice analysis complete: {voice_confidence:.0%}",
+                                       confidence=voice_confidence)
                 except Exception as e:
                     logger.warning(f"Verification result error: {e}")
 
@@ -2065,6 +2210,72 @@ class VoiceBiometricIntelligence:
         self._log_result(result)
 
         return result
+
+    async def _check_cloud_health(self, timeout: float = 2.0) -> bool:
+        """
+        Check if cloud ECAPA service is healthy and available.
+        
+        Args:
+            timeout: Health check timeout in seconds
+            
+        Returns:
+            True if cloud is available and responsive
+        """
+        try:
+            from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
+            client = await get_cloud_ecapa_client()
+            
+            if client and hasattr(client, 'health_check'):
+                return await asyncio.wait_for(client.health_check(), timeout=timeout)
+            elif client and hasattr(client, 'is_available'):
+                return client.is_available()
+            
+            # Fallback: Try direct HTTP health check
+            import aiohttp
+            cloud_url = os.getenv(
+                'ECAPA_CLOUD_RUN_URL',
+                'https://jarvis-ml-888774109345.us-central1.run.app'
+            )
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{cloud_url}/health",
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as resp:
+                    return resp.status == 200
+                    
+        except asyncio.TimeoutError:
+            logger.debug("Cloud health check timed out")
+            return False
+        except Exception as e:
+            logger.debug(f"Cloud health check failed: {e}")
+            return False
+
+    def _has_sufficient_ram(self, threshold_gb: float = None) -> bool:
+        """
+        Check if system has sufficient RAM for local ML processing.
+        
+        Args:
+            threshold_gb: Minimum required RAM (default from env or 4GB)
+            
+        Returns:
+            True if RAM is above threshold
+        """
+        if threshold_gb is None:
+            threshold_gb = float(os.getenv('VBI_LOCAL_RAM_THRESHOLD_GB', '4.0'))
+        
+        try:
+            import psutil
+            available_gb = psutil.virtual_memory().available / (1024**3)
+            is_sufficient = available_gb >= threshold_gb
+            
+            if not is_sufficient:
+                logger.debug(f"Insufficient RAM: {available_gb:.1f}GB < {threshold_gb}GB threshold")
+                
+            return is_sufficient
+        except Exception as e:
+            logger.debug(f"RAM check failed: {e}")
+            return False  # Assume insufficient if we can't check
 
     async def _check_hot_cache(self, audio_data: bytes) -> Optional[Tuple[str, float]]:
         """Check hot memory cache for instant voiceprint matching."""

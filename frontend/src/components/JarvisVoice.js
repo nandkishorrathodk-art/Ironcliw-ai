@@ -1597,43 +1597,87 @@ const JarvisVoice = () => {
 
       case 'vbi_progress':
         // Handle real-time VBI (Voice Biometric Intelligence) progress updates
+        // Supports both Cloud-First format and legacy format
+        const vbiStage = data.stage || data.stage_name || 'unknown';
+        const vbiMessage = data.message || data.status || '';
+        const vbiProgress = data.progress || 0;
+        
+        // Get stage icon based on stage name
+        const getStageIcon = (stage) => {
+          const icons = {
+            'initializing': '⚡',
+            'cache_check': '🔍',
+            'cache_hit': '✨',
+            'routing': '🌐',
+            'parallel_dispatch': '🚀',
+            'extracting': '🎤',
+            'parallel_wait': '⏳',
+            'results_processing': '🔄',
+            'voice_complete': '✓',
+            'early_exit': '⚡',
+            'timeout_fallback': '⏱️',
+            'fusion': '🔗',
+            'complete': '✅',
+            'error': '❌'
+          };
+          return icons[stage] || data.stage_icon || '🔧';
+        };
+        
         console.log('%c[VBI Progress]', 'color: #00bfff; font-weight: bold',
-          `${data.stage_name} (${data.progress}%) - ${data.status}`);
+          `${vbiStage} (${vbiProgress}%) - ${vbiMessage}`);
 
-        // Update VBI progress state
+        // Update VBI progress state with normalized data
         setVbiProgress({
-          stage: data.stage,
-          stageName: data.stage_name,
-          stageIcon: data.stage_icon,
-          progress: data.progress,
-          status: data.status,
+          stage: vbiStage,
+          stageName: data.stage_name || vbiStage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          stageIcon: getStageIcon(vbiStage),
+          progress: vbiProgress,
+          status: vbiMessage,
+          message: vbiMessage,
           details: data.details || {},
           error: data.error,
           traceId: data.trace_id,
-          timestamp: data.timestamp
+          timestamp: data.timestamp,
+          // Cloud-First specific fields
+          confidence: data.confidence,
+          speaker: data.speaker,
+          cloudAvailable: data.cloud_available,
+          cached: data.cached
         });
 
-        // Add to stages history when a stage completes
-        if (data.status === 'success' || data.status === 'failed') {
+        // Replace "Processing..." with actual progress message
+        if (vbiProgress > 0 && vbiProgress < 100) {
+          setResponse(vbiMessage || `Verifying voice... ${vbiProgress}%`);
+        }
+
+        // Add to stages history when progress changes significantly
+        const progressThresholds = [25, 50, 75, 100];
+        const shouldAddStage = progressThresholds.includes(vbiProgress) || 
+                               vbiStage === 'complete' || 
+                               data.status === 'success' || 
+                               data.status === 'failed';
+        
+        if (shouldAddStage) {
           setVbiStages(prevStages => {
             // Avoid duplicates
-            if (prevStages.some(s => s.stage === data.stage)) {
+            if (prevStages.some(s => s.stage === vbiStage && s.progress === vbiProgress)) {
               return prevStages;
             }
             return [...prevStages, {
-              stage: data.stage,
-              stageName: data.stage_name,
-              stageIcon: data.stage_icon,
-              status: data.status,
-              progress: data.progress,
+              stage: vbiStage,
+              stageName: data.stage_name || vbiStage,
+              stageIcon: getStageIcon(vbiStage),
+              status: vbiMessage,
+              progress: vbiProgress,
               details: data.details || {},
-              error: data.error
+              error: data.error,
+              confidence: data.confidence
             }];
           });
         }
 
         // Auto-clear progress after completion
-        if (data.stage === 'complete') {
+        if (vbiStage === 'complete' || vbiProgress >= 100) {
           // Clear any existing timeout
           if (vbiProgressTimeoutRef.current) {
             clearTimeout(vbiProgressTimeoutRef.current);

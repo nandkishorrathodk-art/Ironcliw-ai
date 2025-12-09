@@ -1113,13 +1113,38 @@ class UnifiedWebSocketManager:
 
                             # Create progress callback to send real-time updates via WebSocket
                             async def vbi_progress_callback(progress_data: dict):
-                                """Send VBI progress updates to frontend in real-time"""
+                                """
+                                Send VBI progress updates to frontend in real-time.
+                                
+                                Supports both Cloud-First VBI format and legacy format:
+                                - Cloud-First: {"stage": "...", "progress": N, "message": "..."}
+                                - Legacy: {"stage_name": "...", "status": "...", "progress": N}
+                                """
                                 try:
                                     if websocket:
-                                        await websocket.send_json(progress_data)
+                                        # Normalize progress data for frontend
+                                        normalized = {
+                                            "type": "vbi_progress",
+                                            "stage": progress_data.get("stage", progress_data.get("stage_name", "unknown")),
+                                            "progress": progress_data.get("progress", 0),
+                                            "message": progress_data.get("message", progress_data.get("status", "")),
+                                            "timestamp": progress_data.get("timestamp", time.time()),
+                                        }
+                                        
+                                        # Include additional data if present
+                                        if "confidence" in progress_data:
+                                            normalized["confidence"] = progress_data["confidence"]
+                                        if "speaker" in progress_data:
+                                            normalized["speaker"] = progress_data["speaker"]
+                                        if "cloud_available" in progress_data:
+                                            normalized["cloud_available"] = progress_data["cloud_available"]
+                                        if "cached" in progress_data:
+                                            normalized["cached"] = progress_data["cached"]
+                                        
+                                        await websocket.send_json(normalized)
                                         logger.debug(
-                                            f"[WS-VBI] Progress: {progress_data.get('stage_name', 'unknown')} "
-                                            f"({progress_data.get('progress', 0)}%) - {progress_data.get('status', '')}"
+                                            f"[WS-VBI] Progress: {normalized['stage']} "
+                                            f"({normalized['progress']}%) - {normalized['message']}"
                                         )
                                 except Exception as ws_err:
                                     logger.warning(f"[WS-VBI] Failed to send progress update: {ws_err}")

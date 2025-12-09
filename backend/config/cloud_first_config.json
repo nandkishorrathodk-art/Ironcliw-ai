@@ -1,0 +1,99 @@
+{
+  "_comment": "Cloud-First VBI (Voice Biometric Intelligence) Configuration",
+  "_version": "1.0.0",
+  "_description": "Neural Parallel + Cloud-First architecture settings for voice unlock",
+  
+  "cloud_first": {
+    "enabled": true,
+    "force_local": false,
+    "progress_updates_enabled": true,
+    "cloud_priority": 1,
+    "local_priority": 2
+  },
+  
+  "cloud_endpoints": {
+    "primary": "https://jarvis-ml-888774109345.us-central1.run.app",
+    "health_path": "/health",
+    "extract_path": "/api/ecapa/extract",
+    "verify_path": "/api/ecapa/verify"
+  },
+  
+  "timeouts": {
+    "cloud_health_check_ms": 2000,
+    "cloud_extraction_ms": 3000,
+    "local_extraction_ms": 5000,
+    "total_verification_ms": 8000,
+    "parallel_wait_ms": 5000
+  },
+  
+  "fallback": {
+    "local_ram_threshold_gb": 6.0,
+    "memory_pressure_threshold_gb": 3.0,
+    "enable_local_fallback": true,
+    "enable_degraded_mode": true,
+    "max_cloud_retries": 2
+  },
+  
+  "parallel_execution": {
+    "enabled": true,
+    "tasks": {
+      "ecapa_cloud": {
+        "enabled": true,
+        "priority": 1,
+        "timeout_ms": 3000,
+        "weight": 0.5
+      },
+      "physics_pava": {
+        "enabled": true,
+        "priority": 2,
+        "timeout_ms": 2000,
+        "weight": 0.2
+      },
+      "context": {
+        "enabled": true,
+        "priority": 3,
+        "timeout_ms": 1000,
+        "weight": 0.15
+      },
+      "behavioral": {
+        "enabled": true,
+        "priority": 4,
+        "timeout_ms": 1000,
+        "weight": 0.15
+      }
+    }
+  },
+  
+  "progress_stages": {
+    "initializing": {"progress": 5, "icon": "⚡"},
+    "health_check": {"progress": 10, "icon": "🔍"},
+    "cache_check": {"progress": 15, "icon": "📦"},
+    "routing": {"progress": 20, "icon": "🌐"},
+    "parallel_dispatch": {"progress": 25, "icon": "🚀"},
+    "extracting": {"progress": 35, "icon": "🎤"},
+    "parallel_wait": {"progress": 50, "icon": "⏳"},
+    "results_processing": {"progress": 70, "icon": "🔄"},
+    "voice_complete": {"progress": 75, "icon": "✓"},
+    "fusion": {"progress": 85, "icon": "🔗"},
+    "complete": {"progress": 100, "icon": "✅"}
+  },
+  
+  "bayesian_fusion": {
+    "min_sources_required": 1,
+    "confidence_threshold": 0.6,
+    "adapt_on_failure": true,
+    "weights": {
+      "ml_ecapa": 0.5,
+      "physics": 0.2,
+      "behavioral": 0.15,
+      "context": 0.15
+    }
+  },
+  
+  "monitoring": {
+    "log_progress_updates": true,
+    "track_latency_histogram": true,
+    "track_cloud_availability": true,
+    "alert_on_degraded_mode": true
+  }
+}
