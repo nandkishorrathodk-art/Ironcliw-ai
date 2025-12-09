@@ -1,11 +1,16 @@
 /**
- * JARVIS Advanced Loading Manager v2.0
+ * JARVIS Advanced Loading Manager v3.0
  *
  * Features:
  * - Smooth 1-100% progress with real-time updates
+ * - Detailed stage tracking with substep indicators
+ * - Voice biometric system initialization feedback
+ * - Cloud ECAPA pre-warming status
+ * - Memory-aware mode selection display
+ * - Recent speaker cache initialization
  * - Robust error handling with automatic retry
  * - WebSocket + HTTP polling fallback
- * - Automatic transition to main app at 100%
+ * - Epic cinematic completion animation
  */
 
 class JARVISLoadingManager {
@@ -35,18 +40,90 @@ class JARVISLoadingManager {
             }
         };
 
+        // Detailed stage definitions for better user feedback
+        this.stageDefinitions = {
+            'initializing': {
+                name: 'System Initialization',
+                icon: '⚙️',
+                substeps: ['Core modules', 'Configuration', 'Logging']
+            },
+            'memory_check': {
+                name: 'Memory Analysis',
+                icon: '🧠',
+                substeps: ['Checking available RAM', 'Calculating memory pressure', 'Determining optimal mode']
+            },
+            'mode_selection': {
+                name: 'Mode Selection',
+                icon: '🎯',
+                substeps: ['Analyzing system resources', 'Selecting startup mode', 'Configuring components']
+            },
+            'database': {
+                name: 'Database Connection',
+                icon: '🗄️',
+                substeps: ['Connecting to PostgreSQL', 'Initializing connection pool', 'Verifying schema']
+            },
+            'voice_biometrics': {
+                name: 'Voice Biometric Intelligence',
+                icon: '🎤',
+                substeps: ['Loading ECAPA-TDNN model', 'Initializing speaker cache', 'Pre-warming embeddings']
+            },
+            'cloud_ecapa': {
+                name: 'Cloud ECAPA Service',
+                icon: '☁️',
+                substeps: ['Connecting to Cloud Run', 'Warming up ML endpoint', 'Verifying speaker models']
+            },
+            'speaker_cache': {
+                name: 'Speaker Recognition Cache',
+                icon: '🔐',
+                substeps: ['Initializing fast-path cache', 'Loading recent speakers', 'Setting up fingerprints']
+            },
+            'websocket': {
+                name: 'WebSocket System',
+                icon: '🔌',
+                substeps: ['Unified WS manager', 'Voice streaming', 'Real-time events']
+            },
+            'api_routes': {
+                name: 'API Endpoints',
+                icon: '🌐',
+                substeps: ['Health routes', 'Voice routes', 'Command routes']
+            },
+            'mcp_servers': {
+                name: 'MCP Servers',
+                icon: '🔧',
+                substeps: ['Filesystem server', 'GitHub integration', 'Brave search']
+            },
+            'final_checks': {
+                name: 'Final System Checks',
+                icon: '✅',
+                substeps: ['Service verification', 'Health check', 'Ready state']
+            },
+            'complete': {
+                name: 'JARVIS Online',
+                icon: '🚀',
+                substeps: ['All systems operational']
+            }
+        };
+
         this.state = {
             ws: null,
             connected: false,
             progress: 0,
             targetProgress: 0,
             stage: 'initializing',
+            substage: null,
             message: 'Initializing JARVIS...',
             reconnectAttempts: 0,
             pollingInterval: null,
             smoothProgressInterval: null,
             startTime: Date.now(),
-            lastUpdate: Date.now()
+            lastUpdate: Date.now(),
+            // Detailed tracking
+            completedStages: [],
+            currentSubstep: 0,
+            memoryMode: null,
+            memoryInfo: null,
+            voiceBiometricsReady: false,
+            speakerCacheReady: false
         };
 
         this.elements = this.cacheElements();
@@ -62,16 +139,166 @@ class JARVISLoadingManager {
             statusMessage: document.getElementById('status-message'),
             errorContainer: document.getElementById('error-container'),
             errorMessage: document.getElementById('error-message'),
-            reactor: document.querySelector('.arc-reactor')
+            reactor: document.querySelector('.arc-reactor'),
+            // New detailed status elements
+            detailedStatus: document.getElementById('detailed-status'),
+            stageIcon: document.getElementById('stage-icon'),
+            stageName: document.getElementById('stage-name'),
+            substepList: document.getElementById('substep-list'),
+            memoryStatus: document.getElementById('memory-status'),
+            modeIndicator: document.getElementById('mode-indicator')
         };
     }
 
+    /**
+     * Create the detailed status panel dynamically
+     */
+    createDetailedStatusPanel() {
+        // Check if already exists
+        if (document.getElementById('detailed-status')) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'detailed-status';
+        panel.innerHTML = `
+            <div class="stage-header">
+                <span id="stage-icon" class="stage-icon">⚙️</span>
+                <span id="stage-name" class="stage-name">System Initialization</span>
+            </div>
+            <div id="substep-list" class="substep-list"></div>
+            <div class="system-info">
+                <div id="memory-status" class="memory-status">
+                    <span class="info-label">Memory:</span>
+                    <span class="info-value">Analyzing...</span>
+                </div>
+                <div id="mode-indicator" class="mode-indicator">
+                    <span class="info-label">Mode:</span>
+                    <span class="info-value">Detecting...</span>
+                </div>
+            </div>
+        `;
+        panel.style.cssText = `
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 20, 0, 0.85);
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            border-radius: 12px;
+            padding: 16px 24px;
+            min-width: 320px;
+            max-width: 480px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            color: #00ff41;
+            box-shadow: 0 4px 20px rgba(0, 255, 65, 0.2);
+            z-index: 100;
+        `;
+
+        // Add styles for the panel
+        const style = document.createElement('style');
+        style.textContent = `
+            .stage-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 12px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .stage-icon {
+                font-size: 18px;
+            }
+            .substep-list {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 12px;
+                padding-left: 28px;
+            }
+            .substep {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 11px;
+                opacity: 0.6;
+                transition: opacity 0.3s ease;
+            }
+            .substep.active {
+                opacity: 1;
+                color: #00ff88;
+            }
+            .substep.completed {
+                opacity: 0.8;
+                color: #00aa44;
+            }
+            .substep-indicator {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: rgba(0, 255, 65, 0.3);
+                transition: all 0.3s ease;
+            }
+            .substep.active .substep-indicator {
+                background: #00ff88;
+                box-shadow: 0 0 8px #00ff88;
+                animation: pulse 1s ease-in-out infinite;
+            }
+            .substep.completed .substep-indicator {
+                background: #00aa44;
+            }
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.3); }
+            }
+            .system-info {
+                display: flex;
+                justify-content: space-between;
+                padding-top: 12px;
+                border-top: 1px solid rgba(0, 255, 65, 0.2);
+                font-size: 10px;
+            }
+            .info-label {
+                opacity: 0.6;
+                margin-right: 6px;
+            }
+            .info-value {
+                font-weight: 500;
+            }
+            .memory-status .info-value.low { color: #ff4444; }
+            .memory-status .info-value.medium { color: #ffaa00; }
+            .memory-status .info-value.good { color: #00ff88; }
+            .mode-indicator .info-value.minimal { color: #ffaa00; }
+            .mode-indicator .info-value.standard { color: #00ff88; }
+            .mode-indicator .info-value.full { color: #00ffff; }
+        `;
+        document.head.appendChild(style);
+
+        // Insert before the progress container
+        const progressContainer = document.querySelector('.progress-container');
+        if (progressContainer && progressContainer.parentNode) {
+            progressContainer.parentNode.insertBefore(panel, progressContainer);
+        } else {
+            document.querySelector('.loading-container')?.appendChild(panel);
+        }
+
+        // Update cached elements
+        this.elements.detailedStatus = panel;
+        this.elements.stageIcon = document.getElementById('stage-icon');
+        this.elements.stageName = document.getElementById('stage-name');
+        this.elements.substepList = document.getElementById('substep-list');
+        this.elements.memoryStatus = document.getElementById('memory-status');
+        this.elements.modeIndicator = document.getElementById('mode-indicator');
+    }
+
     async init() {
-        console.log('[JARVIS] Loading Manager v2.0 starting...');
+        console.log('[JARVIS] Loading Manager v3.0 starting...');
         console.log(`[Config] Loading Server: ${this.config.hostname}:${this.config.loadingServerPort}`);
 
         // Create particle background
         this.createParticles();
+
+        // Create detailed status panel
+        this.createDetailedStatusPanel();
 
         // Start smooth progress animation
         this.startSmoothProgress();
@@ -208,11 +435,56 @@ class JARVISLoadingManager {
         }
 
         // Update stage and message
-        if (stage) this.state.stage = stage;
+        if (stage) {
+            // Check if stage changed
+            if (this.state.stage !== stage && this.state.stage) {
+                this.state.completedStages.push(this.state.stage);
+            }
+            this.state.stage = stage;
+            this.state.currentSubstep = 0;
+        }
         if (message) this.state.message = message;
+
+        // Extract detailed metadata
+        if (metadata) {
+            // Memory info
+            if (metadata.memory_available_gb !== undefined) {
+                this.state.memoryInfo = {
+                    availableGb: metadata.memory_available_gb,
+                    pressure: metadata.memory_pressure || 0,
+                    status: metadata.memory_status || 'unknown'
+                };
+            }
+
+            // Mode info
+            if (metadata.startup_mode) {
+                this.state.memoryMode = metadata.startup_mode;
+            }
+
+            // Voice biometrics status
+            if (metadata.voice_biometrics_ready !== undefined) {
+                this.state.voiceBiometricsReady = metadata.voice_biometrics_ready;
+            }
+
+            // Speaker cache status
+            if (metadata.speaker_cache_ready !== undefined) {
+                this.state.speakerCacheReady = metadata.speaker_cache_ready;
+            }
+
+            // Cloud ECAPA status
+            if (metadata.cloud_ecapa_status) {
+                this.state.cloudEcapaStatus = metadata.cloud_ecapa_status;
+            }
+
+            // Substep tracking
+            if (metadata.substep !== undefined) {
+                this.state.currentSubstep = metadata.substep;
+            }
+        }
 
         // Update UI immediately
         this.updateUI();
+        this.updateDetailedStatus();
 
         // Handle completion
         if (stage === 'complete' || progress >= 100) {
@@ -224,6 +496,69 @@ class JARVISLoadingManager {
         // Handle failure
         if (stage === 'failed' || metadata?.success === false) {
             this.showError(message || 'Startup failed');
+        }
+    }
+
+    /**
+     * Update the detailed status panel with current stage info
+     */
+    updateDetailedStatus() {
+        const stageDef = this.stageDefinitions[this.state.stage];
+        if (!stageDef) return;
+
+        // Update stage header
+        if (this.elements.stageIcon) {
+            this.elements.stageIcon.textContent = stageDef.icon;
+        }
+        if (this.elements.stageName) {
+            this.elements.stageName.textContent = stageDef.name;
+        }
+
+        // Update substeps
+        if (this.elements.substepList && stageDef.substeps) {
+            const substepsHtml = stageDef.substeps.map((substep, idx) => {
+                let className = 'substep';
+                if (idx < this.state.currentSubstep) {
+                    className += ' completed';
+                } else if (idx === this.state.currentSubstep) {
+                    className += ' active';
+                }
+                return `
+                    <div class="${className}">
+                        <span class="substep-indicator"></span>
+                        <span>${substep}</span>
+                    </div>
+                `;
+            }).join('');
+            this.elements.substepList.innerHTML = substepsHtml;
+        }
+
+        // Update memory status
+        if (this.elements.memoryStatus && this.state.memoryInfo) {
+            const mem = this.state.memoryInfo;
+            let memClass = 'good';
+            if (mem.pressure > 70) memClass = 'low';
+            else if (mem.pressure > 40) memClass = 'medium';
+
+            const memValue = this.elements.memoryStatus.querySelector('.info-value');
+            if (memValue) {
+                memValue.textContent = `${mem.availableGb?.toFixed(1) || '?'}GB (${Math.round(mem.pressure || 0)}% used)`;
+                memValue.className = `info-value ${memClass}`;
+            }
+        }
+
+        // Update mode indicator
+        if (this.elements.modeIndicator && this.state.memoryMode) {
+            const modeValue = this.elements.modeIndicator.querySelector('.info-value');
+            if (modeValue) {
+                const modeText = this.state.memoryMode.replace(/_/g, ' ').toUpperCase();
+                let modeClass = 'standard';
+                if (this.state.memoryMode.includes('minimal')) modeClass = 'minimal';
+                else if (this.state.memoryMode.includes('full')) modeClass = 'full';
+
+                modeValue.textContent = modeText;
+                modeValue.className = `info-value ${modeClass}`;
+            }
         }
     }
 

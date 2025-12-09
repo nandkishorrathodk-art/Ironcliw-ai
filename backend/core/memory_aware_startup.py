@@ -410,9 +410,20 @@ class MemoryAwareStartup:
 
             # Check if we should create VM
             memory = await self.get_memory_status()
-            should_create, reason = await self._gcp_vm_manager.should_create_vm(
-                memory_pressure=memory.memory_pressure,
-                pending_tasks=["ml_processing", "voice_recognition"],
+
+            # Create a memory snapshot with the attributes expected by gcp_vm_manager
+            # The should_create_vm expects memory_snapshot with gcp_shift_recommended
+            class MemorySnapshot:
+                def __init__(self, memory_status):
+                    self.gcp_shift_recommended = memory_status.memory_pressure > 70 or memory_status.available_gb < 4.0
+                    self.reasoning = f"Memory pressure: {memory_status.memory_pressure:.1f}%, Available: {memory_status.available_gb:.1f}GB"
+                    self.memory_pressure = memory_status.memory_pressure
+                    self.available_gb = memory_status.available_gb
+
+            memory_snapshot = MemorySnapshot(memory)
+            should_create, reason, confidence = await self._gcp_vm_manager.should_create_vm(
+                memory_snapshot,
+                trigger_reason=f"ML processing, voice recognition (pressure={memory.memory_pressure:.0f}%)"
             )
 
             if should_create:
