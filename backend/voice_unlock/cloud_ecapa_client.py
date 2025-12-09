@@ -765,14 +765,17 @@ class CloudECAPAClient:
     - GCP Spot VM integration with scale-to-zero
     - Intelligent cost-aware backend routing
     - v19.0.0: Pre-warm endpoint support for fast cold starts
+    - v19.1.0: Enhanced cold start handling with wait-for-ready
 
-    v19.0.0 Enhancements:
-    - Pre-warm API to trigger model initialization before first request
-    - Manifest-based instant cache verification in Cloud Run
-    - Parallel warmup patterns
+    v19.1.0 Enhancements:
+    - Robust cold start detection and waiting
+    - Automatic retry with ECAPA readiness polling on 500 errors
+    - Detailed progress logging for "Processing..." hang debugging
+    - Enhanced timeout handling with clear user feedback
+    - Session auto-refresh on connection errors
     """
 
-    VERSION = "19.0.0"
+    VERSION = "19.1.0"
 
     def __init__(self):
         self._endpoints: List[str] = []
@@ -806,7 +809,18 @@ class CloudECAPAClient:
             "failovers": 0,
             "avg_latency_ms": 0.0,
             "cloud_run_failures": 0,
+            # Cold start tracking (v19.1.0)
+            "cold_starts_detected": 0,
+            "cold_start_wait_time_total_ms": 0.0,
+            "cold_start_wait_time_avg_ms": 0.0,
+            "cold_start_recoveries": 0,
+            "cold_start_timeouts": 0,
         }
+
+        # Cold start state tracking (v19.1.0)
+        self._cold_start_in_progress = False
+        self._last_cold_start_time: Optional[float] = None
+        self._cold_start_detected_at: Optional[float] = None
 
         # Backend routing state
         self._consecutive_failures = 0
@@ -1301,6 +1315,207 @@ class CloudECAPAClient:
             logger.error(f"Pre-warm failed: {e}")
             return {"success": False, "error": str(e)}
 
+    async def wait_for_ecapa_ready(
+        self,
+        endpoint: str = None,
+        timeout: float = None,
+        poll_interval: float = None,
+        log_progress: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Wait for ECAPA model to be fully ready on the cloud endpoint.
+
+        v19.1.0 Enhancement:
+        - Robust cold start detection with detailed progress logging
+        - Configurable timeout and polling interval
+        - Returns detailed timing and status information
+        - Useful for preventing "Processing..." hangs during cold starts
+
+        Args:
+            endpoint: Specific endpoint to check (uses healthy endpoint if None)
+            timeout: Max wait time in seconds (default: ECAPA_READY_TIMEOUT)
+            poll_interval: Poll interval in seconds (default: ECAPA_READY_POLL_INTERVAL)
+            log_progress: Whether to log progress updates
+
+        Returns:
+            Dict with ready status, timing, and any errors
+        """
+        if not self._initialized:
+            if not await self.initialize():
+                return {"ready": False, "error": "Client not initialized"}
+
+        target_endpoint = endpoint or self._healthy_endpoint
+        if not target_endpoint:
+            # Try to find any endpoint
+            for ep in self._endpoints:
+                target_endpoint = ep
+                break
+
+        if not target_endpoint:
+            return {"ready": False, "error": "No endpoint available"}
+
+        # Use configured values or defaults
+        max_wait = timeout or CloudECAPAClientConfig.ECAPA_READY_TIMEOUT
+        poll_sec = poll_interval or CloudECAPAClientConfig.ECAPA_READY_POLL_INTERVAL
+
+        # Construct health URL
+        endpoint_stripped = target_endpoint.rstrip('/')
+        if endpoint_stripped.endswith('/api/ml'):
+            health_url = f"{endpoint_stripped.rsplit('/api/ml', 1)[0]}/health"
+        else:
+            health_url = f"{endpoint_stripped}/health"
+
+        start_time = time.time()
+        attempt = 0
+        last_status = "unknown"
+        last_error = None
+
+        if log_progress:
+            logger.info(f"⏳ Waiting for ECAPA model to be ready on {target_endpoint}...")
+            logger.info(f"   Max wait: {max_wait}s, Poll interval: {poll_sec}s")
+
+        while True:
+            attempt += 1
+            elapsed = time.time() - start_time
+
+            if elapsed >= max_wait:
+                # Timeout reached
+                self._stats["cold_start_timeouts"] += 1
+                if log_progress:
+                    logger.warning(
+                        f"⏰ ECAPA ready timeout after {elapsed:.1f}s "
+                        f"({attempt} attempts, last status: {last_status})"
+                    )
+                return {
+                    "ready": False,
+                    "error": f"Timeout after {elapsed:.1f}s waiting for ECAPA",
+                    "elapsed_seconds": elapsed,
+                    "attempts": attempt,
+                    "last_status": last_status,
+                    "endpoint": target_endpoint,
+                }
+
+            try:
+                async with self._session.get(
+                    health_url,
+                    timeout=CloudECAPAClientConfig.HEALTH_CHECK_TIMEOUT
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        status = data.get("status", "unknown")
+                        ecapa_ready = data.get("ecapa_ready", False)
+                        last_status = status
+
+                        if ecapa_ready:
+                            # ECAPA is ready!
+                            wait_time_ms = elapsed * 1000
+                            self._stats["cold_start_recoveries"] += 1
+                            self._stats["cold_start_wait_time_total_ms"] += wait_time_ms
+
+                            # Update average
+                            recoveries = self._stats["cold_start_recoveries"]
+                            self._stats["cold_start_wait_time_avg_ms"] = (
+                                self._stats["cold_start_wait_time_total_ms"] / recoveries
+                            )
+
+                            if log_progress:
+                                logger.info(
+                                    f"✅ ECAPA model ready! "
+                                    f"(waited {elapsed:.1f}s, {attempt} attempts)"
+                                )
+
+                            return {
+                                "ready": True,
+                                "elapsed_seconds": elapsed,
+                                "attempts": attempt,
+                                "status": status,
+                                "endpoint": target_endpoint,
+                            }
+
+                        # Not ready yet - log progress
+                        if log_progress and attempt % 2 == 0:  # Log every other attempt
+                            remaining = max_wait - elapsed
+                            logger.info(
+                                f"   ⏳ ECAPA initializing... (status: {status}, "
+                                f"waited {elapsed:.1f}s, ~{remaining:.0f}s remaining)"
+                            )
+
+                    elif response.status >= 500:
+                        # Server error - might be cold starting
+                        last_status = f"HTTP {response.status}"
+                        if log_progress and attempt == 1:
+                            logger.info(
+                                f"   🔄 Server returned {response.status} - "
+                                "likely cold starting, will retry..."
+                            )
+                    else:
+                        last_status = f"HTTP {response.status}"
+
+            except asyncio.TimeoutError:
+                last_status = "timeout"
+                last_error = "Health check timeout"
+                if log_progress and attempt == 1:
+                    logger.info("   🔄 Health check timeout - endpoint may be cold starting...")
+
+            except Exception as e:
+                last_status = "error"
+                last_error = str(e)
+                if log_progress and attempt == 1:
+                    logger.info(f"   🔄 Health check error ({e}) - will retry...")
+
+            # Wait before next poll
+            await asyncio.sleep(poll_sec)
+
+    async def _detect_cold_start(
+        self,
+        endpoint: str,
+        response_status: int,
+        response_text: str = ""
+    ) -> bool:
+        """
+        Detect if an error response indicates a cold start condition.
+
+        v19.1.0: More intelligent cold start detection.
+
+        Args:
+            endpoint: The endpoint that returned the error
+            response_status: HTTP status code
+            response_text: Response body text
+
+        Returns:
+            True if this appears to be a cold start condition
+        """
+        # 500 errors during ECAPA initialization
+        if response_status == 500:
+            cold_start_indicators = [
+                "not loaded",
+                "not ready",
+                "initializing",
+                "loading",
+                "starting",
+                "warming",
+                "model not",
+                "ecapa",
+                "embedding",
+            ]
+
+            response_lower = response_text.lower()
+            for indicator in cold_start_indicators:
+                if indicator in response_lower:
+                    return True
+
+            # Also treat generic 500s as potential cold starts if we haven't
+            # had a recent successful request
+            if self._last_cold_start_time is None or \
+               (time.time() - self._last_cold_start_time) > 300:  # 5 min since last cold start
+                return True
+
+        # 503 Service Unavailable often indicates scaling
+        if response_status == 503:
+            return True
+
+        return False
+
     async def extract_embedding(
         self,
         audio_data: bytes,
@@ -1657,9 +1872,27 @@ class CloudECAPAClient:
         endpoint: str,
         audio_data: bytes,
         sample_rate: int = 16000,
-        format: str = "float32"
+        format: str = "float32",
+        wait_for_cold_start: bool = True
     ) -> Optional[np.ndarray]:
-        """Extract embedding from a specific endpoint with robust error handling."""
+        """
+        Extract embedding from a specific endpoint with robust error handling.
+
+        v19.1.0 Enhancement:
+        - Automatic cold start detection and waiting
+        - Detailed progress logging for debugging "Processing..." hangs
+        - Smart retry with ECAPA readiness polling
+
+        Args:
+            endpoint: The endpoint URL
+            audio_data: Raw audio bytes
+            sample_rate: Audio sample rate
+            format: Audio format
+            wait_for_cold_start: Whether to wait for ECAPA if cold start detected
+
+        Returns:
+            192-dimensional speaker embedding or None
+        """
         import aiohttp
 
         if not self._session:
@@ -1684,25 +1917,94 @@ class CloudECAPAClient:
             "format": format,
         }
 
+        # Track cold start state for this request
+        cold_start_handled = False
+        request_start_time = time.time()
+
         # Retry with exponential backoff and connection error handling
         last_error = None
-        for attempt in range(1, CloudECAPAClientConfig.MAX_RETRIES + 1):
+        max_retries = CloudECAPAClientConfig.MAX_RETRIES
+
+        for attempt in range(1, max_retries + 1):
             try:
+                logger.debug(
+                    f"[CloudECAPA] Extraction attempt {attempt}/{max_retries} "
+                    f"to {endpoint}"
+                )
+
                 async with self._session.post(url, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
 
                         if result.get("success") and result.get("embedding"):
                             embedding = np.array(result["embedding"], dtype=np.float32)
-                            logger.debug(f"Extracted embedding from {endpoint}: shape {embedding.shape}")
+
+                            # Record successful extraction time
+                            elapsed_ms = (time.time() - request_start_time) * 1000
+                            logger.info(
+                                f"✅ [CloudECAPA] Extracted embedding from {endpoint}: "
+                                f"shape {embedding.shape}, {elapsed_ms:.0f}ms"
+                            )
+
+                            # Update cold start tracking
+                            if cold_start_handled:
+                                self._last_cold_start_time = time.time()
+
                             return embedding
 
                         error = result.get("error", "Unknown error")
                         raise RuntimeError(f"Extraction failed: {error}")
 
                     elif response.status >= 500:
-                        # Server error - retry
+                        # Server error - check if cold start
+                        response_text = await response.text()
+
+                        # Detect cold start condition
+                        is_cold_start = await self._detect_cold_start(
+                            endpoint, response.status, response_text
+                        )
+
+                        if is_cold_start and wait_for_cold_start and not cold_start_handled:
+                            # Cold start detected! Log prominently and wait
+                            self._stats["cold_starts_detected"] += 1
+                            self._cold_start_in_progress = True
+                            self._cold_start_detected_at = time.time()
+                            cold_start_handled = True
+
+                            logger.warning(
+                                f"🔄 [CloudECAPA] Cold start detected! "
+                                f"HTTP {response.status} from {endpoint}"
+                            )
+                            logger.info(
+                                f"⏳ [CloudECAPA] Waiting for ECAPA model to initialize..."
+                            )
+
+                            # Wait for ECAPA to become ready
+                            ready_result = await self.wait_for_ecapa_ready(
+                                endpoint=endpoint,
+                                timeout=CloudECAPAClientConfig.ECAPA_READY_TIMEOUT,
+                                poll_interval=CloudECAPAClientConfig.ECAPA_READY_POLL_INTERVAL,
+                                log_progress=True
+                            )
+
+                            self._cold_start_in_progress = False
+
+                            if ready_result.get("ready"):
+                                # ECAPA is now ready - retry the extraction
+                                logger.info(
+                                    f"✅ [CloudECAPA] ECAPA ready after "
+                                    f"{ready_result.get('elapsed_seconds', 0):.1f}s, retrying extraction..."
+                                )
+                                continue  # Retry the extraction
+                            else:
+                                # Timeout waiting for ECAPA
+                                raise RuntimeError(
+                                    f"Cold start timeout: {ready_result.get('error', 'Unknown')}"
+                                )
+
+                        # Regular 500 error - just retry with backoff
                         raise RuntimeError(f"Server error: HTTP {response.status}")
+
                     else:
                         # Client error - don't retry
                         error_text = await response.text()
@@ -1824,7 +2126,7 @@ class CloudECAPAClient:
         }
 
     def get_status(self) -> Dict[str, Any]:
-        """Get detailed client status."""
+        """Get detailed client status including cold start state."""
         return {
             "version": self.VERSION,
             "ready": self._initialized and (
@@ -1842,6 +2144,16 @@ class CloudECAPAClient:
                     "last_error": cb.last_error,
                 }
                 for ep, cb in self._circuit_breakers.items()
+            },
+            # v19.1.0: Cold start status
+            "cold_start": {
+                "in_progress": self._cold_start_in_progress,
+                "detected_at": self._cold_start_detected_at,
+                "last_cold_start_time": self._last_cold_start_time,
+                "total_detected": self._stats.get("cold_starts_detected", 0),
+                "total_recoveries": self._stats.get("cold_start_recoveries", 0),
+                "total_timeouts": self._stats.get("cold_start_timeouts", 0),
+                "avg_wait_time_ms": self._stats.get("cold_start_wait_time_avg_ms", 0),
             },
             "stats": self.get_stats(),
         }
