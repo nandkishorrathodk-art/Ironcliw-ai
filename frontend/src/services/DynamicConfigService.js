@@ -51,7 +51,10 @@ class DynamicConfigService {
 
     // Discovery configuration - dynamically ordered by environment
     this.commonPorts = this._inferPorts();
-    this.excludedPorts = [5000, 5001]; // macOS Control Center
+    // Excluded ports:
+    // - 5000, 5001: macOS Control Center
+    // - 3001: JARVIS Loading Server (not the backend!)
+    this.excludedPorts = [5000, 5001, 3001];
     this.discoveryTimeout = 500;
     this.maxRetries = 3;
 
@@ -120,7 +123,9 @@ class DynamicConfigService {
    */
   _inferPorts() {
     const envPort = typeof process !== 'undefined' && process.env?.REACT_APP_BACKEND_PORT;
-    const defaultPorts = [8000, 8010, 8011, 8001, 3001, 8080, 8888];
+    // NOTE: 3001 is the LOADING SERVER, not the backend! Don't include it here.
+    // The loading server has a /health endpoint that looks like a backend but isn't.
+    const defaultPorts = [8010, 8000, 8011, 8001, 8080, 8888];
 
     if (envPort) {
       const port = parseInt(envPort, 10);
