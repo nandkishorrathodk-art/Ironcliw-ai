@@ -3,7 +3,7 @@
  * Uses the dynamic WebSocket client with automatic discovery and routing
  */
 
-import { DynamicWebSocketClient } from '../../backend/websocket/DynamicWebSocketClient';
+import DynamicWebSocketClient from './DynamicWebSocketClient';
 
 class UnifiedWebSocketService {
     constructor() {
