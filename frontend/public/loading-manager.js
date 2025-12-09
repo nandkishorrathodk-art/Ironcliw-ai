@@ -529,6 +529,14 @@ class JARVISLoadingManager {
         console.log('[JARVIS] Loading Manager v4.0 starting...');
         console.log(`[Config] Loading server: ${this.config.hostname}:${this.config.loadingServerPort}`);
 
+        // QUICK CHECK: If backend is already healthy, skip loading screen entirely
+        const backendAlreadyReady = await this.checkBackendHealth();
+        if (backendAlreadyReady) {
+            console.log('[JARVIS] ✅ Backend already healthy - skipping loading screen');
+            this.quickRedirectToApp();
+            return;
+        }
+
         this.createParticles();
         this.createDetailedStatusPanel();
         this.startSmoothProgress();
@@ -537,6 +545,99 @@ class JARVISLoadingManager {
         await this.connectWebSocket();
         this.startPolling();
         this.startHealthMonitoring();
+        
+        // Also start polling backend directly as fallback
+        this.startBackendHealthPolling();
+    }
+
+    async checkBackendHealth() {
+        /**
+         * Check if backend is already running and healthy.
+         * This allows skipping the loading screen if JARVIS is already up.
+         */
+        try {
+            const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.backendPort}/health`;
+            const response = await fetch(url, {
+                method: 'GET',
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(3000)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Backend is healthy if status is healthy/ok and ECAPA is ready
+                const isHealthy = data.status === 'healthy' || data.status === 'ok';
+                const ecapaReady = data.ecapa_ready === true;
+                
+                console.log(`[Health] Backend: ${data.status}, ECAPA: ${data.ecapa_ready}`);
+                
+                // Consider ready if healthy (ECAPA can initialize later)
+                return isHealthy;
+            }
+        } catch (error) {
+            console.log('[Health] Backend not yet available:', error.message);
+        }
+        return false;
+    }
+
+    quickRedirectToApp() {
+        /**
+         * Quick redirect to main app when backend is already ready.
+         * Shows brief success animation before redirect.
+         */
+        // Update UI to show ready state
+        if (this.elements.statusMessage) {
+            this.elements.statusMessage.textContent = 'JARVIS is already online!';
+        }
+        if (this.elements.progressBar) {
+            this.elements.progressBar.style.width = '100%';
+        }
+        if (this.elements.progressPercentage) {
+            this.elements.progressPercentage.textContent = '100%';
+        }
+        if (this.elements.subtitle) {
+            this.elements.subtitle.textContent = 'SYSTEM READY';
+        }
+
+        // Brief delay for visual feedback, then redirect
+        setTimeout(() => {
+            const redirectUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
+            console.log(`[JARVIS] Redirecting to ${redirectUrl}`);
+            window.location.href = redirectUrl;
+        }, 1000);
+    }
+
+    startBackendHealthPolling() {
+        /**
+         * Poll backend health directly as fallback when loading server isn't available.
+         * This ensures we can still detect when backend is ready.
+         */
+        const pollInterval = setInterval(async () => {
+            try {
+                const isHealthy = await this.checkBackendHealth();
+                
+                if (isHealthy) {
+                    console.log('[JARVIS] ✅ Backend became healthy via direct polling');
+                    clearInterval(pollInterval);
+                    
+                    // Trigger completion
+                    this.handleProgressUpdate({
+                        stage: 'complete',
+                        message: 'JARVIS is online - All systems operational',
+                        progress: 100,
+                        metadata: {
+                            success: true,
+                            redirect_url: `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`
+                        }
+                    });
+                }
+            } catch (error) {
+                // Silent fail - loading server polling is primary
+            }
+        }, 2000); // Check every 2 seconds
+
+        // Store interval for cleanup
+        this.backendHealthInterval = pollInterval;
     }
 
     createParticles() {
@@ -1045,6 +1146,10 @@ class JARVISLoadingManager {
         if (this.state.smoothProgressInterval) {
             clearInterval(this.state.smoothProgressInterval);
             this.state.smoothProgressInterval = null;
+        }
+        if (this.backendHealthInterval) {
+            clearInterval(this.backendHealthInterval);
+            this.backendHealthInterval = null;
         }
     }
 }
