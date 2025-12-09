@@ -394,16 +394,14 @@ class MemoryAwareStartup:
             from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig
 
             # Configure for ML workload
+            # Note: VMManagerConfig uses valid fields from gcp_vm_manager.py
             config = VMManagerConfig(
                 project_id=self.gcp_project,
                 zone=self.gcp_zone,
                 machine_type=self.gcp_vm_type,
                 use_spot=True,
-                memory_threshold_percent=85,
-                auto_create=True,
-                auto_cleanup=True,
+                spot_max_price=0.10,  # Max cost per hour
                 idle_timeout_minutes=15,
-                max_cost_per_hour=0.10,
             )
 
             # Get or create VM manager
