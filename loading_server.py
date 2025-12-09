@@ -43,6 +43,7 @@ progress_state = {
     "timestamp": datetime.now().isoformat(),
     "metadata": {},
     "backend_ready": False,
+    "frontend_ready": False,
     "websocket_ready": False
 }
 
@@ -112,20 +113,95 @@ async def check_backend_health():
         return False, f"Backend check error: {e}"
 
 
+async def check_frontend_health():
+    """Check if frontend is accessible - CRITICAL for preventing premature redirect"""
+    global progress_state
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f'http://localhost:{FRONTEND_PORT}',
+                timeout=aiohttp.ClientTimeout(total=2)
+            ) as resp:
+                if resp.status in [200, 304]:
+                    progress_state['frontend_ready'] = True
+                    return True, "Frontend ready"
+                return False, f"Frontend returned status {resp.status}"
+                    
+    except asyncio.TimeoutError:
+        return False, "Frontend timeout"
+    except aiohttp.ClientError as e:
+        return False, f"Frontend connection error: {e}"
+    except Exception as e:
+        return False, f"Frontend check error: {e}"
+
+
+async def check_full_system_health():
+    """
+    Check if BOTH backend AND frontend are ready.
+    This is the ROOT FIX - don't trigger completion until both services are accessible.
+    """
+    backend_ready, backend_reason = await check_backend_health()
+    if not backend_ready:
+        return False, backend_reason
+    
+    frontend_ready, frontend_reason = await check_frontend_health()
+    if not frontend_ready:
+        return False, f"Backend ready but {frontend_reason}"
+    
+    return True, "Full system ready (backend + frontend)"
+
+
 async def backend_readiness_monitor():
-    """Background task to monitor backend readiness"""
+    """
+    Background task to monitor FULL SYSTEM readiness (backend + frontend).
+    
+    ROOT FIX: This monitor now checks BOTH backend AND frontend before
+    triggering completion. Previously it only checked backend, causing
+    the loading page to redirect before the frontend was ready.
+    """
     global progress_state, max_progress_seen
     
-    logger.info("[Monitor] Starting backend readiness monitor...")
+    logger.info("[Monitor] Starting system readiness monitor (backend + frontend)...")
+    
+    backend_ready_logged = False
     
     while True:
         try:
-            ready, reason = await check_backend_health()
+            # First check if backend is ready
+            backend_ready, backend_reason = await check_backend_health()
             
-            if ready:
-                logger.info(f"[Monitor] Backend ready: {reason}")
+            if backend_ready and not backend_ready_logged:
+                logger.info(f"[Monitor] Backend ready: {backend_reason}")
+                backend_ready_logged = True
                 
-                # If we haven't reached 100% yet, send complete
+                # Update progress to show we're waiting for frontend
+                if max_progress_seen < 98:
+                    await update_progress(
+                        "finalizing",
+                        "Backend ready, waiting for frontend...",
+                        98,
+                        {
+                            "backend_ready": True,
+                            "frontend_ready": False,
+                            "icon": "⏳",
+                            "label": "Finalizing",
+                            "sublabel": "Frontend starting..."
+                        }
+                    )
+            
+            if not backend_ready:
+                logger.debug(f"[Monitor] Backend not ready: {backend_reason}")
+                await asyncio.sleep(1)
+                continue
+            
+            # Backend is ready - now check frontend
+            frontend_ready, frontend_reason = await check_frontend_health()
+            
+            if frontend_ready:
+                logger.info(f"[Monitor] Full system ready: Backend + Frontend")
+                
+                # NOW we can safely trigger completion
                 if max_progress_seen < 100:
                     await update_progress(
                         "complete",
@@ -134,19 +210,20 @@ async def backend_readiness_monitor():
                         {
                             "success": True,
                             "redirect_url": f"http://localhost:{FRONTEND_PORT}",
-                            "backend_ready": True
+                            "backend_ready": True,
+                            "frontend_ready": True
                         }
                     )
                 break
             else:
-                logger.debug(f"[Monitor] Backend not ready: {reason}")
+                logger.debug(f"[Monitor] Frontend not ready: {frontend_reason}")
                 
         except Exception as e:
             logger.debug(f"[Monitor] Check failed: {e}")
         
         await asyncio.sleep(1)  # Check every second
     
-    logger.info("[Monitor] Backend readiness monitor stopped")
+    logger.info("[Monitor] System readiness monitor stopped")
 
 
 async def serve_loading_page(request):
@@ -181,9 +258,10 @@ async def health_check(request):
         "status": "ok",
         "message": "pong",
         "service": "jarvis_loading_server",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "progress": progress_state.get("progress", 0),
-        "backend_ready": progress_state.get("backend_ready", False)
+        "backend_ready": progress_state.get("backend_ready", False),
+        "frontend_ready": progress_state.get("frontend_ready", False)
     })
 
 
@@ -334,14 +412,14 @@ async def start_server(host='0.0.0.0', port=LOADING_SERVER_PORT):
     site = web.TCPSite(runner, host, port)
     await site.start()
 
-    logger.info(f"✅ Loading server v2.0 started on http://{host}:{port}")
+    logger.info(f"✅ Loading server v2.1 started on http://{host}:{port}")
     logger.info(f"   WebSocket: ws://{host}:{port}/ws/startup-progress")
     logger.info(f"   HTTP API: http://{host}:{port}/api/startup-progress")
     logger.info(f"   CORS: Enabled for all origins")
     
-    # Start backend readiness monitor
+    # Start system readiness monitor (checks BOTH backend AND frontend)
     backend_check_task = asyncio.create_task(backend_readiness_monitor())
-    logger.info(f"   Backend Monitor: Started (checking port {BACKEND_PORT})")
+    logger.info(f"   System Monitor: Started (backend:{BACKEND_PORT} + frontend:{FRONTEND_PORT})")
     
     return runner
 

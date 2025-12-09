@@ -529,10 +529,11 @@ class JARVISLoadingManager {
         console.log('[JARVIS] Loading Manager v4.0 starting...');
         console.log(`[Config] Loading server: ${this.config.hostname}:${this.config.loadingServerPort}`);
 
-        // QUICK CHECK: If backend is already healthy, skip loading screen entirely
-        const backendAlreadyReady = await this.checkBackendHealth();
-        if (backendAlreadyReady) {
-            console.log('[JARVIS] ✅ Backend already healthy - skipping loading screen');
+        // QUICK CHECK: Only skip loading screen if BOTH backend AND frontend are ready
+        // This prevents premature redirect when backend is up but frontend isn't
+        const fullyReady = await this.checkFullSystemReady();
+        if (fullyReady) {
+            console.log('[JARVIS] ✅ Full system already ready - skipping loading screen');
             this.quickRedirectToApp();
             return;
         }
@@ -546,7 +547,8 @@ class JARVISLoadingManager {
         this.startPolling();
         this.startHealthMonitoring();
         
-        // Also start polling backend directly as fallback
+        // Start backend health polling as a fallback (less aggressive)
+        // Only triggers completion after multiple consecutive healthy checks
         this.startBackendHealthPolling();
     }
 
@@ -580,6 +582,43 @@ class JARVISLoadingManager {
         return false;
     }
 
+    async checkFrontendReady() {
+        /**
+         * Check if the frontend (main app on port 3000) is ready.
+         * This prevents redirecting to a non-existent page.
+         */
+        try {
+            const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
+            const response = await fetch(url, {
+                method: 'HEAD',
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(2000)
+            });
+            
+            const isReady = response.ok || response.status === 304;
+            console.log(`[Health] Frontend (${this.config.mainAppPort}): ${isReady ? 'ready' : 'not ready'}`);
+            return isReady;
+        } catch (error) {
+            console.log('[Health] Frontend not yet available:', error.message);
+        }
+        return false;
+    }
+
+    async checkFullSystemReady() {
+        /**
+         * Check if BOTH backend AND frontend are ready.
+         * Only returns true if both services are available.
+         * This prevents the loading screen from skipping when only backend is up.
+         */
+        const [backendReady, frontendReady] = await Promise.all([
+            this.checkBackendHealth(),
+            this.checkFrontendReady()
+        ]);
+        
+        console.log(`[Health] Full system check - Backend: ${backendReady}, Frontend: ${frontendReady}`);
+        return backendReady && frontendReady;
+    }
+
     quickRedirectToApp() {
         /**
          * Quick redirect to main app when backend is already ready.
@@ -611,30 +650,66 @@ class JARVISLoadingManager {
         /**
          * Poll backend health directly as fallback when loading server isn't available.
          * This ensures we can still detect when backend is ready.
+         * 
+         * IMPORTANT: This is a FALLBACK mechanism, not the primary completion trigger.
+         * - Requires multiple consecutive healthy checks before triggering
+         * - Also verifies frontend is ready before completing
+         * - Only triggers if we haven't received proper loading server updates
          */
+        let consecutiveHealthyChecks = 0;
+        const requiredConsecutiveChecks = 3; // Require 3 consecutive healthy checks
+        let lastLoadingServerUpdate = Date.now();
+        
         const pollInterval = setInterval(async () => {
             try {
-                const isHealthy = await this.checkBackendHealth();
+                // Don't trigger completion if we're receiving loading server updates
+                const timeSinceLoadingUpdate = Date.now() - this.state.lastUpdate;
+                if (timeSinceLoadingUpdate < 10000 && this.state.progress < 95) {
+                    // Loading server is active, let it handle completion
+                    consecutiveHealthyChecks = 0;
+                    return;
+                }
                 
-                if (isHealthy) {
-                    console.log('[JARVIS] ✅ Backend became healthy via direct polling');
-                    clearInterval(pollInterval);
+                const backendHealthy = await this.checkBackendHealth();
+                
+                if (backendHealthy) {
+                    consecutiveHealthyChecks++;
+                    console.log(`[Health Polling] Backend healthy (${consecutiveHealthyChecks}/${requiredConsecutiveChecks})`);
                     
-                    // Trigger completion
-                    this.handleProgressUpdate({
-                        stage: 'complete',
-                        message: 'JARVIS is online - All systems operational',
-                        progress: 100,
-                        metadata: {
-                            success: true,
-                            redirect_url: `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`
+                    // Require multiple consecutive healthy checks
+                    if (consecutiveHealthyChecks >= requiredConsecutiveChecks) {
+                        // Also verify frontend is ready before completing
+                        const frontendReady = await this.checkFrontendReady();
+                        
+                        if (!frontendReady) {
+                            console.log('[Health Polling] Backend ready but frontend not yet available, waiting...');
+                            // Don't reset counter, just wait for frontend
+                            return;
                         }
-                    });
+                        
+                        console.log('[JARVIS] ✅ Full system ready via fallback polling');
+                        clearInterval(pollInterval);
+                        
+                        // Trigger completion
+                        this.handleProgressUpdate({
+                            stage: 'complete',
+                            message: 'JARVIS is online - All systems operational',
+                            progress: 100,
+                            metadata: {
+                                success: true,
+                                redirect_url: `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`
+                            }
+                        });
+                    }
+                } else {
+                    // Reset counter if backend becomes unhealthy
+                    consecutiveHealthyChecks = 0;
                 }
             } catch (error) {
                 // Silent fail - loading server polling is primary
+                consecutiveHealthyChecks = 0;
             }
-        }, 2000); // Check every 2 seconds
+        }, 3000); // Check every 3 seconds (slower to let loading server handle it)
 
         // Store interval for cleanup
         this.backendHealthInterval = pollInterval;
@@ -1031,37 +1106,47 @@ class JARVISLoadingManager {
             return;
         }
 
-        console.log('[Complete] ✓ Startup successful! Verifying backend readiness...');
+        console.log('[Complete] ✓ Startup successful! Verifying system readiness...');
         
         // Update UI to show verification phase
-        this.elements.subtitle.textContent = 'VERIFYING BACKEND';
+        this.elements.subtitle.textContent = 'VERIFYING SYSTEM';
         this.elements.statusMessage.textContent = 'Ensuring all services are ready...';
-        this.updateStatusText('Verifying backend...', 'verifying');
+        this.updateStatusText('Verifying system...', 'verifying');
         this.state.progress = 100;
         this.state.targetProgress = 100;
         this.updateProgressBar();
 
-        // CRITICAL: Verify backend is actually ready before redirecting
+        // CRITICAL: Verify FULL system (backend + frontend) before redirecting
         // This prevents "SYSTEM OFFLINE" errors on the main app
-        const backendReady = await this.verifyBackendReady(redirectUrl);
+        const maxRetries = 10;
+        let retryCount = 0;
+        let systemReady = false;
         
-        if (!backendReady) {
-            console.warn('[Complete] Backend verification failed, waiting longer...');
-            this.elements.statusMessage.textContent = 'Backend initializing, please wait...';
-            this.updateStatusText('Waiting for backend...', 'waiting');
+        while (retryCount < maxRetries && !systemReady) {
+            systemReady = await this.verifyBackendReady(redirectUrl);
             
-            // Wait and retry
-            await this.sleep(3000);
-            const retryReady = await this.verifyBackendReady(redirectUrl);
-            
-            if (!retryReady) {
-                console.error('[Complete] Backend still not ready after retry');
-                this.updateStatusText('Backend slow, proceeding...', 'warning');
-                // Proceed anyway - the main app will handle reconnection
+            if (!systemReady) {
+                retryCount++;
+                const waitTime = Math.min(2000 + (retryCount * 500), 5000); // Increase wait time with retries
+                console.warn(`[Complete] System not ready (attempt ${retryCount}/${maxRetries}), waiting ${waitTime}ms...`);
+                
+                // Update UI with retry status
+                this.elements.statusMessage.textContent = `Waiting for services... (${retryCount}/${maxRetries})`;
+                this.updateStatusText(`Retry ${retryCount}/${maxRetries}...`, 'waiting');
+                
+                await this.sleep(waitTime);
             }
         }
+        
+        if (!systemReady) {
+            console.error('[Complete] System still not ready after max retries');
+            this.updateStatusText('System slow, proceeding...', 'warning');
+            this.elements.statusMessage.textContent = 'Services may still be starting...';
+            // Give one final pause before proceeding
+            await this.sleep(2000);
+        }
 
-        console.log('[Complete] Backend verified, proceeding with redirect...');
+        console.log('[Complete] System verified, proceeding with redirect...');
         
         // CRITICAL: Persist backend readiness state for main app
         // This prevents "CONNECTING TO BACKEND..." showing after loading completes
@@ -1091,10 +1176,11 @@ class JARVISLoadingManager {
 
     async verifyBackendReady(redirectUrl) {
         /**
-         * Verify the backend is fully ready before redirecting.
+         * Verify the full system is ready before redirecting.
          * Checks:
          * 1. HTTP health endpoint responds
          * 2. WebSocket endpoint is accessible
+         * 3. Frontend is accessible (CRITICAL - prevents redirect to offline page)
          */
         const backendPort = this.config.backendPort || 8010;
         const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
@@ -1131,12 +1217,23 @@ class JARVISLoadingManager {
                 return false;
             }
             
-            console.log('[Verify] ✓ All backend services verified!');
-            this.updateStatusText('Backend ready', 'ready');
+            // Check 3: Verify frontend is accessible (CRITICAL)
+            this.updateStatusText('Checking frontend...', 'verifying');
+            console.log(`[Verify] Checking frontend at ${this.config.hostname}:${this.config.mainAppPort}...`);
+            const frontendReady = await this.checkFrontendReady();
+            
+            if (!frontendReady) {
+                console.warn('[Verify] Frontend not ready yet');
+                this.updateStatusText('Frontend starting...', 'warning');
+                return false;
+            }
+            
+            console.log('[Verify] ✓ All services verified (backend + frontend)!');
+            this.updateStatusText('System ready', 'ready');
             return true;
             
         } catch (error) {
-            console.warn('[Verify] Backend verification failed:', error.message);
+            console.warn('[Verify] System verification failed:', error.message);
             this.updateStatusText('Verification failed', 'warning');
             return false;
         }

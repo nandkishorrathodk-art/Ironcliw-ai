@@ -8041,6 +8041,57 @@ class AsyncSystemManager:
         if not all_healthy:
             print(f"{Colors.WARNING}Some services may not be fully ready yet{Colors.ENDC}")
 
+    async def _verify_frontend_ready(self) -> bool:
+        """
+        Quick check if frontend is responding.
+        This is the ROOT FIX for the loading page completing too early.
+        """
+        frontend_port = self.ports.get('frontend', 3000)
+        url = f"http://localhost:{frontend_port}"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    # Frontend is ready if we get any response (200, 304, etc.)
+                    is_ready = resp.status in [200, 304]
+                    if is_ready:
+                        print(f"{Colors.GREEN}✓ Frontend verified at port {frontend_port}{Colors.ENDC}")
+                    return is_ready
+        except Exception as e:
+            print(f"{Colors.YELLOW}Frontend not ready yet: {e}{Colors.ENDC}")
+            return False
+
+    async def _wait_for_frontend_ready(self, max_wait: int = 30) -> bool:
+        """
+        Wait for frontend to be ready with retries.
+        Returns True if frontend becomes ready within max_wait seconds.
+        """
+        frontend_port = self.ports.get('frontend', 3000)
+        url = f"http://localhost:{frontend_port}"
+        start_time = time.time()
+        check_interval = 1.0  # Check every second
+        
+        print(f"{Colors.CYAN}Waiting for frontend (port {frontend_port}) to be ready...{Colors.ENDC}")
+        
+        while (time.time() - start_time) < max_wait:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status in [200, 304]:
+                            elapsed = time.time() - start_time
+                            print(f"{Colors.GREEN}✓ Frontend ready after {elapsed:.1f}s{Colors.ENDC}")
+                            return True
+            except Exception:
+                pass
+            
+            remaining = max_wait - (time.time() - start_time)
+            if remaining > 0:
+                print(f"{Colors.YELLOW}  Waiting for frontend... ({int(remaining)}s remaining){Colors.ENDC}", end="\r")
+                await asyncio.sleep(check_interval)
+        
+        print(f"\n{Colors.WARNING}⚠️  Frontend did not respond within {max_wait}s{Colors.ENDC}")
+        return False
+
     async def wait_for_service(self, url: str, timeout: int = 30) -> bool:
         """Wait for a service to be ready"""
         start_time = time.time()
@@ -12845,26 +12896,57 @@ except Exception as e:
         # Print access info
         self.print_access_info()
 
-        # Broadcast 100% completion to loading page
+        # CRITICAL: Verify frontend is actually ready BEFORE broadcasting completion
+        # This is the root fix - don't tell loading page we're done until frontend is accessible
+        frontend_ready = await self._verify_frontend_ready()
+        
+        if not frontend_ready:
+            print(f"{Colors.YELLOW}⚠️  Frontend not responding yet, waiting...{Colors.ENDC}")
+            # Broadcast a "finalizing" stage while we wait
+            try:
+                import aiohttp
+                url = "http://localhost:3001/api/update-progress"
+                data = {
+                    "stage": "finalizing",
+                    "message": "Waiting for frontend to be ready...",
+                    "progress": 98,
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {
+                        "icon": "⏳",
+                        "label": "Finalizing",
+                        "sublabel": "Frontend starting..."
+                    }
+                }
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                        pass
+            except:
+                pass
+            
+            # Wait for frontend with retries
+            frontend_ready = await self._wait_for_frontend_ready(max_wait=30)
+        
+        # NOW broadcast 100% completion - only after frontend is verified
         try:
             import aiohttp
             url = "http://localhost:3001/api/update-progress"
             data = {
                 "stage": "complete",
-                "message": "JARVIS is ready!",
+                "message": "JARVIS is ready!" if frontend_ready else "JARVIS ready (frontend may still be loading)",
                 "progress": 100,
                 "timestamp": datetime.now().isoformat(),
                 "metadata": {
                     "icon": "✅",
                     "label": "Complete",
-                    "sublabel": "System ready!",
+                    "sublabel": "System ready!" if frontend_ready else "Frontend initializing...",
                     "success": True,
-                    "redirect_url": "http://localhost:3000"
+                    "frontend_verified": frontend_ready,
+                    "redirect_url": f"http://localhost:{self.ports['frontend']}"
                 }
             }
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
-                    print(f"{Colors.GREEN}✓ Loading page notified of completion{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ Loading page notified of completion (frontend verified: {frontend_ready}){Colors.ENDC}")
         except:
             pass  # Loading server might have already shut down
 
