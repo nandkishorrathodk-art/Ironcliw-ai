@@ -240,6 +240,24 @@ class CloudECAPAConfig:
         if cls.HOME_CACHE not in locations:
             locations.append(cls.HOME_CACHE)
 
+        # Priority 4: HuggingFace cache (auto-discovered)
+        # SpeechBrain models downloaded via HuggingFace Hub are stored here
+        hf_cache_base = os.path.expanduser("~/.cache/huggingface/hub/models--speechbrain--spkrec-ecapa-voxceleb")
+        if os.path.isdir(hf_cache_base):
+            # Find the snapshot directory (contains actual model files)
+            snapshots_dir = os.path.join(hf_cache_base, "snapshots")
+            if os.path.isdir(snapshots_dir):
+                # Get the latest snapshot (usually only one)
+                try:
+                    snapshots = os.listdir(snapshots_dir)
+                    if snapshots:
+                        hf_snapshot = os.path.join(snapshots_dir, snapshots[0])
+                        if hf_snapshot not in locations:
+                            locations.append(hf_snapshot)
+                            logger.debug(f"Added HuggingFace cache to search: {hf_snapshot}")
+                except (OSError, PermissionError):
+                    pass
+
         return locations
 
     @classmethod
@@ -265,11 +283,17 @@ class CloudECAPAConfig:
         missing_required = []
         for filename in cls.REQUIRED_CACHE_FILES:
             filepath = os.path.join(cache_path, filename)
-            exists = os.path.isfile(filepath)
-            # Get file size safely (handle permission errors)
+            
+            # Handle symlinks by checking if the target exists
+            # HuggingFace cache uses relative symlinks to blob storage
+            exists = os.path.exists(filepath)  # Follows symlinks
+            is_symlink = os.path.islink(filepath)
+            
+            # Get file size safely (handle permission errors and symlinks)
             file_size_kb = 0
             if exists:
                 try:
+                    # os.path.getsize follows symlinks automatically
                     file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
                 except (OSError, PermissionError) as e:
                     logger.debug(f"Could not get size of {filepath}: {e}")
@@ -277,6 +301,7 @@ class CloudECAPAConfig:
 
             diagnostics["required_files"][filename] = {
                 "exists": exists,
+                "is_symlink": is_symlink,
                 "size_kb": file_size_kb,
             }
             if not exists:

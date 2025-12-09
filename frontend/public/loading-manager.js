@@ -1,9 +1,11 @@
 /**
- * JARVIS Advanced Loading Manager v3.0
+ * JARVIS Advanced Loading Manager v4.0
+ * 
+ * Synchronized with start_system.py --restart backend stages
  *
  * Features:
  * - Smooth 1-100% progress with real-time updates
- * - Detailed stage tracking with substep indicators
+ * - Detailed stage tracking matching backend broadcast stages
  * - Voice biometric system initialization feedback
  * - Cloud ECAPA pre-warming status
  * - Memory-aware mode selection display
@@ -16,8 +18,9 @@
 class JARVISLoadingManager {
     constructor() {
         this.config = {
-            // Backend runs on port 8000, main app on 3000
-            backendPort: 8000,
+            // Loading server runs on port 3001 during restart
+            loadingServerPort: 3001,
+            backendPort: 8010,
             mainAppPort: 3000,
             wsProtocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
             httpProtocol: window.location.protocol,
@@ -26,82 +29,284 @@ class JARVISLoadingManager {
                 enabled: true,
                 initialDelay: 500,
                 maxDelay: 5000,
-                maxAttempts: 20,
+                maxAttempts: 30,
                 backoffMultiplier: 1.3
             },
             polling: {
                 enabled: true,
-                interval: 500,  // Poll every 500ms for smooth updates
+                interval: 300,  // Poll every 300ms for smooth updates
                 timeout: 3000
             },
             smoothProgress: {
                 enabled: true,
-                incrementDelay: 100,  // Update every 100ms for smooth animation
-                maxAutoProgress: 95   // Don't auto-progress past 95%
+                incrementDelay: 50,  // Update every 50ms for smooth animation
+                maxAutoProgress: 98   // Don't auto-progress past 98%
             }
         };
 
-        // Detailed stage definitions for better user feedback
+        // Stage definitions matching start_system.py broadcast stages
+        // Organized by phase: Cleanup (0-40%), Starting (40-50%), Initialization (50-95%), Ready (95-100%)
         this.stageDefinitions = {
+            // === PHASE 1: CLEANUP (0-40%) ===
             'initializing': {
-                name: 'System Initialization',
-                icon: '⚙️',
-                substeps: ['Core modules', 'Configuration', 'Logging']
+                name: 'Initializing',
+                icon: '⚡',
+                phase: 'cleanup',
+                expectedProgress: [0, 5],
+                substeps: ['System check', 'Preparing environment']
             },
-            'memory_check': {
-                name: 'Memory Analysis',
-                icon: '🧠',
-                substeps: ['Checking available RAM', 'Calculating memory pressure', 'Determining optimal mode']
+            'path_setup': {
+                name: 'Path Configuration',
+                icon: '📁',
+                phase: 'cleanup',
+                expectedProgress: [2, 3],
+                substeps: ['Configuring Python paths', 'Module imports']
             },
-            'mode_selection': {
-                name: 'Mode Selection',
-                icon: '🎯',
-                substeps: ['Analyzing system resources', 'Selecting startup mode', 'Configuring components']
+            'detecting': {
+                name: 'Process Detection',
+                icon: '🔍',
+                phase: 'cleanup',
+                expectedProgress: [3, 5],
+                substeps: ['Scanning PID table', 'Identifying JARVIS processes']
+            },
+            'scanning_ports': {
+                name: 'Port Scanning',
+                icon: '🔌',
+                phase: 'cleanup',
+                expectedProgress: [5, 7],
+                substeps: ['Checking port 3000', 'Checking port 8010']
+            },
+            'enumerating': {
+                name: 'Process Enumeration',
+                icon: '📊',
+                phase: 'cleanup',
+                expectedProgress: [7, 8],
+                substeps: ['Counting instances', 'Building process list']
+            },
+            'detected': {
+                name: 'Detection Complete',
+                icon: '✓',
+                phase: 'cleanup',
+                expectedProgress: [8, 10],
+                substeps: ['Processes identified', 'Ready for cleanup']
+            },
+            'preparing_kill': {
+                name: 'Preparing Shutdown',
+                icon: '🛑',
+                phase: 'cleanup',
+                expectedProgress: [10, 12],
+                substeps: ['Saving state', 'Preparing graceful shutdown']
+            },
+            'terminating': {
+                name: 'Terminating Processes',
+                icon: '⚔️',
+                phase: 'cleanup',
+                expectedProgress: [12, 16],
+                substeps: ['Sending SIGTERM', 'Waiting for shutdown']
+            },
+            'verifying_kill': {
+                name: 'Verifying Termination',
+                icon: '🔍',
+                phase: 'cleanup',
+                expectedProgress: [16, 20],
+                substeps: ['Checking PIDs', 'Confirming shutdown']
+            },
+            'killed': {
+                name: 'Processes Terminated',
+                icon: '✓',
+                phase: 'cleanup',
+                expectedProgress: [20, 23],
+                substeps: ['All processes stopped', 'Resources released']
+            },
+            'port_cleanup': {
+                name: 'Port Cleanup',
+                icon: '🔌',
+                phase: 'cleanup',
+                expectedProgress: [23, 25],
+                substeps: ['Releasing port 3000', 'Releasing port 8010']
+            },
+            'cleanup': {
+                name: 'Resource Cleanup',
+                icon: '🧹',
+                phase: 'cleanup',
+                expectedProgress: [25, 28],
+                substeps: ['Shared memory', 'File locks', 'Temp files']
+            },
+            'checking_proxies': {
+                name: 'Database Proxy Check',
+                icon: '🔐',
+                phase: 'cleanup',
+                expectedProgress: [28, 30],
+                substeps: ['Scanning cloud-sql-proxy', 'Checking connections']
+            },
+            'terminating_proxies': {
+                name: 'Terminating Proxies',
+                icon: '🔐',
+                phase: 'cleanup',
+                expectedProgress: [30, 32],
+                substeps: ['Closing database tunnels']
+            },
+            'scanning_vms': {
+                name: 'Cloud VM Scan',
+                icon: '☁️',
+                phase: 'cleanup',
+                expectedProgress: [32, 33],
+                substeps: ['Querying GCP', 'Finding orphaned VMs']
+            },
+            'deleting_vms': {
+                name: 'Deleting VMs',
+                icon: '☁️',
+                phase: 'cleanup',
+                expectedProgress: [33, 35],
+                substeps: ['Terminating instances', 'Stopping cloud costs']
+            },
+            'vm_cleanup': {
+                name: 'Cloud Cleanup Complete',
+                icon: '☁️',
+                phase: 'cleanup',
+                expectedProgress: [35, 38],
+                substeps: ['VMs terminated', 'Costs stopped']
+            },
+            'ready_to_start': {
+                name: 'Environment Ready',
+                icon: '✓',
+                phase: 'cleanup',
+                expectedProgress: [38, 40],
+                substeps: ['Ports free', 'Resources available']
+            },
+
+            // === PHASE 2: STARTING BACKEND (40-50%) ===
+            'starting': {
+                name: 'Starting Backend',
+                icon: '🚀',
+                phase: 'starting',
+                expectedProgress: [40, 50],
+                substeps: ['Spawning FastAPI', 'Initializing uvicorn']
+            },
+            'backend_spawned': {
+                name: 'Backend Process Spawned',
+                icon: '🚀',
+                phase: 'starting',
+                expectedProgress: [45, 50],
+                substeps: ['Process created', 'Waiting for init']
+            },
+
+            // === PHASE 3: INITIALIZATION (50-95%) ===
+            'cloud_sql_proxy': {
+                name: 'Cloud SQL Proxy',
+                icon: '🔐',
+                phase: 'initialization',
+                expectedProgress: [50, 55],
+                substeps: ['Starting proxy', 'Connecting to database']
             },
             'database': {
                 name: 'Database Connection',
                 icon: '🗄️',
-                substeps: ['Connecting to PostgreSQL', 'Initializing connection pool', 'Verifying schema']
+                phase: 'initialization',
+                expectedProgress: [55, 60],
+                substeps: ['Connecting to PostgreSQL', 'Initializing pool']
+            },
+            'hybrid_coordinator': {
+                name: 'Hybrid Cloud Intelligence',
+                icon: '🌐',
+                phase: 'initialization',
+                expectedProgress: [60, 63],
+                substeps: ['RAM monitor', 'Workload router']
+            },
+            'metrics_monitor': {
+                name: 'Metrics Monitor',
+                icon: '📊',
+                phase: 'initialization',
+                expectedProgress: [63, 65],
+                substeps: ['Voice unlock metrics', 'DB Browser']
+            },
+            'cost_optimization': {
+                name: 'Cost Optimization',
+                icon: '💰',
+                phase: 'initialization',
+                expectedProgress: [65, 68],
+                substeps: ['Semantic cache', 'Physics auth']
             },
             'voice_biometrics': {
                 name: 'Voice Biometric Intelligence',
                 icon: '🎤',
-                substeps: ['Loading ECAPA-TDNN model', 'Initializing speaker cache', 'Pre-warming embeddings']
+                phase: 'initialization',
+                expectedProgress: [68, 75],
+                substeps: ['Loading ECAPA-TDNN', 'Speaker cache', 'VBI initialization']
             },
             'cloud_ecapa': {
                 name: 'Cloud ECAPA Service',
                 icon: '☁️',
-                substeps: ['Connecting to Cloud Run', 'Warming up ML endpoint', 'Verifying speaker models']
+                phase: 'initialization',
+                expectedProgress: [75, 78],
+                substeps: ['Connecting to Cloud Run', 'Warming ML endpoint']
             },
             'speaker_cache': {
                 name: 'Speaker Recognition Cache',
                 icon: '🔐',
-                substeps: ['Initializing fast-path cache', 'Loading recent speakers', 'Setting up fingerprints']
+                phase: 'initialization',
+                expectedProgress: [78, 80],
+                substeps: ['Fast-path cache', 'Loading recent speakers']
+            },
+            'autonomous_systems': {
+                name: 'Autonomous Systems',
+                icon: '🤖',
+                phase: 'initialization',
+                expectedProgress: [80, 83],
+                substeps: ['Orchestrator', 'Service mesh']
+            },
+            'module_prewarming': {
+                name: 'Module Pre-Warming',
+                icon: '🔥',
+                phase: 'initialization',
+                expectedProgress: [83, 85],
+                substeps: ['Background imports', 'JIT compilation']
             },
             'websocket': {
                 name: 'WebSocket System',
                 icon: '🔌',
-                substeps: ['Unified WS manager', 'Voice streaming', 'Real-time events']
+                phase: 'initialization',
+                expectedProgress: [85, 88],
+                substeps: ['Unified WS manager', 'Voice streaming']
             },
             'api_routes': {
-                name: 'API Endpoints',
+                name: 'API Routes',
                 icon: '🌐',
+                phase: 'initialization',
+                expectedProgress: [88, 92],
                 substeps: ['Health routes', 'Voice routes', 'Command routes']
-            },
-            'mcp_servers': {
-                name: 'MCP Servers',
-                icon: '🔧',
-                substeps: ['Filesystem server', 'GitHub integration', 'Brave search']
             },
             'final_checks': {
                 name: 'Final System Checks',
                 icon: '✅',
-                substeps: ['Service verification', 'Health check', 'Ready state']
+                phase: 'initialization',
+                expectedProgress: [92, 95],
+                substeps: ['Service verification', 'Health check']
+            },
+
+            // === PHASE 4: READY (95-100%) ===
+            'ready': {
+                name: 'System Ready',
+                icon: '✅',
+                phase: 'ready',
+                expectedProgress: [95, 98],
+                substeps: ['All systems operational']
             },
             'complete': {
                 name: 'JARVIS Online',
                 icon: '🚀',
-                substeps: ['All systems operational']
+                phase: 'complete',
+                expectedProgress: [98, 100],
+                substeps: ['Ready for commands']
+            },
+
+            // === ERROR STATE ===
+            'failed': {
+                name: 'Startup Failed',
+                icon: '❌',
+                phase: 'error',
+                expectedProgress: [0, 0],
+                substeps: ['Error occurred']
             }
         };
 
@@ -124,7 +329,8 @@ class JARVISLoadingManager {
             memoryMode: null,
             memoryInfo: null,
             voiceBiometricsReady: false,
-            speakerCacheReady: false
+            speakerCacheReady: false,
+            phase: 'cleanup'
         };
 
         this.elements = this.cacheElements();
@@ -141,13 +347,14 @@ class JARVISLoadingManager {
             errorContainer: document.getElementById('error-container'),
             errorMessage: document.getElementById('error-message'),
             reactor: document.querySelector('.arc-reactor'),
-            // New detailed status elements
+            // Detailed status elements
             detailedStatus: document.getElementById('detailed-status'),
             stageIcon: document.getElementById('stage-icon'),
             stageName: document.getElementById('stage-name'),
             substepList: document.getElementById('substep-list'),
             memoryStatus: document.getElementById('memory-status'),
-            modeIndicator: document.getElementById('mode-indicator')
+            modeIndicator: document.getElementById('mode-indicator'),
+            phaseIndicator: document.getElementById('phase-indicator')
         };
     }
 
@@ -155,14 +362,17 @@ class JARVISLoadingManager {
      * Create the detailed status panel dynamically
      */
     createDetailedStatusPanel() {
-        // Check if already exists
         if (document.getElementById('detailed-status')) return;
 
         const panel = document.createElement('div');
         panel.id = 'detailed-status';
         panel.innerHTML = `
+            <div class="phase-indicator" id="phase-indicator">
+                <span class="phase-label">Phase:</span>
+                <span class="phase-value">Cleanup</span>
+            </div>
             <div class="stage-header">
-                <span id="stage-icon" class="stage-icon">⚙️</span>
+                <span id="stage-icon" class="stage-icon">⚡</span>
                 <span id="stage-name" class="stage-name">System Initialization</span>
             </div>
             <div id="substep-list" class="substep-list"></div>
@@ -186,8 +396,8 @@ class JARVISLoadingManager {
             border: 1px solid rgba(0, 255, 65, 0.3);
             border-radius: 12px;
             padding: 16px 24px;
-            min-width: 320px;
-            max-width: 480px;
+            min-width: 360px;
+            max-width: 520px;
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 12px;
             color: #00ff41;
@@ -195,9 +405,34 @@ class JARVISLoadingManager {
             z-index: 100;
         `;
 
-        // Add styles for the panel
         const style = document.createElement('style');
         style.textContent = `
+            .phase-indicator {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .phase-label {
+                opacity: 0.6;
+            }
+            .phase-value {
+                font-weight: 600;
+                padding: 2px 8px;
+                background: rgba(0, 255, 65, 0.1);
+                border-radius: 4px;
+            }
+            .phase-value.cleanup { color: #ffaa00; }
+            .phase-value.starting { color: #00aaff; }
+            .phase-value.initialization { color: #00ff88; }
+            .phase-value.ready { color: #00ffff; }
+            .phase-value.complete { color: #00ff41; }
+            .phase-value.error { color: #ff4444; }
             .stage-header {
                 display: flex;
                 align-items: center;
@@ -274,7 +509,6 @@ class JARVISLoadingManager {
         `;
         document.head.appendChild(style);
 
-        // Insert before the progress container
         const progressContainer = document.querySelector('.progress-container');
         if (progressContainer && progressContainer.parentNode) {
             progressContainer.parentNode.insertBefore(panel, progressContainer);
@@ -282,35 +516,26 @@ class JARVISLoadingManager {
             document.querySelector('.loading-container')?.appendChild(panel);
         }
 
-        // Update cached elements
         this.elements.detailedStatus = panel;
         this.elements.stageIcon = document.getElementById('stage-icon');
         this.elements.stageName = document.getElementById('stage-name');
         this.elements.substepList = document.getElementById('substep-list');
         this.elements.memoryStatus = document.getElementById('memory-status');
         this.elements.modeIndicator = document.getElementById('mode-indicator');
+        this.elements.phaseIndicator = document.getElementById('phase-indicator');
     }
 
     async init() {
-        console.log('[JARVIS] Loading Manager v3.0 starting...');
-        console.log(`[Config] Backend: ${this.config.hostname}:${this.config.backendPort}`);
+        console.log('[JARVIS] Loading Manager v4.0 starting...');
+        console.log(`[Config] Loading server: ${this.config.hostname}:${this.config.loadingServerPort}`);
 
-        // Create particle background
         this.createParticles();
-
-        // Create detailed status panel
         this.createDetailedStatusPanel();
-
-        // Start smooth progress animation
         this.startSmoothProgress();
 
-        // Try WebSocket first
+        // Connect to loading server (port 3001)
         await this.connectWebSocket();
-
-        // Also start HTTP polling as backup
         this.startPolling();
-
-        // Monitor for stalls
         this.startHealthMonitoring();
     }
 
@@ -344,13 +569,14 @@ class JARVISLoadingManager {
         }
 
         try {
-            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.backendPort}/ws/startup-progress`;
+            // Connect to loading server on port 3001
+            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/ws/startup-progress`;
             console.log(`[WebSocket] Connecting to ${wsUrl}...`);
 
             this.state.ws = new WebSocket(wsUrl);
 
             this.state.ws.onopen = () => {
-                console.log('[WebSocket] ✓ Connected');
+                console.log('[WebSocket] ✓ Connected to loading server');
                 this.state.connected = true;
                 this.state.reconnectAttempts = 0;
                 this.updateStatusText('Connected', 'connected');
@@ -403,10 +629,11 @@ class JARVISLoadingManager {
     startPolling() {
         if (!this.config.polling.enabled) return;
 
-        console.log('[Polling] Starting HTTP polling...');
+        console.log('[Polling] Starting HTTP polling on loading server...');
         this.state.pollingInterval = setInterval(async () => {
             try {
-                const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.backendPort}/api/startup-progress`;
+                // Poll loading server on port 3001
+                const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
                 const response = await fetch(url, {
                     method: 'GET',
                     cache: 'no-cache',
@@ -426,39 +653,39 @@ class JARVISLoadingManager {
     handleProgressUpdate(data) {
         this.state.lastUpdate = Date.now();
 
-        // Handle both new event_type format and legacy stage format
-        const eventType = data.event_type || data.type;
-        const component = data.component || data.stage;
+        const stage = data.stage;
         const message = data.message;
         const progress = data.progress;
-        const phase = data.phase;
         const metadata = data.metadata || {};
 
-        // Skip keepalive/pong messages
-        if (eventType === 'keepalive' || eventType === 'pong') return;
+        // Skip keepalive messages
+        if (stage === 'keepalive' || data.type === 'pong') return;
 
-        console.log(`[Progress] ${progress?.toFixed(1) || '?'}% - [${eventType}] ${component || phase}: ${message}`);
+        console.log(`[Progress] ${progress?.toFixed(1) || '?'}% - ${stage}: ${message}`);
 
-        // Update target progress (weighted calculation from backend)
+        // Update target progress
         if (typeof progress === 'number' && progress >= 0 && progress <= 100) {
             this.state.targetProgress = progress;
         }
 
-        // Update stage/component based on event type
-        const newStage = component || phase || data.stage;
-        if (newStage && newStage !== this.state.stage) {
-            // Mark previous stage as completed
-            if (this.state.stage && eventType !== 'component_start') {
+        // Update stage
+        if (stage && stage !== this.state.stage) {
+            if (this.state.stage) {
                 this.state.completedStages.push(this.state.stage);
             }
-            this.state.stage = newStage;
+            this.state.stage = stage;
             this.state.currentSubstep = 0;
+
+            // Update phase based on stage
+            const stageDef = this.stageDefinitions[stage];
+            if (stageDef) {
+                this.state.phase = stageDef.phase;
+            }
         }
         if (message) this.state.message = message;
 
-        // Extract detailed metadata
+        // Extract metadata
         if (metadata) {
-            // Memory info
             if (metadata.memory_available_gb !== undefined) {
                 this.state.memoryInfo = {
                     availableGb: metadata.memory_available_gb,
@@ -466,70 +693,76 @@ class JARVISLoadingManager {
                     status: metadata.memory_status || 'unknown'
                 };
             }
-
-            // Mode info
             if (metadata.startup_mode) {
                 this.state.memoryMode = metadata.startup_mode;
             }
-
-            // Voice biometrics status
             if (metadata.voice_biometrics_ready !== undefined) {
                 this.state.voiceBiometricsReady = metadata.voice_biometrics_ready;
             }
-
-            // Speaker cache status
             if (metadata.speaker_cache_ready !== undefined) {
                 this.state.speakerCacheReady = metadata.speaker_cache_ready;
             }
-
-            // Cloud ECAPA status
-            if (metadata.cloud_ecapa_status) {
-                this.state.cloudEcapaStatus = metadata.cloud_ecapa_status;
-            }
-
-            // Substep tracking
             if (metadata.substep !== undefined) {
                 this.state.currentSubstep = metadata.substep;
             }
+            if (metadata.label) {
+                // Use metadata label for display if provided
+                this.state.displayLabel = metadata.label;
+            }
+            if (metadata.sublabel) {
+                this.state.displaySublabel = metadata.sublabel;
+            }
         }
 
-        // Update UI immediately
+        // Update UI
         this.updateUI();
         this.updateDetailedStatus();
 
-        // Handle completion - check both event_type and phase
-        if (eventType === 'complete' || phase === 'complete' || progress >= 100) {
+        // Handle completion
+        if (stage === 'complete' || progress >= 100) {
             const success = metadata.success !== false;
             const redirectUrl = metadata.redirect_url || `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
             this.handleCompletion(success, redirectUrl, message);
         }
 
         // Handle failure
-        if (eventType === 'component_fail' && metadata.is_critical) {
-            console.error(`[CRITICAL] Component failed: ${component} - ${message}`);
-        }
-        if (phase === 'failed' || metadata.success === false) {
+        if (stage === 'failed' || metadata.success === false) {
             this.showError(message || 'Startup failed');
         }
     }
 
-    /**
-     * Update the detailed status panel with current stage info
-     */
     updateDetailedStatus() {
-        // Get stage definition or create dynamic one for backend components
+        // Get stage definition or create dynamic one
         let stageDef = this.stageDefinitions[this.state.stage];
         if (!stageDef) {
-            // Dynamically create stage info for unknown components from backend
             const componentName = this.state.stage || 'unknown';
-            const formattedName = componentName
+            const formattedName = this.state.displayLabel || componentName
                 .replace(/_/g, ' ')
                 .replace(/\b\w/g, c => c.toUpperCase());
             stageDef = {
                 name: formattedName,
                 icon: this._getComponentIcon(componentName),
-                substeps: [`Initializing ${formattedName}...`]
+                phase: this._inferPhase(this.state.targetProgress),
+                substeps: [this.state.displaySublabel || `Initializing ${formattedName}...`]
             };
+        }
+
+        // Update phase indicator
+        if (this.elements.phaseIndicator) {
+            const phaseValue = this.elements.phaseIndicator.querySelector('.phase-value');
+            if (phaseValue) {
+                const phase = stageDef.phase || this.state.phase;
+                const phaseNames = {
+                    'cleanup': 'Cleanup',
+                    'starting': 'Starting',
+                    'initialization': 'Initialization',
+                    'ready': 'Ready',
+                    'complete': 'Complete',
+                    'error': 'Error'
+                };
+                phaseValue.textContent = phaseNames[phase] || phase;
+                phaseValue.className = `phase-value ${phase}`;
+            }
         }
 
         // Update stage header
@@ -588,15 +821,21 @@ class JARVISLoadingManager {
         }
     }
 
+    _inferPhase(progress) {
+        if (progress < 40) return 'cleanup';
+        if (progress < 50) return 'starting';
+        if (progress < 95) return 'initialization';
+        if (progress < 100) return 'ready';
+        return 'complete';
+    }
+
     startSmoothProgress() {
         if (!this.config.smoothProgress.enabled) return;
 
-        // Smooth progress animation - gradually increment to target
         this.state.smoothProgressInterval = setInterval(() => {
             if (this.state.progress < this.state.targetProgress) {
-                // Increment progress smoothly
                 const diff = this.state.targetProgress - this.state.progress;
-                const increment = Math.max(0.5, diff / 10);  // Speed up when far from target
+                const increment = Math.max(0.3, diff / 15);
                 this.state.progress = Math.min(
                     this.state.progress + increment,
                     this.state.targetProgress
@@ -619,13 +858,19 @@ class JARVISLoadingManager {
         this.elements.progressBar.style.width = `${displayProgress}%`;
         this.elements.progressPercentage.textContent = `${displayProgress}%`;
 
-        // Add visual feedback at milestones
-        if (displayProgress >= 25 && displayProgress < 50) {
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00aa2e 100%)';
-        } else if (displayProgress >= 50 && displayProgress < 75) {
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00aa2e 0%, #00ff41 100%)';
-        } else if (displayProgress >= 75) {
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff41 100%)';
+        // Phase-based color
+        if (displayProgress < 40) {
+            // Cleanup phase - orange
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #ff8800 0%, #ffaa00 100%)';
+        } else if (displayProgress < 50) {
+            // Starting phase - blue
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #0088ff 0%, #00aaff 100%)';
+        } else if (displayProgress < 95) {
+            // Initialization phase - green
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00aa44 0%, #00ff41 100%)';
+        } else {
+            // Ready/Complete phase - bright green with glow
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
             this.elements.progressBar.style.boxShadow = '0 0 20px rgba(0, 255, 65, 0.8)';
         }
     }
@@ -644,456 +889,85 @@ class JARVISLoadingManager {
         }
 
         console.log('[Complete] ✓ Startup successful!');
-
-        // Stop all intervals
         this.cleanup();
 
-        // Update UI
         this.elements.subtitle.textContent = 'SYSTEM READY';
         this.elements.statusMessage.textContent = message || 'JARVIS is online!';
         this.state.progress = 100;
         this.state.targetProgress = 100;
         this.updateProgressBar();
 
-        // 🎬 EPIC CINEMATIC COMPLETION SEQUENCE 🎬
         this.playEpicCompletionAnimation(redirectUrl);
     }
 
     async playEpicCompletionAnimation(redirectUrl) {
         const container = document.querySelector('.loading-container');
         const reactor = this.elements.reactor;
-        const progressBar = this.elements.progressBar;
 
-        // Configuration with matrix transition
-        const totalDuration = 3500; // 3.5 seconds total
-        const config = {
-            phases: {
-                powerSurge: {
-                    duration: 600,
-                    rings: 3
-                },
-                matrix: {
-                    duration: 1500  // Matrix rain effect
-                },
-                fade: {
-                    duration: 800
-                },
-                totalDuration: totalDuration
-            },
-            reactor: {
-                powerUpScale: 1.5,
-                glowIntensity: 80,
-                maintainBrightness: true
-            },
-            effects: {
-                ringColor: '#00ff41',
-                matrixColumns: Math.floor(window.innerWidth / 20),
-                matrixSpeed: 50
-            }
-        };
+        const totalDuration = 3000;
 
-        // === PHASE 1: REACTOR POWER SURGE ===
-        console.log('[Animation] Phase 1: Reactor power surge');
-
-        // Reactor pulse
+        // Phase 1: Power surge
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
             reactor.style.transform = 'translate(-50%, -50%) scale(1.5)';
             reactor.style.filter = 'drop-shadow(0 0 80px rgba(0, 255, 65, 1)) brightness(2)';
-            reactor.style.opacity = '1';
 
-            // Create 3 expanding rings
             for (let i = 0; i < 3; i++) {
-                setTimeout(() => {
-                    this.createEnergyRing(reactor, '#00ff41', i);
-                }, i * 200);
+                setTimeout(() => this.createEnergyRing(reactor, '#00ff41', i), i * 200);
             }
         }
 
-        // Progress bar glow
-        if (progressBar) {
-            progressBar.style.boxShadow = '0 0 40px rgba(0, 255, 65, 1), 0 0 80px rgba(0, 255, 65, 0.8)';
-            progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
-        }
+        await this.sleep(600);
 
-        await this.sleep(config.phases.powerSurge.duration);
-
-        // === PHASE 2: MATRIX TRANSITION ===
-        console.log('[Animation] Phase 2: Matrix code rain');
-
-        // Start fading out the container and scale reactor
+        // Phase 2: Fade out
         if (container) {
             container.style.transition = 'opacity 1s ease-out';
             container.style.opacity = '0';
         }
-
         if (reactor) {
             reactor.style.transition = 'all 1s ease-out';
             reactor.style.transform = 'translate(-50%, -50%) scale(2)';
             reactor.style.opacity = '0';
         }
 
-        // Create matrix rain canvas
-        const matrixCanvas = this.createMatrixCanvas();
-        matrixCanvas.style.opacity = '1';
+        await this.sleep(1500);
 
-        // Start matrix animation
-        const matrixInterval = this.startMatrixRain(matrixCanvas, config.effects.matrixColumns);
-
-        // Wait for matrix effect
-        await this.sleep(config.phases.matrix.duration);
-
-        // Stop matrix animation
-        clearInterval(matrixInterval);
-
-        // === PHASE 3: FADE TO BLACK ===
-        console.log('[Animation] Phase 3: Final fade');
-
-        // Fade out matrix
-        matrixCanvas.style.transition = `opacity ${config.phases.fade.duration / 1000}s ease-out`;
-        matrixCanvas.style.opacity = '0';
-
-        // Create black overlay
+        // Phase 3: Navigate
         const overlay = document.createElement('div');
         overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000000;
-            opacity: 0;
-            transition: opacity ${config.phases.fade.duration / 1000}s ease-in;
-            z-index: 10001;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; opacity: 0;
+            transition: opacity 0.5s ease-in; z-index: 10001;
         `;
         document.body.appendChild(overlay);
+        setTimeout(() => overlay.style.opacity = '1', 10);
 
-        // Trigger fade
-        setTimeout(() => {
-            overlay.style.opacity = '1';
-        }, 10);
-
-        // Wait for fade to complete
-        await this.sleep(config.phases.fade.duration);
-
-        // === PHASE 4: NAVIGATE TO MAIN PAGE ===
-        console.log(`[Transition] Navigating to ${redirectUrl}`);
-
-        // Clean navigation
+        await this.sleep(500);
         window.location.href = redirectUrl;
     }
-
-    // === HELPER METHODS FOR DYNAMIC EFFECTS ===
 
     createEnergyRing(reactor, color, index) {
         const ring = document.createElement('div');
         ring.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            width: 300px;
-            height: 300px;
-            border: 3px solid ${color};
-            border-radius: 50%;
-            opacity: 1;
-            animation: expandRing 1s ease-out forwards;
+            width: 300px; height: 300px;
+            border: 3px solid ${color}; border-radius: 50%;
+            opacity: 1; animation: expandRing 1s ease-out forwards;
             pointer-events: none;
         `;
-        reactor.parentElement.appendChild(ring);
-        setTimeout(() => ring.remove(), 1000);
-    }
 
-    createHolographicScan(height, duration) {
-        const scanLine = document.createElement('div');
-        scanLine.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: ${height}px;
-            background: linear-gradient(90deg,
-                transparent 0%,
-                #00ff41 50%,
-                transparent 100%);
-            box-shadow: 0 0 20px #00ff41;
-            opacity: 1;
-            animation: scanDown ${duration / 1000}s ease-in-out;
-            z-index: 10000;
-        `;
-        document.body.appendChild(scanLine);
-        setTimeout(() => scanLine.remove(), duration);
-    }
-
-    preloadMainPage(redirectUrl, config) {
-        return new Promise((resolve) => {
-            console.log('[Preload] Starting iframe preload in background...');
-
-            // Create black background layer to prevent white flash
-            const blackBackground = document.createElement('div');
-            blackBackground.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: #000000;
-                z-index: 9998;
-            `;
-            document.body.insertBefore(blackBackground, document.body.firstChild);
-
-            // Preload main page in hidden iframe
-            const iframe = document.createElement('iframe');
-            iframe.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                border: none;
-                opacity: 0;
-                z-index: 10001;
-                background: #000000;
-            `;
-            iframe.src = redirectUrl;
-            document.body.appendChild(iframe);
-
-            // Show loading progress if enabled
-            if (config.showProgress) {
-                this.elements.statusMessage.textContent = 'Loading main interface...';
-            }
-
-            // Wait for iframe to load
-            iframe.onload = () => {
-                console.log('[Preload] ✓ Main page loaded in iframe');
-                resolve(iframe);
-            };
-
-            // Fallback timeout
-            setTimeout(() => {
-                console.warn('[Preload] Timeout - proceeding anyway');
-                resolve(iframe);
-            }, 3000);
-        });
-    }
-
-    createTransitionOverlay(fadeDuration = 1) {
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle at center,
-                #001a00 0%,
-                #003300 50%,
-                #000000 100%);
-            opacity: 0;
-            transition: opacity ${fadeDuration}s ease-in;
-            z-index: 9999;
-        `;
-        document.body.appendChild(overlay);
-        return overlay;
-    }
-
-    createMatrixCanvas() {
-        const matrixCanvas = document.createElement('canvas');
-        matrixCanvas.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10000;
-            opacity: 0.3;
-            pointer-events: none;
-        `;
-        document.body.appendChild(matrixCanvas);
-        return matrixCanvas;
-    }
-
-    injectAnimationStyles(config) {
         const style = document.createElement('style');
         style.textContent = `
-            @keyframes scanDown {
-                0% { top: 0; opacity: 1; }
-                100% { top: 100%; opacity: 0; }
-            }
             @keyframes expandRing {
                 0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
                 100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
             }
-            @keyframes reactorBreathing {
-                0%, 100% {
-                    transform: scale(${config.reactor.powerUpScale});
-                    filter: drop-shadow(0 0 ${config.reactor.glowIntensity}px rgba(0, 255, 65, 1)) brightness(2);
-                }
-                50% {
-                    transform: scale(${config.reactor.powerUpScale + 0.1});
-                    filter: drop-shadow(0 0 ${config.reactor.glowIntensity + 20}px rgba(0, 255, 65, 1)) brightness(2.2);
-                }
-            }
-            @keyframes fadeOutUp {
-                0% { opacity: 1; transform: translateY(0) scale(1); }
-                100% { opacity: 0; transform: translateY(-50px) scale(0.9); }
-            }
         `;
         document.head.appendChild(style);
-    }
 
-    async playVoiceAnnouncement() {
-        try {
-            // Use backend API to play voice with macOS Daniel voice (same as JARVIS)
-            console.log('[Voice] Requesting backend voice announcement...');
-
-            // Visual feedback during speech
-            this.elements.statusMessage.style.animation = 'pulse 0.5s ease-in-out infinite';
-
-            const response = await fetch(
-                `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}/api/startup-voice/announce-online`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    signal: AbortSignal.timeout(5000)
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                console.log(`[Voice] ✓ ${data.voice} speaking: "${data.text}"`);
-            } else {
-                console.warn('[Voice] Backend voice API failed, falling back to browser TTS');
-                // Fallback to browser's speech synthesis
-                const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
-                utterance.rate = 0.95;
-                speechSynthesis.speak(utterance);
-            }
-
-            // Wait for speech to complete (approximate duration)
-            await this.sleep(2500);
-
-            // Stop visual feedback
-            this.elements.statusMessage.style.animation = '';
-
-        } catch (error) {
-            console.error('[Voice] Error:', error);
-
-            // Fallback: Try browser speech synthesis
-            try {
-                const utterance = new SpeechSynthesisUtterance('JARVIS is online. Ready for your command.');
-                utterance.rate = 0.95;
-                speechSynthesis.speak(utterance);
-                await this.sleep(2500);
-            } catch (fallbackError) {
-                console.error('[Voice] Fallback also failed:', fallbackError);
-            }
-
-            // Continue animation even if voice fails completely
-            this.elements.statusMessage.style.animation = '';
-        }
-    }
-
-    createParticleBurst(centerElement, velocityMin = 200, velocityMax = 300, particleCount = 30) {
-        const centerRect = centerElement.getBoundingClientRect();
-        const centerX = centerRect.left + centerRect.width / 2;
-        const centerY = centerRect.top + centerRect.height / 2;
-
-        // Create dynamic particle burst
-        for (let i = 0; i < particleCount; i++) {
-            const particle = document.createElement('div');
-            const angle = (Math.PI * 2 * i) / particleCount;
-            const velocity = velocityMin + Math.random() * (velocityMax - velocityMin);
-            const endX = Math.cos(angle) * velocity;
-            const endY = Math.sin(angle) * velocity;
-
-            // Random particle size for variety
-            const size = 3 + Math.random() * 3;
-
-            particle.style.cssText = `
-                position: fixed;
-                left: ${centerX}px;
-                top: ${centerY}px;
-                width: ${size}px;
-                height: ${size}px;
-                background: #00ff41;
-                border-radius: 50%;
-                box-shadow: 0 0 10px #00ff41, 0 0 20px rgba(0, 255, 65, 0.5);
-                transform: translate(-50%, -50%);
-                animation: particleBurst${i} 1s ease-out forwards;
-                pointer-events: none;
-                z-index: 10001;
-            `;
-
-            // Create unique animation for each particle
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes particleBurst${i} {
-                    0% {
-                        transform: translate(-50%, -50%) translate(0, 0) scale(1);
-                        opacity: 1;
-                    }
-                    100% {
-                        transform: translate(-50%, -50%) translate(${endX}px, ${endY}px) scale(0);
-                        opacity: 0;
-                    }
-                }
-            `;
-            document.head.appendChild(style);
-
-            document.body.appendChild(particle);
-            setTimeout(() => {
-                particle.remove();
-                style.remove();
-            }, 1000);
-        }
-    }
-
-    startMatrixRain(canvas, columnCount) {
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        const columns = columnCount || Math.floor(canvas.width / 20);
-        const drops = Array(columns).fill(0).map(() => Math.random() * -100);
-
-        const matrix = 'JARVIS01アイウエオカキクケコサシスセソ';
-        const fontSize = 16;
-        const columnWidth = canvas.width / columns;
-        ctx.font = `${fontSize}px monospace`;
-
-        const draw = () => {
-            // Fade effect for trail
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw matrix characters
-            drops.forEach((y, i) => {
-                const text = matrix[Math.floor(Math.random() * matrix.length)];
-                const x = i * columnWidth;
-
-                // Brighter color for leading character
-                ctx.fillStyle = '#00ff41';
-                ctx.fillText(text, x, y * fontSize);
-
-                // Dimmer trail
-                ctx.fillStyle = 'rgba(0, 255, 65, 0.5)';
-                if (y > 1) {
-                    const trailText = matrix[Math.floor(Math.random() * matrix.length)];
-                    ctx.fillText(trailText, x, (y - 1) * fontSize);
-                }
-
-                // Reset drop to top with random chance
-                if (y * fontSize > canvas.height && Math.random() > 0.975) {
-                    drops[i] = 0;
-                }
-                drops[i]++;
-            });
-        };
-
-        return setInterval(draw, 50);
+        reactor.parentElement.appendChild(ring);
+        setTimeout(() => { ring.remove(); style.remove(); }, 1000);
     }
 
     sleep(ms) {
@@ -1102,7 +976,6 @@ class JARVISLoadingManager {
 
     showError(message) {
         console.error('[Error]', message);
-
         this.cleanup();
 
         if (this.elements.errorContainer) {
@@ -1124,60 +997,40 @@ class JARVISLoadingManager {
             const timeSinceUpdate = Date.now() - this.state.lastUpdate;
             const totalTime = Date.now() - this.state.startTime;
 
-            // If no updates for 30 seconds and not at 100%, show warning
             if (timeSinceUpdate > 30000 && this.state.progress < 100) {
                 console.warn('[Health] No updates for 30 seconds');
-
-                // Try reconnecting if WebSocket is dead
                 if (!this.state.connected) {
                     this.connectWebSocket();
                 }
             }
 
-            // Timeout after 10 minutes (allows time for minimal-to-full mode upgrade)
             if (totalTime > 600000 && this.state.progress < 100) {
-                this.showError('Startup timed out. Please check terminal logs and try again.');
+                this.showError('Startup timed out. Please check terminal logs.');
             }
         }, 5000);
     }
 
-    /**
-     * Get an appropriate icon for a backend component
-     */
     _getComponentIcon(componentName) {
         const iconMap = {
-            'config': '⚙️',
-            'cloud_sql': '🗄️',
-            'learning': '🧠',
-            'memory': '💾',
-            'cloud_ml': '☁️',
-            'cloud_ecapa': '🎤',
-            'vbi': '🔐',
-            'ml_engine': '🤖',
-            'speaker': '🔊',
-            'voice': '🎙️',
-            'jarvis': '🤖',
-            'websocket': '🔌',
-            'unified': '🔗',
-            'neural': '🧠',
-            'goal': '🎯',
-            'uae': '🌐',
-            'hybrid': '⚡',
-            'orchestrator': '🎼',
-            'vision': '👁️',
-            'display': '🖥️',
-            'dynamic': '⚡',
-            'api': '🌐',
-            'database': '🗄️',
+            'config': '⚙️', 'cloud_sql': '🗄️', 'learning': '🧠',
+            'memory': '💾', 'cloud_ml': '☁️', 'cloud_ecapa': '🎤',
+            'vbi': '🔐', 'ml_engine': '🤖', 'speaker': '🔊',
+            'voice': '🎙️', 'jarvis': '🤖', 'websocket': '🔌',
+            'unified': '🔗', 'neural': '🧠', 'goal': '🎯',
+            'uae': '🌐', 'hybrid': '⚡', 'orchestrator': '🎼',
+            'vision': '👁️', 'display': '🖥️', 'dynamic': '⚡',
+            'api': '🌐', 'database': '🗄️', 'ecapa': '🎤',
+            'proxy': '🔐', 'kill': '⚔️', 'cleanup': '🧹',
+            'port': '🔌', 'vm': '☁️', 'cost': '💰',
+            'autonomous': '🤖', 'metrics': '📊'
         };
 
-        // Find matching icon
         for (const [key, icon] of Object.entries(iconMap)) {
             if (componentName.toLowerCase().includes(key)) {
                 return icon;
             }
         }
-        return '🔧'; // Default icon
+        return '🔧';
     }
 
     cleanup() {

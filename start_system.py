@@ -7046,6 +7046,21 @@ class AsyncSystemManager:
 
     async def start_backend_optimized(self) -> asyncio.subprocess.Process:
         """Start backend with performance optimizations and auto-reload"""
+        # Broadcast progress if available
+        async def broadcast_progress(stage, message, progress, metadata=None):
+            try:
+                if '_broadcast_to_loading_server' in globals():
+                    await _broadcast_to_loading_server(stage, message, progress, metadata)
+            except Exception:
+                pass
+
+        await broadcast_progress(
+            "voice_biometrics",
+            "Initializing Voice Biometric System - Loading ECAPA-TDNN models",
+            70,
+            {"icon": "🎤", "label": "Voice Biometrics", "sublabel": "Loading speaker models"}
+        )
+
         print(
             f"\n{Colors.BLUE}Starting optimized backend with auto-reload capabilities...{Colors.ENDC}"
         )
@@ -7662,6 +7677,12 @@ class AsyncSystemManager:
                 print(f"{Colors.FAIL}✗ No fallback minimal backend available{Colors.ENDC}")
                 raise RuntimeError("No backend available to start")
         else:
+            await broadcast_progress(
+                "api_routes",
+                "Backend process started - Loading API routes and WebSocket handlers",
+                88,
+                {"icon": "🌐", "label": "API Routes", "sublabel": "Loading endpoints"}
+            )
             print(f"{Colors.GREEN}✓ Optimized backend started (PID: {process.pid}){Colors.ENDC}")
             print(f"{Colors.GREEN}✓ Swift performance bridges loaded{Colors.ENDC}")
             print(f"{Colors.GREEN}✓ Smart startup manager integrated{Colors.ENDC}")
@@ -7764,7 +7785,22 @@ class AsyncSystemManager:
                 # Fallback if we can't check
                 print(f"{Colors.GREEN}✓ Backend components loading...{Colors.ENDC}")
 
+            await broadcast_progress(
+                "final_checks",
+                "Running final system checks - Verifying all components",
+                94,
+                {"icon": "✅", "label": "Final Checks", "sublabel": "Verifying services"}
+            )
+
             print(f"\n{Colors.GREEN}✓ Server running on port {self.ports['main_api']}{Colors.ENDC}")
+
+            # Broadcast complete
+            await broadcast_progress(
+                "complete",
+                "JARVIS is online - All systems operational",
+                100,
+                {"icon": "🚀", "label": "JARVIS Online", "sublabel": "Ready for commands", "success": True, "redirect_url": f"http://localhost:3000"}
+            )
 
         return process
 
@@ -11974,6 +12010,22 @@ except Exception as e:
         """Main run method with self-healing"""
         self.print_header()
 
+        # Helper to broadcast progress if available (during --restart)
+        async def broadcast_progress(stage, message, progress, metadata=None):
+            """Broadcast progress to loading server if available"""
+            try:
+                if '_broadcast_to_loading_server' in globals():
+                    await _broadcast_to_loading_server(stage, message, progress, metadata)
+            except Exception:
+                pass  # Silently fail if loading server not available
+
+        await broadcast_progress(
+            "backend_spawned",
+            "Backend process started - beginning initialization sequence",
+            48,
+            {"icon": "🚀", "label": "Backend Spawned", "sublabel": "Process started"}
+        )
+
         # Display system environment and configuration details
         print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
         print(f"{Colors.BOLD}{Colors.BLUE}📊 System Environment & Configuration{Colors.ENDC}")
@@ -11997,6 +12049,12 @@ except Exception as e:
 
         # Start Cloud SQL proxy FIRST (before any database connections)
         if self.cloud_sql_proxy_enabled:
+            await broadcast_progress(
+                "cloud_sql_proxy",
+                "Starting Cloud SQL Proxy for database connections",
+                50,
+                {"icon": "🔐", "label": "Cloud SQL Proxy", "sublabel": "Starting proxy"}
+            )
             print(f"\n{Colors.CYAN}🔐 Starting Cloud SQL Proxy...{Colors.ENDC}")
             try:
                 # Import from backend/intelligence
@@ -12038,6 +12096,12 @@ except Exception as e:
 
         # Start hybrid cloud intelligence coordinator
         if self.hybrid_enabled and self.hybrid_coordinator:
+            await broadcast_progress(
+                "hybrid_coordinator",
+                "Starting Hybrid Cloud Intelligence coordinator",
+                60,
+                {"icon": "🌐", "label": "Hybrid Intelligence", "sublabel": "RAM monitor + router"}
+            )
             print(f"\n{Colors.CYAN}🌐 Starting Hybrid Cloud Intelligence...{Colors.ENDC}")
             try:
                 print(f"{Colors.CYAN}   → Initializing RAM monitor and workload router...{Colors.ENDC}")
@@ -12072,6 +12136,12 @@ except Exception as e:
                 self.hybrid_enabled = False
 
         # Start Advanced Voice Unlock Metrics Monitor (with DB Browser auto-launch)
+        await broadcast_progress(
+            "metrics_monitor",
+            "Starting Advanced Voice Unlock Metrics Monitor",
+            63,
+            {"icon": "📊", "label": "Metrics Monitor", "sublabel": "Voice unlock metrics"}
+        )
         print(f"\n{Colors.CYAN}📊 Starting Advanced Voice Unlock Metrics Monitor...{Colors.ENDC}")
         try:
             # Import and initialize advanced metrics monitor
@@ -12115,6 +12185,12 @@ except Exception as e:
         # =====================================================================
         # 🚀 COST OPTIMIZATION v2.5 - Initialize Semantic Cache & Physics Auth
         # =====================================================================
+        await broadcast_progress(
+            "cost_optimization",
+            "Initializing Cost Optimization v2.5 - Semantic cache & Physics auth",
+            66,
+            {"icon": "💰", "label": "Cost Optimization", "sublabel": "Semantic cache + Physics auth"}
+        )
         print(f"\n{Colors.CYAN}🚀 Initializing Cost Optimization v2.5...{Colors.ENDC}")
 
         # Initialize Semantic Voice Cache (ChromaDB)
@@ -12178,6 +12254,12 @@ except Exception as e:
 
         # Start autonomous systems if enabled
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:
+            await broadcast_progress(
+                "autonomous_systems",
+                "Starting Autonomous Systems - Orchestrator and Service Mesh",
+                80,
+                {"icon": "🤖", "label": "Autonomous Systems", "sublabel": "Orchestrator + mesh"}
+            )
             print(f"\n{Colors.CYAN}🤖 Starting Autonomous Systems...{Colors.ENDC}")
 
             # Start orchestrator
@@ -12208,6 +12290,12 @@ except Exception as e:
                     self.frontend_port = service.port  # Keep alias in sync
 
         # Start pre-warming imports early
+        await broadcast_progress(
+            "module_prewarming",
+            "Background Module Pre-Warming - Importing heavy dependencies",
+            84,
+            {"icon": "🔥", "label": "Module Pre-Warming", "sublabel": "Background imports"}
+        )
         print(f"\n{Colors.BLUE}{'='*70}{Colors.ENDC}")
         print(f"{Colors.BOLD}{Colors.BLUE}🔥 Background Module Pre-Warming{Colors.ENDC}")
         print(f"{Colors.BLUE}{'='*70}{Colors.ENDC}\n")
@@ -13039,6 +13127,121 @@ async def shutdown_handler():
             logger.warning("⚠️  Cleanup timeout (90s exceeded) - forcing shutdown...")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+
+def ensure_ecapa_cache():
+    """
+    Ensure ECAPA model cache is available by linking HuggingFace cache.
+    
+    The ECAPA service looks for models in ~/.cache/ecapa but HuggingFace
+    downloads to ~/.cache/huggingface/hub/. This function creates the
+    necessary links so ECAPA can find the pre-downloaded models.
+    
+    This prevents "Circuit breaker OPEN" errors when STRICT_OFFLINE mode
+    is enabled but the cache paths don't match.
+    """
+    import os
+    import shutil
+    from pathlib import Path
+    
+    print(f"\n{Colors.CYAN}🔗 Checking ECAPA Model Cache...{Colors.ENDC}")
+    
+    ecapa_cache = Path.home() / ".cache" / "ecapa"
+    hf_cache_base = Path.home() / ".cache" / "huggingface" / "hub" / "models--speechbrain--spkrec-ecapa-voxceleb"
+    
+    required_files = [
+        "hyperparams.yaml",
+        "embedding_model.ckpt",
+        "classifier.ckpt",
+        "label_encoder.txt",
+        "mean_var_norm_emb.ckpt"
+    ]
+    
+    # Check if ecapa cache already has all required files
+    if ecapa_cache.exists():
+        missing = [f for f in required_files if not (ecapa_cache / f).exists()]
+        if not missing:
+            print(f"  {Colors.GREEN}✓ ECAPA cache ready at {ecapa_cache}{Colors.ENDC}")
+            return True
+        else:
+            print(f"  {Colors.YELLOW}⚠️  ECAPA cache missing: {', '.join(missing)}{Colors.ENDC}")
+    
+    # Check HuggingFace cache
+    if not hf_cache_base.exists():
+        print(f"  {Colors.YELLOW}⚠️  HuggingFace cache not found at {hf_cache_base}{Colors.ENDC}")
+        print(f"  {Colors.YELLOW}   Model will be downloaded on first use (may be slow){Colors.ENDC}")
+        return False
+    
+    # Find snapshot directory
+    snapshots_dir = hf_cache_base / "snapshots"
+    if not snapshots_dir.exists():
+        print(f"  {Colors.YELLOW}⚠️  No snapshots directory in HuggingFace cache{Colors.ENDC}")
+        return False
+    
+    try:
+        snapshots = list(snapshots_dir.iterdir())
+        if not snapshots:
+            print(f"  {Colors.YELLOW}⚠️  No snapshots found{Colors.ENDC}")
+            return False
+        
+        snapshot_dir = snapshots[0]
+        print(f"  {Colors.CYAN}Found HuggingFace snapshot: {snapshot_dir.name[:8]}...{Colors.ENDC}")
+        
+        # Create ecapa cache directory
+        ecapa_cache.mkdir(parents=True, exist_ok=True)
+        
+        # Link or copy files from HuggingFace cache
+        blobs_dir = hf_cache_base / "blobs"
+        files_linked = 0
+        
+        for filename in required_files:
+            src_file = snapshot_dir / filename
+            dst_file = ecapa_cache / filename
+            
+            if dst_file.exists():
+                continue
+            
+            if not src_file.exists():
+                print(f"  {Colors.YELLOW}⚠️  Missing source file: {filename}{Colors.ENDC}")
+                continue
+            
+            # If source is a symlink, resolve it to get the actual blob
+            if src_file.is_symlink():
+                # The symlink points to ../../blobs/xxx
+                # We need to resolve it relative to the snapshot dir
+                blob_ref = os.readlink(src_file)
+                actual_blob = (snapshot_dir / blob_ref).resolve()
+            else:
+                actual_blob = src_file
+            
+            if actual_blob.exists():
+                try:
+                    # Try hard link first (fastest, saves space)
+                    os.link(actual_blob, dst_file)
+                    files_linked += 1
+                except (OSError, PermissionError):
+                    # Fall back to copy
+                    shutil.copy2(actual_blob, dst_file)
+                    files_linked += 1
+            else:
+                print(f"  {Colors.YELLOW}⚠️  Blob not found for: {filename}{Colors.ENDC}")
+        
+        if files_linked > 0:
+            print(f"  {Colors.GREEN}✓ Linked {files_linked} files to {ecapa_cache}{Colors.ENDC}")
+        
+        # Verify
+        missing = [f for f in required_files if not (ecapa_cache / f).exists()]
+        if missing:
+            print(f"  {Colors.YELLOW}⚠️  Still missing: {', '.join(missing)}{Colors.ENDC}")
+            return False
+        
+        print(f"  {Colors.GREEN}✓ ECAPA cache setup complete{Colors.ENDC}")
+        return True
+        
+    except Exception as e:
+        print(f"  {Colors.FAIL}✗ Error setting up ECAPA cache: {e}{Colors.ENDC}")
+        logger.error(f"ECAPA cache setup error: {e}")
+        return False
 
 
 async def ensure_cloud_sql_proxy():
@@ -14282,6 +14485,9 @@ async def main():
     print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
     print(f"{Colors.CYAN}🔐 Voice Biometric System Initialization{Colors.ENDC}")
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")
+
+    # Ensure ECAPA model cache is available (prevents circuit breaker issues)
+    ensure_ecapa_cache()
 
     proxy_started = await ensure_cloud_sql_proxy()
     if proxy_started:
@@ -15679,6 +15885,10 @@ async def main():
                 45,
                 metadata={"icon": "🚀", "label": "Starting", "sublabel": "Launching backend"}
             )
+
+            # Store broadcast function globally for use in run() method
+            global _broadcast_to_loading_server
+            _broadcast_to_loading_server = broadcast_to_loading_server
 
             # Optimize system for faster startup
             print(f"{Colors.CYAN}⚡ Optimizing system for fast startup...{Colors.ENDC}")

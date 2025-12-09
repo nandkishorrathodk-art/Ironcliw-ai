@@ -1165,6 +1165,213 @@ async def reset_vbi_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/reset-circuit-breakers")
+async def reset_circuit_breakers():
+    """
+    Reset ALL circuit breakers for voice unlock services.
+    
+    This endpoint resets circuit breakers for:
+    - IntelligentVoiceUnlockService (STT, embedding, verification)
+    - ECAPA-TDNN Cloud Service (speaker embedding extraction)
+    - VBI (VoiceBiometricIntelligence)
+    - Hybrid STT Router (speech recognition engines)
+    
+    Use this when you see "Circuit breaker OPEN" errors preventing
+    voice unlock from working.
+    
+    Returns:
+        Dict with reset status for each service
+    """
+    try:
+        results = {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "services_reset": []
+        }
+        
+        # 1. Reset IntelligentVoiceUnlockService circuit breakers
+        try:
+            from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+            
+            # Get or create service instance
+            service = IntelligentVoiceUnlockService()
+            
+            # Reset all circuit breakers
+            services_reset = []
+            for name in list(service._circuit_breaker_failures.keys()):
+                old_failures = service._circuit_breaker_failures[name]
+                service._circuit_breaker_failures[name] = 0
+                services_reset.append(f"{name} ({old_failures} failures)")
+            
+            results["intelligent_voice_unlock"] = {
+                "reset": True,
+                "services_cleared": services_reset or ["No circuit breakers were open"]
+            }
+            results["services_reset"].append("IntelligentVoiceUnlockService")
+            
+        except Exception as e:
+            logger.warning(f"Could not reset IntelligentVoiceUnlockService: {e}")
+            results["intelligent_voice_unlock"] = {"reset": False, "error": str(e)}
+        
+        # 2. Reset ECAPA-TDNN Cloud Service circuit breaker
+        try:
+            from cloud_services.ecapa_cloud_service import get_model_manager, CircuitState
+            
+            # Get singleton instance
+            ecapa = get_model_manager()
+            
+            old_state = ecapa.circuit_breaker.state.name
+            old_failures = ecapa.circuit_breaker.failure_count
+            
+            # Reset circuit breaker
+            ecapa.circuit_breaker.state = CircuitState.CLOSED
+            ecapa.circuit_breaker.failure_count = 0
+            ecapa.circuit_breaker.last_failure_time = None
+            
+            results["ecapa_cloud_service"] = {
+                "reset": True,
+                "previous_state": old_state,
+                "previous_failures": old_failures
+            }
+            results["services_reset"].append("ECAPAModelManager")
+            
+        except Exception as e:
+            logger.warning(f"Could not reset ECAPA circuit breaker: {e}")
+            results["ecapa_cloud_service"] = {"reset": False, "error": str(e)}
+        
+        # 3. Reset VBI circuit breakers if available
+        try:
+            vbi = await get_vbi()
+            if vbi and hasattr(vbi, '_circuit_breaker_failures'):
+                for name in list(vbi._circuit_breaker_failures.keys()):
+                    vbi._circuit_breaker_failures[name] = 0
+                results["vbi"] = {"reset": True}
+                results["services_reset"].append("VBI")
+            else:
+                results["vbi"] = {"reset": False, "reason": "VBI not available or no circuit breakers"}
+        except Exception as e:
+            logger.warning(f"Could not reset VBI circuit breaker: {e}")
+            results["vbi"] = {"reset": False, "error": str(e)}
+        
+        # 4. Reset Hybrid STT Router circuit breakers
+        try:
+            from voice.hybrid_stt_router import HybridSTTRouter
+            
+            router_instance = HybridSTTRouter()
+            
+            engines_reset = []
+            for engine in list(router_instance._circuit_breaker_failures.keys()):
+                old_failures = router_instance._circuit_breaker_failures[engine]
+                router_instance._circuit_breaker_failures[engine] = 0
+                engines_reset.append(f"{engine} ({old_failures} failures)")
+            
+            results["hybrid_stt_router"] = {
+                "reset": True,
+                "engines_cleared": engines_reset or ["No circuit breakers were open"]
+            }
+            results["services_reset"].append("HybridSTTRouter")
+            
+        except Exception as e:
+            logger.warning(f"Could not reset Hybrid STT Router: {e}")
+            results["hybrid_stt_router"] = {"reset": False, "error": str(e)}
+        
+        logger.info(f"Circuit breakers reset: {results['services_reset']}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Circuit breaker reset error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/circuit-breaker-status")
+async def get_circuit_breaker_status():
+    """
+    Get status of all circuit breakers for voice unlock services.
+    
+    Returns the current state, failure counts, and timeouts for all
+    circuit breakers in the voice unlock system.
+    """
+    try:
+        status = {
+            "timestamp": datetime.now().isoformat(),
+            "services": {}
+        }
+        
+        # 1. IntelligentVoiceUnlockService
+        try:
+            from voice_unlock.intelligent_voice_unlock_service import IntelligentVoiceUnlockService
+            
+            service = IntelligentVoiceUnlockService()
+            
+            cb_status = {}
+            for name, failures in service._circuit_breaker_failures.items():
+                is_open = failures >= service.circuit_breaker_threshold
+                cb_status[name] = {
+                    "state": "OPEN" if is_open else "CLOSED",
+                    "failures": failures,
+                    "threshold": service.circuit_breaker_threshold,
+                    "timeout": service.circuit_breaker_timeout
+                }
+            
+            status["services"]["intelligent_voice_unlock"] = {
+                "available": True,
+                "circuit_breakers": cb_status or {"status": "No circuit breakers recorded"}
+            }
+            
+        except Exception as e:
+            status["services"]["intelligent_voice_unlock"] = {"available": False, "error": str(e)}
+        
+        # 2. ECAPA Cloud Service
+        try:
+            from cloud_services.ecapa_cloud_service import get_model_manager, CloudECAPAConfig
+            
+            ecapa = get_model_manager()
+            
+            status["services"]["ecapa_cloud_service"] = {
+                "available": True,
+                "circuit_breaker": {
+                    "state": ecapa.circuit_breaker.state.name,
+                    "failures": ecapa.circuit_breaker.failure_count,
+                    "threshold": CloudECAPAConfig.CB_FAILURE_THRESHOLD,
+                    "recovery_timeout": CloudECAPAConfig.CB_RECOVERY_TIMEOUT
+                },
+                "model_ready": ecapa.is_ready
+            }
+            
+        except Exception as e:
+            status["services"]["ecapa_cloud_service"] = {"available": False, "error": str(e)}
+        
+        # 3. Hybrid STT Router
+        try:
+            from voice.hybrid_stt_router import HybridSTTRouter
+            
+            router_instance = HybridSTTRouter()
+            
+            cb_status = {}
+            for engine, failures in router_instance._circuit_breaker_failures.items():
+                is_open = failures >= router_instance._circuit_breaker_threshold
+                cb_status[engine] = {
+                    "state": "OPEN" if is_open else "CLOSED",
+                    "failures": failures,
+                    "threshold": router_instance._circuit_breaker_threshold
+                }
+            
+            status["services"]["hybrid_stt_router"] = {
+                "available": True,
+                "circuit_breakers": cb_status or {"status": "No circuit breakers recorded"}
+            }
+            
+        except Exception as e:
+            status["services"]["hybrid_stt_router"] = {"available": False, "error": str(e)}
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"Circuit breaker status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/vbi/adapt-baseline")
 async def adapt_vbi_baseline(user_id: str = "owner", force: bool = False):
     """
