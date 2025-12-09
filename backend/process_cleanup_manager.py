@@ -2155,14 +2155,19 @@ class ProcessCleanupManager:
     async def _critical_memory_relief(self) -> None:
         """
         CRITICAL memory relief (>90% usage).
-        Maximum aggressive cleanup + immediate cloud offload.
+        Maximum aggressive cleanup + immediate cloud offload + GCP Spot VM.
         """
         logger.warning("🚨 CRITICAL memory pressure - maximum relief mode")
 
-        # 1. Immediate cloud offload
+        # 1. Immediate cloud offload (Cloud Run)
         offload_result = await self._trigger_cloud_offload()
         if offload_result["success"]:
             logger.info(f"☁️  Cloud offload freed {offload_result['memory_freed_mb']:.0f}MB")
+        else:
+            # 1b. Try spinning up GCP Spot VM if Cloud Run offload failed
+            vm_result = await self._trigger_gcp_spot_vm()
+            if vm_result.get("success"):
+                logger.info(f"🚀 GCP Spot VM created for ML offload: {vm_result.get('ip')}")
 
         # 2. Kill non-essential JARVIS processes
         try:
@@ -2188,20 +2193,115 @@ class ProcessCleanupManager:
         except Exception:
             pass
 
+    async def _trigger_gcp_spot_vm(self) -> Dict[str, Any]:
+        """
+        Trigger GCP Spot VM creation for ML offload.
+        
+        This is called when Cloud Run is not available or memory pressure is critical.
+        Uses the pre-initialized GCP VM Manager from startup.
+        
+        Returns:
+            Dict with VM creation status and details
+        """
+        result = {"success": False, "reason": "Not attempted"}
+        
+        try:
+            # Try to get the VM manager from app state (initialized at startup)
+            from main import app
+            vm_manager = getattr(app.state, 'gcp_vm_manager', None)
+            
+            if vm_manager is None:
+                # Fallback: try to get/create the VM manager directly
+                try:
+                    from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig
+                    import os
+                    
+                    config = VMManagerConfig(
+                        project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "jarvis-ai-436818"),
+                        zone=os.getenv("GCP_ZONE", "us-central1-a"),
+                        machine_type=os.getenv("GCP_ML_VM_TYPE", "e2-highmem-4"),
+                        use_spot=True,
+                    )
+                    vm_manager = await get_gcp_vm_manager(config)
+                    await vm_manager.initialize()
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not initialize GCP VM Manager: {e}")
+                    result["reason"] = f"VM Manager init failed: {e}"
+                    return result
+            
+            if vm_manager is None:
+                result["reason"] = "VM Manager not available"
+                return result
+            
+            # Check memory status for VM creation decision
+            import psutil
+            mem = psutil.virtual_memory()
+            memory_pressure = mem.percent
+            available_gb = mem.available / (1024**3)
+            
+            # Create a simple memory snapshot
+            class MemorySnapshot:
+                def __init__(self):
+                    self.gcp_shift_recommended = True  # We're here because of critical memory
+                    self.memory_pressure = memory_pressure
+                    self.available_gb = available_gb
+                    self.reasoning = f"Critical memory pressure: {memory_pressure:.1f}%"
+            
+            snapshot = MemorySnapshot()
+            
+            # Check if we should create VM
+            should_create, reason, confidence = await vm_manager.should_create_vm(
+                snapshot,
+                trigger_reason=f"Critical memory relief ({memory_pressure:.0f}% pressure)"
+            )
+            
+            if should_create:
+                logger.info(f"🚀 Creating GCP Spot VM: {reason}")
+                vm = await vm_manager.create_vm(
+                    components=["ecapa_tdnn", "whisper", "speechbrain", "ml_models"],
+                    trigger_reason=f"Memory pressure relief: {reason}",
+                )
+                
+                if vm:
+                    result = {
+                        "success": True,
+                        "vm_id": vm.instance_id if hasattr(vm, 'instance_id') else str(vm),
+                        "ip": vm.ip_address if hasattr(vm, 'ip_address') else None,
+                        "reason": reason,
+                    }
+                    logger.info(f"✅ GCP Spot VM created: {result}")
+                else:
+                    result["reason"] = "VM creation returned None"
+            else:
+                result["reason"] = reason
+                logger.debug(f"GCP Spot VM not needed: {reason}")
+                
+        except Exception as e:
+            logger.error(f"GCP Spot VM trigger failed: {e}")
+            result["reason"] = str(e)
+        
+        return result
+
     async def _high_memory_relief(self) -> None:
         """
         HIGH memory relief (80-90% usage).
-        Aggressive cleanup + cloud offload.
+        Aggressive cleanup + cloud offload + GCP Spot VM fallback.
         """
         logger.warning("⚠️  HIGH memory pressure - aggressive relief mode")
 
-        # 1. Try cloud offload first
+        # 1. Try cloud offload first (Cloud Run)
         offload_result = await self._trigger_cloud_offload()
         if offload_result["success"]:
             logger.info(f"☁️  Cloud offload freed {offload_result['memory_freed_mb']:.0f}MB")
             return  # Cloud offload successful, might be enough
 
-        # 2. Standard aggressive cleanup
+        # 1b. Try GCP Spot VM if Cloud Run offload failed
+        vm_result = await self._trigger_gcp_spot_vm()
+        if vm_result.get("success"):
+            logger.info(f"🚀 GCP Spot VM created for ML offload: {vm_result.get('ip')}")
+            return  # VM created, ML will be offloaded
+
+        # 2. Standard aggressive cleanup (fallback if cloud options failed)
         try:
             self._cleanup_ipc_resources()
         except Exception as e:

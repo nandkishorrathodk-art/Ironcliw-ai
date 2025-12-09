@@ -104,8 +104,9 @@ class ParallelInitializer:
 
         # Phase 2: ML Infrastructure (parallel, non-blocking)
         self._add_component("memory_aware_startup", priority=20)
-        self._add_component("cloud_ml_router", priority=21, dependencies=["memory_aware_startup"])
-        self._add_component("cloud_ecapa_client", priority=22)
+        self._add_component("gcp_vm_manager", priority=21)  # ALWAYS init for runtime memory pressure handling
+        self._add_component("cloud_ml_router", priority=22, dependencies=["memory_aware_startup"])
+        self._add_component("cloud_ecapa_client", priority=23)
         self._add_component("vbi_prewarm", priority=23, dependencies=["cloud_ecapa_client"])  # VBI pre-warming after ECAPA client
         self._add_component("vbi_health_monitor", priority=24)  # VBI health monitoring for operation tracking
         self._add_component("ml_engine_registry", priority=25)
@@ -394,6 +395,47 @@ class ParallelInitializer:
         except Exception as e:
             logger.warning(f"Learning database failed: {e}")
             raise
+
+    async def _init_gcp_vm_manager(self):
+        """
+        ALWAYS initialize GCP VM Manager at startup.
+        
+        This ensures the VM manager is available for runtime memory pressure
+        handling, even if the startup decision was LOCAL_FULL.
+        
+        Without this, if memory pressure rises after startup, the system
+        cannot spin up a Spot VM because the manager was never initialized.
+        """
+        try:
+            from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig
+            import os
+            
+            # Configure for ML workload with sensible defaults
+            config = VMManagerConfig(
+                project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "jarvis-ai-436818"),
+                zone=os.getenv("GCP_ZONE", "us-central1-a"),
+                machine_type=os.getenv("GCP_ML_VM_TYPE", "e2-highmem-4"),
+                use_spot=True,
+                spot_max_price=0.10,
+                idle_timeout_minutes=15,
+            )
+            
+            # Get and initialize the VM manager (singleton)
+            vm_manager = await get_gcp_vm_manager(config)
+            await vm_manager.initialize()
+            
+            # Store in app state for runtime access
+            self.app.state.gcp_vm_manager = vm_manager
+            
+            logger.info(f"   GCP VM Manager: Ready (Project: {config.project_id})")
+            logger.info(f"   Spot VM Type: {config.machine_type} (standby for memory pressure)")
+            
+        except ImportError as e:
+            logger.debug(f"GCP VM Manager not available: {e}")
+            self.app.state.gcp_vm_manager = None
+        except Exception as e:
+            logger.warning(f"GCP VM Manager init failed (non-critical): {e}")
+            self.app.state.gcp_vm_manager = None
 
     async def _init_memory_aware_startup(self):
         """Determine memory-aware startup mode"""
