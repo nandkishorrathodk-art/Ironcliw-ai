@@ -794,6 +794,16 @@ class CostTracker:
             logger.error(f"Failed to get cost summary: {e}")
             return {}
 
+    async def get_daily_cost(self) -> float:
+        """
+        Get today's total estimated cost.
+
+        Returns:
+            float: Total estimated cost for the current day
+        """
+        summary = await self.get_cost_summary("day")
+        return summary.get("total_estimated_cost", 0.0)
+
     async def get_routing_metrics(self, period: str = "day") -> Dict[str, Any]:
         """Get routing metrics with enhanced analytics"""
         now = datetime.utcnow()

@@ -436,9 +436,18 @@ class ParallelInitializer:
 
             client = await get_cloud_ecapa_client()
             if client:
-                init_result = await client.initialize()
-                self.app.state.cloud_ecapa_client = client
-                logger.info(f"   CloudECAPAClient ready (backend: {init_result.get('backend', 'unknown')})")
+                init_success = await client.initialize()
+                if init_success:
+                    self.app.state.cloud_ecapa_client = client
+                    # Get backend info from client status if available
+                    backend_info = "cloud_run"
+                    if hasattr(client, 'get_status'):
+                        status = client.get_status()
+                        if isinstance(status, dict):
+                            backend_info = status.get('healthy_endpoint', 'cloud_run')
+                    logger.info(f"   CloudECAPAClient ready (backend: {backend_info})")
+                else:
+                    logger.warning("   CloudECAPAClient initialization returned False")
 
         except Exception as e:
             logger.warning(f"CloudECAPAClient failed: {e}")
