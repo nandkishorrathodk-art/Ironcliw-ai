@@ -4282,6 +4282,84 @@ async def ml_audio_websocket_compat(websocket: WebSocket):
             pass
 
 
+# =====================================================================
+# STARTUP PROGRESS ENDPOINTS - Real-time loading progress for frontend
+# =====================================================================
+
+@app.websocket("/ws/startup-progress")
+async def startup_progress_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time startup progress updates"""
+    await websocket.accept()
+    logger.info("[StartupProgress] WebSocket client connected")
+
+    from core.startup_progress_broadcaster import get_startup_broadcaster
+
+    broadcaster = get_startup_broadcaster()
+    broadcaster.register_websocket(websocket)
+
+    try:
+        # Send current state immediately
+        current_state = broadcaster.get_current_state()
+        await websocket.send_json({
+            "event_type": "state_sync",
+            "progress": current_state["progress"],
+            "phase": current_state["phase"],
+            "message": current_state["message"],
+            "current_component": current_state["current_component"],
+            "components": current_state["components"],
+            "memory": current_state["memory"],
+            "startup_mode": current_state["startup_mode"],
+            "elapsed_seconds": current_state["elapsed_seconds"]
+        })
+
+        # Send recent events for context
+        recent_events = broadcaster.get_recent_events(count=20)
+        for event in recent_events:
+            await websocket.send_json(event)
+
+        # Keep connection alive and handle pings
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                if data == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                # Send keepalive
+                await websocket.send_json({"type": "keepalive"})
+
+    except WebSocketDisconnect:
+        logger.info("[StartupProgress] WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"[StartupProgress] WebSocket error: {e}")
+    finally:
+        broadcaster.unregister_websocket(websocket)
+
+
+@app.get("/api/startup-progress")
+async def get_startup_progress():
+    """HTTP polling endpoint for startup progress (fallback)"""
+    from core.startup_progress_broadcaster import get_startup_broadcaster
+
+    broadcaster = get_startup_broadcaster()
+    state = broadcaster.get_current_state()
+
+    return {
+        "progress": state["progress"],
+        "phase": state["phase"],
+        "message": state["message"],
+        "stage": state["current_component"] or state["phase"],
+        "metadata": {
+            "memory_available_gb": state["memory"]["available_gb"] if state["memory"] else None,
+            "memory_pressure": state["memory"]["pressure_percent"] if state["memory"] else None,
+            "startup_mode": state["startup_mode"],
+            "components_ready": len([c for c in state["components"].values() if c.get("status") == "complete"]),
+            "components_failed": len([c for c in state["components"].values() if c.get("status") == "failed"]),
+            "total_components": len(state["components"]) if state["components"] else 0,
+            "elapsed_seconds": state["elapsed_seconds"]
+        }
+    }
+
+
 # Audio endpoints for frontend compatibility
 @app.post("/audio/speak")
 async def audio_speak_post(request: dict):

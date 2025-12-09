@@ -16,7 +16,8 @@
 class JARVISLoadingManager {
     constructor() {
         this.config = {
-            loadingServerPort: 3001,
+            // Backend runs on port 8000, main app on 3000
+            backendPort: 8000,
             mainAppPort: 3000,
             wsProtocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
             httpProtocol: window.location.protocol,
@@ -292,7 +293,7 @@ class JARVISLoadingManager {
 
     async init() {
         console.log('[JARVIS] Loading Manager v3.0 starting...');
-        console.log(`[Config] Loading Server: ${this.config.hostname}:${this.config.loadingServerPort}`);
+        console.log(`[Config] Backend: ${this.config.hostname}:${this.config.backendPort}`);
 
         // Create particle background
         this.createParticles();
@@ -343,7 +344,7 @@ class JARVISLoadingManager {
         }
 
         try {
-            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/ws/startup-progress`;
+            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.backendPort}/ws/startup-progress`;
             console.log(`[WebSocket] Connecting to ${wsUrl}...`);
 
             this.state.ws = new WebSocket(wsUrl);
@@ -405,7 +406,7 @@ class JARVISLoadingManager {
         console.log('[Polling] Starting HTTP polling...');
         this.state.pollingInterval = setInterval(async () => {
             try {
-                const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
+                const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.backendPort}/api/startup-progress`;
                 const response = await fetch(url, {
                     method: 'GET',
                     cache: 'no-cache',
@@ -425,22 +426,32 @@ class JARVISLoadingManager {
     handleProgressUpdate(data) {
         this.state.lastUpdate = Date.now();
 
-        const { stage, message, progress, metadata } = data;
+        // Handle both new event_type format and legacy stage format
+        const eventType = data.event_type || data.type;
+        const component = data.component || data.stage;
+        const message = data.message;
+        const progress = data.progress;
+        const phase = data.phase;
+        const metadata = data.metadata || {};
 
-        console.log(`[Progress] ${progress}% - ${stage}: ${message}`);
+        // Skip keepalive/pong messages
+        if (eventType === 'keepalive' || eventType === 'pong') return;
 
-        // Update target progress
+        console.log(`[Progress] ${progress?.toFixed(1) || '?'}% - [${eventType}] ${component || phase}: ${message}`);
+
+        // Update target progress (weighted calculation from backend)
         if (typeof progress === 'number' && progress >= 0 && progress <= 100) {
             this.state.targetProgress = progress;
         }
 
-        // Update stage and message
-        if (stage) {
-            // Check if stage changed
-            if (this.state.stage !== stage && this.state.stage) {
+        // Update stage/component based on event type
+        const newStage = component || phase || data.stage;
+        if (newStage && newStage !== this.state.stage) {
+            // Mark previous stage as completed
+            if (this.state.stage && eventType !== 'component_start') {
                 this.state.completedStages.push(this.state.stage);
             }
-            this.state.stage = stage;
+            this.state.stage = newStage;
             this.state.currentSubstep = 0;
         }
         if (message) this.state.message = message;
@@ -486,15 +497,18 @@ class JARVISLoadingManager {
         this.updateUI();
         this.updateDetailedStatus();
 
-        // Handle completion
-        if (stage === 'complete' || progress >= 100) {
-            const success = metadata?.success !== false;
-            const redirectUrl = metadata?.redirect_url || `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
+        // Handle completion - check both event_type and phase
+        if (eventType === 'complete' || phase === 'complete' || progress >= 100) {
+            const success = metadata.success !== false;
+            const redirectUrl = metadata.redirect_url || `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
             this.handleCompletion(success, redirectUrl, message);
         }
 
         // Handle failure
-        if (stage === 'failed' || metadata?.success === false) {
+        if (eventType === 'component_fail' && metadata.is_critical) {
+            console.error(`[CRITICAL] Component failed: ${component} - ${message}`);
+        }
+        if (phase === 'failed' || metadata.success === false) {
             this.showError(message || 'Startup failed');
         }
     }
@@ -503,8 +517,20 @@ class JARVISLoadingManager {
      * Update the detailed status panel with current stage info
      */
     updateDetailedStatus() {
-        const stageDef = this.stageDefinitions[this.state.stage];
-        if (!stageDef) return;
+        // Get stage definition or create dynamic one for backend components
+        let stageDef = this.stageDefinitions[this.state.stage];
+        if (!stageDef) {
+            // Dynamically create stage info for unknown components from backend
+            const componentName = this.state.stage || 'unknown';
+            const formattedName = componentName
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, c => c.toUpperCase());
+            stageDef = {
+                name: formattedName,
+                icon: this._getComponentIcon(componentName),
+                substeps: [`Initializing ${formattedName}...`]
+            };
+        }
 
         // Update stage header
         if (this.elements.stageIcon) {
@@ -1113,6 +1139,45 @@ class JARVISLoadingManager {
                 this.showError('Startup timed out. Please check terminal logs and try again.');
             }
         }, 5000);
+    }
+
+    /**
+     * Get an appropriate icon for a backend component
+     */
+    _getComponentIcon(componentName) {
+        const iconMap = {
+            'config': '⚙️',
+            'cloud_sql': '🗄️',
+            'learning': '🧠',
+            'memory': '💾',
+            'cloud_ml': '☁️',
+            'cloud_ecapa': '🎤',
+            'vbi': '🔐',
+            'ml_engine': '🤖',
+            'speaker': '🔊',
+            'voice': '🎙️',
+            'jarvis': '🤖',
+            'websocket': '🔌',
+            'unified': '🔗',
+            'neural': '🧠',
+            'goal': '🎯',
+            'uae': '🌐',
+            'hybrid': '⚡',
+            'orchestrator': '🎼',
+            'vision': '👁️',
+            'display': '🖥️',
+            'dynamic': '⚡',
+            'api': '🌐',
+            'database': '🗄️',
+        };
+
+        // Find matching icon
+        for (const [key, icon] of Object.entries(iconMap)) {
+            if (componentName.toLowerCase().includes(key)) {
+                return icon;
+            }
+        }
+        return '🔧'; // Default icon
     }
 
     cleanup() {

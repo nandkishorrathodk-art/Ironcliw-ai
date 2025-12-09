@@ -37,6 +37,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+# Import the startup progress broadcaster for real-time WebSocket updates
+from core.startup_progress_broadcaster import get_startup_broadcaster
+
 logger = logging.getLogger(__name__)
 
 
@@ -235,9 +238,24 @@ class ParallelInitializer:
             total = len(self.components)
             logger.info(f"Initialization complete: {ready}/{total} components in {elapsed:.1f}s")
 
+            # Broadcast final completion to frontend
+            broadcaster = get_startup_broadcaster()
+            success = not failed_critical
+            await broadcaster.broadcast_complete(
+                success=success,
+                message="JARVIS Online" if success else f"JARVIS Online (degraded: {', '.join(failed_critical)})"
+            )
+
         except Exception as e:
             logger.error(f"Background initialization error: {e}", exc_info=True)
             self.app.state.startup_phase = "ERROR"
+
+            # Broadcast error state
+            broadcaster = get_startup_broadcaster()
+            await broadcaster.broadcast_complete(
+                success=False,
+                message=f"Startup error: {str(e)}"
+            )
 
     def _group_by_priority(self) -> Dict[int, List[ComponentInit]]:
         """Group components by priority for parallel execution"""
@@ -256,6 +274,13 @@ class ParallelInitializer:
 
         comp.phase = InitPhase.RUNNING
         comp.start_time = time.time()
+
+        # Broadcast component start via WebSocket
+        broadcaster = get_startup_broadcaster()
+        await broadcaster.broadcast_component_start(
+            component=name,
+            message=f"Initializing {name.replace('_', ' ').title()}..."
+        )
 
         try:
             # Dispatch to component-specific initializer
@@ -277,10 +302,20 @@ class ParallelInitializer:
             comp.phase = InitPhase.COMPLETE
             comp.end_time = time.time()
             self.app.state.components_ready.add(name)
-            if comp.duration_ms:
-                logger.info(f"[READY] {name} ({comp.duration_ms:.0f}ms)")
+
+            duration_ms = comp.duration_ms
+            if duration_ms:
+                logger.info(f"[READY] {name} ({duration_ms:.0f}ms)")
             else:
                 logger.info(f"[READY] {name}")
+
+            # Broadcast completion via WebSocket
+            broadcaster = get_startup_broadcaster()
+            await broadcaster.broadcast_component_complete(
+                component=name,
+                message=f"{name.replace('_', ' ').title()} ready",
+                duration_ms=duration_ms
+            )
 
     async def _mark_failed(self, name: str, error: str):
         """Mark a component as failed"""
@@ -291,6 +326,14 @@ class ParallelInitializer:
             comp.error = error
             self.app.state.components_failed.add(name)
             logger.warning(f"[FAILED] {name}: {error}")
+
+            # Broadcast failure via WebSocket
+            broadcaster = get_startup_broadcaster()
+            await broadcaster.broadcast_component_failed(
+                component=name,
+                error=error,
+                is_critical=comp.is_critical
+            )
 
     async def _mark_skipped(self, name: str, reason: str):
         """Mark a component as skipped"""
