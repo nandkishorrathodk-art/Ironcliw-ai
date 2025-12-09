@@ -254,6 +254,19 @@ logging.getLogger("workflows.weather_app_vision_unified").setLevel(logging.DEBUG
 logging.getLogger("system_control.unified_vision_weather").setLevel(logging.DEBUG)
 logging.getLogger("api.voice_websocket_handler").setLevel(logging.DEBUG)
 
+# Silence noisy third-party library DEBUG logs
+# Use NullHandler + setLevel to completely silence DEBUG output
+for _lib in [
+    "speechbrain", "speechbrain.utils", "speechbrain.utils.checkpoints",
+    "speechbrain.utils.fetching", "speechbrain.utils.parameter_transfer",
+    "speechbrain.dataio", "speechbrain.lobes", "speechbrain.inference",
+    "huggingface_hub", "transformers", "torch", "torchaudio",
+    "urllib3", "httpx", "httpcore", "filelock", "datasets"
+]:
+    _logger = logging.getLogger(_lib)
+    _logger.setLevel(logging.WARNING)
+    _logger.propagate = False  # Don't propagate to root logger
+
 # Check if we're in optimized mode - default to True for faster startup
 OPTIMIZE_STARTUP = os.getenv("OPTIMIZE_STARTUP", "true").lower() == "true"
 PARALLEL_IMPORTS = os.getenv("BACKEND_PARALLEL_IMPORTS", "true").lower() == "true"
