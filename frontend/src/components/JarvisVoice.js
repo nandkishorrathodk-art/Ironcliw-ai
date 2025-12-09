@@ -20,6 +20,7 @@ import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats dis
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
 import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
+import { getJarvisConnectionService, ConnectionState, connectionStateToJarvisStatus } from '../services/JarvisConnectionService'; // 🆕 Unified connection service
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -723,6 +724,107 @@ const JarvisVoice = () => {
   // Ensure consistent WebSocket URL (fix port mismatch)
   const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
 
+  // 🆕 JarvisConnectionService integration - handles all connection state
+  const jarvisConnectionServiceRef = useRef(null);
+
+  useEffect(() => {
+    // Initialize the unified connection service
+    const connectionService = getJarvisConnectionService();
+    jarvisConnectionServiceRef.current = connectionService;
+
+    // Subscribe to connection state changes
+    const unsubscribeState = connectionService.on('stateChange', ({ state: newState }) => {
+      console.log('[JarvisVoice] Connection state changed:', newState);
+      
+      // Map connection state to jarvisStatus
+      const newStatus = connectionStateToJarvisStatus(newState);
+      setJarvisStatus(newStatus);
+      
+      // If we just came online, ensure WebSocket ref is updated
+      if (newState === ConnectionState.ONLINE) {
+        const ws = connectionService.getWebSocket();
+        if (ws && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+          console.log('[JarvisVoice] Updating wsRef from connection service');
+          wsRef.current = ws;
+          
+          // Set up message handler
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              handleWebSocketMessage(data);
+            } catch (e) {
+              console.error('[JarvisVoice] Message parse error:', e);
+            }
+          };
+        }
+        setError(null);
+      }
+    });
+
+    const unsubscribeMode = connectionService.on('modeChange', ({ mode }) => {
+      console.log('[JarvisVoice] Backend mode changed:', mode);
+      setSystemMode(mode);
+      
+      if (mode === 'full') {
+        // Show upgrade success banner
+        setShowUpgradeSuccess(true);
+        setTimeout(() => setShowUpgradeSuccess(false), 10000);
+      }
+    });
+
+    // Subscribe to messages
+    const unsubscribeResponse = connectionService.on('response', (data) => {
+      handleWebSocketMessage(data);
+    });
+
+    const unsubscribeJarvisResponse = connectionService.on('jarvis_response', (data) => {
+      handleWebSocketMessage({ type: 'jarvis_response', ...data });
+    });
+
+    const unsubscribeVBI = connectionService.on('vbi_progress', (data) => {
+      handleWebSocketMessage({ type: 'vbi_progress', ...data });
+    });
+
+    const unsubscribeWorkflow = connectionService.on('workflow_progress', (data) => {
+      handleWebSocketMessage({ type: 'workflow_progress', ...data });
+    });
+
+    const unsubscribeProactive = connectionService.on('proactive_suggestion', (data) => {
+      handleWebSocketMessage({ type: 'proactive_suggestion', ...data });
+    });
+
+    // Get initial state
+    const initialState = connectionService.getState();
+    setJarvisStatus(connectionStateToJarvisStatus(initialState));
+    setSystemMode(connectionService.getMode());
+
+    // If already online, update wsRef
+    if (initialState === ConnectionState.ONLINE) {
+      const ws = connectionService.getWebSocket();
+      if (ws) {
+        wsRef.current = ws;
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+          } catch (e) {
+            console.error('[JarvisVoice] Message parse error:', e);
+          }
+        };
+      }
+    }
+
+    return () => {
+      unsubscribeState();
+      unsubscribeMode();
+      unsubscribeResponse();
+      unsubscribeJarvisResponse();
+      unsubscribeVBI();
+      unsubscribeWorkflow();
+      unsubscribeProactive();
+    };
+  }, []);
+
   useEffect(() => {
     // Preload voices to ensure Daniel is available
     if ('speechSynthesis' in window) {
@@ -1137,6 +1239,51 @@ const JarvisVoice = () => {
   });
 
   const connectWebSocket = async () => {
+    // 🆕 First, check if JarvisConnectionService has an active connection
+    if (jarvisConnectionServiceRef.current) {
+      const connectionService = jarvisConnectionServiceRef.current;
+      
+      if (connectionService.isConnected()) {
+        const ws = connectionService.getWebSocket();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          console.log('[WS-ADVANCED] Using existing connection from JarvisConnectionService');
+          wsRef.current = ws;
+          
+          // Set up message handler
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              handleWebSocketMessage(data);
+            } catch (e) {
+              console.error('[WS-ADVANCED] Message parse error:', e);
+            }
+          };
+          
+          setJarvisStatus('online');
+          setError(null);
+          return;
+        }
+      }
+      
+      // If not connected, trigger reconnect on the service
+      if (connectionService.getState() === ConnectionState.OFFLINE || 
+          connectionService.getState() === ConnectionState.ERROR) {
+        console.log('[WS-ADVANCED] Triggering reconnect via JarvisConnectionService');
+        connectionService.reconnect();
+        return;
+      }
+      
+      // If service is connecting, wait
+      if (connectionService.getState() === ConnectionState.CONNECTING || 
+          connectionService.getState() === ConnectionState.RECONNECTING ||
+          connectionService.getState() === ConnectionState.DISCOVERING) {
+        console.log('[WS-ADVANCED] JarvisConnectionService is connecting, waiting...');
+        setJarvisStatus('connecting');
+        return;
+      }
+    }
+
+    // Fallback: Direct WebSocket connection if service not available
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       console.log('[WS-ADVANCED] WebSocket already connected or connecting');
