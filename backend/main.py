@@ -512,8 +512,8 @@ def import_memory_system():
     except ImportError:
         memory["available"] = False
 
-        # Create stubs
-        class M1MemoryManager:
+        # Create stubs (renamed to avoid shadowing imported class for type checker)
+        class _M1MemoryManagerStub:
             async def start_monitoring(self):
                 pass
 
@@ -533,7 +533,7 @@ def import_memory_system():
             def register_component(self, *args, **kwargs):
                 pass
 
-        memory["manager_class"] = M1MemoryManager
+        memory["manager_class"] = _M1MemoryManagerStub
 
     return memory
 
@@ -1152,8 +1152,8 @@ async def parallel_lifespan(app: FastAPI):
         logger.info("Parallel startup shutdown complete")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+@asynccontextmanager  # type: ignore[arg-type]
+async def lifespan(app: FastAPI):  # type: ignore[misc]
     """Optimized lifespan handler with parallel initialization"""
     logger.info("🚀 Starting optimized JARVIS backend...")
     start_time = time.time()
@@ -2123,7 +2123,7 @@ async def lifespan(app: FastAPI):
                     initialize_temporal_query_handler,
                 )
                 from context_intelligence.managers import get_change_detection_manager
-                from core.conversation_tracker import get_conversation_tracker
+                from core.conversation_tracker import get_conversation_tracker  # type: ignore[import-not-found]
 
                 temporal_handler = initialize_temporal_query_handler(
                     proactive_monitoring_manager=hybrid_monitoring,
