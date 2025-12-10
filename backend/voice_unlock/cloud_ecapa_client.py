@@ -339,10 +339,17 @@ class CloudECAPAClientConfig:
     # Daily budget for Spot VMs
     SPOT_VM_DAILY_BUDGET = float(os.getenv("JARVIS_SPOT_VM_DAILY_BUDGET", "1.0"))
 
-    # RAM thresholds for backend selection
-    RAM_THRESHOLD_LOCAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "6.0"))
+    # RAM thresholds for backend selection - DYNAMIC based on system
+    # ECAPA-TDNN actual requirements: ~1.5GB working set, ~500MB model weights
+    # Old static threshold of 6GB was too conservative for M1 Macs with unified memory
+    ECAPA_WORKING_SET_GB = float(os.getenv("JARVIS_ECAPA_WORKING_SET", "1.5"))  # Actual ECAPA needs
+    RAM_THRESHOLD_MIN_AVAILABLE_GB = float(os.getenv("JARVIS_RAM_MIN_AVAILABLE", "2.0"))  # Minimum free RAM
+    RAM_THRESHOLD_PERCENT = float(os.getenv("JARVIS_RAM_THRESHOLD_PERCENT", "15.0"))  # % of total RAM needed free
     RAM_THRESHOLD_CLOUD_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_CLOUD", "4.0"))
-    RAM_THRESHOLD_CRITICAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_CRITICAL", "2.0"))
+    RAM_THRESHOLD_CRITICAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_CRITICAL", "1.0"))  # Emergency only
+
+    # Legacy compatibility - now computed dynamically
+    RAM_THRESHOLD_LOCAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "2.0"))  # Lowered from 6.0
 
     # Routing preferences
     PREFER_CLOUD_RUN = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
@@ -2257,19 +2264,60 @@ class CloudECAPAClient:
         audio_data: bytes,
         sample_rate: int
     ) -> Optional[np.ndarray]:
-        """Extract embedding using local ECAPA model."""
+        """Extract embedding using local ECAPA model with intelligent RAM management."""
         try:
-            # Check RAM availability
+            # Dynamic RAM check - considers total system RAM, not just arbitrary threshold
             import psutil
-            available_gb = psutil.virtual_memory().available / (1024**3)
+            import platform
 
-            if available_gb < CloudECAPAClientConfig.RAM_THRESHOLD_LOCAL_GB:
+            mem = psutil.virtual_memory()
+            available_gb = mem.available / (1024**3)
+            total_gb = mem.total / (1024**3)
+            used_percent = mem.percent
+
+            # M1/M2 Macs have unified memory - more efficient than discrete RAM
+            is_apple_silicon = platform.processor() == 'arm' or 'arm' in platform.machine().lower()
+
+            # Dynamic threshold calculation:
+            # 1. Need at least ECAPA working set (~1.5GB) + safety margin
+            # 2. OR have at least 15% of total RAM free
+            # 3. M1 Macs get 20% bonus due to unified memory efficiency
+            ecapa_requirement = CloudECAPAClientConfig.ECAPA_WORKING_SET_GB
+            min_available = CloudECAPAClientConfig.RAM_THRESHOLD_MIN_AVAILABLE_GB
+            percent_threshold = CloudECAPAClientConfig.RAM_THRESHOLD_PERCENT
+
+            # Calculate dynamic threshold
+            percent_based_threshold = (total_gb * percent_threshold / 100)
+            dynamic_threshold = max(ecapa_requirement, min(min_available, percent_based_threshold))
+
+            # Apple Silicon bonus - unified memory is more efficient
+            if is_apple_silicon:
+                dynamic_threshold *= 0.8  # 20% reduction for M1/M2
+                logger.debug(f"Apple Silicon detected - reduced RAM threshold to {dynamic_threshold:.1f}GB")
+
+            # Check if we have enough RAM
+            can_run_local = available_gb >= dynamic_threshold
+
+            # Log decision with full context
+            if not can_run_local:
                 logger.warning(
-                    f"Insufficient RAM for local ECAPA: "
-                    f"{available_gb:.1f}GB available, "
-                    f"{CloudECAPAClientConfig.RAM_THRESHOLD_LOCAL_GB}GB required"
+                    f"RAM check for local ECAPA: {available_gb:.1f}GB available, "
+                    f"{dynamic_threshold:.1f}GB required (total: {total_gb:.1f}GB, "
+                    f"used: {used_percent:.0f}%, Apple Silicon: {is_apple_silicon})"
                 )
-                return None
+                # Still try if we're above critical threshold - ECAPA might work
+                if available_gb >= CloudECAPAClientConfig.RAM_THRESHOLD_CRITICAL_GB:
+                    logger.info(
+                        f"Above critical threshold ({CloudECAPAClientConfig.RAM_THRESHOLD_CRITICAL_GB}GB), "
+                        f"attempting local ECAPA anyway..."
+                    )
+                    can_run_local = True
+                else:
+                    return None
+            else:
+                logger.debug(
+                    f"RAM check passed: {available_gb:.1f}GB available >= {dynamic_threshold:.1f}GB required"
+                )
 
             # Try ML Registry
             from voice_unlock.ml_engine_registry import get_ml_registry
