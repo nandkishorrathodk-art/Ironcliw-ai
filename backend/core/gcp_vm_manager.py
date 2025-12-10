@@ -245,6 +245,7 @@ class GCPVMManager:
         # Use type aliases that work even when compute_v1 is not available
         self.instances_client: Optional[InstancesClientType] = None
         self.zones_client: Optional[ZonesClientType] = None
+        self.zone_operations_client = None  # For polling operation status
 
         # Integrations
         self.cost_tracker = None
@@ -287,6 +288,7 @@ class GCPVMManager:
             # Initialize GCP Compute Engine clients
             self.instances_client = compute_v1.InstancesClient()
             self.zones_client = compute_v1.ZonesClient()
+            self.zone_operations_client = compute_v1.ZoneOperationsClient()
             logger.info(f"✅ GCP API clients initialized (Project: {self.config.project_id})")
 
             # Initialize integrations
@@ -543,29 +545,44 @@ class GCPVMManager:
         return instance
 
     async def _wait_for_operation(self, operation, timeout: int = 300):
-        """Wait for a GCP operation to complete"""
+        """
+        Wait for a GCP zone operation to complete.
+        
+        Uses the ZoneOperationsClient to poll operation status correctly.
+        This fixes the 'Unknown field for Instance: target_link' error.
+        """
         start_time = time.time()
+        operation_name = operation.name
+        
+        logger.debug(f"Waiting for operation: {operation_name}")
 
         while True:
-            if time.time() - start_time > timeout:
-                raise TimeoutError(f"Operation timed out after {timeout}s")
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                raise TimeoutError(f"Operation '{operation_name}' timed out after {timeout}s")
 
             # Check operation status
             if operation.status == compute_v1.Operation.Status.DONE:
                 if operation.error:
                     errors = [error.message for error in operation.error.errors]
                     raise Exception(f"Operation failed: {', '.join(errors)}")
+                logger.debug(f"Operation '{operation_name}' completed successfully")
                 return
 
             await asyncio.sleep(2)
 
-            # Refresh operation status
-            operation = await asyncio.to_thread(
-                self.instances_client.get,
-                project=self.config.project_id,
-                zone=self.config.zone,
-                instance=operation.target_link.split("/")[-1],
-            )
+            # Refresh operation status using ZoneOperationsClient (correct approach)
+            try:
+                operation = await asyncio.to_thread(
+                    self.zone_operations_client.get,
+                    project=self.config.project_id,
+                    zone=self.config.zone,
+                    operation=operation_name,
+                )
+            except Exception as e:
+                logger.warning(f"Error polling operation status: {e}")
+                # Continue waiting - operation might still complete
+                await asyncio.sleep(2)
 
     async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
         """Terminate a VM instance"""

@@ -15471,9 +15471,11 @@ async def main():
 
                 # Check if ECAPA encoder is available in registry
                 if hasattr(registry, '_ecapa_encoder') and registry._ecapa_encoder is not None:
-                    print(f"{Colors.GREEN}      → ECAPA encoder already loaded in registry{Colors.ENDC}")
+                    print(f"{Colors.GREEN}      → ECAPA encoder loaded locally in registry{Colors.ENDC}")
+                elif hasattr(registry, 'is_using_cloud') and registry.is_using_cloud:
+                    print(f"{Colors.GREEN}      → ECAPA routed to Cloud (local not needed){Colors.ENDC}")
                 else:
-                    print(f"{Colors.YELLOW}      → ECAPA encoder not yet loaded, will load on demand{Colors.ENDC}")
+                    print(f"{Colors.CYAN}      → ECAPA will load on first use (Cloud or local){Colors.ENDC}")
             else:
                 ecapa_verification_result["errors"].append("ML Engine Registry returned None")
                 print(f"{Colors.YELLOW}   ⚠️  ML Engine Registry returned None{Colors.ENDC}")
