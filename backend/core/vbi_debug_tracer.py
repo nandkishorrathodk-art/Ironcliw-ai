@@ -1137,38 +1137,192 @@ class VBIPipelineOrchestrator:
             raise RuntimeError(f"Audio preprocessing failed: {e}") from e
 
     async def _extract_embedding(self, audio_data: Any) -> List[float]:
-        """Extract ECAPA embedding"""
+        """
+        Extract ECAPA-TDNN speaker embedding from audio.
+        
+        Uses CloudECAPAClient with intelligent backend routing:
+        - Fast-path: Recent speaker cache (~5-10ms)
+        - Cache hit: Identical audio cache (~1ms)
+        - Cloud extraction: GCP Cloud Run/Spot VM (200-500ms)
+        
+        Args:
+            audio_data: Preprocessed audio bytes (float32 or int16)
+            
+        Returns:
+            192-dimensional speaker embedding as list of floats
+        """
         try:
-            from voice_unlock.cloud_ecapa_client import CloudECAPAClient
-            client = CloudECAPAClient()
-
-            result = await client.extract_embedding_async(
-                audio_data=audio_data,
-                sample_rate=16000
+            from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
+            
+            # Get or create the singleton client (properly initialized)
+            client = await get_cloud_ecapa_client()
+            
+            if client is None:
+                raise RuntimeError("CloudECAPAClient initialization failed")
+            
+            # Convert audio_data to bytes if it's not already
+            if hasattr(audio_data, 'tobytes'):
+                audio_bytes = audio_data.tobytes()
+            elif isinstance(audio_data, bytes):
+                audio_bytes = audio_data
+            else:
+                # Try to convert via numpy
+                import numpy as np
+                audio_bytes = np.array(audio_data, dtype=np.float32).tobytes()
+            
+            # Extract embedding - method is already async, returns np.ndarray
+            embedding = await client.extract_embedding(
+                audio_data=audio_bytes,
+                sample_rate=16000,
+                format="float32",
+                use_cache=True,
+                use_fast_path=True
             )
-
-            return result.get("embedding", [])
+            
+            if embedding is None:
+                raise RuntimeError("Embedding extraction returned None")
+            
+            # Convert numpy array to list of floats
+            if hasattr(embedding, 'tolist'):
+                return embedding.tolist()
+            elif isinstance(embedding, (list, tuple)):
+                return list(embedding)
+            else:
+                return [float(x) for x in embedding]
 
         except Exception as e:
-            logger.error(f"[VBI-ORCH] Embedding extraction failed: {e}")
+            logger.error(f"[VBI-ORCH] Embedding extraction failed: {type(e).__name__}: {e}")
             raise
 
     async def _verify_speaker(self, embedding: List[float]) -> Dict[str, Any]:
-        """Verify speaker against enrolled profiles"""
+        """
+        Verify speaker embedding against enrolled profiles.
+        
+        Uses multiple verification strategies:
+        1. Unified voice cache (fast-path for recent speakers)
+        2. Learning database profiles (cosine similarity comparison)
+        3. Voice Biometric Intelligence (advanced multi-modal)
+        
+        Args:
+            embedding: 192-dimensional ECAPA-TDNN speaker embedding
+            
+        Returns:
+            Dict with is_verified, speaker_name, confidence
+        """
+        import numpy as np
+        
         try:
-            from voice.speaker_verification_service import SpeakerVerificationService
-            service = SpeakerVerificationService()
-
-            result = await service.verify_speaker_async(embedding)
-
-            return {
-                "is_verified": result.get("verified", False),
-                "speaker_name": result.get("speaker_name", "Unknown"),
-                "confidence": result.get("confidence", 0.0)
+            test_embedding = np.array(embedding, dtype=np.float32)
+            
+            # Normalize the embedding for cosine similarity
+            test_norm = test_embedding / (np.linalg.norm(test_embedding) + 1e-10)
+            
+            best_match = {
+                "is_verified": False,
+                "speaker_name": "Unknown",
+                "confidence": 0.0
             }
+            
+            # Strategy 1: Try unified voice cache first (fastest)
+            try:
+                from voice_unlock.unified_voice_cache_manager import get_unified_voice_cache
+                unified_cache = await get_unified_voice_cache()
+                
+                if unified_cache and unified_cache.is_ready:
+                    for profile_name, profile in unified_cache.get_preloaded_profiles().items():
+                        if profile.embedding is not None:
+                            profile_embedding = np.array(profile.embedding, dtype=np.float32)
+                            profile_norm = profile_embedding / (np.linalg.norm(profile_embedding) + 1e-10)
+                            
+                            # Cosine similarity
+                            similarity = float(np.dot(test_norm, profile_norm))
+                            
+                            if similarity > best_match["confidence"]:
+                                best_match = {
+                                    "is_verified": similarity >= 0.40,  # Unlock threshold
+                                    "speaker_name": profile_name,
+                                    "confidence": similarity
+                                }
+                                
+                    if best_match["is_verified"]:
+                        logger.info(f"[VBI-ORCH] ⚡ Unified cache match: {best_match['speaker_name']} ({best_match['confidence']:.1%})")
+                        return best_match
+                        
+            except Exception as e:
+                logger.debug(f"[VBI-ORCH] Unified cache check failed: {e}")
+            
+            # Strategy 2: Check learning database profiles
+            try:
+                from intelligence.learning_database import get_learning_database
+                db = await get_learning_database()
+                
+                if db:
+                    profiles = await db.get_all_speaker_profiles()
+                    
+                    for profile in profiles:
+                        profile_embedding = profile.get("embedding")
+                        if profile_embedding is not None and len(profile_embedding) > 0:
+                            profile_array = np.array(profile_embedding, dtype=np.float32)
+                            profile_norm = profile_array / (np.linalg.norm(profile_array) + 1e-10)
+                            
+                            # Cosine similarity
+                            similarity = float(np.dot(test_norm, profile_norm))
+                            
+                            if similarity > best_match["confidence"]:
+                                speaker_name = profile.get("speaker_name", profile.get("name", "Unknown"))
+                                best_match = {
+                                    "is_verified": similarity >= 0.40,
+                                    "speaker_name": speaker_name,
+                                    "confidence": similarity
+                                }
+                    
+                    if best_match["is_verified"]:
+                        logger.info(f"[VBI-ORCH] 🔐 Database match: {best_match['speaker_name']} ({best_match['confidence']:.1%})")
+                        return best_match
+                        
+            except Exception as e:
+                logger.debug(f"[VBI-ORCH] Learning database check failed: {e}")
+            
+            # Strategy 3: Try Voice Biometric Intelligence
+            try:
+                from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
+                vbi = await get_voice_biometric_intelligence()
+                
+                if vbi and vbi._unified_cache:
+                    for profile_name, profile in vbi._unified_cache.get_preloaded_profiles().items():
+                        if profile.embedding is not None:
+                            profile_embedding = np.array(profile.embedding, dtype=np.float32)
+                            profile_norm = profile_embedding / (np.linalg.norm(profile_embedding) + 1e-10)
+                            
+                            similarity = float(np.dot(test_norm, profile_norm))
+                            
+                            if similarity > best_match["confidence"]:
+                                best_match = {
+                                    "is_verified": similarity >= 0.40,
+                                    "speaker_name": profile_name,
+                                    "confidence": similarity
+                                }
+                                
+                    if best_match["is_verified"]:
+                        logger.info(f"[VBI-ORCH] 🧠 VBI match: {best_match['speaker_name']} ({best_match['confidence']:.1%})")
+                        return best_match
+                        
+            except Exception as e:
+                logger.debug(f"[VBI-ORCH] VBI check failed: {e}")
+            
+            # Log the result even if not verified
+            if best_match["confidence"] > 0:
+                logger.warning(
+                    f"[VBI-ORCH] Best match below threshold: {best_match['speaker_name']} "
+                    f"({best_match['confidence']:.1%} < 40%)"
+                )
+            else:
+                logger.warning("[VBI-ORCH] No matching profiles found")
+                
+            return best_match
 
         except Exception as e:
-            logger.error(f"[VBI-ORCH] Speaker verification failed: {e}")
+            logger.error(f"[VBI-ORCH] Speaker verification failed: {type(e).__name__}: {e}")
             raise
 
     async def _execute_unlock(self, speaker_name: str) -> Dict[str, Any]:
