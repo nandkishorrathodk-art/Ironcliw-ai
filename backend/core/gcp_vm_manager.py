@@ -15,16 +15,23 @@ Features:
 - VM lifecycle management (create, monitor, cleanup)
 - Orphaned VM detection and cleanup
 - Health monitoring and auto-recovery
+- Parallel operations where safe
+- Circuit breaker pattern for fault tolerance
+- Dynamic configuration loading
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 # Google Cloud Compute Engine API
 # Use TYPE_CHECKING to allow type hints without requiring the library at runtime
@@ -51,14 +58,93 @@ else:
 
 # Import with fallback for different import contexts
 try:
-    from core.cost_tracker import get_cost_tracker
+    from core.cost_tracker import get_cost_tracker, CostTracker
     from core.intelligent_gcp_optimizer import get_gcp_optimizer
 except ImportError:
     # Fallback for when running from within core directory
-    from .cost_tracker import get_cost_tracker
-    from .intelligent_gcp_optimizer import get_gcp_optimizer
+    try:
+        from .cost_tracker import get_cost_tracker, CostTracker
+        from .intelligent_gcp_optimizer import get_gcp_optimizer
+    except ImportError:
+        # Final fallback - provide stubs
+        def get_cost_tracker():
+            return None
+        def get_gcp_optimizer(config=None):
+            return None
+        CostTracker = None
 
 logger = logging.getLogger(__name__)
+
+# Type variable for generic retry decorator
+T = TypeVar('T')
+
+
+# ============================================================================
+# CIRCUIT BREAKER FOR FAULT TOLERANCE
+# ============================================================================
+
+
+class CircuitState(Enum):
+    """Circuit breaker states"""
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, rejecting requests
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+
+@dataclass
+class CircuitBreaker:
+    """
+    Circuit breaker pattern for fault-tolerant GCP operations.
+    Prevents cascading failures when GCP API is having issues.
+    """
+    name: str
+    failure_threshold: int = 3  # Open circuit after N failures
+    recovery_timeout: float = 60.0  # Seconds before trying again
+    half_open_max_calls: int = 1  # Calls to test when half-open
+    
+    state: CircuitState = CircuitState.CLOSED
+    failure_count: int = 0
+    last_failure_time: Optional[float] = None
+    half_open_calls: int = 0
+    
+    def can_execute(self) -> Tuple[bool, str]:
+        """Check if we can execute an operation"""
+        if self.state == CircuitState.CLOSED:
+            return True, "Circuit closed - normal operation"
+        
+        if self.state == CircuitState.OPEN:
+            # Check if we should transition to half-open
+            if self.last_failure_time and (time.time() - self.last_failure_time) >= self.recovery_timeout:
+                self.state = CircuitState.HALF_OPEN
+                self.half_open_calls = 0
+                logger.info(f"🔌 Circuit '{self.name}' transitioning to HALF_OPEN")
+                return True, "Circuit half-open - testing recovery"
+            return False, f"Circuit OPEN - {self.recovery_timeout - (time.time() - (self.last_failure_time or 0)):.0f}s until retry"
+        
+        # Half-open state
+        if self.half_open_calls < self.half_open_max_calls:
+            return True, "Circuit half-open - testing"
+        return False, "Circuit half-open - max test calls reached"
+    
+    def record_success(self):
+        """Record successful operation"""
+        if self.state == CircuitState.HALF_OPEN:
+            logger.info(f"✅ Circuit '{self.name}' recovered - transitioning to CLOSED")
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.half_open_calls = 0
+    
+    def record_failure(self, error: Exception):
+        """Record failed operation"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.state == CircuitState.HALF_OPEN:
+            logger.warning(f"⚠️ Circuit '{self.name}' recovery failed - re-opening")
+            self.state = CircuitState.OPEN
+        elif self.failure_count >= self.failure_threshold:
+            logger.error(f"🔴 Circuit '{self.name}' OPEN after {self.failure_count} failures: {error}")
+            self.state = CircuitState.OPEN
 
 
 class VMState(Enum):
@@ -174,63 +260,159 @@ class VMInstance:
 
 @dataclass
 class VMManagerConfig:
-    """Configuration for GCP VM Manager"""
+    """
+    Dynamic configuration for GCP VM Manager.
+    All values loaded from environment variables with sensible defaults.
+    No hardcoding - fully configurable at runtime.
+    """
 
-    # GCP Configuration
-    project_id: str = field(default_factory=lambda: os.getenv("GCP_PROJECT_ID", "jarvis-473803"))
+    # GCP Configuration (all from environment)
+    project_id: str = field(
+        default_factory=lambda: os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", ""))
+    )
     region: str = field(default_factory=lambda: os.getenv("GCP_REGION", "us-central1"))
     zone: str = field(default_factory=lambda: os.getenv("GCP_ZONE", "us-central1-a"))
 
-    # VM Configuration
-    machine_type: str = "e2-highmem-4"  # 4 vCPU, 32GB RAM
-    use_spot: bool = True
-    spot_max_price: float = 0.10  # Max $0.10/hour (safety limit)
+    # VM Configuration (dynamic)
+    machine_type: str = field(
+        default_factory=lambda: os.getenv("GCP_VM_MACHINE_TYPE", "e2-highmem-4")
+    )
+    use_spot: bool = field(
+        default_factory=lambda: os.getenv("GCP_USE_SPOT_VMS", "true").lower() == "true"
+    )
+    spot_max_price: float = field(
+        default_factory=lambda: float(os.getenv("GCP_SPOT_MAX_PRICE", "0.10"))
+    )
 
     # VM Naming
-    vm_name_prefix: str = "jarvis-backend"
+    vm_name_prefix: str = field(
+        default_factory=lambda: os.getenv("GCP_VM_NAME_PREFIX", "jarvis-backend")
+    )
 
-    # Image Configuration
-    image_project: str = "ubuntu-os-cloud"
-    image_family: str = "ubuntu-2204-lts"
+    # Image Configuration (dynamic)
+    image_project: str = field(
+        default_factory=lambda: os.getenv("GCP_IMAGE_PROJECT", "ubuntu-os-cloud")
+    )
+    image_family: str = field(
+        default_factory=lambda: os.getenv("GCP_IMAGE_FAMILY", "ubuntu-2204-lts")
+    )
 
     # Disk Configuration
-    boot_disk_size_gb: int = 50
-    boot_disk_type: str = "pd-standard"
+    boot_disk_size_gb: int = field(
+        default_factory=lambda: int(os.getenv("GCP_BOOT_DISK_SIZE_GB", "50"))
+    )
+    boot_disk_type: str = field(
+        default_factory=lambda: os.getenv("GCP_BOOT_DISK_TYPE", "pd-standard")
+    )
 
     # Network Configuration
-    network: str = "default"
-    subnetwork: str = "default"
+    network: str = field(default_factory=lambda: os.getenv("GCP_NETWORK", "default"))
+    subnetwork: str = field(default_factory=lambda: os.getenv("GCP_SUBNETWORK", "default"))
 
     # Startup Script Path
     startup_script_path: Optional[str] = field(
-        default_factory=lambda: os.path.join(os.path.dirname(__file__), "gcp_vm_startup.sh")
+        default_factory=lambda: os.getenv(
+            "GCP_STARTUP_SCRIPT_PATH",
+            os.path.join(os.path.dirname(__file__), "gcp_vm_startup.sh")
+        )
     )
 
     # Health Check Configuration
-    health_check_interval: int = 30  # seconds
-    health_check_timeout: int = 10  # seconds
-    max_health_check_failures: int = 3
+    health_check_interval: int = field(
+        default_factory=lambda: int(os.getenv("GCP_HEALTH_CHECK_INTERVAL", "30"))
+    )
+    health_check_timeout: int = field(
+        default_factory=lambda: int(os.getenv("GCP_HEALTH_CHECK_TIMEOUT", "10"))
+    )
+    max_health_check_failures: int = field(
+        default_factory=lambda: int(os.getenv("GCP_MAX_HEALTH_CHECK_FAILURES", "3"))
+    )
 
     # VM Lifecycle
-    max_vm_lifetime_hours: float = 3.0  # Auto-cleanup after 3 hours
-    idle_timeout_minutes: int = 30  # Cleanup if idle for 30 min
+    max_vm_lifetime_hours: float = field(
+        default_factory=lambda: float(os.getenv("GCP_MAX_VM_LIFETIME_HOURS", "3.0"))
+    )
+    idle_timeout_minutes: int = field(
+        default_factory=lambda: int(os.getenv("GCP_IDLE_TIMEOUT_MINUTES", "30"))
+    )
 
     # Retry Configuration
-    max_create_attempts: int = 3
-    retry_delay_seconds: int = 10
+    max_create_attempts: int = field(
+        default_factory=lambda: int(os.getenv("GCP_MAX_CREATE_ATTEMPTS", "3"))
+    )
+    retry_delay_seconds: int = field(
+        default_factory=lambda: int(os.getenv("GCP_RETRY_DELAY_SECONDS", "10"))
+    )
 
     # Resource Limits
-    max_concurrent_vms: int = 2
-    daily_budget_usd: float = 5.0  # Max $5/day
+    max_concurrent_vms: int = field(
+        default_factory=lambda: int(os.getenv("GCP_MAX_CONCURRENT_VMS", "2"))
+    )
+    daily_budget_usd: float = field(
+        default_factory=lambda: float(os.getenv("GCP_DAILY_BUDGET_USD", "5.0"))
+    )
 
     # Monitoring
-    enable_monitoring: bool = True
-    enable_logging: bool = True
+    enable_monitoring: bool = field(
+        default_factory=lambda: os.getenv("GCP_ENABLE_MONITORING", "true").lower() == "true"
+    )
+    enable_logging: bool = field(
+        default_factory=lambda: os.getenv("GCP_ENABLE_LOGGING", "true").lower() == "true"
+    )
+
+    # Circuit breaker settings
+    circuit_failure_threshold: int = field(
+        default_factory=lambda: int(os.getenv("GCP_CIRCUIT_FAILURE_THRESHOLD", "3"))
+    )
+    circuit_recovery_timeout: float = field(
+        default_factory=lambda: float(os.getenv("GCP_CIRCUIT_RECOVERY_TIMEOUT", "60.0"))
+    )
+
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if not self.project_id:
+            logger.warning(
+                "⚠️  GCP_PROJECT_ID not set. Set via environment variable or provide in config."
+            )
+        
+        # Log configuration summary
+        logger.debug(f"VMManagerConfig loaded:")
+        logger.debug(f"  Project: {self.project_id}")
+        logger.debug(f"  Zone: {self.zone}")
+        logger.debug(f"  Machine Type: {self.machine_type}")
+        logger.debug(f"  Use Spot: {self.use_spot}")
+        logger.debug(f"  Daily Budget: ${self.daily_budget_usd}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export configuration as dictionary"""
+        return {
+            "project_id": self.project_id,
+            "region": self.region,
+            "zone": self.zone,
+            "machine_type": self.machine_type,
+            "use_spot": self.use_spot,
+            "daily_budget_usd": self.daily_budget_usd,
+            "max_concurrent_vms": self.max_concurrent_vms,
+            "max_vm_lifetime_hours": self.max_vm_lifetime_hours,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "VMManagerConfig":
+        """Create configuration from dictionary"""
+        return cls(**{k: v for k, v in data.items() if hasattr(cls, k)})
 
 
 class GCPVMManager:
     """
-    Advanced GCP Spot VM auto-creation and lifecycle manager
+    Advanced GCP Spot VM auto-creation and lifecycle manager.
+
+    Features:
+    - Circuit breaker pattern for fault tolerance
+    - Parallel async operations where safe
+    - Dynamic configuration from environment
+    - Robust error handling with retries
+    - Cost tracking integration
+    - Health monitoring with auto-recovery
 
     Integrates with:
     - intelligent_gcp_optimizer: For VM creation decisions
@@ -247,68 +429,159 @@ class GCPVMManager:
         self.zones_client: Optional[ZonesClientType] = None
         self.zone_operations_client = None  # For polling operation status
 
-        # Integrations
-        self.cost_tracker = None
-        self.gcp_optimizer = None
+        # Integrations (initialized safely)
+        self.cost_tracker: Optional[Any] = None  # CostTracker or None
+        self.gcp_optimizer: Optional[Any] = None
 
-        # State tracking
+        # State tracking with thread-safe locks
         self.managed_vms: Dict[str, VMInstance] = {}
         self.creating_vms: Dict[str, asyncio.Task] = {}
+        self._vm_lock = asyncio.Lock()  # Protect VM state modifications
+        self._init_lock = asyncio.Lock()  # Protect initialization
+
+        # Circuit breakers for fault tolerance
+        self._circuit_breakers = {
+            "vm_create": CircuitBreaker(
+                name="vm_create",
+                failure_threshold=self.config.circuit_failure_threshold,
+                recovery_timeout=self.config.circuit_recovery_timeout,
+            ),
+            "vm_delete": CircuitBreaker(
+                name="vm_delete",
+                failure_threshold=self.config.circuit_failure_threshold,
+                recovery_timeout=self.config.circuit_recovery_timeout,
+            ),
+            "cost_tracker": CircuitBreaker(
+                name="cost_tracker",
+                failure_threshold=5,  # More lenient for non-critical operations
+                recovery_timeout=30.0,
+            ),
+        }
 
         # Monitoring
         self.monitoring_task: Optional[asyncio.Task] = None
         self.is_monitoring = False
 
-        # Stats
+        # Enhanced stats
         self.stats = {
             "total_created": 0,
             "total_failed": 0,
             "total_terminated": 0,
             "current_active": 0,
             "total_cost": 0.0,
+            "circuit_breaks": 0,
+            "retries": 0,
+            "last_error": None,
+            "last_error_time": None,
         }
 
         self.initialized = False
+        self._initialization_error: Optional[Exception] = None
 
     async def initialize(self):
-        """Initialize GCP API clients and integrations"""
+        """
+        Initialize GCP API clients and integrations with robust error handling.
+        
+        Uses async lock to prevent race conditions during initialization.
+        Gracefully handles missing dependencies and API failures.
+        """
+        # Quick check without lock
         if self.initialized:
             return
 
-        if not COMPUTE_AVAILABLE:
-            logger.info(
-                "ℹ️  GCP Compute Engine API not available. "
-                "Spot VM creation disabled. Install with: pip install google-cloud-compute"
-            )
-            raise RuntimeError("google-cloud-compute package not installed")
+        async with self._init_lock:
+            # Double-check after acquiring lock
+            if self.initialized:
+                return
 
-        logger.info("🚀 Initializing GCP VM Manager...")
+            if not COMPUTE_AVAILABLE:
+                self._initialization_error = RuntimeError(
+                    "google-cloud-compute package not installed. "
+                    "Install with: pip install google-cloud-compute"
+                )
+                logger.warning(
+                    "ℹ️  GCP Compute Engine API not available. "
+                    "Spot VM creation disabled."
+                )
+                raise self._initialization_error
 
+            logger.info("🚀 Initializing GCP VM Manager...")
+
+            try:
+                # Initialize GCP Compute Engine clients (parallel-safe)
+                await self._initialize_gcp_clients()
+                
+                # Initialize integrations (with error isolation)
+                await self._initialize_integrations()
+                
+                # Start monitoring if enabled
+                if self.config.enable_monitoring:
+                    self.monitoring_task = asyncio.create_task(
+                        self._monitoring_loop(),
+                        name="gcp_vm_monitoring"
+                    )
+                    logger.info("✅ VM monitoring started")
+
+                self.initialized = True
+                logger.info("✅ GCP VM Manager ready")
+                logger.info(f"   Project: {self.config.project_id}")
+                logger.info(f"   Zone: {self.config.zone}")
+                logger.info(f"   Machine Type: {self.config.machine_type}")
+                logger.info(f"   Daily Budget: ${self.config.daily_budget_usd}")
+
+            except Exception as e:
+                self._initialization_error = e
+                logger.error(f"Failed to initialize GCP VM Manager: {e}", exc_info=True)
+                raise
+
+    async def _initialize_gcp_clients(self):
+        """Initialize GCP API clients with error isolation"""
         try:
-            # Initialize GCP Compute Engine clients
-            self.instances_client = compute_v1.InstancesClient()
-            self.zones_client = compute_v1.ZonesClient()
-            self.zone_operations_client = compute_v1.ZoneOperationsClient()
+            # Run client initialization in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            
+            self.instances_client = await loop.run_in_executor(
+                None, compute_v1.InstancesClient
+            )
+            self.zones_client = await loop.run_in_executor(
+                None, compute_v1.ZonesClient
+            )
+            self.zone_operations_client = await loop.run_in_executor(
+                None, compute_v1.ZoneOperationsClient
+            )
+            
             logger.info(f"✅ GCP API clients initialized (Project: {self.config.project_id})")
-
-            # Initialize integrations
-            self.cost_tracker = get_cost_tracker()
-            logger.info("✅ Cost tracker integrated")
-
-            self.gcp_optimizer = get_gcp_optimizer(config={"project_id": self.config.project_id})
-            logger.info("✅ GCP optimizer integrated")
-
-            # Start monitoring
-            if self.config.enable_monitoring:
-                self.monitoring_task = asyncio.create_task(self._monitoring_loop())
-                logger.info("✅ VM monitoring started")
-
-            self.initialized = True
-            logger.info("✅ GCP VM Manager ready")
-
+            
         except Exception as e:
-            logger.error(f"Failed to initialize GCP VM Manager: {e}", exc_info=True)
-            raise
+            logger.error(f"Failed to initialize GCP API clients: {e}")
+            raise RuntimeError(f"GCP API client initialization failed: {e}") from e
+
+    async def _initialize_integrations(self):
+        """Initialize integrations with graceful fallbacks"""
+        # Cost tracker - non-critical, continue without it
+        try:
+            self.cost_tracker = get_cost_tracker()
+            if self.cost_tracker:
+                # Ensure cost tracker is initialized
+                if hasattr(self.cost_tracker, 'initialize'):
+                    await self.cost_tracker.initialize()
+                logger.info("✅ Cost tracker integrated")
+            else:
+                logger.warning("⚠️  Cost tracker not available - cost tracking disabled")
+        except Exception as e:
+            logger.warning(f"⚠️  Cost tracker initialization failed (non-critical): {e}")
+            self.cost_tracker = None
+
+        # GCP optimizer - non-critical, continue without it
+        try:
+            self.gcp_optimizer = get_gcp_optimizer(config={"project_id": self.config.project_id})
+            if self.gcp_optimizer:
+                logger.info("✅ GCP optimizer integrated")
+            else:
+                logger.warning("⚠️  GCP optimizer not available - using fallback decisions")
+        except Exception as e:
+            logger.warning(f"⚠️  GCP optimizer initialization failed (non-critical): {e}")
+            self.gcp_optimizer = None
 
     async def should_create_vm(
         self, memory_snapshot, trigger_reason: str = ""
@@ -363,7 +636,7 @@ class GCPVMManager:
         self, components: List[str], trigger_reason: str, metadata: Optional[Dict] = None
     ) -> Optional[VMInstance]:
         """
-        Create a new GCP Spot VM instance
+        Create a new GCP Spot VM instance with circuit breaker protection.
 
         Args:
             components: List of components that will run on this VM
@@ -376,12 +649,22 @@ class GCPVMManager:
         if not self.initialized:
             await self.initialize()
 
+        # Check circuit breaker before attempting
+        circuit = self._circuit_breakers["vm_create"]
+        can_execute, circuit_reason = circuit.can_execute()
+        
+        if not can_execute:
+            logger.warning(f"🔌 VM creation blocked by circuit breaker: {circuit_reason}")
+            self.stats["circuit_breaks"] += 1
+            return None
+
         logger.info(f"🚀 Creating GCP Spot VM...")
         logger.info(f"   Components: {', '.join(components)}")
         logger.info(f"   Trigger: {trigger_reason}")
 
         attempt = 0
         last_error = None
+        vm_instance = None
 
         while attempt < self.config.max_create_attempts:
             attempt += 1
@@ -445,22 +728,22 @@ class GCPVMManager:
                     metadata=metadata or {},
                 )
 
-                # Track the VM
-                self.managed_vms[vm_name] = vm_instance
-                self.stats["total_created"] += 1
-                self.stats["current_active"] += 1
+                # Track the VM with lock protection
+                async with self._vm_lock:
+                    self.managed_vms[vm_name] = vm_instance
+                    self.stats["total_created"] += 1
+                    self.stats["current_active"] += 1
 
-                # Record in cost tracker
-                if self.cost_tracker:
-                    await self.cost_tracker.record_vm_creation(
-                        instance_id=vm_instance.instance_id,
-                        vm_type=self.config.machine_type,
-                        region=self.config.region,
-                        zone=self.config.zone,
-                        components=components,
-                        trigger_reason=trigger_reason,
-                        metadata=metadata or {},
-                    )
+                # Record in cost tracker (isolated error handling)
+                await self._record_vm_creation_safe(
+                    vm_instance=vm_instance,
+                    components=components,
+                    trigger_reason=trigger_reason,
+                    metadata=metadata,
+                )
+
+                # Circuit breaker success
+                circuit.record_success()
 
                 logger.info(f"✅ VM created successfully: {vm_name}")
                 logger.info(f"   External IP: {ip_address or 'N/A'}")
@@ -471,6 +754,9 @@ class GCPVMManager:
 
             except Exception as e:
                 last_error = e
+                self.stats["retries"] += 1
+                self.stats["last_error"] = str(e)
+                self.stats["last_error_time"] = datetime.now().isoformat()
                 logger.error(f"❌ Attempt {attempt} failed: {e}")
 
                 if attempt < self.config.max_create_attempts:
@@ -478,12 +764,67 @@ class GCPVMManager:
                     logger.info(f"⏳ Retrying in {delay}s...")
                     await asyncio.sleep(delay)
 
-        # All attempts failed
+        # All attempts failed - record in circuit breaker
+        circuit.record_failure(last_error)
+        
         self.stats["total_failed"] += 1
         logger.error(f"❌ Failed to create VM after {self.config.max_create_attempts} attempts")
         logger.error(f"   Last error: {last_error}")
 
         return None
+
+    async def _record_vm_creation_safe(
+        self,
+        vm_instance: VMInstance,
+        components: List[str],
+        trigger_reason: str,
+        metadata: Optional[Dict] = None,
+    ):
+        """
+        Safely record VM creation in cost tracker with circuit breaker.
+        
+        This is isolated so cost tracker failures don't affect VM creation.
+        """
+        if not self.cost_tracker:
+            logger.debug("Cost tracker not available - skipping creation record")
+            return
+
+        circuit = self._circuit_breakers["cost_tracker"]
+        can_execute, _ = circuit.can_execute()
+        
+        if not can_execute:
+            logger.debug("Cost tracker circuit open - skipping creation record")
+            return
+
+        try:
+            # Try the new method name first, fall back to old name
+            if hasattr(self.cost_tracker, 'record_vm_creation'):
+                await self.cost_tracker.record_vm_creation(
+                    instance_id=vm_instance.instance_id,
+                    vm_type=self.config.machine_type,
+                    region=self.config.region,
+                    zone=self.config.zone,
+                    components=components,
+                    trigger_reason=trigger_reason,
+                    metadata=metadata or {},
+                )
+            elif hasattr(self.cost_tracker, 'record_vm_created'):
+                await self.cost_tracker.record_vm_created(
+                    instance_id=vm_instance.instance_id,
+                    components=components,
+                    trigger_reason=trigger_reason,
+                    metadata=metadata or {},
+                )
+            else:
+                logger.warning("Cost tracker has no VM creation recording method")
+                return
+            
+            circuit.record_success()
+            logger.debug(f"💰 VM creation recorded in cost tracker: {vm_instance.instance_id}")
+            
+        except Exception as e:
+            circuit.record_failure(e)
+            logger.warning(f"⚠️  Failed to record VM creation in cost tracker (non-critical): {e}")
 
     def _build_instance_config(
         self, vm_name: str, components: List[str], trigger_reason: str, metadata: Dict
@@ -587,23 +928,41 @@ class GCPVMManager:
                 await asyncio.sleep(2)
 
     async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
-        """Terminate a VM instance"""
-        if vm_name not in self.managed_vms:
-            logger.warning(f"⚠️  VM not found: {vm_name}")
+        """
+        Terminate a VM instance with circuit breaker protection.
+        
+        Args:
+            vm_name: Name of the VM to terminate
+            reason: Reason for termination (for logging/tracking)
+            
+        Returns:
+            True if terminated successfully, False otherwise
+        """
+        async with self._vm_lock:
+            if vm_name not in self.managed_vms:
+                logger.warning(f"⚠️  VM not found in managed VMs: {vm_name}")
+                # Try to delete anyway in case it exists in GCP but not tracked
+                return await self._force_delete_vm(vm_name, reason)
+
+            vm = self.managed_vms[vm_name]
+
+        # Check circuit breaker
+        circuit = self._circuit_breakers["vm_delete"]
+        can_execute, circuit_reason = circuit.can_execute()
+        
+        if not can_execute:
+            logger.warning(f"🔌 VM termination blocked by circuit breaker: {circuit_reason}")
+            self.stats["circuit_breaks"] += 1
             return False
 
-        vm = self.managed_vms[vm_name]
         logger.info(f"🛑 Terminating VM: {vm_name} (Reason: {reason})")
 
         try:
             # Update cost before termination
             vm.update_cost()
 
-            # Record termination in cost tracker
-            if self.cost_tracker:
-                await self.cost_tracker.record_vm_termination(
-                    instance_id=vm.instance_id, reason=reason, total_cost=vm.total_cost
-                )
+            # Record termination in cost tracker (isolated)
+            await self._record_vm_termination_safe(vm, reason)
 
             # Delete the VM
             operation = await asyncio.to_thread(
@@ -615,24 +974,92 @@ class GCPVMManager:
 
             await self._wait_for_operation(operation)
 
-            # Update tracking
-            vm.state = VMState.TERMINATED
-            self.stats["total_terminated"] += 1
-            self.stats["current_active"] -= 1
-            self.stats["total_cost"] += vm.total_cost
+            # Update tracking with lock protection
+            async with self._vm_lock:
+                vm.state = VMState.TERMINATED
+                self.stats["total_terminated"] += 1
+                self.stats["current_active"] = max(0, self.stats["current_active"] - 1)
+                self.stats["total_cost"] += vm.total_cost
+
+                # Remove from managed VMs
+                if vm_name in self.managed_vms:
+                    del self.managed_vms[vm_name]
+
+            # Circuit breaker success
+            circuit.record_success()
 
             logger.info(f"✅ VM terminated: {vm_name}")
             logger.info(f"   Uptime: {vm.uptime_hours:.2f}h")
             logger.info(f"   Cost: ${vm.total_cost:.4f}")
 
-            # Remove from managed VMs
-            del self.managed_vms[vm_name]
-
             return True
 
         except Exception as e:
+            circuit.record_failure(e)
             logger.error(f"❌ Failed to terminate VM {vm_name}: {e}", exc_info=True)
             return False
+
+    async def _force_delete_vm(self, vm_name: str, reason: str) -> bool:
+        """Force delete a VM that may exist in GCP but not in our tracking"""
+        try:
+            logger.info(f"🗑️  Force-deleting untracked VM: {vm_name}")
+            
+            operation = await asyncio.to_thread(
+                self.instances_client.delete,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+            )
+            
+            await self._wait_for_operation(operation)
+            logger.info(f"✅ Force-deleted VM: {vm_name}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Force delete failed for {vm_name}: {e}")
+            return False
+
+    async def _record_vm_termination_safe(self, vm: VMInstance, reason: str):
+        """
+        Safely record VM termination in cost tracker with circuit breaker.
+        
+        This is isolated so cost tracker failures don't affect VM termination.
+        """
+        if not self.cost_tracker:
+            logger.debug("Cost tracker not available - skipping termination record")
+            return
+
+        circuit = self._circuit_breakers["cost_tracker"]
+        can_execute, _ = circuit.can_execute()
+        
+        if not can_execute:
+            logger.debug("Cost tracker circuit open - skipping termination record")
+            return
+
+        try:
+            # Try the new method name first, fall back to old name
+            if hasattr(self.cost_tracker, 'record_vm_termination'):
+                await self.cost_tracker.record_vm_termination(
+                    instance_id=vm.instance_id,
+                    reason=reason,
+                    total_cost=vm.total_cost,
+                )
+            elif hasattr(self.cost_tracker, 'record_vm_deleted'):
+                await self.cost_tracker.record_vm_deleted(
+                    instance_id=vm.instance_id,
+                    was_orphaned=False,
+                    actual_cost=vm.total_cost,
+                )
+            else:
+                logger.warning("Cost tracker has no VM termination recording method")
+                return
+            
+            circuit.record_success()
+            logger.debug(f"💰 VM termination recorded in cost tracker: {vm.instance_id}")
+            
+        except Exception as e:
+            circuit.record_failure(e)
+            logger.warning(f"⚠️  Failed to record VM termination in cost tracker (non-critical): {e}")
 
     async def _monitoring_loop(self):
         """
@@ -840,47 +1267,170 @@ class GCPVMManager:
         logger.info("🧹 GCP VM Manager cleaned up")
 
     def get_stats(self) -> Dict:
-        """Get manager statistics"""
+        """Get comprehensive manager statistics including circuit breaker status"""
+        circuit_status = {}
+        for name, circuit in self._circuit_breakers.items():
+            circuit_status[name] = {
+                "state": circuit.state.value,
+                "failure_count": circuit.failure_count,
+                "can_execute": circuit.can_execute()[0],
+            }
+        
+        # Calculate VM costs summary
+        total_vm_cost = sum(vm.total_cost for vm in self.managed_vms.values())
+        
         return {
             **self.stats,
             "managed_vms": len(self.managed_vms),
             "creating_vms": len(self.creating_vms),
+            "current_vm_cost": total_vm_cost,
+            "circuit_breakers": circuit_status,
+            "config": self.config.to_dict(),
+            "initialized": self.initialized,
         }
 
+    def get_circuit_breaker_status(self) -> Dict[str, Dict]:
+        """Get detailed circuit breaker status"""
+        return {
+            name: {
+                "state": circuit.state.value,
+                "failure_count": circuit.failure_count,
+                "failure_threshold": circuit.failure_threshold,
+                "recovery_timeout": circuit.recovery_timeout,
+                "last_failure_time": circuit.last_failure_time,
+                "can_execute": circuit.can_execute()[0],
+                "reason": circuit.can_execute()[1],
+            }
+            for name, circuit in self._circuit_breakers.items()
+        }
 
-# Singleton instance
+    def reset_circuit_breaker(self, name: str) -> bool:
+        """Manually reset a circuit breaker"""
+        if name in self._circuit_breakers:
+            circuit = self._circuit_breakers[name]
+            circuit.state = CircuitState.CLOSED
+            circuit.failure_count = 0
+            circuit.half_open_calls = 0
+            logger.info(f"🔌 Circuit breaker '{name}' manually reset")
+            return True
+        return False
+
+
+# ============================================================================
+# SINGLETON MANAGEMENT
+# ============================================================================
+
 _gcp_vm_manager: Optional[GCPVMManager] = None
+_manager_lock = asyncio.Lock()
 
 
 async def get_gcp_vm_manager(config: Optional[VMManagerConfig] = None) -> GCPVMManager:
-    """Get or create singleton GCP VM Manager"""
+    """
+    Get or create singleton GCP VM Manager with thread-safe initialization.
+    
+    Args:
+        config: Optional configuration override
+        
+    Returns:
+        Initialized GCPVMManager instance
+        
+    Raises:
+        RuntimeError: If GCP Compute API is not available
+    """
     global _gcp_vm_manager
 
-    if _gcp_vm_manager is None:
-        _gcp_vm_manager = GCPVMManager(config=config)
-        await _gcp_vm_manager.initialize()
+    # Quick check without lock
+    if _gcp_vm_manager is not None and _gcp_vm_manager.initialized:
+        return _gcp_vm_manager
 
-    return _gcp_vm_manager
+    async with _manager_lock:
+        # Double-check after acquiring lock
+        if _gcp_vm_manager is None:
+            _gcp_vm_manager = GCPVMManager(config=config)
+        
+        if not _gcp_vm_manager.initialized:
+            await _gcp_vm_manager.initialize()
+
+        return _gcp_vm_manager
+
+
+async def get_gcp_vm_manager_safe(config: Optional[VMManagerConfig] = None) -> Optional[GCPVMManager]:
+    """
+    Safely get GCP VM Manager, returning None if not available.
+    
+    This is useful when you want to use the manager if available
+    but don't want to fail if GCP is not configured.
+    
+    Args:
+        config: Optional configuration override
+        
+    Returns:
+        GCPVMManager instance or None if not available
+    """
+    try:
+        return await get_gcp_vm_manager(config)
+    except Exception as e:
+        logger.debug(f"GCP VM Manager not available: {e}")
+        return None
 
 
 async def create_vm_if_needed(
-    memory_snapshot, components: List[str], trigger_reason: str, metadata: Optional[Dict] = None
+    memory_snapshot, 
+    components: List[str], 
+    trigger_reason: str, 
+    metadata: Optional[Dict] = None
 ) -> Optional[VMInstance]:
     """
-    Convenience function: Check if VM needed and create if so
+    Convenience function: Check if VM needed and create if so.
 
+    Args:
+        memory_snapshot: Memory pressure snapshot
+        components: Components to run on the VM
+        trigger_reason: Why this VM is being created
+        metadata: Additional metadata
+        
     Returns:
         VMInstance if created, None otherwise
     """
-    manager = await get_gcp_vm_manager()
+    try:
+        manager = await get_gcp_vm_manager_safe()
+        
+        if manager is None:
+            logger.debug("GCP VM Manager not available - cannot create VM")
+            return None
 
-    should_create, reason, confidence = await manager.should_create_vm(
-        memory_snapshot, trigger_reason
-    )
+        should_create, reason, confidence = await manager.should_create_vm(
+            memory_snapshot, trigger_reason
+        )
 
-    if should_create:
-        logger.info(f"✅ VM creation recommended: {reason} (confidence: {confidence:.2%})")
-        return await manager.create_vm(components, trigger_reason, metadata)
-    else:
-        logger.info(f"ℹ️  VM creation not needed: {reason}")
+        if should_create:
+            logger.info(f"✅ VM creation recommended: {reason} (confidence: {confidence:.2%})")
+            return await manager.create_vm(components, trigger_reason, metadata)
+        else:
+            logger.info(f"ℹ️  VM creation not needed: {reason}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error in create_vm_if_needed: {e}")
         return None
+
+
+async def cleanup_vm_manager():
+    """Cleanup the global VM manager instance"""
+    global _gcp_vm_manager
+    
+    async with _manager_lock:
+        if _gcp_vm_manager is not None:
+            await _gcp_vm_manager.cleanup()
+            _gcp_vm_manager = None
+            logger.info("🧹 GCP VM Manager singleton cleaned up")
+
+
+def is_vm_manager_available() -> bool:
+    """Check if VM manager is available without initializing"""
+    return COMPUTE_AVAILABLE
+
+
+def get_vm_manager_sync() -> Optional[GCPVMManager]:
+    """Get VM manager synchronously (only if already initialized)"""
+    return _gcp_vm_manager if _gcp_vm_manager and _gcp_vm_manager.initialized else None

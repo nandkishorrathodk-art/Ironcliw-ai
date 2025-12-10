@@ -29,7 +29,10 @@ class AlertLevel(Enum):
     """Alert severity levels"""
 
     INFO = "info"
+    LOW = "low"
+    MEDIUM = "medium"
     WARNING = "warning"
+    HIGH = "high"
     CRITICAL = "critical"
     EMERGENCY = "emergency"
 
@@ -501,6 +504,105 @@ class CostTracker:
         except Exception as e:
             logger.error(f"Failed to record VM deletion: {e}")
 
+    # ============================================================================
+    # ALIAS METHODS FOR COMPATIBILITY (used by gcp_vm_manager.py)
+    # ============================================================================
+
+    async def record_vm_creation(
+        self,
+        instance_id: str,
+        vm_type: Optional[str] = None,
+        region: Optional[str] = None,
+        zone: Optional[str] = None,
+        components: Optional[List[str]] = None,
+        trigger_reason: str = TriggerReason.HIGH_RAM.value,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,  # Accept any additional parameters for forward compatibility
+    ):
+        """
+        Alias for record_vm_created with extended parameters.
+        
+        This method provides compatibility with gcp_vm_manager.py which calls
+        record_vm_creation() instead of record_vm_created().
+        
+        Args:
+            instance_id: Unique VM instance identifier
+            vm_type: VM machine type (e.g., e2-highmem-4)
+            region: GCP region (e.g., us-central1)
+            zone: GCP zone (e.g., us-central1-a)
+            components: List of components running on this VM
+            trigger_reason: Why the VM was created
+            metadata: Additional metadata dict
+            **kwargs: Additional parameters for forward compatibility
+        """
+        # Build enhanced metadata with VM details
+        enhanced_metadata = metadata.copy() if metadata else {}
+        if vm_type:
+            enhanced_metadata["vm_type"] = vm_type
+        if region:
+            enhanced_metadata["region"] = region
+        if zone:
+            enhanced_metadata["zone"] = zone
+        
+        # Add any extra kwargs to metadata
+        for key, value in kwargs.items():
+            if value is not None:
+                enhanced_metadata[key] = value
+        
+        # Temporarily update config if specific region/zone provided
+        original_vm_type = self.config.vm_instance_type
+        original_region = self.config.gcp_region
+        original_zone = self.config.gcp_zone
+        
+        try:
+            if vm_type:
+                self.config.vm_instance_type = vm_type
+            if region:
+                self.config.gcp_region = region
+            if zone:
+                self.config.gcp_zone = zone
+                
+            await self.record_vm_created(
+                instance_id=instance_id,
+                components=components or [],
+                trigger_reason=trigger_reason,
+                metadata=enhanced_metadata,
+            )
+        finally:
+            # Restore original config
+            self.config.vm_instance_type = original_vm_type
+            self.config.gcp_region = original_region
+            self.config.gcp_zone = original_zone
+
+    async def record_vm_termination(
+        self,
+        instance_id: str,
+        reason: str = "",
+        total_cost: Optional[float] = None,
+        was_orphaned: bool = False,
+        **kwargs,  # Accept any additional parameters for forward compatibility
+    ):
+        """
+        Alias for record_vm_deleted with extended parameters.
+        
+        This method provides compatibility with gcp_vm_manager.py which calls
+        record_vm_termination() instead of record_vm_deleted().
+        
+        Args:
+            instance_id: Unique VM instance identifier
+            reason: Reason for termination (stored in logs)
+            total_cost: Total cost incurred by this VM
+            was_orphaned: Whether this was an orphaned VM cleanup
+            **kwargs: Additional parameters for forward compatibility
+        """
+        logger.info(f"💰 VM termination recorded: {instance_id} (reason: {reason})")
+        
+        await self.record_vm_deleted(
+            instance_id=instance_id,
+            was_orphaned=was_orphaned,
+            actual_cost=total_cost,
+        )
+
     async def _load_session_from_db(self, instance_id: str) -> Optional[VMSession]:
         """Load VM session from database"""
         try:
@@ -943,7 +1045,7 @@ class CostTracker:
                 await self._send_desktop_notification(f"{level.value.upper()}: {message}")
 
             # Send email alerts for medium/high severity
-            if level in [AlertLevel.MEDIUM, AlertLevel.HIGH]:
+            if level in [AlertLevel.MEDIUM, AlertLevel.HIGH, AlertLevel.CRITICAL, AlertLevel.EMERGENCY]:
                 await self._send_email_alert(
                     subject=f"{level.value.upper()} Alert: {alert_type}", message=message
                 )
