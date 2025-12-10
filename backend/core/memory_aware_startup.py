@@ -413,12 +413,26 @@ class MemoryAwareStartup:
 
             # Create a memory snapshot with the attributes expected by gcp_vm_manager
             # The should_create_vm expects memory_snapshot with gcp_shift_recommended
+            import platform as platform_module
+            
             class MemorySnapshot:
                 def __init__(self, memory_status):
                     self.gcp_shift_recommended = memory_status.memory_pressure > 70 or memory_status.available_gb < 4.0
                     self.reasoning = f"Memory pressure: {memory_status.memory_pressure:.1f}%, Available: {memory_status.available_gb:.1f}GB"
                     self.memory_pressure = memory_status.memory_pressure
                     self.available_gb = memory_status.available_gb
+                    self.used_gb = memory_status.total_gb - memory_status.available_gb
+                    self.total_gb = memory_status.total_gb
+                    self.usage_percent = memory_status.memory_pressure
+                    # Add platform attribute expected by intelligent_gcp_optimizer
+                    self.platform = platform_module.system().lower()
+                    # macOS specific attributes
+                    self.macos_pressure_level = "warning" if memory_status.memory_pressure > 70 else "normal"
+                    self.macos_is_swapping = memory_status.memory_pressure > 75
+                    self.macos_page_outs = 0
+                    # Linux specific attributes (None on macOS)
+                    self.linux_psi_some_avg10 = None
+                    self.linux_psi_full_avg10 = None
 
             memory_snapshot = MemorySnapshot(memory)
             should_create, reason, confidence = await self._gcp_vm_manager.should_create_vm(

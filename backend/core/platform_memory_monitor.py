@@ -700,6 +700,26 @@ def get_memory_monitor() -> PlatformMemoryMonitor:
     return _monitor
 
 
+async def get_memory_snapshot() -> MemoryPressureSnapshot:
+    """
+    Convenience function to get current memory snapshot.
+    
+    This is a shorthand for:
+        monitor = get_memory_monitor()
+        snapshot = await monitor.get_memory_pressure()
+    
+    Returns:
+        MemoryPressureSnapshot: Current memory state with all metrics
+        
+    Example:
+        >>> from core.platform_memory_monitor import get_memory_snapshot
+        >>> snapshot = await get_memory_snapshot()
+        >>> print(f"Available: {snapshot.available_gb:.1f}GB")
+    """
+    monitor = get_memory_monitor()
+    return await monitor.get_memory_pressure()
+
+
 async def test_memory_monitor() -> None:
     """Test the memory monitor functionality.
 

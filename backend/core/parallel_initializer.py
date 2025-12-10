@@ -107,7 +107,9 @@ class ParallelInitializer:
         self._add_component("gcp_vm_manager", priority=21)  # ALWAYS init for runtime memory pressure handling
         self._add_component("cloud_ml_router", priority=22, dependencies=["memory_aware_startup"])
         self._add_component("cloud_ecapa_client", priority=23)
-        self._add_component("vbi_prewarm", priority=23, dependencies=["cloud_ecapa_client"])  # VBI pre-warming after ECAPA client
+        # VBI pre-warming runs independently - don't block on cloud_ecapa_client
+        # It will use whatever backend is available (cloud, spot vm, or local)
+        self._add_component("vbi_prewarm", priority=24)  # After cloud_ecapa_client starts but not dependent on success
         self._add_component("vbi_health_monitor", priority=24)  # VBI health monitoring for operation tracking
         self._add_component("ml_engine_registry", priority=25)
 
