@@ -2331,6 +2331,23 @@ class SpeakerVerificationService:
         self.reload_check_interval = 30  # Check for updates every 30 seconds
         self._reload_task = None  # Background task for checking updates
 
+        # 🆕 RESILIENT DATABASE CONNECTION SYSTEM
+        # Circuit breaker for Cloud SQL - prevents blocking when unavailable
+        self._db_circuit_breaker = {
+            'failures': 0,
+            'max_failures': 3,  # Open circuit after 3 consecutive failures
+            'last_failure_time': None,
+            'reset_timeout_seconds': 60.0,  # Try Cloud SQL again after 60s
+            'state': 'closed',  # 'closed' (normal), 'open' (blocking), 'half_open' (testing)
+        }
+        # Dynamic timeout configuration (no hardcoding)
+        self._db_operation_timeout = float(os.environ.get('JARVIS_DB_PROFILE_TIMEOUT', '5.0'))
+        self._db_connection_timeout = float(os.environ.get('JARVIS_DB_CONNECT_TIMEOUT', '3.0'))
+        # Local-first strategy - prioritize local SQLite over Cloud SQL
+        self._use_local_first = os.environ.get('JARVIS_DB_LOCAL_FIRST', 'true').lower() == 'true'
+        self._local_db_path = os.path.expanduser('~/.jarvis/learning/jarvis_learning.db')
+        self._local_db_available = False  # Will be set during init
+
         # ENHANCED ADAPTIVE VERIFICATION SYSTEM
         # Dynamic confidence boosting
         self.confidence_boost_enabled = True
@@ -5439,106 +5456,314 @@ class SpeakerVerificationService:
                 f"{success_rate:.1f}% recent success rate"
             )
 
-    async def _check_profile_updates(self) -> dict:
+    # =========================================================================
+    # 🆕 RESILIENT DATABASE CIRCUIT BREAKER SYSTEM
+    # Prevents Cloud SQL from blocking verification when unavailable
+    # =========================================================================
+
+    def _should_try_cloud_sql(self) -> bool:
         """
-        Check if any speaker profiles have been updated in the database.
+        Check if we should attempt Cloud SQL connection based on circuit breaker state.
+
+        Returns:
+            bool: True if Cloud SQL should be attempted, False if circuit is open
+        """
+        cb = self._db_circuit_breaker
+        now = time.time()
+
+        if cb['state'] == 'closed':
+            return True
+        elif cb['state'] == 'open':
+            # Check if reset timeout has elapsed
+            if cb['last_failure_time']:
+                elapsed = now - cb['last_failure_time']
+                if elapsed >= cb['reset_timeout_seconds']:
+                    logger.info("🔄 Circuit breaker: testing Cloud SQL (half-open)")
+                    cb['state'] = 'half_open'
+                    return True
+            return False
+        elif cb['state'] == 'half_open':
+            return True
+        return True
+
+    def _record_db_success(self):
+        """Record successful database operation - closes circuit if half-open."""
+        cb = self._db_circuit_breaker
+        if cb['state'] == 'half_open':
+            logger.info("✅ Circuit breaker: Cloud SQL recovered (closing)")
+            cb['state'] = 'closed'
+        cb['failures'] = 0
+        cb['last_failure_time'] = None
+
+    def _record_db_failure(self, error: Exception):
+        """Record database failure - may open circuit."""
+        cb = self._db_circuit_breaker
+        cb['failures'] += 1
+        cb['last_failure_time'] = time.time()
+
+        if cb['state'] == 'half_open':
+            logger.warning(f"⚠️ Circuit breaker: Cloud SQL still failing (re-opening) - {error}")
+            cb['state'] = 'open'
+        elif cb['failures'] >= cb['max_failures']:
+            logger.warning(f"🔴 Circuit breaker: OPEN after {cb['failures']} failures - using local DB only")
+            cb['state'] = 'open'
+
+    async def _check_local_db_available(self) -> bool:
+        """Check if local SQLite database is available and has profiles."""
+        try:
+            import aiosqlite
+            if not os.path.exists(self._local_db_path):
+                return False
+
+            async with aiosqlite.connect(self._local_db_path) as db:
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM speaker_profiles WHERE embedding_data IS NOT NULL"
+                )
+                row = await cursor.fetchone()
+                count = row[0] if row else 0
+                self._local_db_available = count > 0
+                if self._local_db_available:
+                    logger.debug(f"📂 Local DB available with {count} profiles")
+                return self._local_db_available
+        except Exception as e:
+            logger.debug(f"Local DB check failed: {e}")
+            return False
+
+    async def _get_profiles_from_local_db(self) -> dict:
+        """
+        Get profile updates from local SQLite database (fast, no network).
 
         Returns:
             dict: Mapping of speaker_name -> has_updates (bool)
         """
         try:
-            if not self.learning_db:
-                return {}
-
+            import aiosqlite
             updates = {}
 
-            # Query database for current profile timestamps/versions
-            async with self.learning_db.db.cursor() as cursor:
-                await cursor.execute(
+            async with aiosqlite.connect(self._local_db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
                     """
                     SELECT speaker_name, speaker_id, last_updated, total_samples,
                            enrollment_quality_score, feature_extraction_version
                     FROM speaker_profiles
+                    WHERE embedding_data IS NOT NULL
                     """
                 )
                 profiles = await cursor.fetchall()
 
                 for profile in profiles:
-                    speaker_name = profile['speaker_name'] if isinstance(profile, dict) else profile[0]
-                    speaker_id = profile['speaker_id'] if isinstance(profile, dict) else profile[1]
-                    updated_at = profile['last_updated'] if isinstance(profile, dict) else profile[2]
-                    total_samples = profile['total_samples'] if isinstance(profile, dict) else profile[3]
-                    quality_score = profile['enrollment_quality_score'] if isinstance(profile, dict) else profile[4]
-                    feature_version = profile['feature_extraction_version'] if isinstance(profile, dict) else profile[5]
-
-                    # Create version fingerprint
+                    speaker_name = profile['speaker_name']
                     current_fingerprint = {
-                        'updated_at': str(updated_at) if updated_at else None,
-                        'total_samples': total_samples,
-                        'quality_score': quality_score,
-                        'feature_version': feature_version,
+                        'updated_at': str(profile['last_updated']) if profile['last_updated'] else None,
+                        'total_samples': profile['total_samples'],
+                        'quality_score': profile['enrollment_quality_score'],
+                        'feature_version': profile['feature_extraction_version'],
                     }
 
-                    # Check if we've seen this profile before
                     if speaker_name not in self.profile_version_cache:
-                        # New profile detected
                         self.profile_version_cache[speaker_name] = current_fingerprint
                         updates[speaker_name] = True
                     else:
-                        # Check if profile changed
-                        cached_fingerprint = self.profile_version_cache[speaker_name]
-                        has_changed = (
-                            cached_fingerprint['updated_at'] != current_fingerprint['updated_at'] or
-                            cached_fingerprint['total_samples'] != current_fingerprint['total_samples'] or
-                            cached_fingerprint['quality_score'] != current_fingerprint['quality_score'] or
-                            cached_fingerprint['feature_version'] != current_fingerprint['feature_version']
-                        )
-
+                        cached = self.profile_version_cache[speaker_name]
+                        has_changed = any([
+                            cached.get('updated_at') != current_fingerprint['updated_at'],
+                            cached.get('total_samples') != current_fingerprint['total_samples'],
+                            cached.get('quality_score') != current_fingerprint['quality_score'],
+                            cached.get('feature_version') != current_fingerprint['feature_version'],
+                        ])
                         if has_changed:
-                            logger.info(f"🔄 Detected update for profile '{speaker_name}'")
-                            logger.debug(f"   Old: {cached_fingerprint}")
-                            logger.debug(f"   New: {current_fingerprint}")
                             self.profile_version_cache[speaker_name] = current_fingerprint
                             updates[speaker_name] = True
                         else:
                             updates[speaker_name] = False
 
             return updates
+        except Exception as e:
+            logger.debug(f"Local DB profile check failed: {e}")
+            return {}
+
+    async def _check_profile_updates(self) -> dict:
+        """
+        Check if any speaker profiles have been updated in the database.
+
+        🆕 RESILIENT IMPLEMENTATION:
+        - Uses LOCAL-FIRST strategy (SQLite is instant, no network)
+        - Circuit breaker prevents Cloud SQL from blocking when unavailable
+        - Strict timeouts prevent hanging
+        - Parallel async operations for speed
+
+        Returns:
+            dict: Mapping of speaker_name -> has_updates (bool)
+        """
+        # 🆕 STRATEGY 1: Local-first - always try local SQLite first (instant)
+        if self._use_local_first:
+            try:
+                local_updates = await asyncio.wait_for(
+                    self._get_profiles_from_local_db(),
+                    timeout=self._db_operation_timeout
+                )
+                if local_updates:
+                    logger.debug(f"📂 Got {len(local_updates)} profiles from local DB (fast path)")
+                    return local_updates
+            except asyncio.TimeoutError:
+                logger.warning("⏱️ Local DB timeout (unusual)")
+            except Exception as e:
+                logger.debug(f"Local DB check failed: {e}")
+
+        # 🆕 STRATEGY 2: Check circuit breaker before attempting Cloud SQL
+        if not self._should_try_cloud_sql():
+            logger.debug("🔴 Circuit breaker OPEN - skipping Cloud SQL (using cached data)")
+            return {}  # Return empty, verification will use cached profiles
+
+        # 🆕 STRATEGY 3: Try Cloud SQL with strict timeout protection
+        try:
+            if not self.learning_db:
+                return {}
+
+            updates = {}
+
+            # Wrap the entire Cloud SQL operation in a timeout
+            async def _cloud_sql_query():
+                async with self.learning_db.db.cursor() as cursor:
+                    await cursor.execute(
+                        """
+                        SELECT speaker_name, speaker_id, last_updated, total_samples,
+                               enrollment_quality_score, feature_extraction_version
+                        FROM speaker_profiles
+                        """
+                    )
+                    return await cursor.fetchall()
+
+            # Execute with strict timeout
+            profiles = await asyncio.wait_for(
+                _cloud_sql_query(),
+                timeout=self._db_operation_timeout
+            )
+
+            for profile in profiles:
+                speaker_name = profile['speaker_name'] if isinstance(profile, dict) else profile[0]
+                updated_at = profile['last_updated'] if isinstance(profile, dict) else profile[2]
+                total_samples = profile['total_samples'] if isinstance(profile, dict) else profile[3]
+                quality_score = profile['enrollment_quality_score'] if isinstance(profile, dict) else profile[4]
+                feature_version = profile['feature_extraction_version'] if isinstance(profile, dict) else profile[5]
+
+                current_fingerprint = {
+                    'updated_at': str(updated_at) if updated_at else None,
+                    'total_samples': total_samples,
+                    'quality_score': quality_score,
+                    'feature_version': feature_version,
+                }
+
+                if speaker_name not in self.profile_version_cache:
+                    self.profile_version_cache[speaker_name] = current_fingerprint
+                    updates[speaker_name] = True
+                else:
+                    cached_fingerprint = self.profile_version_cache[speaker_name]
+                    has_changed = (
+                        cached_fingerprint['updated_at'] != current_fingerprint['updated_at'] or
+                        cached_fingerprint['total_samples'] != current_fingerprint['total_samples'] or
+                        cached_fingerprint['quality_score'] != current_fingerprint['quality_score'] or
+                        cached_fingerprint['feature_version'] != current_fingerprint['feature_version']
+                    )
+
+                    if has_changed:
+                        logger.info(f"🔄 Detected update for profile '{speaker_name}'")
+                        self.profile_version_cache[speaker_name] = current_fingerprint
+                        updates[speaker_name] = True
+                    else:
+                        updates[speaker_name] = False
+
+            # Success! Record it for circuit breaker
+            self._record_db_success()
+            return updates
+
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Cloud SQL timeout ({self._db_operation_timeout}s) - using local fallback")
+            self._record_db_failure(asyncio.TimeoutError("Query timeout"))
+            # Try local as fallback
+            return await self._get_profiles_from_local_db()
 
         except Exception as e:
-            logger.error(f"❌ Error checking profile updates: {e}", exc_info=True)
-            return {}
+            logger.debug(f"Cloud SQL profile check failed: {e}")
+            self._record_db_failure(e)
+            # Try local as fallback
+            return await self._get_profiles_from_local_db()
 
     async def _profile_reload_monitor(self):
         """
         Background task that monitors for profile updates and reloads automatically.
         Runs continuously until service shutdown.
+
+        🆕 RESILIENT IMPLEMENTATION:
+        - Non-blocking with strict timeouts
+        - Graceful degradation on errors
+        - Dynamic check interval based on circuit breaker state
+        - Never blocks main verification flow
         """
-        logger.info("🔄 Profile reload monitor started")
+        logger.info("🔄 Profile reload monitor started (resilient mode)")
+
+        # Track consecutive failures for adaptive behavior
+        consecutive_failures = 0
+        max_failures_before_backoff = 5
 
         try:
             while not self._shutdown_event.is_set():
                 try:
-                    # Check for updates
-                    updates = await self._check_profile_updates()
+                    # 🆕 Wrap entire update check in timeout to prevent blocking
+                    check_timeout = min(self._db_operation_timeout * 2, 10.0)
 
-                    # If any profiles updated, reload all
-                    if any(updates.values()):
-                        updated_profiles = [name for name, has_update in updates.items() if has_update]
-                        logger.info(f"🔄 Reloading profiles due to updates: {', '.join(updated_profiles)}")
-                        await self.refresh_profiles()
-                        logger.info("✅ Profiles reloaded successfully with latest data from database")
+                    try:
+                        updates = await asyncio.wait_for(
+                            self._check_profile_updates(),
+                            timeout=check_timeout
+                        )
+                        consecutive_failures = 0  # Reset on success
 
-                    # Wait before next check
-                    await asyncio.sleep(self.reload_check_interval)
+                        # If any profiles updated, reload all (with timeout)
+                        if updates and any(updates.values()):
+                            updated_profiles = [name for name, has_update in updates.items() if has_update]
+                            logger.info(f"🔄 Reloading profiles: {', '.join(updated_profiles)}")
+
+                            try:
+                                await asyncio.wait_for(
+                                    self.refresh_profiles(),
+                                    timeout=15.0  # Max 15s for profile reload
+                                )
+                                logger.info("✅ Profiles reloaded successfully")
+                            except asyncio.TimeoutError:
+                                logger.warning("⏱️ Profile reload timeout - will retry next cycle")
+
+                    except asyncio.TimeoutError:
+                        consecutive_failures += 1
+                        logger.debug(f"⏱️ Profile check timeout (failure #{consecutive_failures})")
+
+                    # 🆕 Adaptive check interval based on failures
+                    if consecutive_failures >= max_failures_before_backoff:
+                        # Back off significantly when experiencing repeated failures
+                        wait_time = min(self.reload_check_interval * 4, 120.0)
+                        logger.info(f"📉 Backing off profile checks to {wait_time}s due to failures")
+                    elif self._db_circuit_breaker['state'] == 'open':
+                        # Circuit is open, reduce check frequency
+                        wait_time = self.reload_check_interval * 2
+                    else:
+                        wait_time = self.reload_check_interval
+
+                    await asyncio.sleep(wait_time)
 
                 except asyncio.CancelledError:
                     logger.info("🛑 Profile reload monitor cancelled")
                     break
                 except Exception as e:
-                    logger.error(f"❌ Error in profile reload monitor: {e}", exc_info=True)
-                    # Continue monitoring even after error
-                    await asyncio.sleep(self.reload_check_interval)
+                    consecutive_failures += 1
+                    # Only log as error on first failure, then reduce to debug
+                    if consecutive_failures <= 3:
+                        logger.warning(f"⚠️ Profile reload monitor error (#{consecutive_failures}): {e}")
+                    else:
+                        logger.debug(f"Profile reload monitor error (#{consecutive_failures}): {e}")
+
+                    # Wait before retry, with backoff
+                    await asyncio.sleep(self.reload_check_interval * min(consecutive_failures, 4))
 
         except Exception as e:
             logger.error(f"❌ Profile reload monitor crashed: {e}", exc_info=True)
