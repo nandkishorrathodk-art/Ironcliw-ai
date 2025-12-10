@@ -445,7 +445,7 @@ def get_last_validation_report() -> Optional[ValidationReport]:
 
 
 class VoiceUnlockStartup:
-    """Manages Voice Unlock system startup"""
+    """Manages Voice Unlock system startup with robust profile loading"""
 
     def __init__(self):
         self.websocket_process: Optional[subprocess.Popen] = None
@@ -454,11 +454,24 @@ class VoiceUnlockStartup:
         self.websocket_port = 8765
         self.initialized = False
         self.intelligent_service = None
+        self.voice_profile_service = None
+        self.profiles_loaded = False
 
     async def start(self) -> bool:
-        """Start the Voice Unlock system components"""
+        """Start the Voice Unlock system components with voice profile loading"""
         try:
             logger.info("🔐 Starting Voice Unlock system...")
+
+            # ====================================================================
+            # STEP 1: Load Voice Profiles FIRST (Critical for instant unlock)
+            # ====================================================================
+            logger.info("🎤 Loading voice profiles from CloudSQL/SQLite...")
+            profiles_ready = await self._ensure_voice_profiles_loaded()
+            
+            if profiles_ready:
+                logger.info("✅ Voice profiles loaded and ready for unlock")
+            else:
+                logger.warning("⚠️ Voice profiles not loaded - unlock may not work")
 
             # Check if password is stored
             if not self._check_password_stored():
@@ -490,6 +503,110 @@ class VoiceUnlockStartup:
             logger.error(f"Voice Unlock startup error: {e}")
             return False
 
+    async def _ensure_voice_profiles_loaded(self) -> bool:
+        """
+        Ensure voice profiles are loaded from CloudSQL and synced to SQLite.
+        
+        This is the CRITICAL first step - without profiles, unlock won't work.
+        
+        Returns:
+            True if profiles are loaded and ready
+        """
+        try:
+            # Use VoiceProfileStartupService for robust loading
+            from voice_unlock.voice_profile_startup_service import (
+                get_voice_profile_service,
+                initialize_voice_profiles,
+                is_voice_profile_ready,
+            )
+            
+            self.voice_profile_service = get_voice_profile_service()
+            
+            # Check if already loaded
+            if is_voice_profile_ready():
+                profile_count = self.voice_profile_service.profile_count
+                logger.info(f"✅ Voice profiles already loaded: {profile_count} profile(s)")
+                self.profiles_loaded = True
+                return True
+            
+            # Initialize with timeout
+            timeout = float(os.getenv("VOICE_PROFILE_LOAD_TIMEOUT", "30.0"))
+            
+            logger.info(f"🔄 Initializing voice profiles (timeout={timeout}s)...")
+            
+            success = await asyncio.wait_for(
+                initialize_voice_profiles(timeout=timeout),
+                timeout=timeout + 5.0  # Extra buffer
+            )
+            
+            if success:
+                profile_count = self.voice_profile_service.profile_count
+                metrics = self.voice_profile_service.metrics
+                
+                logger.info(
+                    f"✅ Voice profiles loaded: {profile_count} profile(s) "
+                    f"(CloudSQL={metrics.profiles_from_cloudsql}, "
+                    f"SQLite={metrics.profiles_from_sqlite})"
+                )
+                
+                # List loaded profiles
+                for name, profile in self.voice_profile_service.get_all_profiles().items():
+                    owner_tag = " [OWNER]" if profile.is_primary_user else ""
+                    logger.info(
+                        f"   • {name}{owner_tag}: "
+                        f"dim={profile.embedding_dim}, "
+                        f"conf={profile.recognition_confidence:.1%}"
+                    )
+                
+                self.profiles_loaded = True
+                return True
+            else:
+                logger.warning("⚠️ VoiceProfileStartupService failed to load profiles")
+                return False
+                
+        except ImportError as e:
+            logger.debug(f"VoiceProfileStartupService not available: {e}")
+            # Fall back to direct cache loading
+            return await self._fallback_profile_loading()
+        except asyncio.TimeoutError:
+            logger.warning("⏱️ Voice profile loading timed out")
+            return await self._fallback_profile_loading()
+        except Exception as e:
+            logger.warning(f"Voice profile loading error: {e}")
+            return await self._fallback_profile_loading()
+
+    async def _fallback_profile_loading(self) -> bool:
+        """Fallback profile loading via UnifiedVoiceCacheManager"""
+        try:
+            from voice_unlock.unified_voice_cache_manager import get_unified_cache_manager
+            
+            logger.info("📂 Falling back to UnifiedVoiceCacheManager...")
+            
+            cache = get_unified_cache_manager()
+            
+            # Initialize with profile preloading
+            success = await asyncio.wait_for(
+                cache.initialize(
+                    preload_profiles=True,
+                    preload_models=False,  # Don't block on models
+                    init_chromadb=False,   # Don't block on ChromaDB
+                    timeout=20.0
+                ),
+                timeout=25.0
+            )
+            
+            if success and cache.profiles_loaded > 0:
+                logger.info(f"✅ Fallback loaded {cache.profiles_loaded} profile(s)")
+                self.profiles_loaded = True
+                return True
+            else:
+                logger.warning("⚠️ Fallback profile loading failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Fallback profile loading error: {e}")
+            return False
+
     async def _initialize_intelligent_service(self) -> bool:
         """Initialize the Intelligent Voice Unlock Service"""
         try:
@@ -506,6 +623,9 @@ class VoiceUnlockStartup:
             logger.info("   • Context-Aware Intelligence enabled")
             logger.info("   • Scenario-Aware Intelligence enabled")
             logger.info("   • Learning Database connected")
+            
+            if self.profiles_loaded:
+                logger.info("   • Voice Profiles READY ✓")
 
             return True
 
@@ -622,8 +742,8 @@ class VoiceUnlockStartup:
         logger.info("Voice Unlock system stopped")
 
     def get_status(self) -> Dict[str, Any]:
-        """Get Voice Unlock system status"""
-        return {
+        """Get Voice Unlock system status including voice profiles"""
+        status = {
             "initialized": self.initialized,
             "websocket_running": self.websocket_process is not None
             and self.websocket_process.poll() is None,
@@ -632,7 +752,39 @@ class VoiceUnlockStartup:
             "password_stored": self._check_password_stored(),
             "websocket_port": self.websocket_port,
             "intelligent_service_enabled": self.intelligent_service is not None,
+            "profiles_loaded": self.profiles_loaded,
+            "profile_count": 0,
+            "voice_profiles": [],
         }
+        
+        # Add voice profile details
+        if self.voice_profile_service:
+            try:
+                status["profile_count"] = self.voice_profile_service.profile_count
+                status["voice_profiles"] = [
+                    {
+                        "name": p.speaker_name,
+                        "is_owner": p.is_primary_user,
+                        "confidence": round(p.recognition_confidence, 2),
+                        "embedding_dim": p.embedding_dim,
+                        "source": p.source.value,
+                    }
+                    for p in self.voice_profile_service.get_all_profiles().values()
+                ]
+                
+                # Add metrics
+                metrics = self.voice_profile_service.metrics
+                status["profile_metrics"] = {
+                    "from_cloudsql": metrics.profiles_from_cloudsql,
+                    "from_sqlite": metrics.profiles_from_sqlite,
+                    "synced_to_sqlite": metrics.profiles_synced_to_sqlite,
+                    "last_sync": metrics.last_sync_time.isoformat() if metrics.last_sync_time else None,
+                    "cloudsql_available": metrics.cloudsql_available,
+                }
+            except Exception:
+                pass
+        
+        return status
 
 
 # Global instance

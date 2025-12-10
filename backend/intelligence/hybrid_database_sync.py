@@ -1517,12 +1517,174 @@ class HybridDatabaseSync:
                     return False
 
             logger.info(f"📊 Cache check: Cache is fresh ({sqlite_count} profiles)")
-            return False
+            return False  # Cache is fresh, no refresh needed
 
         except Exception as e:
-            logger.error(f"❌ Cache staleness check failed: {e}")
-            # On error, assume refresh needed to be safe
-            return True
+            logger.error(f"Cache staleness check error: {e}")
+            return True  # On error, assume refresh is needed
+
+    async def ensure_voice_profiles_synced(self, force_refresh: bool = False) -> bool:
+        """
+        Ensure voice profiles are synced from CloudSQL to SQLite.
+        
+        ENHANCED v2.0: Integrates with VoiceProfileStartupService for
+        production-grade voice profile synchronization.
+        
+        This method should be called during startup to ensure your voice
+        profile is ready for instant unlock.
+        
+        Args:
+            force_refresh: Force re-sync even if cache appears fresh
+            
+        Returns:
+            True if profiles are synced and ready
+        """
+        try:
+            logger.info("🔄 Ensuring voice profiles are synced...")
+            
+            # Method 1: Use VoiceProfileStartupService (preferred)
+            try:
+                from voice_unlock.voice_profile_startup_service import (
+                    get_voice_profile_service,
+                    is_voice_profile_ready,
+                )
+                
+                service = get_voice_profile_service()
+                
+                # If service is already ready and no force refresh, we're done
+                if is_voice_profile_ready() and not force_refresh:
+                    profile_count = service.profile_count
+                    logger.info(f"✅ Voice profiles already synced: {profile_count} profile(s)")
+                    return True
+                
+                # Initialize the service (handles CloudSQL → SQLite sync)
+                success = await service.initialize(timeout=30.0)
+                
+                if success:
+                    profile_count = service.profile_count
+                    metrics = service.metrics
+                    
+                    logger.info(
+                        f"✅ Voice profiles synced via VoiceProfileStartupService: "
+                        f"{profile_count} profile(s) "
+                        f"(CloudSQL={metrics.profiles_from_cloudsql}, "
+                        f"SQLite={metrics.profiles_from_sqlite})"
+                    )
+                    
+                    # Update our FAISS cache with the loaded profiles
+                    if self.faiss_cache:
+                        for speaker_name, profile in service.get_all_profiles().items():
+                            if profile.is_valid():
+                                self.faiss_cache.add_embedding(
+                                    speaker_name,
+                                    profile.embedding,
+                                    {
+                                        "speaker_name": speaker_name,
+                                        "source": profile.source.value,
+                                        "confidence": profile.recognition_confidence,
+                                    }
+                                )
+                        
+                        self.metrics.cache_size = self.faiss_cache.size()
+                        logger.info(f"   📦 FAISS cache updated: {self.metrics.cache_size} embedding(s)")
+                    
+                    return True
+                else:
+                    logger.warning("⚠️ VoiceProfileStartupService initialization failed")
+                    
+            except ImportError:
+                logger.debug("VoiceProfileStartupService not available - using legacy sync")
+            except Exception as e:
+                logger.warning(f"VoiceProfileStartupService sync failed: {e}")
+            
+            # Method 2: Fall back to direct bootstrap
+            logger.info("📂 Falling back to direct CloudSQL bootstrap...")
+            
+            if force_refresh or await self._check_cache_staleness():
+                success = await self.bootstrap_voice_profiles_from_cloudsql()
+                if success:
+                    logger.info("✅ Voice profiles synced via direct bootstrap")
+                    return True
+            else:
+                # Cache is fresh
+                logger.info("✅ Voice profile cache is fresh - no sync needed")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Voice profile sync failed: {e}")
+            return False
+
+    async def get_voice_profile_sync_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive voice profile sync status.
+        
+        Returns:
+            Dict with sync status, profile counts, and health info
+        """
+        status = {
+            "sqlite_profiles": 0,
+            "faiss_cache_size": 0,
+            "cloudsql_available": False,
+            "cloudsql_profiles": 0,
+            "sync_status": "unknown",
+            "last_sync": None,
+            "profiles": [],
+        }
+        
+        try:
+            # Check SQLite
+            if self.sqlite_conn:
+                async with self.sqlite_conn.execute(
+                    "SELECT speaker_name, total_samples, last_updated FROM speaker_profiles"
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    status["sqlite_profiles"] = len(rows)
+                    status["profiles"] = [
+                        {"name": r[0], "samples": r[1], "updated": r[2]}
+                        for r in rows
+                    ]
+            
+            # Check FAISS cache
+            if self.faiss_cache:
+                status["faiss_cache_size"] = self.faiss_cache.size()
+            
+            # Check CloudSQL
+            if self.connection_manager and self.connection_manager.is_initialized:
+                status["cloudsql_available"] = True
+                try:
+                    async with self.connection_manager.connection() as conn:
+                        status["cloudsql_profiles"] = await conn.fetchval(
+                            "SELECT COUNT(*) FROM speaker_profiles WHERE voiceprint_embedding IS NOT NULL"
+                        )
+                except Exception:
+                    status["cloudsql_available"] = False
+            
+            # Determine sync status
+            if status["sqlite_profiles"] > 0 and status["faiss_cache_size"] > 0:
+                if status["cloudsql_available"]:
+                    if status["sqlite_profiles"] == status["cloudsql_profiles"]:
+                        status["sync_status"] = "synced"
+                    else:
+                        status["sync_status"] = "out_of_sync"
+                else:
+                    status["sync_status"] = "local_only"
+            elif status["sqlite_profiles"] == 0 and status["faiss_cache_size"] == 0:
+                status["sync_status"] = "empty"
+            else:
+                status["sync_status"] = "partial"
+            
+            # Add last sync time
+            if self.metrics.last_cache_refresh:
+                status["last_sync"] = self.metrics.last_cache_refresh.isoformat()
+            
+        except Exception as e:
+            logger.error(f"Failed to get sync status: {e}")
+            status["sync_status"] = "error"
+            status["error"] = str(e)
+        
+        return status
 
     async def _health_check_loop(self):
         """

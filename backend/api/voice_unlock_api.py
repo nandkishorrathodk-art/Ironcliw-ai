@@ -926,6 +926,213 @@ async def get_vbi_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/profiles/health")
+async def get_voice_profile_health():
+    """
+    Get comprehensive voice profile health status.
+    
+    This endpoint provides detailed information about:
+    - Voice profile loading status (CloudSQL, SQLite, Memory)
+    - Sync status between CloudSQL and SQLite
+    - Individual profile details
+    - Ready state for voice unlock
+    
+    Use this to verify your voice profile is properly loaded
+    and ready for instant unlock.
+    """
+    try:
+        health = {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "ready_for_unlock": False,
+            "profile_count": 0,
+            "profiles": [],
+            "sync_status": {},
+            "sources": {
+                "cloudsql": {"available": False, "profiles": 0},
+                "sqlite": {"available": False, "profiles": 0},
+                "memory_cache": {"loaded": False, "profiles": 0},
+            },
+        }
+        
+        # Check VoiceProfileStartupService
+        try:
+            from voice_unlock.voice_profile_startup_service import (
+                get_voice_profile_service,
+                is_voice_profile_ready,
+                get_profile_status,
+            )
+            
+            service = get_voice_profile_service()
+            
+            if service.is_ready:
+                health["ready_for_unlock"] = True
+                health["profile_count"] = service.profile_count
+                
+                # Get detailed profile info
+                for name, profile in service.get_all_profiles().items():
+                    health["profiles"].append({
+                        "speaker_name": name,
+                        "is_primary_user": profile.is_primary_user,
+                        "embedding_dim": profile.embedding_dim,
+                        "recognition_confidence": round(profile.recognition_confidence, 3),
+                        "source": profile.source.value,
+                        "total_samples": profile.total_samples,
+                        "valid": profile.is_valid(),
+                    })
+                
+                # Get metrics
+                metrics = service.metrics
+                health["sync_status"] = {
+                    "status": metrics.sync_status.name,
+                    "last_sync": metrics.last_sync_time.isoformat() if metrics.last_sync_time else None,
+                    "sync_duration_ms": round(metrics.sync_duration_ms, 2),
+                }
+                
+                health["sources"]["cloudsql"]["available"] = metrics.cloudsql_available
+                health["sources"]["cloudsql"]["profiles"] = metrics.profiles_from_cloudsql
+                health["sources"]["sqlite"]["available"] = metrics.sqlite_available
+                health["sources"]["sqlite"]["profiles"] = metrics.profiles_from_sqlite
+                health["sources"]["memory_cache"]["loaded"] = True
+                health["sources"]["memory_cache"]["profiles"] = service.profile_count
+                health["sources"]["memory_cache"]["synced_to_sqlite"] = metrics.profiles_synced_to_sqlite
+                
+        except ImportError:
+            health["service_error"] = "VoiceProfileStartupService not available"
+        except Exception as e:
+            health["service_error"] = str(e)
+        
+        # Check UnifiedVoiceCacheManager as fallback
+        try:
+            from voice_unlock.unified_voice_cache_manager import get_unified_cache_manager
+            
+            cache = get_unified_cache_manager()
+            if cache and cache.is_ready:
+                if not health["ready_for_unlock"]:
+                    health["ready_for_unlock"] = cache.profiles_loaded > 0
+                    health["profile_count"] = cache.profiles_loaded
+                    health["sources"]["memory_cache"]["loaded"] = True
+                    health["sources"]["memory_cache"]["profiles"] = cache.profiles_loaded
+                
+                # Add cache stats
+                if hasattr(cache, '_stats'):
+                    health["cache_stats"] = cache._stats.to_dict()
+                    
+        except Exception as e:
+            health["cache_error"] = str(e)
+        
+        # Check HybridDatabaseSync
+        try:
+            from intelligence.hybrid_database_sync import HybridDatabaseSync
+            
+            # Check if singleton exists
+            sync = HybridDatabaseSync()
+            if sync.is_initialized:
+                sync_status = await sync.get_voice_profile_sync_status()
+                health["hybrid_sync"] = sync_status
+                
+                # Update sources from hybrid sync
+                if sync_status.get("sqlite_profiles", 0) > 0:
+                    health["sources"]["sqlite"]["profiles"] = sync_status["sqlite_profiles"]
+                    health["sources"]["sqlite"]["available"] = True
+                if sync_status.get("cloudsql_available"):
+                    health["sources"]["cloudsql"]["available"] = True
+                    health["sources"]["cloudsql"]["profiles"] = sync_status.get("cloudsql_profiles", 0)
+                    
+        except Exception as e:
+            health["hybrid_sync_error"] = str(e)
+        
+        # Determine overall health status
+        if health["ready_for_unlock"] and health["profile_count"] > 0:
+            health["status"] = "healthy"
+            health["message"] = f"Voice profiles ready: {health['profile_count']} profile(s) loaded"
+        elif health["profile_count"] > 0:
+            health["status"] = "degraded"
+            health["message"] = "Profiles exist but may not be fully loaded"
+        else:
+            health["status"] = "unhealthy"
+            health["message"] = "No voice profiles loaded - voice unlock will not work"
+        
+        return health
+        
+    except Exception as e:
+        logger.error(f"Voice profile health check error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/profiles/sync")
+async def trigger_voice_profile_sync(force: bool = False):
+    """
+    Manually trigger voice profile sync from CloudSQL to SQLite.
+    
+    This is useful after:
+    - Adding new voice enrollments in CloudSQL
+    - Experiencing sync issues
+    - After network reconnection
+    
+    Args:
+        force: Force sync even if cache appears fresh
+        
+    Returns:
+        Sync operation result with counts
+    """
+    try:
+        result = {
+            "success": False,
+            "timestamp": datetime.now().isoformat(),
+            "profiles_synced": 0,
+            "method": None,
+        }
+        
+        # Try VoiceProfileStartupService first
+        try:
+            from voice_unlock.voice_profile_startup_service import get_voice_profile_service
+            
+            service = get_voice_profile_service()
+            success = await service.refresh_profiles()
+            
+            if success:
+                result["success"] = True
+                result["profiles_synced"] = service.profile_count
+                result["method"] = "VoiceProfileStartupService"
+                result["metrics"] = service.metrics.to_dict()
+                return result
+                
+        except Exception as e:
+            logger.warning(f"VoiceProfileStartupService sync failed: {e}")
+        
+        # Fall back to HybridDatabaseSync
+        try:
+            from intelligence.hybrid_database_sync import HybridDatabaseSync
+            
+            sync = HybridDatabaseSync()
+            
+            if not sync.is_initialized:
+                await sync.initialize()
+            
+            success = await sync.ensure_voice_profiles_synced(force_refresh=force)
+            
+            if success:
+                result["success"] = True
+                result["method"] = "HybridDatabaseSync"
+                
+                # Get updated counts
+                status = await sync.get_voice_profile_sync_status()
+                result["profiles_synced"] = status.get("sqlite_profiles", 0)
+                result["sync_status"] = status
+                return result
+                
+        except Exception as e:
+            logger.warning(f"HybridDatabaseSync sync failed: {e}")
+            result["error"] = str(e)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Voice profile sync error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/vbi/patterns")
 async def get_vbi_patterns(user_id: str = "owner", limit: int = 10):
     """

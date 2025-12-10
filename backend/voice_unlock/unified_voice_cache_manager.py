@@ -1174,14 +1174,18 @@ class UnifiedVoiceCacheManager:
 
     async def _preload_voice_profiles(self) -> int:
         """
-        Preload voice profiles from SQLite database.
+        Preload voice profiles with robust CloudSQL → SQLite synchronization.
 
-        This is the KEY optimization - loads Derek's embedding at startup
+        ENHANCED v2.0: Uses VoiceProfileStartupService for production-grade
+        voice profile loading with automatic CloudSQL sync to SQLite.
+
+        This is the KEY optimization - loads your voice embedding at startup
         so voice matching is instant (no database query needed).
 
-        Database source priority:
-        1. Learning database (primary) - ~/.jarvis/learning/jarvis_learning.db
-        2. Voice unlock metrics (fallback) - ~/.jarvis/voice_unlock_metrics.db
+        Loading Priority (handled by VoiceProfileStartupService):
+        1. CloudSQL (if available) - authoritative source, auto-syncs to SQLite
+        2. SQLite learning database - local cache with CloudSQL sync data
+        3. SQLite metrics database - fallback
 
         Returns:
             Number of profiles preloaded
@@ -1189,186 +1193,86 @@ class UnifiedVoiceCacheManager:
         self._state = CacheState.LOADING_PROFILES
 
         try:
-            import sqlite3
-
             loaded = 0
-
+            
             # ================================================================
-            # PRIMARY SOURCE: Learning Database (has Derek's actual voiceprint)
+            # PRIMARY: Use VoiceProfileStartupService (production-grade)
+            # This handles CloudSQL → SQLite sync automatically
             # ================================================================
-            db_dir = os.path.expanduser("~/.jarvis/learning")
-            learning_db_path = os.path.join(db_dir, "jarvis_learning.db")
-
-            if os.path.exists(learning_db_path):
-                try:
-                    conn = sqlite3.connect(learning_db_path)
-                    conn.row_factory = sqlite3.Row
-                    cursor = conn.cursor()
-
-                    # Query speaker_profiles table (has voiceprint_embedding column)
-                    cursor.execute("""
-                        SELECT
-                            speaker_name,
-                            voiceprint_embedding,
-                            embedding_dimension,
-                            total_samples,
-                            recognition_confidence,
-                            is_primary_user,
-                            last_updated
-                        FROM speaker_profiles
-                        WHERE voiceprint_embedding IS NOT NULL
-                        ORDER BY is_primary_user DESC, last_updated DESC
-                    """)
-
-                    rows = cursor.fetchall()
-                    conn.close()
-
-                    for row in rows:
-                        try:
-                            speaker_name = row["speaker_name"]
-                            embedding_blob = row["voiceprint_embedding"]
-                            embedding_dim = row["embedding_dimension"] or CacheConfig.EMBEDDING_DIM
-                            samples = row["total_samples"] or 0
-                            confidence = row["recognition_confidence"] or 0.0
-                            is_primary = row["is_primary_user"] or 0
-                            updated_at = row["last_updated"]
-
-                            # voiceprint_embedding is stored as raw bytes (float32 array)
-                            embedding = np.frombuffer(embedding_blob, dtype=np.float32)
-
-                            # Validate embedding dimensions
-                            # Accept both 192-dim (ECAPA-TDNN) and other valid dimensions
-                            actual_dim = len(embedding)
-                            expected_dim = embedding_dim or CacheConfig.EMBEDDING_DIM
-
-                            if actual_dim == 0:
-                                logger.warning(f"Empty embedding for {speaker_name}")
-                                continue
-
-                            if actual_dim != expected_dim and actual_dim != CacheConfig.EMBEDDING_DIM:
-                                logger.warning(
-                                    f"Embedding dimension mismatch for {speaker_name}: "
-                                    f"got {actual_dim}, expected {expected_dim}"
-                                )
-                                # Still try to use it if it's a valid size
-                                if actual_dim < 50:
-                                    continue
-
-                            # Create profile with actual dimension
+            try:
+                from voice_unlock.voice_profile_startup_service import (
+                    get_voice_profile_service,
+                    initialize_voice_profiles,
+                )
+                
+                logger.info("🔄 Using VoiceProfileStartupService for profile loading...")
+                
+                # Initialize the service (handles CloudSQL → SQLite sync)
+                service = get_voice_profile_service()
+                init_timeout = float(os.getenv("VOICE_PROFILE_INIT_TIMEOUT", "30.0"))
+                
+                success = await asyncio.wait_for(
+                    service.initialize(timeout=init_timeout),
+                    timeout=init_timeout + 5.0  # Extra buffer for task cleanup
+                )
+                
+                if success and service.is_ready:
+                    # Copy profiles from service to local cache
+                    for speaker_name, profile_data in service.get_all_profiles().items():
+                        if profile_data.is_valid():
                             profile = VoiceProfile(
-                                speaker_name=speaker_name,
-                                embedding=embedding,
-                                embedding_dimensions=actual_dim,
-                                total_samples=samples,
-                                avg_confidence=confidence,
-                                source="learning_database",
+                                speaker_name=profile_data.speaker_name,
+                                embedding=profile_data.embedding,
+                                embedding_dimensions=profile_data.embedding_dim,
+                                total_samples=profile_data.total_samples,
+                                avg_confidence=profile_data.recognition_confidence,
+                                source=profile_data.source.value,
                             )
-
-                            if updated_at:
-                                try:
-                                    profile.last_verified = datetime.fromisoformat(
-                                        updated_at.replace("Z", "+00:00")
-                                    )
-                                except:
-                                    pass
-
+                            
+                            # Copy acoustic features if available
+                            if profile_data.pitch_mean_hz:
+                                profile.typical_f0_range = (
+                                    profile_data.pitch_mean_hz - (profile_data.pitch_std_hz or 20),
+                                    profile_data.pitch_mean_hz + (profile_data.pitch_std_hz or 20),
+                                )
+                            
                             self._preloaded_profiles[speaker_name] = profile
                             loaded += 1
-
-                            owner_tag = " [OWNER]" if is_primary else ""
+                            
+                            owner_tag = " [OWNER]" if profile_data.is_primary_user else ""
+                            source_tag = f"({profile_data.source.value})"
                             logger.info(
                                 f"✅ Preloaded voice profile: {speaker_name}{owner_tag} "
-                                f"(dim={len(embedding)}, samples={samples}, "
-                                f"confidence={confidence:.2%})"
+                                f"{source_tag} (dim={profile_data.embedding_dim}, "
+                                f"confidence={profile_data.recognition_confidence:.2%})"
                             )
-
-                        except Exception as e:
-                            logger.warning(f"Failed to load profile: {e}")
-
+                    
                     if loaded > 0:
+                        metrics = service.metrics
                         logger.info(
-                            f"✅ Preloaded {loaded} voice profile(s) from learning database"
+                            f"🎉 VoiceProfileStartupService loaded {loaded} profile(s) "
+                            f"(CloudSQL={metrics.profiles_from_cloudsql}, "
+                            f"SQLite={metrics.profiles_from_sqlite}, "
+                            f"synced_to_sqlite={metrics.profiles_synced_to_sqlite})"
                         )
-
-                except sqlite3.Error as e:
-                    logger.warning(f"Learning database error: {e}")
+                        self._stats.profiles_preloaded = loaded
+                        return loaded
+                else:
+                    logger.warning("VoiceProfileStartupService failed - falling back to direct load")
+                    
+            except ImportError:
+                logger.debug("VoiceProfileStartupService not available - using legacy loading")
+            except asyncio.TimeoutError:
+                logger.warning("⏱️ VoiceProfileStartupService timed out - using fallback")
+            except Exception as e:
+                logger.warning(f"VoiceProfileStartupService error: {e} - using fallback")
 
             # ================================================================
-            # FALLBACK: Voice unlock metrics database (if learning DB failed)
+            # FALLBACK: Direct SQLite loading (legacy path)
             # ================================================================
-            if loaded == 0:
-                fallback_db_path = os.path.join(
-                    os.path.expanduser("~/.jarvis"),
-                    "voice_unlock_metrics.db"
-                )
-
-                if os.path.exists(fallback_db_path):
-                    try:
-                        conn = sqlite3.connect(fallback_db_path)
-                        conn.row_factory = sqlite3.Row
-                        cursor = conn.cursor()
-
-                        cursor.execute("""
-                            SELECT
-                                speaker_name,
-                                embedding_b64,
-                                embedding_dimensions,
-                                total_samples_used,
-                                avg_sample_confidence,
-                                updated_at,
-                                source
-                            FROM voice_embeddings
-                            WHERE embedding_b64 IS NOT NULL
-                            ORDER BY updated_at DESC
-                        """)
-
-                        rows = cursor.fetchall()
-                        conn.close()
-
-                        for row in rows:
-                            try:
-                                speaker_name = row["speaker_name"]
-                                embedding_b64 = row["embedding_b64"]
-                                dimensions = row["embedding_dimensions"] or 192
-                                samples = row["total_samples_used"] or 0
-                                confidence = row["avg_sample_confidence"] or 0.0
-                                source = row["source"] or "metrics_database"
-
-                                # Decode base64 embedding
-                                embedding_bytes = base64.b64decode(embedding_b64)
-                                embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
-
-                                # Validate dimensions
-                                if len(embedding) != dimensions:
-                                    continue
-
-                                profile = VoiceProfile(
-                                    speaker_name=speaker_name,
-                                    embedding=embedding,
-                                    embedding_dimensions=dimensions,
-                                    total_samples=samples,
-                                    avg_confidence=confidence,
-                                    source=source,
-                                )
-
-                                self._preloaded_profiles[speaker_name] = profile
-                                loaded += 1
-
-                                logger.info(
-                                    f"Preloaded voice profile (fallback): {speaker_name}"
-                                )
-
-                            except Exception as e:
-                                logger.warning(f"Failed to load fallback profile: {e}")
-
-                        if loaded > 0:
-                            logger.info(
-                                f"Preloaded {loaded} profile(s) from fallback metrics database"
-                            )
-
-                    except sqlite3.Error as e:
-                        logger.warning(f"Fallback metrics database error: {e}")
-
+            logger.info("📂 Falling back to direct SQLite profile loading...")
+            loaded = await self._load_profiles_direct_sqlite()
+            
             # ================================================================
             # CLOUDSQL FALLBACK: Bootstrap from CloudSQL if local is empty
             # ================================================================
@@ -1390,6 +1294,176 @@ class UnifiedVoiceCacheManager:
         except Exception as e:
             logger.error(f"Failed to preload voice profiles: {e}", exc_info=True)
             return 0
+
+    async def _load_profiles_direct_sqlite(self) -> int:
+        """
+        Direct SQLite profile loading (legacy fallback).
+        
+        Returns:
+            Number of profiles loaded
+        """
+        import sqlite3
+        
+        loaded = 0
+
+        # ================================================================
+        # PRIMARY SOURCE: Learning Database
+        # ================================================================
+        db_dir = os.path.expanduser("~/.jarvis/learning")
+        learning_db_path = os.path.join(db_dir, "jarvis_learning.db")
+
+        if os.path.exists(learning_db_path):
+            try:
+                conn = sqlite3.connect(learning_db_path)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT
+                        speaker_name,
+                        voiceprint_embedding,
+                        embedding_dimension,
+                        total_samples,
+                        recognition_confidence,
+                        is_primary_user,
+                        last_updated
+                    FROM speaker_profiles
+                    WHERE voiceprint_embedding IS NOT NULL
+                    ORDER BY is_primary_user DESC, last_updated DESC
+                """)
+
+                rows = cursor.fetchall()
+                conn.close()
+
+                for row in rows:
+                    try:
+                        speaker_name = row["speaker_name"]
+                        embedding_blob = row["voiceprint_embedding"]
+                        embedding_dim = row["embedding_dimension"] or CacheConfig.EMBEDDING_DIM
+                        samples = row["total_samples"] or 0
+                        confidence = row["recognition_confidence"] or 0.0
+                        is_primary = row["is_primary_user"] or 0
+                        updated_at = row["last_updated"]
+
+                        embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+                        actual_dim = len(embedding)
+
+                        if actual_dim == 0 or actual_dim < 50:
+                            continue
+
+                        profile = VoiceProfile(
+                            speaker_name=speaker_name,
+                            embedding=embedding,
+                            embedding_dimensions=actual_dim,
+                            total_samples=samples,
+                            avg_confidence=confidence,
+                            source="learning_database",
+                        )
+
+                        if updated_at:
+                            try:
+                                profile.last_verified = datetime.fromisoformat(
+                                    updated_at.replace("Z", "+00:00")
+                                )
+                            except:
+                                pass
+
+                        self._preloaded_profiles[speaker_name] = profile
+                        loaded += 1
+
+                        owner_tag = " [OWNER]" if is_primary else ""
+                        logger.info(
+                            f"✅ Preloaded voice profile: {speaker_name}{owner_tag} "
+                            f"(dim={len(embedding)}, samples={samples}, "
+                            f"confidence={confidence:.2%})"
+                        )
+
+                    except Exception as e:
+                        logger.warning(f"Failed to load profile: {e}")
+
+                if loaded > 0:
+                    logger.info(
+                        f"✅ Preloaded {loaded} voice profile(s) from learning database"
+                    )
+
+            except sqlite3.Error as e:
+                logger.warning(f"Learning database error: {e}")
+
+        # ================================================================
+        # FALLBACK: Voice unlock metrics database
+        # ================================================================
+        if loaded == 0:
+            fallback_db_path = os.path.join(
+                os.path.expanduser("~/.jarvis"),
+                "voice_unlock_metrics.db"
+            )
+
+            if os.path.exists(fallback_db_path):
+                try:
+                    conn = sqlite3.connect(fallback_db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+
+                    cursor.execute("""
+                        SELECT
+                            speaker_name,
+                            embedding_b64,
+                            embedding_dimensions,
+                            total_samples_used,
+                            avg_sample_confidence,
+                            updated_at,
+                            source
+                        FROM voice_embeddings
+                        WHERE embedding_b64 IS NOT NULL
+                        ORDER BY updated_at DESC
+                    """)
+
+                    rows = cursor.fetchall()
+                    conn.close()
+
+                    for row in rows:
+                        try:
+                            speaker_name = row["speaker_name"]
+                            embedding_b64 = row["embedding_b64"]
+                            dimensions = row["embedding_dimensions"] or 192
+                            samples = row["total_samples_used"] or 0
+                            confidence = row["avg_sample_confidence"] or 0.0
+                            source = row["source"] or "metrics_database"
+
+                            embedding_bytes = base64.b64decode(embedding_b64)
+                            embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+
+                            if len(embedding) != dimensions:
+                                continue
+
+                            profile = VoiceProfile(
+                                speaker_name=speaker_name,
+                                embedding=embedding,
+                                embedding_dimensions=dimensions,
+                                total_samples=samples,
+                                avg_confidence=confidence,
+                                source=source,
+                            )
+
+                            self._preloaded_profiles[speaker_name] = profile
+                            loaded += 1
+
+                            logger.info(
+                                f"Preloaded voice profile (fallback): {speaker_name}"
+                            )
+
+                        except Exception as e:
+                            logger.warning(f"Failed to load fallback profile: {e}")
+
+                    if loaded > 0:
+                        logger.info(
+                            f"Preloaded {loaded} profile(s) from fallback metrics database"
+                        )
+
+                except sqlite3.Error as e:
+                    logger.warning(f"Fallback metrics database error: {e}")
+
+        return loaded
 
     async def _bootstrap_from_cloudsql(self) -> int:
         """
