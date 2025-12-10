@@ -603,7 +603,17 @@ class HybridSTTRouter:
 
             except Exception as e:
                 elapsed = (time.time() - prewarm_start) * 1000
-                logger.warning(f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms: {e}")
+                error_msg = str(e)
+                
+                # Check for known numba circular import issue
+                if "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
+                    logger.warning(
+                        f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms due to numba initialization issue: {e}. "
+                        "This is a known issue with certain numba versions. "
+                        "Voice unlock will work using alternative engines (Vosk, SpeechBrain, or Cloud STT)."
+                    )
+                else:
+                    logger.warning(f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms: {e}")
 
                 # Record failure in circuit breaker
                 cb = self._circuit_breakers.get('whisper_local')
@@ -675,6 +685,7 @@ class HybridSTTRouter:
             logger.debug("   ✗ Vosk not available")
 
         # Check Whisper (local, accurate, medium resource)
+        # Note: numba (Whisper dependency) can have circular import issues
         try:
             import whisper
             discovered['whisper_local'] = {
@@ -683,8 +694,19 @@ class HybridSTTRouter:
                 'ram_required_gb': 2.0
             }
             logger.info("   ✓ Whisper (local) engine available")
-        except ImportError:
-            logger.debug("   ✗ Whisper local not available")
+        except ImportError as e:
+            logger.debug(f"   ✗ Whisper local not available: {e}")
+        except Exception as e:
+            # Handle numba circular import and other initialization errors gracefully
+            error_msg = str(e)
+            if "circular import" in error_msg or "numba" in error_msg.lower():
+                logger.warning(
+                    f"   ⚠️ Whisper unavailable due to numba initialization issue: {e}. "
+                    "This is a known issue with certain numba versions. "
+                    "Continuing without local Whisper - other engines will be used."
+                )
+            else:
+                logger.warning(f"   ⚠️ Whisper local failed to load: {e}")
 
         # Check Google Cloud STT (cloud, high accuracy)
         try:

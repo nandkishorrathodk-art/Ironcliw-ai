@@ -1138,12 +1138,12 @@ class VBIPipelineOrchestrator:
 
     async def _extract_embedding(self, audio_data: Any) -> List[float]:
         """
-        Extract ECAPA-TDNN speaker embedding from audio.
+        Extract ECAPA-TDNN speaker embedding from audio with robust fallback chain.
         
-        Uses CloudECAPAClient with intelligent backend routing:
-        - Fast-path: Recent speaker cache (~5-10ms)
-        - Cache hit: Identical audio cache (~1ms)
-        - Cloud extraction: GCP Cloud Run/Spot VM (200-500ms)
+        Fallback chain (v2.0):
+        1. CloudECAPAClient (Cloud Run / Spot VM) - fastest, zero local memory
+        2. ML Engine Registry (may use cloud or local) - orchestrated fallback
+        3. Local ECAPA via SpeechBrain - last resort, high memory usage
         
         Args:
             audio_data: Preprocessed audio bytes (float32 or int16)
@@ -1151,48 +1151,143 @@ class VBIPipelineOrchestrator:
         Returns:
             192-dimensional speaker embedding as list of floats
         """
+        import numpy as np
+        
+        # Convert audio_data to bytes if it's not already
+        if hasattr(audio_data, 'tobytes'):
+            audio_bytes = audio_data.tobytes()
+        elif isinstance(audio_data, bytes):
+            audio_bytes = audio_data
+        else:
+            audio_bytes = np.array(audio_data, dtype=np.float32).tobytes()
+        
+        last_error = None
+        
+        # =========================================================================
+        # STRATEGY 1: Cloud ECAPA Client (fastest, no local memory)
+        # =========================================================================
         try:
+            logger.info("[VBI-ORCH] 🌐 Trying Cloud ECAPA extraction...")
             from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
             
-            # Get or create the singleton client (properly initialized)
             client = await get_cloud_ecapa_client()
             
-            if client is None:
-                raise RuntimeError("CloudECAPAClient initialization failed")
-            
-            # Convert audio_data to bytes if it's not already
-            if hasattr(audio_data, 'tobytes'):
-                audio_bytes = audio_data.tobytes()
-            elif isinstance(audio_data, bytes):
-                audio_bytes = audio_data
+            if client is not None:
+                # Extract with timeout
+                embedding = await asyncio.wait_for(
+                    client.extract_embedding(
+                        audio_data=audio_bytes,
+                        sample_rate=16000,
+                        format="float32",
+                        use_cache=True,
+                        use_fast_path=True
+                    ),
+                    timeout=20.0  # 20 second timeout for cloud
+                )
+                
+                if embedding is not None:
+                    logger.info(f"[VBI-ORCH] ✅ Cloud ECAPA extraction succeeded: {len(embedding)} dimensions")
+                    return embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                else:
+                    last_error = "Cloud returned None"
+                    logger.warning(f"[VBI-ORCH] ⚠️ Cloud ECAPA returned None, trying fallback...")
             else:
-                # Try to convert via numpy
-                import numpy as np
-                audio_bytes = np.array(audio_data, dtype=np.float32).tobytes()
-            
-            # Extract embedding - method is already async, returns np.ndarray
-            embedding = await client.extract_embedding(
-                audio_data=audio_bytes,
-                sample_rate=16000,
-                format="float32",
-                use_cache=True,
-                use_fast_path=True
-            )
-            
-            if embedding is None:
-                raise RuntimeError("Embedding extraction returned None")
-            
-            # Convert numpy array to list of floats
-            if hasattr(embedding, 'tolist'):
-                return embedding.tolist()
-            elif isinstance(embedding, (list, tuple)):
-                return list(embedding)
-            else:
-                return [float(x) for x in embedding]
-
+                last_error = "CloudECAPAClient not initialized"
+                logger.warning("[VBI-ORCH] ⚠️ CloudECAPAClient not available, trying fallback...")
+                
+        except asyncio.TimeoutError:
+            last_error = "Cloud ECAPA timeout (20s)"
+            logger.warning("[VBI-ORCH] ⏱️ Cloud ECAPA timed out, trying fallback...")
+        except ImportError as e:
+            last_error = f"Import error: {e}"
+            logger.warning(f"[VBI-ORCH] ⚠️ CloudECAPAClient import failed: {e}")
         except Exception as e:
-            logger.error(f"[VBI-ORCH] Embedding extraction failed: {type(e).__name__}: {e}")
-            raise
+            last_error = str(e)
+            logger.warning(f"[VBI-ORCH] ⚠️ Cloud ECAPA failed: {type(e).__name__}: {e}")
+        
+        # =========================================================================
+        # STRATEGY 2: ML Engine Registry (orchestrated cloud/local routing)
+        # =========================================================================
+        try:
+            logger.info("[VBI-ORCH] 🔄 Trying ML Engine Registry extraction...")
+            from voice_unlock.ml_engine_registry import extract_speaker_embedding, ensure_ecapa_available
+            
+            # Ensure ECAPA is available (may trigger cloud or local load)
+            success, msg, _ = await ensure_ecapa_available()
+            
+            if success:
+                # Convert bytes to numpy array for registry
+                audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
+                
+                embedding = await asyncio.wait_for(
+                    extract_speaker_embedding(audio_array),
+                    timeout=30.0  # 30 second timeout for registry
+                )
+                
+                if embedding is not None:
+                    embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                    logger.info(f"[VBI-ORCH] ✅ ML Registry extraction succeeded: {len(embedding_list)} dimensions")
+                    return embedding_list
+                else:
+                    last_error = "Registry returned None"
+                    logger.warning("[VBI-ORCH] ⚠️ ML Registry returned None, trying local...")
+            else:
+                last_error = msg
+                logger.warning(f"[VBI-ORCH] ⚠️ ML Registry not available: {msg}")
+                
+        except asyncio.TimeoutError:
+            last_error = "ML Registry timeout (30s)"
+            logger.warning("[VBI-ORCH] ⏱️ ML Registry timed out, trying local...")
+        except ImportError as e:
+            last_error = f"Import error: {e}"
+            logger.warning(f"[VBI-ORCH] ⚠️ ML Registry import failed: {e}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"[VBI-ORCH] ⚠️ ML Registry failed: {type(e).__name__}: {e}")
+        
+        # =========================================================================
+        # STRATEGY 3: Direct Local SpeechBrain (last resort - high memory)
+        # =========================================================================
+        try:
+            logger.info("[VBI-ORCH] 💻 Trying direct local SpeechBrain extraction (last resort)...")
+            from voice.speaker_verification_service import get_speaker_verification_service
+            
+            service = get_speaker_verification_service()
+            if service is None:
+                service = await get_speaker_verification_service()
+            
+            if service and hasattr(service, '_local_engine') and service._local_engine:
+                audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
+                
+                embedding = await asyncio.wait_for(
+                    service._local_engine.encode_batch(audio_array),
+                    timeout=45.0  # 45 second timeout for local
+                )
+                
+                if embedding is not None:
+                    # Handle batch output shape
+                    if len(embedding.shape) > 1:
+                        embedding = embedding.squeeze()
+                    embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                    logger.info(f"[VBI-ORCH] ✅ Local SpeechBrain extraction succeeded: {len(embedding_list)} dimensions")
+                    return embedding_list
+                    
+        except asyncio.TimeoutError:
+            last_error = "Local SpeechBrain timeout (45s)"
+            logger.warning("[VBI-ORCH] ⏱️ Local SpeechBrain timed out")
+        except ImportError as e:
+            last_error = f"Import error: {e}"
+            logger.warning(f"[VBI-ORCH] ⚠️ Local SpeechBrain import failed: {e}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"[VBI-ORCH] ⚠️ Local SpeechBrain failed: {type(e).__name__}: {e}")
+        
+        # =========================================================================
+        # ALL STRATEGIES FAILED
+        # =========================================================================
+        error_msg = f"All ECAPA extraction strategies failed. Last error: {last_error}"
+        logger.error(f"[VBI-ORCH] ❌ {error_msg}")
+        raise RuntimeError(error_msg)
 
     async def _verify_speaker(self, embedding: List[float]) -> Dict[str, Any]:
         """
