@@ -1676,30 +1676,59 @@ class VBIPipelineOrchestrator:
                     logger.info(f"[VBI-ORCH] 📊 Learning DB returned {len(profiles)} profiles")
                     
                     for profile in profiles:
-                        # CRITICAL FIX: Database returns 'voiceprint_embedding', not 'embedding'
-                        profile_embedding = profile.get("voiceprint_embedding") or profile.get("embedding")
                         speaker_name = profile.get("speaker_name", profile.get("name", "Unknown"))
+                        
+                        # CRITICAL FIX: Use "embedding" key which is the CONVERTED list
+                        # learning_database.py line 5626 converts voiceprint_embedding -> embedding as list
+                        # Checking voiceprint_embedding first returns RAW BYTES which causes issues!
+                        profile_embedding = profile.get("embedding")  # Converted list
+                        if profile_embedding is None:
+                            # Fallback to raw bytes only if embedding is None
+                            profile_embedding = profile.get("voiceprint_embedding")
+                            if profile_embedding is not None:
+                                logger.debug(f"[VBI-ORCH] Using raw voiceprint_embedding for '{speaker_name}'")
                         
                         if profile_embedding is None:
                             logger.debug(f"[VBI-ORCH] Profile '{speaker_name}' has no embedding")
                             continue
                             
-                        # Handle bytes vs numpy array
-                        if isinstance(profile_embedding, bytes):
-                            profile_array = np.frombuffer(profile_embedding, dtype=np.float32)
-                        elif isinstance(profile_embedding, (list, tuple)):
-                            profile_array = np.array(profile_embedding, dtype=np.float32)
-                        else:
-                            profile_array = np.array(profile_embedding, dtype=np.float32)
+                        # Robust type conversion
+                        try:
+                            if isinstance(profile_embedding, (bytes, bytearray, memoryview)):
+                                profile_array = np.frombuffer(profile_embedding, dtype=np.float32).copy()
+                            elif isinstance(profile_embedding, (list, tuple)):
+                                profile_array = np.array(profile_embedding, dtype=np.float32)
+                            elif isinstance(profile_embedding, np.ndarray):
+                                profile_array = profile_embedding.astype(np.float32)
+                            else:
+                                logger.warning(f"[VBI-ORCH] Unknown embedding type for '{speaker_name}': {type(profile_embedding)}")
+                                continue
+                                
+                            profile_array = profile_array.flatten()
+                        except Exception as conv_err:
+                            logger.warning(f"[VBI-ORCH] Embedding conversion failed for '{speaker_name}': {conv_err}")
+                            continue
                         
                         if len(profile_array) < 50:
                             logger.debug(f"[VBI-ORCH] Profile '{speaker_name}' embedding too short: {len(profile_array)}")
                             continue
+                        
+                        # Check dimension compatibility
+                        if len(profile_array) != len(test_norm):
+                            logger.warning(f"[VBI-ORCH] Dimension mismatch for '{speaker_name}': {len(profile_array)} vs {len(test_norm)}")
+                            continue
                             
-                        profile_norm = profile_array / (np.linalg.norm(profile_array) + 1e-10)
+                        profile_norm_val = np.linalg.norm(profile_array)
+                        if profile_norm_val < 1e-10:
+                            logger.warning(f"[VBI-ORCH] Zero-norm embedding for '{speaker_name}'")
+                            continue
+                            
+                        profile_norm = profile_array / profile_norm_val
                         
                         # Cosine similarity
                         similarity = float(np.dot(test_norm, profile_norm))
+                        similarity = max(0.0, min(1.0, similarity))  # Clamp to [0,1]
+                        
                         logger.info(f"[VBI-ORCH] 📊 Profile '{speaker_name}': similarity={similarity:.4f} (dim={len(profile_array)})")
                         
                         if similarity > best_match["confidence"]:

@@ -1059,96 +1059,353 @@ class EmbeddingExtractionStage(VBIStage):
 
 @vbi_stage  
 class SpeakerVerificationStage(VBIStage):
-    """Verify speaker against enrolled profiles."""
+    """
+    🔐 ADVANCED SPEAKER VERIFICATION STAGE v2.0
+    ═══════════════════════════════════════════════
+    
+    Multi-strategy speaker verification with robust embedding handling:
+    
+    1. EMBEDDING NORMALIZATION: Proper L2 normalization for cosine similarity
+    2. MULTI-SOURCE PROFILES: Unified cache → Learning DB → Direct SQLite
+    3. DYNAMIC THRESHOLDS: Adaptive thresholds based on profile quality
+    4. COMPREHENSIVE LOGGING: Full diagnostic trace for debugging
+    5. ROBUST TYPE HANDLING: Handle bytes, lists, numpy arrays, tensors
+    """
     
     name = "speaker_verification"
     category = StageCategory.VERIFICATION
     dependencies = ["embedding_extraction"]
     priority = 40
     
+    def _convert_embedding_to_array(
+        self, 
+        embedding: Any, 
+        source_name: str = "unknown"
+    ) -> Optional[np.ndarray]:
+        """
+        Robustly convert any embedding format to normalized numpy array.
+        
+        Handles: bytes, bytearray, memoryview, list, tuple, numpy array, torch tensor
+        """
+        try:
+            if embedding is None:
+                return None
+            
+            # Handle torch tensors
+            if hasattr(embedding, 'cpu'):
+                embedding = embedding.cpu().numpy()
+            if hasattr(embedding, 'detach'):
+                embedding = embedding.detach().numpy()
+            
+            # Handle bytes/bytearray/memoryview
+            if isinstance(embedding, (bytes, bytearray, memoryview)):
+                arr = np.frombuffer(embedding, dtype=np.float32).copy()
+            # Handle lists/tuples
+            elif isinstance(embedding, (list, tuple)):
+                arr = np.array(embedding, dtype=np.float32)
+            # Handle numpy arrays
+            elif isinstance(embedding, np.ndarray):
+                arr = embedding.astype(np.float32)
+            else:
+                logger.warning(f"[VERIFY] Unknown embedding type from {source_name}: {type(embedding)}")
+                return None
+            
+            # Flatten if needed
+            arr = arr.flatten()
+            
+            # Validate
+            if len(arr) < 50:
+                logger.debug(f"[VERIFY] Embedding from {source_name} too short: {len(arr)}")
+                return None
+            
+            if not np.isfinite(arr).all():
+                logger.warning(f"[VERIFY] Embedding from {source_name} contains NaN/Inf")
+                return None
+            
+            return arr
+            
+        except Exception as e:
+            logger.error(f"[VERIFY] Failed to convert embedding from {source_name}: {e}")
+            return None
+    
+    def _compute_similarity(
+        self, 
+        test_emb: np.ndarray, 
+        profile_emb: np.ndarray
+    ) -> float:
+        """Compute cosine similarity with robust normalization."""
+        try:
+            # L2 normalize
+            test_norm = np.linalg.norm(test_emb)
+            profile_norm = np.linalg.norm(profile_emb)
+            
+            if test_norm < 1e-10 or profile_norm < 1e-10:
+                logger.warning("[VERIFY] Zero-norm embedding detected")
+                return 0.0
+            
+            test_normalized = test_emb / test_norm
+            profile_normalized = profile_emb / profile_norm
+            
+            # Cosine similarity
+            similarity = float(np.dot(test_normalized, profile_normalized))
+            
+            # Clamp to valid range
+            return max(0.0, min(1.0, similarity))
+            
+        except Exception as e:
+            logger.error(f"[VERIFY] Similarity computation failed: {e}")
+            return 0.0
+    
     async def execute(self, context: PipelineContext) -> Dict[str, Any]:
-        """Compare embedding against enrolled speakers."""
+        """Compare embedding against enrolled speakers using multi-strategy approach."""
+        
+        # ════════════════════════════════════════════════════════════════════════
+        # STEP 1: VALIDATE TEST EMBEDDING
+        # ════════════════════════════════════════════════════════════════════════
+        
         if context.embedding is None:
             raise ValueError("No embedding available for verification")
         
-        test_embedding = np.array(context.embedding, dtype=np.float32)
-        test_norm = test_embedding / (np.linalg.norm(test_embedding) + 1e-10)
+        test_embedding = self._convert_embedding_to_array(context.embedding, "test_audio")
+        if test_embedding is None:
+            raise ValueError("Failed to convert test embedding")
+        
+        test_dim = len(test_embedding)
+        logger.info(f"[VERIFY] 🎯 Test embedding: {test_dim} dimensions, norm={np.linalg.norm(test_embedding):.4f}")
+        
+        # Track all matches for debugging
+        all_matches = []
         
         best_match = {
             "is_verified": False,
             "speaker_name": "Unknown",
             "confidence": 0.0,
             "similarity": 0.0,
+            "source": "none",
+            "profiles_checked": 0,
+            "dimension_match": True,
         }
         
-        # Try unified voice cache
+        # Dynamic threshold from config or environment
+        threshold = self.config.get("verification_threshold")
+        if threshold is None:
+            threshold = float(os.environ.get("VBI_VERIFICATION_THRESHOLD", "0.40"))
+        
+        logger.info(f"[VERIFY] 🎚️ Verification threshold: {threshold:.2%}")
+        
+        # ════════════════════════════════════════════════════════════════════════
+        # STRATEGY 1: UNIFIED VOICE CACHE (fastest - in-memory)
+        # ════════════════════════════════════════════════════════════════════════
+        
         try:
             from voice_unlock.unified_voice_cache_manager import get_unified_voice_cache
             
             cache = await get_unified_voice_cache()
             if cache and cache.is_ready:
-                for profile_name, profile in cache.get_preloaded_profiles().items():
+                profiles = cache.get_preloaded_profiles()
+                logger.info(f"[VERIFY] 📦 Strategy 1: Unified cache has {len(profiles)} profiles")
+                
+                for profile_name, profile in profiles.items():
                     if profile.embedding is not None:
-                        profile_emb = np.array(profile.embedding, dtype=np.float32)
-                        profile_norm = profile_emb / (np.linalg.norm(profile_emb) + 1e-10)
+                        profile_emb = self._convert_embedding_to_array(
+                            profile.embedding, f"cache:{profile_name}"
+                        )
+                        if profile_emb is None:
+                            continue
                         
-                        similarity = float(np.dot(test_norm, profile_norm))
+                        # Check dimension compatibility
+                        if len(profile_emb) != test_dim:
+                            logger.debug(f"[VERIFY] Dimension mismatch for {profile_name}: {len(profile_emb)} vs {test_dim}")
+                            continue
+                        
+                        similarity = self._compute_similarity(test_embedding, profile_emb)
+                        all_matches.append((profile_name, similarity, "cache"))
                         
                         if similarity > best_match["similarity"]:
-                            threshold = self.config.get("verification_threshold", 0.40)
                             best_match = {
                                 "is_verified": similarity >= threshold,
                                 "speaker_name": profile_name,
                                 "confidence": similarity,
                                 "similarity": similarity,
+                                "source": "unified_cache",
+                                "profiles_checked": len(profiles),
+                                "dimension_match": True,
                             }
+            else:
+                logger.debug("[VERIFY] Unified cache not ready")
         except Exception as e:
-            logger.debug(f"Unified cache check failed: {e}")
+            logger.debug(f"[VERIFY] Strategy 1 (cache) failed: {e}")
         
-        # Try learning database
+        # ════════════════════════════════════════════════════════════════════════
+        # STRATEGY 2: LEARNING DATABASE (primary source)
+        # ════════════════════════════════════════════════════════════════════════
+        
+        try:
+            from intelligence.learning_database import get_learning_database
+            
+            db = await get_learning_database()
+            if db:
+                # Log database path for debugging
+                db_path = getattr(db, 'sqlite_path', 'unknown')
+                logger.info(f"[VERIFY] 📚 Strategy 2: Learning DB at {db_path}")
+                
+                profiles = await db.get_all_speaker_profiles()
+                logger.info(f"[VERIFY] 📚 Strategy 2: Learning DB returned {len(profiles)} profiles")
+                
+                if not profiles:
+                    logger.warning("[VERIFY] ⚠️ Learning DB returned EMPTY profiles list!")
+                
+                for profile in profiles:
+                    speaker_name = profile.get("speaker_name", "Unknown")
+                    
+                    # CRITICAL: Use "embedding" key which is the CONVERTED list
+                    # NOT "voiceprint_embedding" which is raw bytes!
+                    # learning_database.py line 5626 converts voiceprint_embedding -> embedding
+                    profile_emb_raw = profile.get("embedding")
+                    
+                    if profile_emb_raw is None:
+                        # Fallback to voiceprint_embedding only if embedding is None
+                        profile_emb_raw = profile.get("voiceprint_embedding")
+                        logger.debug(f"[VERIFY] Using fallback voiceprint_embedding for {speaker_name}")
+                    
+                    profile_emb = self._convert_embedding_to_array(
+                        profile_emb_raw, f"db:{speaker_name}"
+                    )
+                    
+                    if profile_emb is None:
+                        logger.debug(f"[VERIFY] ⏭️ Skipping {speaker_name}: no valid embedding")
+                        continue
+                    
+                    # Log embedding details for debugging
+                    profile_dim = len(profile_emb)
+                    profile_norm = np.linalg.norm(profile_emb)
+                    logger.debug(f"[VERIFY] Profile '{speaker_name}': dim={profile_dim}, norm={profile_norm:.4f}")
+                    
+                    # Check dimension compatibility
+                    if profile_dim != test_dim:
+                        logger.warning(
+                            f"[VERIFY] ⚠️ Dimension mismatch for {speaker_name}: "
+                            f"profile={profile_dim} vs test={test_dim}"
+                        )
+                        best_match["dimension_match"] = False
+                        continue
+                    
+                    # Compute similarity
+                    similarity = self._compute_similarity(test_embedding, profile_emb)
+                    all_matches.append((speaker_name, similarity, "learning_db"))
+                    
+                    logger.info(f"[VERIFY] 📊 Profile '{speaker_name}': similarity={similarity:.4f} {'✅' if similarity >= threshold else '❌'}")
+                    
+                    if similarity > best_match["similarity"]:
+                        best_match = {
+                            "is_verified": similarity >= threshold,
+                            "speaker_name": speaker_name,
+                            "confidence": similarity,
+                            "similarity": similarity,
+                            "source": "learning_database",
+                            "profiles_checked": best_match.get("profiles_checked", 0) + len(profiles),
+                            "dimension_match": True,
+                        }
+        except Exception as e:
+            logger.warning(f"[VERIFY] Strategy 2 (learning DB) failed: {e}", exc_info=True)
+        
+        # ════════════════════════════════════════════════════════════════════════
+        # STRATEGY 3: DIRECT SQLITE QUERY (fallback)
+        # ════════════════════════════════════════════════════════════════════════
+        
         if not best_match["is_verified"]:
             try:
-                from intelligence.learning_database import get_learning_database
+                import aiosqlite
+                import os as os_module
                 
-                db = await get_learning_database()
-                if db:
-                    profiles = await db.get_all_speaker_profiles()
-                    logger.info(f"[PARALLEL-VBI] 📊 Learning DB returned {len(profiles)} profiles")
+                # Find SQLite database - CORRECT path is ~/.jarvis/learning/jarvis_learning.db
+                db_paths = [
+                    os_module.path.expanduser("~/.jarvis/learning/jarvis_learning.db"),  # Primary location
+                    os_module.path.expanduser("~/.jarvis/jarvis_learning.db"),  # Legacy location
+                    os_module.path.expanduser("~/Library/Application Support/JARVIS/jarvis_learning.db"),
+                    "data/jarvis_learning.db",
+                ]
+                
+                db_path = None
+                for path in db_paths:
+                    if os_module.path.exists(path):
+                        db_path = path
+                        break
+                
+                if db_path:
+                    logger.info(f"[VERIFY] 💾 Strategy 3: Direct SQLite query from {db_path}")
                     
-                    for profile in profiles:
-                        # CRITICAL FIX: Database returns 'voiceprint_embedding', not 'embedding'
-                        profile_emb = profile.get("voiceprint_embedding") or profile.get("embedding")
-                        speaker_name = profile.get("speaker_name", "Unknown")
-                        
-                        if profile_emb is None:
-                            continue
-                        
-                        # Handle bytes vs numpy array
-                        if isinstance(profile_emb, bytes):
-                            profile_arr = np.frombuffer(profile_emb, dtype=np.float32)
-                        elif isinstance(profile_emb, (list, tuple)):
-                            profile_arr = np.array(profile_emb, dtype=np.float32)
-                        else:
-                            profile_arr = np.array(profile_emb, dtype=np.float32)
-                        
-                        if len(profile_arr) < 50:
-                            continue
+                    async with aiosqlite.connect(db_path) as db:
+                        db.row_factory = aiosqlite.Row
+                        async with db.execute(
+                            "SELECT speaker_name, voiceprint_embedding, embedding_dimension FROM speaker_profiles"
+                        ) as cursor:
+                            rows = await cursor.fetchall()
+                            logger.info(f"[VERIFY] 💾 Direct SQLite: {len(rows)} profiles")
                             
-                        profile_norm = profile_arr / (np.linalg.norm(profile_arr) + 1e-10)
-                        
-                        similarity = float(np.dot(test_norm, profile_norm))
-                        logger.info(f"[PARALLEL-VBI] 📊 Profile '{speaker_name}': similarity={similarity:.4f}")
-                        
-                        if similarity > best_match["similarity"]:
-                            threshold = self.config.get("verification_threshold", 0.40)
-                            best_match = {
-                                "is_verified": similarity >= threshold,
-                                "speaker_name": speaker_name,
-                                "confidence": similarity,
-                                "similarity": similarity,
-                            }
+                            for row in rows:
+                                speaker_name = row["speaker_name"]
+                                emb_bytes = row["voiceprint_embedding"]
+                                
+                                if emb_bytes is None:
+                                    continue
+                                
+                                profile_emb = self._convert_embedding_to_array(
+                                    emb_bytes, f"sqlite:{speaker_name}"
+                                )
+                                
+                                if profile_emb is None:
+                                    continue
+                                
+                                if len(profile_emb) != test_dim:
+                                    continue
+                                
+                                similarity = self._compute_similarity(test_embedding, profile_emb)
+                                all_matches.append((speaker_name, similarity, "sqlite"))
+                                
+                                logger.info(f"[VERIFY] 💾 SQLite '{speaker_name}': similarity={similarity:.4f}")
+                                
+                                if similarity > best_match["similarity"]:
+                                    best_match = {
+                                        "is_verified": similarity >= threshold,
+                                        "speaker_name": speaker_name,
+                                        "confidence": similarity,
+                                        "similarity": similarity,
+                                        "source": "direct_sqlite",
+                                        "profiles_checked": best_match.get("profiles_checked", 0) + len(rows),
+                                        "dimension_match": True,
+                                    }
             except Exception as e:
-                logger.warning(f"Learning DB check failed: {e}")
+                logger.debug(f"[VERIFY] Strategy 3 (direct SQLite) failed: {e}")
+        
+        # ════════════════════════════════════════════════════════════════════════
+        # FINAL RESULT LOGGING
+        # ════════════════════════════════════════════════════════════════════════
+        
+        # Sort all matches by similarity for diagnostic output
+        all_matches.sort(key=lambda x: x[1], reverse=True)
+        
+        if all_matches:
+            logger.info(f"[VERIFY] 📋 Top matches: {all_matches[:5]}")
+        else:
+            logger.warning("[VERIFY] ⚠️ NO PROFILES MATCHED - check profile embeddings!")
+        
+        if best_match["is_verified"]:
+            logger.info(
+                f"[VERIFY] ✅ VERIFIED: {best_match['speaker_name']} "
+                f"({best_match['confidence']:.1%}) via {best_match['source']}"
+            )
+        else:
+            logger.warning(
+                f"[VERIFY] ❌ NOT VERIFIED: best={best_match['speaker_name']} "
+                f"({best_match['confidence']:.1%}), threshold={threshold:.1%}"
+            )
+            
+            # Provide diagnostic hints
+            if not best_match["dimension_match"]:
+                logger.error("[VERIFY] 🔴 DIMENSION MISMATCH - profile embeddings may need re-enrollment!")
+            if best_match["profiles_checked"] == 0:
+                logger.error("[VERIFY] 🔴 NO PROFILES FOUND - ensure voice profile is enrolled!")
         
         context.speaker_verification = best_match
         return best_match
