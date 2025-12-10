@@ -6183,6 +6183,7 @@ class AsyncSystemManager:
         self.use_incognito = False  # Use Incognito/Private mode (avoids cache issues)
         self.preferred_browser = None  # None = auto-detect, or "chrome", "safari", "arc"
         self.auto_cleanup = True  # Auto cleanup without prompting (enabled by default)
+        self._browser_opened_this_session = False  # Prevent duplicate tab opens
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
@@ -11101,7 +11102,7 @@ if (typeof localStorage !== 'undefined') {
         
         return False
 
-    async def open_browser_smart(self, custom_url: str = None):
+    async def open_browser_smart(self, custom_url: str = None, force: bool = False):
         """Open browser intelligently with advanced features.
         
         Features:
@@ -11110,10 +11111,21 @@ if (typeof localStorage !== 'undefined') {
         - Multi-browser support (Chrome, Safari, Arc)
         - Preferred browser selection
         - Smart fallbacks
+        - Duplicate tab prevention via session tracking
 
         Args:
             custom_url: Optional custom URL to open (e.g., loading page)
+            force: Force open even if browser was already opened this session
         """
+        # Prevent duplicate tabs by checking if we already opened browser this session
+        # This prevents the loading server AND the startup completion from both opening tabs
+        # Check both instance flag AND global flag (for when browser opened before manager created)
+        global _browser_opened_this_startup
+        if (self._browser_opened_this_session or _browser_opened_this_startup) and not force:
+            logger.info("🔒 Browser already opened this session, will only update existing tab URL")
+            # Still fall through to tab reuse logic to update URL in existing tab
+            # But the fallback at the end won't open a NEW tab
+        
         if custom_url:
             url = custom_url
         elif self.is_restart:
@@ -11404,12 +11416,18 @@ if (typeof localStorage !== 'undefined') {
                             print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser} (closed {tabs_closed} duplicate{'s' if tabs_closed > 1 else ''}){Colors.ENDC}")
                         else:
                             print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser}{Colors.ENDC}")
+                        self._browser_opened_this_session = True
+                        _browser_opened_this_startup = True  # Set global flag too
                     elif "NEW_TAB" in result:
                         browser = result.split(":")[0].split("_")[-1]
                         logger.info(f"🌐 Created new tab in {browser}")
                         print(f"{Colors.BLUE}➕ Created new JARVIS tab in {browser}{Colors.ENDC}")
+                        self._browser_opened_this_session = True
+                        _browser_opened_this_startup = True  # Set global flag too
                     else:
                         logger.info(f"Browser tab operation completed: {result}")
+                        self._browser_opened_this_session = True
+                        _browser_opened_this_startup = True  # Set global flag too
 
                 return
             except Exception as e:
@@ -11417,7 +11435,13 @@ if (typeof localStorage !== 'undefined') {
                 logger.debug(f"AppleScript failed (using fallback): {e}")
 
         # Fallback for other platforms or if AppleScript fails
-        webbrowser.open(url)
+        # Only open if we haven't already opened a browser this session
+        if not self._browser_opened_this_session and not _browser_opened_this_startup:
+            webbrowser.open(url)
+            self._browser_opened_this_session = True
+            _browser_opened_this_startup = True  # Set global flag too
+        else:
+            logger.info(f"🔒 Skipping fallback browser open - already opened this session")
 
     # ==================== SELF-HEALING METHODS ====================
 
@@ -13349,6 +13373,10 @@ except Exception as e:
 
 # Global manager for cleanup
 _manager = None
+
+# Global flag to prevent duplicate browser tabs during startup
+# This is checked by both the restart flow and the manager's open_browser_smart
+_browser_opened_this_startup = False
 
 
 def _auto_detect_preset():
@@ -15799,6 +15827,7 @@ async def main():
                         )
                         if result.returncode == 0:
                             browser_opened = True
+                            globals()['_browser_opened_this_startup'] = True  # Set global flag
                             print(f"{Colors.GREEN}   ✓ Chrome opened with loading page{Colors.ENDC}")
                         else:
                             print(f"{Colors.YELLOW}   ⚠️  AppleScript returned non-zero, trying fallback...{Colors.ENDC}")
@@ -15819,6 +15848,7 @@ async def main():
                             )
                             if result.returncode == 0:
                                 browser_opened = True
+                                globals()['_browser_opened_this_startup'] = True  # Set global flag
                                 print(f"{Colors.GREEN}   ✓ Chrome opened via 'open' command{Colors.ENDC}")
                         except Exception:
                             pass
@@ -15829,6 +15859,7 @@ async def main():
                             import webbrowser
                             webbrowser.open(loading_server_url)
                             browser_opened = True
+                            globals()['_browser_opened_this_startup'] = True  # Set global flag
                             print(f"{Colors.GREEN}   ✓ Browser opened via webbrowser module{Colors.ENDC}")
                         except Exception:
                             print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
@@ -15843,6 +15874,7 @@ async def main():
                             stderr=subprocess.DEVNULL,
                             timeout=3
                         )
+                        globals()['_browser_opened_this_startup'] = True  # Set global flag
                         print(f"{Colors.GREEN}   ✓ Chrome opened (loading server will show when ready){Colors.ENDC}")
                     except Exception:
                         print(f"{Colors.CYAN}   ℹ️  If needed, manually open: {loading_server_url}{Colors.ENDC}")

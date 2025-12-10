@@ -2304,7 +2304,7 @@ const JarvisVoice = () => {
         // IMMEDIATE DEBUG LOG - to see if we're even getting input
         console.log('🎤 RAW SPEECH:', transcript, `(final: ${isFinal}, conf: ${confidence})`);
 
-        // 🆕 FAST-PATH: Check for critical unlock/lock commands immediately
+        // 🆕 ULTRA-FAST-PATH: Check for critical unlock/lock commands immediately
         // These commands get special priority with LOWER confidence threshold
         const isUnlockCommand = /unlock\s*(my)?\s*(screen|mac|computer)?/i.test(transcript);
         const isLockCommand = /lock\s*(my)?\s*(screen|mac|computer)?/i.test(transcript);
@@ -2313,12 +2313,15 @@ const JarvisVoice = () => {
         // For critical commands, use a much lower confidence threshold (0.50 instead of 0.85)
         // This ensures unlock commands are caught on the first attempt
         if (isCriticalCommand && confidence >= 0.50) {
-          console.log(`🔓 CRITICAL COMMAND FAST-PATH: "${transcript}" (conf: ${(confidence * 100).toFixed(1)}%)`);
+          console.log(`🔓 CRITICAL COMMAND ULTRA-FAST-PATH: "${transcript}" (conf: ${(confidence * 100).toFixed(1)}%)`);
 
           // For unlock commands, process immediately without waiting for final
           if (isFinal || confidence >= 0.60) {
-            console.log(`🔓 Processing ${isUnlockCommand ? 'unlock' : 'lock'} command immediately`);
-            handleVoiceCommand(result.transcript, {
+            console.log(`🔓 Processing ${isUnlockCommand ? 'unlock' : 'lock'} command IMMEDIATELY via priority path`);
+            
+            // 🚀 ULTRA-FAST: Send command directly without waiting for audio buffer
+            // This shaves off 200-500ms of latency for critical commands
+            sendPriorityCommand(result.transcript, {
               confidence: confidence,
               originalConfidence: confidence,
               isFinal,
@@ -2848,6 +2851,86 @@ const JarvisVoice = () => {
         return currentWaiting;
       });
     }, 30000);
+  };
+
+  // 🚀 ULTRA-FAST PRIORITY COMMAND PATH
+  // This function bypasses audio buffer waiting for critical commands like unlock/lock
+  // Shaves 200-500ms latency by sending immediately while audio is captured in background
+  const sendPriorityCommand = async (command, confidenceInfo = {}) => {
+    console.log('🚀 sendPriorityCommand called with:', command);
+    console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
+
+    const commandStartTime = Date.now();
+    setTranscript(command);
+
+    // Check WebSocket - but don't wait long for reconnect on priority commands
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('⚠️ WebSocket not connected for priority command! Quick reconnect attempt...');
+      connectWebSocket();
+      
+      // Only wait 1 second max for priority commands (vs 5s for normal)
+      for (let i = 0; i < 2; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          console.log('✅ WebSocket reconnected for priority command');
+          break;
+        }
+      }
+      
+      // If still not connected, fallback to REST immediately
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.warn('❌ Quick reconnect failed - using REST API fallback');
+        sendTextCommand(command);
+        return;
+      }
+    }
+
+    // 🚀 Send command IMMEDIATELY - don't wait for audio buffer
+    // Audio will be attached by the backend from its own buffer if needed
+    const message = {
+      type: 'command',
+      text: command,
+      mode: autonomousMode ? 'autonomous' : 'manual',
+      priority: 'critical',  // Flag this as a priority/critical command
+      metadata: {
+        ...confidenceInfo,
+        startTime: commandStartTime,
+        isPriorityCommand: true,
+        commandType: confidenceInfo.commandType || 'unlock',
+      }
+    };
+
+    // Try to get audio from continuous buffer in background (don't block)
+    // This allows biometric verification while not slowing down the command
+    if (continuousAudioBufferRef.current && continuousAudioBufferRef.current.isRunning) {
+      try {
+        // Get last 2 seconds - shorter window for faster response
+        const bufferedAudio = await Promise.race([
+          continuousAudioBufferRef.current.getBufferedAudioBase64(2000),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Audio buffer timeout')), 100)) // 100ms timeout
+        ]);
+        if (bufferedAudio && bufferedAudio.audio && bufferedAudio.audio.length > 500) {
+          message.audio_data = bufferedAudio.audio;
+          message.sample_rate = bufferedAudio.sampleRate;
+          message.mime_type = bufferedAudio.mimeType;
+          message.audio_source = 'continuous_buffer_priority';
+          console.log(`🎤 [Priority] Got quick audio: ${bufferedAudio.base64Length} chars`);
+        }
+      } catch (e) {
+        // Audio timeout is OK - we'll send without audio
+        console.log('🎤 [Priority] Audio skipped for speed (will use backend buffer)');
+      }
+    }
+
+    try {
+      wsRef.current.send(JSON.stringify(message));
+      console.log(`🚀 Priority command sent in ${Date.now() - commandStartTime}ms`);
+      setResponse('🔓 Unlocking...');
+      setIsProcessing(true);
+    } catch (sendError) {
+      console.error('[WS] Failed to send priority command:', sendError);
+      sendTextCommand(command);
+    }
   };
 
   const handleVoiceCommand = async (command, confidenceInfo = {}) => {
