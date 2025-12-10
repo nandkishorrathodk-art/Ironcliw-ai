@@ -2292,6 +2292,11 @@ class MLEngineRegistry:
         Called by process_cleanup_manager during high memory pressure
         to free RAM by releasing locally loaded models.
         
+        Uses the proper async unload() method of each MLEngineWrapper to:
+        1. Wait for active users to complete their operations
+        2. Safely clear engine references
+        3. Update state tracking
+        
         Returns:
             Number of models unloaded
         """
@@ -2300,17 +2305,29 @@ class MLEngineRegistry:
         try:
             logger.info("☁️  [UNLOAD] Starting local model unload...")
             
+            # Process all engines in parallel for faster unloading
+            unload_tasks = []
+            engine_names = []
+            
             for engine_name, wrapper in list(self._engines.items()):
-                if wrapper.engine is not None:
-                    try:
-                        # Clear the engine reference
-                        engine_type = type(wrapper.engine).__name__
-                        wrapper.engine = None
-                        wrapper.last_used = None
+                # Check if engine is loaded using is_loaded property (thread-safe)
+                if wrapper.is_loaded:
+                    engine_names.append(engine_name)
+                    # Use the wrapper's async unload method for proper cleanup
+                    unload_tasks.append(wrapper.unload(timeout=10.0))
+            
+            if unload_tasks:
+                # Execute all unloads in parallel
+                results = await asyncio.gather(*unload_tasks, return_exceptions=True)
+                
+                for engine_name, result in zip(engine_names, results):
+                    if isinstance(result, Exception):
+                        logger.warning(f"☁️  [UNLOAD] Failed to unload {engine_name}: {result}")
+                    else:
                         unloaded_count += 1
-                        logger.info(f"☁️  [UNLOAD] Unloaded {engine_name} ({engine_type})")
-                    except Exception as e:
-                        logger.warning(f"☁️  [UNLOAD] Failed to unload {engine_name}: {e}")
+                        logger.info(f"☁️  [UNLOAD] Unloaded {engine_name}")
+            else:
+                logger.info("☁️  [UNLOAD] No local models loaded to unload")
             
             # Force garbage collection to actually free memory
             import gc

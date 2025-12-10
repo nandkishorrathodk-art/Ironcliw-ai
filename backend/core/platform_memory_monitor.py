@@ -192,6 +192,47 @@ class PlatformMemoryMonitor:
             psi_available = self.psi_memory_path.exists()
             logger.info(f"   Linux PSI available: {psi_available}")
 
+    def capture_snapshot(self) -> MemoryPressureSnapshot:
+        """
+        Synchronous method to capture current memory snapshot.
+        
+        This provides a sync-compatible interface for use in CLI tools,
+        callbacks, and other non-async contexts. It runs the async
+        get_memory_pressure() method in a thread-safe manner.
+        
+        For async contexts, prefer using get_memory_pressure() directly.
+        
+        Returns:
+            MemoryPressureSnapshot: Current memory state with all metrics
+            
+        Example:
+            >>> monitor = get_memory_monitor()
+            >>> snapshot = monitor.capture_snapshot()
+            >>> print(f"Available: {snapshot.available_gb:.1f}GB")
+        """
+        # Try to use existing event loop, fall back to new one
+        try:
+            # Check if we're in an async context
+            loop = asyncio.get_running_loop()
+            # If we are, we can't use run_until_complete - need a different approach
+            # Use thread pool to avoid blocking the event loop
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._capture_snapshot_sync)
+                return future.result(timeout=5.0)
+        except RuntimeError:
+            # No running event loop - safe to create one
+            return asyncio.run(self.get_memory_pressure())
+    
+    def _capture_snapshot_sync(self) -> MemoryPressureSnapshot:
+        """Internal sync wrapper for capture_snapshot when called from async context."""
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(self.get_memory_pressure())
+        finally:
+            loop.close()
+
     async def get_memory_pressure(self) -> MemoryPressureSnapshot:
         """Get current memory pressure using platform-native methods.
 
