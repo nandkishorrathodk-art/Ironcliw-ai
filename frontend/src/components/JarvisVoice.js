@@ -21,6 +21,7 @@ import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environm
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
 import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
 import { getJarvisConnectionService, ConnectionState, connectionStateToJarvisStatus } from '../services/JarvisConnectionService'; // 🆕 Unified connection service
+import { getContinuousAudioBuffer } from '../utils/ContinuousAudioBuffer'; // 🆕 Continuous audio pre-buffer for first-attempt recognition
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -705,12 +706,12 @@ const JarvisVoice = () => {
   const isWaitingForCommandRef = useRef(false);
 
   // Circuit breaker for restart loop prevention
-  // v2.0: More tolerant thresholds to prevent false positives during voice unlock
+  // v3.0: Much more tolerant thresholds for continuous voice unlock flow
   const restartCircuitBreakerRef = useRef({
     count: 0,
     lastReset: Date.now(),
-    threshold: 10,  // Increased from 5 - voice unlock causes multiple restarts
-    windowMs: 15000,  // Increased from 10s - give more time for recovery
+    threshold: 20,  // Increased from 10 - voice unlock with continuous buffer needs more headroom
+    windowMs: 30000,  // Increased from 15s - give much more time for recovery
     consecutiveFailures: 0,
     lastSuccessTime: Date.now()
   });
@@ -723,6 +724,9 @@ const JarvisVoice = () => {
   const voiceAudioRecorderRef = useRef(null); // MediaRecorder for continuous audio capture
   const voiceAudioChunksRef = useRef([]); // Audio chunks buffer
   const isRecordingVoiceRef = useRef(false); // Track recording state
+
+  // 🆕 Continuous Audio Buffer - Pre-captures audio to eliminate first-attempt misses
+  const continuousAudioBufferRef = useRef(null);
 
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
@@ -987,6 +991,12 @@ const JarvisVoice = () => {
       // Cleanup wake word service
       if (wakeWordServiceRef.current && typeof wakeWordServiceRef.current.disconnect === 'function') {
         wakeWordServiceRef.current.disconnect();
+      }
+      // 🆕 Cleanup continuous audio buffer
+      if (continuousAudioBufferRef.current) {
+        console.log('[ContinuousBuffer] Stopping on component unmount');
+        continuousAudioBufferRef.current.stop();
+        continuousAudioBufferRef.current = null;
       }
       // Remove ML event listeners
       window.removeEventListener('audioIssuePredicted', handleAudioPrediction);
@@ -2294,6 +2304,31 @@ const JarvisVoice = () => {
         // IMMEDIATE DEBUG LOG - to see if we're even getting input
         console.log('🎤 RAW SPEECH:', transcript, `(final: ${isFinal}, conf: ${confidence})`);
 
+        // 🆕 FAST-PATH: Check for critical unlock/lock commands immediately
+        // These commands get special priority with LOWER confidence threshold
+        const isUnlockCommand = /unlock\s*(my)?\s*(screen|mac|computer)?/i.test(transcript);
+        const isLockCommand = /lock\s*(my)?\s*(screen|mac|computer)?/i.test(transcript);
+        const isCriticalCommand = isUnlockCommand || isLockCommand;
+
+        // For critical commands, use a much lower confidence threshold (0.50 instead of 0.85)
+        // This ensures unlock commands are caught on the first attempt
+        if (isCriticalCommand && confidence >= 0.50) {
+          console.log(`🔓 CRITICAL COMMAND FAST-PATH: "${transcript}" (conf: ${(confidence * 100).toFixed(1)}%)`);
+
+          // For unlock commands, process immediately without waiting for final
+          if (isFinal || confidence >= 0.60) {
+            console.log(`🔓 Processing ${isUnlockCommand ? 'unlock' : 'lock'} command immediately`);
+            handleVoiceCommand(result.transcript, {
+              confidence: confidence,
+              originalConfidence: confidence,
+              isFinal,
+              wasCriticalCommand: true,
+              commandType: isUnlockCommand ? 'unlock' : 'lock',
+            });
+            return;
+          }
+        }
+
         // 🧠 ADAPTIVE VOICE DETECTION - Analyze with learning system
         const adaptiveDecision = adaptiveVoiceDetection.shouldProcessResult(result, {
           transcript,
@@ -2303,15 +2338,15 @@ const JarvisVoice = () => {
           timestamp: Date.now(),
         });
 
-        const enhancedConfidence = adaptiveDecision.enhancedConfidence;
+        const enhancedConfidence = adaptiveDecision.enhancedConfidence || confidence;
         const shouldProcess = adaptiveDecision.shouldProcess;
 
         // Debug logging with adaptive confidence score
         console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}, original: ${(confidence * 100).toFixed(1)}%, enhanced: ${(enhancedConfidence * 100).toFixed(1)}%) | Threshold: ${(adaptiveDecision.threshold * 100).toFixed(1)}% | Should Process: ${shouldProcess}`);
         console.log(`📊 Reason: ${adaptiveDecision.reason}`);
 
-        // Legacy high confidence check (kept for fallback)
-        const isHighConfidence = enhancedConfidence >= 0.85;
+        // 🆕 Lower the high confidence threshold from 0.85 to 0.70 for better first-attempt recognition
+        const isHighConfidence = enhancedConfidence >= 0.70;
 
         // Process based on adaptive decision
         if (!shouldProcess && !isWaitingForCommandRef.current) return;
@@ -2848,19 +2883,51 @@ const JarvisVoice = () => {
     // Track command start time for adaptive learning
     const commandStartTime = Date.now();
 
-    // 🎤 Stop audio capture and get the recorded audio for voice biometrics
-    console.log(`🎤 [VoiceCapture] isRecordingVoiceRef.current = ${isRecordingVoiceRef.current}`);
-    const audioData = await stopVoiceAudioCapture();
-    if (audioData) {
-      console.log(`🎤 [VoiceCapture] ✅ Audio captured for command: ${audioData.audio?.length || 0} chars, ${audioData.sampleRate}Hz, ${audioData.mimeType}`);
-    } else {
-      console.warn('🎤 [VoiceCapture] ⚠️ No audio data captured - voice unlock commands will fail!');
-      console.warn('🎤 [VoiceCapture] Make sure audio capture started before speaking the command');
+    // 🆕 PRIORITY: Get audio from continuous buffer FIRST (always has audio, never misses)
+    let audioData = null;
+    let audioSource = 'none';
+
+    // Try continuous buffer first - it's always recording and never misses
+    if (continuousAudioBufferRef.current && continuousAudioBufferRef.current.isRunning) {
+      try {
+        console.log('🎤 [ContinuousBuffer] Getting pre-buffered audio (last 3 seconds)...');
+        const bufferedAudio = await continuousAudioBufferRef.current.getBufferedAudioBase64(3000);
+        if (bufferedAudio && bufferedAudio.audio && bufferedAudio.audio.length > 1000) {
+          audioData = {
+            audio: bufferedAudio.audio,
+            sampleRate: bufferedAudio.sampleRate,
+            mimeType: bufferedAudio.mimeType
+          };
+          audioSource = 'continuous_buffer';
+          console.log(`🎤 [ContinuousBuffer] ✅ Got ${bufferedAudio.base64Length} chars of pre-buffered audio (${bufferedAudio.durationMs}ms)`);
+        }
+      } catch (e) {
+        console.warn('🎤 [ContinuousBuffer] Failed to get buffered audio:', e);
+      }
     }
 
-    // 🎤 Restart audio capture if continuous listening is still active
+    // Fallback to legacy audio capture if continuous buffer doesn't have good data
+    if (!audioData || audioData.audio.length < 1000) {
+      console.log(`🎤 [VoiceCapture] Trying legacy capture (isRecording: ${isRecordingVoiceRef.current})`);
+      const legacyAudioData = await stopVoiceAudioCapture();
+      if (legacyAudioData && legacyAudioData.audio && legacyAudioData.audio.length > 1000) {
+        audioData = legacyAudioData;
+        audioSource = 'legacy_capture';
+        console.log(`🎤 [VoiceCapture] ✅ Legacy audio captured: ${audioData.audio?.length || 0} chars, ${audioData.sampleRate}Hz`);
+      }
+    }
+
+    // Log final audio status
+    if (audioData) {
+      console.log(`🎤 [Voice] ✅ Audio ready from ${audioSource}: ${audioData.audio?.length || 0} chars`);
+    } else {
+      // Even without captured audio, we still send the command - it just won't have biometric verification
+      console.warn('🎤 [Voice] ⚠️ No audio data captured - command will be sent without voice biometric verification');
+    }
+
+    // 🎤 Restart legacy audio capture if continuous listening is still active
     if (continuousListeningRef.current && !isRecordingVoiceRef.current) {
-      console.log('🎤 [VoiceCapture] Restarting audio capture for next command');
+      console.log('🎤 [VoiceCapture] Restarting legacy audio capture for next command');
       startVoiceAudioCapture();
     }
 
@@ -2902,7 +2969,10 @@ const JarvisVoice = () => {
         message.audio_data = audioData.audio; // Send base64 audio
         message.sample_rate = audioData.sampleRate; // Send actual sample rate from browser
         message.mime_type = audioData.mimeType; // Send MIME type for decoding
-        console.log(`🎤 Sending command with audio data for voice verification (${audioData.sampleRate}Hz, ${audioData.mimeType})`);
+        message.audio_source = audioSource; // Track where audio came from for debugging
+        console.log(`🎤 Sending command with audio data for voice verification (source: ${audioSource}, ${audioData.sampleRate}Hz, ${audioData.mimeType})`);
+      } else {
+        console.warn('🎤 Sending command WITHOUT audio data - voice biometric verification will not be possible');
       }
 
       try {
@@ -3341,15 +3411,51 @@ const JarvisVoice = () => {
     });
   };
 
-  const enableContinuousListening = () => {
+  const enableContinuousListening = async () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
       continuousListeningRef.current = true;
       setIsListening(true);
 
-      // 🎤 Start audio capture for voice biometrics when continuous listening begins
+      // 🆕 Start continuous audio pre-buffer FIRST (for first-attempt voice recognition)
+      if (!continuousAudioBufferRef.current) {
+        console.log('🎤 [ContinuousBuffer] Initializing continuous audio pre-buffer for zero-gap voice capture');
+        continuousAudioBufferRef.current = getContinuousAudioBuffer({
+          bufferDurationMs: 5000, // Keep last 5 seconds of audio
+          sampleRate: 16000,
+          chunkIntervalMs: 100,
+          voiceActivityThreshold: 0.015, // Lower threshold for better sensitivity
+          silenceThresholdMs: 1500,
+          onVoiceStart: () => {
+            console.log('🎤 [ContinuousBuffer] Voice activity detected - buffer ready');
+          },
+          onVoiceEnd: () => {
+            console.log('🎤 [ContinuousBuffer] Voice ended - buffer preserved');
+          },
+          onError: (error) => {
+            console.error('🎤 [ContinuousBuffer] Error:', error);
+          }
+        });
+
+        try {
+          await continuousAudioBufferRef.current.start();
+          console.log('🎤 [ContinuousBuffer] Started successfully - audio is now being pre-captured');
+
+          // Calibrate noise floor after 1 second
+          setTimeout(() => {
+            if (continuousAudioBufferRef.current) {
+              continuousAudioBufferRef.current.calibrateNoiseFloor(1000);
+            }
+          }, 1000);
+        } catch (e) {
+          console.error('🎤 [ContinuousBuffer] Failed to start:', e);
+          // Fall back to legacy audio capture
+        }
+      }
+
+      // 🎤 Start legacy audio capture for voice biometrics as backup
       if (!isRecordingVoiceRef.current) {
-        console.log('🎤 Starting continuous audio capture for voice biometrics');
+        console.log('🎤 Starting legacy audio capture for voice biometrics');
         startVoiceAudioCapture();
       }
 

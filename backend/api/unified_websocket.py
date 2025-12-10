@@ -1070,12 +1070,19 @@ class UnifiedWebSocketManager:
                 audio_data_received = message.get("audio_data")
                 sample_rate_received = message.get("sample_rate")
                 mime_type_received = message.get("mime_type")
+                audio_source_received = message.get("audio_source", "unknown")  # Track where audio came from
 
                 if audio_data_received:
                     logger.info(
                         f"[WS] Received audio data from frontend: {len(audio_data_received)} bytes, "
-                        f"sample_rate={sample_rate_received}Hz, mime_type={mime_type_received}"
+                        f"sample_rate={sample_rate_received}Hz, mime_type={mime_type_received}, "
+                        f"source={audio_source_received}"
                     )
+                    # Continuous buffer audio is always high quality - log this for debugging
+                    if audio_source_received == "continuous_buffer":
+                        logger.info(
+                            f"[WS] Using continuous buffer audio (pre-captured, zero-gap)"
+                        )
                 else:
                     logger.debug("[WS] No audio data in message from frontend (text command)")
 
@@ -1097,6 +1104,7 @@ class UnifiedWebSocketManager:
                         logger.info(f"   Audio Size: {len(audio_data_received)} bytes")
                         logger.info(f"   Sample Rate: {sample_rate_received}Hz")
                         logger.info(f"   MIME Type: {mime_type_received}")
+                        logger.info(f"   Audio Source: {audio_source_received}")
                     logger.info("=" * 70)
 
                     # Check if this is a voice UNLOCK command (requires VBI verification)
