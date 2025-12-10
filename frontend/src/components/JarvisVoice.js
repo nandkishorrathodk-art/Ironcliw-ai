@@ -699,6 +699,7 @@ const JarvisVoice = () => {
   const hybridSTTClientRef = useRef(null); // Hybrid STT client (replaces browser SpeechRecognition)
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
+  const speechActiveRef = useRef(false); // Track active speech to prevent restart during recognition
   const wakeWordServiceRef = useRef(null);
   const continuousListeningRef = useRef(false);
   const isWaitingForCommandRef = useRef(false);
@@ -2414,16 +2415,26 @@ const JarvisVoice = () => {
       };
 
       // Enhanced: Faster recognition start on speech
+      // CRITICAL: Track speech activity to prevent restart during active speech
       recognitionRef.current.onspeechstart = () => {
         console.log('🎤 Speech start detected - ready for immediate processing');
+        // Mark that speech is active - prevents restart loop from interrupting
+        speechActiveRef.current = true;
+        lastSpeechTimeRef.current = Date.now();
       };
 
       recognitionRef.current.onspeechend = () => {
         console.log('🎤 Speech end detected');
+        // Speech ended - allow restarts after a brief delay for processing
+        setTimeout(() => {
+          speechActiveRef.current = false;
+        }, 500); // Give time for result processing
       };
 
       recognitionRef.current.onsoundstart = () => {
         console.log('🔊 Sound detected');
+        // Sound detected - temporarily block aggressive restarts
+        lastSpeechTimeRef.current = Date.now();
       };
 
       recognitionRef.current.onerror = async (event) => {
@@ -2615,6 +2626,27 @@ const JarvisVoice = () => {
             case 'aborted':
               // Don't show error for aborted (usually intentional)
               console.log('Recognition aborted');
+              // CRITICAL: If speech was recently active, this abort might have interrupted processing
+              // Skip the automatic restart to prevent losing the speech result
+              const timeSinceSpeech = Date.now() - lastSpeechTimeRef.current;
+              if (speechActiveRef.current || timeSinceSpeech < 2000) {
+                console.log(`⚠️ Abort during active speech (${timeSinceSpeech}ms ago) - will delay restart`);
+                skipNextRestartRef.current = true;
+                // Schedule a delayed restart after speech processing completes
+                setTimeout(() => {
+                  if (continuousListeningRef.current && !speechActiveRef.current) {
+                    console.log('🔄 Restarting after speech abort delay');
+                    skipNextRestartRef.current = false;
+                    try {
+                      recognitionRef.current.start();
+                    } catch (e) {
+                      if (!e.message?.includes('already started')) {
+                        console.log('Delayed restart after abort failed:', e.message);
+                      }
+                    }
+                  }
+                }, 1000);
+              }
               break;
 
             default:
@@ -2633,10 +2665,32 @@ const JarvisVoice = () => {
           return;  // Don't restart
         }
 
+        // CRITICAL: Don't restart if speech was recently active - wait for result processing
+        const now = Date.now();
+        const timeSinceLastSpeech = now - lastSpeechTimeRef.current;
+        
+        if (speechActiveRef.current || timeSinceLastSpeech < 1000) {
+          console.log(`🔇 Speech was active ${timeSinceLastSpeech}ms ago - delaying restart for result processing`);
+          // Delay restart to allow result processing
+          setTimeout(() => {
+            if (!speechActiveRef.current && continuousListeningRef.current) {
+              console.log('⏰ Delayed restart after speech processing');
+              try {
+                recognitionRef.current.start();
+                console.log('✅ Delayed restart successful');
+              } catch (e) {
+                if (!e.message?.includes('already started')) {
+                  console.log('Delayed restart failed:', e.message);
+                }
+              }
+            }
+          }, 500);
+          return;
+        }
+
         // ALWAYS restart if continuous listening is enabled (check ref for most current state)
         if (continuousListeningRef.current || continuousListening) {
           // Check circuit breaker to prevent infinite restart loops
-          const now = Date.now();
           const breaker = restartCircuitBreakerRef.current;
 
           // Reset counter if window has passed
