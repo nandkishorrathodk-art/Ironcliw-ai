@@ -4401,6 +4401,110 @@ async def get_startup_progress():
     }
 
 
+# =============================================================================
+# ML AUDIO ERROR HANDLING ENDPOINTS
+# =============================================================================
+# These endpoints support the frontend MLAudioHandler for intelligent error
+# recovery and telemetry.
+# =============================================================================
+
+@app.post("/audio/ml/error")
+async def audio_ml_error(request: dict):
+    """
+    Receive and process audio errors from frontend for ML-based recovery.
+    
+    This endpoint receives error telemetry from the frontend MLAudioHandler
+    and can optionally return ML-recommended recovery strategies.
+    """
+    from datetime import datetime
+    
+    error_code = request.get("error_code", "unknown")
+    browser = request.get("browser", "unknown")
+    session_duration = request.get("session_duration", 0)
+    permission_state = request.get("permission_state", "unknown")
+    retry_count = request.get("retry_count", 0)
+    
+    logger.info(f"🎤 Audio error reported: {error_code} (browser={browser}, permission={permission_state})")
+    
+    # Generate recovery strategy based on error type
+    strategy = None
+    
+    if error_code in ["not-allowed", "permission-denied"]:
+        # Permission-based errors - don't recommend retry, show instructions
+        strategy = {
+            "action": "show_instructions",
+            "params": {
+                "type": "permission_denied",
+                "browser": browser,
+                "instructions": [
+                    "Click the 🔒 lock icon in the address bar",
+                    "Select 'Site settings' or 'Permissions'",
+                    "Set Microphone to 'Allow'",
+                    "Reload the page"
+                ]
+            },
+            "should_retry": False,
+            "skip_restart": True  # CRITICAL: Prevent restart loop
+        }
+    elif error_code == "audio-capture":
+        # Audio capture errors - might be transient
+        strategy = {
+            "action": "restart_audio",
+            "params": {"delay": 500},
+            "should_retry": retry_count < 3,
+            "skip_restart": retry_count >= 3
+        }
+    elif error_code == "network":
+        strategy = {
+            "action": "network_retry",
+            "params": {"delay": 1000, "max_retries": 3},
+            "should_retry": True
+        }
+    elif error_code == "no-speech":
+        # No speech is normal, not an error
+        return {
+            "success": True,
+            "message": "No speech - normal behavior",
+            "strategy": None
+        }
+    
+    return {
+        "success": True,
+        "error_logged": True,
+        "timestamp": datetime.now().isoformat(),
+        "strategy": strategy
+    }
+
+
+@app.get("/audio/ml/config")
+async def audio_ml_config():
+    """
+    Get ML audio configuration for frontend.
+    
+    Returns configuration settings for the MLAudioHandler including
+    retry policies, thresholds, and feature flags.
+    """
+    return {
+        "enableML": True,
+        "autoRecovery": True,
+        "maxRetries": 3,  # Reduced from 5 to prevent loops
+        "retryDelays": [100, 500, 1000],  # Shorter delays
+        "anomalyThreshold": 0.8,
+        "predictionThreshold": 0.7,
+        "features": {
+            "permissionStateTracking": True,
+            "circuitBreaker": True,
+            "adaptiveRetry": True,
+            "telemetry": True
+        },
+        "circuitBreaker": {
+            "threshold": 5,  # Max errors before tripping
+            "windowMs": 10000,  # Time window
+            "cooldownMs": 30000  # Cooldown after trip
+        }
+    }
+
+
 # Audio endpoints for frontend compatibility
 @app.post("/audio/speak")
 async def audio_speak_post(request: dict):

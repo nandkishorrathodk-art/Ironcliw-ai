@@ -37,9 +37,101 @@ class MLAudioHandler {
         // Browser detection
         this.browserInfo = this.detectBrowser();
 
-        // Permission state tracking
+        // =====================================================================
+        // PERMISSION STATE TRACKING - Prevents infinite retry loops
+        // =====================================================================
+        // In Chrome Incognito mode, once permission is denied, the browser
+        // remembers this for the session and auto-denies subsequent requests.
+        // This tracking prevents useless retry loops.
+        // =====================================================================
         this.permissionState = 'unknown';
+        this.permissionDeniedAt = null;  // Timestamp of last denial
+        this.permissionDenialCount = 0;  // Number of times denied this session
+        this.isPermissionPermanentlyDenied = false;  // True after user denies in prompt
+        
+        // Start async permission state monitoring
         this.checkPermissionState();
+        this.startPermissionMonitoring();
+    }
+    
+    /**
+     * Start monitoring permission state changes using the Permissions API.
+     * This allows us to detect when the user changes permissions in browser settings.
+     */
+    async startPermissionMonitoring() {
+        try {
+            if (!navigator.permissions || !navigator.permissions.query) {
+                console.log('Permissions API not available - using fallback detection');
+                return;
+            }
+            
+            const permission = await navigator.permissions.query({ name: 'microphone' });
+            
+            // Update state immediately
+            this.updatePermissionState(permission.state);
+            
+            // Listen for changes (e.g., user changes in browser settings)
+            permission.addEventListener('change', () => {
+                console.log(`🎤 Permission state changed: ${this.permissionState} → ${permission.state}`);
+                this.updatePermissionState(permission.state);
+                
+                // If permission was granted after being denied, reset denial tracking
+                if (permission.state === 'granted') {
+                    this.permissionDeniedAt = null;
+                    this.permissionDenialCount = 0;
+                    this.isPermissionPermanentlyDenied = false;
+                    console.log('✅ Microphone permission granted - denial tracking reset');
+                }
+            });
+            
+        } catch (error) {
+            console.warn('Could not start permission monitoring:', error);
+        }
+    }
+    
+    /**
+     * Update permission state and related tracking variables.
+     */
+    updatePermissionState(state) {
+        this.permissionState = state;
+        
+        if (state === 'denied') {
+            this.isPermissionPermanentlyDenied = true;
+            this.permissionDeniedAt = Date.now();
+            this.permissionDenialCount++;
+        }
+    }
+    
+    /**
+     * Check if we should skip retrying permission requests.
+     * Returns true if permission was recently denied and retrying would be useless.
+     */
+    shouldSkipPermissionRetry() {
+        // If permission is permanently denied, don't retry
+        if (this.isPermissionPermanentlyDenied) {
+            console.log('⛔ Permission is permanently denied - skipping retry');
+            return true;
+        }
+        
+        // If permission state is 'denied', don't retry
+        if (this.permissionState === 'denied') {
+            console.log('⛔ Permission state is denied - skipping retry');
+            return true;
+        }
+        
+        // If denied recently (within 30 seconds), don't retry
+        if (this.permissionDeniedAt && (Date.now() - this.permissionDeniedAt) < 30000) {
+            console.log('⛔ Permission denied recently - skipping retry (wait 30s)');
+            return true;
+        }
+        
+        // If denied multiple times this session, don't retry automatically
+        if (this.permissionDenialCount >= 2) {
+            console.log(`⛔ Permission denied ${this.permissionDenialCount} times - manual intervention required`);
+            return true;
+        }
+        
+        return false;
     }
 
     async initializeWhenReady() {
@@ -339,7 +431,30 @@ class MLAudioHandler {
         switch (error.error) {
             case 'not-allowed':
             case 'permission-denied':
-                return await this.requestPermissionWithRetry({});
+                // =============================================================
+                // CRITICAL: Check if we should skip retry to prevent infinite loop
+                // =============================================================
+                // In Chrome Incognito and after user denial, retrying is useless
+                // and creates an infinite loop that trips the circuit breaker.
+                // =============================================================
+                if (this.shouldSkipPermissionRetry()) {
+                    // Track the denial
+                    this.updatePermissionState('denied');
+                    
+                    // Show instructions to user instead of retrying
+                    this.showMicrophonePermissionHelp();
+                    
+                    return {
+                        success: false,
+                        message: 'Microphone permission denied - manual intervention required',
+                        skipRestart: true,  // CRITICAL: Prevent restart loop
+                        permissionDenied: true,
+                        action: 'show_instructions'
+                    };
+                }
+                
+                // First time denial - try to request permission once
+                return await this.requestPermissionWithRetry({ maxAttempts: 1 });
 
             case 'no-speech':
                 // No speech detected is often not a critical error
@@ -349,6 +464,15 @@ class MLAudioHandler {
                 };
 
             case 'audio-capture':
+                // Check if this is actually a permission issue
+                if (this.shouldSkipPermissionRetry()) {
+                    return {
+                        success: false,
+                        message: 'Audio capture failed - permission may be denied',
+                        skipRestart: true,
+                        permissionDenied: true
+                    };
+                }
                 // Try to restart audio context
                 return await this.restartAudioContext(recognition);
 
@@ -377,13 +501,129 @@ class MLAudioHandler {
                 };
         }
     }
+    
+    /**
+     * Show helpful instructions for enabling microphone permission.
+     * This is called when automatic retry has failed or is skipped.
+     */
+    showMicrophonePermissionHelp() {
+        console.log('📋 Showing microphone permission help to user');
+        
+        // Dispatch an event that the UI can listen to
+        const event = new CustomEvent('microphonePermissionDenied', {
+            detail: {
+                browser: this.browserInfo.name,
+                isIncognito: this.detectIncognitoMode(),
+                instructions: this.getPermissionInstructions()
+            }
+        });
+        window.dispatchEvent(event);
+    }
+    
+    /**
+     * Detect if browser is in incognito/private mode.
+     * Note: This is heuristic-based and may not be 100% accurate.
+     */
+    detectIncognitoMode() {
+        return new Promise((resolve) => {
+            // Chrome Incognito detection
+            if (window.webkitRequestFileSystem) {
+                window.webkitRequestFileSystem(
+                    window.TEMPORARY, 1,
+                    () => resolve(false),
+                    () => resolve(true)
+                );
+            } else {
+                // Firefox/Safari detection using storage estimate
+                navigator.storage?.estimate?.().then(({ quota }) => {
+                    // In private mode, quota is usually limited
+                    resolve(quota < 120000000);
+                }).catch(() => resolve(false));
+            }
+        });
+    }
+    
+    /**
+     * Get browser-specific instructions for enabling microphone.
+     */
+    getPermissionInstructions() {
+        const browser = this.browserInfo.name.toLowerCase();
+        
+        const instructions = {
+            chrome: [
+                'Click the 🔒 lock icon in the address bar',
+                'Select "Site settings"',
+                'Set Microphone to "Allow"',
+                'Reload the page'
+            ],
+            firefox: [
+                'Click the 🔒 lock icon in the address bar',
+                'Click "Connection secure" then "More information"',
+                'Go to Permissions tab',
+                'Allow Microphone access'
+            ],
+            safari: [
+                'Go to Safari → Preferences → Websites',
+                'Select Microphone from the sidebar',
+                'Allow access for this website'
+            ],
+            default: [
+                'Open browser settings',
+                'Go to Privacy & Security → Site Settings',
+                'Allow Microphone access for this site',
+                'Reload the page'
+            ]
+        };
+        
+        return instructions[browser] || instructions.default;
+    }
 
-    async requestPermissionWithRetry(params) {
-        const { retryDelays = this.config.retryDelays } = params;
+    async requestPermissionWithRetry(params = {}) {
+        const { 
+            retryDelays = this.config.retryDelays,
+            maxAttempts = retryDelays.length  // Allow limiting attempts
+        } = params;
+        
+        // =============================================================
+        // PRE-CHECK: Use Permissions API to check current state
+        // =============================================================
+        // This avoids unnecessary getUserMedia calls that won't succeed
+        // =============================================================
+        try {
+            if (navigator.permissions && navigator.permissions.query) {
+                const permission = await navigator.permissions.query({ name: 'microphone' });
+                
+                if (permission.state === 'denied') {
+                    console.log('⛔ Permissions API reports microphone is denied - skipping getUserMedia');
+                    this.updatePermissionState('denied');
+                    
+                    return {
+                        success: false,
+                        message: 'Microphone permission is denied in browser settings',
+                        skipRestart: true,
+                        permissionDenied: true,
+                        needsManualReset: true
+                    };
+                }
+                
+                if (permission.state === 'granted') {
+                    console.log('✅ Permissions API reports microphone is already granted');
+                    // Still try getUserMedia to get actual stream access
+                }
+                
+                // 'prompt' state means we can try to request
+            }
+        } catch (permError) {
+            // Permissions API not available, proceed with getUserMedia
+            console.log('Permissions API check failed, proceeding with getUserMedia');
+        }
 
-        for (let i = 0; i < retryDelays.length; i++) {
+        // Limit attempts to prevent infinite loops
+        const actualMaxAttempts = Math.min(maxAttempts, retryDelays.length, 3);  // Cap at 3
+        
+        for (let i = 0; i < actualMaxAttempts; i++) {
             try {
-                console.log(`Requesting microphone permission (attempt ${i + 1})`);
+                console.log(`Requesting microphone permission (attempt ${i + 1}/${actualMaxAttempts})`);
 
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -396,6 +636,12 @@ class MLAudioHandler {
                 // Success! Clean up and report
                 stream.getTracks().forEach(track => track.stop());
 
+                // Reset denial tracking on success
+                this.permissionState = 'granted';
+                this.permissionDeniedAt = null;
+                this.permissionDenialCount = 0;
+                this.isPermissionPermanentlyDenied = false;
+
                 this.sendTelemetry('recovery', {
                     method: 'request_permission',
                     attempts: i + 1,
@@ -407,21 +653,53 @@ class MLAudioHandler {
                 return {
                     success: true,
                     message: 'Microphone permission granted',
-                    attempts: i + 1
+                    attempts: i + 1,
+                    newContext: true  // Signal that UI should restart recognition
                 };
 
             } catch (error) {
-                console.error(`Permission attempt ${i + 1} failed:`, error);
+                console.error(`Permission attempt ${i + 1} failed:`, error.name, error.message);
+                
+                // Check if this is a hard denial (user clicked deny or settings-based)
+                if (error.name === 'NotAllowedError') {
+                    // Update denial tracking
+                    this.updatePermissionState('denied');
+                    
+                    // If user explicitly denied (not just a timing issue), stop immediately
+                    if (error.message.includes('Permission denied') || 
+                        error.message.includes('denied') ||
+                        this.permissionDenialCount >= 2) {
+                        console.log('🚫 Hard permission denial detected - stopping retries');
+                        
+                        return {
+                            success: false,
+                            message: 'Microphone permission denied by user or browser',
+                            skipRestart: true,  // CRITICAL: Prevent restart loop
+                            permissionDenied: true,
+                            needsManualReset: true,
+                            attempts: i + 1
+                        };
+                    }
+                }
 
-                if (i < retryDelays.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+                // Only retry if not at the last attempt
+                if (i < actualMaxAttempts - 1) {
+                    const delay = retryDelays[Math.min(i, retryDelays.length - 1)];
+                    console.log(`Retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
 
+        // All attempts failed
+        this.updatePermissionState('denied');
+        
         return {
             success: false,
-            message: 'Failed to obtain microphone permission after retries'
+            message: 'Failed to obtain microphone permission after retries',
+            skipRestart: true,  // Prevent restart loop after all retries exhausted
+            permissionDenied: true,
+            attempts: actualMaxAttempts
         };
     }
 

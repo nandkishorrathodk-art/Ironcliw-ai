@@ -2440,6 +2440,25 @@ const JarvisVoice = () => {
           console.warn('ML audio handler error:', error);
         }
 
+        // =============================================================
+        // CRITICAL: Handle permission denied separately to prevent loops
+        // =============================================================
+        if (mlResult && mlResult.permissionDenied) {
+          console.log('🚫 Permission denied detected - stopping all retry attempts');
+          
+          // CRITICAL: Stop continuous listening to prevent infinite loop
+          continuousListeningRef.current = false;
+          setContinuousListening(false);
+          skipNextRestartRef.current = true;
+          
+          // Show appropriate error message
+          setError('🎤 Microphone permission denied. Click the lock icon in the address bar to enable.');
+          setMicStatus('permission_denied');
+          setMicrophonePermission('denied');
+          
+          return;  // Don't process further
+        }
+
         if (mlResult && mlResult.success) {
           // Only log recovery for non-no-speech errors
           if (event.error !== 'no-speech' && event.error !== 'aborted') {
@@ -2458,6 +2477,19 @@ const JarvisVoice = () => {
           if (mlResult && (mlResult.newContext || (mlResult.message && mlResult.message.includes('granted')))) {
             startListening();
           }
+        } else if (mlResult && mlResult.skipRestart) {
+          // ML handler says to skip restart even though recovery wasn't successful
+          console.log('⛔ ML handler instructed to skip restart');
+          skipNextRestartRef.current = true;
+          
+          // Still show appropriate error
+          if (event.error === 'not-allowed' || event.error === 'audio-capture') {
+            setError('🎤 Microphone access issue. Check browser permissions.');
+            setMicStatus('error');
+            continuousListeningRef.current = false;
+            setContinuousListening(false);
+          }
+          return;
         } else {
           // Fallback to basic error handling
           switch (event.error) {
@@ -2467,6 +2499,7 @@ const JarvisVoice = () => {
               // Stop continuous listening to prevent retry loop
               continuousListeningRef.current = false;
               setContinuousListening(false);
+              skipNextRestartRef.current = true;  // CRITICAL: Prevent onend restart
               console.warn('⛔ Stopping continuous listening due to audio capture error');
               break;
 
@@ -2476,6 +2509,7 @@ const JarvisVoice = () => {
               // Stop continuous listening to prevent retry loop
               continuousListeningRef.current = false;
               setContinuousListening(false);
+              skipNextRestartRef.current = true;  // CRITICAL: Prevent onend restart
               console.warn('⛔ Stopping continuous listening due to permission denial');
               break;
 
