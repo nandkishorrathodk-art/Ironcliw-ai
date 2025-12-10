@@ -900,7 +900,7 @@ class AudioPreprocessStage(VBIStage):
 
 @vbi_stage
 class EmbeddingExtractionStage(VBIStage):
-    """Extract ECAPA-TDNN speaker embedding."""
+    """Extract ECAPA-TDNN speaker embedding with robust timeout handling."""
     
     name = "embedding_extraction"
     category = StageCategory.EXTRACTION
@@ -908,53 +908,153 @@ class EmbeddingExtractionStage(VBIStage):
     priority = 30
     
     async def execute(self, context: PipelineContext) -> np.ndarray:
-        """Extract speaker embedding using cloud-first strategy."""
+        """
+        Extract speaker embedding using cloud-first strategy.
+        
+        IMPORTANT: Uses asyncio.to_thread for blocking calls to ensure
+        timeouts actually work (blocking calls don't respect asyncio.wait_for).
+        """
         audio_bytes = context.preprocessed_audio
-        last_error = None
+        errors = []
         
-        # Strategy 1: Cloud ECAPA
+        # Get shorter timeout for each strategy (we have multiple fallbacks)
+        strategy_timeout = min(self.timeout / 2, 8.0)  # Max 8s per strategy
+        
+        # =========================================================================
+        # STRATEGY 1: Cloud ECAPA (fastest if available)
+        # =========================================================================
         try:
-            from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
+            logger.debug("🌐 Trying Cloud ECAPA extraction...")
             
-            client = await get_cloud_ecapa_client()
-            if client:
-                embedding = await asyncio.wait_for(
-                    client.extract_embedding(
-                        audio_data=audio_bytes,
-                        sample_rate=16000,
-                        format="float32",
-                        use_cache=True,
-                    ),
-                    timeout=self.timeout,
-                )
+            async def cloud_extract():
+                from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
+                client = await get_cloud_ecapa_client()
+                if client is None:
+                    raise RuntimeError("CloudECAPAClient not available")
                 
-                if embedding is not None:
-                    context.embedding = embedding
-                    return embedding
-                    
-        except Exception as e:
-            last_error = e
-            logger.debug(f"Cloud ECAPA failed: {e}")
-        
-        # Strategy 2: ML Engine Registry
-        try:
-            from voice_unlock.ml_engine_registry import extract_speaker_embedding
+                # Check if client is healthy first
+                if hasattr(client, 'is_healthy') and not client.is_healthy():
+                    raise RuntimeError("CloudECAPAClient not healthy")
+                
+                return await client.extract_embedding(
+                    audio_data=audio_bytes,
+                    sample_rate=16000,
+                    format="float32",
+                    use_cache=True,
+                )
             
-            audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
             embedding = await asyncio.wait_for(
-                extract_speaker_embedding(audio_array),
-                timeout=self.timeout,
+                cloud_extract(),
+                timeout=strategy_timeout,
             )
             
-            if embedding is not None:
+            if embedding is not None and len(embedding) > 0:
                 context.embedding = embedding
+                logger.info(f"✅ Cloud ECAPA extraction succeeded: {len(embedding)} dims")
                 return embedding
+            else:
+                errors.append("Cloud returned empty embedding")
                 
+        except asyncio.TimeoutError:
+            errors.append(f"Cloud ECAPA timeout ({strategy_timeout}s)")
+            logger.warning(f"⏱️ Cloud ECAPA timed out after {strategy_timeout}s")
         except Exception as e:
-            last_error = e
+            errors.append(f"Cloud ECAPA: {e}")
+            logger.debug(f"Cloud ECAPA failed: {e}")
+        
+        # =========================================================================
+        # STRATEGY 2: ML Engine Registry (may use local or cloud)
+        # =========================================================================
+        try:
+            logger.debug("🔄 Trying ML Engine Registry extraction...")
+            
+            async def registry_extract():
+                from voice_unlock.ml_engine_registry import extract_speaker_embedding
+                
+                # Convert bytes to numpy array
+                audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
+                if len(audio_array) == 0:
+                    # Try int16 format
+                    audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                
+                return await extract_speaker_embedding(audio_array)
+            
+            embedding = await asyncio.wait_for(
+                registry_extract(),
+                timeout=strategy_timeout,
+            )
+            
+            if embedding is not None and len(embedding) > 0:
+                context.embedding = embedding
+                logger.info(f"✅ ML Registry extraction succeeded: {len(embedding)} dims")
+                return embedding
+            else:
+                errors.append("Registry returned empty embedding")
+                
+        except asyncio.TimeoutError:
+            errors.append(f"ML Registry timeout ({strategy_timeout}s)")
+            logger.warning(f"⏱️ ML Registry timed out after {strategy_timeout}s")
+        except Exception as e:
+            errors.append(f"ML Registry: {e}")
             logger.debug(f"ML Registry failed: {e}")
         
-        raise RuntimeError(f"All embedding extraction strategies failed: {last_error}")
+        # =========================================================================
+        # STRATEGY 3: Direct SpeechBrain (blocking, run in thread pool)
+        # =========================================================================
+        try:
+            logger.debug("💻 Trying direct SpeechBrain extraction (thread pool)...")
+            
+            def speechbrain_extract_sync():
+                """Blocking extraction in thread pool."""
+                try:
+                    from voice.speaker_verification_service import get_speaker_verification_service
+                    import asyncio as asyncio_inner
+                    
+                    # Get event loop for nested async
+                    try:
+                        loop = asyncio_inner.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio_inner.new_event_loop()
+                        asyncio_inner.set_event_loop(loop)
+                    
+                    # Get service synchronously
+                    service = loop.run_until_complete(get_speaker_verification_service())
+                    
+                    if service and hasattr(service, 'extract_embedding'):
+                        return loop.run_until_complete(
+                            service.extract_embedding(audio_bytes)
+                        )
+                    return None
+                except Exception as inner_e:
+                    logger.debug(f"SpeechBrain inner error: {inner_e}")
+                    return None
+            
+            # Run blocking code in thread pool with timeout
+            embedding = await asyncio.wait_for(
+                asyncio.to_thread(speechbrain_extract_sync),
+                timeout=strategy_timeout,
+            )
+            
+            if embedding is not None and len(embedding) > 0:
+                context.embedding = embedding
+                logger.info(f"✅ SpeechBrain extraction succeeded: {len(embedding)} dims")
+                return embedding
+            else:
+                errors.append("SpeechBrain returned empty embedding")
+                
+        except asyncio.TimeoutError:
+            errors.append(f"SpeechBrain timeout ({strategy_timeout}s)")
+            logger.warning(f"⏱️ SpeechBrain timed out after {strategy_timeout}s")
+        except Exception as e:
+            errors.append(f"SpeechBrain: {e}")
+            logger.debug(f"SpeechBrain failed: {e}")
+        
+        # =========================================================================
+        # ALL STRATEGIES FAILED
+        # =========================================================================
+        error_summary = "; ".join(errors)
+        logger.error(f"❌ All embedding extraction strategies failed: {error_summary}")
+        raise RuntimeError(f"Embedding extraction failed: {error_summary}")
 
 
 @vbi_stage  

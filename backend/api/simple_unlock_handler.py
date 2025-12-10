@@ -601,78 +601,165 @@ async def _execute_screen_action(
         if audio_data:
             log_timing("Audio data available - starting voice verification")
             # =================================================================
-            # 🧠 VOICE BIOMETRIC INTELLIGENCE: Verify and announce FIRST!
+            # 🚀 PARALLEL VBI ORCHESTRATOR v3.0 - Fast, Robust Voice Verification
             # =================================================================
-            # This provides TRANSPARENCY by recognizing voice and announcing it
-            # BEFORE the unlock process, so no more "Processing..." stuck!
+            # Uses ParallelVBIOrchestrator with:
+            # - Parallel stage execution (not sequential blocking)
+            # - Per-stage circuit breakers (prevents cascade failures)
+            # - Proper async timeouts (actually enforced, not blocking)
+            # - Automatic fallback chain
             # =================================================================
+            vbi_success = False
+            
+            # STRATEGY 1: Try Parallel VBI Orchestrator (fastest, most robust)
             try:
-                from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
-
-                log_timing("VBI imported, getting instance...")
-                vbi = await asyncio.wait_for(
-                    get_voice_biometric_intelligence(),
-                    timeout=2.0
+                from core.vbi_parallel_integration import verify_voice_with_progress
+                
+                log_timing("Parallel VBI imported, starting verification...")
+                
+                # Create a simple progress logger
+                async def progress_logger(update: dict):
+                    stage = update.get('stage_name', update.get('stage', '?'))
+                    progress = update.get('progress_percent', 0)
+                    status = update.get('status', '?')
+                    logger.debug(f"🔄 VBI Progress: {stage} - {progress}% ({status})")
+                
+                # Run parallel verification with strict timeout
+                vbi_result = await asyncio.wait_for(
+                    verify_voice_with_progress(
+                        audio_data=audio_data,
+                        context={
+                            'device_trusted': True,
+                            'sample_rate': 16000,
+                        },
+                        speak=False,  # Don't speak yet, we'll do it after success
+                        progress_callback=progress_logger,
+                    ),
+                    timeout=10.0  # 10 second hard timeout for entire pipeline
                 )
-                log_timing("VBI instance obtained")
-
-                if vbi:
-                    logger.info("🧠 Using Voice Biometric Intelligence for upfront recognition...")
-                    log_timing("Starting VBI verify_and_announce...")
-
-                    # Verify voice and announce result FIRST (fast path < 3 seconds)
-                    vbi_result = await asyncio.wait_for(
-                        vbi.verify_and_announce(
-                            audio_data=audio_data,
-                            context={
-                                'device_trusted': True,
-                            },
-                            speak=True,  # Announce "Voice verified, Derek. 94% confidence. Unlocking now..."
-                        ),
-                        timeout=3.0
+                log_timing(f"Parallel VBI done (verified={vbi_result.verified}, conf={vbi_result.confidence:.1%})")
+                
+                if vbi_result.verified:
+                    vbi_success = True
+                    logger.info(
+                        f"🚀 Voice recognized (PARALLEL): {vbi_result.speaker_name} "
+                        f"({vbi_result.confidence:.1%}) in {vbi_result.verification_time_ms:.0f}ms"
                     )
-                    log_timing(f"VBI verify_and_announce done (verified={vbi_result.verified})")
-
-                    if vbi_result.verified:
-                        logger.info(
-                            f"🧠 Voice recognized UPFRONT: {vbi_result.speaker_name} "
-                            f"({vbi_result.confidence:.1%}) in {vbi_result.verification_time_ms:.0f}ms"
-                        )
-
-                        # Store verified speaker name in context
-                        context["verified_speaker_name"] = vbi_result.speaker_name
-                        context["verification_confidence"] = vbi_result.confidence
-                        context["status_message"] = f"Voice verified: {vbi_result.speaker_name}"
-                        context["verification_message"] = vbi_result.announcement
-
-                        # Skip legacy verification - proceed directly to unlock!
-                        logger.info("✅ Skipping legacy verification - proceeding to unlock")
-
-                    else:
-                        # Voice not verified - return failure immediately
+                    
+                    # Store verified speaker name in context
+                    context["verified_speaker_name"] = vbi_result.speaker_name
+                    context["verification_confidence"] = vbi_result.confidence
+                    context["status_message"] = f"Voice verified: {vbi_result.speaker_name}"
+                    context["verification_message"] = vbi_result.announcement
+                    context["verification_method"] = "parallel_vbi"
+                    
+                    # Speak announcement
+                    if vbi_result.announcement:
+                        try:
+                            from voice.tts_synthesizer import synthesize_and_play
+                            asyncio.create_task(synthesize_and_play(vbi_result.announcement))
+                        except Exception:
+                            pass
+                    
+                    logger.info("✅ Parallel VBI verified - proceeding to unlock")
+                else:
+                    # Parallel VBI didn't verify - check if we should fail or try legacy
+                    if vbi_result.confidence > 0.25:
+                        # Got a partial match but below threshold - fail
                         logger.warning(
-                            f"🧠 Voice not recognized ({vbi_result.level.value}, {vbi_result.confidence:.1%})"
+                            f"🚀 Voice not verified (PARALLEL): {vbi_result.confidence:.1%} "
+                            f"({', '.join(vbi_result.warnings) if vbi_result.warnings else 'below threshold'})"
                         )
                         return {
                             "success": False,
                             "error": "voice_verification_failed",
                             "message": vbi_result.announcement or (
                                 f"I couldn't verify your voice. "
-                                f"Confidence was {vbi_result.confidence:.0%}, but I need at least 75%."
+                                f"Confidence was {vbi_result.confidence:.0%}, but I need at least 40%."
                             ),
                             "retry_guidance": vbi_result.retry_guidance,
+                            "verification_method": "parallel_vbi",
                         }
-
+                    else:
+                        # Very low confidence - might be a system issue, try legacy
+                        log_timing("Parallel VBI low confidence - trying legacy")
+                        logger.warning(f"⚠️ Parallel VBI very low confidence ({vbi_result.confidence:.1%}) - trying legacy")
+                        
             except asyncio.TimeoutError:
-                log_timing("VBI TIMEOUT after 5s - using legacy verification")
-                logger.warning("⏱️ VoiceBiometricIntelligence timed out - using legacy verification")
-                # Fall through to legacy verification
-            except ImportError:
-                log_timing("VBI import failed - using legacy verification")
-                logger.debug("VoiceBiometricIntelligence not available - using legacy verification")
+                log_timing("Parallel VBI TIMEOUT - trying legacy")
+                logger.warning("⏱️ Parallel VBI timed out after 10s - trying legacy verification")
+            except ImportError as e:
+                log_timing(f"Parallel VBI not available ({e}) - trying legacy")
+                logger.debug(f"Parallel VBI not available: {e}")
             except Exception as e:
-                log_timing(f"VBI error ({e}) - using legacy verification")
-                logger.warning(f"VoiceBiometricIntelligence error: {e} - using legacy verification")
+                log_timing(f"Parallel VBI error ({e}) - trying legacy")
+                logger.warning(f"Parallel VBI error: {e} - trying legacy verification")
+            
+            # STRATEGY 2: Try legacy VoiceBiometricIntelligence (backup)
+            if not vbi_success and "verified_speaker_name" not in context:
+                try:
+                    from voice_unlock.voice_biometric_intelligence import get_voice_biometric_intelligence
+                    
+                    log_timing("Legacy VBI imported, getting instance...")
+                    vbi = await asyncio.wait_for(
+                        get_voice_biometric_intelligence(),
+                        timeout=2.0
+                    )
+                    log_timing("Legacy VBI instance obtained")
+                    
+                    if vbi:
+                        logger.info("🧠 Using legacy VBI for verification...")
+                        log_timing("Starting legacy VBI verify_and_announce...")
+                        
+                        # Verify voice with strict timeout
+                        vbi_result = await asyncio.wait_for(
+                            vbi.verify_and_announce(
+                                audio_data=audio_data,
+                                context={'device_trusted': True},
+                                speak=True,
+                            ),
+                            timeout=5.0  # Strict 5 second timeout
+                        )
+                        log_timing(f"Legacy VBI done (verified={vbi_result.verified})")
+                        
+                        if vbi_result.verified:
+                            vbi_success = True
+                            logger.info(
+                                f"🧠 Voice recognized (LEGACY): {vbi_result.speaker_name} "
+                                f"({vbi_result.confidence:.1%})"
+                            )
+                            
+                            context["verified_speaker_name"] = vbi_result.speaker_name
+                            context["verification_confidence"] = vbi_result.confidence
+                            context["status_message"] = f"Voice verified: {vbi_result.speaker_name}"
+                            context["verification_message"] = vbi_result.announcement
+                            context["verification_method"] = "legacy_vbi"
+                            
+                            logger.info("✅ Legacy VBI verified - proceeding to unlock")
+                        else:
+                            logger.warning(
+                                f"🧠 Voice not verified (LEGACY): {vbi_result.level.value}, {vbi_result.confidence:.1%}"
+                            )
+                            return {
+                                "success": False,
+                                "error": "voice_verification_failed",
+                                "message": vbi_result.announcement or (
+                                    f"I couldn't verify your voice. "
+                                    f"Confidence was {vbi_result.confidence:.0%}, but I need at least 40%."
+                                ),
+                                "retry_guidance": vbi_result.retry_guidance,
+                                "verification_method": "legacy_vbi",
+                            }
+                            
+                except asyncio.TimeoutError:
+                    log_timing("Legacy VBI TIMEOUT - using speaker service fallback")
+                    logger.warning("⏱️ Legacy VBI timed out - using speaker service fallback")
+                except ImportError:
+                    log_timing("Legacy VBI not available")
+                    logger.debug("Legacy VBI not available")
+                except Exception as e:
+                    log_timing(f"Legacy VBI error: {e}")
+                    logger.warning(f"Legacy VBI error: {e}")
 
             # =================================================================
             # LEGACY FALLBACK: Use old verification if VBI not available
