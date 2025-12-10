@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <!-- Glow filters -->
+    <filter id="glow192" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="outerGlow192" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Gradients -->
+    <radialGradient id="coreGrad192" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#00cc33;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#006622;stop-opacity:0.8"/>
+    </radialGradient>
+    
+    <radialGradient id="innerCore192" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1"/>
+      <stop offset="40%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#00aa33;stop-opacity:0.9"/>
+    </radialGradient>
+    
+    <linearGradient id="ringGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#00cc33;stop-opacity:0.8"/>
+      <stop offset="100%" style="stop-color:#00ff41;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="96" cy="96" r="94" fill="#000000"/>
+  <circle cx="96" cy="96" r="92" fill="none" stroke="#001a0d" stroke-width="2"/>
+  
+  <!-- Outer ring with segments -->
+  <g filter="url(#outerGlow192)">
+    <circle cx="96" cy="96" r="80" fill="none" stroke="#00ff41" stroke-width="4" 
+            stroke-dasharray="40 20" opacity="0.7"/>
+  </g>
+  
+  <!-- Second ring -->
+  <g filter="url(#outerGlow192)">
+    <circle cx="96" cy="96" r="65" fill="none" stroke="#00cc33" stroke-width="3" 
+            stroke-dasharray="30 15" opacity="0.8"/>
+  </g>
+  
+  <!-- Third ring -->
+  <g filter="url(#outerGlow192)">
+    <circle cx="96" cy="96" r="50" fill="none" stroke="#00ff41" stroke-width="3" 
+            stroke-dasharray="20 10" opacity="0.85"/>
+  </g>
+  
+  <!-- Inner ring -->
+  <g filter="url(#outerGlow192)">
+    <circle cx="96" cy="96" r="38" fill="none" stroke="#00ff41" stroke-width="2" 
+            stroke-dasharray="15 8" opacity="0.9"/>
+  </g>
+  
+  <!-- Core glow background -->
+  <circle cx="96" cy="96" r="28" fill="#003311" opacity="0.5"/>
+  
+  <!-- Main core -->
+  <circle cx="96" cy="96" r="24" fill="url(#coreGrad192)" filter="url(#glow192)"/>
+  
+  <!-- Inner core -->
+  <circle cx="96" cy="96" r="14" fill="url(#innerCore192)" filter="url(#glow192)"/>
+  
+  <!-- Center bright spot -->
+  <circle cx="96" cy="96" r="6" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Decorative triangular indicators -->
+  <g opacity="0.8" filter="url(#outerGlow192)">
+    <path d="M96 8 L102 24 L90 24 Z" fill="#00ff41"/>
+    <path d="M184 96 L168 102 L168 90 Z" fill="#00ff41"/>
+    <path d="M96 184 L90 168 L102 168 Z" fill="#00ff41"/>
+    <path d="M8 96 L24 90 L24 102 Z" fill="#00ff41"/>
+  </g>
+  
+  <!-- Corner accent lines -->
+  <g stroke="#00ff41" stroke-width="1" opacity="0.5">
+    <line x1="20" y1="20" x2="35" y2="35"/>
+    <line x1="172" y1="20" x2="157" y2="35"/>
+    <line x1="20" y1="172" x2="35" y2="157"/>
+    <line x1="172" y1="172" x2="157" y2="157"/>
+  </g>
+</svg>

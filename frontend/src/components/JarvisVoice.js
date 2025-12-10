@@ -22,6 +22,7 @@ import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio qual
 import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command detection banner for streaming safeguard
 import { getJarvisConnectionService, ConnectionState, connectionStateToJarvisStatus } from '../services/JarvisConnectionService'; // 🆕 Unified connection service
 import { getContinuousAudioBuffer } from '../utils/ContinuousAudioBuffer'; // 🆕 Continuous audio pre-buffer for first-attempt recognition
+import { initDynamicFavicon, setFaviconState } from '../utils/DynamicFavicon'; // 🆕 Dynamic JARVIS favicon
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -832,6 +833,24 @@ const JarvisVoice = () => {
       unsubscribeProactive();
     };
   }, []);
+
+  // 🎨 Dynamic Favicon - Changes based on JARVIS state
+  useEffect(() => {
+    // Initialize the dynamic favicon system on mount
+    initDynamicFavicon();
+    console.log('🎨 [Favicon] Dynamic favicon system initialized');
+  }, []);
+
+  // Update favicon based on processing/listening state
+  useEffect(() => {
+    if (isProcessing) {
+      setFaviconState('processing');
+    } else if (isWaitingForCommand || isListening) {
+      setFaviconState('listening');
+    } else {
+      setFaviconState('idle');
+    }
+  }, [isProcessing, isWaitingForCommand, isListening]);
 
   useEffect(() => {
     // Preload voices to ensure Daniel is available

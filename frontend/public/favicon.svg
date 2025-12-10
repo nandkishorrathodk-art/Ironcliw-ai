@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- Glow filter for the core -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Outer glow -->
+    <filter id="outerGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Radial gradient for core -->
+    <radialGradient id="coreGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#00cc33;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#009922;stop-opacity:0.8"/>
+    </radialGradient>
+    
+    <!-- Inner core gradient -->
+    <radialGradient id="innerCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.9"/>
+      <stop offset="30%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#00aa33;stop-opacity:0.8"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#000000" stroke="#003311" stroke-width="1"/>
+  
+  <!-- Outer rotating ring -->
+  <g filter="url(#outerGlow)">
+    <circle cx="32" cy="32" r="26" fill="none" stroke="#00ff41" stroke-width="2" 
+            stroke-dasharray="20 10" opacity="0.8">
+      <animateTransform 
+        attributeName="transform" 
+        type="rotate" 
+        from="0 32 32" 
+        to="360 32 32" 
+        dur="4s" 
+        repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Middle rotating ring (opposite direction) -->
+  <g filter="url(#outerGlow)">
+    <circle cx="32" cy="32" r="20" fill="none" stroke="#00cc33" stroke-width="2" 
+            stroke-dasharray="15 8" opacity="0.9">
+      <animateTransform 
+        attributeName="transform" 
+        type="rotate" 
+        from="360 32 32" 
+        to="0 32 32" 
+        dur="3s" 
+        repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Inner rotating ring -->
+  <g filter="url(#outerGlow)">
+    <circle cx="32" cy="32" r="14" fill="none" stroke="#00ff41" stroke-width="1.5" 
+            stroke-dasharray="10 5" opacity="0.95">
+      <animateTransform 
+        attributeName="transform" 
+        type="rotate" 
+        from="0 32 32" 
+        to="360 32 32" 
+        dur="2s" 
+        repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Glowing core -->
+  <circle cx="32" cy="32" r="8" fill="url(#coreGradient)" filter="url(#glow)">
+    <animate 
+      attributeName="r" 
+      values="7;9;7" 
+      dur="1.5s" 
+      repeatCount="indefinite"/>
+    <animate 
+      attributeName="opacity" 
+      values="0.9;1;0.9" 
+      dur="1.5s" 
+      repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Inner bright core -->
+  <circle cx="32" cy="32" r="4" fill="url(#innerCore)" filter="url(#glow)">
+    <animate 
+      attributeName="r" 
+      values="3.5;4.5;3.5" 
+      dur="1.5s" 
+      repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Center dot (brightest point) -->
+  <circle cx="32" cy="32" r="1.5" fill="#ffffff" opacity="0.95">
+    <animate 
+      attributeName="opacity" 
+      values="0.8;1;0.8" 
+      dur="0.75s" 
+      repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Decorative triangular segments around the core -->
+  <g opacity="0.7" filter="url(#outerGlow)">
+    <!-- Top segment -->
+    <path d="M32 4 L35 12 L29 12 Z" fill="#00ff41">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+    </path>
+    <!-- Right segment -->
+    <path d="M60 32 L52 35 L52 29 Z" fill="#00ff41">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+    </path>
+    <!-- Bottom segment -->
+    <path d="M32 60 L29 52 L35 52 Z" fill="#00ff41">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="1s" repeatCount="indefinite"/>
+    </path>
+    <!-- Left segment -->
+    <path d="M4 32 L12 29 L12 35 Z" fill="#00ff41">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="1.5s" repeatCount="indefinite"/>
+    </path>
+  </g>
+</svg>

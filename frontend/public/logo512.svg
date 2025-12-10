@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Glow filters -->
+    <filter id="glow512" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="outerGlow512" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Gradients -->
+    <radialGradient id="coreGrad512" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#00cc33;stop-opacity:1"/>
+      <stop offset="80%" style="stop-color:#008822;stop-opacity:0.9"/>
+      <stop offset="100%" style="stop-color:#004411;stop-opacity:0.7"/>
+    </radialGradient>
+    
+    <radialGradient id="innerCore512" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#aaffaa;stop-opacity:1"/>
+      <stop offset="60%" style="stop-color:#00ff41;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#00aa33;stop-opacity:0.9"/>
+    </radialGradient>
+    
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#001a0d;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:1"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="256" cy="256" r="254" fill="url(#bgGrad)"/>
+  <circle cx="256" cy="256" r="250" fill="none" stroke="#003311" stroke-width="4"/>
+  
+  <!-- Outer ambient glow -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#00ff41" stroke-width="1" 
+          opacity="0.15" filter="url(#softGlow)"/>
+  
+  <!-- Ring 1 - Outermost -->
+  <g filter="url(#outerGlow512)">
+    <circle cx="256" cy="256" r="220" fill="none" stroke="#00ff41" stroke-width="6" 
+            stroke-dasharray="80 40" opacity="0.6"/>
+  </g>
+  
+  <!-- Ring 2 -->
+  <g filter="url(#outerGlow512)">
+    <circle cx="256" cy="256" r="190" fill="none" stroke="#00cc33" stroke-width="5" 
+            stroke-dasharray="60 30" opacity="0.7"/>
+  </g>
+  
+  <!-- Ring 3 -->
+  <g filter="url(#outerGlow512)">
+    <circle cx="256" cy="256" r="160" fill="none" stroke="#00ff41" stroke-width="5" 
+            stroke-dasharray="50 25" opacity="0.75"/>
+  </g>
+  
+  <!-- Ring 4 -->
+  <g filter="url(#outerGlow512)">
+    <circle cx="256" cy="256" r="130" fill="none" stroke="#00cc33" stroke-width="4" 
+            stroke-dasharray="40 20" opacity="0.8"/>
+  </g>
+  
+  <!-- Ring 5 - Innermost ring -->
+  <g filter="url(#outerGlow512)">
+    <circle cx="256" cy="256" r="100" fill="none" stroke="#00ff41" stroke-width="4" 
+            stroke-dasharray="30 15" opacity="0.85"/>
+  </g>
+  
+  <!-- Core housing -->
+  <circle cx="256" cy="256" r="75" fill="#001a0d" opacity="0.7"/>
+  
+  <!-- Main core -->
+  <circle cx="256" cy="256" r="65" fill="url(#coreGrad512)" filter="url(#glow512)"/>
+  
+  <!-- Inner core -->
+  <circle cx="256" cy="256" r="40" fill="url(#innerCore512)" filter="url(#glow512)"/>
+  
+  <!-- Center bright spot -->
+  <circle cx="256" cy="256" r="18" fill="#ffffff" opacity="0.95"/>
+  <circle cx="256" cy="256" r="8" fill="#ffffff"/>
+  
+  <!-- Decorative triangular indicators (N, E, S, W) -->
+  <g opacity="0.85" filter="url(#outerGlow512)">
+    <!-- North -->
+    <path d="M256 15 L268 50 L244 50 Z" fill="#00ff41"/>
+    <!-- East -->
+    <path d="M497 256 L462 268 L462 244 Z" fill="#00ff41"/>
+    <!-- South -->
+    <path d="M256 497 L244 462 L268 462 Z" fill="#00ff41"/>
+    <!-- West -->
+    <path d="M15 256 L50 244 L50 268 Z" fill="#00ff41"/>
+  </g>
+  
+  <!-- Diagonal indicators (NE, SE, SW, NW) -->
+  <g opacity="0.6" filter="url(#outerGlow512)">
+    <!-- NE -->
+    <circle cx="420" cy="92" r="6" fill="#00ff41"/>
+    <!-- SE -->
+    <circle cx="420" cy="420" r="6" fill="#00ff41"/>
+    <!-- SW -->
+    <circle cx="92" cy="420" r="6" fill="#00ff41"/>
+    <!-- NW -->
+    <circle cx="92" cy="92" r="6" fill="#00ff41"/>
+  </g>
+  
+  <!-- Corner accent lines -->
+  <g stroke="#00ff41" stroke-width="2" opacity="0.4">
+    <line x1="40" y1="40" x2="80" y2="80"/>
+    <line x1="472" y1="40" x2="432" y2="80"/>
+    <line x1="40" y1="472" x2="80" y2="432"/>
+    <line x1="472" y1="472" x2="432" y2="432"/>
+  </g>
+  
+  <!-- Hexagonal frame accent -->
+  <g stroke="#00ff41" stroke-width="1" fill="none" opacity="0.3">
+    <polygon points="256,30 450,140 450,372 256,482 62,372 62,140"/>
+  </g>
+</svg>
