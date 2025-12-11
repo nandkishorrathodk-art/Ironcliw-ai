@@ -2635,34 +2635,55 @@ class IntelligentVoiceUnlockService:
     async def _verify_unlock_intent(
         self, transcribed_text: str, context: Optional[Dict[str, Any]]
     ) -> bool:
-        """Verify that the transcribed text is an unlock command with fuzzy matching for STT errors"""
+        """
+        Verify that the transcribed text is an UNLOCK command (not a LOCK command).
+        
+        IMPORTANT: "lock my screen" is NOT an unlock command! It's a lock command.
+        Only return True for explicit unlock requests.
+        
+        Uses fuzzy matching for common Whisper STT transcription errors while
+        being careful to distinguish between lock and unlock commands.
+        """
         text_lower = transcribed_text.lower()
 
-        # Primary unlock phrases
-        unlock_phrases = ["unlock", "open", "access", "let me in", "sign in", "log in"]
+        # CRITICAL: First check if this is a LOCK command (not unlock)
+        # "lock" without "unlock" = lock command = NOT an unlock intent
+        has_lock = "lock" in text_lower
+        has_unlock = "unlock" in text_lower
+        
+        if has_lock and not has_unlock:
+            # This is a LOCK command, not an unlock command
+            logger.info(f"🔒 Detected LOCK command (not unlock): '{transcribed_text}'")
+            return False
+
+        # Primary unlock phrases - explicit unlock keywords
+        unlock_phrases = ["unlock", "open up", "let me in", "sign in", "log in", "access granted"]
 
         # Check if any unlock phrase is present
         if any(phrase in text_lower for phrase in unlock_phrases):
+            logger.info(f"🔓 Detected UNLOCK command: '{transcribed_text}'")
             return True
 
         # Fuzzy matching for common Whisper STT transcription errors
         # "unlock my screen" often becomes "I'm like my screen" or similar
-        fuzzy_patterns = [
-            "like my screen",  # "unlock" → "I'm like"
-            "like the screen",
-            "lock my screen",  # Sometimes "un" is dropped
-            "lock the screen",
-            "my screen",  # Core phrase
-            "the screen",
+        # NOTE: We do NOT include "lock my screen" here - that's a different command!
+        fuzzy_unlock_patterns = [
+            "like my screen",  # "unlock" → "I'm like" (STT error)
+            "like the screen",  # "unlock" → "I'm like" (STT error)
+            "unlike my screen",  # Sometimes "unlock" → "unlike"
+            "on lock my screen",  # "unlock" → "on lock"
+            "i'm lock my screen",  # "unlock" → "i'm lock"
         ]
 
-        # If we see these patterns + context suggests unlock, accept it
-        if any(pattern in text_lower for pattern in fuzzy_patterns):
-            # Additional context: check if "screen" keyword is present
+        # If we see these STT error patterns + "screen" keyword, accept as unlock
+        if any(pattern in text_lower for pattern in fuzzy_unlock_patterns):
             if "screen" in text_lower:
-                logger.info(f"🎯 Fuzzy match detected unlock intent from: '{transcribed_text}'")
+                logger.info(f"🎯 Fuzzy match detected UNLOCK intent from: '{transcribed_text}'")
                 return True
 
+        # Additional check: "my screen" alone is ambiguous - don't match
+        # User must say "unlock" or have a fuzzy match pattern
+        
         return False
 
     async def _apply_vad_for_speaker_verification(self, audio_data: bytes) -> bytes:

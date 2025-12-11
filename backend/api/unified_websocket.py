@@ -1117,16 +1117,32 @@ class UnifiedWebSocketManager:
                     logger.info("=" * 70)
 
                     # Check if this is a voice UNLOCK command (requires VBI verification)
-                    # NOTE: "lock my screen" is NOT an unlock command - it's a lock command!
+                    # CRITICAL: "lock my screen" is NOT an unlock command - it's a LOCK command!
                     # Only UNLOCK commands need voice biometric verification
+                    # LOCK commands should go through standard JARVIS API (no VBI needed)
                     command_lower = command_text.lower()
-                    is_unlock_command = (
-                        "unlock" in command_lower and 
-                        "lock" not in command_lower.replace("unlock", "")  # Ensure it's not just "lock"
-                    ) or any(
-                        keyword in command_lower
-                        for keyword in ["screen unlock", "voice unlock", "unlock my screen", "unlock screen"]
+                    
+                    # First check if it's a LOCK command (has "lock" but NOT "unlock")
+                    is_lock_command = (
+                        "lock" in command_lower and 
+                        "unlock" not in command_lower and
+                        ("screen" in command_lower or "mac" in command_lower or "computer" in command_lower)
                     )
+                    
+                    # UNLOCK command detection (only if NOT a lock command)
+                    is_unlock_command = not is_lock_command and (
+                        "unlock" in command_lower or
+                        any(
+                            keyword in command_lower
+                            for keyword in ["screen unlock", "voice unlock", "let me in"]
+                        )
+                    )
+                    
+                    # Log the command classification
+                    if is_lock_command:
+                        logger.info(f"[WS] 🔒 Detected LOCK command: '{command_text}' - routing to standard API")
+                    elif is_unlock_command:
+                        logger.info(f"[WS] 🔓 Detected UNLOCK command: '{command_text}' - routing to VBI")
 
                     if is_unlock_command and audio_data_received:
                         # ============================================================

@@ -126,7 +126,8 @@ class CommandType(Enum):
     QUERY = "query"
     COMPOUND = "compound"
     META = "meta"
-    VOICE_UNLOCK = "voice_unlock"
+    VOICE_UNLOCK = "voice_unlock"  # Unlock screen (requires voice verification)
+    SCREEN_LOCK = "screen_lock"    # Lock screen (no verification needed, but owner recognition)
     DOCUMENT = "document"
     DISPLAY = "display"
     UNKNOWN = "unknown"
@@ -945,6 +946,7 @@ class UnifiedCommandProcessor:
             CommandType.WEATHER: "system_control.weather_system_config",
             CommandType.AUTONOMY: "api.autonomy_handler",
             CommandType.VOICE_UNLOCK: "api.voice_unlock_handler",
+            CommandType.SCREEN_LOCK: "api.simple_unlock_handler",  # Lock screen handler
             CommandType.QUERY: "api.query_handler",  # Add basic query handler
         }
 
@@ -1418,20 +1420,30 @@ class UnifiedCommandProcessor:
         words = command_lower.split()
 
         # Manual screen lock/unlock detection (HIGHEST PRIORITY - check first!)
-        # Check for exact matches first
-        if command_lower in [
-            "unlock my screen",
-            "unlock screen",
-            "unlock the screen",
-            "lock my screen",
-            "lock screen",
-            "lock the screen",
-        ]:
-            logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
-            return (
-                CommandType.VOICE_UNLOCK,
-                0.99,
-            )  # Route to voice unlock handler with high confidence
+        # CRITICAL: Distinguish between LOCK and UNLOCK commands - they are different!
+        
+        # Check for LOCK commands first (no voice verification needed)
+        lock_commands = [
+            "lock my screen", "lock screen", "lock the screen",
+            "lock my mac", "lock the mac", "lock my computer",
+            "lock it", "lock this", "secure my screen", "secure the screen"
+        ]
+        if command_lower in lock_commands or (
+            "lock" in command_lower and "unlock" not in command_lower and "screen" in command_lower
+        ):
+            logger.info(f"[CLASSIFY] 🔒 LOCK command detected: '{command_lower}'")
+            return (CommandType.SCREEN_LOCK, 0.99)  # Route to screen lock handler
+        
+        # Check for UNLOCK commands (requires voice verification)
+        unlock_commands = [
+            "unlock my screen", "unlock screen", "unlock the screen",
+            "unlock my mac", "unlock the mac", "unlock my computer"
+        ]
+        if command_lower in unlock_commands or (
+            "unlock" in command_lower and "screen" in command_lower
+        ):
+            logger.info(f"[CLASSIFY] 🔓 UNLOCK command detected: '{command_lower}'")
+            return (CommandType.VOICE_UNLOCK, 0.99)  # Route to voice unlock handler
 
         # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
         voice_patterns = self._detect_voice_unlock_patterns(command_lower)
@@ -3043,6 +3055,74 @@ class UnifiedCommandProcessor:
                         "response": result.get("message", result.get("response", "")),
                         "command_type": command_type.value,
                         **result,
+                    }
+            elif command_type == CommandType.SCREEN_LOCK:
+                # Handle LOCK screen commands with owner recognition and transparency
+                # Lock commands don't need voice verification, but we recognize the owner
+                logger.info(f"[SCREEN_LOCK] Processing lock command with owner recognition")
+                
+                try:
+                    from api.simple_unlock_handler import handle_unlock_command, _get_owner_name
+                    
+                    # Get owner name for personalized response
+                    owner_name = await _get_owner_name()
+                    
+                    # If we have audio data, try to identify the speaker for transparency
+                    speaker_identified = None
+                    if self.current_audio_data:
+                        try:
+                            from voice.speaker_verification_service import get_speaker_verification_service
+                            speaker_service = await asyncio.wait_for(
+                                get_speaker_verification_service(),
+                                timeout=3.0  # Quick timeout for lock (not security-critical)
+                            )
+                            verification = await asyncio.wait_for(
+                                speaker_service.verify_speaker(self.current_audio_data, None),
+                                timeout=3.0
+                            )
+                            if verification.get("verified"):
+                                speaker_identified = verification.get("speaker_name")
+                                logger.info(f"[SCREEN_LOCK] Speaker identified: {speaker_identified}")
+                        except Exception as e:
+                            logger.debug(f"[SCREEN_LOCK] Speaker identification skipped: {e}")
+                    
+                    # Execute the lock command
+                    result = await handle_unlock_command(command_text)
+                    
+                    # Generate personalized response with transparency
+                    if result.get("success"):
+                        if speaker_identified:
+                            response = f"Of course, {speaker_identified}. Locking your screen now. See you soon!"
+                        else:
+                            response = f"Locking your screen now, {owner_name}. See you soon!"
+                        
+                        return {
+                            "success": True,
+                            "response": response,
+                            "command_type": "screen_lock",
+                            "type": "screen_lock",
+                            "speaker_identified": speaker_identified,
+                            "owner_name": owner_name,
+                            "action": "lock_screen",
+                            **result,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": result.get("message", f"I couldn't lock the screen, {owner_name}. Try pressing Control+Command+Q."),
+                            "command_type": "screen_lock",
+                            "type": "screen_lock",
+                            "error": result.get("error"),
+                            **result,
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"[SCREEN_LOCK] Error: {e}", exc_info=True)
+                    return {
+                        "success": False,
+                        "response": f"I encountered an error trying to lock your screen: {str(e)}",
+                        "command_type": "screen_lock",
+                        "error": str(e),
                     }
             else:
                 # Generic handler interface
