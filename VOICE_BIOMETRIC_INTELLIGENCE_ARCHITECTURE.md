@@ -58,7 +58,7 @@ The **Voice Biometric Intelligence (VBI)** system is JARVIS's advanced voice aut
 ### High-Level Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "🎤 Audio Input Layer"
         MIC[Microphone Input]
         WW[Wake Word Detection<br/>Picovoice/CoreML]
@@ -247,7 +247,7 @@ State-of-the-art neural network for speaker embedding extraction.
 **Architecture:**
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph "ECAPA-TDNN Architecture"
         INPUT[Audio Input<br/>16kHz, 3.2s]
         
@@ -297,7 +297,7 @@ graph LR
 Advanced anti-spoofing system with 7-layer detection.
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "🛡️ PAVA: 7-Layer Anti-Spoofing Detection"
         AUDIO[Audio Input]
         
@@ -364,7 +364,7 @@ graph TB
 Multi-factor probability fusion with adaptive priors.
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Bayesian Confidence Fusion Engine"
         subgraph "Input Signals"
             S1[ECAPA Similarity<br/>Score: 0.85]
@@ -462,7 +462,7 @@ stateDiagram-v2
 The system continuously learns and adjusts its verification threshold:
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Adaptive Threshold System"
         INPUT[New Verification<br/>Attempt]
         
@@ -547,7 +547,7 @@ results = await asyncio.gather(
 - L4 Continuous Learning: Improves over time
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph "4-Layer Cache Architecture"
         REQ[Request] --> L1{L1: Session<br/>Cache}
         L1 -->|Hit ~1ms| RESULT[Result]
@@ -662,7 +662,7 @@ graph LR
 - Progressive component loading
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph "Cold Start Optimization"
         BOOT[System Boot] --> PARALLEL
         
@@ -726,7 +726,7 @@ graph LR
 - Cost optimization with intelligent routing
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Hybrid Routing Decision"
         REQ[Voice Request]
         
@@ -910,7 +910,7 @@ erDiagram
 ### React Component Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Frontend Component Tree"
         APP[App.js]
         
@@ -1046,7 +1046,7 @@ interface VoiceUnlockMessage {
 ### ECAPA Docker Backend
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Docker ECAPA Architecture"
         subgraph "Host Machine"
             JARVIS[JARVIS Backend<br/>FastAPI]
@@ -1143,7 +1143,7 @@ flowchart TD
 ### Threat Model
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph "Security Threat Model"
         subgraph "Attack Vectors"
             A1[Replay Attack<br/>Playing recorded audio]
