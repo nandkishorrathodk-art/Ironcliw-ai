@@ -4270,9 +4270,10 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
         """Convert using explicit input format hint - critical for concatenated MediaRecorder chunks."""
         try:
             # Use explicit format flag (-f) to tell FFmpeg what the input format is
-            # This helps when magic bytes are missing or corrupted
+            # Also use -err_detect ignore_err to handle broken containers
             cmd = [
                 'ffmpeg', '-hide_banner', '-loglevel', 'warning',
+                '-err_detect', 'ignore_err',  # Ignore container errors
                 '-f', input_format,  # Explicit input format
                 '-i', 'pipe:0',
                 '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
@@ -4295,6 +4296,93 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             return None, f"FFmpeg {input_format} format hint timeout"
         except Exception as e:
             return None, str(e)
+
+    # 🆕 NEW Strategy: FFmpeg with aggressive error recovery for broken WebM
+    def _ffmpeg_broken_webm_recovery():
+        """
+        Handle broken/incomplete WebM containers from MediaRecorder chunk concatenation.
+        Uses multiple FFmpeg strategies to extract audio data.
+        """
+        temp_in = None
+        temp_out = None
+        try:
+            temp_in = tempfile.NamedTemporaryFile(suffix='.webm', delete=False)
+            temp_out = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_in.write(raw)
+            temp_in.close()
+            temp_out.close()
+
+            strategies = [
+                # Strategy A: Generic with error tolerance
+                [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                    '-err_detect', 'ignore_err',
+                    '-fflags', '+discardcorrupt+genpts',
+                    '-i', temp_in.name,
+                    '-vn',
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_out.name
+                ],
+                # Strategy B: Force WebM format
+                [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                    '-err_detect', 'ignore_err',
+                    '-f', 'webm',
+                    '-i', temp_in.name,
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_out.name
+                ],
+                # Strategy C: Force Matroska format
+                [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                    '-err_detect', 'ignore_err',
+                    '-f', 'matroska',
+                    '-i', temp_in.name,
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_out.name
+                ],
+                # Strategy D: Force Ogg format (Opus often in Ogg)
+                [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                    '-err_detect', 'ignore_err',
+                    '-f', 'ogg',
+                    '-i', temp_in.name,
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_out.name
+                ],
+                # Strategy E: Raw Opus stream assumption (48kHz default)
+                [
+                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                    '-f', 'opus',
+                    '-i', temp_in.name,
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_out.name
+                ],
+            ]
+
+            for i, cmd in enumerate(strategies):
+                strategy_name = ['generic', 'webm', 'matroska', 'ogg', 'opus'][i]
+                try:
+                    result = subprocess.run(cmd, capture_output=True, timeout=10.0)
+                    if result.returncode == 0 and os.path.exists(temp_out.name):
+                        wav_data = open(temp_out.name, 'rb').read()
+                        if len(wav_data) > 44:
+                            logger.info(f"[ROBUST-AUDIO] Broken WebM recovery ({strategy_name}) succeeded: {len(wav_data)} bytes")
+                            return wav_data, None
+                except subprocess.TimeoutExpired:
+                    pass
+                except Exception:
+                    pass
+
+            return None, "All broken WebM strategies failed"
+
+        except Exception as e:
+            return None, str(e)
+        finally:
+            if temp_in and os.path.exists(temp_in.name):
+                os.unlink(temp_in.name)
+            if temp_out and os.path.exists(temp_out.name):
+                os.unlink(temp_out.name)
 
     # Step 3: Try FFmpeg pipe conversion (auto-detect format)
     def _ffmpeg_pipe_convert():
@@ -4526,7 +4614,26 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
     # Try strategies in order
     loop = asyncio.get_event_loop()
 
-    # 🆕 Strategy 0: If format_hint indicates concatenated chunks, try explicit format first
+    # 🆕 Strategy 0a: Try broken WebM recovery FIRST for any WebM-like data
+    # This is the most robust approach for MediaRecorder chunk concatenation
+    if 'webm' in mime_type.lower() or format_hint in ['webm', 'opus_chunks', 'unknown']:
+        try:
+            logger.info("[ROBUST-AUDIO] 🔧 Trying broken WebM recovery (best for MediaRecorder chunks)...")
+            wav_data, err = await asyncio.wait_for(
+                loop.run_in_executor(None, _ffmpeg_broken_webm_recovery),
+                timeout=20.0
+            )
+            if wav_data:
+                logger.info(f"[ROBUST-AUDIO] ✅ Broken WebM recovery SUCCESS: {len(wav_data)} bytes WAV")
+                return wav_data
+            else:
+                logger.warning(f"[ROBUST-AUDIO] Broken WebM recovery failed: {err}")
+        except asyncio.TimeoutError:
+            logger.warning("[ROBUST-AUDIO] Broken WebM recovery timeout")
+        except Exception as e:
+            logger.warning(f"[ROBUST-AUDIO] Broken WebM recovery error: {e}")
+
+    # 🆕 Strategy 0b: If format_hint indicates concatenated chunks, try explicit format first
     if format_hint == "opus_chunks" and ffmpeg_format:
         try:
             logger.info(f"[ROBUST-AUDIO] Trying FFmpeg with explicit format hint: {ffmpeg_format}")
