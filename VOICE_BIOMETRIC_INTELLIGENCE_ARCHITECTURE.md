@@ -63,45 +63,45 @@ The **Voice Biometric Intelligence (VBI)** system is JARVIS's advanced voice aut
 ```mermaid
 flowchart TB
     subgraph "🎤 Audio Input Layer"
-        MIC[Microphone <br/>Input]
-        WW[Wake Word Detection<br/>Picovoice/CoreML]
-        AC[Audio Capture<br/>16kHz, 3.2s]
-        PP[Audio Preprocessing<br/>Bandpass, Normalize, SNR]
+MIC[Microphone <br/>Input]
+WW[Wake Word Detection<br/>Picovoice/CoreML]
+AC[Audio Capture<br/>16kHz, 3.2s]
+PP[Audio Preprocessing<br/>Bandpass, Normalize, SNR]
     end
 
     subgraph "🧠 VBI Core Engine"
-        VBI[Voice Biometric Intelligence<br/>v4.0.0]
+VBI[Voice Biometric Intelligence<br/>v4.0.0]
 
-        subgraph "Speaker Verification"
-            ECAPA[ECAPA-TDNN<br/>192D Embeddings]
-            CS[Cosine Similarity<br/>Score Calculation]
-            AT[Adaptive Threshold<br/>Dynamic Adjustment]
-        end
+subgraph "Speaker Verification"
+ECAPA[ECAPA-TDNN<br/>192D Embeddings]
+CS[Cosine Similarity<br/>Score Calculation]
+AT[Adaptive Threshold<br/>Dynamic Adjustment]
+end
 
-        subgraph "Physics-Aware Authentication"
-            VTL[Vocal Tract Length<br/>Verification]
-            RA[Reverberation<br/>Analysis]
-            DED[Doppler Effect<br/>Detection]
-            AS[Anti-Spoofing<br/>7-Layer Detection]
-        end
+subgraph "Physics-Aware Authentication"
+VTL[Vocal Tract Length<br/>Verification]
+RA[Reverberation<br/>Analysis]
+DED[Doppler Effect<br/>Detection]
+AS[Anti-Spoofing<br/>7-Layer Detection]
+end
 
-        subgraph "Bayesian Fusion"
-            BF[Multi-Factor<br/>Probability Fusion]
-            AP[Adaptive Priors<br/>Historical Learning]
-            CF[Confidence<br/>Calibration]
-        end
+subgraph "Bayesian Fusion"
+BF[Multi-Factor<br/>Probability Fusion]
+AP[Adaptive Priors<br/>Historical Learning]
+CF[Confidence<br/>Calibration]
+end
     end
 
     subgraph "💾 Data Layer"
-        SQLITE[("SQLite<br/>Local Cache")]
-        CLOUDSQL[("Cloud SQL<br/>PostgreSQL")]
-        CHROMA[("ChromaDB<br/>Vector Store")]
+SQLITE[("SQLite<br/>Local Cache")]
+CLOUDSQL[("Cloud SQL<br/>PostgreSQL")]
+CHROMA[("ChromaDB<br/>Vector Store")]
     end
 
     subgraph "🖥️ Frontend Layer"
-        REACT[React 18 UI]
-        WS[WebSocket <br/>Client]
-        PROG[Progress Display<br/>Real-time Updates]
+REACT[React 18 UI]
+WS[WebSocket <br/>Client]
+PROG[Progress Display<br/>Real-time Updates]
     end
 
     MIC --> WW --> AC --> PP
@@ -203,42 +203,42 @@ The central orchestrator that coordinates all voice authentication components.
 ```mermaid
 classDiagram
     class VoiceBiometricIntelligence {
-        +verify_and_announce(audio_data, context)
-        +get_verification_result()
-        +update_adaptive_threshold()
-        -_extract_embedding(audio)
-        -_calculate_similarity(embedding)
-        -_check_anti_spoofing(audio)
-        -_apply_bayesian_fusion(scores)
-        -_generate_announcement(result)
++verify_and_announce(audio_data, context)
++get_verification_result()
++update_adaptive_threshold()
+-_extract_embedding(audio)
+-_calculate_similarity(embedding)
+-_check_anti_spoofing(audio)
+-_apply_bayesian_fusion(scores)
+-_generate_announcement(result)
     }
 
     class VBIResult {
-        +verified: bool
-        +speaker_name: str
-        +confidence: float
-        +level: ConfidenceLevel
-        +announcement: str
-        +retry_guidance: str
-        +warnings: List[str]
-        +anti_spoof_score: float
++verified: bool
++speaker_name: str
++confidence: float
++level: ConfidenceLevel
++announcement: str
++retry_guidance: str
++warnings: List[str]
++anti_spoof_score: float
     }
 
     class ConfidenceLevel {
-        >
-        HIGH
-        MEDIUM
-        LOW
-        INSUFFICIENT
-        UNKNOWN
+>
+HIGH
+MEDIUM
+LOW
+INSUFFICIENT
+UNKNOWN
     }
 
     class VBIConfig {
-        +confidence_threshold: float
-        +anti_spoofing_enabled: bool
-        +bayesian_fusion_enabled: bool
-        +adaptive_learning_enabled: bool
-        +cloud_first_mode: bool
++confidence_threshold: float
++anti_spoofing_enabled: bool
++bayesian_fusion_enabled: bool
++adaptive_learning_enabled: bool
++cloud_first_mode: bool
     }
 
     VoiceBiometricIntelligence --> VBIResult
@@ -263,28 +263,28 @@ State-of-the-art neural network for speaker embedding extraction.
 ```mermaid
 flowchart LR
     subgraph "ECAPA-TDNN Architecture"
-        INPUT[Audio <br/>Input16kHz, 3.2s]
+INPUT[Audio <br/>Input16kHz, 3.2s]
 
-        subgraph "Feature Extraction"
-            MEL[Mel <br/>Spectrogram80 bins]
-            FBANK[Filter Banks<br/>Preprocessing]
-        end
+subgraph "Feature Extraction"
+MEL[Mel <br/>Spectrogram80 bins]
+FBANK[Filter Banks<br/>Preprocessing]
+end
 
-        subgraph "SE-Res2Block Layers"
-            RES1[SE-Res2<br/>Block 1512 channels]
-            RES2[SE-Res2<br/>Block 2512 channels]
-            RES3[SE-Res2<br/>Block 3512 channels]
-        end
+subgraph "SE-Res2Block Layers"
+RES1[SE-Res2<br/>Block 1512 channels]
+RES2[SE-Res2<br/>Block 2512 channels]
+RES3[SE-Res2<br/>Block 3512 channels]
+end
 
-        subgraph "Channel Attention"
-            CA[Channel & Context<br/>Attention]
-            ASP[Attentive Statistics<br/>Pooling]
-        end
+subgraph "Channel Attention"
+CA[Channel & Context<br/>Attention]
+ASP[Attentive Statistics<br/>Pooling]
+end
 
-        subgraph "Output"
-            FC[Fully <br/>Connected192 dimensions]
-            EMBED[Speaker EmbeddingL2 <br/>Normalized]
-        end
+subgraph "Output"
+FC[Fully <br/>Connected192 dimensions]
+EMBED[Speaker EmbeddingL2 <br/>Normalized]
+end
     end
 
     INPUT --> MEL --> FBANK
@@ -313,54 +313,54 @@ Advanced anti-spoofing system with 7-layer detection.
 ```mermaid
 flowchart TB
     subgraph "🛡️ PAVA: 7-Layer Anti-Spoofing Detection"
-        AUDIO[Audio <br/>Input]
+AUDIO[Audio <br/>Input]
 
-        subgraph "Layer 1: Acoustic Analysis"
-            L1[Vocal Tract Length<br/>Estimation]
-        end
+subgraph "Layer 1: Acoustic Analysis"
+L1[Vocal Tract Length<br/>Estimation]
+end
 
-        subgraph "Layer 2: Environmental"
-            L2[Reverberation<br/>Analysis]
-        end
+subgraph "Layer 2: Environmental"
+L2[Reverberation<br/>Analysis]
+end
 
-        subgraph "Layer 3: Physical"
-            L3[Doppler Effect<br/>Detection]
-        end
+subgraph "Layer 3: Physical"
+L3[Doppler Effect<br/>Detection]
+end
 
-        subgraph "Layer 4: Spectral"
-            L4[Spectral Flatness<br/>Verification]
-        end
+subgraph "Layer 4: Spectral"
+L4[Spectral Flatness<br/>Verification]
+end
 
-        subgraph "Layer 5: Temporal"
-            L5[Pitch Variation<br/>Naturalness]
-        end
+subgraph "Layer 5: Temporal"
+L5[Pitch Variation<br/>Naturalness]
+end
 
-        subgraph "Layer 6: Behavioral"
-            L6[Speaking Pattern<br/>Consistency]
-        end
+subgraph "Layer 6: Behavioral"
+L6[Speaking Pattern<br/>Consistency]
+end
 
-        subgraph "Layer 7: ML Detection"
-            L7[Neural Spoof<br/>Classifier]
-        end
+subgraph "Layer 7: ML Detection"
+L7[Neural Spoof<br/>Classifier]
+end
 
-        FUSION[Weighted FusionAnti-Spoof <br/>Score]
-        RESULT{LivenessConfirmed?}
+FUSION[Weighted FusionAnti-Spoof <br/>Score]
+RESULT{LivenessConfirmed?}
 
-        AUDIO --> L1
-        AUDIO --> L2
-        AUDIO --> L3
-        AUDIO --> L4
-        AUDIO --> L5
-        AUDIO --> L6
-        AUDIO --> L7
-        L1 --> FUSION
-        L2 --> FUSION
-        L3 --> FUSION
-        L4 --> FUSION
-        L5 --> FUSION
-        L6 --> FUSION
-        L7 --> FUSION
-        FUSION --> RESULT
+AUDIO --> L1
+AUDIO --> L2
+AUDIO --> L3
+AUDIO --> L4
+AUDIO --> L5
+AUDIO --> L6
+AUDIO --> L7
+L1 --> FUSION
+L2 --> FUSION
+L3 --> FUSION
+L4 --> FUSION
+L5 --> FUSION
+L6 --> FUSION
+L7 --> FUSION
+FUSION --> RESULT
     end
 
     style L1 fill:#e3f2fd,stroke:#1565c0
@@ -392,44 +392,44 @@ Multi-factor probability fusion with adaptive priors.
 ```mermaid
 flowchart TB
     subgraph "Bayesian Confidence Fusion Engine"
-        subgraph "Input Signals"
-            S1[ECAPA Similarity<br/>Score: 0.85]
-            S2[Anti-Spoof Score<br/>Score: 0.97]
-            S3[Voice Quality<br/>Score: 0.92]
-            S4[Environmental<br/>Score: 0.88]
-            S5[Historical Pattern<br/>Score: 0.94]
-        end
+subgraph "Input Signals"
+S1[ECAPA Similarity<br/>Score: 0.85]
+S2[Anti-Spoof Score<br/>Score: 0.97]
+S3[Voice Quality<br/>Score: 0.92]
+S4[Environmental<br/>Score: 0.88]
+S5[Historical Pattern<br/>Score: 0.94]
+end
 
-        subgraph "Prior Probabilities"
-            P1[Time-of-Day Prior<br/>Morning: 0.85]
-            P2[Location Prior<br/>Home: 0.95]
-            P3[Device PriorMac<br/>Book: 0.90]
-            P4[Behavioral PriorRegular <br/>User: 0.92]
-        end
+subgraph "Prior Probabilities"
+P1[Time-of-Day Prior<br/>Morning: 0.85]
+P2[Location Prior<br/>Home: 0.95]
+P3[Device PriorMac<br/>Book: 0.90]
+P4[Behavioral PriorRegular <br/>User: 0.92]
+end
 
-        subgraph "Bayesian Fusion"
-            LIKE[Likelihood<br/>Computation]
-            PRIOR[Prior<br/>Aggregation]
-            POST["PosteriorP Owner given <br/>Evidence"]
-        end
+subgraph "Bayesian Fusion"
+LIKE[Likelihood<br/>Computation]
+PRIOR[Prior<br/>Aggregation]
+POST["PosteriorP Owner given <br/>Evidence"]
+end
 
-        subgraph "Output"
-            CONF[Final <br/>Confidence98%]
-            DEC{Decision}
-        end
+subgraph "Output"
+CONF[Final <br/>Confidence98%]
+DEC{Decision}
+end
 
-        S1 --> LIKE
-        S2 --> LIKE
-        S3 --> LIKE
-        S4 --> LIKE
-        S5 --> LIKE
-        P1 --> PRIOR
-        P2 --> PRIOR
-        P3 --> PRIOR
-        P4 --> PRIOR
-        LIKE --> POST
-        PRIOR --> POST
-        POST --> CONF --> DEC
+S1 --> LIKE
+S2 --> LIKE
+S3 --> LIKE
+S4 --> LIKE
+S5 --> LIKE
+P1 --> PRIOR
+P2 --> PRIOR
+P3 --> PRIOR
+P4 --> PRIOR
+LIKE --> POST
+PRIOR --> POST
+POST --> CONF --> DEC
     end
 
     style POST fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff
@@ -463,9 +463,9 @@ stateDiagram-v2
     Preprocessing --> EmbeddingExtraction: Audio Normalized
 
     state "Parallel Processing" as PP {
-        EmbeddingExtraction --> SpeakerVerification
-        EmbeddingExtraction --> AntiSpoofing
-        EmbeddingExtraction --> VoiceQuality
+EmbeddingExtraction --> SpeakerVerification
+EmbeddingExtraction --> AntiSpoofing
+EmbeddingExtraction --> VoiceQuality
     }
 
     SpeakerVerification --> BayesianFusion
@@ -497,40 +497,40 @@ The system continuously learns and adjusts its verification threshold:
 ```mermaid
 flowchart TB
     subgraph "Adaptive Threshold System"
-        INPUT[New Verification<br/>Attempt]
+INPUT[New Verification<br/>Attempt]
 
-        subgraph "Historical Analysis"
-            HIST[Last 50 <br/>Attempts]
-            AVG[Average Confidence<br/>Calculation]
-            TREND[Trend <br/>Analysis]
-        end
+subgraph "Historical Analysis"
+HIST[Last 50 <br/>Attempts]
+AVG[Average Confidence<br/>Calculation]
+TREND[Trend <br/>Analysis]
+end
 
-        subgraph "Threshold Adjustment"
-            CHECK{Avg Confidence<br/>vs Threshold}
-            UP[Increase <br/>Threshold+0.5%]
-            DOWN[Decrease <br/>Threshold-1.0%]
-            KEEP[Keep <br/>Current]
-        end
+subgraph "Threshold Adjustment"
+CHECK{Avg Confidence<br/>vs Threshold}
+UP[Increase <br/>Threshold+0.5%]
+DOWN[Decrease <br/>Threshold-1.0%]
+KEEP[Keep <br/>Current]
+end
 
-        subgraph "Safety Bounds"
-            MIN[Minimum: 35%]
-            MAX[Maximum: 60%]
-            CLAMP[Clamp to <br/>Bounds]
-        end
+subgraph "Safety Bounds"
+MIN[Minimum: 35%]
+MAX[Maximum: 60%]
+CLAMP[Clamp to <br/>Bounds]
+end
 
-        OUTPUT[New <br/>Threshold]
+OUTPUT[New <br/>Threshold]
 
-        INPUT --> HIST --> AVG --> TREND
-        TREND --> CHECK
-        CHECK -->|Avg > Threshold + 15%| DOWN
-        CHECK -->|Avg < Threshold + 5%| UP
-        CHECK -->|Otherwise| KEEP
-        DOWN --> CLAMP
-        UP --> CLAMP
-        KEEP --> CLAMP
-        MIN --> CLAMP
-        MAX --> CLAMP
-        CLAMP --> OUTPUT
+INPUT --> HIST --> AVG --> TREND
+TREND --> CHECK
+CHECK -->|Avg > Threshold + 15%| DOWN
+CHECK -->|Avg < Threshold + 5%| UP
+CHECK -->|Otherwise| KEEP
+DOWN --> CLAMP
+UP --> CLAMP
+KEEP --> CLAMP
+MIN --> CLAMP
+MAX --> CLAMP
+CLAMP --> OUTPUT
     end
 
     style OUTPUT fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
@@ -584,15 +584,15 @@ results = await asyncio.gather(
 ```mermaid
 flowchart LR
     subgraph "4-Layer Cache Architecture"
-        REQ[Request] --> L1{L1: Session<br/>Cache}
-        L1 -->|Hit ~1ms| RESULT[Result]
-        L1 -->|Miss| L2{L2: Preloaded<br/>Profiles}
-        L2 -->|Hit<br/><50ms| RESULT
-        L2 -->|Miss| L3{L3: Database<br/>Cache}
-        L3 -->|Hit<br/><200ms| RESULT
-        L3 -->|Miss| L4[L4: Full<br/>Verification]
-        L4 --> LEARN[Learn &<br/>Cache]
-        LEARN --> RESULT
+REQ[Request] --> L1{L1: Session<br/>Cache}
+L1 -->|Hit ~1ms| RESULT[Result]
+L1 -->|Miss| L2{L2: Preloaded<br/>Profiles}
+L2 -->|Hit<br/><50ms| RESULT
+L2 -->|Miss| L3{L3: Database<br/>Cache}
+L3 -->|Hit<br/><200ms| RESULT
+L3 -->|Miss| L4[L4: Full<br/>Verification]
+L4 --> LEARN[Learn &<br/>Cache]
+LEARN --> RESULT
     end
 
     style L1 fill:#4caf50,stroke:#2e7d32,color:#fff
@@ -699,19 +699,19 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph "Cold Start Optimization"
-        BOOT[System <br/>Boot] --> PARALLEL
+BOOT[System <br/>Boot] --> PARALLEL
 
-        subgraph "Parallel Initialization"
-            PARALLEL --> M1[Load ECAPA<br/>~500ms]
-            PARALLEL --> M2[Connect DB<br/>~200ms]
-            PARALLEL --> M3[Warm Cache<br/>~300ms]
-            PARALLEL --> M4[Init WebSocket<br/>~100ms]
-        end
+subgraph "Parallel Initialization"
+PARALLEL --> M1[Load ECAPA<br/>~500ms]
+PARALLEL --> M2[Connect DB<br/>~200ms]
+PARALLEL --> M3[Warm Cache<br/>~300ms]
+PARALLEL --> M4[Init WebSocket<br/>~100ms]
+end
 
-        M1 --> READY[Ready for<br/>Requests]
-        M2 --> READY
-        M3 --> READY
-        M4 --> READY
+M1 --> READY[Ready for<br/>Requests]
+M2 --> READY
+M3 --> READY
+M4 --> READY
     end
 ```
 
@@ -766,19 +766,19 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph "Hybrid Routing Decision"
-        REQ[Voice <br/>Request]
+REQ[Voice <br/>Request]
 
-        CHECK{Memory<br/>Pressure?}
+CHECK{Memory<br/>Pressure?}
 
-        REQ --> CHECK
+REQ --> CHECK
 
-        CHECK -->|< 70%| LOCAL[Process Locally<br/>~100ms]
-        CHECK -->|70-85%| HYBRID[Hybrid <br/>Mode<br/>~200ms]
-        CHECK -->|> 85%| CLOUD[Cloud <br/>Only<br/>~300ms]
+CHECK -->|< 70%| LOCAL[Process Locally<br/>~100ms]
+CHECK -->|70-85%| HYBRID[Hybrid <br/>Mode<br/>~200ms]
+CHECK -->|> 85%| CLOUD[Cloud <br/>Only<br/>~300ms]
 
-        LOCAL --> CACHE{In Cache?}
-        CACHE -->|Yes| INSTANT[Instant <br/>Response<br/>~1ms]
-        CACHE -->|No| FULL[Full <br/>Verification<br/>~500ms]
+LOCAL --> CACHE{In Cache?}
+CACHE -->|Yes| INSTANT[Instant <br/>Response<br/>~1ms]
+CACHE -->|No| FULL[Full <br/>Verification<br/>~500ms]
     end
 ```
 
@@ -800,18 +800,18 @@ flowchart TB
 
 **Rationale:**
 - Better performance on short utterances ( JV[JarvisVoice.jsMain Voice Component]
-        APP --> VBI_DISPLAY[VBI DisplayProgress Visualization]
+APP --> VBI_DISPLAY[VBI DisplayProgress Visualization]
 
-        JV --> AUDIO[Audio CaptureHooks]
-        JV --> WS_HOOK[WebSocketHook]
-        JV --> STATE[StateManagement]
+JV --> AUDIO[Audio CaptureHooks]
+JV --> WS_HOOK[WebSocketHook]
+JV --> STATE[StateManagement]
 
-        VBI_DISPLAY --> PROGRESS[Progress Bar0-100%]
-        VBI_DISPLAY --> STAGES[Stage Indicatorsaudio_decode, verify, etc.]
-        VBI_DISPLAY --> RESULT[Result DisplaySuccess/Failure]
+VBI_DISPLAY --> PROGRESS[Progress Bar0-100%]
+VBI_DISPLAY --> STAGES[Stage Indicatorsaudio_decode, verify, etc.]
+VBI_DISPLAY --> RESULT[Result DisplaySuccess/Failure]
 
-        WS_HOOK --> CONN[ConnectionService]
-        WS_HOOK --> MSG[MessageHandler]
+WS_HOOK --> CONN[ConnectionService]
+WS_HOOK --> MSG[MessageHandler]
     end
 ```
 
@@ -829,14 +829,14 @@ case 'vbi_progress':
     const isSuccess = hasExplicitSuccess || isCompleteWithSpeaker;
 
     const displayStatus = hasError ? 'failed' 
-        : isSuccess ? 'success' 
-        : progress >WS: Connect ws://localhost:8010/ws
+: isSuccess ? 'success'
+: progress >WS: Connect ws://localhost:8010/ws
     WS-->>Client: Connection Established
 
     Note over Client,WS: Heartbeat Loop
     loop Every 30s
-        Client->>WS: ping
-        WS-->>Client: pong
+Client->>WS: ping
+WS-->>Client: pong
     end
 
     Note over Client,VBI: Voice Unlock Flow
@@ -896,22 +896,22 @@ interface VoiceUnlockMessage {
 ```mermaid
 flowchart TB
     subgraph "Docker ECAPA Architecture"
-        subgraph "Host Machine"
-            JARVIS[JARVIS Backend<br/>FastAPI]
-            DOCKER[Docker <br/>Daemon]
-        end
+subgraph "Host Machine"
+JARVIS[JARVIS Backend<br/>FastAPI]
+DOCKER[Docker <br/>Daemon]
+end
 
-        subgraph "Docker Container"
-            ECAPA_API[ECAPA REST API<br/>Port 8765]
-            ECAPA_MODEL[ECAPA-TDNN<br/>Model]
-            TORCH[PyTorch<br/>Runtime]
-        end
+subgraph "Docker Container"
+ECAPA_API[ECAPA REST API<br/>Port 8765]
+ECAPA_MODEL[ECAPA-TDNN<br/>Model]
+TORCH[PyTorch<br/>Runtime]
+end
 
-        JARVIS -->|HTTP POST /extract| ECAPA_API
-        ECAPA_API --> ECAPA_MODEL
-        ECAPA_MODEL --> TORCH
+JARVIS -->|HTTP POST /extract| ECAPA_API
+ECAPA_API --> ECAPA_MODEL
+ECAPA_MODEL --> TORCH
 
-        DOCKER --> ECAPA_API
+DOCKER --> ECAPA_API
     end
 ```
 
@@ -924,26 +924,26 @@ services:
   ecapa-backend:
     image: jarvis-ecapa:latest
     build:
-      context: ./backend/voice_unlock/docker
-      dockerfile: Dockerfile.ecapa
+context: ./backend/voice_unlock/docker
+dockerfile: Dockerfile.ecapa
     ports:
-      - "8765:8765"
+- "8765:8765"
     environment:
-      - TORCH_NUM_THREADS=4
-      - MODEL_PATH=/models/ecapa_tdnn.pt
+- TORCH_NUM_THREADS=4
+- MODEL_PATH=/models/ecapa_tdnn.pt
     volumes:
-      - ./models:/models
+- ./models:/models
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+interval: 30s
+timeout: 10s
+retries: 3
     deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
+resources:
+limits:
+memory: 2G
+reservations:
+memory: 512M
 ```
 
 ### Intelligent Backend Orchestration
@@ -999,27 +999,27 @@ flowchart TD
 ```mermaid
 flowchart TB
     subgraph "Security Threat Model"
-        subgraph "Attack Vectors"
-            A1[Replay Attack<br/>Playing recorded audio]
-            A2[TTS Synthesis<br/>Generating fake voice]
-            A3[Voice Conversion<br/>Mimicking voice]
-            A4[Man-in-Middle<br/>Intercepting audio]
-            A5[Brute Force<br/>Multiple attempts]
-        end
+subgraph "Attack Vectors"
+A1[Replay Attack<br/>Playing recorded audio]
+A2[TTS Synthesis<br/>Generating fake voice]
+A3[Voice Conversion<br/>Mimicking voice]
+A4[Man-in-Middle<br/>Intercepting audio]
+A5[Brute Force<br/>Multiple attempts]
+end
 
-        subgraph "Defenses"
-            D1[PAVA Anti-<br/>Spoofing99.7% detection]
-            D2[Environmental Fingerprint<br/>Detect playback]
-            D3[Doppler Analysis<br/>Detect static source]
-            D4[TLS Encryption<br/>Secure transport]
-            D5[Rate <br/>Limiting5 attempts/minute]
-        end
+subgraph "Defenses"
+D1[PAVA Anti-<br/>Spoofing99.7% detection]
+D2[Environmental Fingerprint<br/>Detect playback]
+D3[Doppler Analysis<br/>Detect static source]
+D4[TLS Encryption<br/>Secure transport]
+D5[Rate <br/>Limiting5 attempts/minute]
+end
 
-        A1 --> D1
-        A2 --> D2
-        A3 --> D1
-        A4 --> D4
-        A5 --> D5
+A1 --> D1
+A2 --> D2
+A3 --> D1
+A4 --> D4
+A5 --> D5
     end
 ```
 
@@ -1107,10 +1107,10 @@ When Derek says "Hey JARVIS, unlock my screen," the analog sound wave is digitiz
 $$f_s \geq 2 \cdot f_{max}$$
 
       $f_s$
-      Sampling frequency = 16,000 Hz (VBI standard)
+Sampling frequency = 16,000 Hz (VBI standard)
 
       $f_{max}$
-      Maximum frequency in human speech = ~8,000 Hz
+Maximum frequency in human speech = ~8,000 Hz
 
 > ✅ Proof of Sufficient Sampling:
 >   
@@ -1131,19 +1131,19 @@ $$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j \frac{2\pi kn}{N}}$$
 
       $x[n]$
 
-      *Time-domain audio samples*
+*Time-domain audio samples*
 
 $X[k]$
 
-      *Frequency-domain coefficients*
+*Frequency-domain coefficients*
 
 $N$
 
-      *51,200 samples (3.2s at 16kHz)*
+*51,200 samples (3.2s at 16kHz)*
 
 $k$
 
-      *Frequency bin index*
+*Frequency bin index*
 
 💻 Implementation in VBI:
   # 3.2 seconds of audio at 16kHz
@@ -1165,29 +1165,29 @@ $$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
 
 🎚️ VBI Uses 80 Mel Filterbanks
 
-          Mel Bank
-          Center Frequency (Hz)
-          Bandwidth (Hz)
+Mel Bank
+Center Frequency (Hz)
+Bandwidth (Hz)
 
-          1
-          85
-          50
+1
+85
+50
 
-          20
-          500
-          120
+20
+500
+120
 
-          40
-          1,200
-          280
+40
+1,200
+280
 
-          60
-          3,000
-          650
+60
+3,000
+650
 
-          80
-          7,500
-          1,500
+80
+7,500
+1,500
 
 > 🔬 Why 80 Filterbanks? (R&D Results)
 >   
@@ -1206,9 +1206,9 @@ $$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
 
 128 filterbanks
 
-      *98.1% accuracy*
+*98.1% accuracy*
 
-      Diminishing returns
+Diminishing returns
 
 #### 1.4 Mel-Frequency Cepstral Coefficients (MFCCs)
 
@@ -1220,35 +1220,35 @@ $$c_n = \sum_{m=1}^{M} \log(S_m) \cdot \cos\left(\frac{\pi n (m - 0.5)}{M}\right
 
       $c_n$
 
-      *n-th cepstral coefficient*
+*n-th cepstral coefficient*
 
 $S_m$
 
-      *Energy in m-th Mel filterbank*
+*Energy in m-th Mel filterbank*
 
 $M$
 
-      *Number of filterbanks (80)*
+*Number of filterbanks (80)*
 
 🔍 Physical Interpretation:
 
-      Low-order (1-4)
+Low-order (1-4)
 
-      *Vocal tract shape*
+*Vocal tract shape*
 
-      Speaker identity
+Speaker identity
 
 Mid-order (5-13)
 
-      *Phonetic content*
+*Phonetic content*
 
-      What is said
+What is said
 
 High-order (14+)
 
-      *Fine spectral details*
+*Fine spectral details*
 
-      Nuanced features
+Nuanced features
 
 > 📊 Section 1 Summary: Signal Processing Fundamentals
 >   
@@ -1276,39 +1276,39 @@ TDNN processes temporal context using 1D convolutions:
 
 $x_t$
 
-      *Input at time $t$*
+*Input at time $t$*
 
 $w_i$
 
-      *Learnable weights*
+*Learnable weights*
 
 $k$
 
-      *Context window size*
+*Context window size*
 
 $b$
 
-      *Bias term*
+*Bias term*
 
 📐 VBI Context Windows:
 
-        Layer 1
+Layer 1
 
-        [-2, -1, 0, 1, 2]
+[-2, -1, 0, 1, 2]
 
-        *5 frames = 50ms*
+*5 frames = 50ms*
 
 Layer 2
 
-        [-2, 0, 2]
+[-2, 0, 2]
 
-        *Dilated: 9 frames = 90ms*
+*Dilated: 9 frames = 90ms*
 
 Layer 3
 
-        [-3, 0, 3]
+[-3, 0, 3]
 
-        *Dilated: 15 frames = 150ms*
+*Dilated: 15 frames = 150ms*
 
 #### 2.2 Squeeze-Excitation (SE) Block
 
@@ -1345,11 +1345,11 @@ $$\tilde{x}_c = s_c \cdot x_c$$
 
 With SE
 
-      98.0%
+98.0%
 
-      *accuracy*
+*accuracy*
 
-      +2.8% improvement
++2.8% improvement
 
 #### 2.3 Res2Net Multi-Scale Features
 
@@ -1369,21 +1369,21 @@ $$y_i = \begin{cases}
 
 Scale 2
 
-      7 frames
+7 frames
 
-      *70ms*
+*70ms*
 
 Scale 3
 
-      15 frames
+15 frames
 
-      *150ms*
+*150ms*
 
 Scale 4
 
-      31 frames
+31 frames
 
-      *310ms*
+*310ms*
 
 > ✅ Captures both phoneme-level (30ms) and word-level (310ms) speaker characteristics
 
@@ -1415,7 +1415,7 @@ Unlike simple average pooling, attention learns to focus on speaker-discriminati
 "Hey JARVIS unlock my screen"
      ↓ Attention weights
 [0.02, 0.15, 0.08, 0.25, 0.12, 0.18, 0.10, 0.10]
-       ↑high        ↑high        ↑high
+↑high        ↑high        ↑high
     "JAR"         "un"         "screen"
 ```
 
@@ -1432,20 +1432,34 @@ Where:
 
 **Geometric Interpretation:**
 
+```mermaid
+flowchart TB
+    subgraph "AAM-Softmax Geometric Interpretation"
+CENTER_A[Class A Center<br/>Target Speaker]
+EMBED[Embedding Vector]
+BOUNDARY[Decision Boundary]
+CENTER_B[Class B Center<br/>Other Speaker]
+        
+MARGIN[Angular Margin m<br/>0.2 radians]
+ANGLE_ORIG[Original Angle θ]
+ANGLE_MARGIN[Angle with Margin<br/>θ + m]
+        
+CENTER_A -.-> ANGLE_MARGIN
+ANGLE_MARGIN -.-> EMBED
+EMBED -.-> ANGLE_ORIG
+ANGLE_ORIG -.-> CENTER_B
+        
+EMBED --> BOUNDARY
+    end
+    
+    style CENTER_A fill:#4caf50,stroke:#2e7d32,stroke-width:2px
+    style CENTER_B fill:#f44336,stroke:#c62828,stroke-width:2px
+    style EMBED fill:#2196f3,stroke:#1565c0,stroke-width:2px
+    style BOUNDARY fill:#ff9800,stroke:#f57c00,stroke-width:3px
+    style MARGIN fill:#fff3e0,stroke:#ff9800,stroke-width:2px
 ```
-                    Class A center
-                   /
-                  /  margin m
-                 /  ↙
-                θ+m
-               / 
-Embedding ----+---- Decision boundary
-               \
-                θ
-                 \
-                  \
-                   Class B center
-```
+
+> **Key Insight:** The margin $m$ makes training harder by pushing the decision boundary further from the target class, forcing the model to learn more discriminative features.
 
 **Why AAM-Softmax Works (R&D Proof):**
 
@@ -1468,33 +1482,16 @@ Since cos(θ+m)  📊 Multi-Factor Probability Fusion
 
 #### 4.1 Bayes' Theorem for Speaker Verification
 
-🎯 Bayes' Theorem Formula
+**🎯 Bayes' Theorem Formula:**
 
-      $$P(\text{Owner} | \text{Evidence}) = \frac{P(\text{Evidence} | \text{Owner}) \cdot P(\text{Owner})}{P(\text{Evidence})}$$
+$$P(\text{Owner} | \text{Evidence}) = \frac{P(\text{Evidence} | \text{Owner}) \cdot P(\text{Owner})}{P(\text{Evidence})}$$
 
-$P(\text{Owner})$
+**Components:**
 
-      *Prior probability*
-
-      Based on context (time, location, device)
-
-$P(\text{Evidence} | \text{Owner})$
-
-      *Likelihood*
-
-      From verification scores
-
-$P(\text{Evidence})$
-
-      *Marginal probability*
-
-      Normalizing constant
-
-$P(\text{Owner} | \text{Evidence})$
-
-      *Posterior (final confidence)*
-
-      🎯 This is what we calculate!
+- $P(\text{Owner})$ = **Prior probability** (based on context: time, location, device)
+- $P(\text{Evidence} | \text{Owner})$ = **Likelihood** (from verification scores)
+- $P(\text{Evidence})$ = **Marginal probability** (normalizing constant)
+- $P(\text{Owner} | \text{Evidence})$ = **Posterior** (final confidence) 🎯 This is what we calculate!
 
 #### 4.2 Multi-Factor Likelihood
 
@@ -1537,8 +1534,8 @@ Derek says "unlock my screen" at:
 - History: 95% success rate → P_history = 0.95
 
 P(Owner) = 0.15(0.85) + 0.25(0.95) + 0.20(0.90) + 0.20(0.92) + 0.20(0.95)
-         = 0.1275 + 0.2375 + 0.18 + 0.184 + 0.19
-         = 0.919
+= 0.1275 + 0.2375 + 0.18 + 0.184 + 0.19
+= 0.919
 ```
 
 #### 4.4 Posterior Calculation
@@ -1554,9 +1551,9 @@ Given:
 - P(Impostor) = 1 - 0.919 = 0.081
 
 P(Owner|E) = (0.96 × 0.919) / (0.96 × 0.919 + 0.04 × 0.081)
-           = 0.8822 / (0.8822 + 0.00324)
-           = 0.8822 / 0.8855
-           = 0.9963 (99.63% confidence)
+= 0.8822 / (0.8822 + 0.00324)
+= 0.8822 / 0.8855
+= 0.9963 (99.63% confidence)
 ```
 
 #### 4.5 Confidence Calibration (Platt Scaling)
@@ -1591,7 +1588,7 @@ Human voice production follows the source-filter model:
 │   SOURCE    │ --> │   FILTER    │ --> │  RADIATION  │
 │  (Larynx)   │     │(Vocal Tract)│     │   (Lips)    │
 └─────────────┘     └─────────────┘     └─────────────┘
-      │                   │                   │
+│                   │                   │
   Glottal pulse      Resonances           +6dB/octave
   (Fundamental F0)   (Formants F1-F5)     high-freq boost
 ```
@@ -1656,53 +1653,84 @@ $$z_{VTL} = \frac{|\text{VTL}_{test} - \text{VTL}_{enrolled}|}{\sigma_{VTL}}$$
 
 **Decision Rule:**
 
-$$\text{Pass} \iff z_{VTL}  0.7$)
-**Voice conversion:** Low consistency ($C  📊 Problem Statement
->   
->   
->     Given:
->     
->       Derek's enrolled embedding (first 10 dimensions shown):
->       e_enrolled = [0.23, -0.15, 0.42, 0.08, -0.31, 0.19, -0.27, 0.35, 0.11, -0.22, ...]
+$$\text{Pass} \iff z_{VTL} < 2.0$$
+
+**Example:**
+```
+Derek's enrolled VTL: 15.7 cm (σ = 0.3 cm)
+Test sample VTL: 15.5 cm
+
+z_VTL = |15.5 - 15.7| / 0.3 = 0.2 / 0.3 = 0.67
+
+Since 0.67 < 2.0 → PASS (consistent VTL)
+```
+
+**Spoofing Detection:**
+```
+Replay attack (phone speaker):
+- Recorded VTL: 15.7 cm
+- But phone speaker has no vocal tract → VTL estimation fails
+- Result: REJECT
+```
+
+---
+
+### 9. Problem Set Examples
+
+> ### 📚 Practice Problems
+> 
+> Work through these real-world examples to understand how VBI calculations work in practice. Each problem includes step-by-step solutions.
+
+#### Problem 1: Speaker Embedding Similarity
+
+**📊 Problem Statement:**
+
+**Given:**
+
+Derek's enrolled embedding (first 10 dimensions shown):
+```
+e_enrolled = [0.23, -0.15, 0.42, 0.08, -0.31, 0.19, -0.27, 0.35, 0.11, -0.22, ...]
+```
 
 Test embedding from "unlock my screen":
-      e_test = [0.21, -0.14, 0.39, 0.10, -0.28, 0.17, -0.25, 0.33, 0.09, -0.20, ...]
-
-❓ Question: Calculate the cosine similarity and determine if this passes verification (threshold = 0.40).
-
-> ✅ Step-by-Step Solution
->   
->   
->     Step 1: Compute Dot Product (for first 10 dimensions)
->     dot = 0.23×0.21 + (-0.15)×(-0.14) + 0.42×0.39 + 0.08×0.10 + (-0.31)×(-0.28) 
->     + 0.19×0.17 + (-0.27)×(-0.25) + 0.35×0.33 + 0.11×0.09 + (-0.22)×(-0.20)
->     = 0.0483 + 0.0210 + 0.1638 + 0.0080 + 0.0868 + 0.0323 + 0.0675 + 0.1155 + 0.0099 + 0.0440
->     = 0.5971
-
-Step 2: Compute Norms
-
-        ||e_enrolled||
-
-        ||e_enrolled||² = 0.4823
-
-        ||e_enrolled|| = 0.6945
+```
+e_test = [0.21, -0.14, 0.39, 0.10, -0.28, 0.17, -0.25, 0.33, 0.09, -0.20, ...]
 ```
 
-        ||e_test||
+**❓ Question:** Calculate the cosine similarity and determine if this passes verification (threshold = 0.40).
 
-        ||e_test||² = 0.4149
+**✅ Step-by-Step Solution:**
 
-        ||e_test|| = 0.6441
+**Step 1: Compute Dot Product** (for first 10 dimensions)
+
+```
+dot = 0.23×0.21 + (-0.15)×(-0.14) + 0.42×0.39 + 0.08×0.10 + (-0.31)×(-0.28) 
+    + 0.19×0.17 + (-0.27)×(-0.25) + 0.35×0.33 + 0.11×0.09 + (-0.22)×(-0.20)
+    = 0.0483 + 0.0210 + 0.1638 + 0.0080 + 0.0868 + 0.0323 + 0.0675 + 0.1155 + 0.0099 + 0.0440
+    = 0.5971
 ```
 
-Step 3: Cosine Similarity
-    sim = 0.5971 / (0.6945 × 0.6441) = 0.5971 / 0.4474 = 1.335
+**Step 2: Compute Norms**
 
-      ℹ️ Note: The above calculation is for illustration. With full 192D L2-normalized embeddings:
+```
+||e_enrolled||² = 0.23² + 0.15² + 0.42² + ... = 0.4823
+||e_enrolled|| = 0.6945
 
-        Full cosine similarity: 0.847 (actual VBI output)
+||e_test||² = 0.21² + 0.14² + 0.39² + ... = 0.4149
+||e_test|| = 0.6441
+```
 
-> ✅ Conclusion: 0.847 > 0.40 → PASS ✓
+**Step 3: Cosine Similarity**
+
+```
+sim = 0.5971 / (0.6945 × 0.6441) = 0.5971 / 0.4474 = 1.335
+```
+
+> ℹ️ **Note:** The above calculation is for illustration. With full 192D L2-normalized embeddings:
+> 
+> **Full cosine similarity: 0.847** (actual VBI output)
+
+**✅ Conclusion:** 0.847 > 0.40 → **PASS** ✓
 
 ---
 
@@ -1716,35 +1744,37 @@ Step 3: Cosine Similarity
 
 **Question:** Calculate the posterior probability P(Owner|Evidence).
 
-**Solution:**
+**✅ Step-by-Step Solution:**
 
-Step 1: Convert scores to likelihoods using calibration:
-```
-P(E₁|Owner) = 0.85
-P(E₂|Owner) = 0.97
-P(E₃|Owner) = 0.82
+**Step 1: Convert scores to likelihoods using calibration:**
 
-P(E₁|Impostor) = 0.15
-P(E₂|Impostor) = 0.03
-P(E₃|Impostor) = 0.50
+$$P(E_1 | \text{Owner}) = 0.85$$
+$$P(E_2 | \text{Owner}) = 0.97$$
+$$P(E_3 | \text{Owner}) = 0.82$$
+
+$$P(E_1 | \text{Impostor}) = 0.15$$
+$$P(E_2 | \text{Impostor}) = 0.03$$
+$$P(E_3 | \text{Impostor}) = 0.50$$
+
+**Step 2: Combined likelihood (assuming independence):**
+
+$$P(E | \text{Owner}) = 0.85 \times 0.97 \times 0.82 = 0.676$$
+
+$$P(E | \text{Impostor}) = 0.15 \times 0.03 \times 0.50 = 0.00225$$
+
+**Step 3: Apply Bayes' theorem:**
+
+$$P(\text{Owner} | E) = \frac{P(E | \text{Owner}) \times P(\text{Owner})}{P(E | \text{Owner}) \times P(\text{Owner}) + P(E | \text{Impostor}) \times P(\text{Impostor})}$$
+
+**Calculation:**
+```
+= (0.676 × 0.90) / (0.676 × 0.90 + 0.00225 × 0.10)
+= 0.6084 / (0.6084 + 0.000225)
+= 0.6084 / 0.6086
+= 0.9996
 ```
 
-Step 2: Combined likelihood (assuming independence):
-```
-P(E|Owner) = 0.85 × 0.97 × 0.82 = 0.676
-P(E|Impostor) = 0.15 × 0.03 × 0.50 = 0.00225
-```
-
-Step 3: Apply Bayes' theorem:
-```
-P(Owner|E) = P(E|Owner) × P(Owner) / [P(E|Owner) × P(Owner) + P(E|Impostor) × P(Impostor)]
-           = (0.676 × 0.90) / (0.676 × 0.90 + 0.00225 × 0.10)
-           = 0.6084 / (0.6084 + 0.000225)
-           = 0.6084 / 0.6086
-           = 0.9996
-```
-
-**Conclusion:** Posterior confidence = **99.96%** ✓
+**✅ Conclusion:** Posterior confidence = **99.96%** ✓
 
 ---
 
@@ -1765,36 +1795,42 @@ b) Verify it's consistent with adult male range (14-18 cm)
 
 **Solution:**
 
-**Part a:** VTL Estimation
+**✅ Step-by-Step Solution:**
+
+**Part a: VTL Estimation**
 
 Using the average first formant method:
-```
-F1_avg = (640 + 730 + 270) / 3 = 547 Hz
-c = 343 m/s (speed of sound)
 
-VTL = c / (4 × F1_avg) = 343 / (4 × 547) = 343 / 2188 = 0.1568 m = 15.68 cm
-```
+$$F_{1,avg} = \frac{640 + 730 + 270}{3} = 547 \text{ Hz}$$
 
-Alternative method using all formants (Wakita's method):
-```
-For each formant F_n, estimate VTL_n = (2n-1) × c / (4 × F_n)
+$$c = 343 \text{ m/s (speed of sound)}$$
 
-/ʌ/: VTL₁ = 1 × 343 / (4 × 640) = 0.134 m = 13.4 cm
-     VTL₂ = 3 × 343 / (4 × 1190) = 0.216 m → adjusted = 14.4 cm
+$$\text{VTL} = \frac{c}{4 \times F_{1,avg}} = \frac{343}{4 \times 547} = \frac{343}{2188} = 0.1568 \text{ m} = 15.68 \text{ cm}$$
 
-/a/: VTL₁ = 343 / (4 × 730) = 0.117 m = 11.7 cm → outlier, vowel-specific
-     VTL₂ = 3 × 343 / (4 × 1090) = 0.236 m → adjusted = 15.7 cm
+**Alternative method using all formants (Wakita's method):**
 
-Average (excluding outliers): VTL ≈ 15.5 cm
-```
+For each formant $F_n$, estimate:
 
-**Part b:** Verification
-```
-Estimated VTL: 15.5-15.7 cm
-Adult male range: 14-18 cm
+$$\text{VTL}_n = \frac{(2n-1) \times c}{4 \times F_n}$$
 
-15.7 ∈ [14, 18] → CONSISTENT ✓
-```
+**Calculations:**
+
+For /ʌ/ vowel:
+- $\text{VTL}_1 = \frac{1 \times 343}{4 \times 640} = 0.134 \text{ m} = 13.4 \text{ cm}$
+- $\text{VTL}_2 = \frac{3 \times 343}{4 \times 1190} = 0.216 \text{ m} \rightarrow \text{adjusted} = 14.4 \text{ cm}$
+
+For /a/ vowel:
+- $\text{VTL}_1 = \frac{343}{4 \times 730} = 0.117 \text{ m} = 11.7 \text{ cm}$ (outlier, vowel-specific)
+- $\text{VTL}_2 = \frac{3 \times 343}{4 \times 1090} = 0.236 \text{ m} \rightarrow \text{adjusted} = 15.7 \text{ cm}$
+
+**Average (excluding outliers):** $\text{VTL} \approx 15.5 \text{ cm}$
+
+**Part b: Verification**
+
+- Estimated VTL: 15.5-15.7 cm
+- Adult male range: 14-18 cm
+
+$$15.7 \in [14, 18] \rightarrow \text{CONSISTENT} \, \checkmark$$
 
 **Conclusion:** Derek's VTL is **15.7 cm**, consistent with adult male physiology. ✓
 
@@ -1812,53 +1848,50 @@ A test sample with the following measurements:
 
 **Question:** Calculate the combined anti-spoofing score using PAVA.
 
-**Solution:**
+**✅ Step-by-Step Solution:**
 
-Step 1: Convert each feature to a score [0, 1]:
+**Step 1: Convert each feature to a score [0, 1]:**
 
 **VTL Score:**
-```
-z_VTL = 0.8
-Score_VTL = 1 - min(z_VTL / 3, 1) = 1 - 0.267 = 0.733
-```
+
+$$z_{VTL} = 0.8$$
+
+$$\text{Score}_{VTL} = 1 - \min\left(\frac{z_{VTL}}{3}, 1\right) = 1 - 0.267 = 0.733$$
 
 **Reverberation Score:**
-```
-Match = 92%
-Score_reverb = 0.92
-```
+
+$$\text{Match} = 92\%$$
+$$\text{Score}_{reverb} = 0.92$$
 
 **Doppler Score:**
-```
-σ²_Doppler = 1.8 Hz²
-- **Expected range:** [0.5, 5.0]
-Score_doppler = 1.0 (within range)
-```
+
+$$\sigma^2_{Doppler} = 1.8 \text{ Hz}^2$$
+
+Expected range: $[0.5, 5.0]$ → $\text{Score}_{doppler} = 1.0$ (within range)
 
 **Jitter Score:**
-```
-Jitter = 1.1%
-- **Live range:** [0.5, 2.0]%
-Score_jitter = 1.0 (within range)
-```
+
+$$\text{Jitter} = 1.1\%$$
+
+Live range: $[0.5, 2.0]\%$ → $\text{Score}_{jitter} = 1.0$ (within range)
 
 **Spectral Flatness Score:**
-```
-SF = 0.15
-Live speech SF typically: [0.1, 0.3]
-Score_SF = 1.0 (within range)
-```
 
-Step 2: Weighted combination:
-```
-Weights: w_VTL=0.25, w_reverb=0.20, w_doppler=0.20, w_jitter=0.20, w_SF=0.15
+$$SF = 0.15$$
 
-Score_PAVA = 0.25(0.733) + 0.20(0.92) + 0.20(1.0) + 0.20(1.0) + 0.15(1.0)
-           = 0.183 + 0.184 + 0.20 + 0.20 + 0.15
-           = 0.917
-```
+Live speech SF: $[0.1, 0.3]$ → $\text{Score}_{SF} = 1.0$ (within range)
 
-**Conclusion:** PAVA anti-spoofing score = **91.7%** → PASS (threshold 80%) ✓
+**Step 2: Weighted combination:**
+
+$$\text{Score}_{PAVA} = \sum_{i} w_i \cdot \text{Score}_i$$
+
+Where weights: $w_{VTL}=0.25, w_{reverb}=0.20, w_{doppler}=0.20, w_{jitter}=0.20, w_{SF}=0.15$
+
+$$\text{Score}_{PAVA} = 0.25(0.733) + 0.20(0.92) + 0.20(1.0) + 0.20(1.0) + 0.15(1.0)$$
+
+$$= 0.183 + 0.184 + 0.20 + 0.20 + 0.15 = 0.917$$
+
+**✅ Conclusion:** PAVA anti-spoofing score = **91.7%** → PASS (threshold 80%) ✓
 
 ---
 
@@ -1871,21 +1904,22 @@ Let's trace through the **complete VBI pipeline** when Derek says "Hey JARVIS, u
 **Input:** Analog sound wave from microphone
 
 **Processing:**
-```
-Sampling: 16,000 Hz × 3.2s = 51,200 samples
+
+Sampling: $16{,}000 \text{ Hz} \times 3.2\text{s} = 51{,}200 \text{ samples}$
+
 - **Bit depth:** 16-bit signed integer
-- **Data size:** 51,200 × 2 bytes = 102.4 KB
+- **Data size:** $51{,}200 \times 2 \text{ bytes} = 102.4 \text{ KB}$
 
 Audio waveform (first 10 samples):
+```
 [-234, -189, -156, -98, -45, 12, 78, 145, 198, 234, ...]
 ```
 
 **Quality Check:**
-```
-SNR estimation: 18.5 dB (good quality)
-- **Clipping detection:** 0% (no distortion)
-- **Voice activity:** 2.8s of 3.2s (87.5% speech)
-```
+
+- SNR estimation: $18.5 \text{ dB}$ (good quality)
+- Clipping detection: $0\%$ (no distortion)
+- Voice activity: $2.8\text{s}$ of $3.2\text{s}$ ($87.5\%$ speech)
 
 **Output:** Clean audio buffer ready for feature extraction
 
@@ -1894,45 +1928,43 @@ SNR estimation: 18.5 dB (good quality)
 #### Stage 2: Feature Extraction (3200-3400ms)
 
 **Step 2a: Pre-emphasis (high-frequency boost)**
-```
-y[n] = x[n] - 0.97 × x[n-1]
 
-Purpose: Compensate for natural -6dB/octave spectral roll-off
-Effect: Boosts frequencies above ~200 Hz
-```
+$$y[n] = x[n] - 0.97 \times x[n-1]$$
+
+- **Purpose:** Compensate for natural $-6\text{dB/octave}$ spectral roll-off
+- **Effect:** Boosts frequencies above $\sim 200 \text{ Hz}$
 
 **Step 2b: Framing and Windowing**
-```
-- **Frame length:** 25ms = 400 samples
-- **Frame shift:** 10ms = 160 samples
-Number of frames: (51200 - 400) / 160 + 1 = 318 frames
+
+- Frame length: $25\text{ms} = 400 \text{ samples}$
+- Frame shift: $10\text{ms} = 160 \text{ samples}$
+- Number of frames: $\frac{51200 - 400}{160} + 1 = 318 \text{ frames}$
 
 Hamming window applied:
-w[n] = 0.54 - 0.46 × cos(2πn / (N-1))
-```
+
+$$w[n] = 0.54 - 0.46 \times \cos\left(\frac{2\pi n}{N-1}\right)$$
 
 **Step 2c: FFT**
-```
+
 For each frame, compute 512-point FFT:
-|X[k]|² for k = 0, 1, ..., 256 (power spectrum)
-```
+
+$$|X[k]|^2 \text{ for } k = 0, 1, ..., 256 \text{ (power spectrum)}$$
 
 **Step 2d: Mel Filterbank**
-```
-Apply 80 triangular filters:
-Mel_energy[m] = Σ |X[k]|² × H_m[k]
 
-Results in 318 × 80 = 25,440 Mel coefficients
-```
+Apply 80 triangular filters:
+
+$$\text{Mel\_energy}[m] = \sum_k |X[k]|^2 \times H_m[k]$$
+
+Results in $318 \times 80 = 25{,}440$ Mel coefficients
 
 **Step 2e: Log Compression**
-```
-log_mel[m] = log(Mel_energy[m] + 1e-10)
+
+$$\log(\text{Mel\_energy}[m] + 10^{-10})$$
 
 Compresses dynamic range to match human perception
-```
 
-**Output:** 318 × 80 log-Mel spectrogram tensor
+**Output:** $318 \times 80$ log-Mel spectrogram tensor
 
 ---
 
@@ -2075,9 +2107,9 @@ Score: 0.97 (PASS)
 **Combined PAVA Score:**
 ```
 - **Weighted average:** 0.25(0.89) + 0.15(0.95) + 0.12(1.0) + 0.12(1.0) + 
-                  0.12(1.0) + 0.12(1.0) + 0.12(0.97)
-                = 0.222 + 0.143 + 0.12 + 0.12 + 0.12 + 0.12 + 0.116
-                = 0.961
+0.12(1.0) + 0.12(1.0) + 0.12(0.97)
+= 0.222 + 0.143 + 0.12 + 0.12 + 0.12 + 0.12 + 0.116
+= 0.961
 
 Anti-spoofing result: 96.1% → PASS (threshold: 80%)
 ```
@@ -2105,8 +2137,8 @@ P_device(Owner) = 0.92 (known MacBook)
 P_history(Owner) = 0.96 (high success rate)
 
 P(Owner) = 0.20(0.85) + 0.30(0.95) + 0.25(0.92) + 0.25(0.96)
-         = 0.17 + 0.285 + 0.23 + 0.24
-         = 0.925
+= 0.17 + 0.285 + 0.23 + 0.24
+= 0.925
 ```
 
 **Likelihood Computation:**
@@ -2118,9 +2150,9 @@ P(E|Impostor) = 0.06 × 0.039 × 0.08 × 0.05 × 0.12 = 0.0000011
 **Posterior:**
 ```
 P(Owner|E) = (0.694 × 0.925) / (0.694 × 0.925 + 0.0000011 × 0.075)
-           = 0.642 / (0.642 + 0.00000008)
-           = 0.99999988
-           ≈ 0.98 (after calibration adjustment for real-world variance)
+= 0.642 / (0.642 + 0.00000008)
+= 0.99999988
+≈ 0.98 (after calibration adjustment for real-world variance)
 ```
 
 **Output:** Final confidence = **98%**
