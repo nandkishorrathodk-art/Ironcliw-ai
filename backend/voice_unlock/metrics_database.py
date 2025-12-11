@@ -1934,6 +1934,8 @@ class MetricsDatabase:
         """
         Store character-level typing metrics for ML training.
 
+        Uses fire-and-forget async executor to avoid blocking unlock flow.
+
         Args:
             attempt_id: ID of the unlock attempt
             session_data: Overall typing session metrics
@@ -1941,6 +1943,51 @@ class MetricsDatabase:
 
         Returns:
             Session ID if successful, None otherwise
+        """
+        # Fire-and-forget: Schedule in background to not block unlock
+        asyncio.create_task(
+            self._store_typing_session_async(attempt_id, session_data, character_metrics)
+        )
+        # Return immediately - don't block unlock for DB writes
+        return attempt_id or 0
+
+    async def _store_typing_session_async(
+        self,
+        attempt_id: int,
+        session_data: Dict[str, Any],
+        character_metrics: List[Dict[str, Any]]
+    ) -> Optional[int]:
+        """
+        Internal async method to store typing session in executor.
+        Runs in background thread to avoid blocking event loop.
+        """
+        loop = asyncio.get_event_loop()
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    self._store_typing_session_sync,
+                    attempt_id,
+                    session_data,
+                    character_metrics
+                ),
+                timeout=5.0  # 5 second timeout for DB operations
+            )
+        except asyncio.TimeoutError:
+            logger.warning("⏱️ Typing session storage timed out (non-blocking)")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to store typing session async: {e}")
+            return None
+
+    def _store_typing_session_sync(
+        self,
+        attempt_id: int,
+        session_data: Dict[str, Any],
+        character_metrics: List[Dict[str, Any]]
+    ) -> Optional[int]:
+        """
+        Synchronous method to store typing session (runs in executor).
         """
         try:
             conn = sqlite3.connect(self.sqlite_path)
@@ -2034,6 +2081,69 @@ class MetricsDatabase:
 
         except Exception as e:
             logger.error(f"Failed to store typing session: {e}", exc_info=True)
+            return None
+
+    def _record_attempt_sync(self, attempt_data: Dict[str, Any]) -> Optional[int]:
+        """
+        Synchronous method to record unlock attempt (runs in executor).
+        Used for continuous learning - records every VBI unlock attempt.
+
+        Args:
+            attempt_data: Dictionary with attempt details:
+                - attempt_id: Unique ID for this attempt
+                - speaker_name: Verified speaker name
+                - confidence: Voice verification confidence
+                - success: Whether unlock succeeded
+                - duration_ms: Total unlock duration
+                - timestamp: ISO timestamp
+                - method: Authentication method used
+
+        Returns:
+            Attempt ID if successful, None otherwise
+        """
+        try:
+            conn = sqlite3.connect(self.sqlite_path)
+            cursor = conn.cursor()
+
+            # Ensure table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vbi_unlock_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    attempt_id INTEGER UNIQUE,
+                    speaker_name TEXT,
+                    confidence REAL,
+                    success INTEGER,
+                    duration_ms REAL,
+                    timestamp TEXT,
+                    method TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Insert attempt record
+            cursor.execute("""
+                INSERT OR REPLACE INTO vbi_unlock_attempts (
+                    attempt_id, speaker_name, confidence, success,
+                    duration_ms, timestamp, method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                attempt_data.get('attempt_id'),
+                attempt_data.get('speaker_name'),
+                attempt_data.get('confidence'),
+                1 if attempt_data.get('success') else 0,
+                attempt_data.get('duration_ms'),
+                attempt_data.get('timestamp'),
+                attempt_data.get('method', 'voice_biometric')
+            ))
+
+            conn.commit()
+            attempt_id = cursor.lastrowid
+            conn.close()
+
+            return attempt_id
+
+        except Exception as e:
+            logger.error(f"Failed to record unlock attempt: {e}")
             return None
 
     async def analyze_typing_patterns(self) -> Dict[str, Any]:

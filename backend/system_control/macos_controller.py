@@ -11,7 +11,7 @@ import re
 import subprocess
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psutil
 
@@ -1207,27 +1207,61 @@ class MacOSController:
 
         return None
 
-    async def lock_screen(self) -> Tuple[bool, str]:
+    async def lock_screen(
+        self,
+        progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
+    ) -> Tuple[bool, str]:
         """
-        Lock the macOS screen - optimized for speed
+        Lock the macOS screen - optimized for speed with transparent progress.
+
+        Args:
+            progress_callback: Optional callback for transparent progress updates
 
         Returns:
             Tuple of (success, message)
         """
+        import time
+        start_time = time.time()
+
+        async def _progress(stage: str, pct: int, msg: str):
+            """Send transparent progress update."""
+            if progress_callback:
+                try:
+                    data = {
+                        "type": "lock_progress",
+                        "stage": stage,
+                        "progress": pct,
+                        "message": msg,
+                        "timestamp": time.time()
+                    }
+                    if asyncio.iscoroutinefunction(progress_callback):
+                        await progress_callback(data)
+                    else:
+                        progress_callback(data)
+                except Exception as e:
+                    logger.debug(f"Progress callback error: {e}")
+
         try:
+            await _progress("init", 10, "Locking screen...")
+
             # FAST PATH: Go straight to AppleScript (most reliable and fastest)
             from api.jarvis_voice_api import async_osascript
+
+            await _progress("applescript", 30, "Sending lock command...")
 
             script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
             try:
                 stdout, stderr, returncode = await async_osascript(script, timeout=2.0)
                 if returncode == 0:
-                    logger.info("[FAST LOCK] Screen locked successfully using AppleScript")
-                    return True, "Screen locked successfully, Sir."
+                    duration_ms = (time.time() - start_time) * 1000
+                    await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                    logger.info(f"[FAST LOCK] Screen locked successfully using AppleScript in {duration_ms:.0f}ms")
+                    return True, "Locking the screen now, Sir. See you soon."
             except Exception as e:
                 logger.debug(f"AppleScript method failed: {e}")
 
             # Fallback Method 1: Use CGSession directly (most reliable)
+            await _progress("cgsession", 50, "Trying CGSession...")
             from api.jarvis_voice_api import async_subprocess_run
 
             cgsession_path = (
@@ -1239,21 +1273,28 @@ class MacOSController:
                     [cgsession_path, "-suspend"], timeout=5.0
                 )
                 if returncode == 0:
-                    logger.info("Screen locked successfully using CGSession")
-                    return True, "Screen locked successfully, Sir."
+                    duration_ms = (time.time() - start_time) * 1000
+                    await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                    logger.info(f"Screen locked successfully using CGSession in {duration_ms:.0f}ms")
+                    return True, "Locking the screen now, Sir. See you soon."
 
             # Fallback Method 2: Use pmset command directly
+            await _progress("pmset", 70, "Trying pmset...")
             stdout, stderr, returncode = await async_subprocess_run(
                 ["pmset", "displaysleepnow"], timeout=5.0
             )
             if returncode == 0:
-                logger.info("Screen locked successfully using pmset")
-                return True, "Screen locked successfully, Sir."
+                duration_ms = (time.time() - start_time) * 1000
+                await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                logger.info(f"Screen locked successfully using pmset in {duration_ms:.0f}ms")
+                return True, "Locking the screen now, Sir. See you soon."
 
+            await _progress("failed", 90, "Lock methods exhausted")
             return False, "Unable to lock screen. Please use Control+Command+Q manually."
 
         except Exception as e:
             logger.error(f"Error locking screen: {e}")
+            await _progress("error", 90, f"Lock error: {e}")
             return False, f"Failed to lock screen: {str(e)}"
 
     async def unlock_screen(self, password: Optional[str] = None) -> Tuple[bool, str]:

@@ -4794,29 +4794,62 @@ def _verify_speaker_robust(test_emb: List[float], ref_emb: List[float]) -> Tuple
     return verified, sim
 
 
-async def _execute_unlock_robust(speaker_name: str) -> bool:
+async def _execute_unlock_robust(
+    speaker_name: str,
+    progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    confidence: float = 0.0
+) -> bool:
     """
     Execute screen unlock using SecurePasswordTyper and macOS keychain.
 
-    This uses the robust unlock mechanism from simple_unlock_handler.py:
-    - Retrieves password from macOS keychain (com.jarvis.voiceunlock)
-    - Uses Core Graphics keyboard events for secure password entry
-    - Includes caffeinate to prevent display sleep during unlock
-    - Verifies unlock success via screen lock detector
+    This uses the robust unlock mechanism with:
+    - Password retrieval from macOS keychain (com.jarvis.voiceunlock)
+    - Core Graphics keyboard events for secure password entry
+    - Caffeinate to prevent display sleep during unlock
+    - Screen lock detector for verification
+    - Transparent progress updates via WebSocket
+    - Continuous learning via DB recording
 
     Args:
         speaker_name: The verified speaker's name (for logging)
+        progress_callback: Optional callback for progress updates
+        confidence: Voice verification confidence score
 
     Returns:
         bool: True if unlock succeeded, False otherwise
     """
     caffeinate_process = None
+    unlock_start_time = time.time()
+    attempt_id = int(unlock_start_time * 1000)  # Unique ID for this attempt
+
+    async def _progress(substage: str, pct: int, msg: str):
+        """Send transparent progress update."""
+        if progress_callback:
+            try:
+                data = {
+                    "type": "vbi_progress",
+                    "stage": "unlock_execute",
+                    "substage": substage,
+                    "progress": pct,
+                    "message": msg,
+                    "timestamp": time.time(),
+                    "speaker": speaker_name,
+                    "confidence": confidence
+                }
+                if asyncio.iscoroutinefunction(progress_callback):
+                    await progress_callback(data)
+                else:
+                    progress_callback(data)
+            except Exception as e:
+                logger.debug(f"Progress callback error: {e}")
+
     try:
-        logger.info(f"[ROBUST-UNLOCK] Starting unlock sequence for {speaker_name}")
+        logger.info(f"[ROBUST-UNLOCK] Starting unlock sequence for {speaker_name} (conf={confidence:.1%})")
 
         # Step 1: Retrieve password from keychain
+        await _progress("keychain", 91, f"Retrieving credentials for {speaker_name}...")
         try:
-            result = await asyncio.wait_for(
+            process = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
                     "security", "find-generic-password",
                     "-s", "com.jarvis.voiceunlock",
@@ -4825,99 +4858,137 @@ async def _execute_unlock_robust(speaker_name: str) -> bool:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 ),
-                timeout=5.0
+                timeout=3.0
             )
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
 
-            if result.returncode != 0 or not stdout:
+            if process.returncode != 0 or not stdout:
                 logger.error("[ROBUST-UNLOCK] Password not found in keychain")
-                logger.error(f"[ROBUST-UNLOCK] Run: ./backend/voice_unlock/enable_screen_unlock.sh to configure")
+                await _progress("keychain", 91, "Keychain password not configured")
                 return False
 
             password = stdout.decode().strip()
             logger.info(f"[ROBUST-UNLOCK] Password retrieved ({len(password)} chars)")
+            await _progress("keychain", 92, "Credentials secured")
 
         except asyncio.TimeoutError:
             logger.error("[ROBUST-UNLOCK] Keychain access timed out")
+            await _progress("keychain", 91, "Keychain timeout")
             return False
         except Exception as e:
             logger.error(f"[ROBUST-UNLOCK] Keychain error: {e}")
+            await _progress("keychain", 91, f"Keychain error: {e}")
             return False
 
         # Step 2: Keep screen awake during unlock
+        await _progress("wake", 93, "Waking display...")
         try:
             caffeinate_process = await asyncio.create_subprocess_exec(
                 "caffeinate", "-d", "-u",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             logger.debug("[ROBUST-UNLOCK] Caffeinate started")
         except Exception as e:
             logger.warning(f"[ROBUST-UNLOCK] Caffeinate failed (non-fatal): {e}")
 
         # Step 3: Type password using SecurePasswordTyper
+        await _progress("typing", 94, f"Authenticating {speaker_name}...")
         try:
             from voice_unlock.secure_password_typer import type_password_securely
 
             logger.info(f"[ROBUST-UNLOCK] Typing password securely...")
             # type_password_securely returns Tuple[bool, Optional[Dict[str, Any]]]
-            result = await asyncio.wait_for(
+            # Use 8s timeout - should be plenty for password typing
+            typing_result = await asyncio.wait_for(
                 type_password_securely(
                     password=password,
                     submit=True,
-                    randomize_timing=True
+                    randomize_timing=True,
+                    attempt_id=attempt_id  # For continuous learning
                 ),
-                timeout=max(RobustUnlockConfig.UNLOCK_EXECUTE_TIMEOUT, 10.0)  # Minimum 10s for typing
+                timeout=8.0
             )
 
             # Handle tuple return value
-            if isinstance(result, tuple):
-                success, metrics = result
+            if isinstance(typing_result, tuple):
+                success, metrics = typing_result
             else:
-                success = bool(result)
+                success = bool(typing_result)
                 metrics = None
 
             if not success:
                 logger.error("[ROBUST-UNLOCK] SecurePasswordTyper failed")
+                await _progress("typing", 94, "Password entry failed")
                 return False
 
+            await _progress("typing", 96, "Password accepted")
             if metrics:
-                logger.info(f"[ROBUST-UNLOCK] Password typed successfully (metrics collected)")
+                logger.info(f"[ROBUST-UNLOCK] Password typed successfully (metrics collected for ML)")
             else:
                 logger.info("[ROBUST-UNLOCK] Password typed successfully")
 
         except asyncio.TimeoutError:
             logger.error("[ROBUST-UNLOCK] Password typing timed out")
-            return False
+            await _progress("typing", 94, "Typing timeout - trying fallback")
+            # Try AppleScript fallback on timeout
+            return await _execute_unlock_applescript_fallback(password, _progress)
         except ImportError as e:
             logger.error(f"[ROBUST-UNLOCK] SecurePasswordTyper not available: {e}")
-            # Fallback to AppleScript method
-            return await _execute_unlock_applescript_fallback(password)
+            await _progress("typing", 94, "Using fallback method")
+            return await _execute_unlock_applescript_fallback(password, _progress)
         except Exception as e:
             logger.error(f"[ROBUST-UNLOCK] Password typing error: {e}")
+            await _progress("typing", 94, f"Error: {e}")
             return False
 
         # Step 4: Verify unlock success
-        await asyncio.sleep(1.5)
+        await _progress("verify", 97, "Verifying unlock...")
+        await asyncio.sleep(1.0)  # Reduced from 1.5s for faster feedback
+
+        unlock_success = False
         try:
             from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
 
             is_locked = is_screen_locked()
             if not is_locked:
+                unlock_success = True
+                await _progress("complete", 100, f"Welcome back, {speaker_name}!")
                 logger.info(f"[ROBUST-UNLOCK] ✅ Screen unlocked successfully for {speaker_name}")
-                return True
             else:
-                logger.warning("[ROBUST-UNLOCK] Screen still locked after attempt")
-                return False
+                await _progress("verify", 97, "Screen still locked - retrying...")
+                # Give it one more second and check again
+                await asyncio.sleep(0.5)
+                is_locked = is_screen_locked()
+                if not is_locked:
+                    unlock_success = True
+                    await _progress("complete", 100, f"Welcome back, {speaker_name}!")
+                    logger.info(f"[ROBUST-UNLOCK] ✅ Screen unlocked on second check for {speaker_name}")
+                else:
+                    logger.warning("[ROBUST-UNLOCK] Screen still locked after attempt")
+                    await _progress("verify", 97, "Unlock verification failed")
 
         except Exception as e:
             # If we can't verify, assume success since password typing worked
+            unlock_success = True
+            await _progress("complete", 100, f"Welcome back, {speaker_name}!")
             logger.info(f"[ROBUST-UNLOCK] ✅ Unlock completed (verification unavailable: {e})")
-            return True
+
+        # Step 5: Record unlock attempt for continuous learning (fire-and-forget)
+        asyncio.create_task(_record_unlock_attempt(
+            attempt_id=attempt_id,
+            speaker_name=speaker_name,
+            confidence=confidence,
+            success=unlock_success,
+            duration_ms=(time.time() - unlock_start_time) * 1000
+        ))
+
+        return unlock_success
 
     except Exception as e:
         logger.error(f"[ROBUST-UNLOCK] Unlock failed: {e}", exc_info=True)
+        await _progress("error", 90, f"Unlock error: {e}")
         return False
 
     finally:
@@ -4933,13 +5004,65 @@ async def _execute_unlock_robust(speaker_name: str) -> bool:
                 pass
 
 
-async def _execute_unlock_applescript_fallback(password: str) -> bool:
+async def _record_unlock_attempt(
+    attempt_id: int,
+    speaker_name: str,
+    confidence: float,
+    success: bool,
+    duration_ms: float
+) -> None:
+    """
+    Record unlock attempt to SQLite for continuous learning (fire-and-forget).
+    This runs in background and never blocks the main unlock flow.
+    """
+    try:
+        from voice_unlock.metrics_database import get_metrics_database
+
+        db = get_metrics_database()
+
+        # Store attempt data
+        attempt_data = {
+            "attempt_id": attempt_id,
+            "speaker_name": speaker_name,
+            "confidence": confidence,
+            "success": success,
+            "duration_ms": duration_ms,
+            "timestamp": datetime.now().isoformat(),
+            "method": "voice_biometric"
+        }
+
+        # Use async executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await asyncio.wait_for(
+            loop.run_in_executor(None, db._record_attempt_sync, attempt_data),
+            timeout=3.0
+        )
+
+        logger.info(f"📊 [ML-STORAGE] Recorded unlock attempt: {speaker_name} - {'✅ SUCCESS' if success else '❌ FAILED'} ({duration_ms:.0f}ms)")
+
+    except asyncio.TimeoutError:
+        logger.warning("⏱️ Unlock attempt recording timed out (non-blocking)")
+    except Exception as e:
+        logger.debug(f"Failed to record unlock attempt: {e}")  # Debug level - don't spam logs
+
+
+async def _execute_unlock_applescript_fallback(
+    password: str,
+    progress_callback: Optional[Callable] = None
+) -> bool:
     """
     Fallback AppleScript-based unlock when SecurePasswordTyper is unavailable.
 
     Uses System Events to type password. Less secure but more compatible.
+
+    Args:
+        password: The password to type
+        progress_callback: Optional async callback for progress updates
     """
     try:
+        if progress_callback:
+            await progress_callback("fallback", 95, "Using AppleScript fallback...")
+
         # Escape special characters for AppleScript
         escaped_password = password.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -4957,16 +5080,23 @@ async def _execute_unlock_applescript_fallback(password: str) -> bool:
             stderr=asyncio.subprocess.PIPE
         )
 
-        await asyncio.wait_for(process.communicate(), timeout=10.0)
+        await asyncio.wait_for(process.communicate(), timeout=8.0)
 
         if process.returncode == 0:
             logger.info("[ROBUST-UNLOCK] AppleScript fallback succeeded")
-            await asyncio.sleep(1.5)
+            if progress_callback:
+                await progress_callback("fallback", 98, "Password entered successfully")
+            await asyncio.sleep(1.0)
             return True
         else:
             logger.error("[ROBUST-UNLOCK] AppleScript fallback failed")
+            if progress_callback:
+                await progress_callback("fallback", 95, "AppleScript failed")
             return False
 
+    except asyncio.TimeoutError:
+        logger.error("[ROBUST-UNLOCK] AppleScript fallback timed out")
+        return False
     except Exception as e:
         logger.error(f"[ROBUST-UNLOCK] AppleScript fallback error: {e}")
         return False
@@ -5083,15 +5213,21 @@ async def process_voice_unlock_robust(
                 await progress("verification", 80, f"Failed: {conf:.1%}")
                 return result(False, f"Voice not verified ({conf:.1%})", conf=conf)
 
-            await progress("unlock_execute", 90, "Unlocking...")
-            unlocked = await _execute_unlock_robust("Derek")
+            await progress("unlock_execute", 90, f"Voice verified ({conf:.1%}). Unlocking for Derek...")
+            # Pass progress callback and confidence for transparent substage updates
+            unlocked = await _execute_unlock_robust(
+                speaker_name="Derek",
+                progress_callback=progress_callback,
+                confidence=conf
+            )
             stages.append({"stage": "unlock_execute", "success": unlocked})
 
             if not unlocked:
+                await progress("unlock_execute", 90, "Screen unlock failed")
                 return result(False, "Screen unlock failed", speaker="Derek", conf=conf, err="Unlock execution failed")
 
-            await progress("complete", 100, "Unlocked!")
-            return result(True, f"Verified. Unlocking for you, Derek.", speaker="Derek", conf=conf)
+            # Final success already sent by _execute_unlock_robust
+            return result(True, f"Of course, Derek. Welcome back.", speaker="Derek", conf=conf)
 
         res = await asyncio.wait_for(_unlock(), timeout=RobustUnlockConfig.MAX_TOTAL_TIMEOUT)
         logger.info(f"[ROBUST] RESULT: {'SUCCESS' if res['success'] else 'FAILED'} in {res['total_duration_ms']:.0f}ms")
