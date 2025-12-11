@@ -104,7 +104,12 @@ flowchart TB
     MIC --> WW --> AC --> PP
     PP --> VBI
     VBI --> ECAPA --> CS --> AT
-    VBI --> VTL & RA & DED --> AS
+    VBI --> VTL
+    VBI --> RA
+    VBI --> DED
+    VTL --> AS
+    RA --> AS
+    DED --> AS
     VBI --> BF --> CF
     
     ECAPA <--> SQLITE
@@ -332,8 +337,20 @@ flowchart TB
         FUSION[Weighted Fusion<br/>Anti-Spoof Score]
         RESULT{Liveness<br/>Confirmed?}
         
-        AUDIO --> L1 & L2 & L3 & L4 & L5 & L6 & L7
-        L1 & L2 & L3 & L4 & L5 & L6 & L7 --> FUSION
+        AUDIO --> L1
+        AUDIO --> L2
+        AUDIO --> L3
+        AUDIO --> L4
+        AUDIO --> L5
+        AUDIO --> L6
+        AUDIO --> L7
+        L1 --> FUSION
+        L2 --> FUSION
+        L3 --> FUSION
+        L4 --> FUSION
+        L5 --> FUSION
+        L6 --> FUSION
+        L7 --> FUSION
         FUSION --> RESULT
     end
 
@@ -392,8 +409,15 @@ flowchart TB
             DEC{Decision}
         end
         
-        S1 & S2 & S3 & S4 & S5 --> LIKE
-        P1 & P2 & P3 & P4 --> PRIOR
+        S1 --> LIKE
+        S2 --> LIKE
+        S3 --> LIKE
+        S4 --> LIKE
+        S5 --> LIKE
+        P1 --> PRIOR
+        P2 --> PRIOR
+        P3 --> PRIOR
+        P4 --> PRIOR
         LIKE --> POST
         PRIOR --> POST
         POST --> CONF --> DEC
@@ -492,7 +516,9 @@ flowchart TB
         CHECK -->|Avg > Threshold + 15%| DOWN
         CHECK -->|Avg < Threshold + 5%| UP
         CHECK -->|Otherwise| KEEP
-        DOWN & UP & KEEP --> CLAMP
+        DOWN --> CLAMP
+        UP --> CLAMP
+        KEEP --> CLAMP
         MIN --> CLAMP
         MAX --> CLAMP
         CLAMP --> OUTPUT
@@ -673,7 +699,10 @@ flowchart LR
             PARALLEL --> M4[Init WebSocket<br/>~100ms]
         end
         
-        M1 & M2 & M3 & M4 --> READY[Ready for<br/>Requests]
+        M1 --> READY[Ready for<br/>Requests]
+        M2 --> READY
+        M3 --> READY
+        M4 --> READY
     end
 ```
 
@@ -1124,15 +1153,21 @@ flowchart TD
     LOCAL_CHECK -->|RAM > 2GB| LOCAL_READY[Local Ready]
     LOCAL_CHECK -->|RAM < 2GB| SKIP_LOCAL[Skip Local]
     
-    DOCKER_READY & CLOUD_READY & LOCAL_READY --> SELECT[Select Best Backend]
-    SKIP_DOCKER & SKIP_CLOUD & SKIP_LOCAL --> SELECT
+    DOCKER_READY --> SELECT[Select Best Backend]
+    CLOUD_READY --> SELECT
+    LOCAL_READY --> SELECT
+    SKIP_DOCKER --> SELECT
+    SKIP_CLOUD --> SELECT
+    SKIP_LOCAL --> SELECT
     
     SELECT --> PRIORITY{Priority<br/>Selection}
     PRIORITY -->|1| USE_DOCKER[Use Docker<br/>Lowest Latency]
     PRIORITY -->|2| USE_CLOUD[Use Cloud Run<br/>Reliable]
     PRIORITY -->|3| USE_LOCAL[Use Local<br/>Fallback]
     
-    USE_DOCKER & USE_CLOUD & USE_LOCAL --> CONFIG[Configure<br/>JARVIS_ECAPA_BACKEND]
+    USE_DOCKER --> CONFIG[Configure<br/>JARVIS_ECAPA_BACKEND]
+    USE_CLOUD --> CONFIG
+    USE_LOCAL --> CONFIG
     CONFIG --> READY[Ready for<br/>Voice Auth]
 ```
 
