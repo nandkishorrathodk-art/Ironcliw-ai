@@ -7141,13 +7141,35 @@ class AsyncSystemManager:
             import numpy as np
             mismatched_profiles = []
             for name, profile in speaker_service.speaker_profiles.items():
-                emb_shape = np.array(profile['embedding']).shape
-                emb_dim = emb_shape[0] if len(emb_shape) == 1 else emb_shape[1]
-                if emb_dim != model_dim:
-                    mismatched_profiles.append((name, emb_dim))
-                    print(f"{Colors.YELLOW}      ├─ {name}: {emb_dim}D ⚠️  (dimension mismatch){Colors.ENDC}")
-                else:
-                    print(f"{Colors.GREEN}      ├─ {name}: {emb_dim}D ✅{Colors.ENDC}")
+                try:
+                    embedding = profile.get('embedding')
+                    if embedding is None:
+                        print(f"{Colors.YELLOW}      ├─ {name}: No embedding ⚠️{Colors.ENDC}")
+                        continue
+
+                    emb_array = np.array(embedding)
+                    emb_shape = emb_array.shape
+
+                    # Handle various embedding shapes robustly
+                    if len(emb_shape) == 0:
+                        # Scalar - shouldn't happen
+                        emb_dim = 0
+                    elif len(emb_shape) == 1:
+                        # 1D array - normal case
+                        emb_dim = emb_shape[0]
+                    elif len(emb_shape) >= 2:
+                        # 2D or higher - use last dimension
+                        emb_dim = emb_shape[-1]
+                    else:
+                        emb_dim = 0
+
+                    if emb_dim != model_dim:
+                        mismatched_profiles.append((name, emb_dim))
+                        print(f"{Colors.YELLOW}      ├─ {name}: {emb_dim}D ⚠️  (dimension mismatch){Colors.ENDC}")
+                    else:
+                        print(f"{Colors.GREEN}      ├─ {name}: {emb_dim}D ✅{Colors.ENDC}")
+                except Exception as profile_err:
+                    print(f"{Colors.YELLOW}      ├─ {name}: Error validating - {profile_err}{Colors.ENDC}")
 
             if mismatched_profiles:
                 print(f"{Colors.YELLOW}      └─ ⚠️  {len(mismatched_profiles)} profile(s) need re-enrollment{Colors.ENDC}")

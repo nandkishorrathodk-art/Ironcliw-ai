@@ -1310,10 +1310,13 @@ class HybridDatabaseSync:
         except Exception as e:
             logger.error(f"❌ FAISS cache preload failed: {e}")
 
-    async def bootstrap_voice_profiles_from_cloudsql(self) -> bool:
+    async def bootstrap_voice_profiles_from_cloudsql(self, timeout: float = 30.0) -> bool:
         """
         Bootstrap voice profiles from CloudSQL to SQLite cache.
         Called on first startup when SQLite is empty.
+
+        Args:
+            timeout: Maximum time to wait for bootstrap (default 30s)
 
         Returns:
             True if successful, False otherwise
@@ -1323,105 +1326,119 @@ class HybridDatabaseSync:
             return False
 
         try:
-            logger.info("🔄 Bootstrapping voice profiles from CloudSQL...")
+            logger.info(f"🔄 Bootstrapping voice profiles from CloudSQL (timeout: {timeout}s)...")
             start_time = time.time()
 
-            # Query all speaker profiles from CloudSQL
-            async with self.connection_manager.connection() as conn:
-                rows = await conn.fetch("""
-                    SELECT
-                        speaker_id,
-                        speaker_name,
-                        voiceprint_embedding,
-                        total_samples,
-                        last_updated,
-                        pitch_mean_hz,
-                        pitch_std_hz,
-                        formant_f1_hz,
-                        formant_f2_hz,
-                        spectral_centroid_hz,
-                        speaking_rate_wpm,
-                        energy_mean
-                    FROM speaker_profiles
-                    ORDER BY speaker_id
-                """)
+            # Wrap the entire bootstrap in a timeout to prevent startup hangs
+            return await asyncio.wait_for(
+                self._bootstrap_voice_profiles_impl(),
+                timeout=timeout
+            )
 
-            if not rows:
-                logger.warning("⚠️  No voice profiles found in CloudSQL")
-                return False
-
-            # Insert into SQLite
-            synced_count = 0
-            for row in rows:
-                try:
-                    # Skip profiles with NULL embeddings (incomplete profiles)
-                    if not row['voiceprint_embedding']:
-                        logger.debug(f"   Skipping profile {row['speaker_name']}: NULL embedding")
-                        continue
-
-                    # Build acoustic_features JSON from individual columns
-                    acoustic_features = {
-                        "pitch_mean_hz": float(row['pitch_mean_hz']) if row['pitch_mean_hz'] else 0.0,
-                        "pitch_std_hz": float(row['pitch_std_hz']) if row['pitch_std_hz'] else 0.0,
-                        "formant_f1_hz": float(row['formant_f1_hz']) if row['formant_f1_hz'] else 0.0,
-                        "formant_f2_hz": float(row['formant_f2_hz']) if row['formant_f2_hz'] else 0.0,
-                        "spectral_centroid_hz": float(row['spectral_centroid_hz']) if row['spectral_centroid_hz'] else 0.0,
-                        "speaking_rate_wpm": float(row['speaking_rate_wpm']) if row['speaking_rate_wpm'] else 0.0,
-                        "energy_mean": float(row['energy_mean']) if row['energy_mean'] else 0.0
-                    }
-                    acoustic_features_json = json.dumps(acoustic_features)
-
-                    await self.sqlite_conn.execute("""
-                        INSERT OR REPLACE INTO speaker_profiles
-                        (speaker_id, speaker_name, voiceprint_embedding, acoustic_features, total_samples, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-                        row['speaker_id'],
-                        row['speaker_name'],
-                        row['voiceprint_embedding'],
-                        acoustic_features_json,
-                        row['total_samples'],
-                        row['last_updated']
-                    ))
-
-                    # Also add to FAISS cache
-                    if self.faiss_cache and row['voiceprint_embedding']:
-                        embedding = np.frombuffer(bytes(row['voiceprint_embedding']), dtype=np.float32)
-                        metadata = {
-                            "speaker_name": row['speaker_name'],
-                            "acoustic_features": acoustic_features,
-                            "total_samples": row['total_samples']
-                        }
-                        self.faiss_cache.add_embedding(row['speaker_name'], embedding, metadata)
-
-                    synced_count += 1
-                    logger.debug(f"   Synced profile: {row['speaker_name']} ({row['total_samples']} samples)")
-
-                except Exception as e:
-                    logger.error(f"❌ Failed to sync profile {row['speaker_name']}: {e}")
-                    continue
-
-            await self.sqlite_conn.commit()
-
-            elapsed = (time.time() - start_time) * 1000
-            logger.info(f"✅ Bootstrapped {synced_count}/{len(rows)} voice profiles in {elapsed:.1f}ms")
-
-            # Update metrics
-            if self.faiss_cache:
-                self.metrics.cache_size = self.faiss_cache.size()
-                logger.info(f"   FAISS cache size: {self.metrics.cache_size} embeddings")
-
-            self.metrics.voice_profiles_cached = synced_count
-            self.metrics.voice_cache_last_updated = datetime.now()
-            self.metrics.last_cache_refresh = datetime.now()
-
-            return synced_count > 0
-
+        except asyncio.TimeoutError:
+            elapsed = time.time() - start_time
+            logger.warning(f"⏱️  Bootstrap timed out after {elapsed:.1f}s - continuing with local-only mode")
+            return False
         except Exception as e:
             logger.error(f"❌ Voice profile bootstrap failed: {e}")
             import traceback
-            traceback.print_exc()
+            logger.debug(traceback.format_exc())
             return False
+
+    async def _bootstrap_voice_profiles_impl(self) -> bool:
+        """Internal implementation of bootstrap - separated for timeout wrapper."""
+        start_time = time.time()
+
+        # Query all speaker profiles from CloudSQL
+        async with self.connection_manager.connection() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    speaker_id,
+                    speaker_name,
+                    voiceprint_embedding,
+                    total_samples,
+                    last_updated,
+                    pitch_mean_hz,
+                    pitch_std_hz,
+                    formant_f1_hz,
+                    formant_f2_hz,
+                    spectral_centroid_hz,
+                    speaking_rate_wpm,
+                    energy_mean
+                FROM speaker_profiles
+                ORDER BY speaker_id
+            """)
+
+        if not rows:
+            logger.warning("⚠️  No voice profiles found in CloudSQL")
+            return False
+
+        # Insert into SQLite
+        synced_count = 0
+        for row in rows:
+            try:
+                # Skip profiles with NULL embeddings (incomplete profiles)
+                if not row['voiceprint_embedding']:
+                    logger.debug(f"   Skipping profile {row['speaker_name']}: NULL embedding")
+                    continue
+
+                # Build acoustic_features JSON from individual columns
+                acoustic_features = {
+                    "pitch_mean_hz": float(row['pitch_mean_hz']) if row['pitch_mean_hz'] else 0.0,
+                    "pitch_std_hz": float(row['pitch_std_hz']) if row['pitch_std_hz'] else 0.0,
+                    "formant_f1_hz": float(row['formant_f1_hz']) if row['formant_f1_hz'] else 0.0,
+                    "formant_f2_hz": float(row['formant_f2_hz']) if row['formant_f2_hz'] else 0.0,
+                    "spectral_centroid_hz": float(row['spectral_centroid_hz']) if row['spectral_centroid_hz'] else 0.0,
+                    "speaking_rate_wpm": float(row['speaking_rate_wpm']) if row['speaking_rate_wpm'] else 0.0,
+                    "energy_mean": float(row['energy_mean']) if row['energy_mean'] else 0.0
+                }
+                acoustic_features_json = json.dumps(acoustic_features)
+
+                await self.sqlite_conn.execute("""
+                    INSERT OR REPLACE INTO speaker_profiles
+                    (speaker_id, speaker_name, voiceprint_embedding, acoustic_features, total_samples, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    row['speaker_id'],
+                    row['speaker_name'],
+                    row['voiceprint_embedding'],
+                    acoustic_features_json,
+                    row['total_samples'],
+                    row['last_updated']
+                ))
+
+                # Also add to FAISS cache
+                if self.faiss_cache and row['voiceprint_embedding']:
+                    embedding = np.frombuffer(bytes(row['voiceprint_embedding']), dtype=np.float32)
+                    metadata = {
+                        "speaker_name": row['speaker_name'],
+                        "acoustic_features": acoustic_features,
+                        "total_samples": row['total_samples']
+                    }
+                    self.faiss_cache.add_embedding(row['speaker_name'], embedding, metadata)
+
+                synced_count += 1
+                logger.debug(f"   Synced profile: {row['speaker_name']} ({row['total_samples']} samples)")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to sync profile {row['speaker_name']}: {e}")
+                continue
+
+        await self.sqlite_conn.commit()
+
+        elapsed = (time.time() - start_time) * 1000
+        logger.info(f"✅ Bootstrapped {synced_count}/{len(rows)} voice profiles in {elapsed:.1f}ms")
+
+        # Update metrics
+        if self.faiss_cache:
+            self.metrics.cache_size = self.faiss_cache.size()
+            logger.info(f"   FAISS cache size: {self.metrics.cache_size} embeddings")
+
+        self.metrics.voice_profiles_cached = synced_count
+        self.metrics.voice_cache_last_updated = datetime.now()
+        self.metrics.last_cache_refresh = datetime.now()
+
+        return synced_count > 0
 
     async def _warm_cache_on_reconnection(self):
         """
@@ -2107,7 +2124,7 @@ class HybridDatabaseSync:
                     )
                     await self.sync_queue.put(sync_record)
 
-            logger.info(f"✅ Queued {self.sync_queue.qsize()} pending syncs")
+            logger.info(f"✅ Queued {self.sync_queue.size()} pending syncs")
 
         except Exception as e:
             logger.error(f"Reconciliation failed: {e}")
