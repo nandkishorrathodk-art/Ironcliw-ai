@@ -1,5 +1,57 @@
 # 🔐 Voice Biometric Intelligence (VBI) Architecture Documentation
 
+<!-- Mermaid.js for Diagrams -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ 
+    startOnLoad: true, 
+    theme: 'default',
+    themeVariables: { 
+      primaryColor: '#4caf50',
+      primaryTextColor: '#fff',
+      primaryBorderColor: '#2e7d32',
+      lineColor: '#0277bd',
+      secondaryColor: '#fff3e0',
+      tertiaryColor: '#f3e5f5',
+      fontFamily: 'Arial, sans-serif'
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20
+    },
+    sequence: {
+      actorMargin: 50,
+      boxMargin: 10,
+      messageMargin: 35
+    }
+  });
+</script>
+
+<!-- MathJax for Mathematical Equations -->
+<script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      processEnvironments: true
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+    }
+  };
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3; margin: 20px 0;">
+  <strong>📊 Diagram Rendering:</strong> All diagrams in this document use Mermaid.js and will render as visual diagrams when viewed in a compatible markdown viewer (GitHub, VS Code with Mermaid extension, or any viewer with Mermaid.js support).
+</div>
+
+<div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800; margin: 20px 0;">
+  <strong>🔢 Mathematical Notation:</strong> All equations use MathJax for proper mathematical symbol rendering. Equations will display with proper mathematical notation (Greek letters, subscripts, superscripts, integrals, summations, etc.) when viewed in a compatible viewer.
+</div>
+
 ## Advanced Voice Authentication System for JARVIS AI Agent
 
 **Version:** 4.0.0  
@@ -57,7 +109,7 @@ The **Voice Biometric Intelligence (VBI)** system is JARVIS's advanced voice aut
 
 ### High-Level Architecture
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "🎤 Audio Input Layer"
         MIC[Microphone Input]
@@ -123,11 +175,11 @@ flowchart TB
     style ECAPA fill:#2196f3,stroke:#1565c0,stroke-width:2px,color:#fff
     style AS fill:#ff5722,stroke:#d84315,stroke-width:2px,color:#fff
     style BF fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff
-```
+</div>
 
 ### Detailed Component Flow
 
-```mermaid
+<div class="mermaid">
 sequenceDiagram
     autonumber
     participant User as 👤 User
@@ -179,7 +231,7 @@ sequenceDiagram
     
     API-->>Frontend: Success response
     Frontend->>User: ✅ Screen Unlocked
-```
+</div>
 
 ---
 
@@ -191,7 +243,7 @@ The central orchestrator that coordinates all voice authentication components.
 
 **File:** `backend/voice_unlock/voice_biometric_intelligence.py`
 
-```mermaid
+<div class="mermaid">
 classDiagram
     class VoiceBiometricIntelligence {
         +verify_and_announce(audio_data, context)
@@ -235,7 +287,7 @@ classDiagram
     VoiceBiometricIntelligence --> VBIResult
     VoiceBiometricIntelligence --> VBIConfig
     VBIResult --> ConfidenceLevel
-```
+</div>
 
 #### Key Features:
 
@@ -251,7 +303,7 @@ State-of-the-art neural network for speaker embedding extraction.
 
 **Architecture:**
 
-```mermaid
+<div class="mermaid">
 flowchart LR
     subgraph "ECAPA-TDNN Architecture"
         INPUT[Audio Input<br/>16kHz, 3.2s]
@@ -283,7 +335,7 @@ flowchart LR
     RES3 --> CA --> ASP --> FC --> EMBED
 
     style EMBED fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
-```
+</div>
 
 **Key Specifications:**
 
@@ -301,7 +353,7 @@ flowchart LR
 
 Advanced anti-spoofing system with 7-layer detection.
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "🛡️ PAVA: 7-Layer Anti-Spoofing Detection"
         AUDIO[Audio Input]
@@ -362,7 +414,7 @@ flowchart TB
     style L6 fill:#e0f7fa,stroke:#00838f
     style L7 fill:#ffebee,stroke:#c62828
     style FUSION fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
-```
+</div>
 
 **Detection Capabilities:**
 
@@ -380,7 +432,7 @@ flowchart TB
 
 Multi-factor probability fusion with adaptive priors.
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Bayesian Confidence Fusion Engine"
         subgraph "Input Signals"
@@ -425,7 +477,7 @@ flowchart TB
 
     style POST fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#fff
     style CONF fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
-```
+</div>
 
 **Fusion Formula:**
 
@@ -444,7 +496,7 @@ Where:
 
 ### Voice Unlock Flow - Complete Pipeline
 
-```mermaid
+<div class="mermaid">
 stateDiagram-v2
     [*] --> Listening: Wake Word Detected
     
@@ -479,13 +531,13 @@ stateDiagram-v2
     
     ScreenUnlocked --> [*]: Complete
     UnlockFailed --> [*]: Error Handling
-```
+</div>
 
 ### Adaptive Threshold Learning
 
 The system continuously learns and adjusts its verification threshold:
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Adaptive Threshold System"
         INPUT[New Verification<br/>Attempt]
@@ -525,7 +577,7 @@ flowchart TB
     end
 
     style OUTPUT fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#fff
-```
+</div>
 
 ---
 
@@ -572,7 +624,7 @@ results = await asyncio.gather(
 - L3 Database Cache: <200ms for enrolled users
 - L4 Continuous Learning: Improves over time
 
-```mermaid
+<div class="mermaid">
 flowchart LR
     subgraph "4-Layer Cache Architecture"
         REQ[Request] --> L1{L1: Session<br/>Cache}
@@ -590,7 +642,7 @@ flowchart LR
     style L2 fill:#8bc34a,stroke:#558b2f,color:#fff
     style L3 fill:#cddc39,stroke:#9e9d24,color:#000
     style L4 fill:#ffeb3b,stroke:#f9a825,color:#000
-```
+</div>
 
 ### ✅ 4. Real-time Progress Updates via WebSocket
 
@@ -687,7 +739,7 @@ flowchart LR
 - Background cache population
 - Progressive component loading
 
-```mermaid
+<div class="mermaid">
 flowchart LR
     subgraph "Cold Start Optimization"
         BOOT[System Boot] --> PARALLEL
@@ -704,7 +756,7 @@ flowchart LR
         M3 --> READY
         M4 --> READY
     end
-```
+</div>
 
 ### Bottleneck 2: Cloud Fallback Latency
 
@@ -754,7 +806,7 @@ flowchart LR
 - Cloud fallback for reliability
 - Cost optimization with intelligent routing
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Hybrid Routing Decision"
         REQ[Voice Request]
@@ -771,7 +823,7 @@ flowchart TB
         CACHE -->|Yes| INSTANT[Instant Response<br/>~1ms]
         CACHE -->|No| FULL[Full Verification<br/>~500ms]
     end
-```
+</div>
 
 ### Decision 2: WebSocket for Real-time Progress
 
@@ -851,7 +903,7 @@ flowchart TB
 
 ### Schema Overview
 
-```mermaid
+<div class="mermaid">
 erDiagram
     SPEAKER_PROFILES ||--o{ VOICE_SAMPLES : contains
     SPEAKER_PROFILES ||--o{ UNLOCK_ATTEMPTS : generates
@@ -908,7 +960,7 @@ erDiagram
         int duration_ms
         bool success
     }
-```
+</div>
 
 ### Tables Detail
 
@@ -938,7 +990,7 @@ erDiagram
 
 ### React Component Architecture
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Frontend Component Tree"
         APP[App.js]
@@ -957,7 +1009,7 @@ flowchart TB
         WS_HOOK --> CONN[Connection<br/>Service]
         WS_HOOK --> MSG[Message<br/>Handler]
     end
-```
+</div>
 
 ### VBI Progress Display Logic
 
@@ -1005,7 +1057,7 @@ case 'vbi_progress':
 
 ### Connection Flow
 
-```mermaid
+<div class="mermaid">
 sequenceDiagram
     participant Client as React Frontend
     participant WS as WebSocket Server
@@ -1041,7 +1093,7 @@ sequenceDiagram
     
     VBI-->>WS: {type: "voice_unlock", success: true, speaker_name: "Derek"}
     WS-->>Client: Forward result
-```
+</div>
 
 ### Message Schema
 
@@ -1074,7 +1126,7 @@ interface VoiceUnlockMessage {
 
 ### ECAPA Docker Backend
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Docker ECAPA Architecture"
         subgraph "Host Machine"
@@ -1094,7 +1146,7 @@ flowchart TB
         
         DOCKER --> ECAPA_API
     end
-```
+</div>
 
 ### Docker Compose Configuration
 
@@ -1129,7 +1181,7 @@ services:
 
 ### Intelligent Backend Orchestration
 
-```mermaid
+<div class="mermaid">
 flowchart TD
     START[JARVIS Startup] --> PROBE[Probe Available Backends]
     
@@ -1169,7 +1221,7 @@ flowchart TD
     USE_CLOUD --> CONFIG
     USE_LOCAL --> CONFIG
     CONFIG --> READY[Ready for<br/>Voice Auth]
-```
+</div>
 
 ---
 
@@ -1177,7 +1229,7 @@ flowchart TD
 
 ### Threat Model
 
-```mermaid
+<div class="mermaid">
 flowchart TB
     subgraph "Security Threat Model"
         subgraph "Attack Vectors"
@@ -1202,7 +1254,7 @@ flowchart TB
         A4 --> D4
         A5 --> D5
     end
-```
+</div>
 
 ### Security Best Practices
 
@@ -1232,14 +1284,14 @@ flowchart TB
 
 ### Latency Breakdown
 
-```mermaid
+<div class="mermaid">
 pie title "Verification Latency Breakdown (Cached Path)"
     "L1 Cache Lookup" : 1
     "Embedding Comparison" : 10
     "Anti-Spoofing Check" : 50
     "Bayesian Fusion" : 20
     "Response Generation" : 20
-```
+</div>
 
 ### Benchmark Results
 
@@ -1377,136 +1429,364 @@ docker-compose up ecapa-backend
 
 ## 📐 Mathematics & Physics of Voice Biometric Intelligence
 
-This section provides an **in-depth mathematical and physical analysis** of the VBI system, including formal proofs, problem set examples, and R&D explanations for why the system achieves 98% accuracy.
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
+  <h3 style="color: white; margin-top: 0;">🎓 Deep Dive into VBI Science</h3>
+  <p style="margin-bottom: 0;">
+    This section provides an <strong>in-depth mathematical and physical analysis</strong> of the VBI system, including formal proofs, problem set examples, and R&D explanations for why the system achieves <strong>98% accuracy</strong>.
+  </p>
+</div>
 
-### Table of Contents - Mathematics & Physics
+### 📑 Table of Contents - Mathematics & Physics
 
-1. [Signal Processing Fundamentals](#1-signal-processing-fundamentals)
-2. [ECAPA-TDNN Neural Network Mathematics](#2-ecapa-tdnn-neural-network-mathematics)
-3. [Speaker Verification: Cosine Similarity](#3-speaker-verification-cosine-similarity)
-4. [Bayesian Inference & Confidence Fusion](#4-bayesian-inference--confidence-fusion)
-5. [Physics of Voice Production](#5-physics-of-voice-production)
-6. [Physics-Aware Authentication (PAVA)](#6-physics-aware-authentication-pava)
-7. [Anti-Spoofing Physics](#7-anti-spoofing-physics)
-8. [Mathematical Proofs](#8-mathematical-proofs)
-9. [Problem Set Examples](#9-problem-set-examples)
-10. [Real-World Example: "Unlock My Screen"](#10-real-world-example-unlock-my-screen)
+<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 20px 0;">
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50;">
+  <strong>🔊 Signal Processing</strong><br/>
+  <a href="#1-signal-processing-fundamentals">1. Signal Processing Fundamentals</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
+  <strong>🧠 Neural Networks</strong><br/>
+  <a href="#2-ecapa-tdnn-neural-network-mathematics">2. ECAPA-TDNN Mathematics</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+  <strong>✅ Verification</strong><br/>
+  <a href="#3-speaker-verification-cosine-similarity">3. Cosine Similarity</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+  <strong>📊 Bayesian Fusion</strong><br/>
+  <a href="#4-bayesian-inference--confidence-fusion">4. Bayesian Inference</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #e91e63;">
+  <strong>🔬 Voice Physics</strong><br/>
+  <a href="#5-physics-of-voice-production">5. Physics of Voice Production</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ff5722;">
+  <strong>🛡️ Anti-Spoofing</strong><br/>
+  <a href="#6-physics-aware-authentication-pava">6. PAVA System</a><br/>
+  <a href="#7-anti-spoofing-physics">7. Anti-Spoofing Physics</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #00bcd4;">
+  <strong>📐 Proofs & Examples</strong><br/>
+  <a href="#8-mathematical-proofs">8. Mathematical Proofs</a><br/>
+  <a href="#9-problem-set-examples">9. Problem Set Examples</a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #795548;">
+  <strong>🌐 Real-World</strong><br/>
+  <a href="#10-real-world-example-unlock-my-screen">10. Real-World Example</a>
+</div>
+
+</div>
 
 ---
 
 ### 1. Signal Processing Fundamentals
 
+<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3; margin: 20px 0;">
+  <strong>🎯 Key Concept:</strong> Audio signals must be sampled at least twice the highest frequency to avoid information loss (Nyquist-Shannon Theorem).
+</div>
+
 #### 1.1 Audio Digitization
 
 When Derek says "Hey JARVIS, unlock my screen," the analog sound wave is digitized:
 
-**Sampling Theorem (Nyquist-Shannon):**
+<div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #e65100;">📐 Sampling Theorem (Nyquist-Shannon)</h4>
+  
+  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #ff9800; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="font-size: 1.5em; color: #e65100; font-weight: bold; margin: 0;">
+      $$f_s \geq 2 \cdot f_{max}$$
+    </div>
+  </div>
+  
+  <table style="width: 100%; margin-top: 10px;">
+    <tr>
+      <td style="padding: 8px; background: #f5f5f5;"><strong>$f_s$</strong></td>
+      <td style="padding: 8px;">Sampling frequency = <strong>16,000 Hz</strong> (VBI standard)</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; background: #f5f5f5;"><strong>$f_{max}$</strong></td>
+      <td style="padding: 8px;">Maximum frequency in human speech = <strong>~8,000 Hz</strong></td>
+    </tr>
+  </table>
+</div>
 
-$$f_s \geq 2 \cdot f_{max}$$
-
-Where:
-- $f_s$ = sampling frequency (16,000 Hz in VBI)
-- $f_{max}$ = maximum frequency in human speech (~8,000 Hz)
-
-**Proof of Sufficient Sampling:**
-```
+<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">
+  <strong>✅ Proof of Sufficient Sampling:</strong>
+  <pre style="background: white; padding: 10px; border-radius: 5px; margin: 10px 0; overflow-x: auto;">
 Human speech frequency range: 85 Hz - 8,000 Hz
 VBI sampling rate: 16,000 Hz
 Nyquist frequency: 16,000 / 2 = 8,000 Hz ✓
 
 Since 8,000 Hz ≥ 8,000 Hz (max speech frequency),
 we capture all relevant speech information without aliasing.
-```
+  </pre>
+</div>
 
 #### 1.2 Discrete Fourier Transform (DFT)
 
 The audio signal is transformed from time domain to frequency domain:
 
-$$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j \frac{2\pi kn}{N}}$$
+<div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #7b1fa2;">🔄 Time → Frequency Transformation</h4>
+  
+  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold; margin: 0;">
+      $$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j \frac{2\pi kn}{N}}$$
+    </div>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$x[n]$</strong><br/>
+      <small>Time-domain audio samples</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$X[k]$</strong><br/>
+      <small>Frequency-domain coefficients</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$N$</strong><br/>
+      <small>51,200 samples (3.2s at 16kHz)</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$k$</strong><br/>
+      <small>Frequency bin index</small>
+    </div>
+  </div>
+</div>
 
-Where:
-- $x[n]$ = time-domain audio samples
-- $X[k]$ = frequency-domain coefficients
-- $N$ = number of samples (51,200 for 3.2s at 16kHz)
-- $k$ = frequency bin index
-
-**Implementation in VBI:**
-```python
-# 3.2 seconds of audio at 16kHz
+<div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <strong>💻 Implementation in VBI:</strong>
+  <pre style="background: #263238; color: #aed581; padding: 15px; border-radius: 5px; margin: 10px 0; overflow-x: auto;"><code># 3.2 seconds of audio at 16kHz
 N = 51200  # samples
 audio_fft = np.fft.fft(audio_samples, N)
-magnitude_spectrum = np.abs(audio_fft)
-```
+magnitude_spectrum = np.abs(audio_fft)</code></pre>
+</div>
 
 #### 1.3 Mel-Frequency Filterbank
 
-Human hearing is non-linear - we perceive pitch logarithmically. The Mel scale converts linear frequency to perceptual frequency:
+<div style="background: #fff9c4; padding: 15px; border-radius: 8px; border-left: 4px solid #fbc02d; margin: 15px 0;">
+  <strong>🧠 Human Perception Insight:</strong> Human hearing is non-linear - we perceive pitch logarithmically. The Mel scale converts linear frequency to perceptual frequency.
+</div>
 
-**Mel Scale Conversion:**
+<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 15px 0;">
+  <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
+    <h4 style="margin-top: 0; color: #2e7d32;">📈 Mel Scale Conversion</h4>
+    <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #4caf50; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <div style="font-size: 1.4em; color: #2e7d32; font-weight: bold; margin: 0;">
+        $$m = 2595 \cdot \log_{10}\left(1 + \frac{f}{700}\right)$$
+      </div>
+    </div>
+  </div>
+  
+  <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+    <h4 style="margin-top: 0; color: #1565c0;">📉 Inverse Mel Scale</h4>
+    <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <div style="font-size: 1.4em; color: #1565c0; font-weight: bold; margin: 0;">
+        $$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
+      </div>
+    </div>
+  </div>
+</div>
 
-$$m = 2595 \cdot \log_{10}\left(1 + \frac{f}{700}\right)$$
+<div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #7b1fa2;">🎚️ VBI Uses 80 Mel Filterbanks</h4>
+  
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+      <thead>
+        <tr style="background: #7b1fa2; color: white;">
+          <th style="padding: 12px; text-align: left;">Mel Bank</th>
+          <th style="padding: 12px; text-align: left;">Center Frequency (Hz)</th>
+          <th style="padding: 12px; text-align: left;">Bandwidth (Hz)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: #f5f5f5;">
+          <td style="padding: 10px;"><strong>1</strong></td>
+          <td style="padding: 10px;">85</td>
+          <td style="padding: 10px;">50</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px;"><strong>20</strong></td>
+          <td style="padding: 10px;">500</td>
+          <td style="padding: 10px;">120</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <td style="padding: 10px;"><strong>40</strong></td>
+          <td style="padding: 10px;">1,200</td>
+          <td style="padding: 10px;">280</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px;"><strong>60</strong></td>
+          <td style="padding: 10px;">3,000</td>
+          <td style="padding: 10px;">650</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <td style="padding: 10px;"><strong>80</strong></td>
+          <td style="padding: 10px;">7,500</td>
+          <td style="padding: 10px;">1,500</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
-**Inverse Mel Scale:**
-
-$$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
-
-**VBI Uses 80 Mel Filterbanks:**
-
-| Mel Bank | Center Frequency (Hz) | Bandwidth (Hz) |
-|----------|----------------------|----------------|
-| 1 | 85 | 50 |
-| 20 | 500 | 120 |
-| 40 | 1200 | 280 |
-| 60 | 3000 | 650 |
-| 80 | 7500 | 1500 |
-
-**Why 80 Filterbanks?**
-
-R&D experiments showed:
-- 40 filterbanks: 94.2% accuracy (insufficient resolution)
-- 80 filterbanks: 98.0% accuracy (optimal)
-- 128 filterbanks: 98.1% accuracy (diminishing returns, higher compute)
+<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">
+  <strong>🔬 Why 80 Filterbanks? (R&D Results)</strong>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px;">
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center;">
+      <strong style="color: #f44336;">40 filterbanks</strong><br/>
+      <small>94.2% accuracy</small><br/>
+      <small style="color: #666;">Insufficient resolution</small>
+    </div>
+    <div style="background: #4caf50; color: white; padding: 12px; border-radius: 5px; text-align: center;">
+      <strong>80 filterbanks</strong><br/>
+      <strong>98.0% accuracy</strong><br/>
+      <small>✅ Optimal</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center;">
+      <strong style="color: #ff9800;">128 filterbanks</strong><br/>
+      <small>98.1% accuracy</small><br/>
+      <small style="color: #666;">Diminishing returns</small>
+    </div>
+  </div>
+</div>
 
 #### 1.4 Mel-Frequency Cepstral Coefficients (MFCCs)
 
 After applying Mel filterbanks, we compute MFCCs:
 
-$$c_n = \sum_{m=1}^{M} \log(S_m) \cdot \cos\left(\frac{\pi n (m - 0.5)}{M}\right)$$
+<div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #0277bd;">🎵 MFCC Formula</h4>
+  
+  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #00bcd4; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="font-size: 1.4em; color: #0277bd; font-weight: bold; margin: 0;">
+      $$c_n = \sum_{m=1}^{M} \log(S_m) \cdot \cos\left(\frac{\pi n (m - 0.5)}{M}\right)$$
+    </div>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;">
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$c_n$</strong><br/>
+      <small>n-th cepstral coefficient</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$S_m$</strong><br/>
+      <small>Energy in m-th Mel filterbank</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$M$</strong><br/>
+      <small>Number of filterbanks (80)</small>
+    </div>
+  </div>
+</div>
 
-Where:
-- $c_n$ = n-th cepstral coefficient
-- $S_m$ = energy in m-th Mel filterbank
-- $M$ = number of filterbanks (80)
+<div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <strong>🔍 Physical Interpretation:</strong>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px;">
+    <div style="background: white; padding: 12px; border-radius: 5px; border-left: 4px solid #4caf50;">
+      <strong>Low-order (1-4)</strong><br/>
+      <small>Vocal tract shape</small><br/>
+      <small style="color: #666;">Speaker identity</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; border-left: 4px solid #2196f3;">
+      <strong>Mid-order (5-13)</strong><br/>
+      <small>Phonetic content</small><br/>
+      <small style="color: #666;">What is said</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; border-left: 4px solid #ff9800;">
+      <strong>High-order (14+)</strong><br/>
+      <small>Fine spectral details</small><br/>
+      <small style="color: #666;">Nuanced features</small>
+    </div>
+  </div>
+</div>
 
-**Physical Interpretation:**
-- Low-order MFCCs (1-4): Capture vocal tract shape (speaker identity)
-- Mid-order MFCCs (5-13): Capture phonetic content
-- High-order MFCCs (14+): Fine spectral details
+<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #2e7d32;">📊 Section 1 Summary: Signal Processing Fundamentals</h4>
+  <ul style="margin-bottom: 0;">
+    <li>✅ <strong>Nyquist-Shannon Theorem:</strong> 16kHz sampling captures all speech frequencies (up to 8kHz)</li>
+    <li>✅ <strong>DFT:</strong> Transforms time-domain audio to frequency-domain for analysis</li>
+    <li>✅ <strong>Mel Scale:</strong> Logarithmic frequency scale matching human perception</li>
+    <li>✅ <strong>80 Filterbanks:</strong> Optimal balance between accuracy (98%) and computational efficiency</li>
+    <li>✅ <strong>MFCCs:</strong> Extract speaker-discriminative features from audio</li>
+  </ul>
+</div>
 
 ---
 
 ### 2. ECAPA-TDNN Neural Network Mathematics
 
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
+  <h3 style="color: white; margin-top: 0;">🧠 Neural Network Architecture</h3>
+  <p style="margin-bottom: 0;">
+    ECAPA-TDNN uses advanced attention mechanisms and multi-scale features to extract 192-dimensional speaker embeddings with <strong>98% accuracy</strong>.
+  </p>
+</div>
+
 #### 2.1 Time-Delay Neural Network (TDNN) Fundamentals
 
 TDNN processes temporal context using 1D convolutions:
 
-**TDNN Convolution:**
+<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #1565c0;">⏱️ TDNN Convolution</h4>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; text-align: center; margin: 10px 0;">
+    <p style="font-size: 1.1em; margin: 0;">
+      $$y_t = \sum_{i=-k}^{k} w_i \cdot x_{t+i} + b$$
+    </p>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$x_t$</strong><br/>
+      <small>Input at time $t$</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$w_i$</strong><br/>
+      <small>Learnable weights</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$k$</strong><br/>
+      <small>Context window size</small>
+    </div>
+    <div style="background: white; padding: 10px; border-radius: 5px;">
+      <strong>$b$</strong><br/>
+      <small>Bias term</small>
+    </div>
+  </div>
+</div>
 
-$$y_t = \sum_{i=-k}^{k} w_i \cdot x_{t+i} + b$$
-
-Where:
-- $x_t$ = input at time $t$
-- $w_i$ = learnable weights
-- $k$ = context window size
-- $b$ = bias
-
-**VBI Context Windows:**
-```
-Layer 1: Context [-2, -1, 0, 1, 2] → 5 frames = 50ms
-Layer 2: Context [-2, 0, 2] → Dilated, covers 9 frames = 90ms
-Layer 3: Context [-3, 0, 3] → Dilated, covers 15 frames = 150ms
-```
+<div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <strong>📐 VBI Context Windows:</strong>
+  <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 10px;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+      <div style="text-align: center; padding: 10px; background: #e8f5e9; border-radius: 5px;">
+        <strong>Layer 1</strong><br/>
+        <code>[-2, -1, 0, 1, 2]</code><br/>
+        <small>5 frames = 50ms</small>
+      </div>
+      <div style="text-align: center; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+        <strong>Layer 2</strong><br/>
+        <code>[-2, 0, 2]</code><br/>
+        <small>Dilated: 9 frames = 90ms</small>
+      </div>
+      <div style="text-align: center; padding: 10px; background: #f3e5f5; border-radius: 5px;">
+        <strong>Layer 3</strong><br/>
+        <code>[-3, 0, 3]</code><br/>
+        <small>Dilated: 15 frames = 150ms</small>
+      </div>
+    </div>
+  </div>
+</div>
 
 #### 2.2 Squeeze-Excitation (SE) Block
 
@@ -1514,11 +1794,19 @@ SE blocks provide channel attention:
 
 **Squeeze Operation (Global Average Pooling):**
 
-$$z_c = \frac{1}{T} \sum_{t=1}^{T} x_c^t$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
+    $$z_c = \frac{1}{T} \sum_{t=1}^{T} x_c^t$$
+  </div>
+</div>
 
 **Excitation Operation:**
 
-$$s = \sigma(W_2 \cdot \text{ReLU}(W_1 \cdot z))$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
+    $$s = \sigma(W_2 \cdot \text{ReLU}(W_1 \cdot z))$$
+  </div>
+</div>
 
 Where:
 - $z \in \mathbb{R}^C$ = channel statistics
@@ -1528,38 +1816,78 @@ Where:
 
 **Final Scaling:**
 
-$$\tilde{x}_c = s_c \cdot x_c$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
+    $$\tilde{x}_c = s_c \cdot x_c$$
+  </div>
+</div>
 
-**Why SE Blocks Work (R&D Insight):**
-
-SE blocks learn to emphasize speaker-discriminative channels and suppress noise channels. In experiments:
-- Without SE: 95.2% accuracy
-- With SE: 98.0% accuracy (+2.8%)
+<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">
+  <strong>🔬 Why SE Blocks Work (R&D Insight):</strong>
+  <p>SE blocks learn to emphasize speaker-discriminative channels and suppress noise channels.</p>
+  
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px;">
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center;">
+      <strong style="color: #f44336;">Without SE</strong><br/>
+      <span style="font-size: 1.2em; color: #f44336;">95.2%</span><br/>
+      <small>accuracy</small>
+    </div>
+    <div style="background: #4caf50; color: white; padding: 12px; border-radius: 5px; text-align: center;">
+      <strong>With SE</strong><br/>
+      <span style="font-size: 1.2em;">98.0%</span><br/>
+      <small>accuracy</small><br/>
+      <small style="background: rgba(255,255,255,0.3); padding: 2px 8px; border-radius: 3px; display: inline-block; margin-top: 5px;">+2.8% improvement</small>
+    </div>
+  </div>
+</div>
 
 #### 2.3 Res2Net Multi-Scale Features
 
 Res2Net splits channels into scales for multi-resolution processing:
 
-$$y_i = \begin{cases}
-x_i & i = 1 \\
-K_i(x_i) & i = 2 \\
-K_i(x_i + y_{i-1}) & 2 < i \leq s
-\end{cases}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #7b1fa2; font-weight: bold;">
+    $$y_i = \begin{cases}
+    x_i & i = 1 \\
+    K_i(x_i) & i = 2 \\
+    K_i(x_i + y_{i-1}) & 2 < i \leq s
+    \end{cases}$$
+  </div>
+</div>
 
 Where:
 - $x_i$ = i-th channel split
 - $K_i$ = 3×3 convolution for scale $i$
 - $s$ = number of scales (4 in ECAPA)
 
-**Multi-Scale Receptive Fields:**
-```
-Scale 1: 3 frames (30ms)
-Scale 2: 7 frames (70ms) 
-Scale 3: 15 frames (150ms)
-Scale 4: 31 frames (310ms)
-```
-
-This captures both phoneme-level (30ms) and word-level (310ms) speaker characteristics.
+<div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <strong>📏 Multi-Scale Receptive Fields:</strong>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;">
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center; border-left: 4px solid #4caf50;">
+      <strong>Scale 1</strong><br/>
+      <span style="font-size: 1.1em;">3 frames</span><br/>
+      <small>30ms</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center; border-left: 4px solid #2196f3;">
+      <strong>Scale 2</strong><br/>
+      <span style="font-size: 1.1em;">7 frames</span><br/>
+      <small>70ms</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center; border-left: 4px solid #ff9800;">
+      <strong>Scale 3</strong><br/>
+      <span style="font-size: 1.1em;">15 frames</span><br/>
+      <small>150ms</small>
+    </div>
+    <div style="background: white; padding: 12px; border-radius: 5px; text-align: center; border-left: 4px solid #e91e63;">
+      <strong>Scale 4</strong><br/>
+      <span style="font-size: 1.1em;">31 frames</span><br/>
+      <small>310ms</small>
+    </div>
+  </div>
+  <div style="background: #e8f5e9; padding: 10px; border-radius: 5px; margin-top: 10px; text-align: center;">
+    <small>✅ Captures both <strong>phoneme-level</strong> (30ms) and <strong>word-level</strong> (310ms) speaker characteristics</small>
+  </div>
+</div>
 
 #### 2.4 Attentive Statistics Pooling
 
@@ -1567,19 +1895,35 @@ Converts variable-length audio to fixed 192D embedding:
 
 **Attention Weights:**
 
-$$\alpha_t = \frac{\exp(v^T h_t)}{\sum_{\tau=1}^{T} \exp(v^T h_\tau)}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
+    $$\alpha_t = \frac{\exp(v^T h_t)}{\sum_{\tau=1}^{T} \exp(v^T h_\tau)}$$
+  </div>
+</div>
 
 **Weighted Mean:**
 
-$$\mu = \sum_{t=1}^{T} \alpha_t \cdot h_t$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
+    $$\mu = \sum_{t=1}^{T} \alpha_t \cdot h_t$$
+  </div>
+</div>
 
 **Weighted Standard Deviation:**
 
-$$\sigma = \sqrt{\sum_{t=1}^{T} \alpha_t \cdot h_t^2 - \mu^2}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
+    $$\sigma = \sqrt{\sum_{t=1}^{T} \alpha_t \cdot h_t^2 - \mu^2}$$
+  </div>
+</div>
 
 **Final Embedding:**
 
-$$e = [\mu; \sigma] \in \mathbb{R}^{192}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #4caf50; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #2e7d32; font-weight: bold;">
+    $$e = [\mu; \sigma] \in \mathbb{R}^{192}$$
+  </div>
+</div>
 
 **Why Attentive Pooling Works:**
 
@@ -1648,7 +1992,11 @@ Since cos(θ+m) < cos(θ) for 0 < θ < π-m:
 
 Given two speaker embeddings $e_1, e_2 \in \mathbb{R}^{192}$:
 
-$$\text{sim}(e_1, e_2) = \frac{e_1 \cdot e_2}{\|e_1\| \cdot \|e_2\|} = \frac{\sum_{i=1}^{192} e_1^{(i)} \cdot e_2^{(i)}}{\sqrt{\sum_{i=1}^{192} (e_1^{(i)})^2} \cdot \sqrt{\sum_{i=1}^{192} (e_2^{(i)})^2}}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 20px 0; border: 2px solid #ff9800; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.3em; color: #e65100; font-weight: bold;">
+    $$\text{sim}(e_1, e_2) = \frac{e_1 \cdot e_2}{\|e_1\| \cdot \|e_2\|} = \frac{\sum_{i=1}^{192} e_1^{(i)} \cdot e_2^{(i)}}{\sqrt{\sum_{i=1}^{192} (e_1^{(i)})^2} \cdot \sqrt{\sum_{i=1}^{192} (e_2^{(i)})^2}}$$
+  </div>
+</div>
 
 **Properties:**
 - Range: $[-1, 1]$
@@ -1686,21 +2034,57 @@ $$\text{Decision} = \begin{cases}
 
 ### 4. Bayesian Inference & Confidence Fusion
 
+<div style="background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
+  <h3 style="color: white; margin-top: 0;">📊 Multi-Factor Probability Fusion</h3>
+  <p style="margin-bottom: 0;">
+    Bayesian fusion combines multiple evidence sources (ECAPA similarity, anti-spoofing, voice quality, environment, behavior) with adaptive priors to achieve <strong>98% confidence</strong>.
+  </p>
+</div>
+
 #### 4.1 Bayes' Theorem for Speaker Verification
 
-$$P(\text{Owner} | \text{Evidence}) = \frac{P(\text{Evidence} | \text{Owner}) \cdot P(\text{Owner})}{P(\text{Evidence})}$$
-
-**Components:**
-- $P(\text{Owner})$ = Prior probability (based on context)
-- $P(\text{Evidence} | \text{Owner})$ = Likelihood (from verification scores)
-- $P(\text{Evidence})$ = Marginal probability (normalizer)
-- $P(\text{Owner} | \text{Evidence})$ = Posterior (final confidence)
+<div style="background: #f3e5f5; padding: 20px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #7b1fa2;">🎯 Bayes' Theorem Formula</h4>
+  
+  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="font-size: 1.5em; color: #7b1fa2; font-weight: bold; margin: 0;">
+      $$P(\text{Owner} | \text{Evidence}) = \frac{P(\text{Evidence} | \text{Owner}) \cdot P(\text{Owner})}{P(\text{Evidence})}$$
+    </div>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px;">
+    <div style="background: #e8f5e9; padding: 15px; border-radius: 5px;">
+      <strong style="color: #2e7d32;">$P(\text{Owner})$</strong><br/>
+      <small>Prior probability</small><br/>
+      <small style="color: #666;">Based on context (time, location, device)</small>
+    </div>
+    <div style="background: #e3f2fd; padding: 15px; border-radius: 5px;">
+      <strong style="color: #1565c0;">$P(\text{Evidence} | \text{Owner})$</strong><br/>
+      <small>Likelihood</small><br/>
+      <small style="color: #666;">From verification scores</small>
+    </div>
+    <div style="background: #fff3e0; padding: 15px; border-radius: 5px;">
+      <strong style="color: #e65100;">$P(\text{Evidence})$</strong><br/>
+      <small>Marginal probability</small><br/>
+      <small style="color: #666;">Normalizing constant</small>
+    </div>
+    <div style="background: #f3e5f5; padding: 15px; border-radius: 5px; border: 2px solid #9c27b0;">
+      <strong style="color: #7b1fa2;">$P(\text{Owner} | \text{Evidence})$</strong><br/>
+      <small>Posterior (final confidence)</small><br/>
+      <small style="color: #666;">🎯 This is what we calculate!</small>
+    </div>
+  </div>
+</div>
 
 #### 4.2 Multi-Factor Likelihood
 
 VBI combines multiple evidence sources:
 
-$$P(\text{Evidence} | \text{Owner}) = \prod_{i=1}^{n} P(E_i | \text{Owner})$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
+    $$P(\text{Evidence} | \text{Owner}) = \prod_{i=1}^{n} P(E_i | \text{Owner})$$
+  </div>
+</div>
 
 **Evidence Sources:**
 1. $E_1$ = ECAPA similarity score
@@ -1715,7 +2099,11 @@ $$\log P(\text{Evidence} | \text{Owner}) = \sum_{i=1}^{n} \log P(E_i | \text{Own
 
 #### 4.3 Adaptive Prior Computation
 
-$$P(\text{Owner}) = \sum_{j=1}^{m} w_j \cdot P_j(\text{Owner})$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
+    $$P(\text{Owner}) = \sum_{j=1}^{m} w_j \cdot P_j(\text{Owner})$$
+  </div>
+</div>
 
 **Prior Factors:**
 
@@ -1743,7 +2131,11 @@ P(Owner) = 0.15(0.85) + 0.25(0.95) + 0.20(0.90) + 0.20(0.92) + 0.20(0.95)
 
 #### 4.4 Posterior Calculation
 
-$$P(\text{Owner} | E) = \frac{P(E | \text{Owner}) \cdot P(\text{Owner})}{P(E | \text{Owner}) \cdot P(\text{Owner}) + P(E | \text{Impostor}) \cdot P(\text{Impostor})}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.3em; color: #7b1fa2; font-weight: bold;">
+    $$P(\text{Owner} | E) = \frac{P(E | \text{Owner}) \cdot P(\text{Owner})}{P(E | \text{Owner}) \cdot P(\text{Owner}) + P(E | \text{Impostor}) \cdot P(\text{Impostor})}$$
+  </div>
+</div>
 
 **Full Example:**
 ```
@@ -1798,7 +2190,11 @@ Human voice production follows the source-filter model:
 
 #### 5.2 Fundamental Frequency (F0)
 
-$$F_0 = \frac{1}{T_0}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #e91e63; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #c2185b; font-weight: bold;">
+    $$F_0 = \frac{1}{T_0}$$
+  </div>
+</div>
 
 Where $T_0$ is the period of vocal fold vibration.
 
@@ -1811,7 +2207,11 @@ Where $T_0$ is the period of vocal fold vibration.
 
 Formants are resonances of the vocal tract, determined by its shape:
 
-$$F_n = \frac{(2n-1) \cdot c}{4L}$$
+<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #e91e63; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  <div style="font-size: 1.5em; color: #c2185b; font-weight: bold;">
+    $$F_n = \frac{(2n-1) \cdot c}{4L}$$
+  </div>
+</div>
 
 Where:
 - $c$ = speed of sound (~343 m/s)
@@ -2118,51 +2518,77 @@ $$\tau^* : \frac{f_{genuine}(\tau^*)}{f_{impostor}(\tau^*)} = \frac{w_{FAR}}{w_{
 
 ### 9. Problem Set Examples
 
+<div style="background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
+  <h3 style="color: white; margin-top: 0;">📚 Practice Problems</h3>
+  <p style="margin-bottom: 0;">
+    Work through these real-world examples to understand how VBI calculations work in practice. Each problem includes step-by-step solutions.
+  </p>
+</div>
+
 #### Problem 1: Speaker Embedding Similarity
 
-**Given:**
-Derek's enrolled embedding (first 10 dimensions shown):
-```
-e_enrolled = [0.23, -0.15, 0.42, 0.08, -0.31, 0.19, -0.27, 0.35, 0.11, -0.22, ...]
-```
+<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #1565c0;">📊 Problem Statement</h4>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+    <strong>Given:</strong>
+    <div style="margin-top: 10px;">
+      <strong>Derek's enrolled embedding</strong> (first 10 dimensions shown):
+      <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; margin: 5px 0;"><code>e_enrolled = [0.23, -0.15, 0.42, 0.08, -0.31, 0.19, -0.27, 0.35, 0.11, -0.22, ...]</code></pre>
+    </div>
+    <div style="margin-top: 10px;">
+      <strong>Test embedding</strong> from "unlock my screen":
+      <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; margin: 5px 0;"><code>e_test = [0.21, -0.14, 0.39, 0.10, -0.28, 0.17, -0.25, 0.33, 0.09, -0.20, ...]</code></pre>
+    </div>
+  </div>
+  
+  <div style="background: #fff3e0; padding: 15px; border-radius: 5px; margin-top: 10px; border-left: 4px solid #ff9800;">
+    <strong>❓ Question:</strong> Calculate the cosine similarity and determine if this passes verification (threshold = 0.40).
+  </div>
+</div>
 
-Test embedding from "unlock my screen":
-```
-e_test = [0.21, -0.14, 0.39, 0.10, -0.28, 0.17, -0.25, 0.33, 0.09, -0.20, ...]
-```
-
-**Question:** Calculate the cosine similarity and determine if this passes verification (threshold = 0.40).
-
-**Solution:**
-
-Step 1: Compute dot product (for first 10 dimensions):
-```
-dot = 0.23×0.21 + (-0.15)×(-0.14) + 0.42×0.39 + 0.08×0.10 + (-0.31)×(-0.28) 
+<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 15px 0;">
+  <h4 style="margin-top: 0; color: #2e7d32;">✅ Step-by-Step Solution</h4>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+    <strong style="color: #1565c0;">Step 1: Compute Dot Product</strong> (for first 10 dimensions)
+    <pre style="background: #f5f5f5; padding: 12px; border-radius: 5px; overflow-x: auto; margin: 8px 0; font-size: 0.9em;"><code>dot = 0.23×0.21 + (-0.15)×(-0.14) + 0.42×0.39 + 0.08×0.10 + (-0.31)×(-0.28) 
     + 0.19×0.17 + (-0.27)×(-0.25) + 0.35×0.33 + 0.11×0.09 + (-0.22)×(-0.20)
     = 0.0483 + 0.0210 + 0.1638 + 0.0080 + 0.0868 + 0.0323 + 0.0675 + 0.1155 + 0.0099 + 0.0440
-    = 0.5971
-```
-
-Step 2: Compute norms:
-```
-||e_enrolled||² = 0.23² + 0.15² + 0.42² + ... = 0.4823
-||e_enrolled|| = 0.6945
-
-||e_test||² = 0.21² + 0.14² + 0.39² + ... = 0.4149
-||e_test|| = 0.6441
-```
-
-Step 3: Cosine similarity:
-```
-sim = 0.5971 / (0.6945 × 0.6441) = 0.5971 / 0.4474 = 1.335
-```
-
-Note: The above calculation is for illustration. With full 192D L2-normalized embeddings:
-```
-Full cosine similarity: 0.847 (actual VBI output)
-```
-
-**Conclusion:** 0.847 > 0.40 → **PASS** ✓
+    = 0.5971</code></pre>
+  </div>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+    <strong style="color: #1565c0;">Step 2: Compute Norms</strong>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px;">
+      <div style="background: #e3f2fd; padding: 10px; border-radius: 5px;">
+        <strong>||e_enrolled||</strong><br/>
+        <code>||e_enrolled||² = 0.4823</code><br/>
+        <code>||e_enrolled|| = 0.6945</code>
+      </div>
+      <div style="background: #fff3e0; padding: 10px; border-radius: 5px;">
+        <strong>||e_test||</strong><br/>
+        <code>||e_test||² = 0.4149</code><br/>
+        <code>||e_test|| = 0.6441</code>
+      </div>
+    </div>
+  </div>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+    <strong style="color: #1565c0;">Step 3: Cosine Similarity</strong>
+    <pre style="background: #f5f5f5; padding: 12px; border-radius: 5px; overflow-x: auto; margin: 8px 0; font-size: 0.9em;"><code>sim = 0.5971 / (0.6945 × 0.6441) = 0.5971 / 0.4474 = 1.335</code></pre>
+    <div style="background: #fff9c4; padding: 10px; border-radius: 5px; margin-top: 8px;">
+      <small>ℹ️ <strong>Note:</strong> The above calculation is for illustration. With full 192D L2-normalized embeddings:</small>
+      <div style="text-align: center; margin-top: 5px;">
+        <strong style="font-size: 1.2em; color: #4caf50;">Full cosine similarity: 0.847</strong> (actual VBI output)
+      </div>
+    </div>
+  </div>
+  
+  <div style="background: #4caf50; color: white; padding: 15px; border-radius: 5px; margin-top: 10px; text-align: center;">
+    <strong style="font-size: 1.1em;">✅ Conclusion:</strong> 0.847 > 0.40 → <strong>PASS</strong> ✓
+  </div>
+</div>
 
 ---
 
@@ -2710,57 +3136,172 @@ success = not screen_locked
 
 ### R&D Summary: Why VBI Works
 
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 10px; color: white; margin: 30px 0;">
+  <h3 style="color: white; margin-top: 0;">🎯 Why VBI Achieves 98% Accuracy</h3>
+  <p style="margin-bottom: 0;">
+    The VBI system combines mathematically proven foundations, physical principles, and defense-in-depth architecture to achieve industry-leading accuracy.
+  </p>
+</div>
+
 #### 1. Mathematical Foundation
 
-The VBI system is built on **mathematically proven** foundations:
-
-- **Cosine similarity** is the optimal metric for normalized embeddings (Proof 1)
-- **Bayesian fusion** provably improves accuracy over single sources (Proof 2)
-- **Adaptive thresholding** minimizes total error rate (Proof 3)
+<div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #2e7d32;">📐 Built on Proven Mathematics</h4>
+  <p>The VBI system is built on <strong>mathematically proven</strong> foundations:</p>
+  
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+    <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #4caf50;">
+      <strong>Cosine Similarity</strong><br/>
+      <small>Optimal metric for normalized embeddings</small><br/>
+      <small style="color: #666;">(Proof 1)</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #2196f3;">
+      <strong>Bayesian Fusion</strong><br/>
+      <small>Provably improves accuracy</small><br/>
+      <small style="color: #666;">(Proof 2)</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #ff9800;">
+      <strong>Adaptive Thresholding</strong><br/>
+      <small>Minimizes total error rate</small><br/>
+      <small style="color: #666;">(Proof 3)</small>
+    </div>
+  </div>
+</div>
 
 #### 2. Physical Grounding
 
-PAVA leverages **fundamental physics** that cannot be spoofed:
-
-- **Vocal tract length** is anatomically fixed for each person
-- **Reverberation** depends on physical room characteristics
-- **Doppler effect** requires physical movement
-- **Jitter/shimmer** arise from biological voice production
+<div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #1565c0;">🔬 Physics-Based Security</h4>
+  <p>PAVA leverages <strong>fundamental physics</strong> that cannot be spoofed:</p>
+  
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 15px;">
+    <div style="background: white; padding: 15px; border-radius: 5px;">
+      <strong style="color: #4caf50;">🎤 Vocal Tract Length</strong><br/>
+      <small>Anatomically fixed for each person</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px;">
+      <strong style="color: #2196f3;">🏠 Reverberation</strong><br/>
+      <small>Depends on physical room characteristics</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px;">
+      <strong style="color: #ff9800;">🌊 Doppler Effect</strong><br/>
+      <small>Requires physical movement</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px;">
+      <strong style="color: #e91e63;">📊 Jitter/Shimmer</strong><br/>
+      <small>Arise from biological voice production</small>
+    </div>
+  </div>
+</div>
 
 #### 3. Defense in Depth
 
-Multiple independent verification layers:
-
-```
-Layer 1: ECAPA-TDNN (95% accuracy alone)
-    +
-Layer 2: Anti-spoofing (99% detection)
-    +
-Layer 3: Contextual priors (92% base)
-    =
-Combined: 98% accuracy with 99.7% spoof detection
-```
+<div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #e65100;">🛡️ Multi-Layer Security Architecture</h4>
+  
+  <div style="background: white; padding: 20px; border-radius: 5px; margin-top: 15px;">
+    <div style="text-align: center; margin-bottom: 15px;">
+      <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+        <strong style="color: #2e7d32;">Layer 1: ECAPA-TDNN</strong><br/>
+        <span style="font-size: 1.2em; color: #4caf50;">95% accuracy</span> (alone)
+      </div>
+      <div style="font-size: 1.5em; color: #666; margin: 5px 0;">+</div>
+      <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+        <strong style="color: #1565c0;">Layer 2: Anti-Spoofing</strong><br/>
+        <span style="font-size: 1.2em; color: #2196f3;">99% detection</span> rate
+      </div>
+      <div style="font-size: 1.5em; color: #666; margin: 5px 0;">+</div>
+      <div style="background: #f3e5f5; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+        <strong style="color: #7b1fa2;">Layer 3: Contextual Priors</strong><br/>
+        <span style="font-size: 1.2em; color: #9c27b0;">92% base</span> probability
+      </div>
+      <div style="font-size: 1.5em; color: #666; margin: 10px 0;">=</div>
+      <div style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; padding: 20px; border-radius: 5px;">
+        <strong style="font-size: 1.3em;">Combined Result</strong><br/>
+        <span style="font-size: 2em; font-weight: bold;">98% accuracy</span><br/>
+        <small>with 99.7% spoof detection</small>
+      </div>
+    </div>
+  </div>
+</div>
 
 #### 4. Continuous Learning
 
-The system improves with every use:
-
-```
-Week 1:  Accuracy 94% (learning Derek's voice)
-Week 4:  Accuracy 96% (patterns established)
-Week 12: Accuracy 98% (fully adapted)
-```
+<div style="background: #f3e5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #7b1fa2;">📈 Adaptive Improvement Over Time</h4>
+  <p>The system improves with every use:</p>
+  
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+    <div style="background: white; padding: 15px; border-radius: 5px; text-align: center; border-left: 4px solid #ff9800;">
+      <strong>Week 1</strong><br/>
+      <span style="font-size: 1.5em; color: #ff9800;">94%</span><br/>
+      <small style="color: #666;">Learning Derek's voice</small>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 5px; text-align: center; border-left: 4px solid #2196f3;">
+      <strong>Week 4</strong><br/>
+      <span style="font-size: 1.5em; color: #2196f3;">96%</span><br/>
+      <small style="color: #666;">Patterns established</small>
+    </div>
+    <div style="background: #4caf50; color: white; padding: 15px; border-radius: 5px; text-align: center; border-left: 4px solid #2e7d32;">
+      <strong>Week 12</strong><br/>
+      <span style="font-size: 1.5em; font-weight: bold;">98%</span><br/>
+      <small>Fully adapted ✅</small>
+    </div>
+  </div>
+</div>
 
 #### 5. Fail-Safe Design
 
-Even with component failures, security is maintained:
+<div style="background: #ffebee; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <h4 style="margin-top: 0; color: #c62828;">🛡️ Graceful Degradation</h4>
+  <p>Even with component failures, security is maintained:</p>
+  
+  <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+      <div style="padding: 10px; background: #fff3e0; border-radius: 5px;">
+        <strong>ECAPA fails</strong><br/>
+        <small>→ Use cached embedding (last 24h)</small>
+      </div>
+      <div style="padding: 10px; background: #e3f2fd; border-radius: 5px;">
+        <strong>PAVA fails</strong><br/>
+        <small>→ Require higher ECAPA threshold (0.60)</small>
+      </div>
+      <div style="padding: 10px; background: #f3e5f5; border-radius: 5px;">
+        <strong>Bayesian fails</strong><br/>
+        <small>→ Use simple threshold decision</small>
+      </div>
+      <div style="padding: 10px; background: #ffebee; border-radius: 5px;">
+        <strong>All ML fails</strong><br/>
+        <small>→ Fallback to password-only</small>
+      </div>
+    </div>
+  </div>
+</div>
 
-```
-If ECAPA fails → Use cached embedding (last 24h)
-If PAVA fails → Require higher ECAPA threshold (0.60)
-If Bayesian fails → Use simple threshold decision
-If all ML fails → Fallback to password-only
-```
+---
+
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px; color: white; margin: 40px 0; text-align: center;">
+  <h2 style="color: white; margin-top: 0;">🎓 Mathematics & Physics Section Complete</h2>
+  <p style="font-size: 1.1em; margin-bottom: 0;">
+    You've explored the mathematical foundations, physical principles, proofs, and real-world examples that make VBI achieve <strong>98% accuracy</strong> with <strong>99.7% spoof detection</strong>.
+  </p>
+  <div style="margin-top: 20px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+    <div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 5px;">
+      <strong>10 Sections</strong><br/>
+      <small>Comprehensive coverage</small>
+    </div>
+    <div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 5px;">
+      <strong>3 Proofs</strong><br/>
+      <small>Mathematical rigor</small>
+    </div>
+    <div style="background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 5px;">
+      <strong>4 Problems</strong><br/>
+      <small>Practice examples</small>
+    </div>
+  </div>
+</div>
+
+---
 
 ---
 
