@@ -1,28 +1,12 @@
 # 🔐 Voice Biometric Intelligence (VBI) Architecture Documentation
 
-<!-- MathJax for Mathematical Equations -->
-<script>
-  MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']],
-      displayMath: [['$$', '$$'], ['\\[', '\\]']],
-      processEscapes: true,
-      processEnvironments: true
-    },
-    options: {
-      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
-    }
-  };
-</script>
-<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3; margin: 20px 0;">
-  <strong>📊 Visual Rendering:</strong>
-  <ul style="margin: 10px 0 0 0;">
-    <li><strong>Diagrams:</strong> All diagrams use standard Mermaid.js syntax and will render as visual flowcharts, sequence diagrams, and state diagrams in GitHub, VS Code with Mermaid extension, and other compatible viewers.</li>
-    <li><strong>Mathematics:</strong> All equations use MathJax/LaTeX syntax and will display with proper mathematical notation (Greek letters, subscripts, superscripts, integrals, summations, etc.) when viewed in compatible viewers.</li>
-  </ul>
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
+  <h3 style="color: white; margin-top: 0;">📊 Document Rendering Guide</h3>
+  <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-top: 15px;">
+    <p style="margin: 5px 0;"><strong>🎨 Diagrams:</strong> All diagrams use Mermaid.js and render as visual diagrams in GitHub, VS Code, GitLab, and other Mermaid-compatible viewers.</p>
+    <p style="margin: 5px 0;"><strong>🔢 Mathematics:</strong> All equations use LaTeX notation with GitHub's native math rendering. Math will display properly when viewed on GitHub or in viewers that support LaTeX math blocks.</p>
+    <p style="margin: 5px 0; font-size: 0.9em; opacity: 0.9;">💡 <em>For best viewing experience, open this document on GitHub where both Mermaid diagrams and LaTeX equations render natively.</em></p>
+  </div>
 </div>
 
 ## Advanced Voice Authentication System for JARVIS AI Agent
@@ -1472,11 +1456,10 @@ When Derek says "Hey JARVIS, unlock my screen," the analog sound wave is digitiz
 <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0;">
   <h4 style="margin-top: 0; color: #e65100;">📐 Sampling Theorem (Nyquist-Shannon)</h4>
   
-  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #ff9800; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="font-size: 1.5em; color: #e65100; font-weight: bold; margin: 0;">
-      $$f_s \geq 2 \cdot f_{max}$$
-    </div>
-  </div>
+  
+
+$$f_s \geq 2 \cdot f_{max}$$
+
   
   <table style="width: 100%; margin-top: 10px;">
     <tr>
@@ -1509,11 +1492,10 @@ The audio signal is transformed from time domain to frequency domain:
 <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
   <h4 style="margin-top: 0; color: #7b1fa2;">🔄 Time → Frequency Transformation</h4>
   
-  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold; margin: 0;">
-      $$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j \frac{2\pi kn}{N}}$$
-    </div>
-  </div>
+  
+
+$$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j \frac{2\pi kn}{N}}$$
+
   
   <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
     <div style="background: white; padding: 10px; border-radius: 5px;">
@@ -1552,20 +1534,18 @@ magnitude_spectrum = np.abs(audio_fft)</code></pre>
 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 15px 0;">
   <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
     <h4 style="margin-top: 0; color: #2e7d32;">📈 Mel Scale Conversion</h4>
-    <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #4caf50; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-      <div style="font-size: 1.4em; color: #2e7d32; font-weight: bold; margin: 0;">
-        $$m = 2595 \cdot \log_{10}\left(1 + \frac{f}{700}\right)$$
-      </div>
-    </div>
+    
+
+$$m = 2595 \cdot \log_{10}\left(1 + \frac{f}{700}\right)$$
+
   </div>
   
   <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
     <h4 style="margin-top: 0; color: #1565c0;">📉 Inverse Mel Scale</h4>
-    <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-      <div style="font-size: 1.4em; color: #1565c0; font-weight: bold; margin: 0;">
-        $$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
-      </div>
-    </div>
+    
+
+$$f = 700 \cdot \left(10^{m/2595} - 1\right)$$
+
   </div>
 </div>
 
@@ -1640,11 +1620,10 @@ After applying Mel filterbanks, we compute MFCCs:
 <div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin: 15px 0;">
   <h4 style="margin-top: 0; color: #0277bd;">🎵 MFCC Formula</h4>
   
-  <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 10px 0; border: 2px solid #00bcd4; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="font-size: 1.4em; color: #0277bd; font-weight: bold; margin: 0;">
-      $$c_n = \sum_{m=1}^{M} \log(S_m) \cdot \cos\left(\frac{\pi n (m - 0.5)}{M}\right)$$
-    </div>
-  </div>
+  
+
+$$c_n = \sum_{m=1}^{M} \log(S_m) \cdot \cos\left(\frac{\pi n (m - 0.5)}{M}\right)$$
+
   
   <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;">
     <div style="background: white; padding: 10px; border-radius: 5px;">
@@ -1715,6 +1694,7 @@ TDNN processes temporal context using 1D convolutions:
   <div style="background: white; padding: 15px; border-radius: 5px; text-align: center; margin: 10px 0;">
     <p style="font-size: 1.1em; margin: 0;">
       $$y_t = \sum_{i=-k}^{k} w_i \cdot x_{t+i} + b$$
+
     </p>
   </div>
   
@@ -1767,19 +1747,15 @@ SE blocks provide channel attention:
 
 **Squeeze Operation (Global Average Pooling):**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
-    $$z_c = \frac{1}{T} \sum_{t=1}^{T} x_c^t$$
-  </div>
-</div>
+
+$$z_c = \frac{1}{T} \sum_{t=1}^{T} x_c^t$$
+
 
 **Excitation Operation:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
-    $$s = \sigma(W_2 \cdot \text{ReLU}(W_1 \cdot z))$$
-  </div>
-</div>
+
+$$s = \sigma(W_2 \cdot \text{ReLU}(W_1 \cdot z))$$
+
 
 Where:
 - $z \in \mathbb{R}^C$ = channel statistics
@@ -1789,11 +1765,9 @@ Where:
 
 **Final Scaling:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #2196f3; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.5em; color: #1565c0; font-weight: bold;">
-    $$\tilde{x}_c = s_c \cdot x_c$$
-  </div>
-</div>
+
+$$\tilde{x}_c = s_c \cdot x_c$$
+
 
 <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">
   <strong>🔬 Why SE Blocks Work (R&D Insight):</strong>
@@ -1825,6 +1799,7 @@ Res2Net splits channels into scales for multi-resolution processing:
     K_i(x_i) & i = 2 \\
     K_i(x_i + y_{i-1}) & 2 < i \leq s
     \end{cases}$$
+
 ```
 </div>
 
@@ -1868,35 +1843,27 @@ Converts variable-length audio to fixed 192D embedding:
 
 **Attention Weights:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
-    $$\alpha_t = \frac{\exp(v^T h_t)}{\sum_{\tau=1}^{T} \exp(v^T h_\tau)}$$
-  </div>
-</div>
+
+$$\alpha_t = \frac{\exp(v^T h_t)}{\sum_{\tau=1}^{T} \exp(v^T h_\tau)}$$
+
 
 **Weighted Mean:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
-    $$\mu = \sum_{t=1}^{T} \alpha_t \cdot h_t$$
-  </div>
-</div>
+
+$$\mu = \sum_{t=1}^{T} \alpha_t \cdot h_t$$
+
 
 **Weighted Standard Deviation:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
-    $$\sigma = \sqrt{\sum_{t=1}^{T} \alpha_t \cdot h_t^2 - \mu^2}$$
-  </div>
-</div>
+
+$$\sigma = \sqrt{\sum_{t=1}^{T} \alpha_t \cdot h_t^2 - \mu^2}$$
+
 
 **Final Embedding:**
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #4caf50; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.4em; color: #2e7d32; font-weight: bold;">
-    $$e = [\mu; \sigma] \in \mathbb{R}^{192}$$
-  </div>
-</div>
+
+$$e = [\mu; \sigma] \in \mathbb{R}^{192}$$
+
 
 **Why Attentive Pooling Works:**
 
@@ -1968,6 +1935,7 @@ Given two speaker embeddings $e_1, e_2 \in \mathbb{R}^{192}$:
 <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 20px 0; border: 2px solid #ff9800; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
   <div style="font-size: 1.3em; color: #e65100; font-weight: bold;">
     $$\text{sim}(e_1, e_2) = \frac{e_1 \cdot e_2}{\|e_1\| \cdot \|e_2\|} = \frac{\sum_{i=1}^{192} e_1^{(i)} \cdot e_2^{(i)}}{\sqrt{\sum_{i=1}^{192} (e_1^{(i)})^2} \cdot \sqrt{\sum_{i=1}^{192} (e_2^{(i)})^2}}$$
+
 ```
 </div>
 
@@ -2022,6 +1990,7 @@ $$\text{Decision} = \begin{cases}
   <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
     <div style="font-size: 1.5em; color: #7b1fa2; font-weight: bold; margin: 0;">
       $$P(\text{Owner} | \text{Evidence}) = \frac{P(\text{Evidence} | \text{Owner}) \cdot P(\text{Owner})}{P(\text{Evidence})}$$
+
 ```
   </div>
   
@@ -2056,6 +2025,7 @@ VBI combines multiple evidence sources:
 <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
   <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
     $$P(\text{Evidence} | \text{Owner}) = \prod_{i=1}^{n} P(E_i | \text{Owner})$$
+
 ```
 </div>
 
@@ -2072,11 +2042,9 @@ $$\log P(\text{Evidence} | \text{Owner}) = \sum_{i=1}^{n} \log P(E_i | \text{Own
 
 #### 4.3 Adaptive Prior Computation
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.4em; color: #7b1fa2; font-weight: bold;">
-    $$P(\text{Owner}) = \sum_{j=1}^{m} w_j \cdot P_j(\text{Owner})$$
-  </div>
-</div>
+
+$$P(\text{Owner}) = \sum_{j=1}^{m} w_j \cdot P_j(\text{Owner})$$
+
 
 **Prior Factors:**
 
@@ -2107,6 +2075,7 @@ P(Owner) = 0.15(0.85) + 0.25(0.95) + 0.20(0.90) + 0.20(0.92) + 0.20(0.95)
 <div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 25px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #9c27b0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
   <div style="font-size: 1.3em; color: #7b1fa2; font-weight: bold;">
     $$P(\text{Owner} | E) = \frac{P(E | \text{Owner}) \cdot P(\text{Owner})}{P(E | \text{Owner}) \cdot P(\text{Owner}) + P(E | \text{Impostor}) \cdot P(\text{Impostor})}$$
+
 ```
 </div>
 
@@ -2163,11 +2132,9 @@ Human voice production follows the source-filter model:
 
 #### 5.2 Fundamental Frequency (F0)
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #e91e63; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.5em; color: #c2185b; font-weight: bold;">
-    $$F_0 = \frac{1}{T_0}$$
-  </div>
-</div>
+
+$$F_0 = \frac{1}{T_0}$$
+
 
 Where $T_0$ is the period of vocal fold vibration.
 
@@ -2180,11 +2147,9 @@ Where $T_0$ is the period of vocal fold vibration.
 
 Formants are resonances of the vocal tract, determined by its shape:
 
-<div style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); padding: 20px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px solid #e91e63; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  <div style="font-size: 1.5em; color: #c2185b; font-weight: bold;">
-    $$F_n = \frac{(2n-1) \cdot c}{4L}$$
-  </div>
-</div>
+
+$$F_n = \frac{(2n-1) \cdot c}{4L}$$
+
 
 Where:
 - $c$ = speed of sound (~343 m/s)
@@ -2228,6 +2193,7 @@ Derek's VTL: 15.7 cm ✓ (consistent with male speaker)
 $$z_{VTL} = \frac{|\text{VTL}_{test} - \text{VTL}_{enrolled}|}{\sigma_{VTL}}$$
 
 **Decision Rule:**
+
 $$\text{Pass} \iff z_{VTL} < 2.0$$
 
 **Example:**
