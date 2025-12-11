@@ -2629,7 +2629,13 @@ class SpeakerVerificationService:
                 # Start ECAPA loading as background task to keep init fast
                 # but ensure it gets loaded before first verification attempt
                 ecapa_load_timeout = float(os.environ.get("ECAPA_LOAD_TIMEOUT", "60.0"))
-                ecapa_allow_cloud = os.environ.get("ECAPA_ALLOW_CLOUD", "true").lower() == "true"
+
+                # 🆕 EDGE-NATIVE: In edge-native mode, NEVER allow cloud ECAPA
+                if self._edge_config.enabled and self._edge_config.local_ecapa_only:
+                    ecapa_allow_cloud = False
+                    logger.info("🌐 [EDGE-NATIVE] Cloud ECAPA disabled - local only")
+                else:
+                    ecapa_allow_cloud = os.environ.get("ECAPA_ALLOW_CLOUD", "true").lower() == "true"
 
                 # Use asyncio.create_task to load in background, but also await briefly
                 # to ensure the loading has at least started
@@ -2694,6 +2700,21 @@ class SpeakerVerificationService:
             logger.info(f"🔄 Starting profile auto-reload (check every {self.reload_check_interval}s)...")
             self._reload_task = asyncio.create_task(self._profile_reload_monitor())
             logger.info("✅ Profile hot reload enabled - updates will be detected automatically")
+
+        # 🆕 EDGE-NATIVE: Start async cloud sync worker (background, never blocks)
+        if self._edge_config.enabled and self._edge_config.cloud_sync_enabled:
+            logger.info(f"☁️ Starting async cloud sync worker (interval: {self._edge_config.cloud_sync_interval_seconds}s)...")
+            self._cloud_sync_task = asyncio.create_task(self._start_cloud_sync_worker())
+        elif self._edge_config.enabled:
+            logger.info("☁️ Edge-Native mode: Cloud sync disabled")
+
+        # 🆕 EDGE-NATIVE: Check local DB availability
+        if self._edge_config.enabled:
+            self._local_db_available = await self._check_local_db_available()
+            if self._local_db_available:
+                logger.info(f"📂 Local SQLite database ready: {self._local_db_path}")
+            else:
+                logger.warning(f"⚠️ Local SQLite database not found: {self._local_db_path}")
 
         # 🚀 UNIFIED CACHE: Connect for instant recognition fast-path
         try:
@@ -5636,21 +5657,47 @@ class SpeakerVerificationService:
 
     async def _check_local_db_available(self) -> bool:
         """Check if local SQLite database is available and has profiles."""
+        if not os.path.exists(self._local_db_path):
+            return False
+
+        # Try aiosqlite first (async), fallback to sqlite3 (sync in executor)
         try:
             import aiosqlite
-            if not os.path.exists(self._local_db_path):
-                return False
-
             async with aiosqlite.connect(self._local_db_path) as db:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM speaker_profiles WHERE embedding_data IS NOT NULL"
+                    "SELECT COUNT(*) FROM speaker_profiles WHERE voiceprint_embedding IS NOT NULL"
                 )
                 row = await cursor.fetchone()
                 count = row[0] if row else 0
                 self._local_db_available = count > 0
                 if self._local_db_available:
-                    logger.debug(f"📂 Local DB available with {count} profiles")
+                    logger.debug(f"📂 Local DB available with {count} profiles (aiosqlite)")
                 return self._local_db_available
+        except ImportError:
+            # Fallback to sync sqlite3 in executor
+            pass
+        except Exception as e:
+            logger.debug(f"aiosqlite check failed: {e}")
+
+        # Fallback: sync sqlite3 in thread executor
+        try:
+            import sqlite3
+
+            def _sync_check():
+                conn = sqlite3.connect(self._local_db_path, timeout=2.0)
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM speaker_profiles WHERE voiceprint_embedding IS NOT NULL"
+                )
+                row = cursor.fetchone()
+                conn.close()
+                return row[0] if row else 0
+
+            loop = asyncio.get_event_loop()
+            count = await loop.run_in_executor(None, _sync_check)
+            self._local_db_available = count > 0
+            if self._local_db_available:
+                logger.debug(f"📂 Local DB available with {count} profiles (sqlite3)")
+            return self._local_db_available
         except Exception as e:
             logger.debug(f"Local DB check failed: {e}")
             return False
@@ -5662,10 +5709,50 @@ class SpeakerVerificationService:
         Returns:
             dict: Mapping of speaker_name -> has_updates (bool)
         """
+        updates = {}
+
+        def _process_profiles(profiles: list) -> dict:
+            """Process profile rows into updates dict."""
+            result = {}
+            for profile in profiles:
+                # Handle both dict-like and tuple rows
+                if hasattr(profile, 'keys'):
+                    speaker_name = profile['speaker_name']
+                    last_updated = profile['last_updated']
+                    total_samples = profile['total_samples']
+                    quality_score = profile['enrollment_quality_score']
+                    feature_version = profile['feature_extraction_version']
+                else:
+                    speaker_name, _, last_updated, total_samples, quality_score, feature_version = profile
+
+                current_fingerprint = {
+                    'updated_at': str(last_updated) if last_updated else None,
+                    'total_samples': total_samples,
+                    'quality_score': quality_score,
+                    'feature_version': feature_version,
+                }
+
+                if speaker_name not in self.profile_version_cache:
+                    self.profile_version_cache[speaker_name] = current_fingerprint
+                    result[speaker_name] = True
+                else:
+                    cached = self.profile_version_cache[speaker_name]
+                    has_changed = any([
+                        cached.get('updated_at') != current_fingerprint['updated_at'],
+                        cached.get('total_samples') != current_fingerprint['total_samples'],
+                        cached.get('quality_score') != current_fingerprint['quality_score'],
+                        cached.get('feature_version') != current_fingerprint['feature_version'],
+                    ])
+                    if has_changed:
+                        self.profile_version_cache[speaker_name] = current_fingerprint
+                        result[speaker_name] = True
+                    else:
+                        result[speaker_name] = False
+            return result
+
+        # Try aiosqlite first (async)
         try:
             import aiosqlite
-            updates = {}
-
             async with aiosqlite.connect(self._local_db_path) as db:
                 db.row_factory = aiosqlite.Row
                 cursor = await db.execute(
@@ -5673,38 +5760,38 @@ class SpeakerVerificationService:
                     SELECT speaker_name, speaker_id, last_updated, total_samples,
                            enrollment_quality_score, feature_extraction_version
                     FROM speaker_profiles
-                    WHERE embedding_data IS NOT NULL
+                    WHERE voiceprint_embedding IS NOT NULL
                     """
                 )
                 profiles = await cursor.fetchall()
+                return _process_profiles(profiles)
+        except ImportError:
+            pass  # Fall through to sqlite3
+        except Exception as e:
+            logger.debug(f"aiosqlite profile fetch failed: {e}")
 
-                for profile in profiles:
-                    speaker_name = profile['speaker_name']
-                    current_fingerprint = {
-                        'updated_at': str(profile['last_updated']) if profile['last_updated'] else None,
-                        'total_samples': profile['total_samples'],
-                        'quality_score': profile['enrollment_quality_score'],
-                        'feature_version': profile['feature_extraction_version'],
-                    }
+        # Fallback: sync sqlite3 in thread executor
+        try:
+            import sqlite3
 
-                    if speaker_name not in self.profile_version_cache:
-                        self.profile_version_cache[speaker_name] = current_fingerprint
-                        updates[speaker_name] = True
-                    else:
-                        cached = self.profile_version_cache[speaker_name]
-                        has_changed = any([
-                            cached.get('updated_at') != current_fingerprint['updated_at'],
-                            cached.get('total_samples') != current_fingerprint['total_samples'],
-                            cached.get('quality_score') != current_fingerprint['quality_score'],
-                            cached.get('feature_version') != current_fingerprint['feature_version'],
-                        ])
-                        if has_changed:
-                            self.profile_version_cache[speaker_name] = current_fingerprint
-                            updates[speaker_name] = True
-                        else:
-                            updates[speaker_name] = False
+            def _sync_fetch():
+                conn = sqlite3.connect(self._local_db_path, timeout=2.0)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(
+                    """
+                    SELECT speaker_name, speaker_id, last_updated, total_samples,
+                           enrollment_quality_score, feature_extraction_version
+                    FROM speaker_profiles
+                    WHERE voiceprint_embedding IS NOT NULL
+                    """
+                )
+                rows = cursor.fetchall()
+                conn.close()
+                return rows
 
-            return updates
+            loop = asyncio.get_event_loop()
+            profiles = await loop.run_in_executor(None, _sync_fetch)
+            return _process_profiles(profiles)
         except Exception as e:
             logger.debug(f"Local DB profile check failed: {e}")
             return {}
