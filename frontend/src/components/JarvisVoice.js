@@ -1700,18 +1700,33 @@ const JarvisVoice = () => {
         console.log('%c[VBI Progress]', 'color: #00bfff; font-weight: bold',
           `${vbiStage} (${vbiProgress}%) - ${vbiMessage}`);
 
+        // Determine if verification was successful based on available data
+        // Success indicators: explicit success flag, no error with 100% progress, stage is 'complete' with speaker
+        const hasExplicitSuccess = data.success === true || data.status === 'success';
+        const hasError = !!data.error || data.success === false || data.status === 'failed' || data.status === 'error';
+        const isCompleteWithSpeaker = vbiStage === 'complete' && (data.speaker || data.confidence > 0);
+        const isSuccessfulCompletion = vbiProgress >= 100 && !hasError;
+        
+        // Determine overall success status
+        const isSuccess = hasExplicitSuccess || (isCompleteWithSpeaker && !hasError) || (isSuccessfulCompletion && (data.speaker || data.confidence));
+        
+        // Determine status for display (success/failed/in_progress)
+        const displayStatus = hasError ? 'failed' : isSuccess ? 'success' : vbiProgress < 100 ? 'in_progress' : 'success';
+
         // Update VBI progress state with normalized data
         setVbiProgress({
           stage: vbiStage,
           stageName: data.stage_name || vbiStage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
           stageIcon: getStageIcon(vbiStage),
           progress: vbiProgress,
-          status: vbiMessage,
+          status: displayStatus,  // Use computed status ('success', 'failed', 'in_progress')
+          statusMessage: vbiMessage,  // Keep the original message separately
           message: vbiMessage,
           details: data.details || {},
           error: data.error,
           traceId: data.trace_id,
           timestamp: data.timestamp,
+          isSuccess: isSuccess,  // Explicit boolean for success state
           // Cloud-First specific fields
           confidence: data.confidence,
           speaker: data.speaker,
@@ -1728,8 +1743,8 @@ const JarvisVoice = () => {
         const progressThresholds = [25, 50, 75, 100];
         const shouldAddStage = progressThresholds.includes(vbiProgress) || 
                                vbiStage === 'complete' || 
-                               data.status === 'success' || 
-                               data.status === 'failed';
+                               displayStatus === 'success' || 
+                               displayStatus === 'failed';
         
         if (shouldAddStage) {
           setVbiStages(prevStages => {
@@ -1741,11 +1756,14 @@ const JarvisVoice = () => {
               stage: vbiStage,
               stageName: data.stage_name || vbiStage,
               stageIcon: getStageIcon(vbiStage),
-              status: vbiMessage,
+              status: displayStatus,  // Use computed status for history too
+              statusMessage: vbiMessage,
               progress: vbiProgress,
               details: data.details || {},
               error: data.error,
-              confidence: data.confidence
+              confidence: data.confidence,
+              speaker: data.speaker,
+              isSuccess: isSuccess
             }];
           });
         }
@@ -1828,6 +1846,28 @@ const JarvisVoice = () => {
         const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
         setResponse(voiceUnlockText);
         setIsProcessing(false);
+
+        // Update VBI progress with final result from voice_unlock message
+        // This ensures the UI displays the correct success/failure status
+        const unlockSuccess = data.success === true;
+        const unlockSpeakerName = data.speaker_name || data.speaker || (data.vbi_trace?.speaker_name);
+        const unlockConfidence = data.confidence || (data.vbi_trace?.confidence) || 0;
+        
+        setVbiProgress(prev => prev ? {
+          ...prev,
+          stage: 'complete',
+          stageName: 'Complete',
+          status: unlockSuccess ? 'success' : (data.success === false ? 'failed' : prev.status),
+          isSuccess: unlockSuccess,
+          speaker: unlockSpeakerName,
+          confidence: unlockConfidence,
+          error: unlockSuccess ? null : (data.error || prev.error),
+          details: {
+            ...prev.details,
+            speaker: unlockSpeakerName,
+            confidence: unlockConfidence
+          }
+        } : null);
 
         // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
@@ -4661,13 +4701,20 @@ const JarvisVoice = () => {
           {/* Result Display */}
           {vbiProgress.stage === 'complete' && (
             <div className={`vbi-result ${vbiProgress.status}`}>
-              {vbiProgress.status === 'success' ? (
+              {vbiProgress.isSuccess || vbiProgress.status === 'success' ? (
                 <span className="vbi-result-text">
-                  Welcome, {vbiProgress.details?.speaker || 'User'} ({((vbiProgress.details?.confidence || 0) * 100).toFixed(1)}% confidence)
+                  ✅ Welcome, {vbiProgress.speaker || vbiProgress.details?.speaker || 'User'} 
+                  {(vbiProgress.confidence || vbiProgress.details?.confidence) > 0 && 
+                    ` (${((vbiProgress.confidence || vbiProgress.details?.confidence || 0) * 100).toFixed(1)}% confidence)`
+                  }
+                </span>
+              ) : vbiProgress.error ? (
+                <span className="vbi-result-text">
+                  ❌ Verification Failed: {vbiProgress.error}
                 </span>
               ) : (
                 <span className="vbi-result-text">
-                  Verification Failed: {vbiProgress.error || 'Unknown error'}
+                  ⏳ Verification Complete
                 </span>
               )}
             </div>
