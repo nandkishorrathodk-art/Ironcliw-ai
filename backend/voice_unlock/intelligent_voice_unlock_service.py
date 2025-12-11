@@ -5107,16 +5107,51 @@ async def process_voice_unlock_robust(
     audio_data: str,
     sample_rate: int = 16000,
     mime_type: str = "audio/webm",
-    progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
+    progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    enable_voice_feedback: bool = True
 ) -> Dict[str, Any]:
     """
-    Robust voice unlock with hard timeouts and parallel processing.
+    Robust voice unlock with hard timeouts, parallel processing, and
+    real-time Daniel voice feedback for transparent VBI communication.
+
     GUARANTEED to return within MAX_TOTAL_TIMEOUT seconds.
+
+    Args:
+        command: The voice command text
+        audio_data: Base64 encoded audio
+        sample_rate: Audio sample rate
+        mime_type: Audio MIME type
+        progress_callback: Optional WebSocket progress callback
+        enable_voice_feedback: Enable Daniel's voice narration during VBI
+
+    Returns:
+        Dict with success, response, confidence, etc.
     """
     start = time.time()
     stages = []
 
-    async def progress(stage: str, pct: int, msg: str):
+    # Initialize voice communicator for real-time feedback (non-blocking)
+    voice = None
+    if enable_voice_feedback:
+        try:
+            from agi_os.realtime_voice_communicator import get_voice_communicator
+            voice = await asyncio.wait_for(get_voice_communicator(), timeout=2.0)
+        except Exception as e:
+            logger.debug(f"[ROBUST] Voice feedback unavailable: {e}")
+            voice = None
+
+    async def voice_feedback(stage: str, confidence: float = 0.0, speaker: str = "Derek"):
+        """Fire-and-forget voice feedback - never blocks VBI flow."""
+        if voice:
+            try:
+                # Run voice feedback in background task to not block
+                asyncio.create_task(
+                    voice.vbi_stage_feedback(stage, confidence, speaker)
+                )
+            except Exception as e:
+                logger.debug(f"Voice feedback error: {e}")
+
+    async def progress(stage: str, pct: int, msg: str, confidence: float = 0.0):
         if progress_callback:
             try:
                 data = {"type": "vbi_progress", "stage": stage, "progress": pct, "message": msg, "timestamp": time.time()}
@@ -5145,20 +5180,25 @@ async def process_voice_unlock_robust(
             # Validate input
             if not audio_data:
                 logger.error("[ROBUST] No audio data provided!")
+                await voice_feedback("error")
                 return result(False, "No audio data provided", err="audio_data is empty or None")
 
             if not isinstance(audio_data, str):
                 logger.error(f"[ROBUST] Audio data is not string: {type(audio_data)}")
+                await voice_feedback("error")
                 return result(False, "Audio data must be base64 string", err=f"Got {type(audio_data)}")
 
             # Check if base64 looks valid
             if len(audio_data) < 100:
                 logger.error(f"[ROBUST] Audio data too short: {len(audio_data)} chars")
+                await voice_feedback("error")
                 return result(False, "Audio data too short", err=f"Only {len(audio_data)} chars")
 
             logger.info(f"[ROBUST] Audio data preview: {audio_data[:50]}...")
 
+            # 🎙️ STAGE: Init - Voice: "Just a moment, Derek."
             await progress("init", 5, "Starting...")
+            await voice_feedback("init")
 
             # Parallel: decode audio + load profile
             await progress("audio_decode", 15, "Decoding audio...")
@@ -5169,19 +5209,23 @@ async def process_voice_unlock_robust(
                 audio_bytes, ref_emb = await asyncio.gather(audio_task, profile_task, return_exceptions=True)
             except Exception as e:
                 logger.error(f"[ROBUST] Parallel gather failed: {e}")
+                await voice_feedback("error")
                 return result(False, f"Parallel load failed: {e}", err=str(e))
 
             # Check audio decode result
             if isinstance(audio_bytes, Exception):
                 logger.error(f"[ROBUST] Audio decode raised exception: {audio_bytes}")
+                await voice_feedback("error")
                 return result(False, f"Audio decode error: {audio_bytes}", err=str(audio_bytes))
 
             if audio_bytes is None:
                 logger.error("[ROBUST] Audio decode returned None")
+                await voice_feedback("error")
                 return result(False, "Audio decode returned None - check format", err="decode returned None")
 
             if len(audio_bytes) < 100:
                 logger.error(f"[ROBUST] Decoded audio too short: {len(audio_bytes)} bytes")
+                await voice_feedback("error")
                 return result(False, f"Decoded audio too short ({len(audio_bytes)} bytes)", err="decoded audio < 100 bytes")
 
             logger.info(f"[ROBUST] Audio decoded successfully: {len(audio_bytes)} bytes")
@@ -5194,26 +5238,37 @@ async def process_voice_unlock_robust(
                 stages.append({"stage": "profile_load", "success": True, "dim": len(ref_emb)})
                 logger.info(f"[ROBUST] Reference embedding: {len(ref_emb)} dims")
 
+            # 🎙️ STAGE: ECAPA Extract - Voice: "Analyzing your voice."
             await progress("ecapa_extract", 45, "Extracting voiceprint...")
+            await voice_feedback("ecapa_extract")
             test_emb = await _extract_ecapa_robust(audio_bytes)
 
             if not test_emb:
+                await voice_feedback("failed", confidence=0.0)
                 return result(False, "Failed to extract voiceprint", err="ECAPA failed")
 
             stages.append({"stage": "ecapa_extract", "success": True, "dim": len(test_emb)})
             await progress("verification", 75, "Verifying speaker...")
 
             if not ref_emb:
+                await voice_feedback("failed", confidence=0.0)
                 return result(False, "No voice profile found", conf=0.0, err="No reference embedding")
 
             verified, conf = _verify_speaker_robust(test_emb, ref_emb)
             stages.append({"stage": "verification", "success": verified, "confidence": conf})
 
+            # 🎙️ STAGE: Verification - Voice varies by confidence
+            await voice_feedback("verification", confidence=conf, speaker="Derek")
+
             if not verified:
                 await progress("verification", 80, f"Failed: {conf:.1%}")
+                await voice_feedback("failed", confidence=conf)
                 return result(False, f"Voice not verified ({conf:.1%})", conf=conf)
 
+            # 🎙️ STAGE: Unlock Execute - Voice: "Voice confirmed. Unlocking for you, Derek."
             await progress("unlock_execute", 90, f"Voice verified ({conf:.1%}). Unlocking for Derek...")
+            await voice_feedback("unlock_execute", confidence=conf, speaker="Derek")
+
             # Pass progress callback and confidence for transparent substage updates
             unlocked = await _execute_unlock_robust(
                 speaker_name="Derek",
@@ -5224,9 +5279,12 @@ async def process_voice_unlock_robust(
 
             if not unlocked:
                 await progress("unlock_execute", 90, "Screen unlock failed")
+                await voice_feedback("failed", confidence=conf)
                 return result(False, "Screen unlock failed", speaker="Derek", conf=conf, err="Unlock execution failed")
 
-            # Final success already sent by _execute_unlock_robust
+            # 🎙️ STAGE: Complete - Voice: "Of course, Derek. Welcome back." (time-aware)
+            await voice_feedback("complete", confidence=conf, speaker="Derek")
+
             return result(True, f"Of course, Derek. Welcome back.", speaker="Derek", conf=conf)
 
         res = await asyncio.wait_for(_unlock(), timeout=RobustUnlockConfig.MAX_TOTAL_TIMEOUT)

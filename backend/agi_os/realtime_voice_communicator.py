@@ -731,6 +731,184 @@ class RealTimeVoiceCommunicator:
             text = "Give me a moment to analyze this."
         return await self.speak(text, mode=VoiceMode.THOUGHTFUL)
 
+    # ============== VBI (Voice Biometric Intelligence) Methods ==============
+
+    async def speak_immediate(
+        self,
+        text: str,
+        mode: VoiceMode = VoiceMode.NORMAL,
+        timeout: float = 15.0
+    ) -> bool:
+        """
+        Speak immediately without queuing - for real-time VBI feedback.
+
+        This bypasses the queue for time-critical VBI narration where
+        immediate auditory feedback is essential.
+
+        Args:
+            text: Text to speak
+            mode: Voice mode
+            timeout: Maximum time to wait for speech
+
+        Returns:
+            True if speech completed, False if failed/timed out
+        """
+        if self._muted:
+            return True
+
+        try:
+            config = self._mode_configs.get(mode, self._mode_configs[VoiceMode.NORMAL])
+
+            cmd = [
+                'say',
+                '-v', config.voice,
+                '-r', str(config.rate),
+                text
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+            return True
+
+        except asyncio.TimeoutError:
+            logger.warning("Immediate speech timed out: %s", text[:50])
+            try:
+                process.kill()
+            except:
+                pass
+            return False
+        except Exception as e:
+            logger.error("Immediate speech error: %s - %s", e, text[:50])
+            return False
+
+    async def vbi_stage_feedback(
+        self,
+        stage: str,
+        confidence: float = 0.0,
+        speaker_name: str = "Derek"
+    ) -> None:
+        """
+        Provide real-time voice feedback during VBI authentication stages.
+
+        This method gives transparent, human-like narration during voice
+        biometric verification, making the authentication feel conversational.
+
+        Args:
+            stage: Current VBI stage (init, audio_decode, ecapa_extract, verification,
+                   unlock_execute, keychain, wake, typing, verify, complete, failed)
+            confidence: Verification confidence score (0.0 to 1.0)
+            speaker_name: Identified speaker name
+        """
+        # Dynamic, human-like responses based on stage
+        feedback_map = {
+            # Initial stages - brief acknowledgment
+            "init": f"Just a moment, {speaker_name}.",
+            "audio_decode": None,  # Silent - too fast to narrate
+            "ecapa_extract": "Analyzing your voice.",
+
+            # Verification stage - confidence-aware
+            "verification": self._get_verification_feedback(confidence, speaker_name),
+
+            # Unlock execution stages
+            "unlock_execute": f"Voice confirmed. Unlocking for you, {speaker_name}.",
+            "keychain": None,  # Silent - security
+            "wake": None,  # Silent - too fast
+            "typing": "Authenticating now.",
+            "verify": None,  # Silent - handled by complete
+
+            # Completion
+            "complete": self._get_completion_feedback(confidence, speaker_name),
+
+            # Failures
+            "failed": self._get_failure_feedback(confidence),
+            "error": "I encountered an issue. Please try again.",
+        }
+
+        text = feedback_map.get(stage)
+        if text:
+            await self.speak_immediate(text, mode=VoiceMode.CONVERSATIONAL)
+
+    def _get_verification_feedback(self, confidence: float, speaker_name: str) -> str:
+        """Get dynamic feedback based on verification confidence."""
+        if confidence >= 0.90:
+            return f"Hello, {speaker_name}. Voice recognized."
+        elif confidence >= 0.80:
+            return f"I recognize you, {speaker_name}."
+        elif confidence >= 0.60:
+            return f"Verifying your voice, {speaker_name}."
+        elif confidence >= 0.40:
+            return "Processing voice verification."
+        else:
+            return "Analyzing voice pattern."
+
+    def _get_completion_feedback(self, confidence: float, speaker_name: str) -> str:
+        """Get dynamic completion message based on confidence."""
+        hour = datetime.now().hour
+
+        # Time-aware greetings
+        if 5 <= hour < 12:
+            time_greeting = "Good morning"
+        elif 12 <= hour < 17:
+            time_greeting = "Good afternoon"
+        elif 17 <= hour < 22:
+            time_greeting = "Good evening"
+        else:
+            time_greeting = "Hello"
+
+        # Confidence-aware responses
+        if confidence >= 0.90:
+            responses = [
+                f"Of course, {speaker_name}. Welcome back.",
+                f"{time_greeting}, {speaker_name}. Unlocked.",
+                f"Welcome back, {speaker_name}.",
+            ]
+        elif confidence >= 0.70:
+            responses = [
+                f"Verified. Welcome, {speaker_name}.",
+                f"Unlocked for you, {speaker_name}.",
+            ]
+        else:
+            responses = [
+                f"Verification complete. Welcome, {speaker_name}.",
+                f"Access granted, {speaker_name}.",
+            ]
+
+        import random
+        return random.choice(responses)
+
+    def _get_failure_feedback(self, confidence: float) -> str:
+        """Get helpful feedback on verification failure."""
+        if confidence >= 0.30:
+            return "Voice verification didn't quite match. Could you try again?"
+        elif confidence >= 0.15:
+            return "I'm having trouble verifying your voice. Please speak clearly and try again."
+        else:
+            return "Voice not recognized. Please ensure you're the registered user."
+
+    async def vbi_lock_feedback(self, stage: str, speaker_name: str = "Derek") -> None:
+        """
+        Provide voice feedback during screen lock.
+
+        Args:
+            stage: Lock stage (init, locking, complete, failed)
+            speaker_name: User's name
+        """
+        feedback_map = {
+            "init": f"Locking the screen, {speaker_name}.",
+            "locking": None,  # Silent - action in progress
+            "complete": f"Screen locked. See you soon, {speaker_name}.",
+            "failed": "I couldn't lock the screen. Please try Control Command Q.",
+        }
+
+        text = feedback_map.get(stage)
+        if text:
+            await self.speak_immediate(text, mode=VoiceMode.CONVERSATIONAL)
+
 
 # ============== Singleton Pattern ==============
 

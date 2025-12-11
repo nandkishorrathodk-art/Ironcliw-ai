@@ -1209,19 +1209,44 @@ class MacOSController:
 
     async def lock_screen(
         self,
-        progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
+        progress_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        enable_voice_feedback: bool = True,
+        speaker_name: str = "Derek"
     ) -> Tuple[bool, str]:
         """
-        Lock the macOS screen - optimized for speed with transparent progress.
+        Lock the macOS screen - optimized for speed with transparent progress
+        and Daniel's British voice feedback.
 
         Args:
             progress_callback: Optional callback for transparent progress updates
+            enable_voice_feedback: Enable Daniel's voice narration
+            speaker_name: User's name for personalized feedback
 
         Returns:
             Tuple of (success, message)
         """
         import time
         start_time = time.time()
+
+        # Initialize voice communicator for real-time feedback (non-blocking)
+        voice = None
+        if enable_voice_feedback:
+            try:
+                from agi_os.realtime_voice_communicator import get_voice_communicator
+                voice = await asyncio.wait_for(get_voice_communicator(), timeout=1.0)
+            except Exception as e:
+                logger.debug(f"Voice feedback unavailable: {e}")
+                voice = None
+
+        async def voice_feedback(stage: str):
+            """Fire-and-forget voice feedback."""
+            if voice:
+                try:
+                    asyncio.create_task(
+                        voice.vbi_lock_feedback(stage, speaker_name)
+                    )
+                except Exception as e:
+                    logger.debug(f"Voice feedback error: {e}")
 
         async def _progress(stage: str, pct: int, msg: str):
             """Send transparent progress update."""
@@ -1242,7 +1267,9 @@ class MacOSController:
                     logger.debug(f"Progress callback error: {e}")
 
         try:
+            # 🎙️ Voice: "Locking the screen, Derek."
             await _progress("init", 10, "Locking screen...")
+            await voice_feedback("init")
 
             # FAST PATH: Go straight to AppleScript (most reliable and fastest)
             from api.jarvis_voice_api import async_osascript
@@ -1255,8 +1282,10 @@ class MacOSController:
                 if returncode == 0:
                     duration_ms = (time.time() - start_time) * 1000
                     await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                    # 🎙️ Voice: "Screen locked. See you soon, Derek."
+                    await voice_feedback("complete")
                     logger.info(f"[FAST LOCK] Screen locked successfully using AppleScript in {duration_ms:.0f}ms")
-                    return True, "Locking the screen now, Sir. See you soon."
+                    return True, f"Locking the screen now, {speaker_name}. See you soon."
             except Exception as e:
                 logger.debug(f"AppleScript method failed: {e}")
 
@@ -1275,8 +1304,9 @@ class MacOSController:
                 if returncode == 0:
                     duration_ms = (time.time() - start_time) * 1000
                     await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                    await voice_feedback("complete")
                     logger.info(f"Screen locked successfully using CGSession in {duration_ms:.0f}ms")
-                    return True, "Locking the screen now, Sir. See you soon."
+                    return True, f"Locking the screen now, {speaker_name}. See you soon."
 
             # Fallback Method 2: Use pmset command directly
             await _progress("pmset", 70, "Trying pmset...")
@@ -1286,15 +1316,18 @@ class MacOSController:
             if returncode == 0:
                 duration_ms = (time.time() - start_time) * 1000
                 await _progress("complete", 100, f"Screen locked ({duration_ms:.0f}ms)")
+                await voice_feedback("complete")
                 logger.info(f"Screen locked successfully using pmset in {duration_ms:.0f}ms")
-                return True, "Locking the screen now, Sir. See you soon."
+                return True, f"Locking the screen now, {speaker_name}. See you soon."
 
             await _progress("failed", 90, "Lock methods exhausted")
+            await voice_feedback("failed")
             return False, "Unable to lock screen. Please use Control+Command+Q manually."
 
         except Exception as e:
             logger.error(f"Error locking screen: {e}")
             await _progress("error", 90, f"Lock error: {e}")
+            await voice_feedback("failed")
             return False, f"Failed to lock screen: {str(e)}"
 
     async def unlock_screen(self, password: Optional[str] = None) -> Tuple[bool, str]:
