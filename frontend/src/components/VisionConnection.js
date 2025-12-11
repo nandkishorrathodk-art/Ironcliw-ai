@@ -87,7 +87,9 @@ class VisionConnection {
       ? (window.location.protocol === 'https:' ? 'wss' : 'ws')
       : 'ws';
 
-    return `${protocol}://${hostname}:8000/vision/ws/vision`;
+    // Use backend's default port (8010)
+    const port = process.env.REACT_APP_BACKEND_PORT || 8010;
+    return `${protocol}://${hostname}:${port}/vision/ws/vision`;
   }
 
   /**

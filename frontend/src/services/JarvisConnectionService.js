@@ -80,17 +80,18 @@ class JarvisConnectionService {
     // Health monitoring
     this.healthConfig = {
       checkInterval: 30000,
-      timeout: 5000,
-      maxFailures: 3
+      timeout: 8000,              // Increased from 5000ms
+      maxFailures: 5              // Increased from 3 - more tolerant
     };
     this.healthCheckTimer = null;
     this.consecutiveFailures = 0;
     
-    // Discovery state
+    // Discovery state - more aggressive retry
     this.discoveryState = {
       attempts: 0,
-      maxAttempts: 10,
-      inProgress: false
+      maxAttempts: 15,            // Increased from 10
+      inProgress: false,
+      lastAttemptTime: null
     };
     
     // Initialize asynchronously (non-blocking)
@@ -175,8 +176,9 @@ class JarvisConnectionService {
       const verifiedAt = parseInt(localStorage.getItem('jarvis_backend_verified_at') || '0');
       const timeSinceVerification = Date.now() - verifiedAt;
       
-      // Only use fast path if verified within 30 seconds
-      if (!verified || timeSinceVerification > 30000) {
+      // Use fast path if verified within 5 minutes (300 seconds)
+      // This handles page refreshes and tab switches
+      if (!verified || timeSinceVerification > 300000) {
         return false;
       }
       
@@ -226,6 +228,17 @@ class JarvisConnectionService {
     }
   }
 
+  _saveVerifiedState() {
+    try {
+      localStorage.setItem('jarvis_backend_verified', 'true');
+      localStorage.setItem('jarvis_backend_verified_at', Date.now().toString());
+      localStorage.setItem('jarvis_backend_url', this.backendUrl);
+      localStorage.setItem('jarvis_backend_ws_url', this.wsUrl);
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
   // ==========================================================================
   // BACKEND DISCOVERY
   // ==========================================================================
@@ -260,14 +273,18 @@ class JarvisConnectionService {
   }
 
   _handleDiscoveryFailed() {
+    this.discoveryState.lastAttemptTime = Date.now();
+    
     if (this.discoveryState.attempts < this.discoveryState.maxAttempts) {
-      // Calculate exponential backoff
+      // Calculate backoff - start with shorter delays, then increase
+      // First few attempts are quick (1-2s), then back off gradually
+      const baseDelay = this.discoveryState.attempts < 3 ? 1500 : 3000;
       const delay = Math.min(
-        3000 * Math.pow(1.5, this.discoveryState.attempts - 1),
+        baseDelay * Math.pow(1.3, Math.max(0, this.discoveryState.attempts - 3)),
         30000
       );
       
-      console.log(`[JarvisConnection] Retrying discovery in ${Math.round(delay / 1000)}s`);
+      console.log(`[JarvisConnection] Retrying discovery in ${Math.round(delay / 1000)}s (attempt ${this.discoveryState.attempts}/${this.discoveryState.maxAttempts})`);
       this._setState(ConnectionState.RECONNECTING);
       
       setTimeout(() => this._discoverBackend(), delay);
@@ -276,6 +293,16 @@ class JarvisConnectionService {
       this._setState(ConnectionState.OFFLINE);
       this.lastError = 'Could not find backend service';
       this._emit('error', { message: this.lastError });
+      
+      // Even after max attempts, set up a long-term retry (every 30s)
+      // This handles the case where backend starts after frontend
+      console.log('[JarvisConnection] Setting up background retry every 30s');
+      setTimeout(() => {
+        if (this.connectionState === ConnectionState.OFFLINE) {
+          this.discoveryState.attempts = 0; // Reset attempts
+          this._discoverBackend();
+        }
+      }, 30000);
     }
   }
 
@@ -304,6 +331,9 @@ class JarvisConnectionService {
       // Update state
       this._setState(ConnectionState.ONLINE);
       this.consecutiveFailures = 0;
+      
+      // Save verified state for fast-path on subsequent loads
+      this._saveVerifiedState();
       
       console.log(`[JarvisConnection] ✅ Connected (${this.backendMode} mode)`);
       

@@ -192,16 +192,20 @@ class DynamicConfigService {
     // Discovery configuration - dynamically inferred
     this.discoveryConfig = {
       // Priority-ordered ports - most likely first
+      // 8010 is the default BACKEND_PORT, followed by common alternatives
       ports: this._inferPorts(),
       // Ports to skip (system services, loading servers)
       excludedPorts: new Set([5000, 5001, 3001, 8001]),
-      // Timeouts
-      portScanTimeout: 300,
-      healthCheckTimeout: 2000,
-      discoveryTimeout: 10000,
+      // Timeouts - increased for more reliable discovery
+      portScanTimeout: 500,        // Increased from 300ms
+      healthCheckTimeout: 5000,    // Increased from 2000ms for slow cold starts
+      discoveryTimeout: 20000,     // Increased from 10000ms
       // Batching
       portBatchSize: 4,
-      maxConcurrentChecks: 6
+      maxConcurrentChecks: 6,
+      // New: Aggressive retry for primary port
+      primaryPortRetries: 3,
+      primaryPortRetryDelay: 1000
     };
 
     // Service identification patterns
@@ -212,11 +216,11 @@ class DynamicConfigService {
       }
     };
 
-    // Circuit breaker for discovery
+    // Circuit breaker for discovery - more lenient to handle backend startup delays
     this.circuitBreaker = new CircuitBreaker({
-      failureThreshold: 3,
-      successThreshold: 2,
-      resetTimeout: 15000
+      failureThreshold: 5,        // Increased from 3 - more tolerant of failures
+      successThreshold: 1,        // Decreased from 2 - recover faster
+      resetTimeout: 10000         // Decreased from 15000 - retry sooner
     });
 
     // Health monitoring
@@ -413,14 +417,42 @@ class DynamicConfigService {
   }
 
   async _discoverBackend() {
-    const { ports, excludedPorts, portBatchSize } = this.discoveryConfig;
+    const { ports, excludedPorts, portBatchSize, primaryPortRetries, primaryPortRetryDelay } = this.discoveryConfig;
     
     // Filter out excluded ports
     const portsToScan = ports.filter(p => !excludedPorts.has(p));
     
-    // Batch process ports with yielding to prevent blocking
+    // PRIORITY: Try the primary port (8010) with retries first
+    // This handles the case where backend is still starting up
+    const primaryPort = portsToScan[0]; // 8010 is first in priority list
+    if (primaryPort) {
+      logger.debug(`[Discovery] Trying primary port ${primaryPort} with ${primaryPortRetries} retries...`);
+      
+      for (let attempt = 0; attempt < primaryPortRetries; attempt++) {
+        try {
+          const result = await this._checkPort(primaryPort);
+          if (result) {
+            logger.success(`[Discovery] ✅ Found backend on primary port ${primaryPort}`);
+            return result;
+          }
+        } catch {
+          // Retry after delay
+        }
+        
+        if (attempt < primaryPortRetries - 1) {
+          logger.debug(`[Discovery] Primary port attempt ${attempt + 1} failed, retrying in ${primaryPortRetryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, primaryPortRetryDelay));
+        }
+      }
+    }
+    
+    // If primary port failed, try other ports in parallel
+    logger.debug('[Discovery] Primary port failed, scanning alternative ports...');
+    const otherPorts = portsToScan.slice(1);
+    
+    // Batch process remaining ports with yielding to prevent blocking
     const results = await batchProcess(
-      portsToScan,
+      otherPorts,
       async (port) => {
         try {
           return await this._checkPort(port);
@@ -765,8 +797,8 @@ class DynamicConfigService {
       const config = JSON.parse(cached);
       const age = Date.now() - (config.savedAt || 0);
       
-      // Cache valid for 5 minutes
-      if (age < 5 * 60 * 1000) {
+      // Cache valid for 30 minutes - reduces discovery overhead
+      if (age < 30 * 60 * 1000) {
         return config;
       }
       

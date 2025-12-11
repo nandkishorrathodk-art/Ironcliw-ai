@@ -24,7 +24,9 @@ function App() {
 
     try {
       // Send user input to the FastAPI backend
-      const response = await axios.post('http://127.0.0.1:8000/chat', {
+      // Use backend's default port (8010)
+      const backendPort = process.env.REACT_APP_BACKEND_PORT || 8010;
+      const response = await axios.post(`http://127.0.0.1:${backendPort}/chat`, {
         user_input: input,
       });
       const assistantReply = response.data?.response || response.data?.reply || 'Received.';

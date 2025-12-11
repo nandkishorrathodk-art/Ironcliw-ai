@@ -120,7 +120,9 @@ class NetworkRecoveryManager {
   _inferApiUrl() {
     const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const protocol = typeof window !== 'undefined' ? window.location.protocol.replace(':', '') : 'http';
-    return `${protocol}://${hostname}:8000`;
+    // Use backend's default port (8010)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
+    return `${protocol}://${hostname}:${port}`;
   }
 
   /**
@@ -131,7 +133,9 @@ class NetworkRecoveryManager {
     const protocol = typeof window !== 'undefined'
       ? (window.location.protocol === 'https:' ? 'wss' : 'ws')
       : 'ws';
-    const base = `${protocol}://${hostname}:8000`;
+    // Use backend's default port (8010)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
+    const base = `${protocol}://${hostname}:${port}`;
     return endpoint ? `${base}/${endpoint.replace(/^\//, '')}` : base;
   }
 

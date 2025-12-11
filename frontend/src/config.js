@@ -47,7 +47,9 @@ const inferUrls = () => {
   }
 
   // Default port based on environment
-  const port = ENV.isDev() ? 8000 : 8000;
+  // IMPORTANT: Must match backend's BACKEND_PORT default (8010)
+  // The DynamicConfigService will discover the actual port, but this is the initial fallback
+  const port = ENV.getEnvVar('REACT_APP_BACKEND_PORT', '8010');
 
   return {
     API_BASE_URL: `${protocol}://${hostname}:${port}`,

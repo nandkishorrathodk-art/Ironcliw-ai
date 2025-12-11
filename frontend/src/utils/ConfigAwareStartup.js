@@ -247,8 +247,8 @@ class ConfigAwareStartup {
     const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
     const hostname = window.location.hostname || 'localhost';
 
-    // Try common ports
-    const port = 8000; // Default JARVIS port
+    // Use backend's default port (8010)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
 
     return {
       API_BASE_URL: `${protocol}://${hostname}:${port}`,

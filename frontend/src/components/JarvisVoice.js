@@ -55,7 +55,8 @@ const inferUrls = () => {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const protocol = typeof window !== 'undefined' ? window.location.protocol.replace(':', '') : 'http';
   const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
-  const port = 8000; // Default JARVIS backend port
+  // IMPORTANT: Default port must match backend's BACKEND_PORT (8010)
+  const port = process.env.REACT_APP_BACKEND_PORT || 8010;
 
   return {
     API_BASE_URL: `${protocol}://${hostname}:${port}`,
