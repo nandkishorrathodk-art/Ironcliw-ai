@@ -627,10 +627,20 @@ class ParallelInitializer:
                 )
                 logger.info(f"   Registered heartbeat for {comp_name}")
 
+            # Track state to avoid log spam
+            _event_state = {"stale_components": set(), "open_circuits": set()}
+            
             # Subscribe to health events for logging/alerting
             async def handle_health_event(event_type: str, data: dict):
-                """Handle health events from VBI monitor"""
+                """Handle health events from VBI monitor.
+                
+                Only logs state CHANGES to avoid spam. Events that repeat
+                (like stale heartbeats) are only logged once per component.
+                """
+                nonlocal _event_state
+                
                 if event_type == "operation_timeout":
+                    # Timeouts are always important - log them
                     op_id = data.get("operation_id", "unknown")
                     op_type = data.get("operation_type", "unknown")
                     component = data.get("component", "unknown")
@@ -640,22 +650,34 @@ class ParallelInitializer:
                         f"after {elapsed:.1f}s"
                     )
                 elif event_type == "heartbeat_stale":
+                    # Only log NEW stale components
                     component = data.get("component", "unknown")
-                    last_beat = data.get("last_heartbeat_seconds_ago", 0)
-                    logger.warning(
-                        f"⚠️ VBI Heartbeat Stale: {component} - no heartbeat for {last_beat:.1f}s"
-                    )
+                    if component not in _event_state["stale_components"]:
+                        _event_state["stale_components"].add(component)
+                        last_beat = data.get("last_heartbeat_seconds_ago", 0)
+                        logger.warning(
+                            f"⚠️ VBI Heartbeat Stale: {component} - no heartbeat for {last_beat:.1f}s"
+                        )
+                elif event_type == "heartbeat_received":
+                    # Clear stale state when heartbeat is received
+                    component = data.get("component", "unknown")
+                    _event_state["stale_components"].discard(component)
                 elif event_type == "circuit_opened":
+                    # Only log NEW circuit opens
                     component = data.get("component", "unknown")
-                    failure_rate = data.get("failure_rate", 0)
-                    logger.warning(
-                        f"🔴 Circuit Breaker OPENED: {component} (failure rate: {failure_rate:.1%})"
-                    )
+                    if component not in _event_state["open_circuits"]:
+                        _event_state["open_circuits"].add(component)
+                        failure_rate = data.get("failure_rate", 0)
+                        logger.warning(
+                            f"🔴 Circuit Breaker OPENED: {component} (failure rate: {failure_rate:.1%})"
+                        )
                 elif event_type == "circuit_closed":
                     component = data.get("component", "unknown")
-                    logger.info(
-                        f"🟢 Circuit Breaker CLOSED: {component} - recovered"
-                    )
+                    if component in _event_state["open_circuits"]:
+                        _event_state["open_circuits"].discard(component)
+                        logger.info(
+                            f"🟢 Circuit Breaker CLOSED: {component} - recovered"
+                        )
                 elif event_type == "health_degraded":
                     component = data.get("component", "unknown")
                     level = data.get("health_level", "unknown")

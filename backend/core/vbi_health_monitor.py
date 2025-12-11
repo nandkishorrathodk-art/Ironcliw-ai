@@ -799,6 +799,10 @@ class HeartbeatManager:
         self._check_task: Optional[asyncio.Task] = None
         self._on_stale_callbacks: List[Callable[[ComponentType], Awaitable[None]]] = []
         self._lock = asyncio.Lock()
+        # Track which components have been logged as stale to avoid spam
+        self._stale_logged: Set[ComponentType] = set()
+        # Track components that have never sent a heartbeat (don't warn about these)
+        self._never_heartbeat: Set[ComponentType] = set()
 
     async def start(self) -> None:
         """Start the heartbeat manager."""
@@ -856,6 +860,10 @@ class HeartbeatManager:
             )
 
             self._heartbeats[component] = heartbeat
+            
+            # Clear stale state when we receive a heartbeat
+            self._stale_logged.discard(component)
+            self._never_heartbeat.discard(component)
 
         logger.debug(
             f"[HeartbeatManager] Heartbeat from {component.value}: "
@@ -883,15 +891,25 @@ class HeartbeatManager:
                 logger.error(f"[HeartbeatManager] Stale check error: {e}")
 
     async def _check_stale_heartbeats(self) -> None:
-        """Check for stale heartbeats and notify."""
+        """Check for stale heartbeats and notify.
+        
+        Only logs once per component to avoid log spam. Components that
+        have never sent a heartbeat are not considered stale.
+        """
         stale_components: List[ComponentType] = []
+        newly_stale: List[ComponentType] = []
 
         async with self._lock:
             for component, heartbeat in self._heartbeats.items():
                 if heartbeat.age_seconds > self._stale_threshold:
                     stale_components.append(component)
+                    # Only log if this is the first time we're detecting it as stale
+                    if component not in self._stale_logged:
+                        newly_stale.append(component)
+                        self._stale_logged.add(component)
 
-        for component in stale_components:
+        # Only log newly stale components to avoid spam
+        for component in newly_stale:
             logger.warning(f"[HeartbeatManager] Stale heartbeat from {component.value}")
 
             for callback in self._on_stale_callbacks:
@@ -1263,20 +1281,32 @@ class VBIHealthMonitor:
         self._fallback_orchestrator.register_chain(auth_chain)
 
     async def _health_broadcast_loop(self) -> None:
-        """Periodically broadcast health status."""
+        """Periodically broadcast health status.
+        
+        Only logs health changes to avoid spam. Tracks last logged state
+        to detect state transitions.
+        """
+        last_logged_health: Optional[str] = None
+        
         while self._running:
             try:
                 await asyncio.sleep(10.0)
 
                 health = await self.get_system_health()
 
-                # Emit health event
+                # Emit health event (silently)
                 await self._emit_event("health_update", health)
 
-                # Log if degraded or worse
+                # Only log if health state CHANGED (not every check)
                 overall = health.get("overall_health", HealthLevel.UNKNOWN.value)
-                if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                    logger.warning(f"[VBIHealthMonitor] System health: {overall}")
+                if overall != last_logged_health:
+                    # Health state changed - log it
+                    if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                        logger.warning(f"[VBIHealthMonitor] System health changed: {last_logged_health or 'initial'} → {overall}")
+                    elif overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
+                        if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                            logger.info(f"[VBIHealthMonitor] System health recovered: {last_logged_health} → {overall}")
+                    last_logged_health = overall
 
             except asyncio.CancelledError:
                 break

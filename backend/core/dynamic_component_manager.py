@@ -1804,8 +1804,34 @@ class DynamicComponentManager:
         }
 
     async def _handle_memory_pressure(self, pressure: MemoryPressure):
-        """Handle memory pressure changes"""
-        logger.info(f"⚠️ Memory pressure: {pressure.value}")
+        """Handle memory pressure changes.
+        
+        Rate-limits logging to avoid spam when memory bounces between states.
+        Only logs every 60 seconds for low/medium, or immediately for high/critical/emergency.
+        """
+        current_time = time.time()
+        
+        # Track last log time per pressure level to avoid spam
+        if not hasattr(self, '_last_pressure_log_time'):
+            self._last_pressure_log_time = {}
+            self._last_logged_pressure = None
+        
+        # For low/medium pressure, only log every 60 seconds max
+        # For high/critical/emergency, always log (these are actionable)
+        should_log = False
+        if pressure in (MemoryPressure.HIGH, MemoryPressure.CRITICAL, MemoryPressure.EMERGENCY):
+            # Always log high/critical/emergency
+            should_log = True
+        elif pressure != self._last_logged_pressure:
+            # Log state changes, but rate limit to once per 60 seconds
+            last_log_time = self._last_pressure_log_time.get(pressure.value, 0)
+            if current_time - last_log_time > 60:
+                should_log = True
+        
+        if should_log:
+            logger.info(f"⚠️ Memory pressure: {pressure.value}")
+            self._last_pressure_log_time[pressure.value] = current_time
+            self._last_logged_pressure = pressure
 
         if pressure == MemoryPressure.HIGH:
             # Unload LOW priority idle components

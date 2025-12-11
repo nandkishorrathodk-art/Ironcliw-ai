@@ -972,23 +972,49 @@ class AdvancedAsyncPipeline:
 
             self._vbi_health_monitor = await get_vbi_health_monitor()
 
+            # Track last health state to avoid spam logging
+            _last_health_state = {"value": None, "stale_components": set()}
+
             # Subscribe to health events from VBI monitor
             async def handle_health_event(event_type: str, data: dict):
-                """Handle health events from VBI monitor."""
+                """Handle health events from VBI monitor.
+                
+                Only logs state CHANGES to avoid spam. Heartbeat and timeout
+                events are handled by the VBI monitor itself with deduplication.
+                """
+                nonlocal _last_health_state
+                
                 if event_type == "operation_timeout":
+                    # Operation timeouts are important - always log
                     logger.warning(
                         f"[VBI-HEALTH] Operation timeout detected: "
                         f"{data.get('operation_type')} in {data.get('component')}"
                     )
                 elif event_type == "heartbeat_stale":
-                    logger.warning(
-                        f"[VBI-HEALTH] Stale heartbeat from {data.get('component')}"
-                    )
+                    # Only log if this is a NEW stale component
+                    component = data.get('component')
+                    if component and component not in _last_health_state["stale_components"]:
+                        _last_health_state["stale_components"].add(component)
+                        # Don't log here - the HeartbeatManager already logs once
+                        pass
                 elif event_type == "health_update":
-                    if not data.get("is_healthy", True):
-                        logger.warning(
-                            f"[VBI-HEALTH] System unhealthy: {data.get('overall_health')}"
-                        )
+                    # Only log health state CHANGES
+                    current_health = data.get('overall_health')
+                    is_healthy = data.get("is_healthy", True)
+                    
+                    if current_health != _last_health_state["value"]:
+                        # Health state changed
+                        if not is_healthy:
+                            logger.warning(
+                                f"[VBI-HEALTH] System health changed: "
+                                f"{_last_health_state['value'] or 'initial'} → {current_health}"
+                            )
+                        elif _last_health_state["value"] is not None and not _last_health_state.get("was_healthy", True):
+                            # Recovered from unhealthy state
+                            logger.info(f"[VBI-HEALTH] System health recovered: → {current_health}")
+                        
+                        _last_health_state["value"] = current_health
+                        _last_health_state["was_healthy"] = is_healthy
 
             self._vbi_health_monitor.on_event(handle_health_event)
 

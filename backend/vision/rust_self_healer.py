@@ -80,6 +80,9 @@ class RustSelfHealer:
         self._retry_counts: Dict[RustIssueType, int] = {}
         self._last_successful_build: Optional[datetime] = None
         
+        # Track whether we've already logged the stub message (to avoid spam)
+        self._stub_logged: bool = False
+        
         # Thread pools for concurrent operations
         if _HAS_MANAGED_EXECUTOR:
 
@@ -150,7 +153,10 @@ class RustSelfHealer:
                 import jarvis_rust_core
                 # Check if it's the stub version
                 if hasattr(jarvis_rust_core, '__rust_available__') and not jarvis_rust_core.__rust_available__:
-                    logger.info("Using Python stub for Rust components (build will continue in background)")
+                    # Only log once to avoid spam
+                    if not self._stub_logged:
+                        logger.info("Using Python stub for Rust components (build will continue in background)")
+                        self._stub_logged = True
                     return True
                 # Try to access a component
                 if hasattr(jarvis_rust_core, 'RustAdvancedMemoryPool'):
@@ -167,7 +173,10 @@ class RustSelfHealer:
         # Check if stub is available first
         stub_path = self.rust_core_dir / "jarvis_rust_core.py"
         if stub_path.exists():
-            logger.info("Python stub available for Rust components - skipping build")
+            # Only log once to avoid spam
+            if not self._stub_logged:
+                logger.info("Python stub available for Rust components - skipping build")
+                self._stub_logged = True
             return True
 
         logger.info("Diagnosing Rust component issues...")
