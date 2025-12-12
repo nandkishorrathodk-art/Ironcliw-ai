@@ -38,6 +38,11 @@ MAX_INSTANCES="${CLOUD_RUN_MAX_INSTANCES:-3}"
 CONCURRENCY="${CLOUD_RUN_CONCURRENCY:-10}"
 TIMEOUT="${CLOUD_RUN_TIMEOUT:-300s}"
 
+# Security / cost control
+# If unauthenticated access is allowed, anyone who finds the URL can generate billable requests.
+# Default to authenticated-only; opt-in to public access via env.
+ALLOW_UNAUTHENTICATED="${CLOUD_RUN_ALLOW_UNAUTHENTICATED:-false}"
+
 # Artifact Registry
 AR_REPO="${AR_REPO:-jarvis-ml}"
 AR_LOCATION="${AR_LOCATION:-us-central1}"
@@ -212,6 +217,10 @@ fi
 
 # Deploy to Cloud Run
 log "Deploying to Cloud Run..."
+AUTH_FLAG=""
+if [ "$ALLOW_UNAUTHENTICATED" = "true" ]; then
+    AUTH_FLAG="--allow-unauthenticated"
+fi
 run_cmd gcloud run deploy "$SERVICE_NAME" \
     --image "$IMAGE_URI" \
     --region "$GCP_REGION" \
@@ -222,7 +231,7 @@ run_cmd gcloud run deploy "$SERVICE_NAME" \
     --max-instances "$MAX_INSTANCES" \
     --concurrency "$CONCURRENCY" \
     --timeout "$TIMEOUT" \
-    --allow-unauthenticated \
+    $AUTH_FLAG \
     --set-env-vars "ECAPA_DEVICE=cpu,ECAPA_WARMUP_ON_START=true,ECAPA_CACHE_TTL=3600,ECAPA_USE_OPTIMIZED=true" \
     --port 8010
 

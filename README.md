@@ -4,6 +4,119 @@ An intelligent voice-activated AI assistant with **Intelligent ECAPA Backend Orc
 
 ---
 
+## 💸 GCP Cost Guardrails (Root-Cause Fix) — Dec 2025
+
+This section documents a **root-cause fix** to prevent **unintentional GCP spend** (Cloud Run, Cloud SQL, Spot VMs) caused by “always-on” behavior in the codebase.
+
+### Was this a workaround / brute force?
+
+No. These changes remove the underlying conditions that could generate **billable usage without explicit intent**:
+
+- **No hardcoded Cloud Run endpoints**: Cloud ML endpoints must now be explicitly configured.
+- **No default “keepalive” traffic**: Background loops that repeatedly call Cloud Run are now **opt-in**.
+- **No default Spot VM auto-creation**: VM creation is now **explicit opt-in** end-to-end, and budget/idle settings are consistently wired.
+
+### What was the root cause of “wasted money” risk?
+
+- **Background Cloud Run polling / re-warm loops** were generating steady request traffic (billable) and reducing the benefit of scale-to-zero.
+- **Hardcoded Cloud Run endpoints** meant cloud calls could occur even when you didn’t explicitly enable cloud.
+- **Enablement defaults** were effectively “on” in some places (Spot VM + cloud-first behaviors), and **env var mismatches** could cause intended budgets/idle timeouts to be ignored.
+
+### Changes made (existing files only)
+
+#### 1) Cloud Run usage is explicit (no hidden defaults)
+
+- Removed hardcoded Cloud Run endpoints and required explicit configuration via env:
+  - `backend/voice_unlock/cloud_ecapa_client.py`
+  - `backend/voice_unlock/ml_engine_registry.py`
+  - `backend/voice_unlock/voice_biometric_intelligence.py`
+  - `backend/core/vbi_debug_tracer.py`
+  - `backend/process_cleanup_manager.py`
+  - `backend/config/vbi_orchestrator.json`
+  - `backend/config/cloud_first_config.json`
+
+#### 2) Background Cloud Run “keepalive” loops are opt-in
+
+- **Cloud ECAPA health-check loop**: now opt-in via:
+  - `CLOUD_ECAPA_ENABLE_BACKGROUND_HEALTHCHECKS=false` (default)
+- **ECAPA auto re-warm loop**: now opt-in via:
+  - `ECAPA_PREWARM_HEALTH_MONITOR_ENABLED=false` (default)
+
+These prevent a “silent” steady stream of health checks / warmups that can create ongoing Cloud Run request costs.
+
+#### 3) Spot VM auto-creation is explicit opt-in + guardrails actually apply
+
+- **Default OFF** unless you explicitly enable:
+  - `JARVIS_SPOT_VM_ENABLED=false` (preferred flag)
+  - `GCP_VM_ENABLED=false` (legacy flag)
+- Spot VM creation is guarded in:
+  - `backend/main.py` (safe defaults)
+  - `backend/core/gcp_vm_manager.py` (`create_vm_if_needed()` refuses to create unless enabled)
+  - `backend/core/parallel_initializer.py` (doesn’t initialize VM/cloud components unless configured)
+- **Budget + idle timeout envs are now consistently respected**:
+  - `JARVIS_SPOT_VM_DAILY_BUDGET` is now honored by `backend/core/gcp_vm_manager.py`
+  - `JARVIS_SPOT_VM_IDLE_TIMEOUT` is now honored by `backend/core/gcp_vm_manager.py`
+
+#### 4) Cloud Run deployment guardrail (abuse prevention)
+
+In `backend/cloud_services/deploy_cloud_run.sh`, unauthenticated access is now **opt-in**:
+
+- Default: authenticated-only (safer, reduces risk of external request abuse generating spend)
+- Enable public access only if you mean to:
+  - `CLOUD_RUN_ALLOW_UNAUTHENTICATED=true`
+
+#### 5) Deployment artifact “slow leak” prevention
+
+In `.github/workflows/deploy-to-gcp.yml`, the deployments bucket now gets a lifecycle TTL policy so artifacts don’t accumulate indefinitely:
+
+- `DEPLOYMENT_ARTIFACT_TTL_DAYS=30` (default)
+
+### Recommended “safe defaults” (copy into your env)
+
+```bash
+# Cloud ML endpoint must be explicitly configured to use Cloud Run
+export JARVIS_CLOUD_ML_ENDPOINT=""
+
+# Disable background Cloud Run keepalive traffic (opt-in)
+export CLOUD_ECAPA_ENABLE_BACKGROUND_HEALTHCHECKS=false
+export ECAPA_PREWARM_HEALTH_MONITOR_ENABLED=false
+
+# Disable Spot VM unless intentionally testing/scaling
+export JARVIS_SPOT_VM_ENABLED=false
+export GCP_VM_ENABLED=false
+
+# Avoid expensive “test extraction” unless debugging cloud ECAPA
+export JARVIS_ECAPA_CLOUD_TEST_EXTRACTION=false
+```
+
+### If you *do* want to intentionally use GCP
+
+```bash
+# Explicitly enable Cloud Run usage
+export JARVIS_CLOUD_ML_ENDPOINT="https://<your-cloud-run-service>.run.app"
+
+# Optional: enable background health checks if you really want always-hot behavior
+export CLOUD_ECAPA_ENABLE_BACKGROUND_HEALTHCHECKS=true
+export ECAPA_PREWARM_HEALTH_MONITOR_ENABLED=true
+
+# Optional: enable Spot VM fallback with strict limits
+export JARVIS_SPOT_VM_ENABLED=true
+export JARVIS_SPOT_VM_DAILY_BUDGET=1.0
+export JARVIS_SPOT_VM_IDLE_TIMEOUT=10
+```
+
+### Verify the billing root cause in GCP (recommended)
+
+To confirm what actually drove the month-over-month increase, correlate:
+
+- **Cloud Run**: request count, CPU/memory, instance time, egress
+- **Cloud SQL**: instance uptime hours, tier, storage, backups, connection count
+- **Compute/Spot**: VM uptime hours, disk usage, egress
+
+### Security note (urgent)
+
+Never commit real credentials to the repo. If you have committed Cloud SQL credentials (e.g., in `.env.gcp`), **rotate them immediately**, and move secrets into **GCP Secret Manager** / **GitHub Actions secrets**.
+
 ## 🔧 NEW in v17.9.7: Async-Safe Statistics & Global Session Management
 
 JARVIS v17.9.7 introduces **production-grade reliability improvements** with async-safe statistics tracking, self-healing data consistency, and always-available session management. These fixes resolve critical edge cases that could cause data corruption, session tracking failures, and cleanup issues.

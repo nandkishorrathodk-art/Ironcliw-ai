@@ -218,7 +218,8 @@ class VBIConfig:
         # ==========================================================================
         cloud_cfg = self._json_config.get('cloud_first', {})
         self.cloud_first_enabled = self._get_bool_config(
-            'JARVIS_VBI_CLOUD_FIRST', cloud_cfg.get('enabled', True)
+            # Cost-safe default: cloud-first must be explicitly enabled.
+            'JARVIS_VBI_CLOUD_FIRST', cloud_cfg.get('enabled', False)
         )
         self.force_local = self._get_bool_config(
             'JARVIS_VBI_FORCE_LOCAL', cloud_cfg.get('force_local', False)
@@ -229,10 +230,16 @@ class VBIConfig:
         
         # Cloud endpoints
         endpoints_cfg = self._json_config.get('cloud_endpoints', {})
-        self.cloud_endpoint = os.getenv(
-            'JARVIS_CLOUD_ML_ENDPOINT',
-            endpoints_cfg.get('primary', 'https://jarvis-ml-888774109345.us-central1.run.app')
-        )
+        raw_endpoint = os.getenv('JARVIS_CLOUD_ML_ENDPOINT', endpoints_cfg.get('primary', ''))
+        raw_endpoint = (raw_endpoint or "").strip()
+        # Accept either base URL or api URL (.../api/ml)
+        if raw_endpoint.endswith("/api/ml"):
+            raw_endpoint = raw_endpoint.rsplit("/api/ml", 1)[0]
+        self.cloud_endpoint = raw_endpoint or None
+
+        # If no endpoint is configured, force cloud-first OFF
+        if not self.cloud_endpoint:
+            self.cloud_first_enabled = False
         
         # Timeouts from JSON config
         timeouts_cfg = self._json_config.get('timeouts', {})
@@ -2232,10 +2239,16 @@ class VoiceBiometricIntelligence:
             
             # Fallback: Try direct HTTP health check
             import aiohttp
-            cloud_url = os.getenv(
-                'ECAPA_CLOUD_RUN_URL',
-                'https://jarvis-ml-888774109345.us-central1.run.app'
+            cloud_url = (
+                os.getenv('ECAPA_CLOUD_RUN_URL')
+                or os.getenv('JARVIS_CLOUD_ML_ENDPOINT')
+                or ''
             )
+            cloud_url = (cloud_url or "").strip()
+            if cloud_url.endswith("/api/ml"):
+                cloud_url = cloud_url.rsplit("/api/ml", 1)[0]
+            if not cloud_url:
+                return False
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -2478,10 +2491,16 @@ class VoiceBiometricIntelligence:
                 pass
             
             # Fallback: Direct HTTP call to Cloud Run
-            cloud_run_url = os.getenv(
-                'ECAPA_CLOUD_RUN_URL',
-                'https://jarvis-ml-888774109345.us-central1.run.app'
+            cloud_run_url = (
+                os.getenv('ECAPA_CLOUD_RUN_URL')
+                or os.getenv('JARVIS_CLOUD_ML_ENDPOINT')
+                or ''
             )
+            cloud_run_url = (cloud_run_url or "").strip()
+            if cloud_run_url.endswith("/api/ml"):
+                cloud_run_url = cloud_run_url.rsplit("/api/ml", 1)[0]
+            if not cloud_run_url:
+                return None
             
             import aiohttp
             

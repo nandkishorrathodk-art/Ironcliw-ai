@@ -409,6 +409,11 @@ class ECAPAPreWarmer:
         self.warmup_timeout = int(os.environ.get("ECAPA_WARMUP_TIMEOUT", "60"))  # Total warmup timeout
         self.stage_timeout = int(os.environ.get("ECAPA_STAGE_TIMEOUT", "30"))    # Per-stage timeout
         self.auto_rewarm_threshold = int(os.environ.get("ECAPA_REWARM_THRESHOLD", "300"))  # 5 minutes
+        # Cost guardrail: background re-warm will generate billable Cloud Run traffic.
+        # Keep this OFF by default; enable explicitly if you truly want "always hot".
+        self.health_monitor_enabled = (
+            os.environ.get("ECAPA_PREWARM_HEALTH_MONITOR_ENABLED", "false").lower() == "true"
+        )
 
         # Circuit breaker state
         self._consecutive_failures = 0
@@ -704,12 +709,13 @@ class ECAPAPreWarmer:
         logger.info(f"[ECAPA-PREWARM] 🚀 Voice unlock commands will now be INSTANT!")
         logger.info("=" * 70)
 
-        # Start health monitoring in background (non-blocking)
-        if self._health_task is None or self._health_task.done():
-            self._health_task = asyncio.create_task(
-                self._health_monitor(),
-                name="ecapa_health_monitor"
-            )
+        # Start health monitoring in background (non-blocking) ONLY if explicitly enabled
+        if self.health_monitor_enabled:
+            if self._health_task is None or self._health_task.done():
+                self._health_task = asyncio.create_task(
+                    self._health_monitor(),
+                    name="ecapa_health_monitor"
+                )
 
         return result
 
@@ -725,7 +731,6 @@ class ECAPAPreWarmer:
             # Try default Cloud Run endpoints
             default_endpoints = [
                 os.environ.get("JARVIS_ML_ENDPOINT"),
-                "https://jarvis-ml-888774109345.us-central1.run.app",
             ]
 
             import aiohttp
@@ -758,7 +763,13 @@ class ECAPAPreWarmer:
         endpoints_to_check = []
         
         # From environment variables (highest priority)
-        for env_var in ["CLOUD_ECAPA_ENDPOINT", "JARVIS_ML_ENDPOINT", "ML_SERVICE_URL"]:
+        for env_var in [
+            "JARVIS_CLOUD_ML_ENDPOINT",
+            "JARVIS_CLOUD_ECAPA_ENDPOINT",
+            "CLOUD_ECAPA_ENDPOINT",
+            "JARVIS_ML_ENDPOINT",
+            "ML_SERVICE_URL",
+        ]:
             env_endpoint = os.environ.get(env_var)
             if env_endpoint:
                 endpoints_to_check.append(env_endpoint)
@@ -778,11 +789,6 @@ class ECAPAPreWarmer:
                         
         except Exception as e:
             logger.debug(f"[ECAPA-PREWARM] Could not get endpoints from client: {e}")
-        
-        # Add default Cloud Run endpoint
-        default_endpoint = "https://jarvis-ml-888774109345.us-central1.run.app"
-        if default_endpoint not in endpoints_to_check:
-            endpoints_to_check.append(default_endpoint)
         
         if not endpoints_to_check:
             return None

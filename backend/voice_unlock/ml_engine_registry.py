@@ -1627,8 +1627,12 @@ class MLEngineRegistry:
                 if startup_manager.is_cloud_ml_active:
                     # Get endpoint from active cloud backend
                     endpoint = await startup_manager.get_ml_endpoint("speaker_verify")
-                    self._cloud_endpoint = endpoint
-                    logger.info(f"   Cloud endpoint from MemoryAwareStartup: {endpoint}")
+                    # Normalize: accept either base URL or api URL (.../api/ml)
+                    base = (endpoint or "").strip()
+                    if base.endswith("/api/ml"):
+                        base = base.rsplit("/api/ml", 1)[0]
+                    self._cloud_endpoint = base or None
+                    logger.info(f"   Cloud endpoint from MemoryAwareStartup: {self._cloud_endpoint}")
                 else:
                     # Activate cloud backend
                     if self._startup_decision:
@@ -1642,13 +1646,18 @@ class MLEngineRegistry:
 
             # Fallback: Use environment variable or default GCP endpoint
             if not self._cloud_endpoint:
-                # Cloud Run URLs - dynamically discovered from environment
-                # Updated 2024-12 to new Cloud Run URL format
-                self._cloud_endpoint = os.getenv(
-                    "JARVIS_CLOUD_ML_ENDPOINT",
-                    "https://jarvis-ml-888774109345.us-central1.run.app"
-                )
-                logger.info(f"   Using cloud endpoint: {self._cloud_endpoint}")
+                # Cloud endpoint must be explicitly configured.
+                # Accept either base URL (https://...run.app) or api URL (.../api/ml).
+                raw = os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip()
+                if raw.endswith("/api/ml"):
+                    raw = raw.rsplit("/api/ml", 1)[0]
+                self._cloud_endpoint = raw or None
+                if self._cloud_endpoint:
+                    logger.info(f"   Using cloud endpoint: {self._cloud_endpoint}")
+                else:
+                    logger.info("   Cloud routing not enabled (JARVIS_CLOUD_ML_ENDPOINT not set)")
+                    self._use_cloud = False
+                    return False
 
             self._use_cloud = True
             logger.info("☁️  Cloud routing activated for ML operations")
@@ -1691,11 +1700,20 @@ class MLEngineRegistry:
         # Dynamic configuration from environment
         timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "15.0"))
         retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
-        fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
-        test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
+        # Cost-safe defaults: fallback + extraction tests must be explicitly enabled.
+        fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "false").lower() == "true"
+        test_extraction = (
+            test_extraction
+            if test_extraction is not None
+            else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "false").lower() == "true"
+        )
 
         # NEW: Wait for ECAPA to become ready (handles cold starts)
-        wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
+        wait_for_ecapa = (
+            wait_for_ecapa
+            if wait_for_ecapa is not None
+            else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "false").lower() == "true"
+        )
         ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "60.0"))  # 60s for pre-baked cache cold start
         ecapa_poll_interval = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL", "3.0"))
 
@@ -1962,37 +1980,29 @@ class MLEngineRegistry:
         # Ensure we have a cloud endpoint configured
         if not self._cloud_endpoint:
             # Try to get from environment variable
-            self._cloud_endpoint = os.getenv(
-                "JARVIS_CLOUD_ECAPA_ENDPOINT",
-                os.getenv("JARVIS_ML_CLOUD_ENDPOINT", None)
+            raw = (
+                os.getenv("JARVIS_CLOUD_ECAPA_ENDPOINT")
+                or os.getenv("JARVIS_ML_CLOUD_ENDPOINT")
+                or os.getenv("JARVIS_CLOUD_ML_ENDPOINT")
+                or os.getenv("CLOUD_RUN_ECAPA_URL")
             )
+            raw = (raw or "").strip()
+            if raw.endswith("/api/ml"):
+                raw = raw.rsplit("/api/ml", 1)[0]
+            self._cloud_endpoint = raw or None
 
             if not self._cloud_endpoint:
-                # Try GCP Cloud Run default URL format
-                project_id = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
-                region = os.getenv("GCP_REGION", "us-central1")
-                service_name = os.getenv("GCP_ECAPA_SERVICE", "jarvis-ml")
-
-                # GCP Cloud Run URL format: https://{service}-{random_suffix}.a.run.app
-                # We need to discover this or have it configured
-                logger.warning("   No cloud endpoint configured - checking for Cloud Run URL...")
-
-                # Common Cloud Run URL patterns to try
-                cloud_run_urls = [
-                    os.getenv("CLOUD_RUN_ECAPA_URL"),
-                    f"https://{service_name}-pvalxny6iq-uc.a.run.app",  # Known production URL
-                    f"https://{service_name}-888774109345.{region}.run.app",
-                ]
-
-                for url in cloud_run_urls:
-                    if url:
-                        self._cloud_endpoint = url
-                        logger.info(f"   Trying cloud endpoint: {url}")
-                        break
+                logger.error("❌ No cloud endpoint available for fallback")
+                logger.error(
+                    "   Set one of: JARVIS_CLOUD_ML_ENDPOINT, JARVIS_CLOUD_ECAPA_ENDPOINT, CLOUD_RUN_ECAPA_URL"
+                )
+                return False
 
         if not self._cloud_endpoint:
             logger.error("❌ No cloud endpoint available for fallback")
-            logger.error("   Set JARVIS_CLOUD_ECAPA_ENDPOINT environment variable")
+            logger.error(
+                "   Set one of: JARVIS_CLOUD_ML_ENDPOINT, JARVIS_CLOUD_ECAPA_ENDPOINT, CLOUD_RUN_ECAPA_URL"
+            )
             return False
 
         logger.info(f"   Cloud endpoint: {self._cloud_endpoint}")

@@ -336,7 +336,12 @@ DYNAMIC_LOADING_ENABLED = False
 
 # GCP VM Manager
 gcp_vm_manager = None
-GCP_VM_ENABLED = os.getenv("GCP_VM_ENABLED", "true").lower() == "true"
+# Cost-safe default: Spot/VM auto-creation must be explicitly enabled.
+# Accept legacy env var GCP_VM_ENABLED, but default to JARVIS_SPOT_VM_ENABLED=false.
+_gcp_vm_flag = os.getenv("GCP_VM_ENABLED")
+if _gcp_vm_flag is None:
+    _gcp_vm_flag = os.getenv("JARVIS_SPOT_VM_ENABLED", "false")
+GCP_VM_ENABLED = str(_gcp_vm_flag).lower() == "true"
 
 try:
     from core.dynamic_component_manager import get_component_manager

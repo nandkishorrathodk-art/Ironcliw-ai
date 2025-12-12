@@ -86,11 +86,9 @@
   },
   
   "cloud_first": {
-    "enabled": true,
-    "primary_endpoint": "https://jarvis-ml-888774109345.us-central1.run.app",
-    "fallback_endpoints": [
-      "https://jarvis-ml-backup.us-central1.run.app"
-    ],
+    "enabled": false,
+    "primary_endpoint": "",
+    "fallback_endpoints": [],
     "health_check_timeout_seconds": 2.0,
     "extraction_timeout_seconds": 3.0
   },

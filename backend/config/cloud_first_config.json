@@ -4,7 +4,7 @@
   "_description": "Neural Parallel + Cloud-First architecture settings for voice unlock",
   
   "cloud_first": {
-    "enabled": true,
+    "enabled": false,
     "force_local": false,
     "progress_updates_enabled": true,
     "cloud_priority": 1,
@@ -12,7 +12,7 @@
   },
   
   "cloud_endpoints": {
-    "primary": "https://jarvis-ml-888774109345.us-central1.run.app",
+    "primary": "",
     "health_path": "/health",
     "extract_path": "/api/ecapa/extract",
     "verify_path": "/api/ecapa/verify"

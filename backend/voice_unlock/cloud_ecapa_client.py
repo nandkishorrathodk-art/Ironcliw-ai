@@ -244,18 +244,13 @@ class CloudECAPAClientConfig:
         if e.strip()
     ]
 
-    # Fallback endpoint construction
-    # Note: Cloud Run URLs use project NUMBER, not project ID
-    GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
-    # Cloud Run URLs use format: https://{service}-{random_suffix}.a.run.app
-    # The actual URL is discovered at deployment time and stored in env var
-    # Default is the current deployed service URL
-    # Dynamic endpoint discovery - tries multiple known endpoints
-    # Updated 2024-12 to new Cloud Run URL format
-    PRIMARY_ENDPOINT = os.getenv(
-        "JARVIS_CLOUD_ML_ENDPOINT",
-        "https://jarvis-ml-888774109345.us-central1.run.app"
-    )
+    # Primary Cloud Run / VM endpoint.
+    #
+    # IMPORTANT (cost + safety):
+    # - Do NOT hardcode a Cloud Run URL as a default. If a developer runs JARVIS without
+    #   intending to use GCP, a baked-in endpoint can silently generate billable traffic.
+    # - This must be explicitly configured via env.
+    PRIMARY_ENDPOINT = os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip()
 
     # Fallback endpoints for redundancy (no hardcoding - all from env or discovery)
     FALLBACK_ENDPOINTS = [
@@ -293,26 +288,46 @@ class CloudECAPAClientConfig:
     # Health check
     HEALTH_CHECK_INTERVAL = float(os.getenv("CLOUD_ECAPA_HEALTH_INTERVAL", "60.0"))
     HEALTH_CHECK_TIMEOUT = float(os.getenv("CLOUD_ECAPA_HEALTH_TIMEOUT", "5.0"))
+    ENABLE_BACKGROUND_HEALTH_CHECKS = (
+        os.getenv("CLOUD_ECAPA_ENABLE_BACKGROUND_HEALTHCHECKS", "false").lower() == "true"
+    )
 
     @classmethod
     def get_all_endpoints(cls) -> List[str]:
-        """Get all configured endpoints in priority order."""
-        endpoints = []
+        """
+        Get all configured endpoints in priority order.
+
+        Normalization rules:
+        - Accept either base service URL (e.g., https://...run.app) OR the api URL
+          (e.g., https://...run.app/api/ml).
+        - Always normalize to the api URL (ends with /api/ml) for request dispatch.
+        """
+
+        def _norm(ep: str) -> str:
+            ep = (ep or "").strip()
+            if not ep:
+                return ""
+            ep = ep.rstrip("/")
+            return ep if ep.endswith("/api/ml") else f"{ep}/api/ml"
+
+        endpoints: List[str] = []
 
         # Add explicitly configured endpoints
-        if cls.ENDPOINTS:
-            endpoints.extend(cls.ENDPOINTS)
+        for ep in (cls.ENDPOINTS or []):
+            nep = _norm(ep)
+            if nep and nep not in endpoints:
+                endpoints.append(nep)
 
-        # Add primary endpoint if not in list
-        if cls.PRIMARY_ENDPOINT and cls.PRIMARY_ENDPOINT not in endpoints:
-            endpoints.append(cls.PRIMARY_ENDPOINT)
+        # Add primary endpoint if configured
+        pep = _norm(cls.PRIMARY_ENDPOINT)
+        if pep and pep not in endpoints:
+            endpoints.append(pep)
 
-        # Add Cloud Run default - uses correct Cloud Run URL format
-        # Note: Cloud Run URLs are https://{service}-{random_suffix}.a.run.app
-        # The actual URL is discovered at deployment time
-        cloud_run_default = f"{cls.PRIMARY_ENDPOINT}/api/ml" if cls.PRIMARY_ENDPOINT else None
-        if cloud_run_default and cloud_run_default not in endpoints:
-            endpoints.append(cloud_run_default)
+        # Add fallback endpoints
+        for ep in (cls.FALLBACK_ENDPOINTS or []):
+            nep = _norm(ep)
+            if nep and nep not in endpoints:
+                endpoints.append(nep)
 
         # Add localhost for development
         if os.getenv("JARVIS_DEV_MODE", "false").lower() == "true":
@@ -326,8 +341,8 @@ class CloudECAPAClientConfig:
     # SPOT VM CONFIGURATION
     # =========================================================================
 
-    # Enable Spot VM backend
-    SPOT_VM_ENABLED = os.getenv("JARVIS_SPOT_VM_ENABLED", "true").lower() == "true"
+    # Enable Spot VM backend (explicit opt-in; default OFF to prevent surprise spend)
+    SPOT_VM_ENABLED = os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true"
 
     # Spot VM creation triggers
     SPOT_VM_TRIGGER_FAILURES = int(os.getenv("JARVIS_SPOT_VM_TRIGGER_FAILURES", "3"))
@@ -351,9 +366,9 @@ class CloudECAPAClientConfig:
     # Legacy compatibility - now computed dynamically
     RAM_THRESHOLD_LOCAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "2.0"))  # Lowered from 6.0
 
-    # Routing preferences
-    PREFER_CLOUD_RUN = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
-    CLOUD_FALLBACK_ENABLED = os.getenv("JARVIS_CLOUD_FALLBACK", "true").lower() == "true"
+    # Routing preferences (explicit opt-in; default OFF to prevent surprise spend)
+    PREFER_CLOUD_RUN = os.getenv("JARVIS_PREFER_CLOUD_RUN", "false").lower() == "true"
+    CLOUD_FALLBACK_ENABLED = os.getenv("JARVIS_CLOUD_FALLBACK", "false").lower() == "true"
 
 
 # =============================================================================
@@ -1402,23 +1417,29 @@ class CloudECAPAClient:
             logger.error("aiohttp not available. Install with: pip install aiohttp")
             return False
 
-        # Verify at least one endpoint is healthy (with wait-for-ready for cold starts)
+        # Verify at least one endpoint is healthy (optional wait-for-ready for cold starts)
         logger.info("🔍 Checking Cloud Run endpoint availability...")
-        healthy = await self._discover_healthy_endpoint(wait_for_ready=True)
+        healthy = await self._discover_healthy_endpoint(
+            wait_for_ready=CloudECAPAClientConfig.ECAPA_WAIT_FOR_READY
+        )
 
         if healthy:
             self._initialized = True
             self._active_backend = BackendType.CLOUD_RUN
             logger.info(f"✅ Cloud ECAPA Client ready (primary: {self._healthy_endpoint})")
 
-            # Start background health monitoring
-            self._health_check_task = asyncio.create_task(self._health_check_loop())
+            # Background health monitoring can generate billable Cloud Run traffic.
+            # Keep it opt-in; per-request checks handle correctness without idle polling.
+            if CloudECAPAClientConfig.ENABLE_BACKGROUND_HEALTH_CHECKS:
+                self._health_check_task = asyncio.create_task(self._health_check_loop())
 
-            # Start idle check for Spot VMs
-            self._idle_check_task = asyncio.create_task(self._idle_check_loop())
+            # Start idle check for Spot VMs (only if Spot VM feature enabled)
+            if CloudECAPAClientConfig.SPOT_VM_ENABLED:
+                self._idle_check_task = asyncio.create_task(self._idle_check_loop())
 
             # Initialize Spot VM backend in background (non-blocking, optional fallback)
-            asyncio.create_task(self._init_spot_vm_background())
+            if CloudECAPAClientConfig.SPOT_VM_ENABLED:
+                asyncio.create_task(self._init_spot_vm_background())
 
             return True
 
@@ -1447,8 +1468,9 @@ class CloudECAPAClient:
                 self._active_backend = BackendType.LOCAL
                 self._initialized = True
 
-                # Start background task to periodically check for Cloud Run availability
-                self._health_check_task = asyncio.create_task(self._health_check_loop())
+                # Optional background task to check for Cloud Run availability
+                if CloudECAPAClientConfig.ENABLE_BACKGROUND_HEALTH_CHECKS:
+                    self._health_check_task = asyncio.create_task(self._health_check_loop())
                 return True
         except Exception:
             pass
@@ -1459,8 +1481,9 @@ class CloudECAPAClient:
         )
         self._initialized = True
 
-        # Start health check loop to detect when endpoints become available
-        self._health_check_task = asyncio.create_task(self._health_check_loop())
+        # Optional health check loop to detect when endpoints become available
+        if CloudECAPAClientConfig.ENABLE_BACKGROUND_HEALTH_CHECKS:
+            self._health_check_task = asyncio.create_task(self._health_check_loop())
 
         return False
 

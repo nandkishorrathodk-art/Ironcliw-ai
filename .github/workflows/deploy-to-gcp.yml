@@ -110,6 +110,26 @@ jobs:
             echo "✅ Bucket ${DEPLOYMENT_BUCKET} already exists"
           fi
 
+          # Cost guardrail: ensure old deployment artifacts expire automatically
+          # (prevents unbounded Cloud Storage growth from frequent deploys).
+          TTL_DAYS="${DEPLOYMENT_ARTIFACT_TTL_DAYS:-30}"
+          echo "🧹 Ensuring bucket lifecycle policy (TTL=${TTL_DAYS} days) ..."
+          cat > lifecycle.json << EOF
+          {
+            "rule": [
+              {
+                "action": { "type": "Delete" },
+                "condition": {
+                  "age": ${TTL_DAYS},
+                  "matchesPrefix": ["jarvis-", "metadata-"]
+                }
+              }
+            ]
+          }
+          EOF
+          # gsutil is available with setup-gcloud; lifecycle set is idempotent.
+          gsutil lifecycle set lifecycle.json ${DEPLOYMENT_BUCKET} || echo "⚠️  Could not set lifecycle policy (continuing)"
+
           # Upload deployment package
           echo "📤 Uploading deployment package..."
           gcloud storage cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/ || {

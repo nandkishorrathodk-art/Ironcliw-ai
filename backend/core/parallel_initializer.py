@@ -97,6 +97,17 @@ class ParallelInitializer:
 
     def _register_components(self):
         """Register all JARVIS components with priorities"""
+        # Cost-safe gating for cloud/spot features (explicit opt-in; no hardcoded cloud usage)
+        enable_spot_vm = (
+            os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true"
+            or os.getenv("GCP_VM_ENABLED", "false").lower() == "true"
+        )
+        enable_cloud_ml = bool(
+            (os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip())
+            or (os.getenv("JARVIS_CLOUD_ML_ENDPOINTS", "").strip())
+        )
+        enable_vbi_prewarm = os.getenv("JARVIS_VBI_PREWARM_ENABLED", "false").lower() == "true"
+
         # Phase 1: Critical infrastructure (parallel)
         self._add_component("config", priority=1, is_critical=True)
         self._add_component("cloud_sql_proxy", priority=10, dependencies=["config"])
@@ -104,12 +115,15 @@ class ParallelInitializer:
 
         # Phase 2: ML Infrastructure (parallel, non-blocking)
         self._add_component("memory_aware_startup", priority=20)
-        self._add_component("gcp_vm_manager", priority=21)  # ALWAYS init for runtime memory pressure handling
+        if enable_spot_vm:
+            self._add_component("gcp_vm_manager", priority=21)
         self._add_component("cloud_ml_router", priority=22, dependencies=["memory_aware_startup"])
-        self._add_component("cloud_ecapa_client", priority=23)
+        if enable_cloud_ml or enable_spot_vm:
+            self._add_component("cloud_ecapa_client", priority=23)
         # VBI pre-warming runs independently - don't block on cloud_ecapa_client
         # It will use whatever backend is available (cloud, spot vm, or local)
-        self._add_component("vbi_prewarm", priority=24)  # After cloud_ecapa_client starts but not dependent on success
+        if enable_vbi_prewarm:
+            self._add_component("vbi_prewarm", priority=24)
         self._add_component("vbi_health_monitor", priority=24)  # VBI health monitoring for operation tracking
         self._add_component("ml_engine_registry", priority=25)
 

@@ -333,7 +333,10 @@ class VMManagerConfig:
         default_factory=lambda: float(os.getenv("GCP_MAX_VM_LIFETIME_HOURS", "3.0"))
     )
     idle_timeout_minutes: int = field(
-        default_factory=lambda: int(os.getenv("GCP_IDLE_TIMEOUT_MINUTES", "30"))
+        # Prefer JARVIS_SPOT_VM_IDLE_TIMEOUT (used by hybrid cloud stack), fall back to legacy GCP_*
+        default_factory=lambda: int(
+            os.getenv("GCP_IDLE_TIMEOUT_MINUTES", os.getenv("JARVIS_SPOT_VM_IDLE_TIMEOUT", "30"))
+        )
     )
 
     # Retry Configuration
@@ -349,7 +352,10 @@ class VMManagerConfig:
         default_factory=lambda: int(os.getenv("GCP_MAX_CONCURRENT_VMS", "2"))
     )
     daily_budget_usd: float = field(
-        default_factory=lambda: float(os.getenv("GCP_DAILY_BUDGET_USD", "5.0"))
+        # Prefer JARVIS_SPOT_VM_DAILY_BUDGET (used by hybrid cloud stack), fall back to legacy GCP_*
+        default_factory=lambda: float(
+            os.getenv("GCP_DAILY_BUDGET_USD", os.getenv("JARVIS_SPOT_VM_DAILY_BUDGET", "5.0"))
+        )
     )
 
     # Monitoring
@@ -1095,7 +1101,11 @@ class GCPVMManager:
                         continue
 
                     # 2. Check if VM is wasting money (idle + low efficiency)
-                    if vm.is_wasting_money:
+                    idle_limit = float(self.config.idle_timeout_minutes)
+                    is_idle = vm.idle_time_minutes > idle_limit
+                    is_wasting_money = is_idle and (vm.cost_efficiency_score < 30.0)
+
+                    if is_wasting_money:
                         logger.warning(
                             f"💰 VM {vm_name} is wasting money: "
                             f"idle for {vm.idle_time_minutes:.1f}m, "
@@ -1103,7 +1113,10 @@ class GCPVMManager:
                         )
                         await self.terminate_vm(
                             vm_name,
-                            reason=f"Cost waste: idle {vm.idle_time_minutes:.1f}m, efficiency {vm.cost_efficiency_score:.1f}%"
+                            reason=(
+                                f"Cost waste: idle {vm.idle_time_minutes:.1f}m "
+                                f"(limit {idle_limit:.0f}m), efficiency {vm.cost_efficiency_score:.1f}%"
+                            ),
                         )
                         continue
 
@@ -1393,6 +1406,15 @@ async def create_vm_if_needed(
         VMInstance if created, None otherwise
     """
     try:
+        # Explicit opt-in guardrail (prevents surprise spend).
+        # Accept legacy GCP_VM_ENABLED, otherwise use JARVIS_SPOT_VM_ENABLED.
+        enabled_flag = os.getenv("GCP_VM_ENABLED")
+        if enabled_flag is None:
+            enabled_flag = os.getenv("JARVIS_SPOT_VM_ENABLED", "false")
+        if str(enabled_flag).lower() != "true":
+            logger.info("ℹ️  Spot VM creation disabled by configuration")
+            return None
+
         manager = await get_gcp_vm_manager_safe()
         
         if manager is None:

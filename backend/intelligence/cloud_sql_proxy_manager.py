@@ -926,12 +926,12 @@ WantedBy=default.target
             # Stop existing proxy
             if self.is_running():
                 logger.info("[CLOUDSQL] 🛑 Stopping existing proxy...")
-                self.stop()
+                await self.stop()
                 await asyncio.sleep(2)
 
             # Start new proxy
             logger.info("[CLOUDSQL] 🚀 Starting new proxy...")
-            success = self.start()
+            success = await self.start()
 
             if success:
                 # Wait for proxy to be ready
@@ -1339,13 +1339,13 @@ if __name__ == "__main__":
     manager = CloudSQLProxyManager()
 
     if args.command == "start":
-        success = manager.start(force_restart=args.force)
+        success = asyncio.run(manager.start(force_restart=args.force))
         sys.exit(0 if success else 1)
     elif args.command == "stop":
-        success = manager.stop()
+        success = asyncio.run(manager.stop())
         sys.exit(0 if success else 1)
     elif args.command == "restart":
-        success = manager.restart()
+        success = asyncio.run(manager.restart())
         sys.exit(0 if success else 1)
     elif args.command == "status":
         if manager.is_running():

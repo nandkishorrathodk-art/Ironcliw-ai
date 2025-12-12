@@ -2079,10 +2079,10 @@ class ProcessCleanupManager:
         
         Also handles Cloud Run cold start by using generous timeouts.
         """
-        cloud_url = os.getenv(
-            "JARVIS_CLOUD_ML_ENDPOINT",
-            "https://jarvis-ml-888774109345.us-central1.run.app"
-        )
+        cloud_url = os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip()
+        if not cloud_url:
+            # Explicit opt-in only: do not assume a Cloud Run endpoint.
+            return False
         # Handle if URL already has /api/ml suffix
         base_url = cloud_url.rstrip('/').replace('/api/ml', '')
         health_url = f"{base_url}/health"
@@ -2473,7 +2473,7 @@ class ProcessCleanupManager:
             "cloud_run_available": False,
             "cloud_run_url": os.getenv(
                 "JARVIS_CLOUD_ML_ENDPOINT",
-                "https://jarvis-ml-888774109345.us-central1.run.app"
+                ""
             ),
             "memory_percent": psutil.virtual_memory().percent,
             "cloud_first_mode": os.getenv("JARVIS_CLOUD_FIRST_MODE", "false").lower() == "true",
