@@ -6,6 +6,7 @@ Balanced accuracy and performance for medium-RAM scenarios
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -113,7 +114,17 @@ class WhisperLocalEngine(BaseSTTEngine):
             # Transcribe with Whisper
             # 🔑 KEY FIX: Use initial_prompt to prevent hallucinations
             # Without this, Whisper can hallucinate random names like "Mark McCree"
-            initial_prompt = "unlock my screen, unlock screen, jarvis unlock, hey jarvis"
+            #
+            # IMPORTANT: Prompt must NOT bias toward only "unlock" because it can cause
+            # "lock" → "unlock" confusions on short commands. Keep it balanced and configurable.
+            initial_prompt = os.getenv("JARVIS_WHISPER_INITIAL_PROMPT", "").strip()
+            if not initial_prompt:
+                initial_prompt = (
+                    "hey jarvis, jarvis, "
+                    "lock my screen, unlock my screen, lock screen, unlock screen, "
+                    "lock my mac, unlock my mac, "
+                    "open safari, close safari, open chrome, close chrome"
+                )
 
             # SAFETY: Capture model reference BEFORE spawning thread to prevent
             # segfaults if model is unloaded during transcription

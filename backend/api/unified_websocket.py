@@ -1120,18 +1120,68 @@ class UnifiedWebSocketManager:
                     # CRITICAL: "lock my screen" is NOT an unlock command - it's a LOCK command!
                     # Only UNLOCK commands need voice biometric verification
                     # LOCK commands should go through standard JARVIS API (no VBI needed)
+                    import re
+
                     command_lower = command_text.lower()
+                    tokens = set(re.findall(r"[a-z']+", command_lower))
+
+                    # -----------------------------------------------------------------
+                    # AUDIO-VERIFIED INTENT (prevents "lock" → "unlock" misfires)
+                    # -----------------------------------------------------------------
+                    # The frontend may send a text transcript that is occasionally wrong.
+                    # For security-sensitive actions (unlock) we validate the *spoken* intent
+                    # using the attached audio (when available) and override the command
+                    # text to a canonical form if audio strongly disagrees.
+                    try:
+                        text_intent = "unlock" if "unlock" in tokens else ("lock" if "lock" in tokens else None)
+
+                        if audio_data_received and text_intent in ("lock", "unlock"):
+                            import base64
+
+                            # Decode audio bytes (base64 payload from frontend)
+                            audio_bytes = base64.b64decode(audio_data_received)
+
+                            # Fast STT intent check (command-mode prompt; no unlock bias)
+                            from voice.whisper_audio_fix import transcribe_with_whisper
+
+                            intent_timeout = float(os.getenv("WS_AUDIO_INTENT_TIMEOUT_SEC", "2.0"))
+                            audio_text = await asyncio.wait_for(
+                                transcribe_with_whisper(
+                                    audio_data=audio_bytes,
+                                    sample_rate=sample_rate_received or 16000,
+                                    mode="command",
+                                ),
+                                timeout=intent_timeout,
+                            )
+
+                            audio_tokens = set(re.findall(r"[a-z']+", (audio_text or "").lower()))
+                            audio_intent = (
+                                "unlock" if "unlock" in audio_tokens else ("lock" if "lock" in audio_tokens else None)
+                            )
+
+                            if audio_intent and audio_intent != text_intent:
+                                logger.warning(
+                                    f"[WS] ⚠️ Intent mismatch (text={text_intent}, audio={audio_intent}) "
+                                    f"| original='{command_text}' | audio_stt='{audio_text}'"
+                                )
+                                # Override to canonical command to ensure correct routing
+                                command_text = f"{audio_intent} my screen"
+                                command_lower = command_text.lower()
+                                tokens = set(re.findall(r"[a-z']+", command_lower))
+                    except Exception as _intent_err:
+                        # Never block command handling due to intent verification failures
+                        logger.debug(f"[WS] Audio intent verification skipped: {_intent_err}")
                     
                     # First check if it's a LOCK command (has "lock" but NOT "unlock")
                     is_lock_command = (
-                        "lock" in command_lower and 
-                        "unlock" not in command_lower and
-                        ("screen" in command_lower or "mac" in command_lower or "computer" in command_lower)
+                        ("lock" in tokens)
+                        and ("unlock" not in tokens)
+                        and (("screen" in command_lower) or ("mac" in command_lower) or ("computer" in command_lower))
                     )
                     
                     # UNLOCK command detection (only if NOT a lock command)
                     is_unlock_command = not is_lock_command and (
-                        "unlock" in command_lower or
+                        ("unlock" in tokens) or
                         any(
                             keyword in command_lower
                             for keyword in ["screen unlock", "voice unlock", "let me in"]

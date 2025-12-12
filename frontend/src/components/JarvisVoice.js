@@ -3266,6 +3266,23 @@ const JarvisVoice = () => {
     const commandStartTime = Date.now();
     setTranscript(command);
 
+    // Infer command type from either caller hint or tokenized text
+    // Token-based to avoid substring collisions (e.g., "unlock" contains "lock")
+    const inferPriorityCommandType = (text) => {
+      try {
+        const tokens = (text || '').toLowerCase().match(/[a-z']+/g) || [];
+        const tokenSet = new Set(tokens);
+        if (tokenSet.has('unlock')) return 'unlock';
+        if (tokenSet.has('lock')) return 'lock';
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const inferredType = confidenceInfo.commandType || inferPriorityCommandType(command);
+    const effectiveCommandType = inferredType || 'priority';
+
     // Check WebSocket - but don't wait long for reconnect on priority commands
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.warn('⚠️ WebSocket not connected for priority command! Quick reconnect attempt...');
@@ -3306,7 +3323,7 @@ const JarvisVoice = () => {
           ...confidenceInfo,
           priority: 'critical',
           isPriorityCommand: true,
-          commandType: confidenceInfo.commandType || 'unlock',
+          commandType: effectiveCommandType,
           audioData: audioForQueue
         });
 
@@ -3326,7 +3343,7 @@ const JarvisVoice = () => {
         ...confidenceInfo,
         startTime: commandStartTime,
         isPriorityCommand: true,
-        commandType: confidenceInfo.commandType || 'unlock',
+        commandType: effectiveCommandType,
       }
     };
 
@@ -3372,7 +3389,13 @@ const JarvisVoice = () => {
     try {
       wsRef.current.send(JSON.stringify(message));
       console.log(`🚀 Priority command sent in ${Date.now() - commandStartTime}ms`);
-      setResponse('🔓 Unlocking...');
+      if (effectiveCommandType === 'lock') {
+        setResponse('🔒 Locking...');
+      } else if (effectiveCommandType === 'unlock') {
+        setResponse('🔓 Unlocking...');
+      } else {
+        setResponse('⚡ Processing...');
+      }
       setIsProcessing(true);
     } catch (sendError) {
       console.error('[WS] Failed to send priority command:', sendError);
