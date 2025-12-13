@@ -1116,47 +1116,93 @@ class JARVISLoadingManager {
 
         console.log('[Complete] ✓ Received completion from authority (start_system.py)');
         
-        // Update UI to show completion
-        this.elements.subtitle.textContent = 'SYSTEM READY';
-        this.elements.statusMessage.textContent = message || 'JARVIS is online!';
-        this.updateStatusText('System ready', 'ready');
+        // Update UI to show completion is starting
+        this.elements.subtitle.textContent = 'FINALIZING';
+        this.elements.statusMessage.textContent = 'Verifying system readiness...';
+        this.updateStatusText('Verifying...', 'verifying');
         this.state.progress = 100;
         this.state.targetProgress = 100;
         this.updateProgressBar();
 
-        // Quick sanity check - just verify frontend is reachable before redirect
-        // We trust start_system.py already verified this, this is just a safety net
-        const frontendOk = await this.checkFrontendReady();
-        if (!frontendOk) {
-            console.warn('[Complete] Frontend sanity check failed, brief wait...');
-            this.elements.statusMessage.textContent = 'Finalizing...';
-            await this.sleep(2000);
+        // =========================================================================
+        // ROBUST SYSTEM VERIFICATION BEFORE REDIRECT
+        // =========================================================================
+        // We verify BOTH backend AND frontend are fully ready before redirecting.
+        // This ensures the user lands on a fully functional JARVIS interface.
+        // =========================================================================
+        
+        const backendPort = this.config.backendPort || 8010;
+        const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
+        const wsUrl = `ws://${this.config.hostname}:${backendPort}`;
+        
+        let systemReady = false;
+        let retryCount = 0;
+        const maxRetries = 5;
+        
+        while (!systemReady && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`[Complete] System verification attempt ${retryCount}/${maxRetries}...`);
+            
+            // Check 1: Backend health
+            const backendOk = await this.checkBackendHealth();
+            if (!backendOk) {
+                console.warn('[Complete] Backend not ready yet...');
+                this.elements.statusMessage.textContent = 'Waiting for backend...';
+                await this.sleep(1000);
+                continue;
+            }
+            
+            // Check 2: Frontend accessible
+            const frontendOk = await this.checkFrontendReady();
+            if (!frontendOk) {
+                console.warn('[Complete] Frontend not ready yet...');
+                this.elements.statusMessage.textContent = 'Waiting for frontend...';
+                await this.sleep(1000);
+                continue;
+            }
+            
+            // Check 3: WebSocket connectivity (quick test)
+            const wsOk = await this.testWebSocket(`${wsUrl}/ws`);
+            if (!wsOk) {
+                console.warn('[Complete] WebSocket not ready yet...');
+                this.elements.statusMessage.textContent = 'Waiting for WebSocket...';
+                await this.sleep(1000);
+                continue;
+            }
+            
+            // All checks passed!
+            systemReady = true;
+            console.log('[Complete] ✅ Full system verification passed!');
         }
+        
+        if (!systemReady) {
+            console.warn('[Complete] System verification timed out, proceeding anyway...');
+            this.elements.statusMessage.textContent = 'Finalizing (verification timeout)...';
+            await this.sleep(1000);
+        }
+
+        // Update UI to show ready state
+        this.elements.subtitle.textContent = 'SYSTEM READY';
+        this.elements.statusMessage.textContent = message || 'JARVIS is online!';
+        this.updateStatusText('System ready', 'ready');
 
         console.log('[Complete] Proceeding with redirect...');
         
         // CRITICAL: Persist backend readiness state for main app
         // This prevents "CONNECTING TO BACKEND..." showing after loading completes
-        const backendPort = this.config.backendPort || 8010;
-        const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
-        const wsUrl = `ws://${this.config.hostname}:${backendPort}`;
-        
         try {
             localStorage.setItem('jarvis_backend_verified', 'true');
             localStorage.setItem('jarvis_backend_url', backendUrl);
             localStorage.setItem('jarvis_backend_ws_url', wsUrl);
             localStorage.setItem('jarvis_backend_verified_at', Date.now().toString());
             localStorage.setItem('jarvis_backend_port', backendPort.toString());
+            localStorage.setItem('jarvis_system_ready', 'true');
             console.log('[Complete] ✓ Backend readiness state persisted for main app');
         } catch (e) {
             console.warn('[Complete] Could not persist backend state:', e);
         }
         
         this.cleanup();
-
-        this.elements.subtitle.textContent = 'SYSTEM READY';
-        this.elements.statusMessage.textContent = message || 'JARVIS is online!';
-        this.updateStatusText('System ready', 'ready');
 
         this.playEpicCompletionAnimation(redirectUrl);
     }
