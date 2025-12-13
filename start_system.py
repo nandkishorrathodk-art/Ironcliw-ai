@@ -10957,107 +10957,95 @@ if (typeof localStorage !== 'undefined') {
             -- Robust, Dynamic, Reuse-First Strategy
             -- =========================================================================
             
-            on isJarvisURL(theURL, patterns)
-                repeat with pattern in patterns
-                    if theURL contains pattern then
-                        return true
-                    end if
-                end repeat
-                return false
-            end isJarvisURL
+            -- =========================================================================
+            -- JARVIS Chrome Incognito Manager v3.0
+            -- AGGRESSIVE: Closes ALL JARVIS tabs first, then opens exactly ONE
+            -- =========================================================================
             
             tell application "Google Chrome"
                 set jarvisPatterns to {{{jarvis_patterns_str}}}
                 set targetURL to "{url}"
                 set foundIncognitoWindow to missing value
-                set foundJarvisTab to missing value
-                set tabsToClose to {{}}
-                set result to "NONE"
+                set closedCount to 0
                 
                 -- =====================================================================
-                -- PHASE 1: Scan ALL windows to find incognito windows and JARVIS tabs
+                -- PHASE 1: AGGRESSIVE CLEANUP - Close ALL JARVIS tabs in incognito
+                -- We do multiple passes to ensure all are closed (handles index shifting)
                 -- =====================================================================
-                repeat with w in windows
-                    try
-                        -- Check if this is an incognito window
-                        -- Chrome incognito windows have mode "incognito"
-                        set windowMode to mode of w
-                        
-                        if windowMode is "incognito" then
-                            -- Found an incognito window
-                            if foundIncognitoWindow is missing value then
-                                set foundIncognitoWindow to w
-                            end if
-                            
-                            -- Scan tabs in this incognito window
-                            set tabCount to count of tabs of w
-                            repeat with i from 1 to tabCount
-                                set t to tab i of w
-                                set tabURL to URL of t
-                                
-                                -- Check if this is a JARVIS tab
-                                if my isJarvisURL(tabURL, jarvisPatterns) then
-                                    if foundJarvisTab is missing value then
-                                        -- First JARVIS tab found - we'll reuse this one
-                                        set foundJarvisTab to t
-                                        set foundIncognitoWindow to w
-                                    else
-                                        -- Duplicate JARVIS tab - mark for closure
-                                        set end of tabsToClose to {{w, i}}
-                                    end if
+                repeat 3 times
+                    repeat with w in windows
+                        try
+                            if mode of w is "incognito" then
+                                -- Remember this window for later
+                                if foundIncognitoWindow is missing value then
+                                    set foundIncognitoWindow to w
                                 end if
-                            end repeat
-                        end if
-                    on error errMsg
-                        -- Skip windows that can't be accessed
-                    end try
+                                
+                                -- Close JARVIS tabs in reverse order (handles index shifting)
+                                set tabCount to count of tabs of w
+                                repeat with i from tabCount to 1 by -1
+                                    try
+                                        set t to tab i of w
+                                        set tabURL to URL of t
+                                        
+                                        -- Check if this is a JARVIS tab
+                                        repeat with pattern in jarvisPatterns
+                                            if tabURL contains pattern then
+                                                -- Close this tab
+                                                close t
+                                                set closedCount to closedCount + 1
+                                                exit repeat
+                                            end if
+                                        end repeat
+                                    end try
+                                end repeat
+                            end if
+                        end try
+                    end repeat
+                    
+                    -- Small delay between passes
+                    delay 0.1
                 end repeat
                 
                 -- =====================================================================
-                -- PHASE 2: Close duplicate JARVIS tabs (reverse order to preserve indices)
+                -- PHASE 2: Open exactly ONE tab with target URL
                 -- =====================================================================
-                if (count of tabsToClose) > 0 then
-                    repeat with i from (count of tabsToClose) to 1 by -1
-                        try
-                            set tabInfo to item i of tabsToClose
-                            set targetWindow to item 1 of tabInfo
-                            set tabIndex to item 2 of tabInfo
-                            close tab tabIndex of targetWindow
-                        end try
-                    end repeat
-                    set result to "CLOSED_DUPLICATES:" & ((count of tabsToClose) as string)
-                end if
-                
-                -- =====================================================================
-                -- PHASE 3: Navigate to target URL
-                -- =====================================================================
-                if foundJarvisTab is not missing value then
-                    -- REUSE existing JARVIS tab in incognito
-                    set URL of foundJarvisTab to targetURL
-                    set active tab index of foundIncognitoWindow to (index of foundJarvisTab)
-                    set index of foundIncognitoWindow to 1
-                    activate
-                    return "REUSED_TAB:" & result
-                    
-                else if foundIncognitoWindow is not missing value then
-                    -- Found incognito window but no JARVIS tab - add new tab
-                    tell foundIncognitoWindow
-                        set newTab to make new tab with properties {{URL:targetURL}}
-                        set active tab index to (count of tabs)
-                    end tell
-                    set index of foundIncognitoWindow to 1
-                    activate
-                    return "NEW_TAB_IN_EXISTING:" & result
-                    
+                if foundIncognitoWindow is not missing value then
+                    try
+                        set tabCount to count of tabs of foundIncognitoWindow
+                        if tabCount > 0 then
+                            tell foundIncognitoWindow
+                                set newTab to make new tab with properties {{URL:targetURL}}
+                                set active tab index to (count of tabs)
+                            end tell
+                            set index of foundIncognitoWindow to 1
+                            activate
+                            return "NEW_TAB_IN_EXISTING:closed_" & closedCount
+                        else
+                            tell foundIncognitoWindow
+                                make new tab with properties {{URL:targetURL}}
+                            end tell
+                            set index of foundIncognitoWindow to 1
+                            activate
+                            return "NEW_TAB_IN_EXISTING:closed_" & closedCount
+                        end if
+                    on error
+                        set incognitoWindow to make new window with properties {{mode:"incognito"}}
+                        delay 0.3
+                        tell incognitoWindow
+                            set URL of active tab to targetURL
+                        end tell
+                        activate
+                        return "NEW_INCOGNITO_WINDOW:closed_" & closedCount
+                    end try
                 else
-                    -- No incognito window exists - create one
                     set incognitoWindow to make new window with properties {{mode:"incognito"}}
                     delay 0.3
                     tell incognitoWindow
                         set URL of active tab to targetURL
                     end tell
                     activate
-                    return "NEW_INCOGNITO_WINDOW:" & result
+                    return "NEW_INCOGNITO_WINDOW:closed_" & closedCount
                 end if
             end tell
             '''
@@ -11078,26 +11066,30 @@ if (typeof localStorage !== 'undefined') {
                 logger.debug(f"Chrome Incognito AppleScript: returncode={process.returncode}, result='{result}', error='{error}'")
                 
                 if process.returncode == 0 and result:
-                    # Parse the result to provide detailed feedback
-                    if "REUSED_TAB" in result:
-                        duplicates = "0"
-                        if "CLOSED_DUPLICATES:" in result:
-                            duplicates = result.split("CLOSED_DUPLICATES:")[-1]
-                        print(f"{Colors.GREEN}🔒 Chrome Incognito: Reused existing JARVIS tab{Colors.ENDC}")
-                        if duplicates != "0":
-                            print(f"{Colors.CYAN}   └─ Closed {duplicates} duplicate tab(s){Colors.ENDC}")
-                        logger.info(f"✅ Reused existing Chrome Incognito tab (closed {duplicates} duplicates)")
-                        
-                    elif "NEW_TAB_IN_EXISTING" in result:
-                        print(f"{Colors.GREEN}🔒 Chrome Incognito: Added tab to existing incognito window{Colors.ENDC}")
-                        logger.info("✅ Added new tab to existing Chrome Incognito window")
+                    # Parse closed count from result (e.g., "NEW_TAB_IN_EXISTING:closed_3")
+                    closed_count = 0
+                    if ":closed_" in result:
+                        try:
+                            closed_count = int(result.split(":closed_")[1])
+                        except:
+                            pass
+                    
+                    if "NEW_TAB_IN_EXISTING" in result:
+                        if closed_count > 0:
+                            print(f"{Colors.GREEN}🔒 Chrome Incognito: Cleaned up {closed_count} duplicate tab(s), opened in existing window{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.GREEN}🔒 Chrome Incognito: Opened in existing incognito window{Colors.ENDC}")
+                        logger.info(f"✅ Chrome Incognito: existing window (closed {closed_count} duplicates)")
                         
                     elif "NEW_INCOGNITO_WINDOW" in result:
-                        print(f"{Colors.GREEN}🔒 Chrome Incognito: Created new incognito window{Colors.ENDC}")
-                        logger.info("✅ Created new Chrome Incognito window")
+                        if closed_count > 0:
+                            print(f"{Colors.GREEN}🔒 Chrome Incognito: Cleaned up {closed_count} duplicate tab(s), created new window{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.GREEN}🔒 Chrome Incognito: Created new incognito window{Colors.ENDC}")
+                        logger.info(f"✅ Chrome Incognito: new window (closed {closed_count} duplicates)")
                         
                     else:
-                        print(f"{Colors.GREEN}🔒 Opened in Chrome Incognito{Colors.ENDC}")
+                        print(f"{Colors.GREEN}🔒 Chrome Incognito: Ready{Colors.ENDC}")
                         logger.info(f"✅ Chrome Incognito operation completed: {result}")
                     
                     return True
@@ -15986,105 +15978,112 @@ async def main():
                     # =========================================================================
                     # CHROME INCOGNITO - ALWAYS USED FOR RESTART
                     # =========================================================================
-                    # Uses Chrome Incognito with intelligent window/tab reuse:
-                    # 1. Find existing incognito window with JARVIS tab → reuse it
-                    # 2. Find existing incognito window → add new tab
-                    # 3. No incognito window → create one
-                    # 4. Close any duplicate JARVIS tabs in incognito
+                    # Uses Chrome Incognito with AGGRESSIVE duplicate cleanup:
+                    # 1. Close ALL existing JARVIS tabs in ALL incognito windows first
+                    # 2. Then either reuse an existing incognito window or create new one
+                    # 3. Navigate to loading page in a SINGLE tab
                     # =========================================================================
                     print(f"{Colors.CYAN}🔒 Opening Chrome Incognito with loading page...{Colors.ENDC}")
                     
                     browser_opened = False
                     try:
-                        # AppleScript for Chrome Incognito with intelligent reuse
+                        # AppleScript for Chrome Incognito with AGGRESSIVE duplicate cleanup
+                        # This script closes ALL JARVIS tabs first, then opens exactly ONE
                         incognito_script = '''
                         -- =========================================================================
-                        -- JARVIS Chrome Incognito Restart Manager
-                        -- Reuses existing incognito windows/tabs, prevents duplicates
+                        -- JARVIS Chrome Incognito Restart Manager v3.0
+                        -- AGGRESSIVE: Closes ALL JARVIS tabs first, then opens exactly ONE
                         -- =========================================================================
-                        
-                        on isJarvisURL(theURL, patterns)
-                            repeat with pattern in patterns
-                                if theURL contains pattern then
-                                    return true
-                                end if
-                            end repeat
-                            return false
-                        end isJarvisURL
                         
                         tell application "Google Chrome"
                             set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "localhost:8001", "localhost:8888", "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010", "127.0.0.1:8001", "127.0.0.1:8888"}
                             set targetURL to "http://localhost:3001/"
                             set foundIncognitoWindow to missing value
-                            set foundJarvisTab to missing value
-                            set tabsToClose to {}
+                            set closedCount to 0
                             
-                            -- PHASE 1: Scan ALL windows for incognito windows and JARVIS tabs
-                            repeat with w in windows
-                                try
-                                    set windowMode to mode of w
-                                    
-                                    if windowMode is "incognito" then
-                                        if foundIncognitoWindow is missing value then
-                                            set foundIncognitoWindow to w
-                                        end if
-                                        
-                                        set tabCount to count of tabs of w
-                                        repeat with i from 1 to tabCount
-                                            set t to tab i of w
-                                            set tabURL to URL of t
-                                            
-                                            if my isJarvisURL(tabURL, jarvisPatterns) then
-                                                if foundJarvisTab is missing value then
-                                                    set foundJarvisTab to t
-                                                    set foundIncognitoWindow to w
-                                                else
-                                                    set end of tabsToClose to {w, i}
-                                                end if
-                                            end if
-                                        end repeat
-                                    end if
-                                on error
-                                end try
-                            end repeat
-                            
-                            -- PHASE 2: Close duplicate JARVIS tabs
-                            if (count of tabsToClose) > 0 then
-                                repeat with i from (count of tabsToClose) to 1 by -1
+                            -- =====================================================================
+                            -- PHASE 1: AGGRESSIVE CLEANUP - Close ALL JARVIS tabs in incognito
+                            -- We do multiple passes to ensure all are closed (handles index shifting)
+                            -- =====================================================================
+                            repeat 3 times
+                                repeat with w in windows
                                     try
-                                        set tabInfo to item i of tabsToClose
-                                        set targetWindow to item 1 of tabInfo
-                                        set tabIndex to item 2 of tabInfo
-                                        close tab tabIndex of targetWindow
+                                        if mode of w is "incognito" then
+                                            -- Remember this window for later
+                                            if foundIncognitoWindow is missing value then
+                                                set foundIncognitoWindow to w
+                                            end if
+                                            
+                                            -- Close JARVIS tabs in reverse order (handles index shifting)
+                                            set tabCount to count of tabs of w
+                                            repeat with i from tabCount to 1 by -1
+                                                try
+                                                    set t to tab i of w
+                                                    set tabURL to URL of t
+                                                    
+                                                    -- Check if this is a JARVIS tab
+                                                    repeat with pattern in jarvisPatterns
+                                                        if tabURL contains pattern then
+                                                            -- Close this tab
+                                                            close t
+                                                            set closedCount to closedCount + 1
+                                                            exit repeat
+                                                        end if
+                                                    end repeat
+                                                end try
+                                            end repeat
+                                        end if
                                     end try
                                 end repeat
-                            end if
+                                
+                                -- Small delay between passes
+                                delay 0.1
+                            end repeat
                             
-                            -- PHASE 3: Navigate to loading page
-                            if foundJarvisTab is not missing value then
-                                set URL of foundJarvisTab to targetURL
-                                set active tab index of foundIncognitoWindow to (index of foundJarvisTab)
-                                set index of foundIncognitoWindow to 1
-                                activate
-                                return "REUSED_INCOGNITO_TAB"
-                                
-                            else if foundIncognitoWindow is not missing value then
-                                tell foundIncognitoWindow
-                                    set newTab to make new tab with properties {URL:targetURL}
-                                    set active tab index to (count of tabs)
-                                end tell
-                                set index of foundIncognitoWindow to 1
-                                activate
-                                return "NEW_TAB_IN_INCOGNITO"
-                                
+                            -- =====================================================================
+                            -- PHASE 2: Open exactly ONE tab with loading page
+                            -- =====================================================================
+                            if foundIncognitoWindow is not missing value then
+                                -- Check if window still has tabs (might have closed all)
+                                try
+                                    set tabCount to count of tabs of foundIncognitoWindow
+                                    if tabCount > 0 then
+                                        -- Add new tab to existing incognito window
+                                        tell foundIncognitoWindow
+                                            set newTab to make new tab with properties {URL:targetURL}
+                                            set active tab index to (count of tabs)
+                                        end tell
+                                        set index of foundIncognitoWindow to 1
+                                        activate
+                                        return "NEW_TAB_IN_INCOGNITO:closed_" & closedCount
+                                    else
+                                        -- Window has no tabs, set URL of the empty tab area
+                                        tell foundIncognitoWindow
+                                            make new tab with properties {URL:targetURL}
+                                        end tell
+                                        set index of foundIncognitoWindow to 1
+                                        activate
+                                        return "NEW_TAB_IN_INCOGNITO:closed_" & closedCount
+                                    end if
+                                on error
+                                    -- Window might have closed, create new one
+                                    set incognitoWindow to make new window with properties {mode:"incognito"}
+                                    delay 0.3
+                                    tell incognitoWindow
+                                        set URL of active tab to targetURL
+                                    end tell
+                                    activate
+                                    return "NEW_INCOGNITO_WINDOW:closed_" & closedCount
+                                end try
                             else
+                                -- No incognito window found, create one
                                 set incognitoWindow to make new window with properties {mode:"incognito"}
                                 delay 0.3
                                 tell incognitoWindow
                                     set URL of active tab to targetURL
                                 end tell
                                 activate
-                                return "NEW_INCOGNITO_WINDOW"
+                                return "NEW_INCOGNITO_WINDOW:closed_" & closedCount
                             end if
                         end tell
                         '''
@@ -16098,12 +16097,27 @@ async def main():
                             browser_opened = True
                             globals()['_browser_opened_this_startup'] = True
                             output = result.stdout.decode().strip()
-                            if "REUSED" in output:
-                                print(f"{Colors.GREEN}   ✓ Reused existing Chrome Incognito tab{Colors.ENDC}")
-                            elif "NEW_TAB_IN_INCOGNITO" in output:
-                                print(f"{Colors.GREEN}   ✓ Added tab to existing Chrome Incognito window{Colors.ENDC}")
+                            
+                            # Parse closed count from output (e.g., "NEW_TAB_IN_INCOGNITO:closed_3")
+                            closed_count = 0
+                            if ":closed_" in output:
+                                try:
+                                    closed_count = int(output.split(":closed_")[1])
+                                except:
+                                    pass
+                            
+                            if "NEW_TAB_IN_INCOGNITO" in output:
+                                if closed_count > 0:
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito: Cleaned up {closed_count} duplicate tab(s), opened loading page{Colors.ENDC}")
+                                else:
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito: Opened loading page in existing window{Colors.ENDC}")
+                            elif "NEW_INCOGNITO_WINDOW" in output:
+                                if closed_count > 0:
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito: Cleaned up {closed_count} duplicate tab(s), created new window{Colors.ENDC}")
+                                else:
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito: Created new window with loading page{Colors.ENDC}")
                             else:
-                                print(f"{Colors.GREEN}   ✓ Created new Chrome Incognito window{Colors.ENDC}")
+                                print(f"{Colors.GREEN}   ✓ Chrome Incognito: Loading page ready{Colors.ENDC}")
                         else:
                             error_output = result.stderr.decode().strip() if result.stderr else "Unknown error"
                             print(f"{Colors.YELLOW}   ⚠️  Incognito AppleScript failed: {error_output[:100]}{Colors.ENDC}")
