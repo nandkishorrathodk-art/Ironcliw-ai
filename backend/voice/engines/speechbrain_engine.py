@@ -1603,6 +1603,19 @@ __all__ = ["EncoderDecoderASR"]
         import time as time_module
         start_time = time_module.perf_counter()
 
+        # ============================================================================
+        # EARLY VALIDATION GATE: Reject invalid audio before any processing
+        # ============================================================================
+        if audio_data is None or len(audio_data) == 0:
+            logger.error("❌ CRITICAL: extract_speaker_embedding() called with 0 bytes or None audio")
+            raise ValueError("Cannot extract embedding from empty audio data")
+
+        # Minimum audio size check
+        MIN_AUDIO_SIZE = 100  # bytes
+        if len(audio_data) < MIN_AUDIO_SIZE:
+            logger.warning(f"⚠️ Audio data too small ({len(audio_data)} bytes) for embedding extraction")
+            raise ValueError(f"Audio data ({len(audio_data)} bytes) is below minimum size ({MIN_AUDIO_SIZE} bytes)")
+
         # FAST PATH: Check LRU cache with TTL first (sub-millisecond)
         audio_hash = hashlib.md5(audio_data, usedforsecurity=False).hexdigest()
         current_time = time_module.time()

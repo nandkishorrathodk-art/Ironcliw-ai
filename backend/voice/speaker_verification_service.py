@@ -3274,6 +3274,17 @@ class SpeakerVerificationService:
             Embedding tensor or None on failure
         """
         try:
+            # Early validation: reject empty or invalid audio
+            if audio_data is None or len(audio_data) == 0:
+                logger.error("❌ _extract_speaker_embedding() called with 0 bytes or None audio")
+                return None
+
+            # Minimum size check
+            MIN_AUDIO_SIZE = 100
+            if len(audio_data) < MIN_AUDIO_SIZE:
+                logger.warning(f"⚠️ Audio too small for embedding extraction ({len(audio_data)} bytes)")
+                return None
+
             # Prefer registry if available and we're configured to use it
             if self._use_registry_encoder and ML_REGISTRY_AVAILABLE:
                 embedding = await registry_extract_embedding(audio_data)
@@ -5088,6 +5099,35 @@ class SpeakerVerificationService:
 
         if not self.initialized:
             await self.initialize()
+
+        # ============================================================================
+        # EARLY VALIDATION GATE: Reject invalid audio before any processing
+        # ============================================================================
+        if audio_data is None or len(audio_data) == 0:
+            logger.error("❌ CRITICAL: verify_speaker() called with 0 bytes or None audio - rejecting immediately")
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "speaker_name": speaker_name or "Unknown",
+                "is_owner": False,
+                "security_level": "standard",
+                "error": "invalid_audio",
+                "error_detail": "Audio data is empty or None - cannot verify speaker"
+            }
+
+        # Minimum audio size check (reject obviously invalid audio)
+        MIN_AUDIO_SIZE = 100  # bytes - minimum reasonable audio size
+        if len(audio_data) < MIN_AUDIO_SIZE:
+            logger.warning(f"⚠️ Audio data too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes) - rejecting")
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "speaker_name": speaker_name or "Unknown",
+                "is_owner": False,
+                "security_level": "standard",
+                "error": "audio_too_small",
+                "error_detail": f"Audio data ({len(audio_data)} bytes) is below minimum size ({MIN_AUDIO_SIZE} bytes)"
+            }
 
         # ============================================================================
         # ROBUST AUDIO FORMAT CONVERSION (v3.0) - Uses all converter capabilities
