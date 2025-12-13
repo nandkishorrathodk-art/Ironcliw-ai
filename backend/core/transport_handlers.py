@@ -181,7 +181,7 @@ async def applescript_handler(action: str, context: Dict[str, Any], **kwargs) ->
                     logger.info(f"[APPLESCRIPT] ✅ {action} succeeded via pmset (verified={verified})")
                     return {"success": True, "method": "pmset", "action": action}
 
-            # Method 4: Start screensaver (locks if system security requires authentication)
+            # Method 4: Start screensaver (locks if system security is configured to require auth immediately)
             if shutil.which("open"):
                 attempted.append("screensaver")
                 _stdout, _stderr, rc = await _run_subprocess(["open", "-a", "ScreenSaverEngine"], timeout_s=2.5)

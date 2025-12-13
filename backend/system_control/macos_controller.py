@@ -1414,7 +1414,8 @@ class MacOSController:
             # If ANY command returns success (exit code 0), we report success immediately.
             # We do NOT wait for the lock verification to complete before returning to the UI.
             # This prevents the UI from hanging if detection is slow/broken.
-            
+
+            tasks = []  # Initialize tasks list
             for method, cmd, cmd_timeout_s, verify_timeout_s in candidates:
                 tasks.append(
                     asyncio.create_task(
