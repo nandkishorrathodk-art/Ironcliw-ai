@@ -405,7 +405,8 @@ class JarvisConnectionService {
           priority: 9
         },
         {
-          path: `${this.wsUrl}/vision/ws`,
+          // Backend mounts vision WS at /vision/ws/vision
+          path: `${this.wsUrl}/vision/ws/vision`,
           capabilities: ['vision', 'monitoring'],
           priority: 8
         }

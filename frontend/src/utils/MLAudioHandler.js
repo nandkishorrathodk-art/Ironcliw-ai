@@ -4,10 +4,12 @@
  */
 
 import configService from '../services/DynamicConfigService';
+import { getJarvisConnectionService, ConnectionState as JarvisConnState } from '../services/JarvisConnectionService';
 
 class MLAudioHandler {
     constructor() {
         this.ws = null;
+        this._unsubscribeJarvisMessage = null;
         this.errorHistory = [];
         this.recoveryStrategies = new Map();
         this.connectionAttempts = 0;
@@ -234,11 +236,66 @@ class MLAudioHandler {
         this.connectionAttempts++;
 
         try {
-            // Try unified WebSocket first, fall back to ML-specific endpoint
-            let wsUrl = configService.getWebSocketUrl('ws');
+            // ---------------------------------------------------------------------
+            // PREFERRED: Reuse the SINGLE unified WebSocket from JarvisConnectionService
+            // ---------------------------------------------------------------------
+            // CRITICAL: Avoid creating competing /ws sockets (can trip backend rate limits
+            // and cause reconnect loops across the app). We piggyback on the existing
+            // connection and subscribe via the service event bus.
+            try {
+                const connectionService = getJarvisConnectionService();
+                if (connectionService && connectionService.getState() === JarvisConnState.ONLINE) {
+                    const sharedWs = connectionService.getWebSocket();
+                    if (sharedWs && sharedWs.readyState === WebSocket.OPEN) {
+                        this.ws = sharedWs;
+
+                        // Subscribe once to unified message stream (no ws.onmessage overwrite!)
+                        if (!this._unsubscribeJarvisMessage) {
+                            this._unsubscribeJarvisMessage = connectionService.on('message', ({ data }) => {
+                                try {
+                                    // Only handle ML-relevant messages
+                                    if (data && typeof data === 'object') {
+                                        this.handleMLMessage(data);
+                                    }
+                                } catch {
+                                    // Silent
+                                }
+                            });
+                        }
+
+                        if (this.connectionAttempts === 1) {
+                            console.log('✅ ML Audio: Using shared WebSocket from JarvisConnectionService');
+                        }
+
+                        this.connectionAttempts = 0;
+                        this.currentBackoffDelay = 1000;
+                        this.isConnecting = false;
+                        this._maxAttemptsWarned = false;
+                        this.sendTelemetry('connection', { status: 'connected_shared' });
+                        return;
+                    }
+                }
+
+                // If the main service is still starting up, don't open a parallel /ws socket.
+                if (connectionService && (
+                    connectionService.getState() === JarvisConnState.INITIALIZING ||
+                    connectionService.getState() === JarvisConnState.DISCOVERING ||
+                    connectionService.getState() === JarvisConnState.CONNECTING ||
+                    connectionService.getState() === JarvisConnState.RECONNECTING
+                )) {
+                    this.isConnecting = false;
+                    setTimeout(() => this.connectToMLBackend(), 3000);
+                    return;
+                }
+            } catch {
+                // Ignore and fall back to ML-specific socket below
+            }
+
+            // Prefer the ML-specific endpoint. Only fall back to /ws if needed.
+            // (If /ws is already in use by the main app, this avoids competing connections.)
+            let wsUrl = configService.getWebSocketUrl('audio/ml/stream');
             if (!wsUrl) {
-                // Try the ML-specific endpoint
-                wsUrl = configService.getWebSocketUrl('audio/ml/stream');
+                wsUrl = configService.getWebSocketUrl('ws');
             }
             if (!wsUrl) {
                 // Silent debug log, not warning

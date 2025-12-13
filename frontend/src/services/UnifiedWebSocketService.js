@@ -41,7 +41,8 @@ class UnifiedWebSocketService {
             priority: 10
           },
           {
-            path: `${config.WS_BASE_URL}/vision/ws`,
+            // Backend mounts vision WS at /vision/ws/vision
+            path: `${config.WS_BASE_URL}/vision/ws/vision`,
             capabilities: ['vision', 'monitoring'],
             priority: 8
           }

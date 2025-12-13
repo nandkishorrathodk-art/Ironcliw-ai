@@ -175,7 +175,8 @@ class VisionConnection {
 
       // Use main backend port for vision WebSocket - dynamic URL inference
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || inferUrls().WS_BASE_URL;
-      const wsUrl = `${wsBaseUrl}/vision/ws`;  // Use consistent WebSocket URL
+      // Backend mounts vision WS at /vision/ws/vision (see backend/api/vision_ws_endpoint.py)
+      const wsUrl = `${wsBaseUrl}/vision/ws/vision`;  // Use consistent WebSocket URL
       console.log('VisionConnection: Connecting to', wsUrl);
       this.socket = new WebSocket(wsUrl);
 
@@ -790,16 +791,6 @@ const JarvisVoice = () => {
         if (ws && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
           console.log('[JarvisVoice] Updating wsRef from connection service');
           wsRef.current = ws;
-          
-          // Set up message handler
-          ws.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              handleWebSocketMessage(data);
-            } catch (e) {
-              console.error('[JarvisVoice] Message parse error:', e);
-            }
-          };
         }
         setError(null);
       }
@@ -816,25 +807,11 @@ const JarvisVoice = () => {
       }
     });
 
-    // Subscribe to messages
-    const unsubscribeResponse = connectionService.on('response', (data) => {
+    // Subscribe to ALL messages via the connection service.
+    // CRITICAL: Do NOT overwrite ws.onmessage on the shared socket (it is owned by DynamicWebSocketClient).
+    // Overwriting it breaks heartbeat + routing and causes reconnect loops/offline state.
+    const unsubscribeMessage = connectionService.on('message', ({ data }) => {
       handleWebSocketMessage(data);
-    });
-
-    const unsubscribeJarvisResponse = connectionService.on('jarvis_response', (data) => {
-      handleWebSocketMessage({ type: 'jarvis_response', ...data });
-    });
-
-    const unsubscribeVBI = connectionService.on('vbi_progress', (data) => {
-      handleWebSocketMessage({ type: 'vbi_progress', ...data });
-    });
-
-    const unsubscribeWorkflow = connectionService.on('workflow_progress', (data) => {
-      handleWebSocketMessage({ type: 'workflow_progress', ...data });
-    });
-
-    const unsubscribeProactive = connectionService.on('proactive_suggestion', (data) => {
-      handleWebSocketMessage({ type: 'proactive_suggestion', ...data });
     });
 
     // Get initial state
@@ -847,25 +824,13 @@ const JarvisVoice = () => {
       const ws = connectionService.getWebSocket();
       if (ws) {
         wsRef.current = ws;
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            handleWebSocketMessage(data);
-          } catch (e) {
-            console.error('[JarvisVoice] Message parse error:', e);
-          }
-        };
       }
     }
 
     return () => {
       unsubscribeState();
       unsubscribeMode();
-      unsubscribeResponse();
-      unsubscribeJarvisResponse();
-      unsubscribeVBI();
-      unsubscribeWorkflow();
-      unsubscribeProactive();
+      unsubscribeMessage();
     };
   }, []);
 
@@ -1304,283 +1269,90 @@ const JarvisVoice = () => {
   });
 
   const connectWebSocket = async () => {
-    // 🆕 First, check if JarvisConnectionService has an active connection
-    if (jarvisConnectionServiceRef.current) {
-      const connectionService = jarvisConnectionServiceRef.current;
-      
-      if (connectionService.isConnected()) {
-        const ws = connectionService.getWebSocket();
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          console.log('[WS-ADVANCED] Using existing connection from JarvisConnectionService');
-          wsRef.current = ws;
-          
-          // Set up message handler
-          ws.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              handleWebSocketMessage(data);
-            } catch (e) {
-              console.error('[WS-ADVANCED] Message parse error:', e);
-            }
-          };
-          
-          setJarvisStatus('online');
-          setError(null);
-          return;
-        }
-      }
-      
-      // If not connected, trigger reconnect on the service
-      if (connectionService.getState() === ConnectionState.OFFLINE || 
-          connectionService.getState() === ConnectionState.ERROR) {
-        console.log('[WS-ADVANCED] Triggering reconnect via JarvisConnectionService');
-        connectionService.reconnect();
-        return;
-      }
-      
-      // If service is connecting, wait
-      if (connectionService.getState() === ConnectionState.CONNECTING || 
-          connectionService.getState() === ConnectionState.RECONNECTING ||
-          connectionService.getState() === ConnectionState.DISCOVERING) {
-        console.log('[WS-ADVANCED] JarvisConnectionService is connecting, waiting...');
-        setJarvisStatus('connecting');
-        return;
-      }
-    }
-
-    // Fallback: Direct WebSocket connection if service not available
-    // Don't connect if already connected or connecting
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      console.log('[WS-ADVANCED] WebSocket already connected or connecting');
+    // ==========================================================================
+    // SINGLE SOURCE OF TRUTH: JarvisConnectionService
+    // ==========================================================================
+    // CRITICAL: Do NOT create competing WebSocket connections here.
+    // JarvisConnectionService (via DynamicWebSocketClient) is the ONLY WebSocket manager.
+    // This function only delegates to the service - it never creates its own socket.
+    // Messages are received via the 'message' event subscription in the useEffect above.
+    // ==========================================================================
+    
+    if (!jarvisConnectionServiceRef.current) {
+      console.log('[WS] Waiting for JarvisConnectionService to initialize...');
+      setJarvisStatus('connecting');
       return;
     }
-
-    // Close any existing connection first to prevent duplicates
-    if (wsRef.current) {
-      console.log('[WS-ADVANCED] Closing existing WebSocket before reconnecting');
-      try {
-        wsRef.current.close();
-      } catch (e) {
-        console.log('[WS-ADVANCED] Error closing existing WebSocket:', e);
-      }
-      wsRef.current = null;
-    }
-
-    // Check if we've exceeded max reconnection attempts
-    if (reconnectionStateRef.current.attempts >= reconnectionStateRef.current.maxAttempts) {
-      console.error('[WS-ADVANCED] Max reconnection attempts reached, giving up');
-      setError('Connection failed - please refresh the page');
-      return;
-    }
-
-    // Ensure config is ready
-    if (!configReady || !WS_URL) {
-      console.log('[WS-ADVANCED] Waiting for config before WebSocket connection...');
-      await configPromise;
-    }
-
-    try {
-      // Get WebSocket URL dynamically - no hardcoding
-      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || inferUrls().WS_BASE_URL;
-      const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
-      console.log(`[WS-ADVANCED] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
-
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onopen = () => {
-        console.log('[WS-ADVANCED] ✅ Connected to JARVIS WebSocket');
-        setError(null);
-
-        // CRITICAL FIX: Set status to 'online' immediately on WebSocket open
-        // Don't wait for 'connected' message from server - WebSocket open IS connected
+    
+    const connectionService = jarvisConnectionServiceRef.current;
+    const currentState = connectionService.getState();
+    
+    // If already connected, just update local state
+    if (connectionService.isConnected()) {
+      const ws = connectionService.getWebSocket();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('[WS] ✅ Using existing connection from JarvisConnectionService');
+        wsRef.current = ws;
         setJarvisStatus('online');
-        console.log('[WS-ADVANCED] Status set to online (WebSocket connected)');
-
-        // Reset reconnection state on successful connection
-        reconnectionStateRef.current.attempts = 0;
-        reconnectionStateRef.current.connectionHealth = 100;
-        reconnectionStateRef.current.reconnecting = false;
-
-        // Check if backend state is ready and sync
-        const currentBackendState = getBackendState();
-        if (currentBackendState.ready) {
-          console.log('[WS-ADVANCED] Backend confirmed ready:', currentBackendState);
-        } else {
-          console.log('[WS-ADVANCED] Backend state:', currentBackendState.status, '- WebSocket connected');
-        }
-
-        // Initialize Hybrid STT Client (if enabled)
+        setError(null);
+        
+        // Initialize Hybrid STT Client if enabled and not already initialized
         if (useHybridSTT && !hybridSTTClientRef.current) {
           try {
-            hybridSTTClientRef.current = new HybridSTTClient(wsRef.current, {
+            hybridSTTClientRef.current = new HybridSTTClient(ws, {
               strategy: 'balanced',
-              speakerName: null, // Auto-detect speaker via voice recognition
+              speakerName: null,
               confidenceThreshold: 0.6,
               continuous: true,
               interimResults: true
             });
-            console.log('🎤 [HybridSTT] Client initialized with auto speaker detection');
+            console.log('🎤 [HybridSTT] Client initialized with shared WebSocket');
           } catch (error) {
             console.error('🎤 [HybridSTT] Failed to initialize:', error);
           }
         }
-
-        // Start ping/pong health monitoring
-        startHealthMonitoring();
-
-        // Send initial handshake to get server confirmation
-        try {
-          wsRef.current.send(JSON.stringify({
-            type: 'handshake',
-            client_version: '2.0',
-            timestamp: Date.now(),
-            capabilities: ['voice', 'streaming', 'health_monitoring', 'command_queue']
-          }));
-        } catch (e) {
-          console.warn('[WS-ADVANCED] Failed to send handshake:', e);
-        }
-
-        // 🆕 PROCESS QUEUED COMMANDS - Send any commands that were queued during disconnection
+        
+        // Process any queued commands
         if (pendingCommandsRef.current.length > 0) {
-          console.log(`[WS-ADVANCED] 📬 Processing ${pendingCommandsRef.current.length} queued command(s)...`);
-          // Small delay to ensure connection is fully stable
-          setTimeout(() => {
-            processCommandQueue();
-          }, 200);
+          console.log(`[WS] 📬 Processing ${pendingCommandsRef.current.length} queued command(s)...`);
+          setTimeout(() => processCommandQueue(), 200);
         }
-      };
-
-      wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        // Update last message time (improves health)
-        reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 1);
-
-        handleWebSocketMessage(data);
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error('[WS-ADVANCED] WebSocket error:', error);
-
-        // Degrade connection health
-        reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 20);
-
-        // Only show error if not connecting
-        if (wsRef.current.readyState !== WebSocket.CONNECTING) {
-          setError('Connection error - attempting recovery...');
-        }
-      };
-
-      wsRef.current.onclose = (event) => {
-        console.log(`[WS-ADVANCED] WebSocket disconnected (code: ${event.code}, clean: ${event.wasClean})`);
-
-        // Stop health monitoring
-        stopHealthMonitoring();
-
-        // Mark as reconnecting
-        reconnectionStateRef.current.reconnecting = true;
-        reconnectionStateRef.current.attempts += 1;
-
-        // If we've exhausted retry attempts, mark as offline
-        if (reconnectionStateRef.current.attempts >= reconnectionStateRef.current.maxAttempts) {
-          console.log('[WS-ADVANCED] ❌ Max reconnection attempts reached - marking as offline');
-          setJarvisStatus('offline');
-          setError('Unable to connect to JARVIS backend. Please ensure the server is running.');
-          return;
-        }
-
-        // Calculate exponential backoff delay
-        const delay = Math.min(
-          reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
-          reconnectionStateRef.current.maxDelay
-        );
-
-        console.log(`[WS-ADVANCED] Reconnecting in ${delay}ms (attempt ${reconnectionStateRef.current.attempts}/${reconnectionStateRef.current.maxAttempts})`);
-
-        // Keep status as initializing during retry attempts
-        if (jarvisStatus === 'initializing') {
-          setJarvisStatus('connecting');
-        }
-
-        // Only reconnect if component is still mounted and not offline
-        if (jarvisStatus !== 'offline') {
-          setTimeout(() => {
-            connectWebSocket();
-          }, delay);
-        }
-      };
-    } catch (err) {
-      console.error('[WS-ADVANCED] Failed to connect WebSocket:', err);
-      setError('Failed to connect to JARVIS - retrying...');
-
-      // Increment attempts and retry
-      reconnectionStateRef.current.attempts += 1;
-      const delay = Math.min(
-        reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
-        reconnectionStateRef.current.maxDelay
-      );
-
-      setTimeout(() => {
-        connectWebSocket();
-      }, delay);
+        return;
+      }
     }
+    
+    // If service is offline or errored, trigger reconnect
+    if (currentState === ConnectionState.OFFLINE || currentState === ConnectionState.ERROR) {
+      console.log('[WS] Service offline/error - triggering reconnect via JarvisConnectionService');
+      setJarvisStatus('connecting');
+      connectionService.reconnect();
+      return;
+    }
+    
+    // If service is in any connecting state, just wait (it will emit stateChange when done)
+    if (currentState === ConnectionState.CONNECTING || 
+        currentState === ConnectionState.RECONNECTING ||
+        currentState === ConnectionState.DISCOVERING ||
+        currentState === ConnectionState.INITIALIZING) {
+      console.log(`[WS] JarvisConnectionService is ${currentState}, waiting...`);
+      setJarvisStatus('connecting');
+      return;
+    }
+    
+    // Fallback: if we get here with an unknown state, trigger reconnect
+    console.log(`[WS] Unknown service state (${currentState}), triggering reconnect`);
+    setJarvisStatus('connecting');
+    connectionService.reconnect();
   };
 
+  // NOTE: Health monitoring is now handled by JarvisConnectionService/DynamicWebSocketClient.
+  // These functions are kept as no-ops for backwards compatibility.
   const startHealthMonitoring = () => {
-    // Clear any existing intervals
-    stopHealthMonitoring();
-
-    // Send ping every 15 seconds to keep connection alive
-    reconnectionStateRef.current.pingInterval = setInterval(() => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        const pingTime = Date.now();
-        reconnectionStateRef.current.lastPingTime = pingTime;
-
-        wsRef.current.send(JSON.stringify({
-          type: 'ping',
-          timestamp: pingTime
-        }));
-
-        console.log('[WS-HEALTH] Sent ping');
-      }
-    }, 15000);
-
-    // Health check every 5 seconds
-    reconnectionStateRef.current.healthCheckInterval = setInterval(() => {
-      const health = reconnectionStateRef.current.connectionHealth;
-
-      // If health is degraded, warn
-      if (health < 50) {
-        console.warn(`[WS-HEALTH] ⚠️ Connection health degraded: ${health}%`);
-        setError(`Connection unstable (health: ${health}%) - monitoring...`);
-      } else if (health < 80) {
-        console.log(`[WS-HEALTH] Connection health: ${health}%`);
-      } else {
-        // Clear error if health is good
-        if (error && error.includes('health')) {
-          setError(null);
-        }
-      }
-
-      // Natural health decay (simulates timeout check)
-      reconnectionStateRef.current.connectionHealth = Math.max(0, health - 2);
-    }, 5000);
-
-    console.log('[WS-HEALTH] 🏥 Health monitoring started');
+    // Health monitoring delegated to JarvisConnectionService
   };
 
   const stopHealthMonitoring = () => {
-    if (reconnectionStateRef.current.pingInterval) {
-      clearInterval(reconnectionStateRef.current.pingInterval);
-      reconnectionStateRef.current.pingInterval = null;
-    }
-
-    if (reconnectionStateRef.current.healthCheckInterval) {
-      clearInterval(reconnectionStateRef.current.healthCheckInterval);
-      reconnectionStateRef.current.healthCheckInterval = null;
-    }
-
-    console.log('[WS-HEALTH] Health monitoring stopped');
+    // Health monitoring delegated to JarvisConnectionService
   };
 
   const handleWebSocketMessage = (data) => {
