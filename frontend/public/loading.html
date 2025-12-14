@@ -3,19 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS - Initializing</title>
-    <!-- Animated JARVIS Arc Reactor Favicon -->
+    <title>JARVIS - System Initialization</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate icon" href="/favicon.ico" type="image/x-icon" />
-    <meta name="theme-color" content="#000000" />
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;700&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0a0a12" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <style>
         :root {
-            --jarvis-green: #00ff41;
-            --jarvis-green-dark: #00aa2e;
-            --jarvis-green-glow: rgba(0, 255, 65, 0.5);
-            --jarvis-orange: #ff8c00;
-            --jarvis-red: #ff4444;
+            /* Matrix Color Palette */
+            --matrix-green: #00ff41;
+            --matrix-green-dim: #00aa2e;
+            --matrix-dark-green: #003300;
+            --cyber-cyan: #00d4ff;
+            --cyber-cyan-dim: #0099bb;
+            --cyber-teal: #00ffcc;
+            --panel-bg: rgba(10, 15, 25, 0.85);
+            --panel-border: rgba(0, 212, 255, 0.3);
+            --panel-border-bright: rgba(0, 212, 255, 0.6);
+            --glow-cyan: rgba(0, 212, 255, 0.5);
+            --glow-green: rgba(0, 255, 65, 0.4);
+            --bg-dark: #0a0a12;
+            --text-primary: #e0f7ff;
+            --text-secondary: #7fdbff;
         }
 
         * {
@@ -24,448 +33,196 @@
             box-sizing: border-box;
         }
 
-        html {
-            background: #000;
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-dark);
         }
 
         body {
-            background: #000;
-            color: var(--jarvis-green);
             font-family: 'Rajdhani', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            overflow: hidden;
-            position: relative;
-            margin: 0;
-            padding: 0;
+            color: var(--text-primary);
         }
 
-        /* Prevent white flash during page transitions */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            z-index: -1;
-        }
-
-        /* Particle background */
-        .particles-bg {
+        /* Matrix Rain Canvas */
+        #matrix-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 0;
-            opacity: 0.3;
+            opacity: 0.7;
         }
 
-        .particle {
-            position: absolute;
-            background: var(--jarvis-green);
-            border-radius: 50%;
-            animation: float linear infinite;
-        }
-
-        @keyframes float {
-            0% {
-                transform: translateY(100vh) translateX(0);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100vh) translateX(50px);
-                opacity: 0;
-            }
-        }
-
-        /* Main container */
+        /* Glass Panel Container */
         .loading-container {
-            text-align: center;
-            z-index: 10;
-            max-width: 900px;
-            width: 90%;
-            padding: 40px;
-        }
-
-        /* Logo */
-        .jarvis-logo {
-            font-family: 'Orbitron', monospace;
-            font-size: 5rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            filter: drop-shadow(0 0 30px var(--jarvis-green-glow));
-            animation: pulse 2s ease-in-out infinite;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            font-size: 1.3rem;
-            color: var(--jarvis-green-dark);
-            margin-bottom: 60px;
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            opacity: 0.9;
-        }
-
-        /* Arc Reactor Wrapper */
-        .arc-reactor-wrapper {
-            width: 300px;
-            height: 300px;
-            margin: 0 auto 50px;
             position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            z-index: 10;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            padding: 50px 60px;
+            min-width: 500px;
+            max-width: 600px;
+            text-align: center;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            box-shadow:
+                0 0 40px rgba(0, 212, 255, 0.15),
+                0 0 80px rgba(0, 212, 255, 0.1),
+                inset 0 0 60px rgba(0, 20, 40, 0.3);
         }
 
-        /* Arc Reactor */
-        .arc-reactor {
-            width: 300px;
-            height: 300px;
+        /* Dynamic Title */
+        .system-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 600;
+            letter-spacing: 8px;
+            color: var(--cyber-cyan);
+            text-shadow:
+                0 0 10px var(--cyber-cyan),
+                0 0 20px var(--glow-cyan),
+                0 0 40px var(--glow-cyan);
+            margin-bottom: 40px;
+            text-transform: uppercase;
+        }
+
+        /* Circular Progress Container */
+        .progress-circle-container {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            margin: 0 auto 40px;
+        }
+
+        /* SVG Progress Circle */
+        .progress-svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        /* Outer Decorative Ring */
+        .ring-outer-deco {
+            fill: none;
+            stroke: var(--panel-border);
+            stroke-width: 1;
+            stroke-dasharray: 8 4;
+            animation: rotateSlow 30s linear infinite;
+            transform-origin: center;
+        }
+
+        /* Middle Ring */
+        .ring-middle {
+            fill: none;
+            stroke: var(--cyber-cyan-dim);
+            stroke-width: 2;
+            opacity: 0.6;
+            animation: rotateReverse 20s linear infinite;
+            transform-origin: center;
+        }
+
+        /* Progress Track */
+        .progress-track {
+            fill: none;
+            stroke: rgba(0, 212, 255, 0.15);
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+
+        /* Progress Arc */
+        .progress-arc {
+            fill: none;
+            stroke: url(#progressGradient);
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 565.48;
+            stroke-dashoffset: 565.48;
+            transition: stroke-dashoffset 0.5s ease-out;
+            filter: url(#glowFilter);
+        }
+
+        /* Inner Glow Ring */
+        .ring-inner-glow {
+            fill: none;
+            stroke: var(--cyber-cyan);
+            stroke-width: 1;
+            opacity: 0.4;
+            animation: pulseGlow 2s ease-in-out infinite;
+        }
+
+        /* Tech Segments on outer ring */
+        .tech-segment {
+            fill: var(--cyber-cyan);
+            opacity: 0.8;
+        }
+
+        /* Center Content */
+        .progress-center {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            transform-origin: center center;
-            animation: reactorFloat 4s ease-in-out infinite;
+            text-align: center;
         }
 
-        @keyframes reactorFloat {
-            0%, 100% {
-                transform: translate(-50%, -50%) translateY(0px);
-            }
-            50% {
-                transform: translate(-50%, -50%) translateY(-10px);
-            }
-        }
-
-        .reactor-ring {
-            position: absolute;
-            border: 3px solid;
-            border-radius: 50%;
-            animation: rotate linear infinite;
-            inset: 0;
-            margin: auto;
-        }
-
-        .reactor-ring:nth-child(1) {
-            width: 300px;
-            height: 300px;
-            border-color: var(--jarvis-green) transparent transparent transparent;
-            border-width: 4px;
-            animation: rotate 3s linear infinite, ringPulse1 2s ease-in-out infinite;
-            box-shadow:
-                0 0 20px var(--jarvis-green-glow),
-                inset 0 0 20px rgba(0, 255, 65, 0.1);
-        }
-
-        .reactor-ring:nth-child(2) {
-            width: 220px;
-            height: 220px;
-            border-color: transparent var(--jarvis-green-dark) transparent transparent;
-            border-width: 4px;
-            animation: rotate 2s linear infinite reverse, ringPulse2 2.5s ease-in-out infinite;
-            box-shadow:
-                0 0 15px var(--jarvis-green-glow),
-                inset 0 0 15px rgba(0, 255, 65, 0.1);
-        }
-
-        .reactor-ring:nth-child(3) {
-            width: 140px;
-            height: 140px;
-            border-color: transparent transparent var(--jarvis-green) transparent;
-            border-width: 4px;
-            animation: rotate 1.5s linear infinite, ringPulse3 3s ease-in-out infinite;
-            box-shadow:
-                0 0 10px var(--jarvis-green-glow),
-                inset 0 0 10px rgba(0, 255, 65, 0.1);
-        }
-
-        @keyframes ringPulse1 {
-            0%, 100% {
-                opacity: 1;
-                filter: drop-shadow(0 0 20px var(--jarvis-green));
-            }
-            50% {
-                opacity: 0.7;
-                filter: drop-shadow(0 0 30px var(--jarvis-green));
-            }
-        }
-
-        @keyframes ringPulse2 {
-            0%, 100% {
-                opacity: 0.8;
-                filter: drop-shadow(0 0 15px var(--jarvis-green-dark));
-            }
-            50% {
-                opacity: 1;
-                filter: drop-shadow(0 0 25px var(--jarvis-green-dark));
-            }
-        }
-
-        @keyframes ringPulse3 {
-            0%, 100% {
-                opacity: 0.9;
-                filter: drop-shadow(0 0 10px var(--jarvis-green));
-            }
-            50% {
-                opacity: 1;
-                filter: drop-shadow(0 0 20px var(--jarvis-green));
-            }
-        }
-
-        .reactor-core {
-            position: absolute;
-            width: 80px;
-            height: 80px;
-            inset: 0;
-            margin: auto;
-            background: radial-gradient(circle,
-                var(--jarvis-green) 0%,
-                var(--jarvis-green) 30%,
-                var(--jarvis-green-dark) 60%,
-                rgba(0, 170, 46, 0.5) 85%,
-                transparent 100%);
-            border-radius: 50%;
-            box-shadow:
-                0 0 30px var(--jarvis-green),
-                0 0 60px var(--jarvis-green),
-                0 0 90px var(--jarvis-green-dark),
-                0 0 120px var(--jarvis-green-glow),
-                inset 0 0 30px var(--jarvis-green);
-            animation: corePulse 1.5s ease-in-out infinite;
-            z-index: 10;
-        }
-
-        .reactor-core::before {
-            content: '';
-            position: absolute;
-            width: 50px;
-            height: 50px;
-            inset: 0;
-            margin: auto;
-            background: var(--jarvis-green);
-            border-radius: 50%;
-            box-shadow:
-                0 0 25px var(--jarvis-green),
-                0 0 50px rgba(0, 255, 65, 0.8),
-                inset 0 0 15px rgba(255, 255, 255, 0.5);
-            animation: coreGlow 2s ease-in-out infinite;
-        }
-
-        @keyframes coreGlow {
-            0%, 100% {
-                box-shadow:
-                    0 0 25px var(--jarvis-green),
-                    0 0 50px rgba(0, 255, 65, 0.8),
-                    inset 0 0 15px rgba(255, 255, 255, 0.5);
-            }
-            50% {
-                box-shadow:
-                    0 0 40px var(--jarvis-green),
-                    0 0 80px rgba(0, 255, 65, 1),
-                    inset 0 0 25px rgba(255, 255, 255, 0.8);
-            }
-        }
-
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-        }
-
-        @keyframes corePulse {
-            0%, 100% {
-                transform: scale(1);
-                box-shadow: 0 0 30px var(--jarvis-green), 0 0 60px var(--jarvis-green-dark);
-            }
-            50% {
-                transform: scale(1.15);
-                box-shadow: 0 0 50px var(--jarvis-green), 0 0 90px var(--jarvis-green-dark);
-            }
-        }
-
-        /* Progress percentage */
         .progress-percentage {
-            font-size: 3rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3.5rem;
             font-weight: 700;
-            color: var(--jarvis-green);
-            margin-bottom: 25px;
-            font-family: 'Orbitron', monospace;
-            text-shadow: 0 0 20px var(--jarvis-green-glow);
-            transition: all 0.3s ease;
+            color: var(--cyber-cyan);
+            text-shadow:
+                0 0 20px var(--glow-cyan),
+                0 0 40px var(--glow-cyan);
+            line-height: 1;
         }
 
-        /* Progress bar */
-        .progress-container {
-            width: 100%;
-            height: 50px;
-            background: rgba(0, 255, 65, 0.08);
-            border: 2px solid var(--jarvis-green);
-            border-radius: 25px;
-            overflow: hidden;
-            position: relative;
-            box-shadow:
-                0 0 15px var(--jarvis-green-glow),
-                inset 0 0 15px rgba(0, 255, 65, 0.1);
-            margin-bottom: 30px;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg,
-                var(--jarvis-green) 0%,
-                var(--jarvis-green-dark) 50%,
-                var(--jarvis-green) 100%);
-            background-size: 200% 100%;
-            animation: shimmer 2s infinite linear;
-            width: 0%;
-            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-
-        .progress-bar::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg,
-                transparent,
-                rgba(255, 255, 255, 0.4),
-                transparent);
-            animation: slide 1.5s infinite;
-        }
-
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
-        @keyframes slide {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        /* Status message */
-        .status-message {
-            font-size: 1.2rem;
-            color: #fff;
-            margin: 20px 0;
-            min-height: 40px;
-            text-shadow: 0 0 10px var(--jarvis-green-glow);
-            font-weight: 500;
-            letter-spacing: 0.05em;
-        }
-
-        /* Stage indicators */
-        .stages-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
-            margin-top: 50px;
-        }
-
-        .stage-item {
-            padding: 20px 15px;
-            background: rgba(0, 255, 65, 0.05);
-            border: 1px solid rgba(0, 255, 65, 0.25);
-            border-radius: 12px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .stage-item::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
-            transition: left 0.6s;
-        }
-
-        .stage-item.active {
-            background: rgba(0, 255, 65, 0.15);
-            border-color: var(--jarvis-green);
-            box-shadow: 0 0 20px var(--jarvis-green-glow);
-            transform: scale(1.05);
-        }
-
-        .stage-item.active::before {
-            left: 100%;
-        }
-
-        .stage-item.completed {
-            background: rgba(0, 255, 65, 0.1);
-            border-color: var(--jarvis-green-dark);
-        }
-
-        .stage-item.failed {
-            background: rgba(255, 68, 68, 0.1);
-            border-color: var(--jarvis-red);
-        }
-
-        .stage-icon {
-            font-size: 2.5rem;
-            margin-bottom: 12px;
-            filter: drop-shadow(0 0 5px var(--jarvis-green-glow));
-        }
-
-        .stage-label {
-            font-size: 0.95rem;
+        #subtitle {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            margin-top: 8px;
             text-transform: uppercase;
-            font-weight: 600;
-            letter-spacing: 0.1em;
+            opacity: 0.8;
         }
 
-        .stage-sublabel {
-            font-size: 0.75rem;
-            color: var(--jarvis-green-dark);
-            margin-top: 5px;
-            opacity: 0;
-            transition: opacity 0.3s;
+        /* Hidden progress bar (for JS compatibility) */
+        #progress-bar {
+            display: none;
         }
 
-        .stage-item.active .stage-sublabel,
-        .stage-item.completed .stage-sublabel {
-            opacity: 1;
+        /* Status Message */
+        .status-message {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.1rem;
+            color: var(--cyber-teal);
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px var(--glow-green);
+            min-height: 1.5em;
+            animation: textPulse 2s ease-in-out infinite;
         }
 
-        /* Connection status */
+        /* Connection Status */
         .connection-status {
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 10px 20px;
-            background: rgba(0, 0, 0, 0.7);
-            border: 1px solid rgba(0, 255, 65, 0.3);
-            border-radius: 8px;
-            font-size: 0.9rem;
             display: flex;
             align-items: center;
             gap: 10px;
+            padding: 10px 20px;
+            background: rgba(0, 20, 30, 0.8);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.8rem;
             z-index: 100;
         }
 
@@ -473,54 +230,123 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            animation: blink 1.5s infinite;
+            background: var(--matrix-green);
+            box-shadow: 0 0 10px var(--matrix-green);
+            animation: blink 1.5s ease-in-out infinite;
         }
 
-        .status-indicator.connecting {
-            background: var(--jarvis-orange);
+        .status-indicator.connecting { background: #ffaa00; box-shadow: 0 0 10px #ffaa00; }
+        .status-indicator.connected { background: var(--matrix-green); animation: none; }
+        .status-indicator.disconnected { background: #ff4444; box-shadow: 0 0 10px #ff4444; }
+        .status-indicator.starting { background: #ffaa00; }
+        .status-indicator.loading { background: var(--cyber-cyan); }
+        .status-indicator.initializing { background: var(--cyber-teal); }
+        .status-indicator.verifying { background: var(--cyber-cyan); animation: blink 0.5s infinite; }
+        .status-indicator.finalizing { background: var(--matrix-green); animation: blink 0.3s infinite; }
+        .status-indicator.ready { background: var(--matrix-green); animation: none; box-shadow: 0 0 15px var(--matrix-green); }
+        .status-indicator.error { background: #ff4444; animation: none; }
+
+        #status-text {
+            color: var(--text-secondary);
         }
 
-        .status-indicator.connected {
-            background: var(--jarvis-green);
-            animation: none;
+        /* Circuit Board Decoration */
+        .circuit-decoration {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 300px;
+            height: 200px;
+            opacity: 0.3;
+            z-index: 5;
+            pointer-events: none;
         }
 
-        .status-indicator.disconnected {
-            background: var(--jarvis-red);
+        .circuit-line {
+            stroke: var(--cyber-cyan);
+            stroke-width: 1.5;
+            fill: none;
+            stroke-linecap: round;
         }
 
-        /* New status states for loading progress */
-        .status-indicator.starting,
-        .status-indicator.loading {
-            background: var(--jarvis-orange);
+        .circuit-node {
+            fill: var(--cyber-cyan);
         }
 
-        .status-indicator.initializing,
-        .status-indicator.verifying {
-            background: var(--jarvis-blue, #00a8ff);
-            animation: blink 1s infinite;
+        .circuit-pulse {
+            animation: circuitPulse 3s ease-in-out infinite;
         }
 
-        .status-indicator.finalizing {
-            background: var(--jarvis-green);
-            animation: blink 0.5s infinite;
+        /* Error Container */
+        .error-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(20, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
         }
 
-        .status-indicator.ready {
-            background: var(--jarvis-green);
-            animation: none;
-            box-shadow: 0 0 10px var(--jarvis-green);
+        .error-container.visible {
+            display: flex;
         }
 
-        .status-indicator.waiting,
-        .status-indicator.warning {
-            background: var(--jarvis-orange);
-            animation: blink 0.8s infinite;
+        .error-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
         }
 
-        .status-indicator.error {
-            background: var(--jarvis-red);
-            animation: none;
+        .error-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            color: #ff4444;
+            text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+            margin-bottom: 20px;
+        }
+
+        .error-message {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1rem;
+            color: #ff8888;
+            max-width: 500px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        /* Arc Reactor class for JS compatibility */
+        .arc-reactor {
+            position: relative;
+        }
+
+        /* Particles container for JS compatibility */
+        #particles {
+            display: none;
+        }
+
+        /* Animations */
+        @keyframes rotateSlow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes rotateReverse {
+            from { transform: rotate(360deg); }
+            to { transform: rotate(0deg); }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes textPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
 
         @keyframes blink {
@@ -528,205 +354,362 @@
             50% { opacity: 0.3; }
         }
 
-        /* Details panel */
-        .details-panel {
-            margin-top: 40px;
-            padding: 25px;
-            background: rgba(0, 255, 65, 0.03);
-            border: 1px solid rgba(0, 255, 65, 0.15);
-            border-radius: 12px;
-            max-height: 250px;
-            overflow-y: auto;
-            text-align: left;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.4s ease;
-        }
-
-        .details-panel.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .details-panel::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .details-panel::-webkit-scrollbar-track {
-            background: rgba(0, 255, 65, 0.05);
-            border-radius: 4px;
-        }
-
-        .details-panel::-webkit-scrollbar-thumb {
-            background: var(--jarvis-green-dark);
-            border-radius: 4px;
-        }
-
-        .detail-item {
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-            color: var(--jarvis-green-dark);
-            margin: 8px 0;
-            padding: 8px 12px;
-            background: rgba(0, 255, 65, 0.05);
-            border-left: 3px solid var(--jarvis-green);
-            border-radius: 4px;
-        }
-
-        .detail-key {
-            color: var(--jarvis-green);
-            font-weight: 700;
-        }
-
-        /* Error state */
-        .error-container {
-            display: none;
-            margin-top: 40px;
-            padding: 30px;
-            background: rgba(255, 68, 68, 0.1);
-            border: 2px solid var(--jarvis-red);
-            border-radius: 12px;
-            animation: shake 0.5s;
-        }
-
-        .error-container.visible {
-            display: block;
-        }
-
-        .error-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
-        }
-
-        .error-title {
-            font-size: 1.8rem;
-            color: var(--jarvis-red);
-            margin-bottom: 15px;
-            font-weight: 700;
-        }
-
-        .error-message {
-            font-size: 1.1rem;
-            color: #ff8888;
-            line-height: 1.6;
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px); }
-            75% { transform: translateX(10px); }
+        @keyframes circuitPulse {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 0.6; }
         }
 
         /* Responsive */
-        @media (max-width: 768px) {
-            .jarvis-logo {
-                font-size: 3.5rem;
+        @media (max-width: 600px) {
+            .loading-container {
+                min-width: auto;
+                width: 90%;
+                padding: 30px 25px;
+                margin: 20px;
             }
 
-            .subtitle {
-                font-size: 1rem;
+            .system-title {
+                font-size: 1.3rem;
+                letter-spacing: 4px;
             }
 
-            .arc-reactor-wrapper {
-                width: 220px;
-                height: 220px;
+            .progress-circle-container {
+                width: 200px;
+                height: 200px;
             }
 
-            .arc-reactor {
-                width: 220px;
-                height: 220px;
+            .progress-percentage {
+                font-size: 2.5rem;
             }
 
-            .reactor-ring:nth-child(1) {
-                width: 220px;
-                height: 220px;
+            .status-message {
+                font-size: 0.9rem;
             }
 
-            .reactor-ring:nth-child(2) {
-                width: 160px;
-                height: 160px;
-            }
-
-            .reactor-ring:nth-child(3) {
-                width: 100px;
-                height: 100px;
-            }
-
-            .reactor-core {
-                width: 60px;
-                height: 60px;
-            }
-
-            .reactor-core::before {
-                width: 38px;
-                height: 38px;
-            }
-
-            .stages-container {
-                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-                gap: 10px;
-            }
-
-            .stage-icon {
-                font-size: 2rem;
-            }
-
-            .stage-label {
-                font-size: 0.8rem;
+            .circuit-decoration {
+                display: none;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Particle background -->
-    <div class="particles-bg" id="particles"></div>
+    <!-- Matrix Rain Canvas -->
+    <canvas id="matrix-canvas"></canvas>
 
-    <!-- Connection status -->
+    <!-- Circuit Board Decoration -->
+    <svg class="circuit-decoration" viewBox="0 0 300 200">
+        <defs>
+            <filter id="circuitGlow">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+        <g filter="url(#circuitGlow)">
+            <!-- Horizontal lines -->
+            <path class="circuit-line circuit-pulse" d="M0 180 H80 L100 160 H150"/>
+            <path class="circuit-line" d="M0 150 H50 L70 130 H120 L140 150 H180" style="animation-delay: 0.5s"/>
+            <path class="circuit-line circuit-pulse" d="M0 120 H40 V100 H90 L110 80 H160" style="animation-delay: 1s"/>
+            <path class="circuit-line" d="M0 80 H30 L50 60 H100 V40 H140" style="animation-delay: 1.5s"/>
+
+            <!-- Vertical lines -->
+            <path class="circuit-line circuit-pulse" d="M60 200 V160 L80 140 V100" style="animation-delay: 0.3s"/>
+            <path class="circuit-line" d="M120 200 V170 L140 150 V110 L160 90" style="animation-delay: 0.8s"/>
+
+            <!-- Nodes -->
+            <circle class="circuit-node" cx="80" cy="180" r="3"/>
+            <circle class="circuit-node" cx="100" cy="160" r="2"/>
+            <circle class="circuit-node" cx="150" cy="160" r="3"/>
+            <circle class="circuit-node" cx="50" cy="150" r="2"/>
+            <circle class="circuit-node" cx="70" cy="130" r="3"/>
+            <circle class="circuit-node" cx="180" cy="150" r="2"/>
+            <circle class="circuit-node" cx="40" cy="120" r="2"/>
+            <circle class="circuit-node" cx="90" cy="100" r="3"/>
+            <circle class="circuit-node" cx="160" cy="80" r="2"/>
+            <circle class="circuit-node" cx="50" cy="60" r="2"/>
+            <circle class="circuit-node" cx="100" cy="40" r="3"/>
+            <circle class="circuit-node" cx="140" cy="40" r="2"/>
+            <circle class="circuit-node" cx="60" cy="160" r="2"/>
+            <circle class="circuit-node" cx="80" cy="140" r="3"/>
+            <circle class="circuit-node" cx="120" cy="170" r="2"/>
+            <circle class="circuit-node" cx="160" cy="90" r="3"/>
+        </g>
+    </svg>
+
+    <!-- Connection Status -->
     <div class="connection-status">
         <div class="status-indicator connecting" id="status-indicator"></div>
-        <span id="status-text">Connecting to backend...</span>
+        <span id="status-text">Connecting...</span>
     </div>
 
-    <!-- Main loading container -->
+    <!-- Main Loading Container -->
     <div class="loading-container">
-        <div class="jarvis-logo">J.A.R.V.I.S.</div>
-        <div class="subtitle" id="subtitle">System Initialization</div>
+        <!-- Dynamic Title -->
+        <h1 class="system-title" id="system-title">SYSTEM RESTART</h1>
 
-        <!-- Arc Reactor -->
-        <div class="arc-reactor-wrapper">
-            <div class="arc-reactor">
-                <div class="reactor-ring"></div>
-                <div class="reactor-ring"></div>
-                <div class="reactor-ring"></div>
-                <div class="reactor-core"></div>
+        <!-- Circular Progress Indicator -->
+        <div class="progress-circle-container arc-reactor">
+            <svg class="progress-svg" viewBox="0 0 280 280">
+                <defs>
+                    <!-- Gradient for progress arc -->
+                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" style="stop-color:#00ffcc;stop-opacity:1" />
+                        <stop offset="50%" style="stop-color:#00d4ff;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#00ff88;stop-opacity:1" />
+                    </linearGradient>
+                    <!-- Glow filter -->
+                    <filter id="glowFilter" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                        <feMerge>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+
+                <!-- Outer Decorative Ring with tech segments -->
+                <circle class="ring-outer-deco" cx="140" cy="140" r="135"/>
+
+                <!-- Tech segment markers around outer ring -->
+                <g id="tech-segments">
+                    <rect class="tech-segment" x="137" y="2" width="6" height="12" rx="1"/>
+                    <rect class="tech-segment" x="137" y="266" width="6" height="12" rx="1"/>
+                    <rect class="tech-segment" x="2" y="137" width="12" height="6" rx="1"/>
+                    <rect class="tech-segment" x="266" y="137" width="12" height="6" rx="1"/>
+                    <!-- Diagonal markers -->
+                    <rect class="tech-segment" x="232" y="42" width="8" height="4" rx="1" transform="rotate(45 236 44)"/>
+                    <rect class="tech-segment" x="42" y="232" width="8" height="4" rx="1" transform="rotate(45 46 234)"/>
+                    <rect class="tech-segment" x="42" y="42" width="8" height="4" rx="1" transform="rotate(-45 46 44)"/>
+                    <rect class="tech-segment" x="232" y="232" width="8" height="4" rx="1" transform="rotate(-45 236 234)"/>
+                </g>
+
+                <!-- Middle Ring -->
+                <circle class="ring-middle" cx="140" cy="140" r="115"/>
+
+                <!-- Progress Track -->
+                <circle class="progress-track" cx="140" cy="140" r="90"/>
+
+                <!-- Progress Arc -->
+                <circle class="progress-arc" id="progress-circle" cx="140" cy="140" r="90"/>
+
+                <!-- Inner Glow Ring -->
+                <circle class="ring-inner-glow" cx="140" cy="140" r="65"/>
+            </svg>
+
+            <!-- Center Content -->
+            <div class="progress-center">
+                <div class="progress-percentage" id="progress-percentage">0%</div>
+                <div id="subtitle">INITIALIZING</div>
             </div>
         </div>
 
-        <!-- Progress percentage -->
-        <div class="progress-percentage" id="progress-percentage">0%</div>
+        <!-- Hidden progress bar for JS compatibility -->
+        <div id="progress-bar" style="width: 0%;"></div>
 
-        <!-- Progress bar -->
-        <div class="progress-container">
-            <div class="progress-bar" id="progress-bar"></div>
-        </div>
-
-        <!-- Status message -->
+        <!-- Status Message -->
         <div class="status-message" id="status-message">Initializing JARVIS systems...</div>
-
-        <!-- Stage indicators (dynamically populated) -->
-        <div class="stages-container" id="stages-container"></div>
-
-        <!-- Details panel -->
-        <div class="details-panel" id="details-panel"></div>
-
-        <!-- Error container -->
-        <div class="error-container" id="error-container">
-            <div class="error-icon">⚠️</div>
-            <div class="error-title">Startup Failed</div>
-            <div class="error-message" id="error-message"></div>
-        </div>
     </div>
 
+    <!-- Error Container -->
+    <div class="error-container" id="error-container">
+        <div class="error-icon">⚠️</div>
+        <div class="error-title">SYSTEM FAILURE</div>
+        <div class="error-message" id="error-message">An error occurred during initialization.</div>
+    </div>
+
+    <!-- Hidden particles div for JS compatibility -->
+    <div id="particles"></div>
+
+    <!-- Matrix Rain Animation Script -->
+    <script>
+        class MatrixRain {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.columns = [];
+                this.fontSize = 14;
+                this.characters = '01';
+                this.init();
+                this.animate();
+
+                window.addEventListener('resize', () => this.init());
+            }
+
+            init() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                const columnCount = Math.floor(this.canvas.width / this.fontSize);
+                this.columns = [];
+
+                for (let i = 0; i < columnCount; i++) {
+                    this.columns.push({
+                        x: i * this.fontSize,
+                        y: Math.random() * this.canvas.height,
+                        speed: Math.random() * 2 + 1,
+                        chars: [],
+                        length: Math.floor(Math.random() * 15) + 5
+                    });
+
+                    // Initialize character array for this column
+                    for (let j = 0; j < this.columns[i].length; j++) {
+                        this.columns[i].chars.push({
+                            char: this.getRandomChar(),
+                            opacity: 1 - (j / this.columns[i].length)
+                        });
+                    }
+                }
+            }
+
+            getRandomChar() {
+                return this.characters[Math.floor(Math.random() * this.characters.length)];
+            }
+
+            draw() {
+                // Semi-transparent black to create trail effect
+                this.ctx.fillStyle = 'rgba(10, 10, 18, 0.05)';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                this.ctx.font = `${this.fontSize}px 'Share Tech Mono', monospace`;
+
+                for (let col of this.columns) {
+                    // Draw each character in the column
+                    for (let i = 0; i < col.chars.length; i++) {
+                        const y = col.y - (i * this.fontSize);
+
+                        if (y < -this.fontSize * col.length) continue;
+                        if (y > this.canvas.height + this.fontSize) continue;
+
+                        // First character is brightest (head of the trail)
+                        if (i === 0) {
+                            this.ctx.fillStyle = '#ffffff';
+                            this.ctx.shadowBlur = 10;
+                            this.ctx.shadowColor = '#00ff41';
+                        } else {
+                            const opacity = col.chars[i].opacity * 0.8;
+                            this.ctx.fillStyle = `rgba(0, 255, 65, ${opacity})`;
+                            this.ctx.shadowBlur = 0;
+                        }
+
+                        this.ctx.fillText(col.chars[i].char, col.x, y);
+
+                        // Randomly change character
+                        if (Math.random() < 0.02) {
+                            col.chars[i].char = this.getRandomChar();
+                        }
+                    }
+
+                    // Move column down
+                    col.y += col.speed;
+
+                    // Reset when off screen
+                    if (col.y - (col.length * this.fontSize) > this.canvas.height) {
+                        col.y = 0;
+                        col.speed = Math.random() * 2 + 1;
+                        col.length = Math.floor(Math.random() * 15) + 5;
+
+                        // Reset characters
+                        col.chars = [];
+                        for (let j = 0; j < col.length; j++) {
+                            col.chars.push({
+                                char: this.getRandomChar(),
+                                opacity: 1 - (j / col.length)
+                            });
+                        }
+                    }
+                }
+            }
+
+            animate() {
+                this.draw();
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // Initialize Matrix Rain
+        const matrixCanvas = document.getElementById('matrix-canvas');
+        const matrixRain = new MatrixRain(matrixCanvas);
+
+        // Progress circle animation helper
+        function updateProgressCircle(percentage) {
+            const circle = document.getElementById('progress-circle');
+            if (circle) {
+                const circumference = 2 * Math.PI * 90; // r = 90
+                const offset = circumference - (percentage / 100) * circumference;
+                circle.style.strokeDashoffset = offset;
+            }
+        }
+
+        // Update title based on URL or startup type
+        function updateDynamicTitle() {
+            const title = document.getElementById('system-title');
+            const urlParams = new URLSearchParams(window.location.search);
+            const mode = urlParams.get('mode');
+
+            if (mode === 'restart' || window.location.href.includes('restart')) {
+                title.textContent = 'SYSTEM RESTART';
+            } else if (mode === 'init' || mode === 'fresh') {
+                title.textContent = 'SYSTEM INITIALIZATION';
+            } else {
+                // Default - check subtitle for context
+                title.textContent = 'SYSTEM STARTUP';
+            }
+        }
+
+        // Hook into the loading manager's progress updates
+        const originalSetAttribute = Element.prototype.setAttribute;
+        const progressPercentageEl = document.getElementById('progress-percentage');
+
+        // Create a MutationObserver to watch for style changes on progress-bar
+        const progressBar = document.getElementById('progress-bar');
+        if (progressBar) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                        const width = progressBar.style.width;
+                        if (width) {
+                            const percentage = parseFloat(width);
+                            if (!isNaN(percentage)) {
+                                updateProgressCircle(percentage);
+                            }
+                        }
+                    }
+                });
+            });
+
+            observer.observe(progressBar, { attributes: true });
+        }
+
+        // Also watch the percentage text element for direct updates
+        if (progressPercentageEl) {
+            const textObserver = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                        const text = progressPercentageEl.textContent;
+                        const match = text.match(/(\d+)/);
+                        if (match) {
+                            const percentage = parseInt(match[1]);
+                            updateProgressCircle(percentage);
+                        }
+                    }
+                });
+            });
+
+            textObserver.observe(progressPercentageEl, {
+                childList: true,
+                characterData: true,
+                subtree: true
+            });
+        }
+
+        // Initialize
+        updateDynamicTitle();
+    </script>
+
+    <!-- Loading Manager Script -->
     <script src="/loading-manager.js"></script>
 </body>
 </html>

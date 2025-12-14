@@ -380,6 +380,19 @@ async def update_progress(stage, message, progress, metadata=None):
         active_connections.discard(ws)
 
 
+async def serve_preview_page(request):
+    """Serve the preview loading page"""
+    preview_html = Path(__file__).parent / "frontend" / "public" / "loading_preview.html"
+
+    if not preview_html.exists():
+        return web.Response(
+            text="Preview page not found. Please ensure frontend/public/loading_preview.html exists.",
+            status=404
+        )
+
+    return web.FileResponse(preview_html)
+
+
 async def start_server(host='0.0.0.0', port=LOADING_SERVER_PORT):
     """Start the standalone loading server with CORS and backend monitoring"""
     global backend_check_task
@@ -390,6 +403,7 @@ async def start_server(host='0.0.0.0', port=LOADING_SERVER_PORT):
     # Routes
     app.router.add_get('/', serve_loading_page)
     app.router.add_get('/loading.html', serve_loading_page)
+    app.router.add_get('/preview', serve_preview_page)
     app.router.add_get('/loading-manager.js', serve_loading_manager)
     app.router.add_get('/health', health_check)
     

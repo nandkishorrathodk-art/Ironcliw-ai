@@ -1,16 +1,19 @@
 /**
- * JARVIS Advanced Loading Manager v4.1
- * 
+ * JARVIS Advanced Loading Manager v4.2 - Matrix Theme
+ *
  * ARCHITECTURE: Display-only client that trusts start_system.py as authority
- * 
+ *
  * Flow: start_system.py → loading_server.py → loading-manager.js (here)
- * 
+ *
  * This component does NOT independently verify system readiness.
  * It displays progress received from the loading server and redirects
  * when told to. start_system.py is responsible for verifying frontend
  * is ready before sending "complete".
  *
  * Features:
+ * - Matrix-style UI with cyan/teal color scheme
+ * - SVG circular progress indicator with animated rings
+ * - Matrix rain background animation (canvas-based)
  * - Smooth 1-100% progress with real-time updates
  * - Detailed stage tracking matching backend broadcast stages
  * - Voice biometric system initialization feedback
@@ -18,7 +21,7 @@
  * - Memory-aware mode selection display
  * - Recent speaker cache initialization
  * - WebSocket + HTTP polling fallback
- * - Epic cinematic completion animation
+ * - Epic cinematic completion animation with Matrix effects
  * - Quick sanity check before redirect (safety net only)
  */
 
@@ -399,16 +402,16 @@ class JARVISLoadingManager {
             bottom: 120px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 20, 0, 0.85);
-            border: 1px solid rgba(0, 255, 65, 0.3);
+            background: rgba(10, 15, 25, 0.9);
+            border: 1px solid rgba(0, 212, 255, 0.3);
             border-radius: 12px;
             padding: 16px 24px;
             min-width: 360px;
             max-width: 520px;
-            font-family: 'SF Mono', Monaco, monospace;
+            font-family: 'Share Tech Mono', Monaco, monospace;
             font-size: 12px;
-            color: #00ff41;
-            box-shadow: 0 4px 20px rgba(0, 255, 65, 0.2);
+            color: #00d4ff;
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
             z-index: 100;
         `;
 
@@ -420,7 +423,7 @@ class JARVISLoadingManager {
                 gap: 8px;
                 margin-bottom: 12px;
                 padding-bottom: 8px;
-                border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+                border-bottom: 1px solid rgba(0, 212, 255, 0.2);
                 font-size: 10px;
                 text-transform: uppercase;
                 letter-spacing: 1px;
@@ -431,14 +434,14 @@ class JARVISLoadingManager {
             .phase-value {
                 font-weight: 600;
                 padding: 2px 8px;
-                background: rgba(0, 255, 65, 0.1);
+                background: rgba(0, 212, 255, 0.1);
                 border-radius: 4px;
             }
             .phase-value.cleanup { color: #ffaa00; }
-            .phase-value.starting { color: #00aaff; }
-            .phase-value.initialization { color: #00ff88; }
-            .phase-value.ready { color: #00ffff; }
-            .phase-value.complete { color: #00ff41; }
+            .phase-value.starting { color: #00d4ff; }
+            .phase-value.initialization { color: #00ffcc; }
+            .phase-value.ready { color: #00ffcc; }
+            .phase-value.complete { color: #00ff88; }
             .phase-value.error { color: #ff4444; }
             .stage-header {
                 display: flex;
@@ -468,26 +471,26 @@ class JARVISLoadingManager {
             }
             .substep.active {
                 opacity: 1;
-                color: #00ff88;
+                color: #00ffcc;
             }
             .substep.completed {
                 opacity: 0.8;
-                color: #00aa44;
+                color: #00d4ff;
             }
             .substep-indicator {
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
-                background: rgba(0, 255, 65, 0.3);
+                background: rgba(0, 212, 255, 0.3);
                 transition: all 0.3s ease;
             }
             .substep.active .substep-indicator {
-                background: #00ff88;
-                box-shadow: 0 0 8px #00ff88;
+                background: #00ffcc;
+                box-shadow: 0 0 8px #00ffcc;
                 animation: pulse 1s ease-in-out infinite;
             }
             .substep.completed .substep-indicator {
-                background: #00aa44;
+                background: #00d4ff;
             }
             @keyframes pulse {
                 0%, 100% { transform: scale(1); }
@@ -497,7 +500,7 @@ class JARVISLoadingManager {
                 display: flex;
                 justify-content: space-between;
                 padding-top: 12px;
-                border-top: 1px solid rgba(0, 255, 65, 0.2);
+                border-top: 1px solid rgba(0, 212, 255, 0.2);
                 font-size: 10px;
             }
             .info-label {
@@ -509,10 +512,10 @@ class JARVISLoadingManager {
             }
             .memory-status .info-value.low { color: #ff4444; }
             .memory-status .info-value.medium { color: #ffaa00; }
-            .memory-status .info-value.good { color: #00ff88; }
+            .memory-status .info-value.good { color: #00ffcc; }
             .mode-indicator .info-value.minimal { color: #ffaa00; }
-            .mode-indicator .info-value.standard { color: #00ff88; }
-            .mode-indicator .info-value.full { color: #00ffff; }
+            .mode-indicator .info-value.standard { color: #00ffcc; }
+            .mode-indicator .info-value.full { color: #00d4ff; }
         `;
         document.head.appendChild(style);
 
@@ -533,7 +536,7 @@ class JARVISLoadingManager {
     }
 
     async init() {
-        console.log('[JARVIS] Loading Manager v4.1 starting...');
+        console.log('[JARVIS] Loading Manager v4.2 (Matrix Theme) starting...');
         console.log(`[Config] Loading server: ${this.config.hostname}:${this.config.loadingServerPort}`);
         console.log('[Mode] DISPLAY - trusts start_system.py as authority');
 
@@ -724,26 +727,12 @@ class JARVISLoadingManager {
     }
 
     createParticles() {
+        // Matrix Rain is now handled by the canvas in loading.html
+        // This method is kept for backwards compatibility but does nothing
+        // The Matrix rain animation provides a superior visual effect
         const container = document.getElementById('particles');
         if (!container) return;
-
-        const particleCount = 50;
-        for (let i = 0; i < particleCount; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'particle';
-
-            const size = Math.random() * 3 + 1;
-            particle.style.width = `${size}px`;
-            particle.style.height = `${size}px`;
-            particle.style.left = `${Math.random() * 100}%`;
-
-            const duration = Math.random() * 10 + 10;
-            const delay = Math.random() * 5;
-            particle.style.animationDuration = `${duration}s`;
-            particle.style.animationDelay = `${delay}s`;
-
-            container.appendChild(particle);
-        }
+        // Particles are replaced by Matrix rain canvas animation
     }
 
     async connectWebSocket() {
@@ -1075,20 +1064,21 @@ class JARVISLoadingManager {
         this.elements.progressBar.style.width = `${displayProgress}%`;
         this.elements.progressPercentage.textContent = `${displayProgress}%`;
 
-        // Phase-based color
+        // Matrix theme - cyan/teal gradient throughout
+        // Phase-based intensity rather than color change
         if (displayProgress < 40) {
-            // Cleanup phase - orange
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #ff8800 0%, #ffaa00 100%)';
+            // Cleanup phase - dim cyan
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #0099bb 0%, #00aacc 100%)';
         } else if (displayProgress < 50) {
-            // Starting phase - blue
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #0088ff 0%, #00aaff 100%)';
+            // Starting phase - medium cyan
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00bbdd 0%, #00ccee 100%)';
         } else if (displayProgress < 95) {
-            // Initialization phase - green
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00aa44 0%, #00ff41 100%)';
+            // Initialization phase - bright cyan/teal
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00d4ff 0%, #00ffcc 100%)';
         } else {
-            // Ready/Complete phase - bright green with glow
-            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
-            this.elements.progressBar.style.boxShadow = '0 0 20px rgba(0, 255, 65, 0.8)';
+            // Ready/Complete phase - bright teal with intense glow
+            this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ffcc 0%, #00ff88 100%)';
+            this.elements.progressBar.style.boxShadow = '0 0 30px rgba(0, 255, 204, 0.8)';
         }
     }
 
@@ -1312,40 +1302,54 @@ class JARVISLoadingManager {
     async playEpicCompletionAnimation(redirectUrl) {
         const container = document.querySelector('.loading-container');
         const reactor = this.elements.reactor;
+        const matrixCanvas = document.getElementById('matrix-canvas');
 
         const totalDuration = 3000;
 
-        // Phase 1: Power surge
+        // Phase 1: Power surge with Matrix theme
         if (reactor) {
             reactor.style.transition = 'all 0.3s ease-out';
-            reactor.style.transform = 'translate(-50%, -50%) scale(1.5)';
-            reactor.style.filter = 'drop-shadow(0 0 80px rgba(0, 255, 65, 1)) brightness(2)';
+            reactor.style.transform = 'scale(1.2)';
+            reactor.style.filter = 'drop-shadow(0 0 60px rgba(0, 212, 255, 1)) brightness(1.5)';
 
+            // Create cyan energy rings
             for (let i = 0; i < 3; i++) {
-                setTimeout(() => this.createEnergyRing(reactor, '#00ff41', i), i * 200);
+                setTimeout(() => this.createEnergyRing(reactor, '#00d4ff', i), i * 200);
             }
+        }
+
+        // Intensify matrix rain briefly
+        if (matrixCanvas) {
+            matrixCanvas.style.transition = 'opacity 0.3s ease-out';
+            matrixCanvas.style.opacity = '1';
         }
 
         await this.sleep(600);
 
-        // Phase 2: Fade out
+        // Phase 2: Fade out with glow
         if (container) {
-            container.style.transition = 'opacity 1s ease-out';
+            container.style.transition = 'all 1s ease-out';
             container.style.opacity = '0';
+            container.style.transform = 'scale(1.1)';
+            container.style.filter = 'blur(10px)';
         }
         if (reactor) {
             reactor.style.transition = 'all 1s ease-out';
-            reactor.style.transform = 'translate(-50%, -50%) scale(2)';
+            reactor.style.transform = 'scale(1.5)';
             reactor.style.opacity = '0';
+        }
+        if (matrixCanvas) {
+            matrixCanvas.style.transition = 'opacity 1s ease-out';
+            matrixCanvas.style.opacity = '0.3';
         }
 
         await this.sleep(1500);
 
-        // Phase 3: Navigate
+        // Phase 3: Navigate with dark overlay
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; opacity: 0;
+            background: #0a0a12; opacity: 0;
             transition: opacity 0.5s ease-in; z-index: 10001;
         `;
         document.body.appendChild(overlay);
