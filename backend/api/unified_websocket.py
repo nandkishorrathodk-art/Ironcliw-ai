@@ -1223,6 +1223,45 @@ class UnifiedWebSocketManager:
                     elif is_unlock_command:
                         logger.info(f"[WS] 🔓 Detected UNLOCK command: '{command_text}' - routing to VBI")
 
+                    # ═══════════════════════════════════════════════════════════════
+                    # ⚡ MEMORY GUARD: Execute lock directly if memory is critical
+                    # This prevents event loop freezing when system is under pressure
+                    # ═══════════════════════════════════════════════════════════════
+                    if is_lock_command:
+                        try:
+                            import psutil
+                            mem = psutil.virtual_memory()
+                            if mem.percent >= 85:
+                                logger.warning(
+                                    f"[WS] ⚠️ Critical memory ({mem.percent:.1f}%), "
+                                    f"executing lock directly to prevent freeze"
+                                )
+                                # Direct lock execution - bypass heavy processing
+                                from system_control.macos_controller import MacOSController
+                                controller = MacOSController()
+                                lock_result = await asyncio.wait_for(
+                                    controller.lock_screen(),
+                                    timeout=5.0
+                                )
+                                return {
+                                    "type": "command_response",
+                                    "response": "Screen locked, Sir. Memory pressure was critical so I used fast path.",
+                                    "success": lock_result.get("success", True) if isinstance(lock_result, dict) else True,
+                                    "speak": True,
+                                    "memory_guard_activated": True,
+                                }
+                        except asyncio.TimeoutError:
+                            logger.error("[WS] ⏱️ Direct lock timed out after 5s")
+                            return {
+                                "type": "command_response",
+                                "response": "Screen lock timed out. The system is under heavy load.",
+                                "success": False,
+                                "speak": True,
+                            }
+                        except Exception as mem_guard_err:
+                            logger.debug(f"[WS] Memory guard check failed: {mem_guard_err}")
+                            # Fall through to normal processing
+
                     if is_unlock_command and audio_data_received:
                         # ============================================================
                         # ROBUST VOICE UNLOCK v1.0.0 - Primary Handler

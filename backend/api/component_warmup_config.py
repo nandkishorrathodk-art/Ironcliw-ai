@@ -817,6 +817,16 @@ async def register_manual_components(warmup):
         category="learning",
     )
 
+    # ☁️ CLOUD CANDIDATES (Medium Priority) - Offloadable to GCP Spot VM at 80% RAM
+    warmup.register_component(
+        name="rag_engine",
+        loader=load_rag_engine,
+        priority=ComponentPriority.MEDIUM,
+        timeout=45.0,
+        required=False,
+        category="intelligence",
+    )
+
     # ═══ LOW PRIORITY COMPONENTS ═══
     warmup.register_component(
         name="action_query_handler",
@@ -845,6 +855,35 @@ async def register_manual_components(warmup):
         timeout=25.0,
         required=False,
         category="vision",
+    )
+
+    # ☁️ CLOUD CANDIDATES (Low Priority) - Background Processing, Offloadable
+    warmup.register_component(
+        name="voice_ml_trainer",
+        loader=load_voice_ml_trainer,
+        priority=ComponentPriority.LOW,
+        timeout=30.0,
+        required=False,
+        category="learning",
+    )
+
+    warmup.register_component(
+        name="telemetry_collector",
+        loader=load_telemetry_collector,
+        priority=ComponentPriority.LOW,
+        timeout=5.0,
+        required=False,
+        category="system",
+    )
+
+    # ☁️ CLOUD CANDIDATES (Deferred) - Heavy ML Models, Offloadable
+    warmup.register_component(
+        name="wav2vec2_engine",
+        loader=load_wav2vec2_engine,
+        priority=ComponentPriority.DEFERRED,
+        timeout=60.0,
+        required=False,
+        category="voice",
     )
 
     logger.info(f"[MANUAL] Registered {len(warmup.components)} manual components")
@@ -1452,4 +1491,82 @@ async def load_multi_space_handler():
         )
         return get_multi_space_query_handler()
     except:
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ☁️ CLOUD CANDIDATE LOADERS - Heavy components offloadable to GCP Spot VM
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def load_rag_engine():
+    """
+    Load RAG engine (Vector DB + LLM) - Heavy RAM user.
+    Offloadable to GCP Spot VM when local memory pressure exceeds 80%.
+    """
+    try:
+        from engines.rag_engine import RAGEngine
+        engine = RAGEngine()
+        logger.info("[WARMUP] ✅ RAG engine loaded")
+        return engine
+    except ImportError as e:
+        logger.debug(f"[WARMUP] RAG engine not available (module not found): {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"[WARMUP] RAG engine not available: {e}")
+        return None
+
+
+async def load_wav2vec2_engine():
+    """
+    Load Wav2Vec2 ASR engine - Very heavy RAM user (~2GB+).
+    Offloadable to GCP Spot VM when local memory pressure exceeds 80%.
+    Model loading is deferred to save local RAM.
+    """
+    try:
+        from voice.engines.wav2vec2_engine import Wav2Vec2Engine
+        engine = Wav2Vec2Engine()
+        # Don't preload model to save local RAM - can load on VM if needed
+        logger.info("[WARMUP] ✅ Wav2Vec2 engine registered (model deferred)")
+        return engine
+    except ImportError as e:
+        logger.debug(f"[WARMUP] Wav2Vec2 engine not available (module not found): {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"[WARMUP] Wav2Vec2 engine not available: {e}")
+        return None
+
+
+async def load_voice_ml_trainer():
+    """
+    Load Voice ML Trainer - Background training component.
+    Offloadable to GCP Spot VM for continuous learning without impacting local performance.
+    """
+    try:
+        from voice.voice_ml_trainer import VoiceMLTrainer
+        trainer = VoiceMLTrainer()
+        logger.info("[WARMUP] ✅ Voice ML trainer loaded")
+        return trainer
+    except ImportError as e:
+        logger.debug(f"[WARMUP] Voice ML trainer not available (module not found): {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"[WARMUP] Voice ML trainer not available: {e}")
+        return None
+
+
+async def load_telemetry_collector():
+    """
+    Load Telemetry System - Background metrics collection.
+    Offloadable to GCP Spot VM to reduce local overhead.
+    """
+    try:
+        from core.telemetry.events import get_telemetry
+        telemetry = get_telemetry()
+        logger.info("[WARMUP] ✅ Telemetry collector loaded")
+        return telemetry
+    except ImportError as e:
+        logger.debug(f"[WARMUP] Telemetry not available (module not found): {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"[WARMUP] Telemetry not available: {e}")
         return None

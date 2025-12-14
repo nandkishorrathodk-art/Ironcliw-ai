@@ -185,8 +185,8 @@ class ComponentWarmupSystem:
 
                 try:
                     # Import hybrid cloud components
-                    from backend.core.platform_memory_monitor import get_memory_monitor
-                    from backend.core.gcp_vm_manager import create_vm_if_needed
+                    from core.platform_memory_monitor import get_memory_monitor
+                    from core.gcp_vm_manager import create_vm_if_needed
 
                     # Get detailed memory pressure snapshot
                     memory_monitor = get_memory_monitor()
