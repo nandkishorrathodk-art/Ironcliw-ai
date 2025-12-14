@@ -2343,6 +2343,62 @@ class JARVISVoiceAPI:
                                 logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
                                 # Continue to normal processing if this fails
 
+                            # =========================================================================
+                            # ULTRA FAST PATH v1.0: Screen lock commands bypass ALL context processing
+                            # This prevents infinite loops and import errors in context handlers
+                            # =========================================================================
+                            command_lower = command_text.lower().strip()
+                            if "lock" in command_lower and "unlock" not in command_lower and ("screen" in command_lower or "mac" in command_lower or "computer" in command_lower):
+                                logger.info(f"[JARVIS WS] 🔒 LOCK command detected - DIRECT EXECUTION (bypassing context handlers)")
+
+                                try:
+                                    from .unified_command_processor import get_unified_processor
+                                    processor = get_unified_processor(self.api_key)
+
+                                    result = await asyncio.wait_for(
+                                        processor.process_command(command_text, websocket, audio_data=self.last_audio_data, speaker_name=self.last_speaker_name),
+                                        timeout=10.0
+                                    )
+                                    logger.info(f"[JARVIS WS] ✅ Lock command completed successfully")
+
+                                    # Send response immediately
+                                    response_data = {
+                                        "type": "response",
+                                        "text": result.get("response", "Locking your screen now."),
+                                        "command_type": "screen_lock",
+                                        "success": result.get("success", True),
+                                        "fast_path": True,
+                                        "timestamp": datetime.now().isoformat(),
+                                        "speak": True,
+                                        **{k: v for k, v in result.items() if k not in ["response", "command_type", "success"]}
+                                    }
+                                    await websocket.send_json(response_data)
+                                    logger.info(f"[JARVIS WS] Sent lock response")
+                                    continue  # Skip to next message
+
+                                except asyncio.TimeoutError:
+                                    logger.error("[JARVIS WS] ❌ Lock command timed out")
+                                    await websocket.send_json({
+                                        "type": "response",
+                                        "text": "Lock command timed out. Please try again.",
+                                        "success": False,
+                                        "error": "timeout",
+                                        "timestamp": datetime.now().isoformat(),
+                                        "speak": True
+                                    })
+                                    continue
+                                except Exception as e:
+                                    logger.error(f"[JARVIS WS] ❌ Lock command failed: {e}")
+                                    await websocket.send_json({
+                                        "type": "response",
+                                        "text": f"Failed to lock screen: {str(e)}",
+                                        "success": False,
+                                        "error": str(e),
+                                        "timestamp": datetime.now().isoformat(),
+                                        "speak": True
+                                    })
+                                    continue
+
                             from .unified_command_processor import get_unified_processor
 
                             processor = get_unified_processor(self.api_key)
