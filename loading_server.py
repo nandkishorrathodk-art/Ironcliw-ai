@@ -886,8 +886,248 @@ async def main():
         await shutdown_server(runner)
 
 
+# =============================================================================
+# StartupProgressReporter - For start_system.py to import and use
+# =============================================================================
+
+class StartupProgressReporter:
+    """
+    Robust progress reporter for use by start_system.py
+    
+    Features:
+    - Async and fire-and-forget modes
+    - Automatic retries with backoff
+    - Never blocks main startup
+    - Connection pooling
+    
+    Usage in start_system.py:
+        from loading_server import StartupProgressReporter, start_loading_server_background
+        
+        await start_loading_server_background()
+        reporter = StartupProgressReporter()
+        await reporter.report("init", "Initializing JARVIS...", 5)
+        await reporter.complete("JARVIS is online!")
+    """
+    
+    def __init__(self, host: str = None, port: int = None):
+        self.host = host or os.getenv('LOADING_SERVER_HOST', 'localhost')
+        self.port = port or int(os.getenv('LOADING_SERVER_PORT', '3001'))
+        self.timeout = float(os.getenv('PROGRESS_REQUEST_TIMEOUT', '2.0'))
+        self.retry_count = int(os.getenv('PROGRESS_RETRY_COUNT', '3'))
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._last_progress = 0.0
+        self._enabled = True
+    
+    @property
+    def update_url(self) -> str:
+        return f"http://{self.host}:{self.port}/api/update-progress"
+    
+    async def _get_session(self) -> Optional[aiohttp.ClientSession]:
+        if self._session is None or self._session.closed:
+            try:
+                self._session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                )
+            except Exception as e:
+                logger.debug(f"Failed to create session: {e}")
+                self._enabled = False
+        return self._session
+    
+    async def report(
+        self,
+        stage: str,
+        message: str,
+        progress: float,
+        metadata: Optional[Dict[str, Any]] = None,
+        fire_and_forget: bool = True
+    ) -> bool:
+        """
+        Report progress to loading server
+        
+        Args:
+            stage: Current stage name (e.g., "init", "backend", "models")
+            message: Human-readable status message
+            progress: Percentage complete (0-100)
+            metadata: Optional additional data
+            fire_and_forget: If True, don't wait for response
+        """
+        if not self._enabled:
+            return False
+        
+        # Monotonic enforcement
+        if progress > self._last_progress:
+            self._last_progress = progress
+        else:
+            progress = self._last_progress
+        
+        payload = {
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+            "metadata": metadata or {}
+        }
+        
+        if fire_and_forget:
+            asyncio.create_task(self._send_with_retry(payload))
+            return True
+        return await self._send_with_retry(payload)
+    
+    async def _send_with_retry(self, payload: Dict[str, Any]) -> bool:
+        session = await self._get_session()
+        if not session:
+            return False
+        
+        for attempt in range(self.retry_count):
+            try:
+                async with session.post(self.update_url, json=payload) as resp:
+                    if resp.status in (200, 201):
+                        return True
+            except asyncio.TimeoutError:
+                pass
+            except Exception as e:
+                logger.debug(f"Progress update failed: {e}")
+            
+            if attempt < self.retry_count - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return False
+    
+    async def complete(
+        self,
+        message: str = "JARVIS is online!",
+        redirect_url: str = None,
+        success: bool = True
+    ) -> bool:
+        """Report startup complete"""
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        metadata = {
+            "success": success,
+            "redirect_url": redirect_url or frontend_url,
+            "backend_ready": True,
+            "frontend_ready": True
+        }
+        return await self.report("complete", message, 100.0, metadata, fire_and_forget=False)
+    
+    async def fail(self, message: str, error: str = None) -> bool:
+        """Report startup failure"""
+        return await self.report(
+            "failed", message, self._last_progress,
+            {"success": False, "error": error or message},
+            fire_and_forget=False
+        )
+    
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+
+# Global reporter instance
+_reporter: Optional[StartupProgressReporter] = None
+
+
+def get_progress_reporter() -> StartupProgressReporter:
+    """Get or create global reporter instance"""
+    global _reporter
+    if _reporter is None:
+        _reporter = StartupProgressReporter()
+    return _reporter
+
+
+async def report_progress(stage: str, message: str, progress: float, metadata: Dict = None) -> bool:
+    """Convenience function for quick progress reports"""
+    return await get_progress_reporter().report(stage, message, progress, metadata)
+
+
+async def report_complete(message: str = "JARVIS is online!", redirect_url: str = None) -> bool:
+    """Convenience function for completion"""
+    return await get_progress_reporter().complete(message, redirect_url)
+
+
+async def report_failure(message: str, error: str = None) -> bool:
+    """Convenience function for failure"""
+    return await get_progress_reporter().fail(message, error)
+
+
+# =============================================================================
+# Loading Server Launcher - Start server in background for start_system.py
+# =============================================================================
+
+_loading_server_process = None
+
+
+async def start_loading_server_background() -> bool:
+    """
+    Start loading server as a background subprocess.
+    Call this at the very beginning of start_system.py.
+    
+    Returns True if server is running (either started or already running).
+    """
+    global _loading_server_process
+    
+    import subprocess
+    
+    host = os.getenv('LOADING_SERVER_HOST', 'localhost')
+    port = int(os.getenv('LOADING_SERVER_PORT', '3001'))
+    
+    # Check if already running
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1.0)) as session:
+            async with session.get(f"http://{host}:{port}/health") as resp:
+                if resp.status == 200:
+                    logger.info(f"Loading server already running on port {port}")
+                    return True
+    except:
+        pass  # Not running, start it
+    
+    # Start the server
+    try:
+        logger.info(f"Starting loading server on port {port}...")
+        script_path = Path(__file__).resolve()
+        
+        _loading_server_process = subprocess.Popen(
+            [sys.executable, str(script_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        
+        # Wait for server to be ready
+        for _ in range(10):
+            await asyncio.sleep(0.3)
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1.0)) as session:
+                    async with session.get(f"http://{host}:{port}/health") as resp:
+                        if resp.status == 200:
+                            logger.info("Loading server started successfully")
+                            return True
+            except:
+                continue
+        
+        logger.warning("Loading server started but health check failed")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Failed to start loading server: {e}")
+        return False
+
+
+async def stop_loading_server_background():
+    """Stop the loading server subprocess"""
+    global _loading_server_process
+    if _loading_server_process:
+        try:
+            _loading_server_process.terminate()
+            _loading_server_process.wait(timeout=5)
+        except:
+            try:
+                _loading_server_process.kill()
+            except:
+                pass
+        _loading_server_process = None
+
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         sys.exit(0)
+

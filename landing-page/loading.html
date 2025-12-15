@@ -22,6 +22,13 @@
             box-sizing: border-box;
         }
 
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             background: #000;
             color: var(--jarvis-green);
@@ -30,23 +37,25 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            overflow: hidden;
+            position: relative;
         }
 
-        /* ==================== Matrix Rain Background ==================== */
+        /* ==================== Matrix Rain Background - FULLSCREEN ==================== */
         .matrix-rain {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             z-index: 0;
-            opacity: 0.25;
+            opacity: 0.3;
             pointer-events: none;
         }
 
         .matrix-rain canvas {
             display: block;
+            width: 100%;
+            height: 100%;
         }
 
         /* ==================== Vignette Overlay ==================== */
@@ -118,7 +127,7 @@
             text-shadow: 0 0 10px var(--jarvis-green-glow);
         }
 
-        /* ==================== Static Arc Reactor (No Animation) ==================== */
+        /* ==================== Arc Reactor with HEARTBEAT Animation ==================== */
         .arc-reactor {
             width: 320px;
             height: 320px;
@@ -126,7 +135,7 @@
             position: relative;
         }
 
-        /* Outer Ring */
+        /* Outer Ring - Slow rotation + pulse */
         .reactor-outer-ring {
             position: absolute;
             width: 100%;
@@ -137,9 +146,10 @@
                 0 0 30px var(--jarvis-green),
                 0 0 60px var(--jarvis-green-glow),
                 inset 0 0 30px var(--jarvis-green-dim);
+            animation: ring-rotate 20s linear infinite, ring-pulse 2s ease-in-out infinite;
         }
 
-        /* Middle Ring */
+        /* Middle Ring - Counter rotation */
         .reactor-middle-ring {
             position: absolute;
             width: 230px;
@@ -152,9 +162,10 @@
                 0 0 25px var(--jarvis-green),
                 0 0 50px var(--jarvis-green-glow),
                 inset 0 0 25px var(--jarvis-green-dim);
+            animation: ring-rotate-reverse 15s linear infinite, ring-pulse 2s ease-in-out infinite 0.1s;
         }
 
-        /* Inner Ring */
+        /* Inner Ring - Fast rotation */
         .reactor-inner-ring {
             position: absolute;
             width: 150px;
@@ -167,9 +178,10 @@
                 0 0 20px var(--jarvis-green),
                 0 0 40px var(--jarvis-green-glow),
                 inset 0 0 20px var(--jarvis-green-dim);
+            animation: ring-rotate 10s linear infinite, ring-pulse 2s ease-in-out infinite 0.2s;
         }
 
-        /* Core - Bright Glowing Center */
+        /* Core - HEARTBEAT Pulsing */
         .reactor-core {
             position: absolute;
             width: 80px;
@@ -188,6 +200,121 @@
                 0 0 120px var(--jarvis-green),
                 0 0 160px var(--jarvis-green-glow),
                 inset 0 0 30px rgba(255, 255, 255, 0.6);
+            animation: heartbeat 1.5s ease-in-out infinite;
+        }
+
+        /* Core glow pulse ring */
+        .reactor-core::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--jarvis-green-glow) 0%, transparent 70%);
+            animation: core-pulse-expand 2s ease-out infinite;
+        }
+
+        /* Secondary pulse ring */
+        .reactor-core::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid var(--jarvis-green);
+            animation: core-pulse-expand 2s ease-out infinite 1s;
+        }
+
+        @keyframes heartbeat {
+
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow:
+                    0 0 40px var(--jarvis-green),
+                    0 0 80px var(--jarvis-green),
+                    0 0 120px var(--jarvis-green),
+                    0 0 160px var(--jarvis-green-glow),
+                    inset 0 0 30px rgba(255, 255, 255, 0.6);
+            }
+
+            10% {
+                transform: scale(1.15);
+                box-shadow:
+                    0 0 60px var(--jarvis-green),
+                    0 0 100px var(--jarvis-green),
+                    0 0 150px var(--jarvis-green),
+                    0 0 200px var(--jarvis-green-glow),
+                    inset 0 0 40px rgba(255, 255, 255, 0.8);
+            }
+
+            20% {
+                transform: scale(1);
+            }
+
+            30% {
+                transform: scale(1.1);
+                box-shadow:
+                    0 0 50px var(--jarvis-green),
+                    0 0 90px var(--jarvis-green),
+                    0 0 140px var(--jarvis-green),
+                    0 0 180px var(--jarvis-green-glow),
+                    inset 0 0 35px rgba(255, 255, 255, 0.7);
+            }
+
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes core-pulse-expand {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2.5);
+                opacity: 0;
+            }
+        }
+
+        @keyframes ring-rotate {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes ring-rotate-reverse {
+            from {
+                transform: rotate(360deg);
+            }
+
+            to {
+                transform: rotate(0deg);
+            }
+        }
+
+        @keyframes ring-pulse {
+
+            0%,
+            100% {
+                box-shadow:
+                    0 0 20px var(--jarvis-green),
+                    0 0 40px var(--jarvis-green-glow),
+                    inset 0 0 20px var(--jarvis-green-dim);
+            }
+
+            50% {
+                box-shadow:
+                    0 0 35px var(--jarvis-green),
+                    0 0 60px var(--jarvis-green-glow),
+                    inset 0 0 30px var(--jarvis-green-dim);
+            }
         }
 
         /* ==================== Progress Percentage ==================== */
@@ -276,6 +403,36 @@
             min-height: 30px;
         }
 
+        /* ==================== Connection Status ==================== */
+        .connection-status {
+            font-size: 0.9rem;
+            margin-top: 15px;
+            color: var(--jarvis-green-dark);
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .connection-status.reconnecting {
+            color: #ffaa00;
+            animation: blink 1s infinite;
+        }
+
+        .connection-status.connected {
+            color: var(--jarvis-green);
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 0.7;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
         /* ==================== Error State ==================== */
         .error-state {
             display: none;
@@ -296,6 +453,23 @@
             margin-bottom: 10px;
         }
 
+        .retry-button {
+            margin-top: 15px;
+            padding: 10px 30px;
+            background: transparent;
+            border: 2px solid #ff4444;
+            color: #ff4444;
+            font-family: 'Orbitron', monospace;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .retry-button:hover {
+            background: #ff4444;
+            color: #000;
+        }
+
         /* ==================== Scanline Effect ==================== */
         .scanlines {
             position: fixed;
@@ -310,6 +484,39 @@
                     rgba(0, 255, 65, 0.03) 4px);
             z-index: 2;
             pointer-events: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .jarvis-logo {
+                font-size: 3rem;
+            }
+
+            .arc-reactor {
+                width: 220px;
+                height: 220px;
+            }
+
+            .reactor-middle-ring {
+                width: 160px;
+                height: 160px;
+                top: 30px;
+                left: 30px;
+            }
+
+            .reactor-inner-ring {
+                width: 100px;
+                height: 100px;
+                top: 60px;
+                left: 60px;
+            }
+
+            .reactor-core {
+                width: 50px;
+                height: 50px;
+                top: 85px;
+                left: 85px;
+            }
         }
     </style>
 </head>
@@ -334,7 +541,7 @@
             <div class="subtitle">System Startup</div>
         </div>
 
-        <!-- Static Arc Reactor (No Animation, Just Glow) -->
+        <!-- Arc Reactor with Heartbeat Animation -->
         <div class="arc-reactor">
             <div class="reactor-outer-ring"></div>
             <div class="reactor-middle-ring"></div>
@@ -353,143 +560,289 @@
         <!-- Progress Text -->
         <div class="progress-text" id="progress-text">Initializing system...</div>
 
+        <!-- Connection Status -->
+        <div class="connection-status" id="connection-status"></div>
+
         <!-- Error State -->
         <div class="error-state" id="error-state">
             <h2>Startup Failed</h2>
             <p id="error-message"></p>
+            <button class="retry-button" onclick="retryConnection()">Retry Connection</button>
         </div>
     </div>
 
     <script>
-        // ==================== Matrix Rain Effect ====================
+        // ==================== Matrix Rain Effect - FULLSCREEN ====================
         const canvas = document.getElementById('matrix-canvas');
         const ctx = canvas.getContext('2d');
 
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        // Set canvas to FULL viewport size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Reinitialize rain drops on resize
+            initRainDrops();
+        }
 
         const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
         const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const nums = '0123456789';
-        const alphabet = katakana + latin + nums;
+        const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+        const alphabet = katakana + latin + nums + symbols;
 
         const fontSize = 16;
-        const columns = canvas.width / fontSize;
-        const rainDrops = Array(Math.floor(columns)).fill(1);
+        let columns;
+        let rainDrops = [];
+
+        function initRainDrops() {
+            columns = Math.ceil(canvas.width / fontSize);
+            rainDrops = Array(columns).fill(0).map(() => Math.random() * -100);
+        }
 
         function drawMatrix() {
+            // Semi-transparent black for trail effect
             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            ctx.fillStyle = '#00ff41';
-            ctx.font = fontSize + 'px monospace';
+            ctx.font = `${fontSize}px monospace`;
 
             for (let i = 0; i < rainDrops.length; i++) {
+                // Vary the green shade for depth
+                const brightness = Math.random() * 0.5 + 0.5;
+                ctx.fillStyle = `rgba(0, ${Math.floor(255 * brightness)}, ${Math.floor(65 * brightness)}, ${brightness})`;
+                
                 const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-                ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+                const x = i * fontSize;
+                const y = rainDrops[i] * fontSize;
+                
+                ctx.fillText(text, x, y);
 
-                if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                // Reset drop when it goes off screen
+                if (y > canvas.height && Math.random() > 0.975) {
                     rainDrops[i] = 0;
                 }
                 rainDrops[i]++;
             }
         }
 
-        setInterval(drawMatrix, 40);
+        // Initialize
+        resizeCanvas();
+        setInterval(drawMatrix, 35);
 
-        window.addEventListener('resize', () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        });
+        // Handle window resize
+        window.addEventListener('resize', resizeCanvas);
 
-        // ==================== WebSocket Progress ====================
-        let ws;
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 10;
-
-        function connectWebSocket() {
-            const wsUrl = 'ws://localhost:3001/ws/startup-progress';
-
-            console.log('Connecting to loading server:', wsUrl);
-
-            try {
-                ws = new WebSocket(wsUrl);
-            } catch (e) {
-                console.error('WebSocket creation failed:', e);
-                setTimeout(connectWebSocket, 2000);
-                return;
+        // ==================== ROBUST WebSocket Connection Manager ====================
+        class ConnectionManager {
+            constructor() {
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 50; // Increased from 10
+                this.baseDelay = 1000;
+                this.maxDelay = 30000;
+                this.isConnected = false;
+                this.lastProgress = 0;
+                this.heartbeatInterval = null;
+                this.healthCheckInterval = null;
+                this.serverEndpoints = [
+                    'ws://localhost:3001/ws/startup-progress',
+                    'ws://127.0.0.1:3001/ws/startup-progress',
+                    'ws://localhost:8010/ws/startup-progress',
+                    'ws://127.0.0.1:8010/ws/startup-progress'
+                ];
+                this.currentEndpointIndex = 0;
             }
 
-            ws.onopen = () => {
-                console.log('WebSocket connected');
-                reconnectAttempts = 0;
+            getBackoffDelay() {
+                // Exponential backoff with jitter
+                const delay = Math.min(
+                    this.baseDelay * Math.pow(2, this.reconnectAttempts),
+                    this.maxDelay
+                );
+                const jitter = delay * 0.2 * Math.random();
+                return delay + jitter;
+            }
 
-                setInterval(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'ping' }));
+            updateConnectionStatus(status, message) {
+                const statusEl = document.getElementById('connection-status');
+                statusEl.textContent = message;
+                statusEl.className = `connection-status ${status}`;
+            }
+
+            async connect() {
+                // Try all endpoints
+                const endpoint = this.serverEndpoints[this.currentEndpointIndex];
+                console.log(`[WS] Connecting to: ${endpoint} (attempt ${this.reconnectAttempts + 1})`);
+                
+                this.updateConnectionStatus('reconnecting', `Connecting to server...`);
+
+                try {
+                    this.ws = new WebSocket(endpoint);
+                    this.setupEventHandlers();
+                } catch (e) {
+                    console.error('[WS] Connection failed:', e);
+                    this.handleConnectionFailure();
+                }
+            }
+
+            setupEventHandlers() {
+                this.ws.onopen = () => {
+                    console.log('[WS] ✅ Connected');
+                    this.isConnected = true;
+                    this.reconnectAttempts = 0;
+                    this.updateConnectionStatus('connected', 'Connected to server');
+                    
+                    // Hide error state if shown
+                    document.getElementById('error-state').classList.remove('show');
+                    
+                    // Start heartbeat
+                    this.startHeartbeat();
+                    
+                    // Start health check
+                    this.startHealthCheck();
+                };
+
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'pong' || data.type === 'heartbeat') {
+                            return;
+                        }
+                        this.handleProgressUpdate(data);
+                    } catch (error) {
+                        console.error('[WS] Parse error:', error);
+                    }
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error('[WS] Error:', error);
+                };
+
+                this.ws.onclose = (event) => {
+                    console.log(`[WS] Closed (code: ${event.code})`);
+                    this.isConnected = false;
+                    this.stopHeartbeat();
+                    this.stopHealthCheck();
+                    this.handleConnectionFailure();
+                };
+            }
+
+            handleProgressUpdate(data) {
+                const { stage, message, progress, success, redirect_url } = data;
+
+                const progressBar = document.getElementById('progress-bar');
+                const progressPercentage = document.getElementById('progress-percentage');
+                const progressText = document.getElementById('progress-text');
+
+                if (progress !== undefined) {
+                    this.lastProgress = progress;
+                    progressBar.style.width = `${progress}%`;
+                    progressPercentage.textContent = `${Math.round(progress)}%`;
+                }
+                
+                if (message) {
+                    progressText.textContent = message;
+                }
+
+                if (stage === 'complete' && success) {
+                    this.updateConnectionStatus('connected', 'Startup complete! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = redirect_url || 'http://localhost:3000';
+                    }, 2000);
+                } else if (stage === 'failed' || (stage === 'complete' && !success)) {
+                    this.showError(message || 'Startup failed');
+                }
+            }
+
+            handleConnectionFailure() {
+                this.reconnectAttempts++;
+                
+                // Try next endpoint
+                this.currentEndpointIndex = (this.currentEndpointIndex + 1) % this.serverEndpoints.length;
+                
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    const delay = this.getBackoffDelay();
+                    const endpoint = this.serverEndpoints[this.currentEndpointIndex];
+                    
+                    console.log(`[WS] Reconnecting in ${Math.round(delay/1000)}s to ${endpoint}...`);
+                    this.updateConnectionStatus('reconnecting', 
+                        `Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    
+                    setTimeout(() => this.connect(), delay);
+                } else {
+                    this.showError('Lost connection to server. Click Retry to reconnect.');
+                }
+            }
+
+            startHeartbeat() {
+                this.heartbeatInterval = setInterval(() => {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ type: 'ping' }));
                     }
                 }, 10000);
-            };
+            }
 
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'pong' || data.type === 'heartbeat') return;
-                    updateProgress(data);
-                } catch (error) {
-                    console.error('Error parsing message:', error);
+            stopHeartbeat() {
+                if (this.heartbeatInterval) {
+                    clearInterval(this.heartbeatInterval);
+                    this.heartbeatInterval = null;
                 }
-            };
+            }
 
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    reconnectAttempts++;
-                    console.log(`Reconnecting... (${reconnectAttempts}/${maxReconnectAttempts})`);
-                    setTimeout(connectWebSocket, 2000);
-                } else {
-                    showError('Lost connection to server. Please refresh the page.');
-                }
-            };
-        }
-
-        function updateProgress(data) {
-            const { stage, message, progress, success, redirect_url } = data;
-
-            const progressBar = document.getElementById('progress-bar');
-            const progressPercentage = document.getElementById('progress-percentage');
-            const progressText = document.getElementById('progress-text');
-
-            progressBar.style.width = `${progress}%`;
-            progressPercentage.textContent = `${Math.round(progress)}%`;
-            progressText.textContent = message;
-
-            if (stage === 'complete' && success) {
-                setTimeout(() => {
-                    if (redirect_url) {
-                        window.location.href = redirect_url;
-                    } else {
-                        window.location.href = 'http://localhost:3000';
+            startHealthCheck() {
+                // Check backend health endpoint directly
+                this.healthCheckInterval = setInterval(async () => {
+                    if (!this.isConnected) {
+                        try {
+                            const response = await fetch('http://localhost:8010/health/ping', {
+                                method: 'GET',
+                                timeout: 3000
+                            });
+                            if (response.ok) {
+                                console.log('[Health] Backend is up, reconnecting WS...');
+                                this.reconnectAttempts = 0;
+                                this.connect();
+                            }
+                        } catch (e) {
+                            // Backend not ready yet
+                        }
                     }
-                }, 2000);
-            } else if (stage === 'failed' || (stage === 'complete' && !success)) {
-                showError(message);
+                }, 5000);
+            }
+
+            stopHealthCheck() {
+                if (this.healthCheckInterval) {
+                    clearInterval(this.healthCheckInterval);
+                    this.healthCheckInterval = null;
+                }
+            }
+
+            showError(message) {
+                const errorState = document.getElementById('error-state');
+                const errorMessage = document.getElementById('error-message');
+                errorState.classList.add('show');
+                errorMessage.textContent = message;
+                this.updateConnectionStatus('', '');
+            }
+
+            retry() {
+                document.getElementById('error-state').classList.remove('show');
+                this.reconnectAttempts = 0;
+                this.currentEndpointIndex = 0;
+                this.connect();
             }
         }
 
-        function showError(message) {
-            const errorState = document.getElementById('error-state');
-            const errorMessage = document.getElementById('error-message');
-            errorState.classList.add('show');
-            errorMessage.textContent = message;
+        // Global connection manager
+        const connectionManager = new ConnectionManager();
+
+        function retryConnection() {
+            connectionManager.retry();
         }
 
+        // Start connection on load
         window.addEventListener('load', () => {
-            connectWebSocket();
+            connectionManager.connect();
         });
     </script>
 </body>

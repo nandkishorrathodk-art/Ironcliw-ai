@@ -14625,6 +14625,80 @@ async def main():
 
     args = parser.parse_args()
 
+    # =========================================================================
+    # LOADING SERVER INTEGRATION - Dynamic Progress Reporting
+    # =========================================================================
+    # Start loading server and create progress reporter for real-time updates
+    # to the loading page. Fully async, parallel, dynamic with no hardcoding.
+    # Configuration from environment: LOADING_SERVER_HOST, LOADING_SERVER_PORT
+    # =========================================================================
+    
+    _progress_reporter = None
+    _loading_server_started = False
+    
+    async def _start_loading_server_integration():
+        """Start loading server and initialize progress reporter (async, non-blocking)."""
+        nonlocal _progress_reporter, _loading_server_started
+        
+        try:
+            from loading_server import (
+                start_loading_server_background,
+                StartupProgressReporter,
+            )
+            
+            # Start loading server in background (will use existing if already running)
+            _loading_server_started = await start_loading_server_background()
+            
+            if _loading_server_started:
+                _progress_reporter = StartupProgressReporter()
+                await _progress_reporter.report(
+                    "init",
+                    "Loading server connected - Starting JARVIS...",
+                    2
+                )
+                logger.info("📡 Loading server integration initialized")
+            else:
+                logger.warning("⚠️ Loading server not available - progress updates disabled")
+                
+        except ImportError as e:
+            logger.debug(f"Loading server module not available: {e}")
+        except Exception as e:
+            logger.warning(f"Loading server initialization failed: {e}")
+    
+    async def _report_progress(stage: str, message: str, progress: float, metadata: dict = None):
+        """Fire-and-forget progress report (never blocks startup)."""
+        if _progress_reporter:
+            try:
+                await _progress_reporter.report(stage, message, progress, metadata, fire_and_forget=True)
+            except Exception as e:
+                logger.debug(f"Progress report failed: {e}")
+    
+    async def _report_complete(message: str = "JARVIS is online!", redirect_url: str = None):
+        """Report startup complete with redirect."""
+        if _progress_reporter:
+            try:
+                # Use frontend port from args if available
+                frontend_url = redirect_url or f"http://localhost:{args.frontend_port if hasattr(args, 'frontend_port') else 3000}"
+                await _progress_reporter.complete(message, frontend_url)
+            except Exception as e:
+                logger.debug(f"Completion report failed: {e}")
+    
+    async def _report_failure(message: str, error: str = None):
+        """Report startup failure."""
+        if _progress_reporter:
+            try:
+                await _progress_reporter.fail(message, error)
+            except Exception as e:
+                logger.debug(f"Failure report failed: {e}")
+    
+    # Start loading server integration early (async, creates task)
+    try:
+        # Create a task for loading server init (non-blocking)
+        asyncio.create_task(_start_loading_server_integration())
+    except RuntimeError:
+        # No running loop yet, will be called later
+        pass
+
     # Automatic Goal Inference Configuration (if not specified via command line or environment)
     import os
 
@@ -14638,6 +14712,7 @@ async def main():
         print(
             f"{Colors.CYAN}   (Override with --goal-preset or JARVIS_GOAL_PRESET environment variable){Colors.ENDC}"
         )
+
 
     # Auto-configure automation if not specified
     if (
