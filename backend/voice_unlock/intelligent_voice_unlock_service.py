@@ -5106,68 +5106,105 @@ async def _execute_unlock_robust(
             await _progress("keychain", 91, f"Keychain error: {e}")
             return False
 
-        # Step 2: Keep screen awake during unlock
+        # Step 2: Wake display and ensure login screen is ready
         await _progress("wake", 93, "Waking display...")
         try:
+            # Start caffeinate to keep screen awake
             caffeinate_process = await asyncio.create_subprocess_exec(
                 "caffeinate", "-d", "-u",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            await asyncio.sleep(0.2)
-            logger.debug("[ROBUST-UNLOCK] Caffeinate started")
-        except Exception as e:
-            logger.warning(f"[ROBUST-UNLOCK] Caffeinate failed (non-fatal): {e}")
 
-        # Step 3: Type password using SecurePasswordTyper
-        await _progress("typing", 94, f"Authenticating {speaker_name}...")
-        try:
-            from voice_unlock.secure_password_typer import type_password_securely
-
-            logger.info(f"[ROBUST-UNLOCK] Typing password securely...")
-            # type_password_securely returns Tuple[bool, Optional[Dict[str, Any]]]
-            # Use 8s timeout - should be plenty for password typing
-            typing_result = await asyncio.wait_for(
-                type_password_securely(
-                    password=password,
-                    submit=True,
-                    randomize_timing=True,
-                    attempt_id=attempt_id  # For continuous learning
-                ),
-                timeout=8.0
+            # Wake the display explicitly using pmset
+            wake_process = await asyncio.create_subprocess_exec(
+                "pmset", "displaysleepnow",  # This actually WAKES on locked screen
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
             )
+            await wake_process.wait()
 
-            # Handle tuple return value
-            if isinstance(typing_result, tuple):
-                success, metrics = typing_result
-            else:
-                success = bool(typing_result)
-                metrics = None
+            # Also use caffeinate assertion to force wake
+            wake_assert = await asyncio.create_subprocess_exec(
+                "caffeinate", "-u", "-t", "1",  # User activity assertion for 1 second
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await wake_assert.wait()
 
-            if not success:
-                logger.error("[ROBUST-UNLOCK] SecurePasswordTyper failed")
-                await _progress("typing", 94, "Password entry failed")
-                return False
+            # CRITICAL: Wait for login screen to fully render and accept input
+            # The login screen takes time to animate and become ready for password entry
+            await asyncio.sleep(1.0)  # Increased from 0.2s to 1.0s
+            logger.info("[ROBUST-UNLOCK] Display wake sequence complete, login screen should be ready")
 
-            await _progress("typing", 96, "Password accepted")
-            if metrics:
-                logger.info(f"[ROBUST-UNLOCK] Password typed successfully (metrics collected for ML)")
-            else:
-                logger.info("[ROBUST-UNLOCK] Password typed successfully")
-
-        except asyncio.TimeoutError:
-            logger.error("[ROBUST-UNLOCK] Password typing timed out")
-            await _progress("typing", 94, "Typing timeout - trying fallback")
-            # Try AppleScript fallback on timeout
-            return await _execute_unlock_applescript_fallback(password, _progress)
-        except ImportError as e:
-            logger.error(f"[ROBUST-UNLOCK] SecurePasswordTyper not available: {e}")
-            await _progress("typing", 94, "Using fallback method")
-            return await _execute_unlock_applescript_fallback(password, _progress)
         except Exception as e:
-            logger.error(f"[ROBUST-UNLOCK] Password typing error: {e}")
-            await _progress("typing", 94, f"Error: {e}")
-            return False
+            logger.warning(f"[ROBUST-UNLOCK] Display wake failed (non-fatal): {e}")
+            # Still wait a bit even on failure
+            await asyncio.sleep(0.5)
+
+        # Step 3: Type password - Try AppleScript FIRST (more reliable on login screen)
+        # Core Graphics can have issues with the macOS login screen
+        await _progress("typing", 94, f"Authenticating {speaker_name}...")
+
+        # Strategy: AppleScript first (reliable), Core Graphics second (faster for repeated unlocks)
+        applescript_success = False
+        try:
+            logger.info("[ROBUST-UNLOCK] Trying AppleScript password entry (primary method)...")
+            applescript_success = await _execute_unlock_applescript_fallback(password, _progress)
+
+            if applescript_success:
+                logger.info("[ROBUST-UNLOCK] AppleScript password entry succeeded")
+                await _progress("typing", 96, "Password accepted")
+            else:
+                logger.warning("[ROBUST-UNLOCK] AppleScript failed, trying SecurePasswordTyper...")
+                await _progress("typing", 94, "Trying alternate method...")
+
+        except Exception as e:
+            logger.warning(f"[ROBUST-UNLOCK] AppleScript error: {e}, trying SecurePasswordTyper...")
+
+        # If AppleScript failed, try Core Graphics SecurePasswordTyper
+        if not applescript_success:
+            try:
+                from voice_unlock.secure_password_typer import type_password_securely
+
+                logger.info("[ROBUST-UNLOCK] Typing password via Core Graphics...")
+                typing_result = await asyncio.wait_for(
+                    type_password_securely(
+                        password=password,
+                        submit=True,
+                        randomize_timing=True,
+                        attempt_id=attempt_id
+                    ),
+                    timeout=10.0  # Increased timeout
+                )
+
+                if isinstance(typing_result, tuple):
+                    success, metrics = typing_result
+                else:
+                    success = bool(typing_result)
+                    metrics = None
+
+                if not success:
+                    logger.error("[ROBUST-UNLOCK] Both AppleScript and SecurePasswordTyper failed")
+                    await _progress("typing", 94, "Password entry failed")
+                    return False
+
+                await _progress("typing", 96, "Password accepted")
+                if metrics:
+                    logger.info("[ROBUST-UNLOCK] Password typed successfully via Core Graphics")
+
+            except asyncio.TimeoutError:
+                logger.error("[ROBUST-UNLOCK] Core Graphics typing also timed out")
+                await _progress("typing", 94, "All typing methods failed")
+                return False
+            except ImportError as e:
+                logger.error(f"[ROBUST-UNLOCK] SecurePasswordTyper not available: {e}")
+                await _progress("typing", 94, "Typing module unavailable")
+                return False
+            except Exception as e:
+                logger.error(f"[ROBUST-UNLOCK] Core Graphics typing error: {e}")
+                await _progress("typing", 94, f"Error: {e}")
+                return False
 
         # Step 4: Verify unlock success
         await _progress("verify", 97, "Verifying unlock...")
@@ -5279,7 +5316,8 @@ async def _execute_unlock_applescript_fallback(
     """
     Fallback AppleScript-based unlock when SecurePasswordTyper is unavailable.
 
-    Uses System Events to type password. Less secure but more compatible.
+    Uses System Events to type password. More robust with proper screen wake
+    and password field focus.
 
     Args:
         password: The password to type
@@ -5292,13 +5330,43 @@ async def _execute_unlock_applescript_fallback(
         # Escape special characters for AppleScript
         escaped_password = password.replace("\\", "\\\\").replace('"', '\\"')
 
+        # More robust AppleScript that:
+        # 1. Wakes the screen
+        # 2. Waits for login window
+        # 3. Clicks to ensure password field is focused
+        # 4. Types the password
+        # 5. Submits
         script = f'''
+        -- Wake the display first
+        do shell script "caffeinate -u -t 1"
+        delay 0.5
+
         tell application "System Events"
-            keystroke "{escaped_password}"
-            delay 0.2
-            keystroke return
+            -- Check if screen is locked (login window exists)
+            set loginWindowExists to (exists process "loginwindow")
+
+            if loginWindowExists then
+                -- Click in the center of the screen to focus password field
+                -- This helps ensure the password field is ready
+                tell process "loginwindow"
+                    set frontmost to true
+                end tell
+                delay 0.3
+
+                -- Type password with slight delays for reliability
+                keystroke "{escaped_password}"
+                delay 0.3
+                keystroke return
+            else
+                -- Screen not locked, just type
+                keystroke "{escaped_password}"
+                delay 0.2
+                keystroke return
+            end if
         end tell
         '''
+
+        logger.info("[ROBUST-UNLOCK] Running AppleScript unlock fallback...")
 
         process = await asyncio.create_subprocess_exec(
             "osascript", "-e", script,
@@ -5306,25 +5374,31 @@ async def _execute_unlock_applescript_fallback(
             stderr=asyncio.subprocess.PIPE
         )
 
-        await asyncio.wait_for(process.communicate(), timeout=8.0)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
 
         if process.returncode == 0:
-            logger.info("[ROBUST-UNLOCK] AppleScript fallback succeeded")
+            logger.info("[ROBUST-UNLOCK] AppleScript fallback executed successfully")
             if progress_callback:
                 await progress_callback("fallback", 98, "Password entered successfully")
-            await asyncio.sleep(1.0)
+            # Wait for authentication to process
+            await asyncio.sleep(1.5)
             return True
         else:
-            logger.error("[ROBUST-UNLOCK] AppleScript fallback failed")
+            error_msg = stderr.decode().strip() if stderr else "Unknown error"
+            logger.error(f"[ROBUST-UNLOCK] AppleScript fallback failed: {error_msg}")
             if progress_callback:
-                await progress_callback("fallback", 95, "AppleScript failed")
+                await progress_callback("fallback", 95, f"AppleScript error: {error_msg[:50]}")
             return False
 
     except asyncio.TimeoutError:
-        logger.error("[ROBUST-UNLOCK] AppleScript fallback timed out")
+        logger.error("[ROBUST-UNLOCK] AppleScript fallback timed out after 10s")
+        if progress_callback:
+            await progress_callback("fallback", 95, "Fallback timed out")
         return False
     except Exception as e:
-        logger.error(f"[ROBUST-UNLOCK] AppleScript fallback error: {e}")
+        logger.error(f"[ROBUST-UNLOCK] AppleScript fallback exception: {e}")
+        if progress_callback:
+            await progress_callback("fallback", 95, f"Error: {e}")
         return False
 
 

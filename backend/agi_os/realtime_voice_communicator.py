@@ -888,7 +888,10 @@ class RealTimeVoiceCommunicator:
         text = feedback_map.get(stage)
         if text:
             # Use interrupt=True to kill any in-progress speech before new message
+            logger.info(f"🔊 VBI Stage '{stage}' speaking: {text}")
             await self.speak_immediate(text, mode=VoiceMode.CONVERSATIONAL, interrupt=True)
+        else:
+            logger.debug(f"🔇 VBI Stage '{stage}' silent (no feedback configured)")
 
     def _get_verification_feedback(self, confidence: float, speaker_name: str) -> str:
         """Get dynamic feedback based on verification confidence."""
@@ -907,14 +910,17 @@ class RealTimeVoiceCommunicator:
         """
         Get dynamic completion message based on confidence.
 
-        NOTE: Returns None to avoid redundant speech - the unlock_execute stage
-        already says "Voice verified, unlocking now" which is sufficient.
-        Completion feedback is only spoken if we want to add extra info.
+        Provides warm, personalized welcome-back message after successful unlock.
         """
-        # For smooth VBI experience, don't double-speak after unlock
-        # The unlock_execute stage already provides confirmation
-        # Return None to stay silent on completion
-        return None
+        # Provide a warm welcome back message after unlock completes
+        if confidence >= 0.90:
+            return f"Welcome back, {speaker_name}."
+        elif confidence >= 0.70:
+            return f"There you go, {speaker_name}."
+        elif confidence >= 0.50:
+            return f"Unlocked for you, {speaker_name}."
+        else:
+            return f"Screen unlocked, {speaker_name}."
 
     def _get_failure_feedback(self, confidence: float) -> str:
         """Get helpful feedback on verification failure."""

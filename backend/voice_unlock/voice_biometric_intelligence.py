@@ -1189,11 +1189,11 @@ class VoiceBiometricIntelligence:
     async def _init_voice_communicator(self):
         """Initialize voice communicator for announcements."""
         try:
-            from voice.realtime_voice_communicator import get_voice_communicator
+            from agi_os.realtime_voice_communicator import get_voice_communicator
             self._voice_communicator = await get_voice_communicator()
-            logger.debug("Voice communicator connected")
+            logger.info("✅ Voice communicator connected for VBI announcements")
         except Exception as e:
-            logger.debug(f"Voice communicator not available: {e}")
+            logger.warning(f"⚠️ Voice communicator not available (no VBI voice feedback): {e}")
 
     # =========================================================================
     # ENHANCED MODULE INITIALIZERS (v4.0)
@@ -3773,12 +3773,14 @@ class VoiceBiometricIntelligence:
         return False, None
 
     async def _speak(self, text: str):
-        """Speak the announcement."""
+        """Speak the announcement immediately (no queue) for real-time VBI feedback."""
         if self._voice_communicator:
             try:
-                await self._voice_communicator.speak(text)
+                # Use speak_immediate for real-time VBI feedback (bypasses queue)
+                await self._voice_communicator.speak_immediate(text, interrupt=True)
+                logger.info(f"🔊 VBI announcement: {text}")
             except Exception as e:
-                logger.debug(f"Speech output error: {e}")
+                logger.warning(f"⚠️ VBI speech output error: {e}")
 
     def _update_timing_stats(self, time_ms: float):
         """Update timing statistics."""
