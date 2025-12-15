@@ -1,239 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JARVIS - System Initialization</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="theme-color" content="#0a0a12" />
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
     <style>
         :root {
-            --matrix-green: #00ff41;
-            --cyber-cyan: #00d4ff;
-            --cyber-teal: #00ffcc;
-            --success-green: #00ff41;
-            --segment-lit: #00ff88;
-            --segment-dim: rgba(0, 150, 130, 0.35);
+            --neon-cyan: #00ffff;
+            --neon-green: #00ff41;
+            --glow-cyan: rgba(0, 255, 255, 0.8);
+            --glow-green: rgba(0, 255, 65, 0.8);
             --bg-dark: #0a0a12;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        html, body {
-            width: 100%; height: 100%;
+        html,
+        body {
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             background: var(--bg-dark);
         }
 
         body {
             font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Main Container with Background Image */
+        .loading-screen-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('matrix-bg.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            color: #e0f7ff;
+            animation: breathe 4s ease-in-out infinite;
         }
 
-        /* Matrix Rain Canvas - z-index 1 */
-        #matrix-canvas {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 1;
+        @keyframes breathe {
+
+            0%,
+            100% {
+                filter: brightness(1) drop-shadow(0 0 10px rgba(0, 255, 255, 0.3));
+            }
+
+            50% {
+                filter: brightness(1.15) drop-shadow(0 0 40px rgba(0, 255, 255, 0.6));
+            }
         }
 
-        /* =====================================================
-           DIRECTIVE 4: 3D HUD Perspective & High Transparency
-           - perspective(1000px) rotateX(15deg) rotateY(5deg)
-           - rgba(10, 20, 30, 0.4) so matrix is visible THROUGH
-           ===================================================== */
-        .loading-container {
-            position: relative;
-            z-index: 10;
-            background: rgba(10, 20, 30, 0.4);
-            border: 1px solid rgba(0, 212, 255, 0.5);
-            border-radius: 14px;
-            padding: 45px 60px 40px;
-            min-width: 600px;
-            text-align: center;
-            transform: perspective(1000px) rotateX(15deg) rotateY(5deg);
-            transform-style: preserve-3d;
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            box-shadow:
-                0 0 60px rgba(0, 212, 255, 0.15),
-                0 30px 60px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Right edge glow */
-        .loading-container::before {
-            content: '';
+        /* Dynamic Text Overlay Container - positioned relative to image */
+        .dynamic-overlay {
             position: absolute;
-            top: 10%; right: -2px; bottom: 10%;
-            width: 3px;
-            background: linear-gradient(180deg,
-                transparent 0%,
-                rgba(0, 255, 220, 0.9) 25%,
-                rgba(0, 255, 255, 1) 50%,
-                rgba(0, 255, 220, 0.9) 75%,
-                transparent 100%);
-            box-shadow: 0 0 20px rgba(0, 255, 220, 0.8);
-        }
-
-        /* Bottom edge glow */
-        .loading-container::after {
-            content: '';
-            position: absolute;
-            bottom: -2px; left: 15%; right: 15%;
-            height: 2px;
-            background: linear-gradient(90deg,
-                transparent, rgba(0, 255, 220, 0.7) 50%, transparent);
-            box-shadow: 0 0 12px rgba(0, 212, 255, 0.5);
-        }
-
-        .loading-container.success-state {
-            border-color: var(--success-green);
-            box-shadow: 0 0 80px rgba(0, 255, 65, 0.3), 0 30px 60px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Title */
-        .system-title {
-            font-size: 1.9rem;
-            font-weight: 600;
-            letter-spacing: 8px;
-            color: var(--cyber-cyan);
-            text-shadow: 0 0 12px var(--cyber-cyan), 0 0 30px rgba(0, 212, 255, 0.5);
-            margin-bottom: 40px;
-            text-transform: uppercase;
-        }
-        .system-title.success-state {
-            color: var(--success-green);
-            text-shadow: 0 0 20px var(--success-green), 0 0 50px var(--success-green);
-        }
-
-        /* Progress Circle Container */
-        .progress-container {
-            position: relative;
-            width: 260px;
-            height: 260px;
-            margin: 0 auto 35px;
-        }
-
-        .progress-svg {
-            width: 100%;
-            height: 100%;
-        }
-
-        /* =====================================================
-           DIRECTIVE 1: Trapezoidal Segments
-           ===================================================== */
-        .trap-segment {
-            fill: var(--segment-dim);
-            transition: fill 0.3s, filter 0.3s;
-        }
-        .trap-segment.lit {
-            fill: var(--segment-lit);
-            filter: drop-shadow(0 0 4px var(--segment-lit));
-        }
-        .trap-segment.success {
-            fill: var(--success-green);
-            filter: drop-shadow(0 0 6px var(--success-green));
-        }
-
-        /* =====================================================
-           DIRECTIVE 2: Triangular Chevron Arrows
-           ===================================================== */
-        .chevron-tri {
-            fill: var(--cyber-cyan);
-            filter: drop-shadow(0 0 5px var(--cyber-cyan));
-        }
-        .chevron-tri.success {
-            fill: var(--success-green);
-            filter: drop-shadow(0 0 6px var(--success-green));
-        }
-
-        /* =====================================================
-           DIRECTIVE 3: Dashed Inner Track
-           ===================================================== */
-        .dashed-inner-track {
-            fill: none;
-            stroke: rgba(0, 200, 210, 0.45);
-            stroke-width: 1;
-            stroke-dasharray: 5 3;
-        }
-
-        /* Progress arc background */
-        .progress-bg {
-            fill: none;
-            stroke: rgba(0, 180, 200, 0.12);
-            stroke-width: 7;
-        }
-
-        /* Main progress arc (r=80, circumference = 2*PI*80 = 502.65) */
-        .progress-arc {
-            fill: none;
-            stroke: var(--cyber-teal);
-            stroke-width: 7;
-            stroke-linecap: round;
-            stroke-dasharray: 502.65;
-            stroke-dashoffset: 502.65;
-            filter: drop-shadow(0 0 10px var(--cyber-teal));
-            transition: stroke-dashoffset 0.4s ease-out;
-        }
-        .progress-arc.success {
-            stroke: var(--success-green);
-            filter: drop-shadow(0 0 14px var(--success-green));
-        }
-
-        /* Decorative rings */
-        .deco-ring {
-            fill: none;
-            stroke: rgba(0, 200, 220, 0.2);
-            stroke-width: 1;
-        }
-
-        /* Center content */
-        .center-content {
-            position: absolute;
-            top: 50%; left: 50%;
+            top: 50%;
+            left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
+            z-index: 10;
+            /* Adjust these to fine-tune position over the ring */
+            margin-top: -15px;
         }
-        .percentage {
-            font-size: 3rem;
-            font-weight: 600;
-            color: var(--cyber-teal);
-            text-shadow: 0 0 15px rgba(0, 212, 255, 0.6);
-            line-height: 1;
+
+        /* Percentage Display - Positioned at center of ring */
+        #dynamic-percentage {
+            font-family: 'Orbitron', monospace;
+            font-size: 4rem;
+            font-weight: 700;
+            color: var(--neon-green);
+            text-shadow:
+                0 0 10px var(--glow-green),
+                0 0 20px var(--glow-green),
+                0 0 40px var(--glow-green),
+                0 0 80px var(--glow-green);
+            letter-spacing: 0.05em;
         }
-        .percentage.success-state {
-            color: var(--success-green);
-            text-shadow: 0 0 25px var(--success-green);
+
+        #dynamic-percentage.success {
+            color: #00ff41;
+            text-shadow: 0 0 30px #00ff41, 0 0 60px #00ff41;
         }
-        .subtitle {
+
+        /* Subtitle under percentage */
+        #dynamic-subtitle {
             font-family: 'Share Tech Mono', monospace;
-            font-size: 0.55rem;
-            color: var(--cyber-cyan);
-            letter-spacing: 2px;
+            font-size: 0.7rem;
+            color: var(--neon-cyan);
+            letter-spacing: 3px;
             margin-top: 5px;
-            opacity: 0.75;
+            opacity: 0.8;
         }
 
-        #progress-bar { display: none; }
-
-        /* Status Message */
-        .status-msg {
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 0.9rem;
-            color: var(--cyber-teal);
-            text-shadow: 0 0 8px rgba(0, 255, 200, 0.4);
+        /* Status Text - Below the ring */
+        #dynamic-status {
+            position: absolute;
+            top: 68%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', monospace;
+            font-size: 1.1rem;
+            font-weight: 400;
+            color: var(--neon-green);
+            text-shadow:
+                0 0 5px var(--glow-green),
+                0 0 15px var(--glow-green);
+            letter-spacing: 0.1em;
+            white-space: nowrap;
         }
-        .status-msg.success-state { color: var(--success-green); }
 
-        /* Connection indicator */
+        /* Title - "SYSTEM RESTART" - positioned at top of the panel */
+        #dynamic-title {
+            position: absolute;
+            top: 26%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', monospace;
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--neon-cyan);
+            text-shadow:
+                0 0 10px var(--glow-cyan),
+                0 0 20px var(--glow-cyan),
+                0 0 40px var(--glow-cyan);
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+        }
+
+        /* Connection Status Indicator */
         .conn-status {
             position: fixed;
-            top: 18px; right: 18px;
+            top: 18px;
+            right: 18px;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -242,32 +156,26 @@
             border: 1px solid rgba(0, 212, 255, 0.3);
             border-radius: 5px;
             font-family: 'Share Tech Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.7rem;
+            color: var(--neon-cyan);
             z-index: 100;
         }
+
         .conn-dot {
-            width: 6px; height: 6px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             background: #ffaa00;
             box-shadow: 0 0 6px #ffaa00;
         }
-        .conn-dot.connected { background: var(--matrix-green); box-shadow: 0 0 6px var(--matrix-green); }
 
-        /* Circuit traces */
-        .circuit-svg {
-            position: fixed;
-            bottom: 0;
-            opacity: 0.4;
-            z-index: 5;
-            pointer-events: none;
+        .conn-dot.connected {
+            background: var(--neon-green);
+            box-shadow: 0 0 6px var(--neon-green);
         }
-        .circuit-svg.left { left: 0; width: 200px; height: 140px; }
-        .circuit-svg.right { right: 0; width: 160px; height: 110px; }
-        .circuit-line { stroke: var(--cyber-cyan); stroke-width: 1.5; fill: none; }
-        .circuit-node { fill: var(--cyber-cyan); }
 
-        /* Error */
-        .error-box {
+        /* Error State */
+        .error-overlay {
             display: none;
             position: fixed;
             inset: 0;
@@ -277,269 +185,101 @@
             align-items: center;
             flex-direction: column;
         }
-        .error-box.visible { display: flex; }
-        .error-title { font-size: 1.8rem; color: #ff4444; margin-bottom: 15px; }
-        .error-msg { font-family: 'Share Tech Mono'; color: #ff8888; max-width: 450px; text-align: center; }
 
-        /* Chromatic glitch */
-        @keyframes chromatic {
-            0% { text-shadow: -3px 0 #ff0050, 3px 0 #00d4ff; }
-            50% { text-shadow: 3px 0 #ff0050, -3px 0 #00d4ff; }
-            100% { text-shadow: 0 0 15px rgba(0, 212, 255, 0.6); }
-        }
-        .glitch { animation: chromatic 0.2s ease-out; }
-
-        /* Responsive */
-        @media (max-width: 650px) {
-            .loading-container {
-                min-width: auto; width: 94%; padding: 25px 18px;
-                transform: perspective(800px) rotateX(10deg) rotateY(3deg);
-            }
-            .system-title { font-size: 1.2rem; letter-spacing: 4px; }
-            .progress-container { width: 190px; height: 190px; }
-            .percentage { font-size: 2rem; }
-            .circuit-svg { display: none; }
+        .error-overlay.visible {
+            display: flex;
         }
 
-        .arc-reactor { position: relative; }
-        #particles { display: none; }
+        .error-title {
+            font-size: 1.8rem;
+            color: #ff4444;
+            margin-bottom: 15px;
+        }
+
+        .error-msg {
+            font-family: 'Share Tech Mono', monospace;
+            color: #ff8888;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        /* Transition overlay for warp effect */
+        .transition-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, transparent 0%, #000 100%);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 200;
+            transition: opacity 0.8s ease-in;
+        }
+
+        .transition-overlay.active {
+            opacity: 1;
+        }
+
+        /* Hidden elements for JS compatibility with loading-manager.js */
+        #progress-bar {
+            display: none;
+        }
+
+        #particles {
+            display: none;
+        }
     </style>
 </head>
+
 <body>
-    <canvas id="matrix-canvas"></canvas>
-
-    <!-- Circuit Left -->
-    <svg class="circuit-svg left" viewBox="0 0 200 140">
-        <path class="circuit-line" d="M0 120 H45 L65 100 H100 L120 120 H160"/>
-        <path class="circuit-line" d="M0 90 H30 L50 70 H85 L105 50 H140"/>
-        <path class="circuit-line" d="M0 60 H20 V45 H55 L75 25 H120"/>
-        <path class="circuit-line" d="M35 140 V110 L55 90 V65"/>
-        <path class="circuit-line" d="M80 140 V105 L100 85 V55"/>
-        <circle class="circuit-node" cx="45" cy="120" r="2.5"/>
-        <circle class="circuit-node" cx="65" cy="100" r="2"/>
-        <circle class="circuit-node" cx="100" cy="120" r="2"/>
-        <circle class="circuit-node" cx="50" cy="70" r="2"/>
-        <circle class="circuit-node" cx="105" cy="50" r="2.5"/>
-        <circle class="circuit-node" cx="55" cy="45" r="2"/>
-        <circle class="circuit-node" cx="75" cy="25" r="2"/>
-        <circle class="circuit-node" cx="55" cy="90" r="2"/>
-        <circle class="circuit-node" cx="100" cy="85" r="2"/>
-    </svg>
-
-    <!-- Circuit Right -->
-    <svg class="circuit-svg right" viewBox="0 0 160 110">
-        <path class="circuit-line" d="M160 95 H120 L100 75 H65 L45 95 H10"/>
-        <path class="circuit-line" d="M160 65 H130 L110 45 H75 L55 65 H25"/>
-        <path class="circuit-line" d="M120 110 V80 L100 60 V35"/>
-        <circle class="circuit-node" cx="120" cy="95" r="2"/>
-        <circle class="circuit-node" cx="100" cy="75" r="2.5"/>
-        <circle class="circuit-node" cx="45" cy="95" r="2"/>
-        <circle class="circuit-node" cx="110" cy="45" r="2"/>
-        <circle class="circuit-node" cx="55" cy="65" r="2"/>
-        <circle class="circuit-node" cx="100" cy="60" r="2"/>
-    </svg>
-
     <!-- Connection Status -->
     <div class="conn-status">
         <div class="conn-dot" id="status-indicator"></div>
         <span id="status-text">Connecting...</span>
     </div>
 
-    <!-- Main Panel -->
-    <div class="loading-container" id="loading-container">
-        <h1 class="system-title" id="system-title">SYSTEM RESTART</h1>
+    <!-- Main Loading Screen Container with Background Image -->
+    <div class="loading-screen-container" id="loading-container">
+        <!-- Title -->
+        <h2 id="dynamic-title">SYSTEM RESTART</h2>
 
-        <div class="progress-container arc-reactor">
-            <svg class="progress-svg" viewBox="0 0 260 260" id="progress-svg">
-                <defs>
-                    <filter id="glow">
-                        <feGaussianBlur stdDeviation="3" result="blur"/>
-                        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                    </filter>
-                </defs>
-
-                <!-- Outer decorative ring -->
-                <circle class="deco-ring" cx="130" cy="130" r="125"/>
-
-                <!-- DIRECTIVE 1: 24 Trapezoidal Segments (generated by JS) -->
-                <g id="trap-ring"></g>
-
-                <!-- Middle decorative ring -->
-                <circle class="deco-ring" cx="130" cy="130" r="100"/>
-
-                <!-- DIRECTIVE 2: 4 Triangular Chevrons at N/E/S/W inside the ring -->
-                <g id="chevrons">
-                    <!-- North (0°) - pointing DOWN toward center -->
-                    <polygon class="chevron-tri" points="130,42 122,58 130,52 138,58"/>
-                    <!-- East (90°) - pointing LEFT toward center -->
-                    <polygon class="chevron-tri" points="218,130 202,122 208,130 202,138"/>
-                    <!-- South (180°) - pointing UP toward center -->
-                    <polygon class="chevron-tri" points="130,218 122,202 130,208 138,202"/>
-                    <!-- West (270°) - pointing RIGHT toward center -->
-                    <polygon class="chevron-tri" points="42,130 58,122 52,130 58,138"/>
-                </g>
-
-                <!-- Progress arc background -->
-                <circle class="progress-bg" cx="130" cy="130" r="80" transform="rotate(-90 130 130)"/>
-
-                <!-- Main Progress Arc at r=80 -->
-                <circle class="progress-arc" id="progress-circle" cx="130" cy="130" r="80" transform="rotate(-90 130 130)"/>
-
-                <!-- DIRECTIVE 3: Dashed Inner Track (decorative, INSIDE the progress arc at r=65) -->
-                <circle class="dashed-inner-track" cx="130" cy="130" r="65"/>
-
-                <!-- Inner decorative ring -->
-                <circle class="deco-ring" cx="130" cy="130" r="50" style="opacity:0.35"/>
-            </svg>
-
-            <div class="center-content">
-                <div class="percentage" id="progress-percentage">0%</div>
-                <div class="subtitle" id="subtitle">INITIALIZING</div>
-            </div>
+        <!-- Dynamic Overlay for Percentage -->
+        <div class="dynamic-overlay">
+            <h1 id="dynamic-percentage">0%</h1>
+            <div id="dynamic-subtitle">INITIALIZING</div>
         </div>
 
-        <div id="progress-bar" style="width:0%"></div>
-        <div class="status-msg" id="status-message">Loading Modules...</div>
+        <!-- Status Text -->
+        <p id="dynamic-status">Loading Modules...</p>
     </div>
 
-    <!-- Error -->
-    <div class="error-box" id="error-container">
+    <!-- Hidden elements for loading-manager.js compatibility -->
+    <div id="progress-bar" style="width:0%"></div>
+    <div id="progress-percentage" style="display:none;">0%</div>
+    <div id="status-message" style="display:none;">Loading...</div>
+    <div id="particles"></div>
+
+    <!-- Error Overlay -->
+    <div class="error-overlay" id="error-container">
         <div class="error-title">SYSTEM FAILURE</div>
         <div class="error-msg" id="error-message">An error occurred.</div>
     </div>
-    <div id="particles"></div>
+
+    <!-- Transition Overlay -->
+    <div class="transition-overlay" id="transition-overlay"></div>
 
     <script>
         // =====================================================
-        // Matrix Rain
+        // Dynamic Title based on URL params
         // =====================================================
-        class MatrixRain {
-            constructor(canvas) {
-                this.canvas = canvas;
-                this.ctx = canvas.getContext('2d');
-                this.fontSize = 14;
-                this.chars = '01';
-                this.cols = [];
-                this.brightChance = 0.18;
-                this.init();
-                this.animate();
-                window.addEventListener('resize', () => this.init());
-            }
-            init() {
-                this.canvas.width = window.innerWidth;
-                this.canvas.height = window.innerHeight;
-                const n = Math.floor(this.canvas.width / this.fontSize);
-                this.cols = [];
-                for (let i = 0; i < n; i++) {
-                    this.cols.push({
-                        x: i * this.fontSize,
-                        y: Math.random() * this.canvas.height,
-                        speed: Math.random() * 1.4 + 0.5,
-                        len: Math.floor(Math.random() * 16) + 6,
-                        bright: Math.random() < this.brightChance,
-                        chars: Array.from({length: 22}, () => this.chars[Math.floor(Math.random() * 2)])
-                    });
-                }
-            }
-            draw() {
-                this.ctx.fillStyle = 'rgba(10, 10, 18, 0.055)';
-                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-                this.ctx.font = this.fontSize + 'px monospace';
-                for (let c of this.cols) {
-                    for (let i = 0; i < c.len; i++) {
-                        const y = c.y - i * this.fontSize;
-                        if (y < -20 || y > this.canvas.height + 20) continue;
-                        if (i === 0) {
-                            this.ctx.fillStyle = c.bright ? '#fff' : '#cfc';
-                            this.ctx.shadowBlur = c.bright ? 14 : 7;
-                            this.ctx.shadowColor = c.bright ? '#0ff' : '#0f0';
-                        } else {
-                            const f = 1 - i / c.len;
-                            this.ctx.fillStyle = c.bright && i < 3
-                                ? `rgba(140,255,220,${f * 0.85})`
-                                : `rgba(0,255,65,${f * 0.6})`;
-                            this.ctx.shadowBlur = 0;
-                        }
-                        const g = Math.random() < 0.003 ? (Math.random() - 0.5) * 5 : 0;
-                        this.ctx.fillText(c.chars[i] || '0', c.x + g, y);
-                        if (Math.random() < 0.015) c.chars[i] = this.chars[Math.floor(Math.random() * 2)];
-                    }
-                    c.y += c.speed;
-                    if (c.y - c.len * this.fontSize > this.canvas.height) {
-                        c.y = 0;
-                        c.speed = Math.random() * 1.4 + 0.5;
-                        c.len = Math.floor(Math.random() * 16) + 6;
-                        c.bright = Math.random() < this.brightChance;
-                    }
-                }
-            }
-            animate() { this.draw(); requestAnimationFrame(() => this.animate()); }
-        }
-
-        // =====================================================
-        // DIRECTIVE 1: Generate 24 Trapezoidal Segments
-        // =====================================================
-        function generateTrapezoids() {
-            const g = document.getElementById('trap-ring');
-            const cx = 130, cy = 130;
-            const innerR = 105, outerR = 118;
-            const num = 24;
-            const gap = 4; // degrees gap between segments
-            const segAngle = (360 / num) - gap;
-
-            for (let i = 0; i < num; i++) {
-                const startDeg = i * (360 / num) + gap / 2;
-                const endDeg = startDeg + segAngle;
-                const startRad = (startDeg - 90) * Math.PI / 180;
-                const endRad = (endDeg - 90) * Math.PI / 180;
-
-                // 4 corners of trapezoid
-                const x1 = cx + innerR * Math.cos(startRad);
-                const y1 = cy + innerR * Math.sin(startRad);
-                const x2 = cx + outerR * Math.cos(startRad);
-                const y2 = cy + outerR * Math.sin(startRad);
-                const x3 = cx + outerR * Math.cos(endRad);
-                const y3 = cy + outerR * Math.sin(endRad);
-                const x4 = cx + innerR * Math.cos(endRad);
-                const y4 = cy + innerR * Math.sin(endRad);
-
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('class', 'trap-segment');
-                path.setAttribute('d', `M${x1.toFixed(2)},${y1.toFixed(2)} L${x2.toFixed(2)},${y2.toFixed(2)} L${x3.toFixed(2)},${y3.toFixed(2)} L${x4.toFixed(2)},${y4.toFixed(2)} Z`);
-                path.dataset.idx = i;
-                g.appendChild(path);
-            }
-        }
-
-        // =====================================================
-        // Progress Update
-        // =====================================================
-        const CIRC = 2 * Math.PI * 80; // r=80 (progress arc radius)
-
-        function updateProgress(pct) {
-            const arc = document.getElementById('progress-circle');
-            if (arc) {
-                arc.style.strokeDasharray = CIRC;
-                arc.style.strokeDashoffset = CIRC - (pct / 100) * CIRC;
-            }
-            // Light segments
-            const segs = document.querySelectorAll('.trap-segment');
-            const lit = Math.floor((pct / 100) * segs.length);
-            segs.forEach((s, i) => {
-                if (i < lit) s.classList.add('lit');
-                else s.classList.remove('lit');
-            });
-        }
-
-        // =====================================================
-        // Chromatic Glitch
-        // =====================================================
-        function glitch(el) {
-            if (!el) return;
-            el.classList.remove('glitch');
-            void el.offsetWidth;
-            el.classList.add('glitch');
-            setTimeout(() => el.classList.remove('glitch'), 200);
+        function setTitle() {
+            const t = document.getElementById('dynamic-title');
+            const p = new URLSearchParams(location.search);
+            const m = p.get('mode');
+            if (m === 'restart' || location.href.includes('restart')) t.textContent = 'SYSTEM RESTART';
+            else if (m === 'init') t.textContent = 'SYSTEM INITIALIZATION';
+            else t.textContent = 'SYSTEM STARTUP';
         }
 
         // =====================================================
@@ -550,96 +290,103 @@
             if (successDone) return Promise.resolve();
             successDone = true;
             return new Promise(res => {
-                const cont = document.getElementById('loading-container');
-                const title = document.getElementById('system-title');
-                const pct = document.getElementById('progress-percentage');
-                const msg = document.getElementById('status-message');
-                const arc = document.getElementById('progress-circle');
-                const segs = document.querySelectorAll('.trap-segment');
-                const chevs = document.querySelectorAll('.chevron-tri');
+                const pct = document.getElementById('dynamic-percentage');
+                const title = document.getElementById('dynamic-title');
+                const status = document.getElementById('dynamic-status');
+                const subtitle = document.getElementById('dynamic-subtitle');
 
-                cont.classList.add('success-state');
-                title.classList.add('success-state');
-                title.textContent = 'ACCESS GRANTED';
-                pct.classList.add('success-state');
-                msg.classList.add('success-state');
-                msg.textContent = 'System Ready';
-                arc.classList.add('success');
-                segs.forEach(s => { s.classList.add('lit', 'success'); });
-                chevs.forEach(c => c.classList.add('success'));
-                glitch(pct);
+                if (pct) pct.classList.add('success');
+                if (title) {
+                    title.textContent = 'ACCESS GRANTED';
+                    title.style.color = '#00ff41';
+                }
+                if (status) status.textContent = 'System Ready';
+                if (subtitle) subtitle.textContent = 'COMPLETE';
+
                 setTimeout(res, 800);
             });
         }
         window.triggerSuccessState = triggerSuccessState;
 
         // =====================================================
-        // Dynamic Title
+        // Observers for loading-manager.js compatibility
         // =====================================================
-        function setTitle() {
-            const t = document.getElementById('system-title');
-            const p = new URLSearchParams(location.search);
-            const m = p.get('mode');
-            if (m === 'restart' || location.href.includes('restart')) t.textContent = 'SYSTEM RESTART';
-            else if (m === 'init') t.textContent = 'SYSTEM INITIALIZATION';
-            else t.textContent = 'SYSTEM STARTUP';
-        }
-
-        // =====================================================
-        // Observers
-        // =====================================================
-        let lastPct = '';
         function setupObservers() {
-            const pctEl = document.getElementById('progress-percentage');
-            const msgEl = document.getElementById('status-message');
+            const hiddenPct = document.getElementById('progress-percentage');
+            const hiddenMsg = document.getElementById('status-message');
             const bar = document.getElementById('progress-bar');
 
-            if (bar) {
+            const displayPct = document.getElementById('dynamic-percentage');
+            const displayStatus = document.getElementById('dynamic-status');
+
+            // Observe hidden percentage and sync to visible element
+            if (hiddenPct && displayPct) {
+                new MutationObserver(() => {
+                    const t = hiddenPct.textContent;
+                    displayPct.textContent = t;
+                    const match = t.match(/(\d+)/);
+                    if (match) {
+                        const v = parseInt(match[1]);
+                        if (v >= 100 && !successDone) triggerSuccessState();
+                    }
+                }).observe(hiddenPct, { childList: true, characterData: true, subtree: true });
+            }
+
+            // Observe hidden message and sync to visible element
+            if (hiddenMsg && displayStatus) {
+                new MutationObserver(() => {
+                    displayStatus.textContent = hiddenMsg.textContent;
+                }).observe(hiddenMsg, { childList: true, characterData: true, subtree: true });
+            }
+
+            // Observe progress bar width
+            if (bar && displayPct) {
                 new MutationObserver(ms => {
                     ms.forEach(m => {
                         if (m.attributeName === 'style') {
                             const w = bar.style.width;
                             const v = parseFloat(w);
-                            if (!isNaN(v)) updateProgress(v);
+                            if (!isNaN(v)) {
+                                displayPct.textContent = Math.round(v) + '%';
+                                if (v >= 100 && !successDone) triggerSuccessState();
+                            }
                         }
                     });
                 }).observe(bar, { attributes: true });
             }
-
-            if (pctEl) {
-                new MutationObserver(() => {
-                    const t = pctEl.textContent;
-                    if (t !== lastPct) {
-                        glitch(pctEl);
-                        lastPct = t;
-                        const match = t.match(/(\d+)/);
-                        if (match) {
-                            const v = parseInt(match[1]);
-                            updateProgress(v);
-                            if (v >= 100 && !successDone) triggerSuccessState();
-                        }
-                    }
-                }).observe(pctEl, { childList: true, characterData: true, subtree: true });
-            }
-
-            if (msgEl) {
-                new MutationObserver(() => glitch(msgEl))
-                    .observe(msgEl, { childList: true, characterData: true, subtree: true });
-            }
         }
+
+        // =====================================================
+        // Transition Effect
+        // =====================================================
+        function triggerTransition(redirectUrl) {
+            const overlay = document.getElementById('transition-overlay');
+            const container = document.getElementById('loading-container');
+
+            if (overlay) overlay.classList.add('active');
+            if (container) {
+                container.style.animation = 'none';
+                container.style.transition = 'transform 0.8s ease-in, filter 0.8s ease-in';
+                container.style.transform = 'scale(1.3)';
+                container.style.filter = 'brightness(2) blur(8px)';
+            }
+
+            setTimeout(() => {
+                window.location.href = redirectUrl;
+            }, 1000);
+        }
+        window.triggerTransition = triggerTransition;
 
         // =====================================================
         // Init
         // =====================================================
         document.addEventListener('DOMContentLoaded', () => {
-            new MatrixRain(document.getElementById('matrix-canvas'));
-            generateTrapezoids();
             setTitle();
             setupObservers();
-            updateProgress(0);
         });
     </script>
 
     <script src="/loading-manager.js"></script>
 </body>
+
 </html>
