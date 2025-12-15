@@ -79,7 +79,11 @@ class ServerConfig:
     rate_limit_window: float = field(default_factory=lambda: float(os.getenv('RATE_LIMIT_WINDOW', '60.0')))
 
     # Paths - Use frontend/public as single source of truth for loading files
-    frontend_path: Path = field(default_factory=lambda: Path(os.getenv('FRONTEND_PATH', Path(__file__).parent / 'frontend' / 'public')))
+    # Resolve absolute path to handle subprocess execution from different working directories
+    frontend_path: Path = field(default_factory=lambda: Path(os.getenv(
+        'FRONTEND_PATH',
+        str(Path(__file__).resolve().parent / 'frontend' / 'public')
+    )))
 
     def __post_init__(self):
         self.frontend_path = Path(self.frontend_path)
@@ -521,8 +525,23 @@ async def serve_loading_page(request: web.Request) -> web.Response:
     loading_html = config.frontend_path / "loading.html"
 
     if not loading_html.exists():
+        # Try alternative paths
+        alt_paths = [
+            Path(__file__).resolve().parent / 'frontend' / 'public' / 'loading.html',
+            Path.cwd() / 'frontend' / 'public' / 'loading.html',
+            Path('/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/frontend/public/loading.html'),
+        ]
+
+        for alt_path in alt_paths:
+            if alt_path.exists():
+                logger.info(f"[Static] Found loading.html at fallback: {alt_path}")
+                return web.FileResponse(alt_path)
+
+        logger.error(f"[Static] Loading page not found at: {loading_html}")
+        logger.error(f"[Static] Config frontend_path: {config.frontend_path}")
+        logger.error(f"[Static] __file__: {__file__}")
         return web.Response(
-            text="Loading page not found. Please ensure frontend/public/loading.html exists.",
+            text=f"Loading page not found. Searched: {loading_html} and {len(alt_paths)} fallbacks.",
             status=404
         )
 
@@ -547,10 +566,20 @@ async def serve_loading_manager(request: web.Request) -> web.Response:
     loading_js = config.frontend_path / "loading-manager.js"
 
     if not loading_js.exists():
-        return web.Response(
-            text="Loading manager not found.",
-            status=404
-        )
+        # Try alternative paths
+        alt_paths = [
+            Path(__file__).resolve().parent / 'frontend' / 'public' / 'loading-manager.js',
+            Path.cwd() / 'frontend' / 'public' / 'loading-manager.js',
+            Path('/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/frontend/public/loading-manager.js'),
+        ]
+
+        for alt_path in alt_paths:
+            if alt_path.exists():
+                logger.info(f"[Static] Found loading-manager.js at fallback: {alt_path}")
+                return web.FileResponse(alt_path)
+
+        logger.error(f"[Static] Loading manager not found at: {loading_js}")
+        return web.Response(text="Loading manager not found.", status=404)
 
     return web.FileResponse(loading_js)
 
@@ -566,6 +595,18 @@ async def serve_static_file(request: web.Request) -> web.Response:
     file_path = config.frontend_path / filename
 
     if not file_path.exists() or not file_path.is_file():
+        # Try alternative paths
+        alt_bases = [
+            Path(__file__).resolve().parent / 'frontend' / 'public',
+            Path.cwd() / 'frontend' / 'public',
+            Path('/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/frontend/public'),
+        ]
+
+        for alt_base in alt_bases:
+            alt_path = alt_base / filename
+            if alt_path.exists() and alt_path.is_file():
+                return web.FileResponse(alt_path)
+
         return web.Response(text=f"File not found: {filename}", status=404)
 
     return web.FileResponse(file_path)
@@ -867,20 +908,25 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     site = web.TCPSite(runner, host, port)
     await site.start()
 
+    # Verify frontend path and log startup info
+    loading_html = config.frontend_path / "loading.html"
+    path_status = "✓" if loading_html.exists() else "✗"
+
     logger.info(f"{'='*60}")
     logger.info(f" JARVIS Loading Server v3.0 - Production Ready")
     logger.info(f"{'='*60}")
     logger.info(f" Server:      http://{host}:{port}")
     logger.info(f" WebSocket:   ws://{host}:{port}/ws/startup-progress")
     logger.info(f" HTTP API:    http://{host}:{port}/api/startup-progress")
-    logger.info(f" Preview:     http://{host}:{port}/preview")
-    logger.info(f" Metrics:     http://{host}:{port}/metrics")
+    logger.info(f"{'='*60}")
+    logger.info(f" Frontend:    {config.frontend_path}")
+    logger.info(f" Loading.html: {path_status} {loading_html}")
+    logger.info(f" __file__:    {Path(__file__).resolve()}")
     logger.info(f"{'='*60}")
     logger.info(f" CORS:        Enabled for all origins")
     logger.info(f" Rate Limit:  {config.rate_limit_requests} req/{config.rate_limit_window}s")
     logger.info(f" Max WS:      {config.ws_max_connections} connections")
     logger.info(f" Mode:        RELAY (start_system.py is authority)")
-    logger.info(f" Watchdog:    Fallback after {config.watchdog_silence_threshold}s silence")
     logger.info(f"{'='*60}")
 
     return runner
