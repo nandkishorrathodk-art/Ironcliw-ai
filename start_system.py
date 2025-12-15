@@ -14691,13 +14691,9 @@ async def main():
             except Exception as e:
                 logger.debug(f"Failure report failed: {e}")
     
-    # Start loading server integration early (async, creates task)
-    try:
-        # Create a task for loading server init (non-blocking)
-        asyncio.create_task(_start_loading_server_integration())
-    except RuntimeError:
-        # No running loop yet, will be called later
-        pass
+    # Start loading server integration FIRST (must be ready before progress updates)
+    # This is awaited (not fire-and-forget) to ensure server is up before cleanup begins
+    await _start_loading_server_integration()
 
     # Automatic Goal Inference Configuration (if not specified via command line or environment)
     import os

@@ -127,147 +127,197 @@
             text-shadow: 0 0 10px var(--jarvis-green-glow);
         }
 
-        /* ==================== Arc Reactor with HEARTBEAT Animation ==================== */
+        /* ==================== ARC REACTOR - Iron Man Style (Properly Centered) ==================== */
         .arc-reactor {
-            width: 320px;
-            height: 320px;
-            margin: 50px auto;
+            width: 280px;
+            height: 280px;
+            margin: 40px auto;
             position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        /* Outer Ring - Slow rotation + pulse */
-        .reactor-outer-ring {
+        /* Base styles for all rings - PROPER CENTERING */
+        .reactor-ring {
             position: absolute;
-            width: 100%;
-            height: 100%;
-            border: 5px solid var(--jarvis-green);
             border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid var(--jarvis-green);
+        }
+
+        /* Outer Ring - Slow rotation */
+        .ring-outer {
+            width: 280px;
+            height: 280px;
+            border-width: 4px;
             box-shadow:
                 0 0 30px var(--jarvis-green),
                 0 0 60px var(--jarvis-green-glow),
                 inset 0 0 30px var(--jarvis-green-dim);
-            animation: ring-rotate 20s linear infinite, ring-pulse 2s ease-in-out infinite;
+            animation: ring-rotate 20s linear infinite, glow-pulse 3s ease-in-out infinite;
         }
 
         /* Middle Ring - Counter rotation */
-        .reactor-middle-ring {
-            position: absolute;
-            width: 230px;
-            height: 230px;
-            top: 45px;
-            left: 45px;
-            border: 4px solid var(--jarvis-green);
-            border-radius: 50%;
+        .ring-middle {
+            width: 200px;
+            height: 200px;
+            border-width: 3px;
             box-shadow:
                 0 0 25px var(--jarvis-green),
                 0 0 50px var(--jarvis-green-glow),
                 inset 0 0 25px var(--jarvis-green-dim);
-            animation: ring-rotate-reverse 15s linear infinite, ring-pulse 2s ease-in-out infinite 0.1s;
+            animation: ring-rotate-reverse 12s linear infinite, glow-pulse 3s ease-in-out infinite 0.5s;
         }
 
-        /* Inner Ring - Fast rotation */
-        .reactor-inner-ring {
-            position: absolute;
-            width: 150px;
-            height: 150px;
-            top: 85px;
-            left: 85px;
-            border: 4px solid var(--jarvis-green);
-            border-radius: 50%;
+        /* Inner Ring - Fastest rotation */
+        .ring-inner {
+            width: 130px;
+            height: 130px;
+            border-width: 3px;
             box-shadow:
                 0 0 20px var(--jarvis-green),
                 0 0 40px var(--jarvis-green-glow),
                 inset 0 0 20px var(--jarvis-green-dim);
-            animation: ring-rotate 10s linear infinite, ring-pulse 2s ease-in-out infinite 0.2s;
+            animation: ring-rotate 6s linear infinite, glow-pulse 3s ease-in-out infinite 1s;
         }
 
-        /* Core - HEARTBEAT Pulsing */
+        /* Reactor Core - Glowing Center (Properly Centered) */
         .reactor-core {
             position: absolute;
-            width: 80px;
-            height: 80px;
-            top: 120px;
-            left: 120px;
+            width: 70px;
+            height: 70px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             background: radial-gradient(circle,
                     #ffffff 0%,
-                    #aaffaa 20%,
-                    var(--jarvis-green) 50%,
+                    #ccffcc 15%,
+                    var(--jarvis-green) 40%,
                     var(--jarvis-green-dark) 100%);
             border-radius: 50%;
             box-shadow:
                 0 0 40px var(--jarvis-green),
                 0 0 80px var(--jarvis-green),
                 0 0 120px var(--jarvis-green),
-                0 0 160px var(--jarvis-green-glow),
-                inset 0 0 30px rgba(255, 255, 255, 0.6);
-            animation: heartbeat 1.5s ease-in-out infinite;
+                0 0 200px var(--jarvis-green-glow),
+                inset 0 0 20px rgba(255, 255, 255, 0.8);
+            animation: core-glow 2s ease-in-out infinite;
         }
 
-        /* Core glow pulse ring */
+        /* Core inner glow */
         .reactor-core::before {
             content: '';
             position: absolute;
-            width: 100%;
-            height: 100%;
+            width: 40px;
+            height: 40px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, #ffffff 0%, rgba(255, 255, 255, 0.5) 50%, transparent 100%);
             border-radius: 50%;
-            background: radial-gradient(circle, var(--jarvis-green-glow) 0%, transparent 70%);
-            animation: core-pulse-expand 2s ease-out infinite;
+            animation: inner-glow 1.5s ease-in-out infinite;
         }
 
-        /* Secondary pulse ring */
+        /* Expanding pulse ring from core */
         .reactor-core::after {
             content: '';
             position: absolute;
             width: 100%;
             height: 100%;
+            top: 0;
+            left: 0;
             border-radius: 50%;
             border: 2px solid var(--jarvis-green);
-            animation: core-pulse-expand 2s ease-out infinite 1s;
+            animation: pulse-expand 2s ease-out infinite;
         }
 
-        @keyframes heartbeat {
+        /* Ring rotation animations */
+        @keyframes ring-rotate {
+            from {
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+
+            to {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+
+        @keyframes ring-rotate-reverse {
+            from {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+
+            to {
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+        }
+
+        /* Glow pulse effect */
+        @keyframes glow-pulse {
 
             0%,
             100% {
-                transform: scale(1);
+                box-shadow:
+                    0 0 20px var(--jarvis-green),
+                    0 0 40px var(--jarvis-green-glow),
+                    inset 0 0 20px var(--jarvis-green-dim);
+                opacity: 1;
+            }
+
+            50% {
+                box-shadow:
+                    0 0 35px var(--jarvis-green),
+                    0 0 70px var(--jarvis-green-glow),
+                    inset 0 0 35px var(--jarvis-green-dim);
+                opacity: 0.9;
+            }
+        }
+
+        /* Core glow animation */
+        @keyframes core-glow {
+
+            0%,
+            100% {
                 box-shadow:
                     0 0 40px var(--jarvis-green),
                     0 0 80px var(--jarvis-green),
                     0 0 120px var(--jarvis-green),
-                    0 0 160px var(--jarvis-green-glow),
-                    inset 0 0 30px rgba(255, 255, 255, 0.6);
+                    0 0 200px var(--jarvis-green-glow),
+                    inset 0 0 20px rgba(255, 255, 255, 0.8);
+                transform: translate(-50%, -50%) scale(1);
             }
 
-            10% {
-                transform: scale(1.15);
+            50% {
                 box-shadow:
                     0 0 60px var(--jarvis-green),
                     0 0 100px var(--jarvis-green),
-                    0 0 150px var(--jarvis-green),
-                    0 0 200px var(--jarvis-green-glow),
-                    inset 0 0 40px rgba(255, 255, 255, 0.8);
-            }
-
-            20% {
-                transform: scale(1);
-            }
-
-            30% {
-                transform: scale(1.1);
-                box-shadow:
-                    0 0 50px var(--jarvis-green),
-                    0 0 90px var(--jarvis-green),
-                    0 0 140px var(--jarvis-green),
-                    0 0 180px var(--jarvis-green-glow),
-                    inset 0 0 35px rgba(255, 255, 255, 0.7);
-            }
-
-            40% {
-                transform: scale(1);
+                    0 0 160px var(--jarvis-green),
+                    0 0 250px var(--jarvis-green-glow),
+                    inset 0 0 30px rgba(255, 255, 255, 0.9);
+                transform: translate(-50%, -50%) scale(1.05);
             }
         }
 
-        @keyframes core-pulse-expand {
+        /* Inner white glow animation */
+        @keyframes inner-glow {
+
+            0%,
+            100% {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+        }
+
+        /* Expanding pulse ring */
+        @keyframes pulse-expand {
             0% {
                 transform: scale(1);
                 opacity: 1;
