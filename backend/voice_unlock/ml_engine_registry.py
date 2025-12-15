@@ -637,11 +637,19 @@ class ECAPATDNNWrapper(MLEngineWrapper):
         self._encoder_loaded = False
 
     async def _load_impl(self) -> Any:
-        """Load ECAPA-TDNN speaker encoder."""
-        from concurrent.futures import ThreadPoolExecutor
+        """
+        Load ECAPA-TDNN speaker encoder.
+
+        Uses asyncio.to_thread() to prevent blocking the event loop during
+        the potentially long model download/loading process. This ensures
+        WebSocket progress updates continue flowing to the frontend.
+
+        The actual PyTorch operations (inference/warmup) remain synchronous
+        for Apple Silicon stability - only the I/O-bound loading is threaded.
+        """
         import torch
 
-        logger.info(f"   [{self.name}] Importing SpeechBrain...")
+        logger.info(f"   [{self.name}] Importing SpeechBrain (async threaded)...")
 
         def _load_sync():
             from speechbrain.inference.speaker import EncoderClassifier
@@ -653,6 +661,7 @@ class ECAPATDNNWrapper(MLEngineWrapper):
             cache_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info(f"   [{self.name}] Loading from: speechbrain/spkrec-ecapa-voxceleb")
+            logger.info(f"   [{self.name}] Cache dir: {cache_dir}")
 
             model = EncoderClassifier.from_hparams(
                 source="speechbrain/spkrec-ecapa-voxceleb",
@@ -660,13 +669,21 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 run_opts=run_opts,
             )
 
+            logger.info(f"   [{self.name}] Model loaded successfully")
             return model
 
-        # Run synchronously on main thread (macOS stability)
-        # loop = asyncio.get_running_loop()
-        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_loader") as executor:
-        #    model = await loop.run_in_executor(executor, _load_sync)
-        model = _load_sync()
+        # CRITICAL FIX: Use asyncio.to_thread() to prevent event loop blocking
+        # This allows WebSocket progress updates to continue during loading.
+        # The synchronous PyTorch inference operations remain on main thread
+        # for Apple Silicon stability - only the I/O-bound loading is threaded.
+        try:
+            model = await asyncio.wait_for(
+                asyncio.to_thread(_load_sync),
+                timeout=MLConfig.MODEL_LOAD_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"   [{self.name}] Model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
+            raise TimeoutError(f"ECAPA model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
 
         self._encoder_loaded = True
         return model
@@ -739,8 +756,13 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
         super().__init__("speechbrain_stt")
 
     async def _load_impl(self) -> Any:
-        """Load SpeechBrain Wav2Vec2 ASR model."""
-        from concurrent.futures import ThreadPoolExecutor
+        """
+        Load SpeechBrain Wav2Vec2 ASR model.
+
+        Uses asyncio.to_thread() to prevent blocking the event loop during
+        the potentially long model download/loading process. This ensures
+        WebSocket progress updates continue flowing to the frontend.
+        """
         import torch
         import sys
         import platform
@@ -759,6 +781,7 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
 
             logger.info(f"   [{self.name}] Loading from: speechbrain/asr-wav2vec2-commonvoice-en")
             logger.info(f"   [{self.name}] Device: {device}")
+            logger.info(f"   [{self.name}] Cache dir: {cache_dir}")
 
             model = EncoderDecoderASR.from_hparams(
                 source="speechbrain/asr-wav2vec2-commonvoice-en",
@@ -766,13 +789,19 @@ class SpeechBrainSTTWrapper(MLEngineWrapper):
                 run_opts=run_opts,
             )
 
+            logger.info(f"   [{self.name}] Model loaded successfully")
             return model
 
-        # Run synchronously on main thread (macOS stability)
-        # loop = asyncio.get_running_loop()
-        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stt_loader") as executor:
-        #    model = await loop.run_in_executor(executor, _load_sync)
-        model = _load_sync()
+        # CRITICAL FIX: Use asyncio.to_thread() to prevent event loop blocking
+        # This allows WebSocket progress updates to continue during loading.
+        try:
+            model = await asyncio.wait_for(
+                asyncio.to_thread(_load_sync),
+                timeout=MLConfig.MODEL_LOAD_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"   [{self.name}] Model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
+            raise TimeoutError(f"SpeechBrain STT model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
 
         return model
 
@@ -836,13 +865,19 @@ class WhisperWrapper(MLEngineWrapper):
         self._model_name = os.getenv("JARVIS_WHISPER_MODEL", "base.en")
 
     async def _load_impl(self) -> Any:
-        """Load Whisper model."""
-        from concurrent.futures import ThreadPoolExecutor
+        """
+        Load Whisper model.
+
+        Uses asyncio.to_thread() to prevent blocking the event loop during
+        the potentially long model download/loading process. This ensures
+        WebSocket progress updates continue flowing to the frontend.
+        """
 
         def _load_sync():
             import whisper
 
             logger.info(f"   [{self.name}] Loading model: {self._model_name}")
+            logger.info(f"   [{self.name}] Cache dir: {MLConfig.CACHE_DIR / 'whisper'}")
 
             # Download and load model
             model = whisper.load_model(
@@ -850,13 +885,19 @@ class WhisperWrapper(MLEngineWrapper):
                 download_root=str(MLConfig.CACHE_DIR / "whisper")
             )
 
+            logger.info(f"   [{self.name}] Model loaded successfully")
             return model
 
-        # Run synchronously on main thread (macOS stability)
-        # loop = asyncio.get_running_loop()
-        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper_loader") as executor:
-        #    model = await loop.run_in_executor(executor, _load_sync)
-        model = _load_sync()
+        # CRITICAL FIX: Use asyncio.to_thread() to prevent event loop blocking
+        # This allows WebSocket progress updates to continue during loading.
+        try:
+            model = await asyncio.wait_for(
+                asyncio.to_thread(_load_sync),
+                timeout=MLConfig.MODEL_LOAD_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"   [{self.name}] Model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
+            raise TimeoutError(f"Whisper model loading timed out after {MLConfig.MODEL_LOAD_TIMEOUT}s")
 
         return model
 
