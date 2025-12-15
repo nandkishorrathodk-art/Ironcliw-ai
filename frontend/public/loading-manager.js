@@ -1,10 +1,10 @@
 /**
- * JARVIS Advanced Loading Manager v4.1
- * 
+ * JARVIS Advanced Loading Manager v5.0
+ *
  * ARCHITECTURE: Display-only client that trusts start_system.py as authority
- * 
+ *
  * Flow: start_system.py → loading_server.py → loading-manager.js (here)
- * 
+ *
  * This component does NOT independently verify system readiness.
  * It displays progress received from the loading server and redirects
  * when told to. start_system.py is responsible for verifying frontend
@@ -17,7 +17,11 @@
  * - Cloud ECAPA pre-warming status
  * - Memory-aware mode selection display
  * - Recent speaker cache initialization
- * - WebSocket + HTTP polling fallback
+ * - WebSocket PRIMARY + Adaptive HTTP polling fallback
+ * - Exponential backoff with jitter for rate limiting
+ * - Circuit breaker pattern for resilience
+ * - Dynamic interval adjustment based on server response
+ * - Request deduplication and throttling
  * - Epic cinematic completion animation
  * - Quick sanity check before redirect (safety net only)
  */
@@ -35,20 +39,49 @@ class JARVISLoadingManager {
             reconnect: {
                 enabled: true,
                 initialDelay: 500,
-                maxDelay: 5000,
+                maxDelay: 10000,
                 maxAttempts: 30,
-                backoffMultiplier: 1.3
+                backoffMultiplier: 1.5
             },
             polling: {
                 enabled: true,
-                interval: 300,  // Poll every 300ms for smooth updates
-                timeout: 3000
+                // Adaptive polling configuration
+                baseInterval: 2000,      // Base: 2 seconds (conservative)
+                minInterval: 1000,       // Min: 1 second (when server is responsive)
+                maxInterval: 30000,      // Max: 30 seconds (when rate limited)
+                timeout: 5000,
+                // Backoff settings
+                backoffMultiplier: 2.0,  // Double interval on rate limit
+                recoveryMultiplier: 0.8, // Reduce by 20% on success
+                jitterFactor: 0.2,       // Add 0-20% random jitter
+                // Circuit breaker
+                circuitBreaker: {
+                    threshold: 5,        // Open after 5 consecutive failures
+                    resetTimeout: 30000, // Reset circuit after 30 seconds
+                    halfOpenRequests: 2  // Test with 2 requests in half-open
+                }
             },
             smoothProgress: {
                 enabled: true,
                 incrementDelay: 50,  // Update every 50ms for smooth animation
                 maxAutoProgress: 98   // Don't auto-progress past 98%
             }
+        };
+
+        // Adaptive polling state
+        this.pollingState = {
+            currentInterval: this.config.polling.baseInterval,
+            consecutiveFailures: 0,
+            consecutiveSuccesses: 0,
+            lastRequestTime: 0,
+            pendingRequest: null,
+            circuitState: 'closed', // 'closed', 'open', 'half-open'
+            circuitOpenTime: 0,
+            halfOpenAttempts: 0,
+            rateLimitedUntil: 0,
+            totalRequests: 0,
+            totalRateLimits: 0,
+            avgResponseTime: 0
         };
 
         // Stage definitions matching start_system.py broadcast stages
@@ -320,6 +353,7 @@ class JARVISLoadingManager {
         this.state = {
             ws: null,
             connected: false,
+            wsHealthy: false,           // Track WebSocket health for polling decisions
             progress: 0,
             targetProgress: 0,
             stage: 'initializing',
@@ -327,9 +361,12 @@ class JARVISLoadingManager {
             message: 'Initializing JARVIS...',
             reconnectAttempts: 0,
             pollingInterval: null,
+            pollingTimeout: null,       // For adaptive polling setTimeout
             smoothProgressInterval: null,
             startTime: Date.now(),
             lastUpdate: Date.now(),
+            lastWsMessage: 0,           // Track last WS message for health
+            redirecting: false,         // Prevent polling during redirect
             // Detailed tracking
             completedStages: [],
             currentSubstep: 0,
@@ -632,6 +669,9 @@ class JARVISLoadingManager {
          * Quick redirect to main app when backend is already ready.
          * Shows brief success animation before redirect.
          */
+        // Stop polling
+        this.state.redirecting = true;
+        
         // Update UI to show ready state
         if (this.elements.statusMessage) {
             this.elements.statusMessage.textContent = 'JARVIS is already online!';
@@ -762,13 +802,21 @@ class JARVISLoadingManager {
             this.state.ws.onopen = () => {
                 console.log('[WebSocket] ✓ Connected to loading server');
                 this.state.connected = true;
+                this.state.wsHealthy = true;
                 this.state.reconnectAttempts = 0;
+                this.state.lastWsMessage = Date.now();
                 this.updateStatusText('Connected', 'connected');
+                
+                // WebSocket is primary - reduce polling aggression
+                console.log('[WebSocket] 🔗 Primary connection established - polling will back off');
             };
 
             this.state.ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    this.state.lastWsMessage = Date.now();
+                    this.state.wsHealthy = true;
+                    
                     if (data.type !== 'pong') {
                         this.handleProgressUpdate(data);
                     }
@@ -779,11 +827,13 @@ class JARVISLoadingManager {
 
             this.state.ws.onerror = (error) => {
                 console.error('[WebSocket] Error:', error);
+                this.state.wsHealthy = false;
             };
 
             this.state.ws.onclose = () => {
                 console.log('[WebSocket] Disconnected');
                 this.state.connected = false;
+                this.state.wsHealthy = false;
                 this.scheduleReconnect();
             };
 
@@ -810,28 +860,246 @@ class JARVISLoadingManager {
         setTimeout(() => this.connectWebSocket(), delay);
     }
 
+    /**
+     * Adaptive HTTP Polling with Exponential Backoff & Circuit Breaker
+     * 
+     * Features:
+     * - Exponential backoff on rate limits (429)
+     * - Circuit breaker to prevent hammering failed servers
+     * - Jitter to prevent thundering herd
+     * - Dynamic interval adjustment based on server health
+     * - Request deduplication (no parallel requests)
+     * - Graceful degradation when WebSocket is primary
+     */
     startPolling() {
         if (!this.config.polling.enabled) return;
 
-        console.log('[Polling] Starting HTTP polling on loading server...');
-        this.state.pollingInterval = setInterval(async () => {
-            try {
-                // Poll loading server on port 3001
+        console.log('[Polling] 🚀 Starting adaptive HTTP polling (WebSocket primary, HTTP fallback)');
+        console.log(`[Polling] Base interval: ${this.config.polling.baseInterval}ms, Max: ${this.config.polling.maxInterval}ms`);
+        
+        // Use recursive setTimeout instead of setInterval for adaptive timing
+        this.scheduleNextPoll();
+    }
+
+    scheduleNextPoll() {
+        // Don't poll if we're done or WebSocket is healthy
+        if (this.state.progress >= 100 || this.state.redirecting) {
+            console.log('[Polling] ✅ Stopping - loading complete');
+            return;
+        }
+
+        // Check circuit breaker state
+        const circuitAction = this.checkCircuitBreaker();
+        if (circuitAction === 'block') {
+            // Circuit is open - schedule retry after reset timeout
+            const retryIn = this.config.polling.circuitBreaker.resetTimeout;
+            console.log(`[Polling] 🔴 Circuit OPEN - retrying in ${retryIn}ms`);
+            this.state.pollingTimeout = setTimeout(() => this.scheduleNextPoll(), retryIn);
+            return;
+        }
+
+        // Check if we're rate limited
+        const now = Date.now();
+        if (now < this.pollingState.rateLimitedUntil) {
+            const waitTime = this.pollingState.rateLimitedUntil - now;
+            console.log(`[Polling] ⏳ Rate limited - waiting ${waitTime}ms`);
+            this.state.pollingTimeout = setTimeout(() => this.scheduleNextPoll(), waitTime);
+            return;
+        }
+
+        // Calculate next interval with jitter
+        const interval = this.calculatePollingInterval();
+        
+        this.state.pollingTimeout = setTimeout(() => this.executePollingRequest(), interval);
+    }
+
+    calculatePollingInterval() {
+        const config = this.config.polling;
+        let interval = this.pollingState.currentInterval;
+
+        // Add jitter to prevent thundering herd (±20%)
+        const jitter = interval * config.jitterFactor * (Math.random() - 0.5) * 2;
+        interval = Math.max(config.minInterval, Math.min(config.maxInterval, interval + jitter));
+
+        // If WebSocket is connected and healthy, poll much less frequently
+        if (this.state.connected && this.state.wsHealthy) {
+            interval = Math.max(interval, 5000); // At least 5 seconds when WS is healthy
+        }
+
+        return Math.round(interval);
+    }
+
+    async executePollingRequest() {
+        // Deduplicate - skip if request already in flight
+        if (this.pollingState.pendingRequest) {
+            console.debug('[Polling] Skipping - request already pending');
+            this.scheduleNextPoll();
+            return;
+        }
+
+        const startTime = Date.now();
+        this.pollingState.totalRequests++;
+        this.pollingState.lastRequestTime = startTime;
+
+        try {
                 const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
-                const response = await fetch(url, {
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.config.polling.timeout);
+            
+            this.pollingState.pendingRequest = fetch(url, {
                     method: 'GET',
                     cache: 'no-cache',
-                    signal: AbortSignal.timeout(this.config.polling.timeout)
-                });
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Client-Version': '5.0',
+                    'X-Request-ID': `poll-${this.pollingState.totalRequests}`
+                },
+                signal: controller.signal
+            });
+
+            const response = await this.pollingState.pendingRequest;
+            clearTimeout(timeoutId);
+            
+            const responseTime = Date.now() - startTime;
+            this.updateResponseTimeAverage(responseTime);
 
                 if (response.ok) {
                     const data = await response.json();
-                    this.handleProgressUpdate(data);
+                this.handlePollingSuccess(data, responseTime);
+            } else if (response.status === 429) {
+                this.handleRateLimit(response);
+            } else {
+                this.handlePollingError(new Error(`HTTP ${response.status}`));
                 }
             } catch (error) {
-                // Silently fail - WebSocket is primary
+            if (error.name === 'AbortError') {
+                console.warn('[Polling] ⏱️ Request timed out');
             }
-        }, this.config.polling.interval);
+            this.handlePollingError(error);
+        } finally {
+            this.pollingState.pendingRequest = null;
+            this.scheduleNextPoll();
+        }
+    }
+
+    handlePollingSuccess(data, responseTime) {
+        this.pollingState.consecutiveSuccesses++;
+        this.pollingState.consecutiveFailures = 0;
+
+        // Gradually reduce interval on success (recover from backoff)
+        if (this.pollingState.currentInterval > this.config.polling.baseInterval) {
+            this.pollingState.currentInterval = Math.max(
+                this.config.polling.baseInterval,
+                this.pollingState.currentInterval * this.config.polling.recoveryMultiplier
+            );
+            console.debug(`[Polling] 📉 Interval reduced to ${this.pollingState.currentInterval}ms`);
+        }
+
+        // Close circuit breaker if in half-open state
+        if (this.pollingState.circuitState === 'half-open') {
+            this.pollingState.halfOpenAttempts++;
+            if (this.pollingState.halfOpenAttempts >= this.config.polling.circuitBreaker.halfOpenRequests) {
+                this.pollingState.circuitState = 'closed';
+                console.log('[Polling] 🟢 Circuit CLOSED - server recovered');
+            }
+        }
+
+        // Process the data
+        this.handleProgressUpdate(data);
+
+        // Log stats periodically
+        if (this.pollingState.totalRequests % 10 === 0) {
+            console.log(`[Polling] 📊 Stats: ${this.pollingState.totalRequests} requests, ${this.pollingState.totalRateLimits} rate limits, avg ${Math.round(this.pollingState.avgResponseTime)}ms`);
+        }
+    }
+
+    handleRateLimit(response) {
+        this.pollingState.totalRateLimits++;
+        this.pollingState.consecutiveFailures++;
+        this.pollingState.consecutiveSuccesses = 0;
+
+        // Check for Retry-After header
+        let retryAfter = 5000; // Default 5 seconds
+        const retryHeader = response.headers.get('Retry-After');
+        if (retryHeader) {
+            // Retry-After can be seconds or HTTP date
+            const parsed = parseInt(retryHeader, 10);
+            if (!isNaN(parsed)) {
+                retryAfter = parsed * 1000; // Convert to ms
+            } else {
+                const date = new Date(retryHeader);
+                if (!isNaN(date.getTime())) {
+                    retryAfter = Math.max(1000, date.getTime() - Date.now());
+                }
+            }
+        }
+
+        // Exponential backoff on rate limit
+        this.pollingState.currentInterval = Math.min(
+            this.config.polling.maxInterval,
+            this.pollingState.currentInterval * this.config.polling.backoffMultiplier
+        );
+
+        // Set rate limit cooldown
+        this.pollingState.rateLimitedUntil = Date.now() + retryAfter;
+
+        console.warn(`[Polling] ⚠️ Rate limited (429) - backing off to ${this.pollingState.currentInterval}ms, retry after ${retryAfter}ms`);
+    }
+
+    handlePollingError(error) {
+        this.pollingState.consecutiveFailures++;
+        this.pollingState.consecutiveSuccesses = 0;
+
+        // Exponential backoff on error
+        this.pollingState.currentInterval = Math.min(
+            this.config.polling.maxInterval,
+            this.pollingState.currentInterval * this.config.polling.backoffMultiplier
+        );
+
+        // Check circuit breaker threshold
+        if (this.pollingState.consecutiveFailures >= this.config.polling.circuitBreaker.threshold) {
+            if (this.pollingState.circuitState === 'closed') {
+                this.pollingState.circuitState = 'open';
+                this.pollingState.circuitOpenTime = Date.now();
+                console.warn(`[Polling] 🔴 Circuit OPEN - ${this.pollingState.consecutiveFailures} consecutive failures`);
+            }
+        }
+
+        console.debug(`[Polling] Error: ${error.message}, interval now ${this.pollingState.currentInterval}ms`);
+    }
+
+    checkCircuitBreaker() {
+        const config = this.config.polling.circuitBreaker;
+        const state = this.pollingState;
+
+        if (state.circuitState === 'closed') {
+            return 'allow';
+        }
+
+        if (state.circuitState === 'open') {
+            // Check if reset timeout has elapsed
+            if (Date.now() - state.circuitOpenTime >= config.resetTimeout) {
+                state.circuitState = 'half-open';
+                state.halfOpenAttempts = 0;
+                console.log('[Polling] 🟡 Circuit HALF-OPEN - testing server');
+                return 'allow';
+            }
+            return 'block';
+        }
+
+        // half-open state - allow limited requests
+        return 'allow';
+    }
+
+    updateResponseTimeAverage(responseTime) {
+        // Exponential moving average
+        const alpha = 0.2;
+        if (this.pollingState.avgResponseTime === 0) {
+            this.pollingState.avgResponseTime = responseTime;
+        } else {
+            this.pollingState.avgResponseTime = alpha * responseTime + (1 - alpha) * this.pollingState.avgResponseTime;
+        }
     }
 
     handleProgressUpdate(data) {
@@ -1114,6 +1382,8 @@ class JARVISLoadingManager {
             return;
         }
 
+        // Stop all polling immediately
+        this.state.redirecting = true;
         console.log('[Complete] ✓ Received completion from authority (start_system.py)');
         
         // Update UI to show completion
@@ -1126,8 +1396,8 @@ class JARVISLoadingManager {
 
         // Quick sanity check - just verify frontend is reachable before redirect
         // We trust start_system.py already verified this, this is just a safety net
-        const frontendOk = await this.checkFrontendReady();
-        if (!frontendOk) {
+            const frontendOk = await this.checkFrontendReady();
+            if (!frontendOk) {
             console.warn('[Complete] Frontend sanity check failed, brief wait...');
             this.elements.statusMessage.textContent = 'Finalizing...';
             await this.sleep(2000);
@@ -1397,10 +1667,18 @@ class JARVISLoadingManager {
     }
 
     cleanup() {
+        console.log('[Cleanup] 🧹 Cleaning up resources...');
+        
         if (this.state.ws) {
             this.state.ws.close();
             this.state.ws = null;
         }
+        // Clear adaptive polling timeout
+        if (this.state.pollingTimeout) {
+            clearTimeout(this.state.pollingTimeout);
+            this.state.pollingTimeout = null;
+        }
+        // Legacy interval cleanup
         if (this.state.pollingInterval) {
             clearInterval(this.state.pollingInterval);
             this.state.pollingInterval = null;
@@ -1412,6 +1690,11 @@ class JARVISLoadingManager {
         if (this.backendHealthInterval) {
             clearInterval(this.backendHealthInterval);
             this.backendHealthInterval = null;
+        }
+
+        // Log final polling stats
+        if (this.pollingState.totalRequests > 0) {
+            console.log(`[Cleanup] 📊 Final polling stats: ${this.pollingState.totalRequests} total requests, ${this.pollingState.totalRateLimits} rate limits (${((this.pollingState.totalRateLimits / this.pollingState.totalRequests) * 100).toFixed(1)}%)`);
         }
     }
 }
