@@ -329,44 +329,6 @@
             }
         }
 
-        @keyframes ring-rotate {
-            from {
-                transform: rotate(0deg);
-            }
-
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        @keyframes ring-rotate-reverse {
-            from {
-                transform: rotate(360deg);
-            }
-
-            to {
-                transform: rotate(0deg);
-            }
-        }
-
-        @keyframes ring-pulse {
-
-            0%,
-            100% {
-                box-shadow:
-                    0 0 20px var(--jarvis-green),
-                    0 0 40px var(--jarvis-green-glow),
-                    inset 0 0 20px var(--jarvis-green-dim);
-            }
-
-            50% {
-                box-shadow:
-                    0 0 35px var(--jarvis-green),
-                    0 0 60px var(--jarvis-green-glow),
-                    inset 0 0 30px var(--jarvis-green-dim);
-            }
-        }
-
         /* ==================== Progress Percentage ==================== */
         .progress-percentage {
             font-size: 3rem;
@@ -547,25 +509,24 @@
                 height: 220px;
             }
 
-            .reactor-middle-ring {
-                width: 160px;
-                height: 160px;
-                top: 30px;
-                left: 30px;
+            .ring-outer {
+                width: 220px;
+                height: 220px;
             }
 
-            .reactor-inner-ring {
+            .ring-middle {
+                width: 160px;
+                height: 160px;
+            }
+
+            .ring-inner {
                 width: 100px;
                 height: 100px;
-                top: 60px;
-                left: 60px;
             }
 
             .reactor-core {
                 width: 50px;
                 height: 50px;
-                top: 85px;
-                left: 85px;
             }
         }
     </style>
