@@ -120,6 +120,112 @@ class AsyncLock:
 
 
 # =============================================================================
+# Retry Logic with Exponential Backoff
+# =============================================================================
+
+class RetryConfig:
+    """Configuration for retry behavior."""
+    max_retries: int = 3
+    base_delay: float = 0.5  # seconds
+    max_delay: float = 10.0  # seconds
+    exponential_base: float = 2.0
+    jitter: bool = True  # Add random jitter to prevent thundering herd
+
+
+async def retry_with_backoff(
+    operation: Callable,
+    *args,
+    retry_config: Optional[RetryConfig] = None,
+    retryable_exceptions: Tuple[type, ...] = (Exception,),
+    on_retry: Optional[Callable[[int, Exception], None]] = None,
+    **kwargs
+) -> T:
+    """
+    Execute an async operation with exponential backoff retry.
+
+    Args:
+        operation: Async callable to execute
+        *args: Positional arguments for operation
+        retry_config: Retry configuration (uses defaults if None)
+        retryable_exceptions: Tuple of exception types to retry on
+        on_retry: Optional callback called on each retry (attempt, exception)
+        **kwargs: Keyword arguments for operation
+
+    Returns:
+        Result of the operation
+
+    Raises:
+        Last exception if all retries exhausted
+    """
+    import random
+
+    config = retry_config or RetryConfig()
+    last_exception = None
+
+    for attempt in range(config.max_retries + 1):
+        try:
+            return await operation(*args, **kwargs)
+
+        except retryable_exceptions as e:
+            last_exception = e
+
+            if attempt >= config.max_retries:
+                # Exhausted all retries
+                logger.error(f"❌ Operation failed after {attempt + 1} attempts: {e}")
+                raise
+
+            # Calculate delay with exponential backoff
+            delay = min(
+                config.base_delay * (config.exponential_base ** attempt),
+                config.max_delay
+            )
+
+            # Add jitter to prevent thundering herd
+            if config.jitter:
+                delay = delay * (0.5 + random.random())
+
+            logger.warning(
+                f"⚠️ Attempt {attempt + 1}/{config.max_retries + 1} failed: {e}. "
+                f"Retrying in {delay:.2f}s..."
+            )
+
+            # Call retry callback if provided
+            if on_retry:
+                try:
+                    on_retry(attempt, e)
+                except Exception:
+                    pass
+
+            await asyncio.sleep(delay)
+
+    # Should never reach here, but just in case
+    if last_exception:
+        raise last_exception
+    raise RuntimeError("Retry logic error - no exception captured")
+
+
+def is_connection_error(e: Exception) -> bool:
+    """Check if an exception is a connection-related error that should be retried."""
+    error_msg = str(e).lower()
+    connection_error_patterns = [
+        "connection has been released",
+        "connection is closed",
+        "pool is closed",
+        "connection refused",
+        "connection reset",
+        "connection timed out",
+        "cannot connect",
+        "no connection",
+        "pool exhausted",
+        "server closed",
+        "ssl error",
+        "network error",
+        "connection lost",
+    ]
+    return any(pattern in error_msg for pattern in connection_error_patterns)
+
+
+# =============================================================================
 # Dynamic Configuration
 # =============================================================================
 
@@ -1118,41 +1224,223 @@ class CloudSQLConnectionManager:
         for cid in to_remove[:100]:
             del self._checkouts[cid]
 
-    async def execute(self, query: str, *args, timeout: Optional[float] = None) -> str:
-        """Execute query and return result."""
-        timeout = timeout or self._conn_config.query_timeout
-        async with self.connection() as conn:
-            return await asyncio.wait_for(
-                conn.execute(query, *args),
-                timeout=timeout
-            )
+    async def execute(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> str:
+        """
+        Execute query and return result with automatic retry on connection errors.
 
-    async def fetch(self, query: str, *args, timeout: Optional[float] = None) -> List[asyncpg.Record]:
-        """Fetch multiple rows."""
-        timeout = timeout or self._conn_config.query_timeout
-        async with self.connection() as conn:
-            return await asyncio.wait_for(
-                conn.fetch(query, *args),
-                timeout=timeout
-            )
+        Args:
+            query: SQL query string
+            *args: Query parameters
+            timeout: Query timeout in seconds
+            retry: Whether to retry on connection errors (default True)
 
-    async def fetchrow(self, query: str, *args, timeout: Optional[float] = None) -> Optional[asyncpg.Record]:
-        """Fetch single row."""
-        timeout = timeout or self._conn_config.query_timeout
-        async with self.connection() as conn:
-            return await asyncio.wait_for(
-                conn.fetchrow(query, *args),
-                timeout=timeout
-            )
+        Returns:
+            Query result status string
+        """
+        async def _execute():
+            timeout_val = timeout or self._conn_config.query_timeout
+            async with self.connection() as conn:
+                return await asyncio.wait_for(
+                    conn.execute(query, *args),
+                    timeout=timeout_val
+                )
 
-    async def fetchval(self, query: str, *args, timeout: Optional[float] = None) -> Any:
-        """Fetch single value."""
-        timeout = timeout or self._conn_config.query_timeout
-        async with self.connection() as conn:
-            return await asyncio.wait_for(
-                conn.fetchval(query, *args),
-                timeout=timeout
-            )
+        if retry:
+            return await self._execute_with_retry(_execute, "execute")
+        return await _execute()
+
+    async def fetch(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> List[asyncpg.Record]:
+        """
+        Fetch multiple rows with automatic retry on connection errors.
+
+        Args:
+            query: SQL query string
+            *args: Query parameters
+            timeout: Query timeout in seconds
+            retry: Whether to retry on connection errors (default True)
+
+        Returns:
+            List of database records
+        """
+        async def _fetch():
+            timeout_val = timeout or self._conn_config.query_timeout
+            async with self.connection() as conn:
+                return await asyncio.wait_for(
+                    conn.fetch(query, *args),
+                    timeout=timeout_val
+                )
+
+        if retry:
+            return await self._execute_with_retry(_fetch, "fetch")
+        return await _fetch()
+
+    async def fetchrow(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> Optional[asyncpg.Record]:
+        """
+        Fetch single row with automatic retry on connection errors.
+
+        Args:
+            query: SQL query string
+            *args: Query parameters
+            timeout: Query timeout in seconds
+            retry: Whether to retry on connection errors (default True)
+
+        Returns:
+            Single database record or None
+        """
+        async def _fetchrow():
+            timeout_val = timeout or self._conn_config.query_timeout
+            async with self.connection() as conn:
+                return await asyncio.wait_for(
+                    conn.fetchrow(query, *args),
+                    timeout=timeout_val
+                )
+
+        if retry:
+            return await self._execute_with_retry(_fetchrow, "fetchrow")
+        return await _fetchrow()
+
+    async def fetchval(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> Any:
+        """
+        Fetch single value with automatic retry on connection errors.
+
+        Args:
+            query: SQL query string
+            *args: Query parameters
+            timeout: Query timeout in seconds
+            retry: Whether to retry on connection errors (default True)
+
+        Returns:
+            Single value from query result
+        """
+        async def _fetchval():
+            timeout_val = timeout or self._conn_config.query_timeout
+            async with self.connection() as conn:
+                return await asyncio.wait_for(
+                    conn.fetchval(query, *args),
+                    timeout=timeout_val
+                )
+
+        if retry:
+            return await self._execute_with_retry(_fetchval, "fetchval")
+        return await _fetchval()
+
+    async def _execute_with_retry(self, operation: Callable, operation_name: str, max_retries: int = 3) -> Any:
+        """
+        Execute an operation with automatic retry on connection errors.
+
+        This method handles transient connection failures by:
+        1. Detecting connection-related errors
+        2. Attempting pool recovery if needed
+        3. Retrying with exponential backoff
+
+        Args:
+            operation: Async callable to execute
+            operation_name: Name of operation for logging
+            max_retries: Maximum retry attempts
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            Exception: If all retries exhausted
+        """
+        import random
+
+        last_exception = None
+        base_delay = 0.5
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await operation()
+
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e).lower()
+
+                # Check if this is a retryable connection error
+                if not is_connection_error(e):
+                    # Not a connection error - don't retry
+                    raise
+
+                if attempt >= max_retries:
+                    logger.error(
+                        f"❌ {operation_name} failed after {attempt + 1} attempts: {e}"
+                    )
+                    raise
+
+                # Calculate exponential backoff with jitter
+                delay = min(base_delay * (2 ** attempt), 10.0)
+                delay = delay * (0.5 + random.random())
+
+                logger.warning(
+                    f"⚠️ {operation_name} attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                    f"Retrying in {delay:.2f}s..."
+                )
+
+                # Try to recover the pool if it seems degraded
+                if "released" in error_msg or "closed" in error_msg:
+                    await self._try_pool_recovery()
+
+                await asyncio.sleep(delay)
+
+        if last_exception:
+            raise last_exception
+
+    async def _try_pool_recovery(self) -> bool:
+        """
+        Attempt to recover the connection pool after errors.
+
+        This method:
+        1. Cleans up leaked connections
+        2. Attempts to validate pool health
+        3. Recreates pool if necessary
+
+        Returns:
+            True if recovery successful
+        """
+        try:
+            logger.info("🔄 Attempting pool recovery...")
+
+            # First, try to clean up leaked connections
+            cleaned = await self._immediate_leak_cleanup()
+            if cleaned > 0:
+                logger.info(f"   Cleaned {cleaned} leaked connections")
+
+            # Check if pool is still valid
+            if self.pool:
+                try:
+                    async with asyncio.timeout(5.0):
+                        async with self.pool.acquire() as conn:
+                            await conn.fetchval("SELECT 1")
+                    logger.info("   ✅ Pool is healthy after cleanup")
+                    return True
+                except Exception as e:
+                    logger.warning(f"   Pool validation failed: {e}")
+
+            # Pool seems broken - attempt reinit
+            if self.db_config and self.db_config.get("password"):
+                logger.info("   Attempting pool reinitialization...")
+                success = await self.initialize(
+                    host=self.db_config.get("host", "127.0.0.1"),
+                    port=self.db_config.get("port", 5432),
+                    database=self.db_config.get("database", "jarvis_learning"),
+                    user=self.db_config.get("user", "jarvis"),
+                    password=self.db_config["password"],
+                    max_connections=self.db_config.get("max_connections", 3),
+                    force_reinit=True
+                )
+                if success:
+                    logger.info("   ✅ Pool reinitialized successfully")
+                    return True
+                else:
+                    logger.error("   ❌ Pool reinitialization failed")
+                    return False
+
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Pool recovery failed: {e}")
+            return False
 
     async def _close_pool_internal(self) -> None:
         """Close connection pool gracefully (internal, no lock)."""

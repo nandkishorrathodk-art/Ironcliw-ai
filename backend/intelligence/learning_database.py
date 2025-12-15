@@ -69,7 +69,134 @@ logger = logging.getLogger(__name__)
 # - Async iteration support
 # - Context manager support for RAII pattern
 # - No hardcoded values - fully dynamic configuration
+# - DetachedCursor for safe result access after connection release
 # ============================================================================
+
+
+class DetachedCursor:
+    """
+    A cursor that holds query results without maintaining a connection reference.
+
+    This class is returned from execute() methods to allow safe access to results
+    after the underlying connection has been released back to the pool.
+
+    This fixes the "connection has been released back to the pool" error by
+    ensuring no operations are attempted on a released connection.
+    """
+
+    def __init__(
+        self,
+        results: List[Dict[str, Any]],
+        row_count: int = -1,
+        description: Optional[List[Tuple]] = None,
+        lastrowid: Optional[int] = None,
+        query: Optional[str] = None,
+        params: Optional[Tuple] = None,
+    ):
+        """
+        Initialize detached cursor with query results.
+
+        Args:
+            results: Query result rows as list of dicts
+            row_count: Number of affected rows
+            description: Column descriptions
+            lastrowid: Last inserted row ID
+            query: The executed query
+            params: Query parameters
+        """
+        self._results = results or []
+        self._row_count = row_count
+        self._description = description
+        self._lastrowid = lastrowid
+        self._query = query
+        self._params = params
+        self._current_index = 0
+        self._arraysize = 1
+
+    @property
+    def rowcount(self) -> int:
+        """Return number of rows affected by last operation."""
+        return self._row_count
+
+    @property
+    def description(self) -> Optional[List[Tuple]]:
+        """Return column descriptions for last query result."""
+        return self._description
+
+    @property
+    def lastrowid(self) -> Optional[int]:
+        """Return last inserted row ID."""
+        return self._lastrowid
+
+    @property
+    def arraysize(self) -> int:
+        """Number of rows to fetch at a time with fetchmany()."""
+        return self._arraysize
+
+    @arraysize.setter
+    def arraysize(self, size: int):
+        """Set arraysize for fetchmany() operations."""
+        if size < 1:
+            raise ValueError("arraysize must be >= 1")
+        self._arraysize = size
+
+    @property
+    def rownumber(self) -> Optional[int]:
+        """Current 0-based index of cursor in result set."""
+        if self._current_index == 0:
+            return None
+        return self._current_index - 1
+
+    @property
+    def query(self) -> Optional[str]:
+        """Return last executed query."""
+        return self._query
+
+    async def fetchone(self) -> Optional[Dict[str, Any]]:
+        """Fetch next row from results."""
+        if self._current_index >= len(self._results):
+            return None
+        row = self._results[self._current_index]
+        self._current_index += 1
+        return row
+
+    async def fetchall(self) -> List[Dict[str, Any]]:
+        """Fetch all remaining rows from results."""
+        remaining = self._results[self._current_index:]
+        self._current_index = len(self._results)
+        return remaining
+
+    async def fetchmany(self, size: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Fetch next batch of rows."""
+        if size is None:
+            size = self._arraysize
+        end_index = min(self._current_index + size, len(self._results))
+        rows = self._results[self._current_index:end_index]
+        self._current_index = end_index
+        return rows
+
+    def __aiter__(self):
+        """Async iterator support."""
+        return self
+
+    async def __anext__(self) -> Dict[str, Any]:
+        """Get next row for async iteration."""
+        row = await self.fetchone()
+        if row is None:
+            raise StopAsyncIteration
+        return row
+
+    async def close(self):
+        """No-op for detached cursor (no connection to close)."""
+        pass
+
+    async def __aenter__(self):
+        """Context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        return False
 
 
 class DatabaseCursorWrapper:
@@ -710,6 +837,25 @@ class DatabaseCursorWrapper:
         self._lastrowid = None
         self._column_metadata.clear()
 
+    def detach(self) -> "DetachedCursor":
+        """
+        Create a detached cursor with current results.
+
+        This allows safe access to query results after the underlying
+        connection has been released back to the pool.
+
+        Returns:
+            DetachedCursor: A cursor that holds results without connection reference
+        """
+        return DetachedCursor(
+            results=list(self._last_results),  # Copy the results
+            row_count=self._row_count,
+            description=self._description,
+            lastrowid=self._lastrowid,
+            query=self._last_query,
+            params=self._last_params,
+        )
+
     def __aiter__(self):
         """Make cursor iterable"""
         return self
@@ -801,7 +947,7 @@ class DatabaseConnectionWrapper:
                 async with self.adapter.connection() as conn:
                     yield DatabaseCursorWrapper(conn, connection_wrapper=self)
 
-    async def execute(self, sql: str, parameters: Tuple = ()) -> "DatabaseCursorWrapper":
+    async def execute(self, sql: str, parameters: Tuple = ()) -> "DetachedCursor":
         """
         Execute SQL directly without creating cursor.
 
@@ -810,13 +956,14 @@ class DatabaseConnectionWrapper:
             parameters: Query parameters
 
         Returns:
-            Cursor wrapper with results
+            DetachedCursor: Cursor with results (safe to use after connection release)
         """
         async with self.cursor() as cur:
             await cur.execute(sql, parameters)
-            return cur
+            # Return detached cursor to prevent "connection released" errors
+            return cur.detach()
 
-    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DatabaseCursorWrapper":
+    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> "DetachedCursor":
         """
         Execute SQL with multiple parameter sets.
 
@@ -825,11 +972,12 @@ class DatabaseConnectionWrapper:
             parameters_list: List of parameter tuples
 
         Returns:
-            Cursor wrapper
+            DetachedCursor: Cursor with results (safe to use after connection release)
         """
         async with self.cursor() as cur:
             await cur.executemany(sql, parameters_list)
-            return cur
+            # Return detached cursor to prevent "connection released" errors
+            return cur.detach()
 
     async def executescript(self, sql_script: str):
         """
