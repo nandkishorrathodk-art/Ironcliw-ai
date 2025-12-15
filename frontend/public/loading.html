@@ -60,24 +60,70 @@
             opacity: 0.7;
         }
 
-        /* Glass Panel Container */
+        /* Glass Panel Container with 3D Perspective Tilt */
         .loading-container {
             position: relative;
             z-index: 10;
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
             border-radius: 20px;
-            padding: 50px 60px;
-            min-width: 500px;
-            max-width: 600px;
+            padding: 60px 80px;
+            min-width: 580px;
+            max-width: 680px;
             text-align: center;
             backdrop-filter: blur(15px);
             -webkit-backdrop-filter: blur(15px);
+            /* 3D perspective tilt effect matching target design */
+            transform: perspective(1200px) rotateX(2deg) rotateY(-3deg);
+            transform-style: preserve-3d;
             box-shadow:
-                0 0 40px rgba(0, 212, 255, 0.15),
+                /* Main glow */
+                0 0 40px rgba(0, 212, 255, 0.2),
                 0 0 80px rgba(0, 212, 255, 0.1),
-                inset 0 0 60px rgba(0, 20, 40, 0.3);
-            transition: box-shadow 0.5s ease-out, border-color 0.5s ease-out;
+                /* Edge highlights for 3D effect */
+                inset 2px 0 20px rgba(0, 212, 255, 0.15),
+                inset -2px 0 20px rgba(0, 212, 255, 0.1),
+                inset 0 2px 20px rgba(0, 212, 255, 0.15),
+                inset 0 -2px 20px rgba(0, 212, 255, 0.1),
+                /* Depth shadow */
+                10px 15px 40px rgba(0, 0, 0, 0.5);
+            transition: box-shadow 0.5s ease-out, border-color 0.5s ease-out, transform 0.5s ease-out;
+        }
+
+        /* Glowing edge accents on the panel */
+        .loading-container::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            right: -1px;
+            bottom: -1px;
+            width: 3px;
+            background: linear-gradient(180deg,
+                transparent 10%,
+                rgba(0, 212, 255, 0.6) 30%,
+                rgba(0, 255, 204, 0.8) 50%,
+                rgba(0, 212, 255, 0.6) 70%,
+                transparent 90%);
+            border-radius: 0 20px 20px 0;
+            filter: blur(2px);
+            pointer-events: none;
+        }
+
+        .loading-container::after {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(0, 212, 255, 0.4) 30%,
+                rgba(0, 255, 204, 0.6) 50%,
+                rgba(0, 212, 255, 0.4) 70%,
+                transparent 100%);
+            filter: blur(1px);
+            pointer-events: none;
         }
 
         /* Success state glow */
@@ -114,12 +160,12 @@
                 0 0 60px var(--success-green);
         }
 
-        /* Circular Progress Container */
+        /* Circular Progress Container - Larger to match target design */
         .progress-circle-container {
             position: relative;
-            width: 280px;
-            height: 280px;
-            margin: 0 auto 40px;
+            width: 320px;
+            height: 320px;
+            margin: 0 auto 50px;
         }
 
         /* SVG Progress Circle */
@@ -157,14 +203,14 @@
             stroke-linecap: round;
         }
 
-        /* Progress Arc */
+        /* Progress Arc - circumference = 2 * π * 100 = 628.32 */
         .progress-arc {
             fill: none;
             stroke: url(#progressGradient);
             stroke-width: 8;
             stroke-linecap: round;
-            stroke-dasharray: 565.48;
-            stroke-dashoffset: 565.48;
+            stroke-dasharray: 628.32;
+            stroke-dashoffset: 628.32;
             transition: stroke-dashoffset 0.5s ease-out, stroke 0.3s ease-out;
             filter: url(#glowFilter);
         }
@@ -206,7 +252,7 @@
 
         .progress-percentage {
             font-family: 'Orbitron', sans-serif;
-            font-size: 3.5rem;
+            font-size: 4rem;
             font-weight: 700;
             color: var(--cyber-cyan);
             text-shadow:
@@ -597,7 +643,7 @@
 
         <!-- Circular Progress Indicator -->
         <div class="progress-circle-container arc-reactor">
-            <svg class="progress-svg" viewBox="0 0 280 280">
+            <svg class="progress-svg" viewBox="0 0 320 320">
                 <defs>
                     <!-- Gradient for progress arc -->
                     <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -632,32 +678,32 @@
                 </defs>
 
                 <!-- Outer Decorative Ring with tech segments -->
-                <circle class="ring-outer-deco" cx="140" cy="140" r="135"/>
+                <circle class="ring-outer-deco" cx="160" cy="160" r="155"/>
 
                 <!-- Tech segment markers around outer ring -->
                 <g id="tech-segments">
-                    <rect class="tech-segment" x="137" y="2" width="6" height="12" rx="1"/>
-                    <rect class="tech-segment" x="137" y="266" width="6" height="12" rx="1"/>
-                    <rect class="tech-segment" x="2" y="137" width="12" height="6" rx="1"/>
-                    <rect class="tech-segment" x="266" y="137" width="12" height="6" rx="1"/>
+                    <rect class="tech-segment" x="157" y="2" width="6" height="14" rx="1"/>
+                    <rect class="tech-segment" x="157" y="304" width="6" height="14" rx="1"/>
+                    <rect class="tech-segment" x="2" y="157" width="14" height="6" rx="1"/>
+                    <rect class="tech-segment" x="304" y="157" width="14" height="6" rx="1"/>
                     <!-- Diagonal markers -->
-                    <rect class="tech-segment" x="232" y="42" width="8" height="4" rx="1" transform="rotate(45 236 44)"/>
-                    <rect class="tech-segment" x="42" y="232" width="8" height="4" rx="1" transform="rotate(45 46 234)"/>
-                    <rect class="tech-segment" x="42" y="42" width="8" height="4" rx="1" transform="rotate(-45 46 44)"/>
-                    <rect class="tech-segment" x="232" y="232" width="8" height="4" rx="1" transform="rotate(-45 236 234)"/>
+                    <rect class="tech-segment" x="268" y="48" width="8" height="4" rx="1" transform="rotate(45 272 50)"/>
+                    <rect class="tech-segment" x="48" y="268" width="8" height="4" rx="1" transform="rotate(45 52 270)"/>
+                    <rect class="tech-segment" x="48" y="48" width="8" height="4" rx="1" transform="rotate(-45 52 50)"/>
+                    <rect class="tech-segment" x="268" y="268" width="8" height="4" rx="1" transform="rotate(-45 272 270)"/>
                 </g>
 
                 <!-- Middle Ring -->
-                <circle class="ring-middle" cx="140" cy="140" r="115"/>
+                <circle class="ring-middle" cx="160" cy="160" r="130"/>
 
                 <!-- Progress Track -->
-                <circle class="progress-track" cx="140" cy="140" r="90"/>
+                <circle class="progress-track" cx="160" cy="160" r="100"/>
 
                 <!-- Progress Arc -->
-                <circle class="progress-arc" id="progress-circle" cx="140" cy="140" r="90"/>
+                <circle class="progress-arc" id="progress-circle" cx="160" cy="160" r="100"/>
 
                 <!-- Inner Glow Ring -->
-                <circle class="ring-inner-glow" cx="140" cy="140" r="65"/>
+                <circle class="ring-inner-glow" cx="160" cy="160" r="72"/>
             </svg>
 
             <!-- Center Content -->
@@ -850,7 +896,7 @@
         function updateProgressCircle(percentage) {
             const circle = document.getElementById('progress-circle');
             if (circle) {
-                const circumference = 2 * Math.PI * 90; // r = 90
+                const circumference = 2 * Math.PI * 100; // r = 100 (updated for larger circle)
                 const offset = circumference - (percentage / 100) * circumference;
                 circle.style.strokeDashoffset = offset;
             }
