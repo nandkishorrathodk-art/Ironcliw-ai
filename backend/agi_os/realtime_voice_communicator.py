@@ -863,6 +863,11 @@ class RealTimeVoiceCommunicator:
             # Initial stage - acknowledge command
             "init": f"Just a moment, {speaker_name}.",
 
+            # 🧠 CONTEXT-AWARE: Screen already unlocked
+            # This is spoken when user says "unlock" but screen is already open
+            "already_unlocked": self._get_already_unlocked_feedback(speaker_name),
+            "context_check": None,  # Silent - internal check
+
             # Silent stages - too fast or redundant
             "audio_decode": None,
             "ecapa_extract": None,  # Silent - very fast, no need to narrate
@@ -905,6 +910,46 @@ class RealTimeVoiceCommunicator:
             return "Processing voice verification."
         else:
             return "Analyzing voice pattern."
+
+    def _get_already_unlocked_feedback(self, speaker_name: str) -> str:
+        """
+        Get context-aware feedback when screen is already unlocked.
+
+        This provides intelligent, self-aware responses that make JARVIS
+        feel conscious of the current system state.
+        """
+        import random
+        from datetime import datetime
+
+        current_hour = datetime.now().hour
+
+        # Time-aware responses
+        if 5 <= current_hour < 12:
+            responses = [
+                f"Your screen is already unlocked, {speaker_name}. Good morning!",
+                f"Morning, {speaker_name}. I notice your screen is already open.",
+                f"Already unlocked and ready, {speaker_name}.",
+            ]
+        elif 12 <= current_hour < 17:
+            responses = [
+                f"Your screen is already unlocked, {speaker_name}.",
+                f"I see your screen is already open, {speaker_name}.",
+                f"No unlock needed, {speaker_name}. You're good to go.",
+            ]
+        elif 17 <= current_hour < 21:
+            responses = [
+                f"Screen's already unlocked, {speaker_name}.",
+                f"Already open, {speaker_name}. Working late?",
+                f"Your screen is accessible, {speaker_name}.",
+            ]
+        else:
+            responses = [
+                f"Already unlocked, {speaker_name}. Late night session?",
+                f"Screen's open, {speaker_name}. Burning the midnight oil?",
+                f"Your screen is already accessible, {speaker_name}.",
+            ]
+
+        return random.choice(responses)
 
     def _get_completion_feedback(self, confidence: float, speaker_name: str) -> Optional[str]:
         """

@@ -5402,6 +5402,90 @@ async def _execute_unlock_applescript_fallback(
         return False
 
 
+# =============================================================================
+# 🧠 CONTEXT-AWARE RESPONSE GENERATOR
+# =============================================================================
+# Generates intelligent, personalized responses when screen is already unlocked
+# Uses time of day, speaker name, and context for natural conversation
+# =============================================================================
+
+async def _generate_already_unlocked_response(speaker_name: str) -> str:
+    """
+    Generate a context-aware, personalized response when screen is already unlocked.
+
+    This creates natural, varied responses that make JARVIS feel self-aware
+    and intelligent rather than robotic.
+
+    Args:
+        speaker_name: The user's name for personalization
+
+    Returns:
+        A contextual, personalized response string
+    """
+    import random
+    from datetime import datetime
+
+    # Get current time context
+    current_hour = datetime.now().hour
+
+    # Determine time of day for contextual responses
+    if 5 <= current_hour < 12:
+        time_period = "morning"
+    elif 12 <= current_hour < 17:
+        time_period = "afternoon"
+    elif 17 <= current_hour < 21:
+        time_period = "evening"
+    else:
+        time_period = "night"
+
+    # Dynamic response pools based on time of day
+    responses = {
+        "morning": [
+            f"Good morning, {speaker_name}. Your screen is already unlocked and ready for you.",
+            f"Morning, {speaker_name}. I notice your screen is already unlocked. How can I help?",
+            f"Your screen's already open, {speaker_name}. Ready when you are.",
+            f"Already unlocked, {speaker_name}. Looks like we're ahead of the game this morning.",
+        ],
+        "afternoon": [
+            f"Your screen is already unlocked, {speaker_name}. You're good to go.",
+            f"I see your screen is already open, {speaker_name}. What can I help you with?",
+            f"Already unlocked, {speaker_name}. Perhaps you meant to ask me something else?",
+            f"Screen's already accessible, {speaker_name}. Let me know if you need anything.",
+        ],
+        "evening": [
+            f"Your screen is already unlocked, {speaker_name}. Working late?",
+            f"I notice it's already open, {speaker_name}. Evening productivity session?",
+            f"Already unlocked, {speaker_name}. I'm here if you need me this evening.",
+            f"Screen's ready, {speaker_name}. What would you like to work on tonight?",
+        ],
+        "night": [
+            f"Your screen is already unlocked, {speaker_name}. Burning the midnight oil?",
+            f"Already open, {speaker_name}. Late night coding session?",
+            f"Screen's accessible, {speaker_name}. I'm here for whatever you need tonight.",
+            f"Already unlocked, {speaker_name}. Don't forget to rest at some point!",
+        ],
+    }
+
+    # Get responses for current time period
+    time_responses = responses.get(time_period, responses["afternoon"])
+
+    # Add some universal responses that work any time
+    universal_responses = [
+        f"Your screen is already unlocked, {speaker_name}.",
+        f"No unlock needed, {speaker_name}. Your screen is already accessible.",
+        f"I notice your screen isn't locked, {speaker_name}. Anything else I can help with?",
+        f"Already unlocked, {speaker_name}. I'm standing by if you need anything else.",
+    ]
+
+    # Combine and select randomly for variety
+    all_responses = time_responses + universal_responses
+    selected_response = random.choice(all_responses)
+
+    logger.info(f"[CONTEXT-AWARE] Generated response for '{time_period}': {selected_response}")
+
+    return selected_response
+
+
 async def process_voice_unlock_robust(
     command: str,
     audio_data: str,
@@ -5413,6 +5497,9 @@ async def process_voice_unlock_robust(
     """
     Robust voice unlock with hard timeouts, parallel processing, and
     real-time Daniel voice feedback for transparent VBI communication.
+
+    CONTEXT-AWARE: First checks if screen is already unlocked and responds
+    intelligently without unnecessary VBI processing.
 
     GUARANTEED to return within MAX_TOTAL_TIMEOUT seconds.
 
@@ -5515,6 +5602,55 @@ async def process_voice_unlock_robust(
             logger.info(f"[ROBUST] VOICE UNLOCK STARTED")
             logger.info(f"[ROBUST] Audio data type: {type(audio_data)}, length: {len(audio_data) if audio_data else 0}")
             logger.info(f"[ROBUST] MIME type: {mime_type}, Sample rate: {sample_rate}")
+
+            # =================================================================
+            # 🧠 CONTEXT-AWARE SCREEN STATE INTELLIGENCE
+            # =================================================================
+            # Check if screen is already unlocked BEFORE any VBI processing
+            # This provides self-aware, intelligent responses
+            # =================================================================
+            try:
+                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+
+                screen_is_locked = is_screen_locked()
+                logger.info(f"[ROBUST] 🖥️ Screen state check: {'LOCKED' if screen_is_locked else 'ALREADY UNLOCKED'}")
+
+                if not screen_is_locked:
+                    # Screen is already unlocked - generate context-aware response
+                    logger.info("[ROBUST] 🎯 Screen already unlocked - generating intelligent response")
+                    await progress("context_check", 100, "Screen is already unlocked", success=True)
+
+                    # Get speaker name for personalization (use dynamic owner or fallback)
+                    speaker_for_response = dynamic_owner_name or "there"
+
+                    # Generate time-aware, contextual response
+                    response_text = await _generate_already_unlocked_response(speaker_for_response)
+
+                    # Provide voice feedback for already unlocked scenario
+                    if voice:
+                        try:
+                            await voice.speak_immediate(response_text, interrupt=True)
+                            logger.info(f"🔊 [CONTEXT-AWARE] Spoke: {response_text}")
+                        except Exception as speak_err:
+                            logger.debug(f"Voice feedback error: {speak_err}")
+
+                    stages.append({"stage": "context_check", "success": True, "screen_was_locked": False})
+
+                    return result(
+                        success=True,
+                        msg=response_text,
+                        speaker=speaker_for_response,
+                        conf=1.0,  # 100% confidence - we verified screen state
+                        err=None
+                    )
+
+            except ImportError as ie:
+                logger.warning(f"[ROBUST] Screen lock detector not available: {ie}")
+            except Exception as e:
+                logger.warning(f"[ROBUST] Screen state check failed (continuing with unlock): {e}")
+
+            # Screen IS locked - continue with VBI verification
+            stages.append({"stage": "context_check", "success": True, "screen_was_locked": True})
             logger.info("=" * 60)
 
             # Validate input
