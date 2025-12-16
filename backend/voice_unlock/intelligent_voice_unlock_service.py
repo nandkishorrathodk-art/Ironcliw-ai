@@ -5109,38 +5109,47 @@ async def _execute_unlock_robust(
         # Step 2: Wake display and ensure login screen is ready
         await _progress("wake", 93, "Waking display...")
         try:
-            # Start caffeinate to keep screen awake
+            # Start caffeinate to keep screen awake during unlock
             caffeinate_process = await asyncio.create_subprocess_exec(
-                "caffeinate", "-d", "-u",
+                "caffeinate", "-d", "-u", "-t", "30",  # Keep awake for 30 seconds
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
 
-            # Wake the display explicitly using pmset
-            wake_process = await asyncio.create_subprocess_exec(
-                "pmset", "displaysleepnow",  # This actually WAKES on locked screen
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-            await wake_process.wait()
-
-            # Also use caffeinate assertion to force wake
+            # Method 1: Use caffeinate user activity assertion (most reliable)
             wake_assert = await asyncio.create_subprocess_exec(
-                "caffeinate", "-u", "-t", "1",  # User activity assertion for 1 second
+                "caffeinate", "-u", "-t", "2",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            await wake_assert.wait()
 
-            # CRITICAL: Wait for login screen to fully render and accept input
-            # The login screen takes time to animate and become ready for password entry
-            await asyncio.sleep(1.0)  # Increased from 0.2s to 1.0s
-            logger.info("[ROBUST-UNLOCK] Display wake sequence complete, login screen should be ready")
+            # Method 2: Press a key to wake (space key is safe)
+            try:
+                wake_key_script = '''
+                tell application "System Events"
+                    key code 49
+                end tell
+                '''
+                key_process = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", wake_key_script,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                await asyncio.wait_for(key_process.wait(), timeout=3.0)
+            except Exception as key_err:
+                logger.debug(f"Key wake failed (non-fatal): {key_err}")
+
+            # Wait for user activity assertion to complete
+            await asyncio.wait_for(wake_assert.wait(), timeout=5.0)
+
+            # CRITICAL: Wait for login screen to fully render
+            # macOS lock screen has animations that need time to complete
+            await asyncio.sleep(1.5)
+            logger.info("[ROBUST-UNLOCK] ✅ Display wake sequence complete")
 
         except Exception as e:
-            logger.warning(f"[ROBUST-UNLOCK] Display wake failed (non-fatal): {e}")
-            # Still wait a bit even on failure
-            await asyncio.sleep(0.5)
+            logger.warning(f"[ROBUST-UNLOCK] Display wake warning (continuing): {e}")
+            await asyncio.sleep(1.0)
 
         # Step 3: Type password - Try AppleScript FIRST (more reliable on login screen)
         # Core Graphics can have issues with the macOS login screen
@@ -5330,39 +5339,36 @@ async def _execute_unlock_applescript_fallback(
         # Escape special characters for AppleScript
         escaped_password = password.replace("\\", "\\\\").replace('"', '\\"')
 
-        # More robust AppleScript that:
-        # 1. Wakes the screen
-        # 2. Waits for login window
-        # 3. Clicks to ensure password field is focused
-        # 4. Types the password
-        # 5. Submits
+        # Simple, reliable AppleScript unlock sequence:
+        # 1. Wake display with key press
+        # 2. Small delay for lock screen to appear
+        # 3. Type password directly (lock screen password field auto-focuses)
+        # 4. Press Enter to submit
+        #
+        # NOTE: macOS lock screen automatically focuses the password field
+        # when the display wakes, so we don't need to click anything
         script = f'''
-        -- Wake the display first
-        do shell script "caffeinate -u -t 1"
-        delay 0.5
-
         tell application "System Events"
-            -- Check if screen is locked (login window exists)
-            set loginWindowExists to (exists process "loginwindow")
+            -- Step 1: Wake display by pressing a key (Escape is safe - doesn't type anything)
+            key code 53
+            delay 0.5
 
-            if loginWindowExists then
-                -- Click in the center of the screen to focus password field
-                -- This helps ensure the password field is ready
-                tell process "loginwindow"
-                    set frontmost to true
-                end tell
-                delay 0.3
+            -- Press space to ensure screen is fully awake and password field focused
+            key code 49
+            delay 1.0
 
-                -- Type password with slight delays for reliability
-                keystroke "{escaped_password}"
-                delay 0.3
-                keystroke return
-            else
-                -- Screen not locked, just type
-                keystroke "{escaped_password}"
-                delay 0.2
-                keystroke return
-            end if
+            -- Step 2: Clear any existing text in password field (select all + delete)
+            keystroke "a" using command down
+            delay 0.1
+            key code 51
+            delay 0.2
+
+            -- Step 3: Type the password
+            keystroke "{escaped_password}"
+            delay 0.3
+
+            -- Step 4: Press Enter/Return to submit
+            key code 36
         end tell
         '''
 
