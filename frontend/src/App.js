@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
 import JarvisVoice from './components/JarvisVoice';
@@ -6,6 +6,7 @@ import VisionConnection from './components/VisionConnection';
 import WorkspaceMonitor from './components/WorkspaceMonitor';
 import ActionDisplay from './components/ActionDisplay';
 import ConfigDiagnostic from './components/ConfigDiagnostic';
+import MatrixBackground from './components/MatrixBackground';
 
 function App() {
   const [input, setInput] = useState('');
@@ -124,6 +125,14 @@ function App() {
 
   return (
     <div className="App">
+      {/* Matrix Background Animation */}
+      <MatrixBackground
+        opacity={0.4}
+        color="#00ff41"
+        enabled={true}
+        intensity="medium"
+      />
+
       {/* Voice Control Section */}
       <JarvisVoice />
 

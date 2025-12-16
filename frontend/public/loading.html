@@ -54,14 +54,26 @@
             z-index: -1;
         }
 
-        /* Particle background */
-        .particles-bg {
+        /* Matrix Rain Background - deepest layer */
+        .matrix-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 0;
+            pointer-events: none;
+            opacity: 0.2;
+        }
+
+        /* Particle background - above matrix */
+        .particles-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
             opacity: 0.3;
         }
 
@@ -89,10 +101,11 @@
             }
         }
 
-        /* Main container */
+        /* Main container - above all background layers */
         .loading-container {
             text-align: center;
             z-index: 10;
+            position: relative;
             max-width: 900px;
             width: 90%;
             padding: 40px;
@@ -678,7 +691,10 @@
     </style>
 </head>
 <body>
-    <!-- Particle background -->
+    <!-- Matrix Rain Background - deepest animated layer -->
+    <canvas class="matrix-canvas" id="matrix-canvas"></canvas>
+
+    <!-- Particle background - floating particles above matrix -->
     <div class="particles-bg" id="particles"></div>
 
     <!-- Connection status -->
@@ -728,5 +744,282 @@
     </div>
 
     <script src="/loading-manager.js"></script>
+
+    <!-- Matrix Rain Animation - Synced with Arc Reactor -->
+    <script>
+    (function() {
+        'use strict';
+
+        /**
+         * MatrixRain - Subtle background animation that complements the Arc Reactor
+         *
+         * Features:
+         * - Multi-layer parallax depth effect
+         * - Syncs opacity pulse with reactor core (1.5s cycle)
+         * - Uses matching JARVIS green color palette
+         * - Performance adaptive (reduces columns on mobile)
+         * - Canvas-based for smooth 60fps
+         */
+        class MatrixRain {
+            constructor() {
+                this.canvas = document.getElementById('matrix-canvas');
+                if (!this.canvas) return;
+
+                this.ctx = this.canvas.getContext('2d');
+                this.columns = [];
+                this.animationId = null;
+                this.startTime = Date.now();
+                this.lastFrameTime = 0;
+
+                // Configuration
+                this.config = {
+                    // Character sets - mix of katakana, latin, numbers for authentic Matrix look
+                    charSets: {
+                        katakana: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+                        latin: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                        numbers: '0123456789',
+                        symbols: '@#$%&*<>[]{}|'
+                    },
+                    // Adaptive density based on screen size
+                    columnDensity: window.innerWidth < 768 ? 30 : 20,
+                    // Number of parallax layers
+                    layers: window.innerWidth < 768 ? 2 : 3,
+                    // Speed for each layer (creates depth)
+                    layerSpeeds: [0.15, 0.25, 0.4],
+                    // Opacity for each layer
+                    layerOpacities: [0.1, 0.15, 0.25],
+                    // Font sizes for each layer
+                    layerFontSizes: [8, 11, 14],
+                    // Pulse sync with reactor core (1.5s cycle from CSS)
+                    pulseSync: {
+                        enabled: true,
+                        cycleDuration: 1500, // Match reactor corePulse animation
+                        minOpacity: 0.12,
+                        maxOpacity: 0.28
+                    },
+                    // Secondary slow pulse for atmosphere
+                    atmospherePulse: {
+                        cycleDuration: 8000,
+                        minOpacity: 0.8,
+                        maxOpacity: 1.0
+                    },
+                    // Character change probability
+                    charChangeProb: 0.015,
+                    // Glow intensity
+                    glowIntensity: 0.3,
+                    // Target FPS
+                    targetFPS: 60,
+                    // Colors matching JARVIS theme
+                    colors: {
+                        primary: { r: 0, g: 255, b: 65 },      // #00ff41
+                        secondary: { r: 0, g: 170, b: 46 },    // #00aa2e
+                        head: { r: 200, g: 255, b: 200 }       // Bright head character
+                    }
+                };
+
+                // Generate combined character set
+                this.charSet = Object.values(this.config.charSets).join('');
+
+                this.init();
+            }
+
+            init() {
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.animate(0);
+            }
+
+            resize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                // Update config for new size
+                this.config.columnDensity = window.innerWidth < 768 ? 30 : 20;
+                this.config.layers = window.innerWidth < 768 ? 2 : 3;
+
+                // Reinitialize columns
+                this.initColumns();
+            }
+
+            initColumns() {
+                this.columns = [];
+
+                for (let layerIdx = 0; layerIdx < this.config.layers; layerIdx++) {
+                    const layerColumns = [];
+                    const fontSize = this.config.layerFontSizes[layerIdx] || 12;
+                    const columnWidth = this.config.columnDensity + (layerIdx * 5);
+                    const numColumns = Math.ceil(this.canvas.width / columnWidth);
+
+                    for (let i = 0; i < numColumns; i++) {
+                        layerColumns.push(this.createColumn(
+                            i * columnWidth + (Math.random() * 10 - 5),
+                            layerIdx
+                        ));
+                    }
+
+                    this.columns.push(layerColumns);
+                }
+            }
+
+            createColumn(x, layerIdx) {
+                const fontSize = this.config.layerFontSizes[layerIdx] || 12;
+                const maxChars = Math.ceil(this.canvas.height / fontSize) + 5;
+                const trailLength = 12 + Math.floor(Math.random() * 8);
+
+                return {
+                    x,
+                    y: Math.random() * -this.canvas.height,
+                    speed: this.config.layerSpeeds[layerIdx] * (0.7 + Math.random() * 0.6),
+                    chars: Array.from({ length: maxChars }, () => ({
+                        char: this.getRandomChar(),
+                        brightness: Math.random()
+                    })),
+                    fontSize,
+                    trailLength,
+                    layerIdx
+                };
+            }
+
+            getRandomChar() {
+                return this.charSet[Math.floor(Math.random() * this.charSet.length)];
+            }
+
+            getPulseMultiplier() {
+                const elapsed = Date.now() - this.startTime;
+
+                // Primary pulse synced with reactor core (1.5s cycle)
+                const reactorPhase = (elapsed % this.config.pulseSync.cycleDuration) / this.config.pulseSync.cycleDuration;
+                const reactorPulse = Math.sin(reactorPhase * Math.PI * 2) * 0.5 + 0.5;
+
+                // Secondary slower atmospheric pulse (8s cycle)
+                const atmosPhase = (elapsed % this.config.atmospherePulse.cycleDuration) / this.config.atmospherePulse.cycleDuration;
+                const atmosPulse = Math.sin(atmosPhase * Math.PI * 2) * 0.5 + 0.5;
+
+                // Combine pulses
+                const reactorEffect = this.config.pulseSync.minOpacity +
+                    (this.config.pulseSync.maxOpacity - this.config.pulseSync.minOpacity) * reactorPulse;
+
+                const atmosEffect = this.config.atmospherePulse.minOpacity +
+                    (this.config.atmospherePulse.maxOpacity - this.config.atmospherePulse.minOpacity) * atmosPulse;
+
+                return reactorEffect * atmosEffect;
+            }
+
+            animate(timestamp) {
+                // Frame rate limiting
+                const frameInterval = 1000 / this.config.targetFPS;
+                if (timestamp - this.lastFrameTime < frameInterval) {
+                    this.animationId = requestAnimationFrame((t) => this.animate(t));
+                    return;
+                }
+                this.lastFrameTime = timestamp;
+
+                // Clear with fade effect (creates trails)
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                const pulseMultiplier = this.getPulseMultiplier();
+
+                // Render each layer (back to front)
+                for (let layerIdx = 0; layerIdx < this.columns.length; layerIdx++) {
+                    const layerOpacity = this.config.layerOpacities[layerIdx] * pulseMultiplier;
+                    const layerColumns = this.columns[layerIdx];
+
+                    for (const column of layerColumns) {
+                        this.renderColumn(column, layerOpacity);
+                    }
+                }
+
+                this.animationId = requestAnimationFrame((t) => this.animate(t));
+            }
+
+            renderColumn(column, layerOpacity) {
+                const { fontSize, layerIdx } = column;
+                this.ctx.font = `${fontSize}px "Courier New", monospace`;
+
+                // Update column position
+                column.y += column.speed;
+
+                // Reset when off screen
+                if (column.y > this.canvas.height + fontSize * column.trailLength) {
+                    column.y = -fontSize * column.trailLength;
+                    column.speed = this.config.layerSpeeds[layerIdx] * (0.7 + Math.random() * 0.6);
+                }
+
+                // Render characters
+                for (let i = 0; i < column.chars.length; i++) {
+                    const charData = column.chars[i];
+                    const charY = column.y + i * fontSize;
+
+                    // Skip if off screen
+                    if (charY < -fontSize || charY > this.canvas.height + fontSize) continue;
+
+                    // Calculate brightness based on trail position
+                    const trailPos = i / column.trailLength;
+                    let brightness = 1 - trailPos;
+
+                    // Head character is brightest with glow
+                    if (i === 0) {
+                        brightness = 1.3;
+                        this.ctx.shadowBlur = 10 * this.config.glowIntensity;
+                        const c = this.config.colors.primary;
+                        this.ctx.shadowColor = `rgba(${c.r}, ${c.g}, ${c.b}, ${layerOpacity * 0.8})`;
+                    } else {
+                        this.ctx.shadowBlur = 0;
+                    }
+
+                    // Random character changes
+                    if (Math.random() < this.config.charChangeProb) {
+                        charData.char = this.getRandomChar();
+                    }
+
+                    // Calculate final opacity
+                    const charOpacity = Math.max(0, brightness * layerOpacity * charData.brightness);
+
+                    // Set color
+                    if (i === 0) {
+                        // Head character is bright white-green
+                        const c = this.config.colors.head;
+                        this.ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${charOpacity})`;
+                    } else if (i < 3) {
+                        // Near-head characters are primary green
+                        const c = this.config.colors.primary;
+                        this.ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${charOpacity * 0.9})`;
+                    } else {
+                        // Trail characters are secondary (darker) green
+                        const c = this.config.colors.secondary;
+                        this.ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${charOpacity * 0.7})`;
+                    }
+
+                    // Draw character
+                    this.ctx.fillText(charData.char, column.x, charY);
+                }
+            }
+
+            destroy() {
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                }
+                window.removeEventListener('resize', this.resize);
+            }
+        }
+
+        // Initialize Matrix Rain when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                window.matrixRain = new MatrixRain();
+            });
+        } else {
+            window.matrixRain = new MatrixRain();
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (window.matrixRain) {
+                window.matrixRain.destroy();
+            }
+        });
+    })();
+    </script>
 </body>
 </html>
