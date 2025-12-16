@@ -846,6 +846,175 @@ class Python39CompatibilityManager:
         if hook not in sys.meta_path:
             sys.meta_path.insert(0, hook)
 
+    def patch_huggingface_hub(self) -> bool:
+        """
+        Patch huggingface_hub to convert deprecated 'use_auth_token' to 'token'.
+
+        huggingface_hub 1.0+ removed the 'use_auth_token' parameter, but SpeechBrain
+        and other libraries still use it. This patch wraps hf_hub_download and
+        snapshot_download to automatically convert the parameter.
+
+        Also patches SpeechBrain's fetch function to handle missing optional files
+        gracefully (e.g., custom.py that doesn't exist in some model repos).
+
+        Returns:
+            True if patching was successful or unnecessary, False on error
+        """
+        try:
+            import huggingface_hub
+
+            hf_version = getattr(huggingface_hub, '__version__', '0.0.0')
+            hf_major = int(hf_version.split('.')[0])
+
+            if hf_major < 1:
+                logger.debug(f"huggingface_hub {hf_version} still supports use_auth_token, no patch needed")
+                return True
+
+            # Already patched check
+            if hasattr(huggingface_hub.hf_hub_download, '_jarvis_patched'):
+                logger.debug("huggingface_hub already patched")
+                return True
+
+            # Get the RemoteEntryNotFoundError for exception handling
+            try:
+                from huggingface_hub.errors import RemoteEntryNotFoundError
+            except ImportError:
+                from huggingface_hub.utils import EntryNotFoundError as RemoteEntryNotFoundError
+
+            def create_auth_token_wrapper(original_func):
+                """Create a wrapper that converts use_auth_token to token."""
+                @wraps(original_func)
+                def wrapper(*args, **kwargs):
+                    if 'use_auth_token' in kwargs:
+                        auth_token = kwargs.pop('use_auth_token')
+                        if auth_token is not None and 'token' not in kwargs:
+                            kwargs['token'] = auth_token
+                    return original_func(*args, **kwargs)
+                wrapper._jarvis_patched = True
+                return wrapper
+
+            def create_speechbrain_fetch_wrapper(original_fetch, not_found_error):
+                """Wrap SpeechBrain's fetch to convert RemoteEntryNotFoundError to ValueError."""
+                @wraps(original_fetch)
+                def wrapper(*args, **kwargs):
+                    try:
+                        return original_fetch(*args, **kwargs)
+                    except not_found_error as e:
+                        # Convert to ValueError so SpeechBrain's except block catches it
+                        # This handles missing optional files like custom.py
+                        raise ValueError(str(e)) from e
+                wrapper._jarvis_patched = True
+                return wrapper
+
+            # Store originals
+            original_hf_hub_download = huggingface_hub.hf_hub_download
+            original_snapshot_download = getattr(huggingface_hub, 'snapshot_download', None)
+
+            # Patch huggingface_hub module
+            patched_hf_hub_download = create_auth_token_wrapper(original_hf_hub_download)
+            huggingface_hub.hf_hub_download = patched_hf_hub_download
+
+            if original_snapshot_download:
+                patched_snapshot_download = create_auth_token_wrapper(original_snapshot_download)
+                huggingface_hub.snapshot_download = patched_snapshot_download
+
+            # Also patch the file_download module where hf_hub_download is defined
+            try:
+                import huggingface_hub.file_download as hf_file_download
+                hf_file_download.hf_hub_download = patched_hf_hub_download
+            except ImportError:
+                pass
+
+            # Patch speechbrain.utils.fetching if already loaded
+            try:
+                import speechbrain.utils.fetching as sb_fetching
+                if hasattr(sb_fetching, 'hf_hub_download'):
+                    sb_fetching.hf_hub_download = patched_hf_hub_download
+                if hasattr(sb_fetching, 'snapshot_download') and original_snapshot_download:
+                    sb_fetching.snapshot_download = patched_snapshot_download
+                # Patch fetch function to convert RemoteEntryNotFoundError to ValueError
+                if hasattr(sb_fetching, 'fetch') and not hasattr(sb_fetching.fetch, '_jarvis_patched'):
+                    original_fetch = sb_fetching.fetch
+                    sb_fetching.fetch = create_speechbrain_fetch_wrapper(original_fetch, RemoteEntryNotFoundError)
+                logger.debug("Patched speechbrain.utils.fetching")
+            except ImportError:
+                # SpeechBrain not yet loaded, install import hook
+                self._install_speechbrain_fetching_hook(
+                    patched_hf_hub_download,
+                    patched_snapshot_download if original_snapshot_download else None,
+                    RemoteEntryNotFoundError,
+                    create_speechbrain_fetch_wrapper
+                )
+
+            self._patched_modules['huggingface_hub'] = True
+            logger.info(f"✅ Patched huggingface_hub {hf_version} (use_auth_token → token)")
+            return True
+
+        except ImportError:
+            logger.debug("huggingface_hub not installed, no patch needed")
+            return True
+        except Exception as e:
+            error_msg = f"Failed to patch huggingface_hub: {e}"
+            logger.warning(error_msg)
+            self._error_log.append(error_msg)
+            return False
+
+    def _install_speechbrain_fetching_hook(
+        self,
+        patched_hf_hub_download,
+        patched_snapshot_download,
+        not_found_error=None,
+        fetch_wrapper_factory=None
+    ) -> None:
+        """Install an import hook to patch speechbrain.utils.fetching when imported."""
+        import importlib.abc
+
+        class SpeechBrainFetchingHook(importlib.abc.MetaPathFinder):
+            """Import hook that patches speechbrain.utils.fetching on import."""
+
+            def __init__(self, hf_download_patch, snapshot_patch, error_class, wrapper_factory):
+                self.hf_download_patch = hf_download_patch
+                self.snapshot_patch = snapshot_patch
+                self.error_class = error_class
+                self.wrapper_factory = wrapper_factory
+                self._patching = False
+
+            def find_module(self, fullname, path=None):
+                if fullname == 'speechbrain.utils.fetching' and not self._patching:
+                    # Post-import hook: let import complete, then patch
+                    import threading
+                    def patch_after_import():
+                        import time
+                        time.sleep(0.01)  # Let import complete
+                        try:
+                            if 'speechbrain.utils.fetching' in sys.modules:
+                                sb_fetching = sys.modules['speechbrain.utils.fetching']
+                                if hasattr(sb_fetching, 'hf_hub_download'):
+                                    sb_fetching.hf_hub_download = self.hf_download_patch
+                                if self.snapshot_patch and hasattr(sb_fetching, 'snapshot_download'):
+                                    sb_fetching.snapshot_download = self.snapshot_patch
+                                # Patch fetch function to handle missing optional files
+                                if (self.wrapper_factory and self.error_class and
+                                    hasattr(sb_fetching, 'fetch') and
+                                    not hasattr(sb_fetching.fetch, '_jarvis_patched')):
+                                    original_fetch = sb_fetching.fetch
+                                    sb_fetching.fetch = self.wrapper_factory(original_fetch, self.error_class)
+                                logger.debug("Applied delayed patch to speechbrain.utils.fetching")
+                        except Exception as e:
+                            logger.debug(f"Delayed speechbrain patch failed: {e}")
+
+                    threading.Thread(target=patch_after_import, daemon=True).start()
+                return None
+
+        hook = SpeechBrainFetchingHook(
+            patched_hf_hub_download,
+            patched_snapshot_download,
+            not_found_error,
+            fetch_wrapper_factory
+        )
+        if hook not in sys.meta_path:
+            sys.meta_path.insert(0, hook)
+
     def suppress_warnings(self) -> bool:
         """Install warning suppression filters (sync version)."""
         return self._warning_manager.install_filters()
@@ -874,6 +1043,10 @@ class Python39CompatibilityManager:
             # Core patches
             results['importlib.metadata'] = self.patch_importlib_metadata()
             results['google.api_core'] = self.patch_google_api_core()
+
+            # CRITICAL: Patch huggingface_hub before any ML libraries load
+            # This fixes: hf_hub_download() got an unexpected keyword argument 'use_auth_token'
+            results['huggingface_hub'] = self.patch_huggingface_hub()
 
             Python39CompatibilityManager._initialized = True
 
@@ -910,6 +1083,10 @@ class Python39CompatibilityManager:
             # Core patches - run in executor to avoid blocking
             results['importlib.metadata'] = await run_sync_in_async(self.patch_importlib_metadata)
             results['google.api_core'] = await run_sync_in_async(self.patch_google_api_core)
+
+            # CRITICAL: Patch huggingface_hub before any ML libraries load
+            # This fixes: hf_hub_download() got an unexpected keyword argument 'use_auth_token'
+            results['huggingface_hub'] = await run_sync_in_async(self.patch_huggingface_hub)
 
             Python39CompatibilityManager._initialized = True
 
