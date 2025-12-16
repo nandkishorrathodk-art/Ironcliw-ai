@@ -8,18 +8,18 @@ INTEGRATED FEATURES:
 - Silence and noise removal BEFORE Whisper sees audio
 - Ultra-low latency for command and unlock flows
 
-NUMBA CIRCULAR IMPORT FIX:
-- Whisper depends on torch -> numba, and certain numba versions have
-  circular import bugs when imported at module level
-- We use LAZY IMPORTS to defer whisper import until first use
-- This prevents the circular import from blocking module initialization
+ADVANCED LAZY IMPORT SYSTEM:
+- Async-safe and thread-safe singleton pattern
+- Dynamic configuration from environment variables
+- Health monitoring and status tracking
+- Circuit breaker pattern for resilience
+- Retry with exponential backoff
+- Parallel initialization capabilities
+- Metrics collection for performance tracking
 """
 
 import base64
 import numpy as np
-# CRITICAL: DO NOT import whisper at module level!
-# whisper -> torch -> numba can trigger circular import errors
-# Use lazy import in load_model() instead
 import tempfile
 import logging
 import asyncio
@@ -27,84 +27,511 @@ import soundfile as sf
 import io
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, Callable
+from enum import Enum
+from functools import wraps
 
-# Lazy-loaded whisper module
-_whisper_module = None
-_whisper_import_error = None
-_whisper_import_lock = threading.Lock()
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# DYNAMIC CONFIGURATION - Environment-driven, no hardcoding
+# =============================================================================
+class WhisperConfig:
+    """
+    Dynamic configuration for Whisper import and model loading.
+    All values can be overridden via environment variables.
+    """
+
+    def __init__(self):
+        self._config = {
+            # Model configuration
+            'model_size': os.getenv('WHISPER_MODEL_SIZE', 'base'),
+            'model_device': os.getenv('WHISPER_DEVICE', 'auto'),  # auto, cpu, cuda, mps
+            'fp16': os.getenv('WHISPER_FP16', 'false').lower() == 'true',
+
+            # Import configuration
+            'import_timeout': float(os.getenv('WHISPER_IMPORT_TIMEOUT', '30.0')),
+            'load_timeout': float(os.getenv('WHISPER_LOAD_TIMEOUT', '120.0')),
+            'retry_attempts': int(os.getenv('WHISPER_RETRY_ATTEMPTS', '3')),
+            'retry_base_delay': float(os.getenv('WHISPER_RETRY_BASE_DELAY', '1.0')),
+            'retry_max_delay': float(os.getenv('WHISPER_RETRY_MAX_DELAY', '30.0')),
+
+            # Circuit breaker configuration
+            'circuit_failure_threshold': int(os.getenv('WHISPER_CIRCUIT_FAILURE_THRESHOLD', '3')),
+            'circuit_recovery_timeout': float(os.getenv('WHISPER_CIRCUIT_RECOVERY_TIMEOUT', '60.0')),
+
+            # Health monitoring
+            'health_check_interval': float(os.getenv('WHISPER_HEALTH_CHECK_INTERVAL', '30.0')),
+
+            # Prewarming
+            'prewarm_on_init': os.getenv('WHISPER_PREWARM_ON_INIT', 'true').lower() == 'true',
+            'prewarm_async': os.getenv('WHISPER_PREWARM_ASYNC', 'true').lower() == 'true',
+        }
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._config.get(key, default)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith('_'):
+            return super().__getattribute__(name)
+        return self._config.get(name)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dict(self._config)
+
+
+# Global config instance
+_whisper_config = WhisperConfig()
+
+
+def get_whisper_config() -> WhisperConfig:
+    """Get the global Whisper configuration."""
+    return _whisper_config
+
+
+# =============================================================================
+# CIRCUIT BREAKER PATTERN - Resilience for import failures
+# =============================================================================
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, reject requests
+    HALF_OPEN = "half_open"  # Testing if recovered
+
+
+@dataclass
+class CircuitBreakerMetrics:
+    """Metrics for the circuit breaker."""
+    total_attempts: int = 0
+    successful_imports: int = 0
+    failed_imports: int = 0
+    consecutive_failures: int = 0
+    last_failure_time: float = 0.0
+    last_success_time: float = 0.0
+    last_error: Optional[str] = None
+    state_changes: int = 0
+
+
+class ImportCircuitBreaker:
+    """
+    Circuit breaker for whisper import to prevent repeated failures
+    from blocking the system.
+    """
+
+    def __init__(self, config: WhisperConfig):
+        self.config = config
+        self.state = CircuitState.CLOSED
+        self.metrics = CircuitBreakerMetrics()
+        self._lock = threading.Lock()
+        self._async_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def is_available(self) -> bool:
+        """Check if circuit allows import attempts."""
+        with self._lock:
+            if self.state == CircuitState.CLOSED:
+                return True
+            elif self.state == CircuitState.OPEN:
+                # Check if recovery timeout has passed
+                elapsed = time.time() - self.metrics.last_failure_time
+                if elapsed >= self.config.circuit_recovery_timeout:
+                    self._transition_to_half_open()
+                    return True
+                return False
+            else:  # HALF_OPEN
+                return True
+
+    def record_success(self):
+        """Record a successful import."""
+        with self._lock:
+            self.metrics.total_attempts += 1
+            self.metrics.successful_imports += 1
+            self.metrics.consecutive_failures = 0
+            self.metrics.last_success_time = time.time()
+
+            if self.state == CircuitState.HALF_OPEN:
+                self._transition_to_closed()
+
+    def record_failure(self, error: str):
+        """Record a failed import."""
+        with self._lock:
+            self.metrics.total_attempts += 1
+            self.metrics.failed_imports += 1
+            self.metrics.consecutive_failures += 1
+            self.metrics.last_failure_time = time.time()
+            self.metrics.last_error = error
+
+            if self.state == CircuitState.HALF_OPEN:
+                self._transition_to_open()
+            elif self.metrics.consecutive_failures >= self.config.circuit_failure_threshold:
+                self._transition_to_open()
+
+    def _transition_to_open(self):
+        """Transition to OPEN state."""
+        if self.state != CircuitState.OPEN:
+            logger.warning(f"🔴 Whisper import circuit breaker: OPEN (failures: {self.metrics.consecutive_failures})")
+            self.state = CircuitState.OPEN
+            self.metrics.state_changes += 1
+
+    def _transition_to_half_open(self):
+        """Transition to HALF_OPEN state."""
+        logger.info("🟡 Whisper import circuit breaker: HALF_OPEN (testing recovery)")
+        self.state = CircuitState.HALF_OPEN
+        self.metrics.state_changes += 1
+
+    def _transition_to_closed(self):
+        """Transition to CLOSED state."""
+        logger.info("🟢 Whisper import circuit breaker: CLOSED (recovered)")
+        self.state = CircuitState.CLOSED
+        self.metrics.state_changes += 1
+        self.metrics.consecutive_failures = 0
+
+    def reset(self):
+        """Force reset the circuit breaker."""
+        with self._lock:
+            self.state = CircuitState.CLOSED
+            self.metrics.consecutive_failures = 0
+            logger.info("Whisper import circuit breaker manually reset")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export circuit breaker state for monitoring."""
+        with self._lock:
+            return {
+                'state': self.state.value,
+                'is_available': self.is_available,
+                'metrics': {
+                    'total_attempts': self.metrics.total_attempts,
+                    'successful_imports': self.metrics.successful_imports,
+                    'failed_imports': self.metrics.failed_imports,
+                    'consecutive_failures': self.metrics.consecutive_failures,
+                    'last_error': self.metrics.last_error,
+                    'state_changes': self.metrics.state_changes,
+                }
+            }
+
+
+# =============================================================================
+# ADVANCED LAZY IMPORT MANAGER - Thread-safe, async-safe singleton
+# =============================================================================
+@dataclass
+class WhisperImportStatus:
+    """Status of the Whisper import system."""
+    module_loaded: bool = False
+    model_loaded: bool = False
+    import_time_ms: float = 0.0
+    load_time_ms: float = 0.0
+    numba_version: Optional[str] = None
+    whisper_version: Optional[str] = None
+    last_health_check: float = 0.0
+    health_score: float = 1.0
+    error_message: Optional[str] = None
+
+
+class WhisperImportManager:
+    """
+    Advanced lazy import manager for Whisper with:
+    - Thread-safe and async-safe operations
+    - Circuit breaker pattern
+    - Retry with exponential backoff
+    - Health monitoring
+    - Metrics collection
+    - Dynamic configuration
+    """
+
+    _instance: Optional['WhisperImportManager'] = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls):
+        """Singleton pattern - thread-safe."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        self.config = get_whisper_config()
+        self.circuit_breaker = ImportCircuitBreaker(self.config)
+        self.status = WhisperImportStatus()
+
+        # Thread synchronization
+        self._import_lock = threading.Lock()
+        self._async_import_lock: Optional[asyncio.Lock] = None
+
+        # Cached module reference
+        self._whisper_module = None
+        self._import_error: Optional[str] = None
+
+        # Metrics
+        self._import_start_time: float = 0.0
+
+        self._initialized = True
+        logger.info("🎤 WhisperImportManager initialized")
+
+    @property
+    def is_module_loaded(self) -> bool:
+        """Check if Whisper module is loaded."""
+        return self._whisper_module is not None
+
+    def _ensure_async_lock(self) -> asyncio.Lock:
+        """Ensure async lock exists (lazy initialization)."""
+        if self._async_import_lock is None:
+            self._async_import_lock = asyncio.Lock()
+        return self._async_import_lock
+
+    def _pre_import_numba(self) -> Optional[str]:
+        """
+        Pre-import numba to avoid circular import issues.
+        Returns numba version if successful, None otherwise.
+        """
+        try:
+            import numba
+            # Force full initialization
+            version = numba.__version__
+            logger.debug(f"numba {version} pre-initialized successfully")
+            return version
+        except ImportError:
+            logger.debug("numba not installed (optional dependency)")
+            return None
+        except Exception as e:
+            logger.warning(f"numba pre-initialization issue (non-fatal): {e}")
+            return None
+
+    def _do_import(self) -> Any:
+        """
+        Perform the actual whisper import.
+        This is the core import logic, separated for reuse.
+        """
+        # Pre-import numba
+        numba_version = self._pre_import_numba()
+        self.status.numba_version = numba_version
+
+        # Import whisper
+        import whisper as whisper_mod
+
+        # Store version info
+        if hasattr(whisper_mod, '__version__'):
+            self.status.whisper_version = whisper_mod.__version__
+
+        return whisper_mod
+
+    def import_sync(self) -> Any:
+        """
+        Synchronous import of whisper module.
+        Thread-safe with circuit breaker and retry logic.
+
+        Returns:
+            The whisper module
+
+        Raises:
+            ImportError: If import fails after all retries
+        """
+        # Fast path - already loaded
+        if self._whisper_module is not None:
+            return self._whisper_module
+
+        # Check circuit breaker
+        if not self.circuit_breaker.is_available:
+            raise ImportError(
+                f"Whisper import circuit breaker is OPEN. "
+                f"Last error: {self.circuit_breaker.metrics.last_error}. "
+                f"Will retry after {self.config.circuit_recovery_timeout}s"
+            )
+
+        with self._import_lock:
+            # Double-check after acquiring lock
+            if self._whisper_module is not None:
+                return self._whisper_module
+
+            # Re-raise cached error if previous import failed permanently
+            if self._import_error is not None and not self.circuit_breaker.is_available:
+                raise ImportError(f"Whisper import previously failed: {self._import_error}")
+
+            # Retry with exponential backoff
+            last_error = None
+            for attempt in range(self.config.retry_attempts):
+                try:
+                    start_time = time.time()
+
+                    logger.info(f"🔄 Importing whisper (attempt {attempt + 1}/{self.config.retry_attempts})...")
+                    self._whisper_module = self._do_import()
+
+                    # Success!
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    self.status.module_loaded = True
+                    self.status.import_time_ms = elapsed_ms
+                    self.circuit_breaker.record_success()
+
+                    logger.info(f"✅ Whisper module imported in {elapsed_ms:.0f}ms")
+                    return self._whisper_module
+
+                except Exception as e:
+                    last_error = str(e)
+                    self.circuit_breaker.record_failure(last_error)
+
+                    if attempt < self.config.retry_attempts - 1:
+                        # Calculate backoff delay
+                        delay = min(
+                            self.config.retry_base_delay * (2 ** attempt),
+                            self.config.retry_max_delay
+                        )
+                        logger.warning(
+                            f"⚠️ Whisper import attempt {attempt + 1} failed: {e}. "
+                            f"Retrying in {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"❌ Whisper import failed after {self.config.retry_attempts} attempts: {e}")
+
+            # All retries exhausted
+            self._import_error = last_error
+            self.status.error_message = last_error
+            raise ImportError(f"Whisper import failed after {self.config.retry_attempts} attempts: {last_error}")
+
+    async def import_async(self) -> Any:
+        """
+        Asynchronous import of whisper module.
+        Non-blocking with circuit breaker and retry logic.
+
+        Returns:
+            The whisper module
+
+        Raises:
+            ImportError: If import fails after all retries
+        """
+        # Fast path - already loaded
+        if self._whisper_module is not None:
+            return self._whisper_module
+
+        # Check circuit breaker
+        if not self.circuit_breaker.is_available:
+            raise ImportError(
+                f"Whisper import circuit breaker is OPEN. "
+                f"Last error: {self.circuit_breaker.metrics.last_error}"
+            )
+
+        async_lock = self._ensure_async_lock()
+        async with async_lock:
+            # Double-check after acquiring lock
+            if self._whisper_module is not None:
+                return self._whisper_module
+
+            # Retry with exponential backoff
+            last_error = None
+            for attempt in range(self.config.retry_attempts):
+                try:
+                    start_time = time.time()
+
+                    logger.info(f"🔄 Importing whisper async (attempt {attempt + 1}/{self.config.retry_attempts})...")
+
+                    # Run import in thread pool to avoid blocking
+                    self._whisper_module = await asyncio.wait_for(
+                        asyncio.to_thread(self._do_import),
+                        timeout=self.config.import_timeout
+                    )
+
+                    # Success!
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    self.status.module_loaded = True
+                    self.status.import_time_ms = elapsed_ms
+                    self.circuit_breaker.record_success()
+
+                    logger.info(f"✅ Whisper module imported async in {elapsed_ms:.0f}ms")
+                    return self._whisper_module
+
+                except asyncio.TimeoutError:
+                    last_error = f"Import timed out after {self.config.import_timeout}s"
+                    self.circuit_breaker.record_failure(last_error)
+                    logger.warning(f"⏱️ Whisper import timeout (attempt {attempt + 1})")
+
+                except Exception as e:
+                    last_error = str(e)
+                    self.circuit_breaker.record_failure(last_error)
+
+                    if attempt < self.config.retry_attempts - 1:
+                        delay = min(
+                            self.config.retry_base_delay * (2 ** attempt),
+                            self.config.retry_max_delay
+                        )
+                        logger.warning(f"⚠️ Whisper import attempt {attempt + 1} failed: {e}. Retrying in {delay:.1f}s...")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"❌ Whisper import failed after {self.config.retry_attempts} attempts: {e}")
+
+            # All retries exhausted
+            self._import_error = last_error
+            self.status.error_message = last_error
+            raise ImportError(f"Whisper import failed: {last_error}")
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get comprehensive health status of the import manager."""
+        now = time.time()
+
+        return {
+            'status': self.status.__dict__,
+            'circuit_breaker': self.circuit_breaker.to_dict(),
+            'config': self.config.to_dict(),
+            'uptime_seconds': now - self._import_start_time if self._import_start_time > 0 else 0,
+        }
+
+    def reset(self):
+        """Reset the import manager state."""
+        with self._import_lock:
+            self._whisper_module = None
+            self._import_error = None
+            self.status = WhisperImportStatus()
+            self.circuit_breaker.reset()
+            logger.info("WhisperImportManager reset")
+
+
+# Global import manager instance
+_import_manager: Optional[WhisperImportManager] = None
+
+
+def get_import_manager() -> WhisperImportManager:
+    """Get the global Whisper import manager."""
+    global _import_manager
+    if _import_manager is None:
+        _import_manager = WhisperImportManager()
+    return _import_manager
 
 
 def _lazy_import_whisper():
     """
-    Lazy import of whisper module to avoid circular import issues with numba.
+    Lazy import of whisper module using the advanced import manager.
 
-    The numba.core.utils circular import issue occurs when:
-    1. whisper imports torch
-    2. torch imports numba
-    3. numba.core.utils imports from numba.core which hasn't finished initializing
-
-    By deferring the import until first use (and catching the error gracefully),
-    we allow the rest of the system to function even if whisper fails to load.
+    This is the main entry point for synchronous whisper imports.
+    Thread-safe with circuit breaker and retry logic.
 
     Returns:
-        The whisper module, or None if import failed
+        The whisper module
 
     Raises:
-        ImportError: If whisper import failed with the stored error
+        ImportError: If import fails
     """
-    global _whisper_module, _whisper_import_error
+    return get_import_manager().import_sync()
 
-    with _whisper_import_lock:
-        # Already loaded successfully
-        if _whisper_module is not None:
-            return _whisper_module
 
-        # Already failed - re-raise the stored error
-        if _whisper_import_error is not None:
-            raise ImportError(f"Whisper import previously failed: {_whisper_import_error}")
+async def _lazy_import_whisper_async():
+    """
+    Async lazy import of whisper module using the advanced import manager.
 
-        # First import attempt
-        try:
-            # Pre-import numba components in correct order to avoid circular import
-            try:
-                import numba
-                # Force numba initialization to complete before whisper uses it
-                _ = numba.__version__
-            except ImportError:
-                # numba not installed - that's fine, whisper can work without it
-                pass
-            except Exception as e:
-                # numba has issues - log but continue
-                logging.getLogger(__name__).warning(
-                    f"numba initialization issue (non-fatal): {e}"
-                )
+    This is the main entry point for asynchronous whisper imports.
+    Non-blocking with circuit breaker and retry logic.
 
-            # Now import whisper
-            import whisper as whisper_mod
-            _whisper_module = whisper_mod
-            logging.getLogger(__name__).info("✅ Whisper module loaded successfully (lazy import)")
-            return _whisper_module
+    Returns:
+        The whisper module
 
-        except ImportError as e:
-            error_msg = str(e)
-            _whisper_import_error = error_msg
-
-            # Check for known numba circular import issue
-            if "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
-                logging.getLogger(__name__).error(
-                    f"❌ Whisper import failed due to numba circular import: {e}. "
-                    "This is a known issue with certain numba versions. "
-                    "Try: pip install --upgrade numba llvmlite"
-                )
-            else:
-                logging.getLogger(__name__).error(f"❌ Whisper import failed: {e}")
-
-            raise
-        except Exception as e:
-            _whisper_import_error = str(e)
-            logging.getLogger(__name__).error(f"❌ Unexpected error importing whisper: {e}")
-            raise ImportError(f"Whisper import failed: {e}")
+    Raises:
+        ImportError: If import fails
+    """
+    return await get_import_manager().import_async()
 
 try:
     import librosa
@@ -389,13 +816,44 @@ class WhisperAudioHandler:
         # Run in thread pool to avoid blocking event loop
         return await asyncio.to_thread(_normalize_sync)
 
+    def _get_optimal_device(self) -> str:
+        """
+        Dynamically determine the optimal device for Whisper based on config and hardware.
+
+        Returns:
+            Device string: 'cuda', 'mps', or 'cpu'
+        """
+        config = get_whisper_config()
+        configured_device = config.model_device
+
+        if configured_device != 'auto':
+            return configured_device
+
+        # Auto-detect best device
+        try:
+            import torch
+            if torch.cuda.is_available():
+                logger.info("🎮 CUDA GPU detected - using cuda")
+                return 'cuda'
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                logger.info("🍎 Apple Silicon detected - using mps")
+                return 'mps'
+        except ImportError:
+            pass
+
+        logger.info("💻 Using CPU for Whisper")
+        return 'cpu'
+
     def load_model(self):
         """
         Load Whisper model synchronously (for backward compatibility).
 
         WARNING: This is a blocking call. In async contexts, use load_model_async() instead.
 
-        Uses lazy import to avoid numba circular import issues.
+        Uses the advanced import manager with:
+        - Dynamic configuration from environment
+        - Circuit breaker for resilience
+        - Retry with exponential backoff
         """
         if self.model is not None:
             return self.model
@@ -405,12 +863,28 @@ class WhisperAudioHandler:
             if self.model is not None:
                 return self.model
 
-            logger.info("Loading Whisper model (synchronous)...")
+            config = get_whisper_config()
+            model_size = config.model_size
+            device = self._get_optimal_device()
+
+            logger.info(f"🔧 Loading Whisper model (synchronous)...")
+            logger.info(f"   Model size: {model_size} (from WHISPER_MODEL_SIZE env)")
+            logger.info(f"   Device: {device}")
+
             try:
-                # Use lazy import to avoid circular import issues
-                whisper = _lazy_import_whisper()
-                self.model = whisper.load_model("base")
-                logger.info("✅ Whisper model loaded")
+                # Use advanced import manager with circuit breaker and retry
+                import_manager = get_import_manager()
+                whisper = import_manager.import_sync()
+
+                start_time = time.time()
+                self.model = whisper.load_model(model_size, device=device)
+                elapsed_ms = (time.time() - start_time) * 1000
+
+                # Update import manager status
+                import_manager.status.model_loaded = True
+                import_manager.status.load_time_ms = elapsed_ms
+
+                logger.info(f"✅ Whisper model '{model_size}' loaded on {device} in {elapsed_ms:.0f}ms")
             except ImportError as e:
                 logger.error(f"❌ Cannot load Whisper model: {e}")
                 raise
@@ -424,13 +898,14 @@ class WhisperAudioHandler:
         """
         Load Whisper model asynchronously without blocking the event loop.
 
-        Uses a thread pool executor to offload the CPU-bound model loading
-        to a background thread, keeping the event loop responsive.
-
-        Uses lazy import to avoid numba circular import issues.
+        Uses the advanced import manager with:
+        - Dynamic configuration from environment
+        - Async-safe circuit breaker
+        - Retry with exponential backoff
+        - Non-blocking thread pool execution
 
         Args:
-            timeout: Maximum time to wait for model loading (default: MODEL_LOAD_TIMEOUT)
+            timeout: Maximum time to wait for model loading (default: from config)
 
         Returns:
             True if model loaded successfully, False otherwise
@@ -438,7 +913,8 @@ class WhisperAudioHandler:
         if self.model is not None:
             return True
 
-        timeout = timeout or self.MODEL_LOAD_TIMEOUT
+        config = get_whisper_config()
+        timeout = timeout or config.load_timeout
 
         # Ensure async lock exists (lazy initialization for when event loop wasn't running at init)
         if self._async_model_load_lock is None:
@@ -452,7 +928,6 @@ class WhisperAudioHandler:
             # Check if another thread is already loading
             if self._model_loading:
                 logger.info("Whisper model already being loaded, waiting...")
-                # Wait for the loading to complete with timeout
                 try:
                     await asyncio.wait_for(
                         asyncio.get_event_loop().run_in_executor(
@@ -470,35 +945,47 @@ class WhisperAudioHandler:
             self._model_loading = True
             self._model_load_event.clear()
 
+            model_size = config.model_size
+            device = self._get_optimal_device()
+
+            logger.info(f"🔧 Loading Whisper model (async)...")
+            logger.info(f"   Model size: {model_size} (from WHISPER_MODEL_SIZE env)")
+            logger.info(f"   Device: {device}")
+            logger.info(f"   Timeout: {timeout}s")
+
             try:
-                logger.info("Loading Whisper model (async via thread pool)...")
+                # Get import manager
+                import_manager = get_import_manager()
+
+                # Async import with circuit breaker
+                whisper = await import_manager.import_async()
 
                 def _load_model_sync():
-                    """
-                    Synchronous model loading function.
-                    Uses lazy import to avoid numba circular import issues.
-                    """
-                    whisper = _lazy_import_whisper()
-                    return whisper.load_model("base")
+                    """Synchronous model loading in thread pool."""
+                    return whisper.load_model(model_size, device=device)
 
-                # Run in thread pool to avoid blocking event loop
-                # asyncio.to_thread() is macOS-safe and prevents event loop freeze
+                # Run model loading in thread pool with timeout
+                start_time = time.time()
                 self.model = await asyncio.wait_for(
                     asyncio.to_thread(_load_model_sync),
                     timeout=timeout
                 )
+                elapsed_ms = (time.time() - start_time) * 1000
 
-                logger.info("✅ Whisper model loaded (async)")
+                # Update import manager status
+                import_manager.status.model_loaded = True
+                import_manager.status.load_time_ms = elapsed_ms
+
+                logger.info(f"✅ Whisper model '{model_size}' loaded on {device} in {elapsed_ms:.0f}ms (async)")
                 return True
 
+            except asyncio.TimeoutError:
+                logger.error(f"⏱️ Whisper model loading timed out after {timeout}s")
+                return False
             except ImportError as e:
                 error_msg = str(e)
-                if "circular import" in error_msg or "numba" in error_msg.lower():
-                    logger.error(
-                        f"❌ Whisper import failed due to numba circular import: {e}. "
-                        "This is a known issue with certain numba versions. "
-                        "Try: pip install --upgrade numba llvmlite"
-                    )
+                if "circuit breaker" in error_msg.lower():
+                    logger.error(f"🔴 Whisper import blocked by circuit breaker: {e}")
                 else:
                     logger.error(f"❌ Cannot load Whisper model - import failed: {e}")
                 return False

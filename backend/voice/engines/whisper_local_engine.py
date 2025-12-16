@@ -3,9 +3,11 @@ Whisper Local STT Engine
 OpenAI Whisper running locally with CoreML optimization (macOS)
 Balanced accuracy and performance for medium-RAM scenarios
 
-NUMBA CIRCULAR IMPORT FIX:
-- Uses lazy import to avoid numba.core.utils circular import errors
-- Defers whisper import until initialize() is called
+ADVANCED IMPORT SYSTEM:
+- Uses the centralized WhisperImportManager from whisper_audio_fix.py
+- Unified circuit breaker, retry logic, and health monitoring
+- Dynamic configuration from environment variables
+- No duplicate import code - single source of truth
 """
 
 import asyncio
@@ -21,19 +23,14 @@ from .base_engine import BaseSTTEngine, STTResult
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded whisper module
-_whisper_module = None
-_whisper_import_error = None
-
 
 def _lazy_import_whisper():
     """
-    Lazy import of whisper module to avoid circular import issues with numba.
+    Lazy import of whisper module using the centralized WhisperImportManager.
 
-    The numba.core.utils circular import issue occurs when:
-    1. whisper imports torch
-    2. torch imports numba
-    3. numba.core.utils imports from numba.core which hasn't finished initializing
+    This is a thin wrapper that delegates to the advanced import manager
+    in whisper_audio_fix.py, ensuring a single source of truth for all
+    whisper imports across the codebase.
 
     Returns:
         The whisper module
@@ -41,46 +38,47 @@ def _lazy_import_whisper():
     Raises:
         ImportError: If whisper import failed
     """
-    global _whisper_module, _whisper_import_error
-
-    if _whisper_module is not None:
-        return _whisper_module
-
-    if _whisper_import_error is not None:
-        raise ImportError(f"Whisper import previously failed: {_whisper_import_error}")
-
     try:
-        # Pre-import numba components in correct order to avoid circular import
+        # Import the centralized import manager
+        from ..whisper_audio_fix import get_import_manager
+
+        import_manager = get_import_manager()
+        return import_manager.import_sync()
+
+    except ImportError as e:
+        # Fallback if whisper_audio_fix is not available (shouldn't happen)
+        logger.warning(f"Could not use centralized import manager: {e}, falling back to direct import")
+
+        # Direct import as fallback
         try:
             import numba
             _ = numba.__version__
-        except ImportError:
+        except:
             pass
-        except Exception as e:
-            logger.warning(f"numba initialization issue (non-fatal): {e}")
 
-        import whisper as whisper_mod
-        _whisper_module = whisper_mod
-        logger.info("✅ Whisper module loaded successfully (lazy import)")
-        return _whisper_module
+        import whisper
+        return whisper
+
+
+async def _lazy_import_whisper_async():
+    """
+    Async lazy import of whisper module using the centralized WhisperImportManager.
+
+    Returns:
+        The whisper module
+
+    Raises:
+        ImportError: If whisper import failed
+    """
+    try:
+        from ..whisper_audio_fix import get_import_manager
+
+        import_manager = get_import_manager()
+        return await import_manager.import_async()
 
     except ImportError as e:
-        error_msg = str(e)
-        _whisper_import_error = error_msg
-
-        if "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
-            logger.error(
-                f"❌ Whisper import failed due to numba circular import: {e}. "
-                "Try: pip install --upgrade numba llvmlite"
-            )
-        else:
-            logger.error(f"❌ Whisper import failed: {e}")
-        raise
-
-    except Exception as e:
-        _whisper_import_error = str(e)
-        logger.error(f"❌ Unexpected error importing whisper: {e}")
-        raise ImportError(f"Whisper import failed: {e}")
+        logger.warning(f"Async import failed, falling back to sync: {e}")
+        return await asyncio.to_thread(_lazy_import_whisper)
 
 
 class WhisperLocalEngine(BaseSTTEngine):
@@ -103,7 +101,15 @@ class WhisperLocalEngine(BaseSTTEngine):
         self.models_dir = Path.home() / ".jarvis" / "models" / "stt" / "whisper"
 
     async def initialize(self):
-        """Initialize Whisper model with optimal settings"""
+        """
+        Initialize Whisper model with optimal settings.
+
+        Uses the centralized WhisperImportManager for:
+        - Async-safe import with circuit breaker
+        - Dynamic configuration from environment
+        - Retry with exponential backoff
+        - Health monitoring and metrics
+        """
         if self.initialized:
             return
 
@@ -111,8 +117,26 @@ class WhisperLocalEngine(BaseSTTEngine):
         logger.info(f"   Model size: {self.model_size}")
 
         try:
-            # Use lazy import to avoid numba circular import issues
-            whisper = _lazy_import_whisper()
+            # Get centralized config for dynamic settings
+            try:
+                from ..whisper_audio_fix import get_whisper_config, get_import_manager
+
+                config = get_whisper_config()
+                import_manager = get_import_manager()
+
+                # Check circuit breaker before attempting
+                if not import_manager.circuit_breaker.is_available:
+                    raise ImportError(
+                        f"Whisper circuit breaker OPEN: {import_manager.circuit_breaker.metrics.last_error}"
+                    )
+            except ImportError:
+                config = None
+                import_manager = None
+
+            # Use async lazy import
+            start_time = time.time()
+            whisper = await _lazy_import_whisper_async()
+            import_time_ms = (time.time() - start_time) * 1000
 
             # Ensure models directory exists
             self.models_dir.mkdir(parents=True, exist_ok=True)
@@ -120,25 +144,39 @@ class WhisperLocalEngine(BaseSTTEngine):
             # Determine optimal device
             self.device = self._get_optimal_device()
             logger.info(f"   Using device: {self.device}")
+            logger.info(f"   Import time: {import_time_ms:.0f}ms")
 
-            # Load model
+            # Load model asynchronously
             logger.info(f"   Loading Whisper {self.model_size} model...")
+            load_start = time.time()
             self.model = await asyncio.to_thread(
                 whisper.load_model,
                 self.model_size,
                 device=self.device,
                 download_root=str(self.models_dir),
             )
+            load_time_ms = (time.time() - load_start) * 1000
+
+            # Update import manager status if available
+            if import_manager:
+                import_manager.status.model_loaded = True
+                import_manager.status.load_time_ms = load_time_ms
 
             self.initialized = True
-            logger.info(f"✅ Whisper Local initialized: {self.model_config.name}")
+            total_time_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"✅ Whisper Local initialized: {self.model_config.name} "
+                f"(import: {import_time_ms:.0f}ms, load: {load_time_ms:.0f}ms, total: {total_time_ms:.0f}ms)"
+            )
 
         except ImportError as e:
             error_msg = str(e)
-            if "circular import" in error_msg or "numba" in error_msg.lower():
+            if "circuit breaker" in error_msg.lower():
+                logger.error(f"❌ Whisper blocked by circuit breaker: {e}")
+            elif "circular import" in error_msg or "numba" in error_msg.lower():
                 logger.error(
-                    f"❌ Whisper initialization failed due to numba circular import: {e}. "
-                    "This is a known issue. Try: pip install --upgrade numba llvmlite"
+                    f"❌ Whisper initialization failed due to numba issue: {e}. "
+                    "Try: pip install --upgrade numba llvmlite"
                 )
             else:
                 logger.error(f"❌ Whisper import failed: {e}")

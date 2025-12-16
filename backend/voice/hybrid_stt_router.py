@@ -682,14 +682,16 @@ class HybridSTTRouter:
         """
         Prewarm Whisper model to eliminate first-request latency.
 
-        ROBUST ASYNC IMPLEMENTATION v3.0:
+        ROBUST ASYNC IMPLEMENTATION v4.0:
+        - Integrates with advanced WhisperImportManager
+        - Uses unified circuit breaker from import manager
         - Non-blocking with adaptive timeout based on system load
         - Graceful degradation on failure (service continues without prewarm)
         - Background completion handler for timeout cases
         - Cancellation-safe with proper cleanup
         - Never blocks the voice unlock flow
-        - Circuit breaker integration for repeated failures
-        - Health monitoring integration
+        - Parallel-safe with proper locking
+        - Health status tracking
         """
         async with self._prewarm_lock:
             if self._whisper_prewarmed:
@@ -702,19 +704,34 @@ class HybridSTTRouter:
             timeout = get_timeout('model_prewarm', urgency='relaxed')
 
             try:
-                logger.info(f"🔥 Prewarming Whisper model (async, timeout={timeout:.1f}s)...")
+                # Import the advanced import manager
+                from .whisper_audio_fix import (
+                    get_import_manager, get_whisper_config, _whisper_handler
+                )
 
-                # Check circuit breaker before attempting prewarm
-                cb = self._circuit_breakers.get('whisper_local')
-                if cb and not cb.is_available:
-                    logger.warning("⚠️ Whisper circuit breaker OPEN - skipping prewarm")
+                import_manager = get_import_manager()
+                config = get_whisper_config()
+
+                logger.info(f"🔥 Prewarming Whisper model (async, timeout={timeout:.1f}s)...")
+                logger.info(f"   Model: {config.model_size}, Config: dynamic from env")
+
+                # Check import manager circuit breaker FIRST
+                if not import_manager.circuit_breaker.is_available:
+                    logger.warning(
+                        f"⚠️ Whisper import circuit breaker OPEN - skipping prewarm. "
+                        f"Last error: {import_manager.circuit_breaker.metrics.last_error}"
+                    )
                     return
 
-                # Import and cache the WhisperAudioHandler singleton
-                from .whisper_audio_fix import _whisper_handler
+                # Also check router-level circuit breaker
+                cb = self._circuit_breakers.get('whisper_local')
+                if cb and not cb.is_available:
+                    logger.warning("⚠️ Whisper router circuit breaker OPEN - skipping prewarm")
+                    return
 
                 # Create a cancellable task for the prewarm operation
                 async def _do_prewarm():
+                    # This uses the advanced import manager internally
                     await _whisper_handler.load_model_async(timeout=timeout)
                     return _whisper_handler
 
@@ -728,9 +745,16 @@ class HybridSTTRouter:
                 self._whisper_prewarmed = True
 
                 prewarm_time = (time.time() - prewarm_start) * 1000
-                logger.info(f"✅ Whisper model prewarmed in {prewarm_time:.0f}ms")
 
-                # Record success in circuit breaker
+                # Log success with import manager status
+                status = import_manager.get_health_status()
+                logger.info(
+                    f"✅ Whisper model prewarmed in {prewarm_time:.0f}ms "
+                    f"(import: {status['status'].get('import_time_ms', 0):.0f}ms, "
+                    f"load: {status['status'].get('load_time_ms', 0):.0f}ms)"
+                )
+
+                # Record success in router circuit breaker
                 if cb:
                     await cb._record_success()
 
@@ -753,18 +777,20 @@ class HybridSTTRouter:
             except Exception as e:
                 elapsed = (time.time() - prewarm_start) * 1000
                 error_msg = str(e)
-                
+
+                # Check for circuit breaker errors
+                if "circuit breaker" in error_msg.lower():
+                    logger.warning(f"⚠️ Whisper prewarm blocked by circuit breaker after {elapsed:.0f}ms: {e}")
                 # Check for known numba circular import issue
-                if "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
+                elif "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
                     logger.warning(
-                        f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms due to numba initialization issue: {e}. "
-                        "This is a known issue with certain numba versions. "
-                        "Voice unlock will work using alternative engines (Vosk, SpeechBrain, or Cloud STT)."
+                        f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms due to numba issue: {e}. "
+                        "Try: pip install --upgrade numba llvmlite"
                     )
                 else:
                     logger.warning(f"⚠️ Whisper prewarm failed after {elapsed:.0f}ms: {e}")
 
-                # Record failure in circuit breaker
+                # Record failure in router circuit breaker
                 cb = self._circuit_breakers.get('whisper_local')
                 if cb:
                     await cb._record_failure()
@@ -834,48 +860,53 @@ class HybridSTTRouter:
             logger.debug("   ✗ Vosk not available")
 
         # Check Whisper (local, accurate, medium resource)
-        # Note: numba (Whisper dependency) can have circular import issues
-        # We use lazy import to avoid triggering the circular import at discover time
+        # Uses the advanced WhisperImportManager with circuit breaker and retry logic
         try:
-            # Pre-import numba to avoid circular import when whisper loads
-            try:
-                import numba
-                _ = numba.__version__  # Force initialization to complete
-            except ImportError:
-                pass  # numba not installed - that's OK
-            except Exception as e:
-                logger.debug(f"   numba pre-init issue (non-fatal): {e}")
+            from .whisper_audio_fix import get_import_manager, get_whisper_config
 
-            # Now try importing whisper
-            import whisper
-            discovered['whisper_local'] = {
-                'type': 'local',
-                'loaded': False,
-                'ram_required_gb': 2.0
-            }
-            logger.info("   ✓ Whisper (local) engine available")
+            import_manager = get_import_manager()
+
+            # Check if circuit breaker allows attempt
+            if not import_manager.circuit_breaker.is_available:
+                logger.warning(
+                    f"   ⚠️ Whisper circuit breaker OPEN - skipping discovery. "
+                    f"Last error: {import_manager.circuit_breaker.metrics.last_error}"
+                )
+            else:
+                # Use synchronous import (discovery runs at startup)
+                whisper = import_manager.import_sync()
+
+                # Get config for RAM estimation
+                config = get_whisper_config()
+                model_size = config.model_size
+                ram_estimates = {
+                    'tiny': 1.0, 'base': 1.5, 'small': 2.5,
+                    'medium': 5.0, 'large': 10.0, 'large-v2': 10.0, 'large-v3': 10.0
+                }
+                ram_required = ram_estimates.get(model_size, 2.0)
+
+                discovered['whisper_local'] = {
+                    'type': 'local',
+                    'loaded': False,
+                    'ram_required_gb': ram_required,
+                    'model_size': model_size,
+                    'import_manager_status': import_manager.status.__dict__
+                }
+                logger.info(f"   ✓ Whisper (local) engine available (model: {model_size}, RAM: {ram_required}GB)")
+
         except ImportError as e:
             error_msg = str(e)
-            if "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
+            if "circuit breaker" in error_msg.lower():
+                logger.warning(f"   ⚠️ Whisper blocked by circuit breaker: {e}")
+            elif "circular import" in error_msg or "numba" in error_msg.lower() or "get_hashable_key" in error_msg:
                 logger.warning(
-                    f"   ⚠️ Whisper unavailable due to numba circular import: {e}. "
-                    "This is a known issue with certain numba versions. "
-                    "Try: pip install --upgrade numba llvmlite. "
-                    "Continuing without local Whisper - other engines will be used."
+                    f"   ⚠️ Whisper unavailable due to numba issue: {e}. "
+                    "Try: pip install --upgrade numba llvmlite"
                 )
             else:
                 logger.debug(f"   ✗ Whisper local not available: {e}")
         except Exception as e:
-            # Handle other initialization errors gracefully
-            error_msg = str(e)
-            if "circular import" in error_msg or "numba" in error_msg.lower():
-                logger.warning(
-                    f"   ⚠️ Whisper unavailable due to numba initialization issue: {e}. "
-                    "This is a known issue with certain numba versions. "
-                    "Continuing without local Whisper - other engines will be used."
-                )
-            else:
-                logger.warning(f"   ⚠️ Whisper local failed to load: {e}")
+            logger.warning(f"   ⚠️ Whisper local discovery failed: {e}")
 
         # Check Google Cloud STT (cloud, high accuracy)
         try:
