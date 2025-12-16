@@ -680,6 +680,32 @@ class RealTimeVoiceCommunicator:
             'last_speech_time': self._last_speech_time.isoformat() if self._last_speech_time else None,
         }
 
+    @property
+    def is_speaking(self) -> bool:
+        """
+        Check if JARVIS is currently speaking.
+
+        This property is used for SELF-VOICE SUPPRESSION - when JARVIS is speaking,
+        audio input should be ignored to prevent feedback loops where JARVIS
+        hears its own voice and tries to process it as a command.
+
+        Returns:
+            bool: True if currently speaking, False otherwise
+        """
+        return self._is_speaking
+
+    @property
+    def is_processing_speech(self) -> bool:
+        """
+        Check if speech is being processed (speaking or has pending queue items).
+
+        More comprehensive check than is_speaking - includes queued items.
+
+        Returns:
+            bool: True if speaking or has queued speech
+        """
+        return self._is_speaking or not self._speech_queue.empty()
+
     # ============== Convenience Methods for AGI OS ==============
 
     async def greet(self, name: str = "Derek") -> str:

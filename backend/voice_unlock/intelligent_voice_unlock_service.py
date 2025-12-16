@@ -5461,6 +5461,27 @@ async def process_voice_unlock_robust(
             logger.debug(f"[ROBUST] Voice feedback unavailable: {e}")
             voice = None
 
+    # =========================================================================
+    # 🔇 SELF-VOICE SUPPRESSION - Prevent JARVIS from hearing its own voice
+    # =========================================================================
+    # If JARVIS is currently speaking, this audio is likely JARVIS's own voice
+    # being picked up by the microphone. Reject it immediately to prevent
+    # feedback loops and "hallucinations".
+    # =========================================================================
+    if voice and voice.is_speaking:
+        logger.warning("🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio - JARVIS is currently speaking")
+        return {
+            "success": False,
+            "response": None,  # Silent rejection - don't speak or it creates more echo
+            "speaker_name": "Unknown",
+            "confidence": 0.0,
+            "total_duration_ms": (time.time() - start) * 1000,
+            "error": "self_voice_suppression",
+            "trace_id": f"echo_reject_{int(time.time())}",
+            "stages": [{"stage": "self_voice_check", "success": False, "reason": "jarvis_speaking"}],
+            "handler": "robust_v1_echo_suppressed"
+        }
+
     # Get dynamic owner name (will be updated after verification with actual speaker)
     dynamic_owner_name = None
     if voice:
@@ -5470,17 +5491,161 @@ async def process_voice_unlock_robust(
             dynamic_owner_name = None
 
     async def voice_feedback(stage: str, confidence: float = 0.0, speaker: Optional[str] = None):
-        """Fire-and-forget voice feedback - never blocks VBI flow."""
+        """Fire-and-forget voice feedback - doesn't block VBI flow."""
         if voice:
             try:
-                # Use provided speaker name or dynamic owner name or let vbi_stage_feedback detect
                 name = speaker or dynamic_owner_name
-                # Run voice feedback in background task to not block
-                asyncio.create_task(
-                    voice.vbi_stage_feedback(stage, confidence, name)
-                )
+                asyncio.create_task(voice.vbi_stage_feedback(stage, confidence, name))
+            except:
+                pass
+
+    async def speak_and_wait(text: str, timeout: float = 8.0):
+        """
+        Speak text and WAIT for it to complete before continuing.
+
+        This ensures voice feedback is SYNCHRONIZED with actions - the user
+        hears the message BEFORE the action starts, not during or after.
+
+        Args:
+            text: Text to speak
+            timeout: Maximum wait time (default 8s for longer phrases)
+        """
+        if voice and text:
+            try:
+                logger.info(f"🔊 [SYNC-VOICE] Speaking (blocking): {text}")
+                await voice.speak_immediate(text, interrupt=True)
+                # Calculate wait time based on speech characteristics:
+                # - Average speaking rate: ~150 words/minute = 2.5 words/second
+                # - So ~400ms per word is reasonable
+                # - Add 500ms buffer for TTS latency
+                word_count = len(text.split())
+                wait_time = min(0.4 * word_count + 0.5, timeout)
+                logger.debug(f"🔊 [SYNC-VOICE] Waiting {wait_time:.1f}s for {word_count} words")
+                await asyncio.sleep(wait_time)
+                logger.debug(f"🔊 [SYNC-VOICE] Speech complete, continuing")
             except Exception as e:
-                logger.debug(f"Voice feedback error: {e}")
+                logger.debug(f"🔊 [SYNC-VOICE] Error: {e}")
+                pass
+
+    async def speak_error_sync(error_type: str = "error", confidence: float = 0.0):
+        """
+        Speak synchronized error/failure message.
+
+        Args:
+            error_type: Type of error ("error" for general, "failed" for verification failure)
+            confidence: Verification confidence (for failed type)
+        """
+        if error_type == "failed" and confidence > 0:
+            if confidence < 0.5:
+                msg = "I couldn't recognize that voice. Please try again."
+            else:
+                msg = f"Voice confidence was {confidence:.0%}, which isn't quite enough. Please try again."
+        else:
+            msg = "I couldn't process that. Please try again."
+
+        await speak_and_wait(msg)
+
+    async def save_for_continuous_learning(
+        speaker_name: str,
+        confidence: float,
+        audio_bytes: bytes,
+        embedding: Optional[list] = None
+    ):
+        """
+        Save successful unlock audio to SQLite database for continuous learning.
+
+        This improves the voice profile over time by adding more samples
+        from successful authentications.
+
+        Args:
+            speaker_name: Verified speaker name
+            confidence: Verification confidence score
+            audio_bytes: Raw audio bytes from the unlock attempt
+            embedding: Optional pre-computed embedding
+        """
+        try:
+            from intelligence.learning_database import JARVISLearningDatabase
+            from pathlib import Path
+            import base64
+
+            db = JARVISLearningDatabase()
+            await db.initialize()
+
+            # Generate unique sample ID
+            sample_id = f"vbi_unlock_{int(time.time() * 1000)}"
+
+            # Store in SQLite for continuous learning
+            async with db.db.cursor() as cursor:
+                # Create voice_learning table if not exists
+                await cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS voice_learning_samples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sample_id TEXT UNIQUE NOT NULL,
+                        speaker_name TEXT NOT NULL,
+                        confidence REAL NOT NULL,
+                        audio_base64 TEXT,
+                        embedding_json TEXT,
+                        source TEXT DEFAULT 'vbi_unlock',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processed INTEGER DEFAULT 0
+                    )
+                """)
+
+                # Insert sample
+                embedding_json = None
+                if embedding is not None:
+                    import json
+                    embedding_json = json.dumps(embedding if isinstance(embedding, list) else embedding.tolist())
+
+                audio_b64 = base64.b64encode(audio_bytes).decode() if audio_bytes else None
+
+                await cursor.execute("""
+                    INSERT INTO voice_learning_samples
+                    (sample_id, speaker_name, confidence, audio_base64, embedding_json, source)
+                    VALUES (?, ?, ?, ?, ?, 'vbi_unlock')
+                """, (sample_id, speaker_name, confidence, audio_b64, embedding_json))
+
+                await db.db.commit()
+
+            logger.info(f"📚 [CONTINUOUS-LEARNING] Saved voice sample for {speaker_name} (confidence: {confidence:.1%})")
+
+        except Exception as e:
+            logger.warning(f"📚 [CONTINUOUS-LEARNING] Failed to save sample: {e}")
+
+    async def send_unlock_notification(speaker_name: str, confidence: float, duration_ms: float):
+        """
+        Send macOS notification on successful VBI unlock.
+
+        Args:
+            speaker_name: Verified speaker name
+            confidence: Verification confidence percentage
+            duration_ms: Total unlock duration in milliseconds
+        """
+        try:
+            # Format notification message
+            conf_pct = f"{confidence * 100:.1f}%"
+            duration_sec = f"{duration_ms / 1000:.1f}s"
+
+            title = "🔓 Screen Unlocked via VBI"
+            message = f"Welcome back, {speaker_name}! Confidence: {conf_pct} | Time: {duration_sec}"
+            subtitle = "Voice Biometric Intelligence"
+
+            # Use osascript for macOS notification
+            notification_script = f'''
+            display notification "{message}" with title "{title}" subtitle "{subtitle}" sound name "Glass"
+            '''
+
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", notification_script,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.wait(), timeout=3.0)
+
+            logger.info(f"🔔 [NOTIFICATION] Sent unlock notification for {speaker_name}")
+
+        except Exception as e:
+            logger.debug(f"🔔 [NOTIFICATION] Failed to send: {e}")
 
     async def progress(stage: str, pct: int, msg: str, success: bool = None, confidence: float = 0.0):
         """
@@ -5606,9 +5771,19 @@ async def process_voice_unlock_robust(
 
             logger.info(f"[ROBUST] Audio data preview: {audio_data[:50]}...")
 
-            # 🎙️ STAGE: Init - Voice: "Just a moment, {owner}."
-            await progress("init", 5, "Starting...")
-            await voice_feedback("init")
+            # 🎙️ STAGE: Init
+            # ============================================================
+            # SYNCHRONIZED voice: Speak acknowledgment BEFORE processing
+            # The user should hear "Just a moment" before we start working
+            # ============================================================
+            await progress("init", 5, "Acknowledging request...")
+
+            # Get owner name for personalized greeting
+            init_name = dynamic_owner_name or "there"
+            init_msg = f"Just a moment, {init_name}."
+            await speak_and_wait(init_msg)
+
+            await progress("init", 10, "Starting VBI processing...")
 
             # Parallel: decode audio + load primary profile
             await progress("audio_decode", 15, "Decoding audio...")
@@ -5680,27 +5855,39 @@ async def process_voice_unlock_robust(
 
             if not ref_emb:
                 await progress("verification", 70, "No voice profile to compare", success=False)
-                await voice_feedback("failed", confidence=0.0)
+                # SYNCHRONIZED: Speak failure message
+                await speak_and_wait("I don't have a voice profile to compare against. Please set up voice authentication first.")
                 return result(False, "No voice profile found", conf=0.0, err="No reference embedding")
 
             verified, conf = _verify_speaker_robust(test_emb, ref_emb)
             stages.append({"stage": "verification", "success": verified, "confidence": conf})
 
-            # 🎙️ STAGE: Verification - Voice varies by confidence (use verified speaker name)
-            await voice_feedback("verification", confidence=conf, speaker=verified_speaker)
+            # Note: Verification voice feedback removed - now handled by synchronized
+            # unlock_execute announcement below for better timing alignment
 
             if not verified:
                 # ❌ Verification FAILED
                 await progress("verification", 80, f"Voice not verified ({conf:.1%})", success=False)
-                await voice_feedback("failed", confidence=conf)
+                # SYNCHRONIZED: Speak failure message
+                await speak_error_sync("failed", confidence=conf)
                 return result(False, f"Voice not verified ({conf:.1%})", conf=conf)
 
             # ✅ Verification SUCCESS
             await progress("verification", 80, f"Voice verified ({conf:.1%})", success=True, confidence=conf)
 
-            # 🎙️ STAGE: Unlock Execute - Voice: "Voice confirmed. Unlocking for you, {speaker}."
+            # 🎙️ STAGE: Unlock Execute
+            # ============================================================
+            # CRITICAL: Use SYNCHRONIZED voice feedback here!
+            # The user must hear "Voice verified, unlocking now" BEFORE
+            # the unlock starts - not during or after.
+            # ============================================================
+            await progress("unlock_execute", 85, f"Verified {verified_speaker}, preparing unlock...")
+
+            # SYNCHRONIZED voice: Speak and WAIT before unlocking
+            unlock_announcement = f"Voice verified, {verified_speaker}. Unlocking now."
+            await speak_and_wait(unlock_announcement)
+
             await progress("unlock_execute", 90, f"Unlocking for {verified_speaker}...")
-            await voice_feedback("unlock_execute", confidence=conf, speaker=verified_speaker)
 
             # Pass progress callback and confidence for transparent substage updates
             unlocked = await _execute_unlock_robust(
@@ -5713,19 +5900,33 @@ async def process_voice_unlock_robust(
             if not unlocked:
                 # ❌ Unlock FAILED
                 await progress("unlock_execute", 90, "Screen unlock failed", success=False)
-                await voice_feedback("failed", confidence=conf)
+                # Synchronized failure announcement
+                await speak_and_wait("I couldn't unlock the screen. Please try again.")
                 return result(False, "Screen unlock failed", speaker=verified_speaker, conf=conf, err="Unlock execution failed")
 
             # ✅ Unlock SUCCESS
             await progress("unlock_execute", 95, f"Screen unlocked for {verified_speaker}", success=True)
 
-            # 🎙️ STAGE: Complete - Voice: "Of course, {speaker}. Welcome back." (time-aware)
-            await voice_feedback("complete", confidence=conf, speaker=verified_speaker)
+            # 🎙️ STAGE: Complete
+            # ============================================================
+            # SYNCHRONIZED voice: Speak completion message AFTER unlock
+            # This ensures the user hears the welcome AFTER seeing the
+            # screen unlock, not during or before.
+            # ============================================================
+            await progress("complete", 98, "Unlock successful, welcoming user...")
+
+            # Generate time-aware completion message
+            completion_msg = f"Welcome back, {verified_speaker}."
+            if conf >= 0.95:
+                completion_msg = f"Of course, {verified_speaker}. Welcome back."
+
+            # SYNCHRONIZED: Speak and wait for completion
+            await speak_and_wait(completion_msg)
 
             # ✅ Complete SUCCESS
             await progress("complete", 100, f"Welcome back, {verified_speaker}!", success=True, confidence=conf)
 
-            return result(True, f"Of course, {verified_speaker}. Welcome back.", speaker=verified_speaker, conf=conf)
+            return result(True, completion_msg, speaker=verified_speaker, conf=conf)
 
         res = await asyncio.wait_for(_unlock(), timeout=RobustUnlockConfig.MAX_TOTAL_TIMEOUT)
         logger.info(f"[ROBUST] RESULT: {'SUCCESS' if res['success'] else 'FAILED'} in {res['total_duration_ms']:.0f}ms")
