@@ -3921,6 +3921,55 @@ async def _load_primary_speaker_profile() -> Optional[Dict[str, Any]]:
         return None
 
 
+async def _get_time_optimized_embedding(base_embedding: List[float], speaker_name: str = None) -> List[float]:
+    """
+    Enhance the base embedding with time-of-day optimizations from the learning engine.
+
+    This is how JARVIS gets SMARTER over time - by using learned temporal patterns
+    (morning voice, evening voice, etc.) to improve verification accuracy.
+
+    Args:
+        base_embedding: The base 192-dim embedding from the profile
+        speaker_name: Speaker name for looking up learned patterns
+
+    Returns:
+        Time-optimized embedding (may be blended with temporal profile)
+    """
+    try:
+        from voice_unlock.voice_profile_learning_engine import get_optimized_reference
+        from datetime import datetime
+        import numpy as np
+
+        current_hour = datetime.now().hour
+
+        # Try to get time-optimized reference from learning engine
+        optimized = await asyncio.wait_for(
+            get_optimized_reference(hour=current_hour),
+            timeout=1.0
+        )
+
+        if optimized is not None:
+            # The learning engine has a better reference for this time of day
+            # Blend it with the base (30% base, 70% learned) for robustness
+            base_arr = np.array(base_embedding, dtype=np.float32)
+            blended = 0.3 * base_arr + 0.7 * optimized
+            blended = blended / np.linalg.norm(blended)
+
+            logger.info(
+                f"🧠 [ADAPTIVE-VBI] Using time-optimized embedding for hour {current_hour} "
+                f"(learning engine enhanced)"
+            )
+            return blended.tolist()
+
+    except asyncio.TimeoutError:
+        logger.debug("[ADAPTIVE-VBI] Time optimization timed out, using base embedding")
+    except Exception as e:
+        logger.debug(f"[ADAPTIVE-VBI] Time optimization unavailable: {e}")
+
+    # Fall back to base embedding
+    return base_embedding
+
+
 async def _load_speaker_embedding_direct(speaker_name: Optional[str] = None) -> Optional[List[float]]:
     """Load speaker embedding directly from SQLite database with detailed diagnostics."""
     import numpy as np
@@ -5589,6 +5638,36 @@ async def process_voice_unlock_robust(
 
         try:
             # =========================================================================
+            # 0. ACTIVE LEARNING - Update voice profile with new sample
+            # =========================================================================
+            # This is the KEY to JARVIS getting smarter over time!
+            # The learning engine fuses new embeddings into the profile using ML
+            # =========================================================================
+            if success and embedding is not None:
+                try:
+                    from voice_unlock.voice_profile_learning_engine import learn_from_vbi_unlock
+
+                    embedding_array = np.array(embedding) if not isinstance(embedding, np.ndarray) else embedding
+
+                    learning_result = await learn_from_vbi_unlock(
+                        embedding=embedding_array,
+                        confidence=confidence,
+                        success=success,
+                        speaker_name=speaker_name,
+                        audio_quality=audio_quality
+                    )
+
+                    if learning_result.get('learned'):
+                        logger.info(
+                            f"🧠 [ACTIVE-LEARNING] Voice profile updated! | "
+                            f"Avg Confidence: {learning_result.get('current_avg_confidence', 0):.1%} | "
+                            f"Trend: {learning_result.get('confidence_trend', 'unknown')} | "
+                            f"Total Samples: {learning_result.get('total_samples', 0)}"
+                        )
+                except Exception as e:
+                    logger.debug(f"🧠 [ACTIVE-LEARNING] Skipped: {e}")
+
+            # =========================================================================
             # 1. Save to vbi_unlock_attempts table (enhanced metrics database)
             # =========================================================================
             from voice_unlock.metrics_database import get_metrics_database
@@ -5961,7 +6040,19 @@ async def process_voice_unlock_robust(
                 await speak_and_wait("I don't have a voice profile to compare against. Please set up voice authentication first.")
                 return result(False, "No voice profile found", conf=0.0, err="No reference embedding")
 
-            verified, conf = _verify_speaker_robust(test_emb, ref_emb)
+            # =========================================================================
+            # 🧠 TIME-OPTIMIZED VERIFICATION - Use learned temporal patterns
+            # =========================================================================
+            # This is how JARVIS gets SMARTER - by using time-of-day voice patterns
+            # learned from previous successful authentications
+            # =========================================================================
+            try:
+                ref_emb_optimized = await _get_time_optimized_embedding(ref_emb, verified_speaker)
+            except Exception as e:
+                logger.debug(f"[ROBUST] Time optimization skipped: {e}")
+                ref_emb_optimized = ref_emb
+
+            verified, conf = _verify_speaker_robust(test_emb, ref_emb_optimized)
             stages.append({"stage": "verification", "success": verified, "confidence": conf})
 
             # Note: Verification voice feedback removed - now handled by synchronized
