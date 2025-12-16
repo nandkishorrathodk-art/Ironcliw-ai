@@ -579,41 +579,33 @@ class SecurePasswordTyper:
                             metrics.submit_time_ms = (time.time() - submit_start) * 1000
                             logger.info("🔐 [SECURE-TYPE] Return key pressed")
 
-                            # ✅ CRITICAL: Verify screen actually unlocked
-                            # Give macOS ample time to process password - lock screen auth can be slow
-                            await asyncio.sleep(2.0)
-
+                            # ✅ Verify screen unlocked - fast polling instead of long waits
+                            # Poll every 150ms for up to 1.5 seconds (10 checks)
                             try:
                                 from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
 
-                                still_locked = is_screen_locked()
-                                logger.info(f"🔐 [SECURE-TYPE] First verification: still_locked={still_locked}")
-
-                                if still_locked:
-                                    # Give it one more chance - macOS sometimes needs more time
-                                    logger.info("🔐 [SECURE-TYPE] Waiting additional time for macOS auth...")
-                                    await asyncio.sleep(1.0)
+                                still_locked = True
+                                for check in range(10):
+                                    await asyncio.sleep(0.15)
                                     still_locked = is_screen_locked()
-                                    logger.info(f"🔐 [SECURE-TYPE] Second verification: still_locked={still_locked}")
+                                    if not still_locked:
+                                        logger.info(f"🔐 [SECURE-TYPE] Unlocked on check {check + 1}")
+                                        break
 
                                 if still_locked:
-                                    # Password was WRONG - screen still locked
                                     metrics.success = False
-                                    metrics.error_message = "Password incorrect - screen still locked"
+                                    metrics.error_message = "Screen still locked after typing"
                                     self.failed_operations += 1
-                                    logger.error("❌ [SECURE-TYPE] Screen still locked after password + verification delay")
+                                    logger.warning("❌ [SECURE-TYPE] Screen still locked after verification")
                                 else:
-                                    # Password was CORRECT - screen unlocked
                                     metrics.success = True
                                     self.successful_operations += 1
                                     self.last_operation_time = datetime.now()
-                                    logger.info(
-                                        f"✅ [SECURE-TYPE] Password CORRECT - screen unlocked "
-                                        f"({metrics.total_duration_ms:.0f}ms total)"
-                                    )
+                                    logger.info(f"✅ [SECURE-TYPE] Screen unlocked ({metrics.total_duration_ms:.0f}ms)")
+
                             except Exception as e:
                                 # If we can't verify, assume success (conservative)
-                                logger.warning(f"⚠️ Could not verify unlock status: {e}")
+                                logger.warning(f"⚠️ Could not verify: {e}")
                                 metrics.success = True
                                 self.successful_operations += 1
                                 self.last_operation_time = datetime.now()
