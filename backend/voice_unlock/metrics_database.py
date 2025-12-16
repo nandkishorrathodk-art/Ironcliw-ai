@@ -2105,35 +2105,135 @@ class MetricsDatabase:
             conn = sqlite3.connect(self.sqlite_path)
             cursor = conn.cursor()
 
-            # Ensure table exists
+            # Ensure table exists with ENHANCED schema for continuous learning
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS vbi_unlock_attempts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     attempt_id INTEGER UNIQUE,
                     speaker_name TEXT,
+
+                    -- Confidence metrics (for ML/continuous learning)
                     confidence REAL,
+                    confidence_pct REAL,  -- Confidence as percentage (0-100)
+                    threshold REAL DEFAULT 0.85,
+                    above_threshold INTEGER,
+
+                    -- Success/failure
                     success INTEGER,
+                    error_reason TEXT,
+
+                    -- Timing metrics
                     duration_ms REAL,
+                    verification_time_ms REAL,
+                    unlock_time_ms REAL,
+
+                    -- Date/Time fields (for DB Browser SQLite viewing)
                     timestamp TEXT,
+                    date TEXT,            -- YYYY-MM-DD format
+                    time TEXT,            -- HH:MM:SS format
+                    day_of_week TEXT,     -- Monday, Tuesday, etc.
+                    hour_of_day INTEGER,  -- 0-23
+
+                    -- Method and handler info
                     method TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    handler TEXT,
+
+                    -- Audio/Embedding data for continuous learning
+                    audio_duration_sec REAL,
+                    audio_quality TEXT,   -- 'excellent', 'good', 'fair', 'poor'
+                    embedding_json TEXT,  -- 192-dim ECAPA embedding as JSON
+
+                    -- Environment context
+                    environment TEXT,     -- 'quiet', 'noisy', 'unknown'
+                    microphone TEXT,
+
+                    -- ML Learning flags
+                    used_for_training INTEGER DEFAULT 0,
+                    learning_quality_score REAL,
+
+                    -- System timestamps
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # Insert attempt record
+            # Create indexes for fast queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_vbi_date ON vbi_unlock_attempts(date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_vbi_speaker ON vbi_unlock_attempts(speaker_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_vbi_success ON vbi_unlock_attempts(success)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_vbi_confidence ON vbi_unlock_attempts(confidence_pct)")
+
+            # Parse timestamp to extract date/time components
+            from datetime import datetime
+            now = datetime.now()
+            timestamp_str = attempt_data.get('timestamp') or now.isoformat()
+
+            try:
+                if isinstance(timestamp_str, str):
+                    # Handle various timestamp formats
+                    for fmt in ['%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S']:
+                        try:
+                            parsed_dt = datetime.strptime(timestamp_str.split('+')[0], fmt)
+                            break
+                        except ValueError:
+                            parsed_dt = now
+                else:
+                    parsed_dt = now
+            except Exception:
+                parsed_dt = now
+
+            date_str = parsed_dt.strftime('%Y-%m-%d')
+            time_str = parsed_dt.strftime('%H:%M:%S')
+            day_of_week = parsed_dt.strftime('%A')
+            hour_of_day = parsed_dt.hour
+
+            # Calculate confidence percentage
+            confidence_raw = attempt_data.get('confidence', 0.0) or 0.0
+            confidence_pct = round(confidence_raw * 100, 2)
+            threshold = attempt_data.get('threshold', 0.85)
+            above_threshold = 1 if confidence_raw >= threshold else 0
+
+            # Insert attempt record with enhanced fields
             cursor.execute("""
                 INSERT OR REPLACE INTO vbi_unlock_attempts (
-                    attempt_id, speaker_name, confidence, success,
-                    duration_ms, timestamp, method
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    attempt_id, speaker_name,
+                    confidence, confidence_pct, threshold, above_threshold,
+                    success, error_reason,
+                    duration_ms, verification_time_ms, unlock_time_ms,
+                    timestamp, date, time, day_of_week, hour_of_day,
+                    method, handler,
+                    audio_duration_sec, audio_quality, embedding_json,
+                    environment, microphone,
+                    used_for_training, learning_quality_score,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 attempt_data.get('attempt_id'),
                 attempt_data.get('speaker_name'),
-                attempt_data.get('confidence'),
+                confidence_raw,
+                confidence_pct,
+                threshold,
+                above_threshold,
                 1 if attempt_data.get('success') else 0,
+                attempt_data.get('error_reason'),
                 attempt_data.get('duration_ms'),
-                attempt_data.get('timestamp'),
-                attempt_data.get('method', 'voice_biometric')
+                attempt_data.get('verification_time_ms'),
+                attempt_data.get('unlock_time_ms'),
+                timestamp_str,
+                date_str,
+                time_str,
+                day_of_week,
+                hour_of_day,
+                attempt_data.get('method', 'voice_biometric'),
+                attempt_data.get('handler', 'robust_v1'),
+                attempt_data.get('audio_duration_sec'),
+                attempt_data.get('audio_quality'),
+                attempt_data.get('embedding_json'),
+                attempt_data.get('environment'),
+                attempt_data.get('microphone'),
+                0,  # Not yet used for training
+                attempt_data.get('learning_quality_score'),
+                now.isoformat()
             ))
 
             conn.commit()

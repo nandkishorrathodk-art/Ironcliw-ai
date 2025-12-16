@@ -5549,68 +5549,170 @@ async def process_voice_unlock_robust(
         speaker_name: str,
         confidence: float,
         audio_bytes: bytes,
-        embedding: Optional[list] = None
+        embedding: Optional[list] = None,
+        duration_ms: float = 0.0,
+        success: bool = True,
+        error_reason: str = None,
+        verification_time_ms: float = None,
+        unlock_time_ms: float = None,
+        audio_quality: str = None,
+        handler: str = "robust_v1"
     ):
         """
-        Save successful unlock audio to SQLite database for continuous learning.
+        Save unlock attempt to SQLite database for continuous learning.
 
-        This improves the voice profile over time by adding more samples
-        from successful authentications.
+        Records EVERY attempt (success or failure) with full metadata including:
+        - Date/time in human-readable format (for DB Browser SQLite)
+        - Confidence percentage (0-100%)
+        - Embedding data for ML training
+        - Audio quality metrics
+        - Environment context
 
         Args:
             speaker_name: Verified speaker name
-            confidence: Verification confidence score
+            confidence: Verification confidence score (0.0-1.0)
             audio_bytes: Raw audio bytes from the unlock attempt
-            embedding: Optional pre-computed embedding
+            embedding: Optional pre-computed 192-dim ECAPA embedding
+            duration_ms: Total unlock duration in milliseconds
+            success: Whether the unlock was successful
+            error_reason: Error message if failed
+            verification_time_ms: Time spent on voice verification
+            unlock_time_ms: Time spent on actual unlock execution
+            audio_quality: Audio quality assessment ('excellent', 'good', 'fair', 'poor')
+            handler: Handler name that processed the request
         """
+        from datetime import datetime
+        import json
+
+        now = datetime.now()
+        attempt_id = int(time.time() * 1000)
+
         try:
-            from intelligence.learning_database import JARVISLearningDatabase
-            from pathlib import Path
-            import base64
+            # =========================================================================
+            # 1. Save to vbi_unlock_attempts table (enhanced metrics database)
+            # =========================================================================
+            from voice_unlock.metrics_database import get_metrics_database
+            metrics_db = get_metrics_database()
 
-            db = JARVISLearningDatabase()
-            await db.initialize()
-
-            # Generate unique sample ID
-            sample_id = f"vbi_unlock_{int(time.time() * 1000)}"
-
-            # Store in SQLite for continuous learning
-            async with db.db.cursor() as cursor:
-                # Create voice_learning table if not exists
-                await cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS voice_learning_samples (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        sample_id TEXT UNIQUE NOT NULL,
-                        speaker_name TEXT NOT NULL,
-                        confidence REAL NOT NULL,
-                        audio_base64 TEXT,
-                        embedding_json TEXT,
-                        source TEXT DEFAULT 'vbi_unlock',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        processed INTEGER DEFAULT 0
+            # Prepare embedding JSON
+            embedding_json = None
+            if embedding is not None:
+                try:
+                    embedding_json = json.dumps(
+                        embedding if isinstance(embedding, list) else embedding.tolist()
                     )
-                """)
+                except Exception:
+                    pass
 
-                # Insert sample
-                embedding_json = None
-                if embedding is not None:
-                    import json
-                    embedding_json = json.dumps(embedding if isinstance(embedding, list) else embedding.tolist())
+            # Determine audio quality if not provided
+            if audio_quality is None:
+                if confidence >= 0.95:
+                    audio_quality = 'excellent'
+                elif confidence >= 0.85:
+                    audio_quality = 'good'
+                elif confidence >= 0.70:
+                    audio_quality = 'fair'
+                else:
+                    audio_quality = 'poor'
 
-                audio_b64 = base64.b64encode(audio_bytes).decode() if audio_bytes else None
+            # Calculate learning quality score (higher = more valuable for training)
+            # Based on: confidence, success, audio quality
+            learning_quality = confidence
+            if success:
+                learning_quality += 0.1
+            if audio_quality == 'excellent':
+                learning_quality += 0.1
+            elif audio_quality == 'good':
+                learning_quality += 0.05
+            learning_quality = min(1.0, learning_quality)
 
-                await cursor.execute("""
-                    INSERT INTO voice_learning_samples
-                    (sample_id, speaker_name, confidence, audio_base64, embedding_json, source)
-                    VALUES (?, ?, ?, ?, ?, 'vbi_unlock')
-                """, (sample_id, speaker_name, confidence, audio_b64, embedding_json))
+            # Prepare attempt data with enhanced fields
+            attempt_data = {
+                'attempt_id': attempt_id,
+                'speaker_name': speaker_name,
+                'confidence': confidence,
+                'threshold': 0.85,
+                'success': success,
+                'error_reason': error_reason,
+                'duration_ms': duration_ms,
+                'verification_time_ms': verification_time_ms,
+                'unlock_time_ms': unlock_time_ms,
+                'timestamp': now.isoformat(),
+                'method': 'voice_biometric',
+                'handler': handler,
+                'audio_duration_sec': len(audio_bytes) / 32000 if audio_bytes else None,  # Assuming 16kHz mono
+                'audio_quality': audio_quality,
+                'embedding_json': embedding_json,
+                'environment': 'unknown',  # Could be enhanced with noise detection
+                'microphone': 'built_in',  # Could be detected from audio properties
+                'learning_quality_score': learning_quality,
+            }
 
-                await db.db.commit()
+            # Record to metrics database (vbi_unlock_attempts table)
+            await metrics_db.record_vbi_attempt(attempt_data)
 
-            logger.info(f"📚 [CONTINUOUS-LEARNING] Saved voice sample for {speaker_name} (confidence: {confidence:.1%})")
+            logger.info(
+                f"📚 [CONTINUOUS-LEARNING] Saved VBI attempt for {speaker_name} | "
+                f"Date: {now.strftime('%Y-%m-%d')} | Time: {now.strftime('%H:%M:%S')} | "
+                f"Confidence: {confidence*100:.1f}% | Success: {success}"
+            )
 
         except Exception as e:
-            logger.warning(f"📚 [CONTINUOUS-LEARNING] Failed to save sample: {e}")
+            logger.warning(f"📚 [CONTINUOUS-LEARNING] Failed to save to metrics DB: {e}")
+
+        try:
+            # =========================================================================
+            # 2. Also save to voice_learning_samples table (for audio retraining)
+            # =========================================================================
+            # Only save audio for SUCCESSFUL high-confidence attempts
+            if success and confidence >= 0.80 and audio_bytes:
+                from intelligence.learning_database import JARVISLearningDatabase
+                import base64
+
+                db = JARVISLearningDatabase()
+                await db.initialize()
+
+                sample_id = f"vbi_unlock_{attempt_id}"
+
+                async with db.db.cursor() as cursor:
+                    # Create voice_learning table if not exists
+                    await cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS voice_learning_samples (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            sample_id TEXT UNIQUE NOT NULL,
+                            speaker_name TEXT NOT NULL,
+                            confidence REAL NOT NULL,
+                            confidence_pct REAL,
+                            date TEXT,
+                            time TEXT,
+                            audio_base64 TEXT,
+                            embedding_json TEXT,
+                            audio_quality TEXT,
+                            source TEXT DEFAULT 'vbi_unlock',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            processed INTEGER DEFAULT 0
+                        )
+                    """)
+
+                    audio_b64 = base64.b64encode(audio_bytes).decode() if audio_bytes else None
+
+                    await cursor.execute("""
+                        INSERT OR REPLACE INTO voice_learning_samples
+                        (sample_id, speaker_name, confidence, confidence_pct, date, time,
+                         audio_base64, embedding_json, audio_quality, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'vbi_unlock')
+                    """, (
+                        sample_id, speaker_name, confidence, round(confidence * 100, 2),
+                        now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
+                        audio_b64, embedding_json, audio_quality
+                    ))
+
+                    await db.db.commit()
+
+                logger.info(f"📚 [CONTINUOUS-LEARNING] Saved audio sample for future training")
+
+        except Exception as e:
+            logger.debug(f"📚 [CONTINUOUS-LEARNING] Audio sample save skipped: {e}")
 
     async def send_unlock_notification(speaker_name: str, confidence: float, duration_ms: float):
         """
@@ -5915,13 +6017,21 @@ async def process_voice_unlock_robust(
             # =========================================================================
             # Run in background (fire-and-forget) to not delay the user experience
             # The audio sample will be saved to SQLite for future voice profile updates
+            # Records: date, time, day_of_week, confidence%, embedding, audio quality
             # =========================================================================
             asyncio.create_task(
                 save_for_continuous_learning(
                     speaker_name=verified_speaker,
                     confidence=conf,
                     audio_bytes=audio_bytes if isinstance(audio_bytes, bytes) else b'',
-                    embedding=test_emb.tolist() if hasattr(test_emb, 'tolist') else list(test_emb) if test_emb is not None else None
+                    embedding=test_emb.tolist() if hasattr(test_emb, 'tolist') else list(test_emb) if test_emb is not None else None,
+                    duration_ms=total_duration_ms,
+                    success=True,
+                    error_reason=None,
+                    verification_time_ms=None,  # Could be tracked from stages
+                    unlock_time_ms=None,  # Could be tracked from stages
+                    audio_quality=None,  # Auto-determined from confidence
+                    handler="robust_v1"
                 )
             )
 
