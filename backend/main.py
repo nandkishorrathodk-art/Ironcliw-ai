@@ -4927,26 +4927,188 @@ async def audio_ml_config():
     }
 
 
-# Audio endpoints for frontend compatibility
+# Audio endpoints for frontend compatibility - Robust, async, intelligent TTS
 @app.post("/audio/speak")
 async def audio_speak_post(request: dict):
-    """Forward audio speak requests to JARVIS voice API"""
-    from fastapi import HTTPException
+    """
+    Robust audio speak endpoint with intelligent fallback chain.
+    Never returns 503 - always provides audio response.
 
+    Fallback chain:
+    1. JARVIS Voice API (if available)
+    2. Async TTS Handler with caching
+    3. Direct macOS `say` command
+    4. Silent audio (absolute last resort)
+    """
+    from fastapi.responses import Response
+    import asyncio
+    import struct
+    import tempfile
+    import os
+
+    text = request.get("text", "")
+    if not text:
+        # Return minimal silent audio for empty text
+        return _generate_silent_audio_response()
+
+    # === Strategy 1: Try JARVIS Voice API (primary) ===
     voice = components.get("voice", {})
     jarvis_api = voice.get("jarvis_api")
 
-    if not jarvis_api:
-        raise HTTPException(status_code=503, detail="JARVIS voice not available")
+    if jarvis_api:
+        try:
+            logger.debug(f"[TTS] Trying JARVIS Voice API for: {text[:50]}...")
+            return await asyncio.wait_for(jarvis_api.speak(request), timeout=15.0)
+        except asyncio.TimeoutError:
+            logger.warning("[TTS] JARVIS Voice API timed out, falling back")
+        except Exception as e:
+            logger.warning(f"[TTS] JARVIS Voice API failed: {e}, falling back")
 
-    # Forward to JARVIS speak endpoint
-    return await jarvis_api.speak(request)
+    # === Strategy 2: Try Async TTS Handler (cached, fast) ===
+    try:
+        from api.async_tts_handler import generate_speech_async
+
+        logger.debug(f"[TTS] Trying Async TTS Handler for: {text[:50]}...")
+        audio_path, content_type = await asyncio.wait_for(
+            generate_speech_async(text, voice="Daniel"),
+            timeout=30.0
+        )
+
+        # Read and return the audio file
+        with open(audio_path, "rb") as f:
+            audio_data = f.read()
+
+        return Response(
+            content=audio_data,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
+                "Cache-Control": "public, max-age=3600",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except ImportError:
+        logger.info("[TTS] Async TTS Handler not available, falling back")
+    except asyncio.TimeoutError:
+        logger.warning("[TTS] Async TTS Handler timed out, falling back")
+    except Exception as e:
+        logger.warning(f"[TTS] Async TTS Handler failed: {e}, falling back")
+
+    # === Strategy 3: Direct macOS `say` command ===
+    try:
+        logger.debug(f"[TTS] Trying direct macOS say command for: {text[:50]}...")
+
+        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        # Use macOS say command with Daniel voice
+        proc = await asyncio.create_subprocess_exec(
+            "say", "-v", "Daniel", "-r", "160", "-o", tmp_path, text,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=30.0)
+
+        if proc.returncode != 0:
+            raise Exception("say command failed")
+
+        # Try to convert to MP3 with ffmpeg
+        mp3_path = tmp_path.replace(".aiff", ".mp3")
+        media_type = "audio/mpeg"
+
+        try:
+            ffmpeg_proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", tmp_path, "-acodec", "mp3", "-ab", "96k",
+                "-ar", "22050", mp3_path, "-y",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await asyncio.wait_for(ffmpeg_proc.communicate(), timeout=30.0)
+
+            if ffmpeg_proc.returncode == 0:
+                with open(mp3_path, "rb") as f:
+                    audio_data = f.read()
+                os.unlink(tmp_path)
+                os.unlink(mp3_path)
+            else:
+                raise Exception("ffmpeg conversion failed")
+        except Exception:
+            # Use AIFF directly if conversion fails
+            with open(tmp_path, "rb") as f:
+                audio_data = f.read()
+            media_type = "audio/aiff"
+            os.unlink(tmp_path)
+            if os.path.exists(mp3_path):
+                os.unlink(mp3_path)
+
+        return Response(
+            content=audio_data,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": "inline; filename=jarvis_speech.mp3",
+                "Cache-Control": "no-cache",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except asyncio.TimeoutError:
+        logger.error("[TTS] Direct say command timed out")
+    except Exception as e:
+        logger.error(f"[TTS] Direct say command failed: {e}")
+
+    # === Strategy 4: Silent audio (absolute last resort) ===
+    logger.warning("[TTS] All TTS methods failed, returning silent audio")
+    return _generate_silent_audio_response()
+
+
+def _generate_silent_audio_response():
+    """Generate a minimal silent WAV audio response"""
+    from fastapi.responses import Response
+    import struct
+
+    # Generate a simple WAV header with 0.1 second of silence
+    sample_rate = 44100
+    duration = 0.1
+    num_samples = int(sample_rate * duration)
+
+    # WAV header
+    wav_header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + num_samples * 2,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b"data",
+        num_samples * 2,
+    )
+
+    # Silent audio data (zeros)
+    audio_data = wav_header + (b"\x00\x00" * num_samples)
+
+    return Response(
+        content=audio_data,
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": "inline; filename=silence.wav",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 @app.get("/audio/speak/{text}")
 async def audio_speak_get(text: str):
-    """GET endpoint for audio speak (frontend fallback)"""
-    return await audio_speak_post({"text": text})
+    """GET endpoint for audio speak - decodes URL-encoded text and processes"""
+    from urllib.parse import unquote
+
+    # Decode URL-encoded text (handles special characters)
+    decoded_text = unquote(text)
+    return await audio_speak_post({"text": decoded_text})
 
 
 # ============================================================
@@ -4984,18 +5146,9 @@ async def voice_jarvis_activate(request: Optional[dict] = None):
 
 @app.post("/voice/jarvis/speak")
 async def voice_jarvis_speak(request: dict):
-    """Make JARVIS speak text"""
-    voice = components.get("voice", {})
-    jarvis_api = voice.get("jarvis_api")
-
-    if jarvis_api:
-        return await jarvis_api.speak(request)
-
-    # Fallback response
-    return {
-        "status": "ok",
-        "message": f"Would speak: {request.get('text', '')}"
-    }
+    """Make JARVIS speak text - uses robust TTS with fallback chain"""
+    # Use the robust audio speak implementation which handles all fallbacks
+    return await audio_speak_post(request)
 
 
 # ============================================================
