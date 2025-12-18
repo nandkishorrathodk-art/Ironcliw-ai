@@ -4884,11 +4884,11 @@ class UnifiedCommandProcessor:
                 browser = target
 
                 if action == "search" and "query" in params:
-                    success, message = macos_controller.web_search(params["query"], browser=browser)
+                    success, message = await macos_controller.web_search(params["query"], browser=browser)
                     return {"success": success, "response": message}
 
                 elif action == "navigate" and "url" in params:
-                    success, message = macos_controller.open_url(params["url"], browser)
+                    success, message = await macos_controller.open_url(params["url"], browser)
                     return {"success": success, "response": message}
 
                 else:

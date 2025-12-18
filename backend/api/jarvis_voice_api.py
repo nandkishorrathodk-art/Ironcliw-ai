@@ -1313,8 +1313,20 @@ class JARVISVoiceAPI:
             # Mark command to prevent infinite loop
             command._screen_just_unlocked = True
 
-            # Re-process the original command
-            continuation_result = await self.process_command(command)
+            # Re-process the original command WITH TIMEOUT to prevent hanging
+            try:
+                continuation_result = await asyncio.wait_for(
+                    self.process_command(command),
+                    timeout=45.0  # 45 second timeout for continuation
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"⏱️ [CAI] Post-unlock continuation timed out for: '{command.text}'")
+                continuation_result = {
+                    "success": False,
+                    "response": "I unlocked your screen, but the follow-up action timed out. Please try again.",
+                    "command_type": "proactive_unlock_timeout",
+                    "status": "partial",
+                }
 
             # Add proactive unlock metadata
             total_latency = (time.time() - start_time) * 1000
@@ -1854,12 +1866,37 @@ class JARVISVoiceAPI:
                         "mode": "error",
                     }
 
-            # For non-weather commands, return the default limited mode response
-            return {
-                "response": "I'm currently in limited mode, but I can still help. What do you need?",
-                "status": "fallback",
-                "confidence": 0.8,
-            }
+            # =========================================================================
+            # SYSTEM COMMANDS DON'T REQUIRE API KEY - Route to pipeline directly
+            # =========================================================================
+            # Commands like "search for dogs", "open Safari" are purely local operations
+            # that don't need LLM/API access. Let them through even in limited mode.
+            # =========================================================================
+            import re
+            command_lower = command.text.lower()
+            local_command_patterns = [
+                r"\b(search|google|look\s*up|browse)\s+(for\s+)?",  # Search commands
+                r"\b(open|launch|start|run|quit|close|exit)\s+\w+",  # App launch
+                r"\bgo\s+to\s+",  # Navigation
+                r"\b(lock|unlock)\s+(my\s+)?(screen|computer|mac)\b",  # Lock/unlock
+                r"\b(volume|brightness)\s+(up|down|mute|unmute)",  # System control
+            ]
+
+            is_local_command = any(
+                re.search(pattern, command_lower, re.IGNORECASE)
+                for pattern in local_command_patterns
+            )
+
+            if is_local_command:
+                logger.info(f"[JARVIS API] Local command detected in limited mode - routing to pipeline: '{command.text}'")
+                # Fall through to normal processing below
+            else:
+                # For non-local commands, return the default limited mode response
+                return {
+                    "response": "I'm currently in limited mode, but I can still help. What do you need?",
+                    "status": "fallback",
+                    "confidence": 0.8,
+                }
 
         try:
             # Validate command text

@@ -479,6 +479,47 @@ class VisionCommandHandler:
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
 
+        # =========================================================================
+        # SYSTEM COMMAND BYPASS - Route to UnifiedCommandProcessor, NOT vision
+        # =========================================================================
+        # These commands should be handled by system control, not vision analysis.
+        # Capturing screenshots for these commands causes hangs (especially when locked).
+        # =========================================================================
+        import re
+
+        system_command_patterns = [
+            # Search commands - open browser and search
+            r"\b(search|google|look\s*up|browse)\s+(for\s+)?",
+            # App launch commands
+            r"\b(open|launch|start|run|quit|close|exit)\s+\w+",
+            # Navigation commands
+            r"\bgo\s+to\s+",
+            r"\bnavigate\s+to\s+",
+            # File/folder operations
+            r"\b(create|delete|move|copy|rename)\s+(file|folder|directory)",
+            # System control
+            r"\b(restart|shutdown|sleep|hibernate)\b",
+            r"\b(volume|brightness)\s+(up|down|mute|unmute)",
+            # Clipboard operations
+            r"\b(copy|paste|cut)\b",
+            # Typing/clicking
+            r"\b(type|click|scroll|drag|press)\b",
+        ]
+
+        for pattern in system_command_patterns:
+            if re.search(pattern, command_lower, re.IGNORECASE):
+                logger.info(
+                    f"[VISION] 🚀 System command detected (pattern: {pattern[:30]}...) - routing to UnifiedCommandProcessor"
+                )
+                return {
+                    "handled": False,
+                    "reason": f"System command - should be handled by UnifiedCommandProcessor",
+                    "detected_pattern": pattern[:30],
+                }
+        # =========================================================================
+        # END SYSTEM COMMAND BYPASS
+        # =========================================================================
+
         # SIMPLE TV MONITOR: Check for display prompt responses (YES/NO) - HIGHEST PRIORITY
         logger.info(f"[VISION] Checking if TV monitor response handler should process: '{command_text}'")
         tv_response_result = await self._handle_tv_monitor_response(command_text)
