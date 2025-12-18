@@ -404,12 +404,14 @@ class JARVISLoadingManager {
 
     /**
      * Create the detailed status panel dynamically
+     * Uses flexbox-friendly positioning that adapts to viewport/zoom changes
      */
     createDetailedStatusPanel() {
         if (document.getElementById('detailed-status')) return;
 
         const panel = document.createElement('div');
         panel.id = 'detailed-status';
+        panel.className = 'detailed-status-panel';
         panel.innerHTML = `
             <div class="phase-indicator" id="phase-indicator">
                 <span class="phase-label">Phase:</span>
@@ -431,135 +433,226 @@ class JARVISLoadingManager {
                 </div>
             </div>
         `;
-        panel.style.cssText = `
-            position: absolute;
-            bottom: 120px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 20, 0, 0.85);
-            border: 1px solid rgba(0, 255, 65, 0.3);
-            border-radius: 12px;
-            padding: 16px 24px;
-            min-width: 360px;
-            max-width: 520px;
-            font-family: 'SF Mono', Monaco, monospace;
-            font-size: 12px;
-            color: #00ff41;
-            box-shadow: 0 4px 20px rgba(0, 255, 65, 0.2);
-            z-index: 100;
-        `;
 
+        // Create responsive styles using CSS custom properties and viewport units
         const style = document.createElement('style');
+        style.id = 'detailed-status-styles';
         style.textContent = `
-            .phase-indicator {
+            /* Detailed Status Panel - Responsive & Flexbox-friendly */
+            .detailed-status-panel {
+                /* Use relative positioning within flex container */
+                position: relative;
+                width: 100%;
+                max-width: min(520px, 90vw);
+                margin: 0 auto;
+                
+                /* Responsive padding and sizing */
+                padding: clamp(12px, 2vw, 16px) clamp(16px, 3vw, 24px);
+                
+                /* Visual styling */
+                background: rgba(0, 20, 0, 0.85);
+                border: 1px solid rgba(0, 255, 65, 0.3);
+                border-radius: clamp(8px, 1.5vw, 12px);
+                
+                /* Typography */
+                font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+                font-size: clamp(10px, 1.5vw, 12px);
+                color: #00ff41;
+                
+                /* Effects */
+                box-shadow: 0 4px 20px rgba(0, 255, 65, 0.2);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                
+                /* Flex item behavior */
+                flex-shrink: 0;
+                order: 7; /* Position after status-message (order: 6) in flex layout */
+                
+                /* Animation */
+                opacity: 0;
+                transform: translateY(10px);
+                animation: panelFadeIn 0.4s ease-out forwards;
+                animation-delay: 0.3s;
+            }
+            
+            @keyframes panelFadeIn {
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            
+            .detailed-status-panel .phase-indicator {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                margin-bottom: 12px;
-                padding-bottom: 8px;
+                gap: clamp(6px, 1vw, 8px);
+                margin-bottom: clamp(8px, 1.5vh, 12px);
+                padding-bottom: clamp(6px, 1vh, 8px);
                 border-bottom: 1px solid rgba(0, 255, 65, 0.2);
-                font-size: 10px;
+                font-size: clamp(8px, 1.2vw, 10px);
                 text-transform: uppercase;
                 letter-spacing: 1px;
             }
-            .phase-label {
+            
+            .detailed-status-panel .phase-label {
                 opacity: 0.6;
             }
-            .phase-value {
+            
+            .detailed-status-panel .phase-value {
                 font-weight: 600;
-                padding: 2px 8px;
+                padding: 2px clamp(6px, 1vw, 8px);
                 background: rgba(0, 255, 65, 0.1);
                 border-radius: 4px;
+                transition: color 0.3s ease, background 0.3s ease;
             }
-            .phase-value.cleanup { color: #ffaa00; }
-            .phase-value.starting { color: #00aaff; }
-            .phase-value.initialization { color: #00ff88; }
-            .phase-value.ready { color: #00ffff; }
-            .phase-value.complete { color: #00ff41; }
-            .phase-value.error { color: #ff4444; }
-            .stage-header {
+            
+            .detailed-status-panel .phase-value.cleanup { color: #ffaa00; background: rgba(255, 170, 0, 0.1); }
+            .detailed-status-panel .phase-value.starting { color: #00aaff; background: rgba(0, 170, 255, 0.1); }
+            .detailed-status-panel .phase-value.initialization { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+            .detailed-status-panel .phase-value.ready { color: #00ffff; background: rgba(0, 255, 255, 0.1); }
+            .detailed-status-panel .phase-value.complete { color: #00ff41; background: rgba(0, 255, 65, 0.15); }
+            .detailed-status-panel .phase-value.error { color: #ff4444; background: rgba(255, 68, 68, 0.1); }
+            
+            .detailed-status-panel .stage-header {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                margin-bottom: 12px;
-                font-size: 14px;
+                gap: clamp(8px, 1.5vw, 10px);
+                margin-bottom: clamp(8px, 1.5vh, 12px);
+                font-size: clamp(12px, 2vw, 14px);
                 font-weight: 600;
             }
-            .stage-icon {
-                font-size: 18px;
+            
+            .detailed-status-panel .stage-icon {
+                font-size: clamp(14px, 2.5vw, 18px);
             }
-            .substep-list {
+            
+            .detailed-status-panel .substep-list {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
-                margin-bottom: 12px;
-                padding-left: 28px;
+                gap: clamp(4px, 0.8vh, 6px);
+                margin-bottom: clamp(8px, 1.5vh, 12px);
+                padding-left: clamp(20px, 4vw, 28px);
             }
-            .substep {
+            
+            .detailed-status-panel .substep {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                font-size: 11px;
+                gap: clamp(6px, 1vw, 8px);
+                font-size: clamp(9px, 1.4vw, 11px);
                 opacity: 0.6;
-                transition: opacity 0.3s ease;
+                transition: opacity 0.3s ease, color 0.3s ease;
             }
-            .substep.active {
+            
+            .detailed-status-panel .substep.active {
                 opacity: 1;
                 color: #00ff88;
             }
-            .substep.completed {
+            
+            .detailed-status-panel .substep.completed {
                 opacity: 0.8;
                 color: #00aa44;
             }
-            .substep-indicator {
-                width: 6px;
-                height: 6px;
+            
+            .detailed-status-panel .substep-indicator {
+                width: clamp(4px, 0.8vw, 6px);
+                height: clamp(4px, 0.8vw, 6px);
                 border-radius: 50%;
                 background: rgba(0, 255, 65, 0.3);
                 transition: all 0.3s ease;
+                flex-shrink: 0;
             }
-            .substep.active .substep-indicator {
+            
+            .detailed-status-panel .substep.active .substep-indicator {
                 background: #00ff88;
                 box-shadow: 0 0 8px #00ff88;
-                animation: pulse 1s ease-in-out infinite;
+                animation: indicatorPulse 1s ease-in-out infinite;
             }
-            .substep.completed .substep-indicator {
+            
+            .detailed-status-panel .substep.completed .substep-indicator {
                 background: #00aa44;
             }
-            @keyframes pulse {
+            
+            @keyframes indicatorPulse {
                 0%, 100% { transform: scale(1); }
                 50% { transform: scale(1.3); }
             }
-            .system-info {
+            
+            .detailed-status-panel .system-info {
                 display: flex;
                 justify-content: space-between;
-                padding-top: 12px;
+                flex-wrap: wrap;
+                gap: clamp(8px, 1.5vw, 12px);
+                padding-top: clamp(8px, 1.5vh, 12px);
                 border-top: 1px solid rgba(0, 255, 65, 0.2);
-                font-size: 10px;
+                font-size: clamp(8px, 1.3vw, 10px);
             }
-            .info-label {
+            
+            .detailed-status-panel .info-label {
                 opacity: 0.6;
-                margin-right: 6px;
+                margin-right: clamp(4px, 0.8vw, 6px);
             }
-            .info-value {
+            
+            .detailed-status-panel .info-value {
                 font-weight: 500;
+                transition: color 0.3s ease;
             }
-            .memory-status .info-value.low { color: #ff4444; }
-            .memory-status .info-value.medium { color: #ffaa00; }
-            .memory-status .info-value.good { color: #00ff88; }
-            .mode-indicator .info-value.minimal { color: #ffaa00; }
-            .mode-indicator .info-value.standard { color: #00ff88; }
-            .mode-indicator .info-value.full { color: #00ffff; }
+            
+            .detailed-status-panel .memory-status .info-value.low { color: #ff4444; }
+            .detailed-status-panel .memory-status .info-value.medium { color: #ffaa00; }
+            .detailed-status-panel .memory-status .info-value.good { color: #00ff88; }
+            
+            .detailed-status-panel .mode-indicator .info-value.minimal { color: #ffaa00; }
+            .detailed-status-panel .mode-indicator .info-value.standard { color: #00ff88; }
+            .detailed-status-panel .mode-indicator .info-value.full { color: #00ffff; }
+            
+            /* Responsive adjustments for very small screens */
+            @media (max-width: 480px) {
+                .detailed-status-panel {
+                    padding: clamp(10px, 2.5vw, 14px);
+                }
+                
+                .detailed-status-panel .system-info {
+                    flex-direction: column;
+                    gap: 6px;
+                }
+            }
+            
+            /* Landscape mobile optimization */
+            @media (max-height: 500px) and (orientation: landscape) {
+                .detailed-status-panel {
+                    padding: 8px 12px;
+                    max-width: min(400px, 60vw);
+                }
+                
+                .detailed-status-panel .substep-list {
+                    max-height: 60px;
+                    overflow-y: auto;
+                }
+            }
         `;
-        document.head.appendChild(style);
+        
+        // Only add styles once
+        if (!document.getElementById('detailed-status-styles')) {
+            document.head.appendChild(style);
+        }
 
-        const progressContainer = document.querySelector('.progress-container');
-        if (progressContainer && progressContainer.parentNode) {
-            progressContainer.parentNode.insertBefore(panel, progressContainer);
+        // Insert panel AFTER status-message (which is after progress-container)
+        // This places it below the progress bar in the flex layout
+        const statusMessage = document.getElementById('status-message');
+        const stagesContainer = document.getElementById('stages-container');
+        
+        if (statusMessage && statusMessage.parentNode) {
+            // Insert after status message
+            statusMessage.parentNode.insertBefore(panel, statusMessage.nextSibling);
+        } else if (stagesContainer && stagesContainer.parentNode) {
+            // Fallback: insert before stages container
+            stagesContainer.parentNode.insertBefore(panel, stagesContainer);
         } else {
+            // Last resort: append to loading container
             document.querySelector('.loading-container')?.appendChild(panel);
         }
 
+        // Cache element references
         this.elements.detailedStatus = panel;
         this.elements.stageIcon = document.getElementById('stage-icon');
         this.elements.stageName = document.getElementById('stage-name');

@@ -106,15 +106,22 @@
             text-align: center;
             z-index: 10;
             position: relative;
-            max-width: 900px;
+            max-width: min(900px, 90vw);
             width: 90%;
-            padding: 40px;
+            padding: clamp(1rem, 4vh, 2.5rem);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(0.5rem, 2vh, 1.5rem);
+            min-height: 100vh;
+            box-sizing: border-box;
         }
 
         /* Logo */
         .jarvis-logo {
             font-family: 'Orbitron', monospace;
-            font-size: 5rem;
+            font-size: clamp(2.5rem, 8vw, 5rem);
             font-weight: 900;
             background: linear-gradient(135deg, var(--jarvis-green) 0%, var(--jarvis-green-dark) 100%);
             -webkit-background-clip: text;
@@ -122,33 +129,34 @@
             background-clip: text;
             filter: drop-shadow(0 0 30px var(--jarvis-green-glow));
             animation: pulse 2s ease-in-out infinite;
-            margin-bottom: 10px;
+            flex-shrink: 0;
         }
 
         .subtitle {
-            font-size: 1.3rem;
+            font-size: clamp(0.9rem, 2vw, 1.3rem);
             color: var(--jarvis-green-dark);
-            margin-bottom: 60px;
             letter-spacing: 0.3em;
             text-transform: uppercase;
             opacity: 0.9;
+            flex-shrink: 0;
         }
 
         /* Arc Reactor Wrapper */
         .arc-reactor-wrapper {
-            width: 300px;
-            height: 300px;
-            margin: 0 auto 50px;
+            --reactor-size: clamp(180px, 30vmin, 300px);
+            width: var(--reactor-size);
+            height: var(--reactor-size);
             position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
         }
 
         /* Arc Reactor */
         .arc-reactor {
-            width: 300px;
-            height: 300px;
+            width: 100%;
+            height: 100%;
             position: absolute;
             top: 50%;
             left: 50%;
@@ -168,7 +176,7 @@
 
         .reactor-ring {
             position: absolute;
-            border: 3px solid;
+            border: clamp(2px, 0.4vmin, 4px) solid;
             border-radius: 50%;
             animation: rotate linear infinite;
             inset: 0;
@@ -176,10 +184,9 @@
         }
 
         .reactor-ring:nth-child(1) {
-            width: 300px;
-            height: 300px;
+            width: 100%;
+            height: 100%;
             border-color: var(--jarvis-green) transparent transparent transparent;
-            border-width: 4px;
             animation: rotate 3s linear infinite, ringPulse1 2s ease-in-out infinite;
             box-shadow:
                 0 0 20px var(--jarvis-green-glow),
@@ -187,10 +194,9 @@
         }
 
         .reactor-ring:nth-child(2) {
-            width: 220px;
-            height: 220px;
+            width: 73%;
+            height: 73%;
             border-color: transparent var(--jarvis-green-dark) transparent transparent;
-            border-width: 4px;
             animation: rotate 2s linear infinite reverse, ringPulse2 2.5s ease-in-out infinite;
             box-shadow:
                 0 0 15px var(--jarvis-green-glow),
@@ -198,10 +204,9 @@
         }
 
         .reactor-ring:nth-child(3) {
-            width: 140px;
-            height: 140px;
+            width: 47%;
+            height: 47%;
             border-color: transparent transparent var(--jarvis-green) transparent;
-            border-width: 4px;
             animation: rotate 1.5s linear infinite, ringPulse3 3s ease-in-out infinite;
             box-shadow:
                 0 0 10px var(--jarvis-green-glow),
@@ -243,8 +248,8 @@
 
         .reactor-core {
             position: absolute;
-            width: 80px;
-            height: 80px;
+            width: 27%;
+            height: 27%;
             inset: 0;
             margin: auto;
             background: radial-gradient(circle,
@@ -267,8 +272,8 @@
         .reactor-core::before {
             content: '';
             position: absolute;
-            width: 50px;
-            height: 50px;
+            width: 62%;
+            height: 62%;
             inset: 0;
             margin: auto;
             background: var(--jarvis-green);
@@ -318,19 +323,19 @@
 
         /* Progress percentage */
         .progress-percentage {
-            font-size: 3rem;
+            font-size: clamp(1.8rem, 5vw, 3rem);
             font-weight: 700;
             color: var(--jarvis-green);
-            margin-bottom: 25px;
             font-family: 'Orbitron', monospace;
             text-shadow: 0 0 20px var(--jarvis-green-glow);
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
 
         /* Progress bar */
         .progress-container {
             width: 100%;
-            height: 50px;
+            height: clamp(30px, 5vh, 50px);
             background: rgba(0, 255, 65, 0.08);
             border: 2px solid var(--jarvis-green);
             border-radius: 25px;
@@ -339,7 +344,7 @@
             box-shadow:
                 0 0 15px var(--jarvis-green-glow),
                 inset 0 0 15px rgba(0, 255, 65, 0.1);
-            margin-bottom: 30px;
+            flex-shrink: 0;
         }
 
         .progress-bar {
@@ -381,28 +386,29 @@
 
         /* Status message */
         .status-message {
-            font-size: 1.2rem;
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
             color: #fff;
-            margin: 20px 0;
-            min-height: 40px;
+            min-height: clamp(24px, 4vh, 40px);
             text-shadow: 0 0 10px var(--jarvis-green-glow);
             font-weight: 500;
             letter-spacing: 0.05em;
+            flex-shrink: 0;
         }
 
         /* Stage indicators */
         .stages-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
-            margin-top: 50px;
+            grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 15vw, 140px), 1fr));
+            gap: clamp(8px, 1.5vw, 15px);
+            width: 100%;
+            flex-shrink: 0;
         }
 
         .stage-item {
-            padding: 20px 15px;
+            padding: clamp(12px, 2vw, 20px) clamp(10px, 1.5vw, 15px);
             background: rgba(0, 255, 65, 0.05);
             border: 1px solid rgba(0, 255, 65, 0.25);
-            border-radius: 12px;
+            border-radius: clamp(8px, 1.5vw, 12px);
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
@@ -441,22 +447,22 @@
         }
 
         .stage-icon {
-            font-size: 2.5rem;
-            margin-bottom: 12px;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: clamp(6px, 1.5vh, 12px);
             filter: drop-shadow(0 0 5px var(--jarvis-green-glow));
         }
 
         .stage-label {
-            font-size: 0.95rem;
+            font-size: clamp(0.7rem, 1.5vw, 0.95rem);
             text-transform: uppercase;
             font-weight: 600;
             letter-spacing: 0.1em;
         }
 
         .stage-sublabel {
-            font-size: 0.75rem;
+            font-size: clamp(0.6rem, 1.2vw, 0.75rem);
             color: var(--jarvis-green-dark);
-            margin-top: 5px;
+            margin-top: clamp(3px, 0.5vh, 5px);
             opacity: 0;
             transition: opacity 0.3s;
         }
@@ -469,16 +475,16 @@
         /* Connection status */
         .connection-status {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
+            top: clamp(10px, 2vw, 20px);
+            right: clamp(10px, 2vw, 20px);
+            padding: clamp(6px, 1.5vw, 10px) clamp(12px, 2.5vw, 20px);
             background: rgba(0, 0, 0, 0.7);
             border: 1px solid rgba(0, 255, 65, 0.3);
-            border-radius: 8px;
-            font-size: 0.9rem;
+            border-radius: clamp(6px, 1vw, 8px);
+            font-size: clamp(0.7rem, 1.5vw, 0.9rem);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: clamp(6px, 1.5vw, 10px);
             z-index: 100;
         }
 
@@ -543,17 +549,18 @@
 
         /* Details panel */
         .details-panel {
-            margin-top: 40px;
-            padding: 25px;
+            padding: clamp(15px, 3vw, 25px);
             background: rgba(0, 255, 65, 0.03);
             border: 1px solid rgba(0, 255, 65, 0.15);
-            border-radius: 12px;
-            max-height: 250px;
+            border-radius: clamp(8px, 1.5vw, 12px);
+            max-height: clamp(150px, 25vh, 250px);
             overflow-y: auto;
             text-align: left;
             opacity: 0;
             transform: translateY(20px);
             transition: all 0.4s ease;
+            width: 100%;
+            flex-shrink: 0;
         }
 
         .details-panel.visible {
@@ -594,12 +601,13 @@
         /* Error state */
         .error-container {
             display: none;
-            margin-top: 40px;
-            padding: 30px;
+            padding: clamp(15px, 4vw, 30px);
             background: rgba(255, 68, 68, 0.1);
             border: 2px solid var(--jarvis-red);
-            border-radius: 12px;
+            border-radius: clamp(8px, 1.5vw, 12px);
             animation: shake 0.5s;
+            width: 100%;
+            flex-shrink: 0;
         }
 
         .error-container.visible {
@@ -607,19 +615,19 @@
         }
 
         .error-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            margin-bottom: clamp(10px, 2vh, 20px);
         }
 
         .error-title {
-            font-size: 1.8rem;
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
             color: var(--jarvis-red);
-            margin-bottom: 15px;
+            margin-bottom: clamp(8px, 2vh, 15px);
             font-weight: 700;
         }
 
         .error-message {
-            font-size: 1.1rem;
+            font-size: clamp(0.85rem, 2vw, 1.1rem);
             color: #ff8888;
             line-height: 1.6;
         }
@@ -630,62 +638,38 @@
             75% { transform: translateX(10px); }
         }
 
-        /* Responsive */
+        /* Responsive - using clamp() for fluid sizing, media queries for layout changes */
         @media (max-width: 768px) {
-            .jarvis-logo {
-                font-size: 3.5rem;
-            }
-
-            .subtitle {
-                font-size: 1rem;
-            }
-
-            .arc-reactor-wrapper {
-                width: 220px;
-                height: 220px;
-            }
-
-            .arc-reactor {
-                width: 220px;
-                height: 220px;
-            }
-
-            .reactor-ring:nth-child(1) {
-                width: 220px;
-                height: 220px;
-            }
-
-            .reactor-ring:nth-child(2) {
-                width: 160px;
-                height: 160px;
-            }
-
-            .reactor-ring:nth-child(3) {
-                width: 100px;
-                height: 100px;
-            }
-
-            .reactor-core {
-                width: 60px;
-                height: 60px;
-            }
-
-            .reactor-core::before {
-                width: 38px;
-                height: 38px;
+            .loading-container {
+                gap: clamp(0.3rem, 1.5vh, 1rem);
             }
 
             .stages-container {
-                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-                gap: 10px;
+                grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            }
+        }
+
+        /* Extra small screens */
+        @media (max-width: 480px) {
+            .loading-container {
+                padding: clamp(0.5rem, 2vw, 1rem);
             }
 
-            .stage-icon {
-                font-size: 2rem;
+            .stages-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Handle landscape orientation on mobile */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .loading-container {
+                min-height: auto;
+                padding-top: 1rem;
+                padding-bottom: 1rem;
             }
 
-            .stage-label {
-                font-size: 0.8rem;
+            .arc-reactor-wrapper {
+                --reactor-size: clamp(100px, 25vmin, 180px);
             }
         }
     </style>
@@ -703,13 +687,13 @@
         <span id="status-text">Connecting to backend...</span>
     </div>
 
-    <!-- Main loading container -->
+    <!-- Main loading container - uses flexbox for responsive layout -->
     <div class="loading-container">
-        <div class="jarvis-logo">J.A.R.V.I.S.</div>
-        <div class="subtitle" id="subtitle">System Initialization</div>
+        <div class="jarvis-logo" style="order: 1;">J.A.R.V.I.S.</div>
+        <div class="subtitle" id="subtitle" style="order: 2;">System Initialization</div>
 
         <!-- Arc Reactor -->
-        <div class="arc-reactor-wrapper">
+        <div class="arc-reactor-wrapper" style="order: 3;">
             <div class="arc-reactor">
                 <div class="reactor-ring"></div>
                 <div class="reactor-ring"></div>
@@ -719,24 +703,26 @@
         </div>
 
         <!-- Progress percentage -->
-        <div class="progress-percentage" id="progress-percentage">0%</div>
+        <div class="progress-percentage" id="progress-percentage" style="order: 4;">0%</div>
 
         <!-- Progress bar -->
-        <div class="progress-container">
+        <div class="progress-container" style="order: 5;">
             <div class="progress-bar" id="progress-bar"></div>
         </div>
 
         <!-- Status message -->
-        <div class="status-message" id="status-message">Initializing JARVIS systems...</div>
+        <div class="status-message" id="status-message" style="order: 6;">Initializing JARVIS systems...</div>
+
+        <!-- Detailed status panel will be dynamically inserted here with order: 7 -->
 
         <!-- Stage indicators (dynamically populated) -->
-        <div class="stages-container" id="stages-container"></div>
+        <div class="stages-container" id="stages-container" style="order: 8;"></div>
 
         <!-- Details panel -->
-        <div class="details-panel" id="details-panel"></div>
+        <div class="details-panel" id="details-panel" style="order: 9;"></div>
 
         <!-- Error container -->
-        <div class="error-container" id="error-container">
+        <div class="error-container" id="error-container" style="order: 10;">
             <div class="error-icon">⚠️</div>
             <div class="error-title">Startup Failed</div>
             <div class="error-message" id="error-message"></div>

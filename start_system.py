@@ -5897,8 +5897,38 @@ class IntelligentChromeIncognitoManager:
         # Use GLOBAL lock to prevent race conditions across ALL browser operations
         global_lock = _get_browser_lock()
         async with global_lock:
-            # CRITICAL: Check global flag FIRST - if browser already opened, just redirect
             global _browser_opened_this_startup
+
+            # =================================================================
+            # CRITICAL FIX: Quick check FIRST for existing incognito windows
+            # =================================================================
+            # Before doing anything else, check if there's already an incognito
+            # window open. This catches windows from PREVIOUS sessions that should
+            # be reused instead of creating duplicates.
+            # =================================================================
+            if not force_new:
+                logger.info("🔍 Quick check for existing incognito windows...")
+                quick_window = await self._quick_find_any_incognito_window()
+
+                if quick_window is not None:
+                    # Found existing incognito window - ALWAYS reuse it!
+                    logger.info(f"🔄 Found existing incognito window {quick_window} - reusing instead of creating new")
+                    success = await self._redirect_incognito_window(quick_window, url)
+                    if success:
+                        _browser_opened_this_startup = True
+                        await self._ensure_fullscreen()
+                        return {
+                            'success': True,
+                            'action': 'redirected',
+                            'duplicates_closed': 0,
+                            'regular_windows_closed': 0,
+                            'error': None
+                        }
+                    else:
+                        # Redirect failed but window exists - try detailed scan
+                        logger.warning("Quick redirect failed - falling back to detailed scan")
+
+            # Check global flag - if browser already opened this startup
             if _browser_opened_this_startup and not force_new:
                 logger.info("🔒 Browser already opened this startup - checking for existing window to redirect")
                 # Try to redirect existing window instead of creating new
