@@ -396,6 +396,53 @@ class MacOSController:
         except Exception as e:
             return False, str(e)
 
+    async def execute_applescript_async(self, script: str, timeout: float = 10.0) -> Tuple[bool, str]:
+        """Execute AppleScript asynchronously without blocking the event loop.
+
+        This is the PROPER async method that should be used in all async contexts.
+        Uses asyncio.create_subprocess_exec to avoid blocking.
+
+        Args:
+            script: The AppleScript code to execute
+            timeout: Timeout in seconds (default 10.0)
+
+        Returns:
+            Tuple of (success: bool, output: str)
+        """
+        import asyncio
+
+        try:
+            # Create subprocess asynchronously
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for completion with timeout
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                # Kill the process if it times out
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+                return False, "AppleScript execution timed out"
+
+            if process.returncode == 0:
+                return True, stdout.decode().strip()
+            else:
+                return False, stderr.decode().strip()
+
+        except Exception as e:
+            logger.error(f"Async AppleScript execution error: {e}")
+            return False, str(e)
+
     async def execute_shell_pipeline(
         self, command: str, safe_mode: bool = True, timeout: float = 30.0
     ) -> Tuple[bool, str]:
@@ -992,7 +1039,7 @@ class MacOSController:
         return False, f"Failed to focus search bar: {message}"
 
     async def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
-        """Open URL in browser (async)"""
+        """Open URL in browser (async - non-blocking)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
             should_proceed, message = self._handle_locked_screen_command("open_url")
@@ -1001,7 +1048,7 @@ class MacOSController:
 
         if browser:
             browser = self.app_aliases.get(browser.lower(), browser)
-            # Use AppleScript for better browser control
+            # Use AppleScript for better browser control (ASYNC - non-blocking)
             script = f"""
             tell application "{browser}"
                 activate
@@ -1011,7 +1058,7 @@ class MacOSController:
                 set URL of current tab of front window to "{url}"
             end tell
             """
-            success, message = self.execute_applescript(script)
+            success, message = await self.execute_applescript_async(script)
             if success:
                 # Make URL response more conversational
                 if "google.com/search?q=" in url.lower():
