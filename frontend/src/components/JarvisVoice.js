@@ -3139,9 +3139,9 @@ const JarvisVoice = () => {
     // The old getBufferedAudioBase64() concatenates MediaRecorder chunks which produces
     // invalid WebM files (broken headers). Fresh capture creates a valid WebM container.
 
-    // Skip audio capture ONLY for lock commands (ultra-fast path)
-    // UNLOCK REQUIRES AUDIO for voice biometric verification!
-    const skipAudioForCommand = effectiveCommandType === 'lock';
+    // Skip audio capture for lock commands - they don't need voice verification
+    // Only unlock commands require audio for voice biometric verification (VBI)
+    const skipAudioForCommand = (effectiveCommandType === 'lock'); 
 
     if (!skipAudioForCommand && continuousAudioBufferRef.current && continuousAudioBufferRef.current.isRunning) {
       try {
@@ -3188,7 +3188,7 @@ const JarvisVoice = () => {
         setResponse('🔒 Locking...');
         // Locking can interrupt the UI/WS (screen locks, browser suspends, etc.).
         // Don't leave the UI stuck in a "processing" state if the backend response never arrives.
-        setIsProcessing(false);
+        setIsProcessing(true); // Changed to true to show processing until backend responds (or timeout)
       } else if (effectiveCommandType === 'unlock') {
         setResponse('🔓 Unlocking...');
         setIsProcessing(true);

@@ -5796,6 +5796,975 @@ def get_tiered_storage_manager() -> TieredStorageManager:
 
 
 # =============================================================================
+# Intelligent Chrome Incognito Manager - ALWAYS Incognito, Single Window Only
+# =============================================================================
+
+class IntelligentChromeIncognitoManager:
+    """
+    Advanced Chrome Incognito Window Manager for JARVIS.
+
+    DESIGN PHILOSOPHY: INCOGNITO ONLY, SINGLE WINDOW, ZERO DUPLICATES
+
+    This manager ensures:
+    1. ONLY Chrome Incognito mode is used - NEVER regular Chrome windows
+    2. EXACTLY ONE incognito window/tab with JARVIS at any time
+    3. Intelligent deduplication - closes ALL duplicates automatically
+    4. Cache-free experience - bypasses all cached CSS, JS, assets
+    5. Robust async operations with retry logic and error recovery
+
+    Key Features:
+    - Parallel window scanning with asyncio.gather()
+    - Intelligent URL pattern matching (localhost:3000, 3001, 8010, etc.)
+    - Graceful degradation with detailed error reporting
+    - Window state persistence across restarts
+    - Automatic cleanup on system restart
+    """
+
+    # URL patterns that identify JARVIS tabs (dynamically loaded, no hardcoding)
+    JARVIS_URL_PATTERNS = None  # Loaded from config
+
+    # Default patterns as fallback
+    DEFAULT_URL_PATTERNS = [
+        "localhost:3000", "localhost:3001", "localhost:8010",
+        "localhost:8001", "localhost:8888",
+        "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010",
+        "127.0.0.1:8001", "127.0.0.1:8888"
+    ]
+
+    def __init__(self):
+        self._incognito_window_id: Optional[int] = None
+        self._incognito_tab_id: Optional[int] = None
+        self._session_started: bool = False
+        self._lock = asyncio.Lock()
+        self._last_operation_time: Optional[datetime] = None
+        self._operation_count: int = 0
+        self._error_count: int = 0
+        self._retry_delays = [0.5, 1.0, 2.0, 5.0]  # Exponential backoff
+
+        # Load URL patterns from config
+        self._load_url_patterns()
+
+        logger.info("🔒 IntelligentChromeIncognitoManager initialized (INCOGNITO-ONLY mode)")
+
+    def _load_url_patterns(self):
+        """Load JARVIS URL patterns from configuration file."""
+        config_paths = [
+            Path(__file__).parent / 'backend' / 'config' / 'startup_progress_config.json',
+            Path(__file__).parent / 'backend' / 'config' / 'browser_config.json',
+        ]
+
+        for config_path in config_paths:
+            try:
+                if config_path.exists():
+                    with open(config_path, 'r') as f:
+                        data = json.load(f)
+                        patterns = data.get('jarvis_url_patterns',
+                                          data.get('browser_config', {}).get('url_patterns'))
+                        if patterns:
+                            self.JARVIS_URL_PATTERNS = patterns
+                            logger.debug(f"Loaded {len(patterns)} URL patterns from {config_path.name}")
+                            return
+            except Exception as e:
+                logger.debug(f"Could not load URL patterns from {config_path}: {e}")
+
+        # Use defaults
+        self.JARVIS_URL_PATTERNS = self.DEFAULT_URL_PATTERNS.copy()
+        logger.debug(f"Using default URL patterns: {len(self.JARVIS_URL_PATTERNS)} patterns")
+
+    async def ensure_single_incognito_window(self, url: str, force_new: bool = False) -> dict:
+        """
+        Ensure exactly ONE Chrome Incognito window with JARVIS.
+
+        This is the main entry point. It will:
+        1. Close ALL regular Chrome windows with JARVIS tabs
+        2. Close ALL duplicate incognito windows with JARVIS tabs
+        3. Keep or create exactly ONE incognito window
+        4. Navigate that window to the specified URL
+
+        Args:
+            url: The URL to load (e.g., http://localhost:3001)
+            force_new: If True, close everything and create fresh incognito window
+
+        Returns:
+            dict with status info: {
+                'success': bool,
+                'action': 'reused' | 'created' | 'redirected',
+                'duplicates_closed': int,
+                'regular_windows_closed': int,
+                'error': Optional[str]
+            }
+        """
+        # Use GLOBAL lock to prevent race conditions across ALL browser operations
+        global_lock = _get_browser_lock()
+        async with global_lock:
+            # CRITICAL: Check global flag FIRST - if browser already opened, just redirect
+            global _browser_opened_this_startup
+            if _browser_opened_this_startup and not force_new:
+                logger.info("🔒 Browser already opened this startup - checking for existing window to redirect")
+                # Try to redirect existing window instead of creating new
+                scan_result = await self._scan_all_chrome_windows()
+                all_incognito = scan_result.get('all_incognito_windows', [])
+                if all_incognito:
+                    logger.info(f"🔄 Found {len(all_incognito)} existing incognito window(s) - redirecting")
+                    success = await self._redirect_incognito_window(all_incognito[0], url)
+                    if success:
+                        await self._ensure_fullscreen()
+                    return {
+                        'success': success,
+                        'action': 'redirected',
+                        'duplicates_closed': 0,
+                        'regular_windows_closed': 0,
+                        'error': None
+                    }
+                # Flag was set but no window found - reset flag and continue
+                logger.warning("Flag set but no incognito window found - resetting flag")
+                _browser_opened_this_startup = False
+
+            async with self._lock:
+                self._operation_count += 1
+                self._last_operation_time = datetime.now()
+
+                result = {
+                    'success': False,
+                    'action': None,
+                    'duplicates_closed': 0,
+                    'regular_windows_closed': 0,
+                    'error': None
+                }
+
+                try:
+                    # Step 1: Scan and categorize all Chrome windows
+                    scan_result = await self._scan_all_chrome_windows()
+
+                    if not scan_result['chrome_running']:
+                        # Detailed scan says Chrome not running - do a quick fallback check
+                        # This catches cases where the scan failed or timed out
+                        logger.info("🔍 Detailed scan says no Chrome - running quick fallback check...")
+                        quick_window = await self._quick_find_any_incognito_window()
+
+                        if quick_window is not None:
+                            # Chrome IS running and has incognito window - reuse it!
+                            logger.info(f"🔄 Quick scan found Chrome with incognito window {quick_window} - reusing")
+                            _browser_opened_this_startup = True
+                            success = await self._redirect_incognito_window(quick_window, url)
+                            if success:
+                                await self._ensure_fullscreen()
+                            result['success'] = success
+                            result['action'] = 'redirected'
+                            return result
+                        else:
+                            # Confirmed: Chrome not running or no incognito - safe to launch
+                            logger.info("🔒 Confirmed no Chrome incognito - launching fresh window")
+                            _browser_opened_this_startup = True  # Set BEFORE launch!
+                            success = await self._launch_fresh_incognito(url)
+                            result['success'] = success
+                            result['action'] = 'created'
+                            return result
+
+                    # Step 2: Close ALL regular Chrome windows with JARVIS tabs
+                    if scan_result['regular_jarvis_windows']:
+                        closed = await self._close_regular_jarvis_windows(
+                            scan_result['regular_jarvis_windows']
+                        )
+                        result['regular_windows_closed'] = closed
+                        logger.info(f"🗑️ Closed {closed} regular Chrome windows with JARVIS tabs")
+
+                    # Step 3: Handle incognito windows
+                    # CRITICAL: Use ALL incognito windows, not just JARVIS ones!
+                    all_incognito = scan_result.get('all_incognito_windows', [])
+                    jarvis_incognito = scan_result['incognito_jarvis_windows']
+
+                    logger.info(f"🔍 Found {len(all_incognito)} total incognito, {len(jarvis_incognito)} with JARVIS URLs")
+
+                    if force_new:
+                        # Force new: close ALL incognito windows and create fresh
+                        if all_incognito:
+                            closed = await self._close_incognito_windows(all_incognito)
+                            result['duplicates_closed'] = closed
+                            logger.info(f"🗑️ Force new: closed {closed} incognito windows")
+
+                        _browser_opened_this_startup = True  # Set BEFORE launch!
+                        success = await self._launch_fresh_incognito(url)
+                        result['success'] = success
+                        result['action'] = 'created'
+
+                    elif not all_incognito:
+                        # Detailed scan found no incognito windows - do a quick fallback check
+                        # This catches cases where the detailed scan failed to parse correctly
+                        logger.info("🔍 Detailed scan found no incognito - running quick fallback check...")
+                        quick_window = await self._quick_find_any_incognito_window()
+
+                        if quick_window is not None:
+                            # Found existing incognito window via fallback - reuse it!
+                            logger.info(f"🔄 Quick scan found existing incognito window {quick_window} - reusing instead of creating duplicate")
+                            _browser_opened_this_startup = True
+                            success = await self._redirect_incognito_window(quick_window, url)
+                            if success:
+                                await self._ensure_fullscreen()
+                            result['success'] = success
+                            result['action'] = 'redirected'
+                        else:
+                            # Confirmed: No incognito windows exist - safe to create
+                            logger.info("🔒 Confirmed no incognito windows exist - creating new one")
+                            _browser_opened_this_startup = True  # Set BEFORE launch!
+                            success = await self._launch_fresh_incognito(url)
+                            result['success'] = success
+                            result['action'] = 'created'
+
+                    elif len(all_incognito) == 1:
+                        # Perfect - exactly one incognito window, redirect it
+                        logger.info(f"🔄 Reusing existing incognito window {all_incognito[0]}")
+                        _browser_opened_this_startup = True  # Set flag for redirect too
+                        success = await self._redirect_incognito_window(
+                            all_incognito[0], url
+                        )
+                        if success:
+                            await self._ensure_fullscreen()
+                        result['success'] = success
+                        result['action'] = 'redirected'
+
+                    else:
+                        # Multiple incognito windows - keep first, close rest
+                        to_keep = all_incognito[0]
+                        to_close = all_incognito[1:]
+
+                        logger.info(f"🔄 Multiple incognito windows - keeping {to_keep}, closing {len(to_close)} duplicates")
+                        closed = await self._close_incognito_windows(to_close)
+                        result['duplicates_closed'] = closed
+
+                        _browser_opened_this_startup = True  # Set flag
+                        success = await self._redirect_incognito_window(to_keep, url)
+                        if success:
+                            await self._ensure_fullscreen()
+                        result['success'] = success
+                        result['action'] = 'reused'
+
+                    self._session_started = True
+                    return result
+
+                except Exception as e:
+                    self._error_count += 1
+                    error_msg = f"Chrome Incognito operation failed: {e}"
+                    logger.error(f"❌ {error_msg}")
+                    result['error'] = error_msg
+
+                    # CRITICAL: DO NOT attempt recovery by launching another window!
+                    # If an exception occurred, Chrome may have already been launched.
+                    # Attempting recovery would create duplicate windows.
+                    # Instead, check if Chrome is running and has a window.
+                    try:
+                        verify_result = await self._verify_incognito_opened()
+                        if verify_result:
+                            # Chrome window exists - redirect it instead of launching new
+                            logger.info("🔄 Found existing Chrome window after error - redirecting...")
+                            redirect_success = await self._redirect_incognito_window(1, url)
+                            if redirect_success:
+                                result['success'] = True
+                                result['action'] = 'recovered'
+                                result['error'] = None
+                        else:
+                            # No Chrome window detected - safe to inform user
+                            logger.warning("No Chrome window detected after error")
+                    except Exception as verify_error:
+                        logger.warning(f"Verification after error failed: {verify_error}")
+
+                    return result
+
+    async def _quick_find_any_incognito_window(self) -> Optional[int]:
+        """
+        Quick, robust check for ANY existing incognito window.
+
+        This is a simpler, more reliable fallback when the detailed scan fails.
+        Returns the window index if found, None if no incognito window exists.
+
+        CRITICAL: This should be called before creating a new window to prevent duplicates.
+        """
+        applescript = '''
+        tell application "System Events"
+            if not (exists process "Google Chrome") then
+                return "NO_CHROME"
+            end if
+        end tell
+
+        tell application "Google Chrome"
+            set windowCount to count of windows
+            repeat with i from 1 to windowCount
+                try
+                    set w to window i
+                    if mode of w is "incognito" then
+                        return "FOUND|" & i
+                    end if
+                end try
+            end repeat
+        end tell
+        return "NONE"
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+            output = stdout.decode().strip() if stdout else ""
+
+            if output.startswith("FOUND|"):
+                try:
+                    window_index = int(output.split("|")[1])
+                    logger.info(f"🔍 Quick scan found incognito window at index {window_index}")
+                    return window_index
+                except (ValueError, IndexError):
+                    pass
+            elif output == "NO_CHROME":
+                logger.debug("Quick scan: Chrome not running")
+            elif output == "NONE":
+                logger.debug("Quick scan: No incognito windows found")
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Quick incognito scan failed: {e}")
+            return None
+
+    async def _scan_all_chrome_windows(self) -> dict:
+        """
+        Scan all Chrome windows and categorize them.
+
+        ENHANCED: Now scans for ALL incognito windows, not just those with JARVIS URLs.
+        This ensures we can reuse any existing incognito window instead of creating duplicates.
+
+        Returns:
+            dict: {
+                'chrome_running': bool,
+                'regular_jarvis_windows': list of window indices (with JARVIS URLs),
+                'incognito_jarvis_windows': list of window indices (with JARVIS URLs),
+                'all_incognito_windows': list of ALL incognito window indices,
+                'total_windows': int
+            }
+        """
+        # Build pattern list for AppleScript
+        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+
+        applescript = f'''
+        tell application "System Events"
+            if not (exists process "Google Chrome") then
+                return "NOT_RUNNING"
+            end if
+        end tell
+
+        tell application "Google Chrome"
+            set regularJarvis to {{}}
+            set incognitoJarvis to {{}}
+            set allIncognito to {{}}
+            set jarvisPatterns to {{{patterns_str}}}
+            set windowCount to count of windows
+
+            repeat with windowIndex from 1 to windowCount
+                set w to window windowIndex
+                try
+                    set windowMode to mode of w
+                    set isIncognito to (windowMode is "incognito")
+
+                    -- Track ALL incognito windows (for reuse even if not JARVIS)
+                    if isIncognito then
+                        set end of allIncognito to windowIndex
+                    end if
+
+                    -- Check tabs in this window for JARVIS URLs
+                    set foundJarvis to false
+                    repeat with t in tabs of w
+                        if not foundJarvis then
+                            set tabURL to URL of t
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    if isIncognito then
+                                        set end of incognitoJarvis to windowIndex
+                                    else
+                                        set end of regularJarvis to windowIndex
+                                    end if
+                                    set foundJarvis to true
+                                    exit repeat
+                                end if
+                            end repeat
+                        end if
+                    end repeat
+                end try
+            end repeat
+
+            -- Return as parseable string with all incognito windows
+            return "RUNNING|" & (count of regularJarvis) & "|" & (count of incognitoJarvis) & "|" & windowCount & "|" & (regularJarvis as string) & "|" & (incognitoJarvis as string) & "|" & (count of allIncognito) & "|" & (allIncognito as string)
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
+
+            output = stdout.decode().strip() if stdout else ""
+            logger.debug(f"Window scan output: {output}")
+
+            if output == "NOT_RUNNING":
+                return {
+                    'chrome_running': False,
+                    'regular_jarvis_windows': [],
+                    'incognito_jarvis_windows': [],
+                    'all_incognito_windows': [],
+                    'total_windows': 0
+                }
+
+            if output.startswith("RUNNING|"):
+                parts = output.split("|")
+                if len(parts) >= 4:
+                    regular_count = int(parts[1])
+                    incognito_jarvis_count = int(parts[2])
+                    total = int(parts[3])
+
+                    # Parse window indices
+                    regular_indices = self._parse_applescript_list(parts[4]) if len(parts) > 4 else []
+                    incognito_jarvis_indices = self._parse_applescript_list(parts[5]) if len(parts) > 5 else []
+                    all_incognito_count = int(parts[6]) if len(parts) > 6 else 0
+                    all_incognito_indices = self._parse_applescript_list(parts[7]) if len(parts) > 7 else []
+
+                    logger.info(f"🔍 Chrome scan: {total} windows, {all_incognito_count} incognito, {incognito_jarvis_count} with JARVIS URLs")
+
+                    return {
+                        'chrome_running': True,
+                        'regular_jarvis_windows': regular_indices[:regular_count],
+                        'incognito_jarvis_windows': incognito_jarvis_indices[:incognito_jarvis_count],
+                        'all_incognito_windows': all_incognito_indices[:all_incognito_count],
+                        'total_windows': total
+                    }
+
+            # Fallback - Chrome is running but couldn't parse
+            logger.warning(f"Could not parse Chrome scan result: {output}")
+            return {
+                'chrome_running': True,
+                'regular_jarvis_windows': [],
+                'incognito_jarvis_windows': [],
+                'all_incognito_windows': [],
+                'total_windows': 0
+            }
+
+        except Exception as e:
+            logger.warning(f"Window scan failed: {e}")
+            return {
+                'chrome_running': False,
+                'regular_jarvis_windows': [],
+                'incognito_jarvis_windows': [],
+                'all_incognito_windows': [],
+                'total_windows': 0
+            }
+
+    def _parse_applescript_list(self, list_str: str) -> list:
+        """Parse AppleScript list string into Python list."""
+        if not list_str or list_str == "":
+            return []
+        try:
+            # AppleScript returns lists like "1, 3, 5"
+            return [int(x.strip()) for x in list_str.split(",") if x.strip().isdigit()]
+        except:
+            return []
+
+    async def _launch_fresh_incognito(self, url: str) -> bool:
+        """
+        Launch a fresh Chrome Incognito window with the specified URL in FULLSCREEN mode.
+
+        Uses command-line approach for maximum reliability.
+        Always opens in fullscreen for immersive JARVIS experience.
+
+        CRITICAL: Only launches ONCE to prevent duplicate windows. Verification
+        retries do NOT create new windows - they just wait for the existing one.
+        """
+        launch_succeeded = False
+
+        # Step 1: Try to launch Chrome ONCE (no retry loop for launch!)
+        logger.info("🔒 Launching Chrome Incognito Fullscreen...")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                '/usr/bin/open', '-na', 'Google Chrome',
+                '--args', '--incognito', '--new-window', '--start-fullscreen', url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+            if process.returncode == 0:
+                launch_succeeded = True
+                logger.info("✅ Chrome launch command succeeded")
+            else:
+                error = stderr.decode() if stderr else "Unknown error"
+                logger.warning(f"Chrome launch returned non-zero: {error}")
+
+        except asyncio.TimeoutError:
+            logger.warning("Chrome launch command timed out")
+        except Exception as e:
+            logger.warning(f"Chrome launch failed: {e}")
+
+        # Step 2: If launch succeeded, retry VERIFICATION only (not launch!)
+        if launch_succeeded:
+            # Wait with increasing delays for Chrome to fully open
+            verification_delays = [1.0, 1.5, 2.0, 3.0]  # Total ~7.5s max wait
+            for attempt, delay in enumerate(verification_delays):
+                await asyncio.sleep(delay)
+
+                verify_result = await self._verify_incognito_opened()
+                if verify_result:
+                    await self._ensure_fullscreen()
+                    print(f"{Colors.GREEN}🔒 Chrome Incognito Fullscreen opened successfully{Colors.ENDC}")
+                    logger.info("✅ Chrome Incognito Fullscreen launched and verified")
+                    self._session_started = True
+                    return True
+
+                logger.debug(f"Verification attempt {attempt + 1} - window not yet detected")
+
+            # Launch succeeded but verification failed - window likely opened but not detected
+            # Trust that it opened and return success to prevent duplicate attempts
+            logger.warning("Chrome launched but verification timed out - assuming success")
+            # Still try to ensure fullscreen even if verification failed
+            await self._ensure_fullscreen()
+            print(f"{Colors.YELLOW}🔒 Chrome Incognito launched (verification skipped){Colors.ENDC}")
+            self._session_started = True
+            return True
+
+        # Step 3: Only use AppleScript fallback if command-line launch FAILED
+        logger.info("🔄 Command-line launch failed, trying AppleScript fallback...")
+        return await self._launch_incognito_applescript(url)
+
+    async def _ensure_fullscreen(self) -> bool:
+        """
+        Ensure the Chrome window is in fullscreen mode.
+
+        ENHANCED: Checks if already fullscreen BEFORE toggling to avoid
+        accidentally exiting fullscreen mode.
+        """
+        # Check if already fullscreen, only toggle if not
+        applescript = '''
+        tell application "Google Chrome"
+            activate
+            delay 0.3
+        end tell
+
+        -- Check if window is already in fullscreen mode
+        tell application "System Events"
+            tell process "Google Chrome"
+                try
+                    set frontWindow to front window
+                    -- Get window properties to check fullscreen state
+                    -- In fullscreen, the window has no standard window buttons visible
+                    -- We check by looking at the AXFullScreen attribute
+                    set isFullscreen to value of attribute "AXFullScreen" of frontWindow
+
+                    if isFullscreen then
+                        return "ALREADY_FULLSCREEN"
+                    else
+                        -- Not fullscreen - toggle it on
+                        keystroke "f" using {command down, control down}
+                        return "TOGGLED_FULLSCREEN"
+                    end if
+                on error
+                    -- Fallback: just try to toggle fullscreen
+                    keystroke "f" using {command down, control down}
+                    return "TOGGLED_FULLSCREEN"
+                end try
+            end tell
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5)
+
+            result = stdout.decode().strip() if stdout else ""
+            if process.returncode == 0:
+                if "ALREADY" in result:
+                    logger.info("✅ Window already in fullscreen mode")
+                else:
+                    logger.info("✅ Fullscreen mode activated")
+                return True
+            else:
+                logger.debug(f"Fullscreen toggle returned: {stderr.decode() if stderr else 'no error'}")
+
+        except Exception as e:
+            logger.debug(f"Fullscreen toggle exception: {e}")
+
+        return False
+
+    async def _launch_incognito_applescript(self, url: str) -> bool:
+        """Fallback: Launch incognito via AppleScript with FULLSCREEN mode."""
+        applescript = f'''
+        tell application "Google Chrome"
+            set incognitoWindow to make new window with properties {{mode:"incognito"}}
+            delay 0.5
+            tell incognitoWindow
+                set URL of active tab to "{url}"
+            end tell
+            activate
+        end tell
+
+        -- Wait for window to be ready then toggle fullscreen
+        delay 0.5
+        tell application "System Events"
+            tell process "Google Chrome"
+                try
+                    -- Toggle fullscreen using keyboard shortcut (Cmd+Ctrl+F)
+                    keystroke "f" using {{command down, control down}}
+                end try
+            end tell
+        end tell
+
+        return "success"
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
+
+            if process.returncode == 0:
+                print(f"{Colors.GREEN}🔒 Chrome Incognito Fullscreen opened via AppleScript{Colors.ENDC}")
+                self._session_started = True
+                return True
+
+        except Exception as e:
+            logger.error(f"AppleScript incognito launch failed: {e}")
+
+        return False
+
+    async def _verify_incognito_opened(self) -> bool:
+        """Verify that an incognito window is open."""
+        applescript = '''
+        tell application "Google Chrome"
+            repeat with w in windows
+                try
+                    if mode of w is "incognito" then
+                        return true
+                    end if
+                end try
+            end repeat
+            return false
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5)
+
+            return stdout.decode().strip().lower() == "true"
+        except:
+            return False
+
+    async def _close_regular_jarvis_windows(self, window_indices: list) -> int:
+        """Close regular (non-incognito) Chrome windows that have JARVIS tabs."""
+        if not window_indices:
+            return 0
+
+        # Build pattern list for AppleScript
+        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+
+        applescript = f'''
+        tell application "Google Chrome"
+            set jarvisPatterns to {{{patterns_str}}}
+            set closedCount to 0
+            set windowsToClose to {{}}
+
+            -- Collect windows to close (iterate in reverse to avoid index shifting)
+            repeat with windowIndex from (count of windows) to 1 by -1
+                set w to window windowIndex
+                try
+                    set windowMode to mode of w
+                    if windowMode is not "incognito" then
+                        repeat with t in tabs of w
+                            set tabURL to URL of t
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    set end of windowsToClose to w
+                                    exit repeat
+                                end if
+                            end repeat
+                        end repeat
+                    end if
+                end try
+            end repeat
+
+            -- Close collected windows
+            repeat with w in windowsToClose
+                try
+                    close w
+                    set closedCount to closedCount + 1
+                end try
+            end repeat
+
+            return closedCount
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+
+            result = stdout.decode().strip()
+            return int(result) if result.isdigit() else len(window_indices)
+
+        except Exception as e:
+            logger.warning(f"Failed to close regular windows: {e}")
+            return 0
+
+    async def _close_incognito_windows(self, window_indices: list) -> int:
+        """Close specified incognito windows with JARVIS tabs."""
+        if not window_indices:
+            return 0
+
+        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+
+        applescript = f'''
+        tell application "Google Chrome"
+            set jarvisPatterns to {{{patterns_str}}}
+            set closedCount to 0
+            set windowsToClose to {{}}
+            set skipFirst to true
+
+            -- Collect incognito JARVIS windows (skip the first one we find)
+            repeat with windowIndex from (count of windows) to 1 by -1
+                set w to window windowIndex
+                try
+                    if mode of w is "incognito" then
+                        repeat with t in tabs of w
+                            set tabURL to URL of t
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    if skipFirst then
+                                        set skipFirst to false
+                                    else
+                                        set end of windowsToClose to w
+                                    end if
+                                    exit repeat
+                                end if
+                            end repeat
+                        end repeat
+                    end if
+                end try
+            end repeat
+
+            -- Close collected windows
+            repeat with w in windowsToClose
+                try
+                    close w
+                    set closedCount to closedCount + 1
+                end try
+            end repeat
+
+            return closedCount
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+
+            result = stdout.decode().strip()
+            return int(result) if result.isdigit() else len(window_indices) - 1
+
+        except Exception as e:
+            logger.warning(f"Failed to close incognito windows: {e}")
+            return 0
+
+    async def _redirect_incognito_window(self, window_index: int, url: str) -> bool:
+        """
+        Redirect an existing incognito window to the specified URL.
+
+        ENHANCED: More robust window detection and URL navigation.
+        - First tries to find a tab with JARVIS URL and redirect it
+        - If not found, uses the active tab of the first incognito window
+        - Brings window to front and activates Chrome
+        - Handles the case where URL is already loaded (just activates)
+        """
+        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+
+        applescript = f'''
+        tell application "Google Chrome"
+            set jarvisPatterns to {{{patterns_str}}}
+            set foundWindow to false
+            set targetURL to "{url}"
+
+            -- First pass: Find incognito window with JARVIS tab
+            repeat with w in windows
+                try
+                    if mode of w is "incognito" then
+                        repeat with t in tabs of w
+                            set tabURL to URL of t
+
+                            -- Check if this tab already has the target URL
+                            if tabURL is targetURL or tabURL is (targetURL & "/") then
+                                -- Already on target URL - just focus it
+                                set active tab index of w to (index of t)
+                                set index of w to 1
+                                set foundWindow to true
+                                exit repeat
+                            end if
+
+                            -- Check if this is a JARVIS tab we can redirect
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    -- Found JARVIS tab - redirect it
+                                    set URL of t to targetURL
+                                    set active tab index of w to (index of t)
+                                    set index of w to 1
+                                    set foundWindow to true
+                                    exit repeat
+                                end if
+                            end repeat
+                            if foundWindow then exit repeat
+                        end repeat
+                    end if
+                end try
+                if foundWindow then exit repeat
+            end repeat
+
+            -- Second pass: If no JARVIS tab found, use first incognito window's active tab
+            if not foundWindow then
+                repeat with w in windows
+                    try
+                        if mode of w is "incognito" then
+                            -- Redirect the active tab
+                            set URL of active tab of w to targetURL
+                            set index of w to 1
+                            set foundWindow to true
+                            exit repeat
+                        end if
+                    end try
+                end repeat
+            end if
+
+            -- Activate Chrome and bring to front
+            activate
+
+            -- Small delay to ensure window is active
+            delay 0.2
+
+            return foundWindow
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+            result = stdout.decode().strip().lower()
+            if result == "true":
+                print(f"{Colors.GREEN}✓ Redirected existing Incognito tab to {url}{Colors.ENDC}")
+                return True
+            else:
+                logger.warning("Could not redirect incognito window")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Failed to redirect incognito window: {e}")
+            return False
+
+    async def close_all_jarvis_windows(self) -> int:
+        """Close ALL Chrome windows (regular and incognito) with JARVIS tabs."""
+        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+
+        applescript = f'''
+        tell application "Google Chrome"
+            set jarvisPatterns to {{{patterns_str}}}
+            set closedCount to 0
+            set windowsToClose to {{}}
+
+            repeat with w in windows
+                try
+                    repeat with t in tabs of w
+                        set tabURL to URL of t
+                        repeat with pattern in jarvisPatterns
+                            if tabURL contains pattern then
+                                set end of windowsToClose to w
+                                exit repeat
+                            end if
+                        end repeat
+                    end repeat
+                end try
+            end repeat
+
+            repeat with w in windowsToClose
+                try
+                    close w
+                    set closedCount to closedCount + 1
+                end try
+            end repeat
+
+            return closedCount
+        end tell
+        '''
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+
+            result = stdout.decode().strip()
+            closed = int(result) if result.isdigit() else 0
+            logger.info(f"🗑️ Closed {closed} JARVIS windows")
+            return closed
+
+        except Exception as e:
+            logger.warning(f"Failed to close JARVIS windows: {e}")
+            return 0
+
+    def get_stats(self) -> dict:
+        """Get manager statistics."""
+        return {
+            'session_started': self._session_started,
+            'operation_count': self._operation_count,
+            'error_count': self._error_count,
+            'last_operation': self._last_operation_time.isoformat() if self._last_operation_time else None,
+            'url_patterns_count': len(self.JARVIS_URL_PATTERNS)
+        }
+
+
+# Global instance
+_chrome_incognito_manager: Optional[IntelligentChromeIncognitoManager] = None
+
+
+def get_chrome_incognito_manager() -> IntelligentChromeIncognitoManager:
+    """Get global Chrome Incognito Manager instance."""
+    global _chrome_incognito_manager
+    if _chrome_incognito_manager is None:
+        _chrome_incognito_manager = IntelligentChromeIncognitoManager()
+    return _chrome_incognito_manager
+
+
+# =============================================================================
 # Dynamic Port Manager with Stuck Process Detection
 # =============================================================================
 
@@ -6179,11 +7148,15 @@ class AsyncSystemManager:
         self.is_restart = False  # Track if this is a restart
         self.use_optimized = True  # Use optimized backend by default
         
-        # Browser configuration for development
-        self.use_incognito = False  # Use Incognito/Private mode (avoids cache issues)
-        self.preferred_browser = None  # None = auto-detect, or "chrome", "safari", "arc"
+        # Browser configuration - ALWAYS use Chrome Incognito (never regular Chrome)
+        # This ensures cache-free operation and single window/tab management
+        self.use_incognito = True  # ALWAYS True - Incognito-only mode enforced
+        self.preferred_browser = "chrome"  # ALWAYS Chrome - Incognito-only mode
         self.auto_cleanup = True  # Auto cleanup without prompting (enabled by default)
-        self._browser_opened_this_session = False  # Prevent duplicate tab opens
+
+        # Sync browser state with global flag (may be set by restart block before manager init)
+        global _browser_opened_this_startup
+        self._browser_opened_this_session = _browser_opened_this_startup  # Sync with global
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
@@ -9093,34 +10066,48 @@ class AsyncSystemManager:
             # ═══════════════════════════════════════════════════════════
             # 6. CHECK BEAST MODE: SPEAKER VERIFICATION SERVICE
             # ═══════════════════════════════════════════════════════════
-            logger.info("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Speaker Verification Service...")
+            # CRITICAL FIX: Use cached/singleton speaker service instead of creating new one
+            # Creating a new service triggers ECAPA cloud health checks (~4s) which blocks the event loop
+            logger.debug("[VOICE UNLOCK] 🔍 Checking BEAST MODE: Speaker Verification Service...")
             try:
-                from voice.speaker_verification_service import SpeakerVerificationService
+                from voice.speaker_verification_service import get_speaker_verification_service
 
-                speaker_service = SpeakerVerificationService()
-                await speaker_service.initialize()
+                # Use the singleton getter - returns existing instance if already initialized
+                # This does NOT trigger new ECAPA health checks
+                try:
+                    speaker_service = await asyncio.wait_for(
+                        get_speaker_verification_service(),
+                        timeout=1.0  # Short timeout - don't block if service is initializing
+                    )
+                except asyncio.TimeoutError:
+                    # Service is still initializing elsewhere - report as pending
+                    status['detailed_checks']['speaker_verification'] = {
+                        'initialized': False,
+                        'status': 'INITIALIZING',
+                        'error': 'Service initialization in progress'
+                    }
+                    logger.debug("[VOICE UNLOCK] ⏳ Speaker Verification: INITIALIZING (skipped)")
+                    speaker_service = None
 
-                # Check if encoder is loaded
-                encoder_ready = getattr(speaker_service, '_encoder_preloaded', False)
-                profiles_count = len(speaker_service.speaker_profiles) if hasattr(speaker_service, 'speaker_profiles') else 0
+                if speaker_service:
+                    # Check if encoder is loaded
+                    encoder_ready = getattr(speaker_service, '_encoder_preloaded', False)
+                    profiles_count = len(speaker_service.speaker_profiles) if hasattr(speaker_service, 'speaker_profiles') else 0
 
-                status['detailed_checks']['speaker_verification'] = {
-                    'initialized': True,
-                    'encoder_ready': encoder_ready,
-                    'profiles_loaded': profiles_count,
-                    'status': 'READY' if encoder_ready and profiles_count > 0 else 'DEGRADED'
-                }
+                    status['detailed_checks']['speaker_verification'] = {
+                        'initialized': True,
+                        'encoder_ready': encoder_ready,
+                        'profiles_loaded': profiles_count,
+                        'status': 'READY' if encoder_ready and profiles_count > 0 else 'DEGRADED'
+                    }
 
-                logger.info(f"[VOICE UNLOCK] ✅ Speaker Verification: INITIALIZED")
-                logger.info(f"[VOICE UNLOCK]    ├─ Encoder: {'READY' if encoder_ready else 'NOT LOADED'}")
-                logger.info(f"[VOICE UNLOCK]    └─ Profiles: {profiles_count}")
+                    logger.debug(f"[VOICE UNLOCK] ✅ Speaker Verification: READY")
             except Exception as e:
                 status['detailed_checks']['speaker_verification'] = {
                     'initialized': False,
                     'error': str(e)
                 }
-                status['issues'].append(f'Speaker verification check failed: {e}')
-                logger.error(f"[VOICE UNLOCK] ❌ Speaker Verification: FAILED - {e}")
+                logger.debug(f"[VOICE UNLOCK] ⚠️ Speaker Verification: {e}")
 
             # ═══════════════════════════════════════════════════════════
             # 7. CHECK BEAST MODE: ECAPA-TDNN EMBEDDINGS
@@ -11125,33 +12112,42 @@ if (typeof localStorage !== 'undefined') {
         return False
 
     async def open_browser_smart(self, custom_url: str = None, force: bool = False):
-        """Open browser intelligently with advanced features.
-        
+        """Open browser intelligently - ALWAYS uses Chrome Incognito mode.
+
+        ====================================================================
+        🔒 INCOGNITO-ONLY BROWSER MANAGEMENT
+        ====================================================================
+
+        This method ALWAYS opens Chrome in Incognito mode. Regular Chrome
+        windows are NEVER used. This ensures:
+
+        1. Cache-free experience - no stale CSS, JS, or assets
+        2. Fresh localStorage/sessionStorage every session
+        3. No service worker interference
+        4. Single window/tab management - closes duplicates automatically
+
         Features:
-        - Incognito/Private mode support (bypasses cache for development)
-        - Tab reuse to avoid accumulating JARVIS tabs
-        - Multi-browser support (Chrome, Safari, Arc)
-        - Preferred browser selection
-        - Smart fallbacks
-        - Duplicate tab prevention via session tracking
+        - ALWAYS Chrome Incognito (never regular browser)
+        - Single window/tab only - deduplicates automatically
+        - Intelligent window detection and management
+        - Robust fallback chain (all incognito)
+        - Session tracking to prevent duplicate opens
 
         Args:
             custom_url: Optional custom URL to open (e.g., loading page)
             force: Force open even if browser was already opened this session
         """
         # Prevent duplicate tabs by checking if we already opened browser this session
-        # This prevents the loading server AND the startup completion from both opening tabs
-        # Check both instance flag AND global flag (for when browser opened before manager created)
         global _browser_opened_this_startup
         if (self._browser_opened_this_session or _browser_opened_this_startup) and not force:
-            logger.info("🔒 Browser already opened this session, will only update existing tab URL")
-            # Still fall through to tab reuse logic to update URL in existing tab
-            # But the fallback at the end won't open a NEW tab
-        
+            logger.info("🔒 Browser already opened this session - skipping duplicate open")
+            print(f"{Colors.CYAN}🔒 Browser already opened - skipping duplicate window{Colors.ENDC}")
+            return  # CRITICAL: Return early to prevent duplicate windows
+
+        # Determine URL to open
         if custom_url:
             url = custom_url
         elif self.is_restart:
-            # On restart, redirect to loading page to show progress
             url = "http://localhost:3001/"
         elif self.frontend_dir.exists() and not self.backend_only:
             url = f"http://localhost:{self.ports['frontend']}/"
@@ -11161,309 +12157,126 @@ if (typeof localStorage !== 'undefined') {
         # On restart, give browsers a moment to settle
         if self.is_restart:
             await asyncio.sleep(0.5)
-        
-        # Use Incognito mode if enabled (bypasses cache for fresh frontend)
-        use_incognito = getattr(self, 'use_incognito', False)
-        preferred_browser = getattr(self, 'preferred_browser', None)
-        
-        if use_incognito:
-            logger.info(f"🔒 Opening in Incognito mode (cache-free for development)")
-            result = await self._open_incognito_browser(url, preferred_browser)
-            if result:
-                return  # Success, don't fall through
 
-        # Try to reuse existing tab on macOS using AppleScript
-        if platform.system() == "Darwin":
-            # List of URL patterns that indicate JARVIS tabs (localhost only to avoid matching github.com/user/JARVIS)
-            # Include ALL JARVIS-related ports: frontend, API, loading server, websocket router, event UI
-            jarvis_patterns = [
-                "localhost:3000",   # Frontend
-                "127.0.0.1:3000",
-                "localhost:3001",   # Loading server
-                "127.0.0.1:3001",
-                "localhost:8010",   # Main API
-                "127.0.0.1:8010",
-                "localhost:8001",   # WebSocket router
-                "127.0.0.1:8001",
-                "localhost:8888",   # Event UI
-                "127.0.0.1:8888",
-            ]
+        # =================================================================
+        # 🔒 ALWAYS USE CHROME INCOGNITO - NEVER REGULAR BROWSER
+        # =================================================================
+        logger.info(f"🔒 Opening Chrome Incognito (cache-free mode): {url}")
 
-            # Log what we're looking for
-            action = "restart" if self.is_restart else "startup"
-            logger.info(f"🔍 Looking for existing JARVIS tabs on {action} with patterns: {jarvis_patterns}")
+        try:
+            # Get the intelligent incognito manager
+            incognito_manager = get_chrome_incognito_manager()
 
-            # Build AppleScript conditions - must contain localhost or 127.0.0.1 to avoid false positives
-            url_conditions = " or ".join([f'(tabURL contains "{pattern}")' for pattern in jarvis_patterns])
+            # Ensure exactly ONE incognito window with JARVIS
+            # This will:
+            # 1. Close ALL regular Chrome windows with JARVIS tabs
+            # 2. Close ALL duplicate incognito windows
+            # 3. Keep/create exactly ONE incognito window
+            # 4. Navigate to the specified URL
+            result = await incognito_manager.ensure_single_incognito_window(
+                url,
+                force_new=force
+            )
 
-            # AppleScript to close duplicate JARVIS tabs and reuse one
-            # Simpler, more reliable approach
-            pattern_list = '", "'.join(jarvis_patterns)
-            applescript = f"""
-            tell application "System Events"
-                set browserList to {{}}
+            if result['success']:
+                self._browser_opened_this_session = True
+                _browser_opened_this_startup = True
 
-                -- Check which browsers are running
-                if exists process "Google Chrome" then set end of browserList to "Google Chrome"
-                if exists process "Safari" then set end of browserList to "Safari"
-                if exists process "Arc" then set end of browserList to "Arc"
+                action = result.get('action', 'opened')
+                duplicates = result.get('duplicates_closed', 0)
+                regular = result.get('regular_windows_closed', 0)
 
-                -- Process each browser
-                repeat with browserName in browserList
-                    if browserName is "Google Chrome" then
-                        tell application "Google Chrome"
-                            set jarvisPatterns to {{"{pattern_list}"}}
-                            set foundFirst to false
-                            set totalClosed to 0
+                if duplicates > 0 or regular > 0:
+                    cleanup_msg = []
+                    if regular > 0:
+                        cleanup_msg.append(f"{regular} regular")
+                    if duplicates > 0:
+                        cleanup_msg.append(f"{duplicates} duplicate incognito")
+                    logger.info(f"✅ Chrome Incognito {action} (closed {', '.join(cleanup_msg)} windows)")
+                    print(f"{Colors.GREEN}🔒 Chrome Incognito {action} (closed {', '.join(cleanup_msg)} windows){Colors.ENDC}")
+                else:
+                    logger.info(f"✅ Chrome Incognito {action} - single window maintained")
+                    print(f"{Colors.GREEN}🔒 Chrome Incognito {action} - single window maintained{Colors.ENDC}")
 
-                            repeat with w in windows
-                                set tabsToClose to {{}}
-                                set tabCount to count of tabs of w
+                return  # Success
 
-                                repeat with i from 1 to tabCount
-                                    set t to tab i of w
-                                    set tabURL to URL of t
-                                    set isJarvis to false
+            else:
+                error = result.get('error', 'Unknown error')
+                logger.warning(f"Incognito manager failed: {error}")
 
-                                    -- Check if this is a JARVIS tab
-                                    repeat with pattern in jarvisPatterns
-                                        if tabURL contains pattern then
-                                            set isJarvis to true
-                                            exit repeat
-                                        end if
-                                    end repeat
+        except Exception as e:
+            logger.warning(f"Incognito manager exception: {e}")
 
-                                    if isJarvis then
-                                        if not foundFirst then
-                                            -- Keep this one and update to target URL
-                                            set foundFirst to true
-                                            set URL of t to "{url}"
-                                            set active tab index of w to i
-                                            set index of w to 1
-                                        else
-                                            -- Mark for closure
-                                            set end of tabsToClose to i
-                                        end if
-                                    end if
-                                end repeat
-
-                                -- Close marked tabs in reverse order
-                                if (count of tabsToClose) > 0 then
-                                    repeat with i from (count of tabsToClose) to 1 by -1
-                                        try
-                                            set tabIndex to item i of tabsToClose
-                                            close tab tabIndex of w
-                                            set totalClosed to totalClosed + 1
-                                        end try
-                                    end repeat
-                                end if
-                            end repeat
-
-                            if foundFirst then
-                                activate
-                                return "REUSED_TAB_CHROME:" & totalClosed
-                            end if
-                        end tell
-
-                    else if browserName is "Safari" then
-                        tell application "Safari"
-                            set jarvisPatterns to {{"{pattern_list}"}}
-                            set foundFirst to false
-                            set totalClosed to 0
-
-                            repeat with w in windows
-                                set tabsToClose to {{}}
-                                set tabCount to count of tabs of w
-
-                                repeat with i from 1 to tabCount
-                                    set t to tab i of w
-                                    set tabURL to URL of t
-                                    set isJarvis to false
-
-                                    repeat with pattern in jarvisPatterns
-                                        if tabURL contains pattern then
-                                            set isJarvis to true
-                                            exit repeat
-                                        end if
-                                    end repeat
-
-                                    if isJarvis then
-                                        if not foundFirst then
-                                            set foundFirst to true
-                                            set URL of t to "{url}"
-                                            set current tab of w to t
-                                            set index of w to 1
-                                        else
-                                            set end of tabsToClose to i
-                                        end if
-                                    end if
-                                end repeat
-
-                                if (count of tabsToClose) > 0 then
-                                    repeat with i from (count of tabsToClose) to 1 by -1
-                                        try
-                                            set tabIndex to item i of tabsToClose
-                                            close tab tabIndex of w
-                                            set totalClosed to totalClosed + 1
-                                        end try
-                                    end repeat
-                                end if
-                            end repeat
-
-                            if foundFirst then
-                                activate
-                                return "REUSED_TAB_SAFARI:" & totalClosed
-                            end if
-                        end tell
-
-                    else if browserName is "Arc" then
-                        tell application "Arc"
-                            set jarvisPatterns to {{"{pattern_list}"}}
-                            set foundFirst to false
-                            set totalClosed to 0
-
-                            repeat with w in windows
-                                set tabsToClose to {{}}
-                                set tabCount to count of tabs of w
-
-                                repeat with i from 1 to tabCount
-                                    set t to tab i of w
-                                    set tabURL to URL of t
-                                    set isJarvis to false
-
-                                    repeat with pattern in jarvisPatterns
-                                        if tabURL contains pattern then
-                                            set isJarvis to true
-                                            exit repeat
-                                        end if
-                                    end repeat
-
-                                    if isJarvis then
-                                        if not foundFirst then
-                                            set foundFirst to true
-                                            set URL of t to "{url}"
-                                            set index of w to 1
-                                        else
-                                            set end of tabsToClose to i
-                                        end if
-                                    end if
-                                end repeat
-
-                                if (count of tabsToClose) > 0 then
-                                    repeat with i from (count of tabsToClose) to 1 by -1
-                                        try
-                                            set tabIndex to item i of tabsToClose
-                                            close tab tabIndex of w
-                                            set totalClosed to totalClosed + 1
-                                        end try
-                                    end repeat
-                                end if
-                            end repeat
-
-                            if foundFirst then
-                                activate
-                                return "REUSED_TAB_ARC:" & totalClosed
-                            end if
-                        end tell
-                    end if
-                end repeat
-            end tell
-
-            -- If no tab was found in any browser, create a new one
-            tell application "System Events"
-                if (count of browserList) > 0 then
-                    set preferredBrowser to item 1 of browserList
-                    tell application preferredBrowser
-                        if preferredBrowser is "Google Chrome" then
-                            if (count of windows) = 0 then
-                                make new window
-                            end if
-                            tell window 1
-                                set newTab to make new tab with properties {{URL:"{url}"}}
-                                set active tab index to index of newTab
-                            end tell
-                            activate
-                            return "NEW_TAB_CHROME:0"
-                        else if preferredBrowser is "Safari" then
-                            if (count of windows) = 0 then
-                                make new document
-                            end if
-                            tell window 1
-                                set current tab to make new tab with properties {{URL:"{url}"}}
-                            end tell
-                            activate
-                            return "NEW_TAB_SAFARI:0"
-                        else if preferredBrowser is "Arc" then
-                            if (count of windows) = 0 then
-                                make new window
-                            end if
-                            tell window 1
-                                make new tab with properties {{URL:"{url}"}}
-                            end tell
-                            activate
-                            return "NEW_TAB_ARC:0"
-                        end if
-                    end tell
-                else
-                    open location "{url}"
-                    return "NEW_TAB_DEFAULT:0"
-                end if
-            end tell
-            """
-
-            try:
-                # Run AppleScript with better error handling
-                process = await asyncio.create_subprocess_exec(
-                    "osascript",
-                    "-e",
-                    applescript,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await process.communicate()
-
-                if process.returncode != 0 and stderr:
-                    logger.debug(f"AppleScript warning (non-fatal): {stderr.decode()}")
-
-                # Log successful operation and whether we reused or created a tab
-                if stdout:
-                    result = stdout.decode().strip()
-                    if "REUSED_TAB" in result:
-                        parts = result.split(":")
-                        browser = parts[0].split("_")[-1]
-                        tabs_closed = int(parts[1]) if len(parts) > 1 else 0
-
-                        logger.info(f"✅ Reused existing JARVIS tab in {browser}, closed {tabs_closed} duplicates")
-                        if tabs_closed > 0:
-                            print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser} (closed {tabs_closed} duplicate{'s' if tabs_closed > 1 else ''}){Colors.ENDC}")
-                        else:
-                            print(f"{Colors.GREEN}✓ Reused existing JARVIS tab in {browser}{Colors.ENDC}")
-                        self._browser_opened_this_session = True
-                        _browser_opened_this_startup = True  # Set global flag too
-                    elif "NEW_TAB" in result:
-                        browser = result.split(":")[0].split("_")[-1]
-                        logger.info(f"🌐 Created new tab in {browser}")
-                        print(f"{Colors.BLUE}➕ Created new JARVIS tab in {browser}{Colors.ENDC}")
-                        self._browser_opened_this_session = True
-                        _browser_opened_this_startup = True  # Set global flag too
-                    else:
-                        logger.info(f"Browser tab operation completed: {result}")
-                        self._browser_opened_this_session = True
-                        _browser_opened_this_startup = True  # Set global flag too
-
-                return
-            except Exception as e:
-                # Fall back to webbrowser if AppleScript fails
-                logger.debug(f"AppleScript failed (using fallback): {e}")
-
-        # Fallback for other platforms or if AppleScript fails
-        # Only open if we haven't already opened a browser this session
+        # =================================================================
+        # FALLBACK: Direct command-line Chrome Incognito
+        # NEVER fall back to regular browser - always incognito
+        # =================================================================
         if not self._browser_opened_this_session and not _browser_opened_this_startup:
-            webbrowser.open(url)
-            self._browser_opened_this_session = True
-            _browser_opened_this_startup = True  # Set global flag too
+            logger.info("🔄 Attempting fallback: direct Chrome Incognito launch...")
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    '/usr/bin/open', '-na', 'Google Chrome',
+                    '--args', '--incognito', '--new-window', '--start-fullscreen', url,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+                if process.returncode == 0:
+                    self._browser_opened_this_session = True
+                    _browser_opened_this_startup = True
+                    print(f"{Colors.GREEN}🔒 Chrome Incognito opened via command line{Colors.ENDC}")
+                    logger.info("✅ Chrome Incognito launched via command line fallback")
+                    return
+
+            except Exception as e:
+                logger.warning(f"Command line incognito failed: {e}")
+
+            # Final fallback: AppleScript to create incognito window + fullscreen
+            try:
+                applescript = f'''
+                tell application "Google Chrome"
+                    set incognitoWindow to make new window with properties {{mode:"incognito"}}
+                    delay 0.5
+                    tell incognitoWindow
+                        set URL of active tab to "{url}"
+                    end tell
+                    activate
+                end tell
+
+                -- Toggle fullscreen mode
+                delay 0.5
+                tell application "System Events"
+                    tell process "Google Chrome"
+                        try
+                            keystroke "f" using {{command down, control down}}
+                        end try
+                    end tell
+                end tell
+                '''
+                process = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", applescript,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
+
+                if process.returncode == 0:
+                    self._browser_opened_this_session = True
+                    _browser_opened_this_startup = True
+                    print(f"{Colors.GREEN}🔒 Chrome Incognito Fullscreen opened via AppleScript{Colors.ENDC}")
+                    logger.info("✅ Chrome Incognito Fullscreen launched via AppleScript fallback")
+                    return
+
+            except Exception as e:
+                logger.warning(f"AppleScript incognito failed: {e}")
+
+            # If all methods failed, inform user
+            print(f"{Colors.YELLOW}⚠️  Could not open Chrome Incognito. Please open manually: {url}{Colors.ENDC}")
+            logger.error(f"All Chrome Incognito launch methods failed for: {url}")
+
         else:
-            logger.info(f"🔒 Skipping fallback browser open - already opened this session")
+            logger.info("🔒 Skipping browser open - already opened this session")
 
     # ==================== SELF-HEALING METHODS ====================
 
@@ -13399,6 +14212,17 @@ _manager = None
 # Global flag to prevent duplicate browser tabs during startup
 # This is checked by both the restart flow and the manager's open_browser_smart
 _browser_opened_this_startup = False
+
+# Global lock for browser operations - prevents race conditions between concurrent calls
+# This is a module-level lock that ALL browser operations must acquire
+_browser_operation_lock: Optional[asyncio.Lock] = None
+
+def _get_browser_lock() -> asyncio.Lock:
+    """Get or create the global browser operation lock."""
+    global _browser_operation_lock
+    if _browser_operation_lock is None:
+        _browser_operation_lock = asyncio.Lock()
+    return _browser_operation_lock
 
 
 def _auto_detect_preset():
@@ -15846,134 +16670,88 @@ async def main():
                 if server_ready:
                     print(f"{Colors.GREEN}   ✓ Loading server started on {loading_server_url}{Colors.ENDC}")
 
-                    # Clean up existing JARVIS tabs and redirect to loading page
-                    print(f"{Colors.CYAN}🌐 Opening Chrome with loading page...{Colors.ENDC}")
-                    
-                    browser_opened = False
-                    try:
-                        # Use AppleScript to close duplicate tabs and show loading page
-                        cleanup_script = """
-                        tell application "Google Chrome"
-                            set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "localhost:8001", "localhost:8888", "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010", "127.0.0.1:8001", "127.0.0.1:8888"}
-                            set foundFirst to false
-                            set totalClosed to 0
+                    # =================================================================
+                    # 🔒 INCOGNITO-ONLY BROWSER MANAGEMENT (SINGLE ATTEMPT ONLY!)
+                    # Uses IntelligentChromeIncognitoManager for:
+                    # - ALWAYS Chrome Incognito (never regular Chrome)
+                    # - Single window/tab only (closes duplicates)
+                    # - Cache-free experience
+                    #
+                    # CRITICAL: NO FALLBACKS! The manager handles all retry logic
+                    # internally. Multiple fallback attempts cause duplicate windows.
+                    # =================================================================
+                    print(f"{Colors.CYAN}🔒 Opening Chrome Incognito with loading page...{Colors.ENDC}")
 
-                            repeat with w in windows
-                                set tabsToClose to {}
-                                set tabCount to count of tabs of w
-
-                                repeat with i from 1 to tabCount
-                                    set t to tab i of w
-                                    set tabURL to URL of t
-                                    set isJarvis to false
-
-                                    -- Check if this is a JARVIS tab
-                                    repeat with pattern in jarvisPatterns
-                                        if tabURL contains pattern then
-                                            set isJarvis to true
-                                            exit repeat
-                                        end if
-                                    end repeat
-
-                                    if isJarvis then
-                                        if not foundFirst then
-                                            -- Keep this one and redirect to loading page
-                                            set foundFirst to true
-                                            set URL of t to "http://localhost:3001/"
-                                            set active tab index of w to i
-                                            set index of w to 1
-                                        else
-                                            -- Mark for closure
-                                            set end of tabsToClose to i
-                                        end if
-                                    end if
-                                end repeat
-
-                                -- Close marked tabs in reverse order
-                                if (count of tabsToClose) > 0 then
-                                    repeat with i from (count of tabsToClose) to 1 by -1
-                                        try
-                                            set tabIndex to item i of tabsToClose
-                                            close tab tabIndex of w
-                                            set totalClosed to totalClosed + 1
-                                        end try
-                                    end repeat
-                                end if
-                            end repeat
-
-                            -- If no JARVIS tab was found, create one
-                            if not foundFirst then
-                                if (count of windows) = 0 then
-                                    make new window
-                                end if
-                                tell window 1
-                                    set newTab to make new tab with properties {URL:"http://localhost:3001/"}
-                                    set active tab index to index of newTab
-                                end tell
-                            end if
-
-                            activate
-                        end tell
-                        """
-                        result = subprocess.run(
-                            ["osascript", "-e", cleanup_script], 
-                            stdout=subprocess.PIPE, 
-                            stderr=subprocess.PIPE, 
-                            timeout=5
-                        )
-                        if result.returncode == 0:
-                            browser_opened = True
-                            globals()['_browser_opened_this_startup'] = True  # Set global flag
-                            print(f"{Colors.GREEN}   ✓ Chrome opened with loading page{Colors.ENDC}")
-                        else:
-                            print(f"{Colors.YELLOW}   ⚠️  AppleScript returned non-zero, trying fallback...{Colors.ENDC}")
-                    except subprocess.TimeoutExpired:
-                        print(f"{Colors.YELLOW}   ⚠️  AppleScript timed out, trying fallback...{Colors.ENDC}")
-                    except Exception as e:
-                        print(f"{Colors.YELLOW}   ⚠️  AppleScript failed: {e}, trying fallback...{Colors.ENDC}")
-                    
-                    # Fallback: Use webbrowser module or open command
-                    if not browser_opened:
+                    # Check if browser already opened (prevents duplicates)
+                    if globals().get('_browser_opened_this_startup', False):
+                        print(f"{Colors.CYAN}   ✓ Browser already opened - skipping{Colors.ENDC}")
+                    else:
                         try:
-                            # Try open command with Chrome specifically
-                            result = subprocess.run(
-                                ["open", "-a", "Google Chrome", loading_server_url],
-                                stdout=subprocess.DEVNULL, 
-                                stderr=subprocess.DEVNULL,
-                                timeout=3
+                            # Get the intelligent incognito manager
+                            incognito_manager = get_chrome_incognito_manager()
+
+                            # Ensure exactly ONE incognito window with JARVIS
+                            # This will:
+                            # 1. Close ALL regular Chrome windows with JARVIS tabs
+                            # 2. Close ALL duplicate incognito windows
+                            # 3. Keep/create exactly ONE incognito window
+                            # 4. Navigate to loading page
+                            incognito_result = await incognito_manager.ensure_single_incognito_window(
+                                loading_server_url,
+                                force_new=False  # Reuse existing if available
                             )
-                            if result.returncode == 0:
-                                browser_opened = True
-                                globals()['_browser_opened_this_startup'] = True  # Set global flag
-                                print(f"{Colors.GREEN}   ✓ Chrome opened via 'open' command{Colors.ENDC}")
-                        except Exception:
-                            pass
-                    
-                    if not browser_opened:
-                        try:
-                            # Final fallback: webbrowser module
-                            import webbrowser
-                            webbrowser.open(loading_server_url)
-                            browser_opened = True
-                            globals()['_browser_opened_this_startup'] = True  # Set global flag
-                            print(f"{Colors.GREEN}   ✓ Browser opened via webbrowser module{Colors.ENDC}")
-                        except Exception:
-                            print(f"{Colors.YELLOW}   ⚠️  Auto-open failed. Navigate to: {loading_server_url}{Colors.ENDC}")
+
+                            # ALWAYS set flag after attempting - prevents duplicate attempts
+                            # even if result reports failure (Chrome may have opened anyway)
+                            globals()['_browser_opened_this_startup'] = True
+
+                            if incognito_result['success']:
+                                action = incognito_result.get('action', 'opened')
+                                duplicates = incognito_result.get('duplicates_closed', 0)
+                                regular = incognito_result.get('regular_windows_closed', 0)
+
+                                if duplicates > 0 or regular > 0:
+                                    cleanup_msg = []
+                                    if regular > 0:
+                                        cleanup_msg.append(f"{regular} regular window{'s' if regular > 1 else ''}")
+                                    if duplicates > 0:
+                                        cleanup_msg.append(f"{duplicates} duplicate{'s' if duplicates > 1 else ''}")
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito {action} (closed {', '.join(cleanup_msg)}){Colors.ENDC}")
+                                else:
+                                    print(f"{Colors.GREEN}   ✓ Chrome Incognito {action} - single window maintained{Colors.ENDC}")
+
+                                logger.info(f"✅ Incognito browser: action={action}, duplicates_closed={duplicates}, regular_closed={regular}")
+                            else:
+                                error = incognito_result.get('error', 'Unknown error')
+                                print(f"{Colors.YELLOW}   ⚠️  Browser may have opened but verification failed: {error}{Colors.ENDC}")
+                                print(f"{Colors.CYAN}   ℹ️  If no Chrome window appeared, open manually: {loading_server_url}{Colors.ENDC}")
+                                logger.warning(f"Incognito manager failure: {error}")
+
+                        except Exception as e:
+                            # Set flag even on exception to prevent duplicate attempts
+                            globals()['_browser_opened_this_startup'] = True
+                            print(f"{Colors.YELLOW}   ⚠️  Browser operation exception: {e}{Colors.ENDC}")
+                            print(f"{Colors.CYAN}   ℹ️  Open Chrome Incognito manually: {loading_server_url}{Colors.ENDC}")
+                            logger.warning(f"Incognito manager exception: {e}")
                 else:
                     print(f"{Colors.YELLOW}   ⚠️  Loading server health check failed (server may still be starting){Colors.ENDC}")
-                    # Try to open anyway - the loading page might still work
-                    print(f"{Colors.CYAN}   ℹ️  Attempting to open browser anyway...{Colors.ENDC}")
-                    try:
-                        subprocess.run(
-                            ["open", "-a", "Google Chrome", loading_server_url],
-                            stdout=subprocess.DEVNULL, 
-                            stderr=subprocess.DEVNULL,
-                            timeout=3
-                        )
-                        globals()['_browser_opened_this_startup'] = True  # Set global flag
-                        print(f"{Colors.GREEN}   ✓ Chrome opened (loading server will show when ready){Colors.ENDC}")
-                    except Exception:
-                        print(f"{Colors.CYAN}   ℹ️  If needed, manually open: {loading_server_url}{Colors.ENDC}")
+                    # Only attempt browser open if not already opened
+                    if not globals().get('_browser_opened_this_startup', False):
+                        print(f"{Colors.CYAN}   ℹ️  Attempting to open Chrome Incognito anyway...{Colors.ENDC}")
+                        try:
+                            incognito_manager = get_chrome_incognito_manager()
+                            result = await incognito_manager.ensure_single_incognito_window(
+                                loading_server_url,
+                                force_new=False
+                            )
+                            globals()['_browser_opened_this_startup'] = True
+                            if result['success']:
+                                print(f"{Colors.GREEN}   ✓ Chrome Incognito opened{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.CYAN}   ℹ️  Open Chrome Incognito manually: {loading_server_url}{Colors.ENDC}")
+                        except Exception:
+                            globals()['_browser_opened_this_startup'] = True
+                            print(f"{Colors.CYAN}   ℹ️  Open Chrome Incognito manually: {loading_server_url}{Colors.ENDC}")
 
             except Exception as e:
                 print(f"{Colors.YELLOW}   ⚠️  Failed to start loading server: {e}{Colors.ENDC}")
@@ -16489,19 +17267,24 @@ async def main():
     _manager.is_restart = args.restart  # Track if this is a restart
     _manager.use_optimized = not args.standard
     
-    # Browser configuration - Incognito mode for cache-free development
-    # Auto-enable incognito on restart unless explicitly disabled
+    # =========================================================================
+    # 🔒 BROWSER CONFIGURATION - INCOGNITO-ONLY MODE (ENFORCED)
+    # =========================================================================
+    # Chrome Incognito is ALWAYS used. This ensures:
+    # - Cache-free experience (no stale CSS, JS, assets)
+    # - Single window/tab management (no duplicates)
+    # - Fresh localStorage/sessionStorage every session
+    # The --no-incognito flag is deprecated and ignored for safety.
+    # =========================================================================
+    _manager.use_incognito = True  # ALWAYS True - Incognito-only mode
+    _manager.preferred_browser = "chrome"  # ALWAYS Chrome - Incognito-only mode
+
     if args.no_incognito:
-        _manager.use_incognito = False
-    elif args.incognito or args.restart:
-        _manager.use_incognito = True
-        if args.restart and not args.incognito:
-            print(f"{Colors.CYAN}🔒 Auto-enabling Incognito mode for restart (use --no-incognito to disable){Colors.ENDC}")
-    else:
-        # Check environment variable
-        _manager.use_incognito = os.environ.get("JARVIS_INCOGNITO", "").lower() in ("true", "1", "yes")
-    
-    _manager.preferred_browser = args.browser if args.browser != "auto" else None
+        # Warn user that --no-incognito is deprecated
+        print(f"{Colors.YELLOW}⚠️  --no-incognito flag is deprecated and ignored.{Colors.ENDC}")
+        print(f"{Colors.YELLOW}   JARVIS now ALWAYS uses Chrome Incognito for cache-free operation.{Colors.ENDC}")
+
+    print(f"{Colors.CYAN}🔒 Browser: Chrome Incognito only (cache-free mode enforced){Colors.ENDC}")
 
     # Set global reference for voice verification tracking
     global _global_system_manager

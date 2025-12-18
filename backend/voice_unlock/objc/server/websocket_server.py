@@ -213,7 +213,48 @@ class VoiceUnlockWebSocketServer:
             elif command == "lock_screen":
                 # Lock screen command from JARVIS
                 logger.info("Received lock_screen command from JARVIS")
+                
+                audio_data = parameters.get("audio_data")
+                context_data = parameters.get("context") or {}
+                
+                # Check for VBI verification if audio is provided
+                if audio_data and self.intelligent_service and self.intelligent_service.voice_biometric_intelligence:
+                    logger.info("🎤 Processing voice-authenticated lock")
+                    try:
+                        # Verify voice using VBI
+                        vbi_result = await self.intelligent_service.voice_biometric_intelligence.verify_and_announce(
+                            audio_data=audio_data,
+                            context={
+                                'action': 'lock',
+                                'device_trusted': True,
+                                **context_data
+                            },
+                            speak=False  # Don't announce "Voice verified" for locking, just do it
+                        )
+                        
+                        if not vbi_result.verified:
+                            logger.warning(f"Voice verification failed for lock: {vbi_result.confidence:.1%}")
+                            # Optional: We could enforce strict checking here. 
+                            # For now, we'll log it. If the user wants strict security, we can return failure.
+                            # Given "beef it up", let's enforce it if audio was sent.
+                            return {
+                                "type": "command_response",
+                                "command": command,
+                                "success": False,
+                                "message": f"Voice verification failed ({vbi_result.confidence:.0%})",
+                            }
+                            
+                        logger.info(f"✅ Voice verified for lock: {vbi_result.speaker_name}")
+                        
+                    except Exception as e:
+                        logger.error(f"VBI check failed: {e}")
+                        # Fallback to allowing lock if VBI errors? 
+                        # Or fail safe? "Robust" implies working.
+                        # We'll log and proceed to lock to avoid getting stuck due to VBI error.
+                
+                # Perform async lock
                 success = await self.perform_screen_lock()
+                
                 return {
                     "type": "command_response",
                     "command": command,
@@ -501,23 +542,33 @@ class VoiceUnlockWebSocketServer:
             logger.error(f"Error performing screen unlock: {e}")
             return False
 
-    async def perform_screen_lock(self) -> bool:
-        """Lock the Mac screen using various methods"""
+    async def _run_command_async(self, cmd_list: list) -> tuple[int, str, str]:
+        """Run a command asynchronously without blocking the event loop"""
         try:
-            logger.info("Locking screen...")
+            process = await asyncio.create_subprocess_exec(
+                *cmd_list,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            return process.returncode, stdout.decode(), stderr.decode()
+        except Exception as e:
+            logger.error(f"Async command failed {cmd_list}: {e}")
+            return -1, "", str(e)
+
+    async def perform_screen_lock(self) -> bool:
+        """Lock the Mac screen using various methods (Async & Non-blocking)"""
+        try:
+            logger.info("Locking screen (Async)...")
 
             # Method 1: Use CGSession (most reliable)
             try:
-                result = subprocess.run(
-                    [
-                        "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
-                        "-suspend",
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode == 0:
+                returncode, _, _ = await self._run_command_async([
+                    "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
+                    "-suspend"
+                ])
+                
+                if returncode == 0:
                     logger.info("Screen locked successfully using CGSession")
                     return True
             except Exception as e:
@@ -525,17 +576,13 @@ class VoiceUnlockWebSocketServer:
 
             # Method 2: Use loginwindow
             try:
-                result = subprocess.run(
-                    [
-                        "osascript",
-                        "-e",
-                        'tell application "System Events" to tell process "loginwindow" to keystroke "q" using {command down, control down}',
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode == 0:
+                returncode, _, _ = await self._run_command_async([
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to tell process "loginwindow" to keystroke "q" using {command down, control down}'
+                ])
+                
+                if returncode == 0:
                     logger.info("Screen locked successfully using loginwindow")
                     return True
             except Exception as e:
@@ -543,10 +590,11 @@ class VoiceUnlockWebSocketServer:
 
             # Method 3: Use ScreenSaverEngine
             try:
-                # Start screensaver which will require password on wake
-                subprocess.run(["open", "-a", "ScreenSaverEngine"])
-                logger.info("Started screensaver (will lock if password required)")
-                return True
+                # Start screensaver which will require authentication on wake
+                returncode, _, _ = await self._run_command_async(["open", "-a", "ScreenSaverEngine"])
+                if returncode == 0:
+                    logger.info("Started screensaver (will lock if authentication required)")
+                    return True
             except Exception as e:
                 logger.debug(f"ScreenSaver method failed: {e}")
 
