@@ -3219,14 +3219,45 @@ const JarvisVoice = () => {
     }
 
     try {
+      // =========================================================================
+      // 🔒 LOCK COMMANDS: Execute via HTTP and show response BEFORE screen locks
+      // The screen locks SO FAST that WebSocket responses get lost when browser suspends
+      // Solution: Show response + speak FIRST, then execute lock via HTTP
+      // =========================================================================
+      if (effectiveCommandType === 'lock') {
+        console.log('🔒⚡ Lock command - using optimistic UI + HTTP execution');
+
+        // 1. Show final response IMMEDIATELY (before lock executes)
+        const lockMessage = '🔒 Locking your screen now. See you soon!';
+        setResponse(lockMessage);
+        setIsProcessing(false); // Don't show processing spinner
+
+        // 2. Speak the response IMMEDIATELY (before lock executes)
+        speakResponse('Locking your screen now. See you soon!');
+
+        // 3. Small delay to let speech start before screen locks
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 4. Execute lock via HTTP (don't rely on WebSocket response)
+        try {
+          const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
+          const lockUrl = `${apiUrl}/lock-now`;
+          console.log(`🔒⚡ Executing lock via HTTP: ${lockUrl}`);
+
+          // Fire-and-forget - don't wait for response (screen will lock)
+          fetch(lockUrl, { method: 'GET' }).catch(() => {});
+        } catch (httpErr) {
+          console.error('🔒 HTTP lock failed, trying WebSocket:', httpErr);
+          // Fallback: try WebSocket
+          wsRef.current.send(JSON.stringify(message));
+        }
+
+        return; // Don't continue to normal WebSocket flow
+      }
+
       wsRef.current.send(JSON.stringify(message));
       console.log(`🚀 Priority command sent in ${Date.now() - commandStartTime}ms`);
-      if (effectiveCommandType === 'lock') {
-        setResponse('🔒 Locking...');
-        // Locking can interrupt the UI/WS (screen locks, browser suspends, etc.).
-        // Don't leave the UI stuck in a "processing" state if the backend response never arrives.
-        setIsProcessing(true); // Changed to true to show processing until backend responds (or timeout)
-      } else if (effectiveCommandType === 'unlock') {
+      if (effectiveCommandType === 'unlock') {
         setResponse('🔓 Unlocking...');
         setIsProcessing(true);
       } else {
