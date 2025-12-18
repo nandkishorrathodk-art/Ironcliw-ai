@@ -325,6 +325,62 @@ class JARVISLoadingManager {
             },
 
             // === PHASE 4: READY (95-100%) ===
+            'health_checks': {
+                name: 'Health Checks',
+                icon: '🔍',
+                phase: 'ready',
+                expectedProgress: [86, 89],
+                substeps: ['Verifying services', 'Running health probes']
+            },
+            'health_checks_complete': {
+                name: 'Health Verified',
+                icon: '✓',
+                phase: 'ready',
+                expectedProgress: [89, 92],
+                substeps: ['All services responding', 'Verifying availability']
+            },
+            'services_verified': {
+                name: 'Services Ready',
+                icon: '✅',
+                phase: 'ready',
+                expectedProgress: [92, 94],
+                substeps: ['Backend online', 'APIs ready']
+            },
+            'frontend_verification': {
+                name: 'Frontend Check',
+                icon: '🌐',
+                phase: 'ready',
+                expectedProgress: [94, 96],
+                substeps: ['Verifying UI', 'Checking interface']
+            },
+            'waiting_for_frontend': {
+                name: 'Frontend Starting',
+                icon: '⏳',
+                phase: 'ready',
+                expectedProgress: [95, 97],
+                substeps: ['Waiting for frontend', 'UI initializing']
+            },
+            'frontend_ready': {
+                name: 'Frontend Ready',
+                icon: '✅',
+                phase: 'ready',
+                expectedProgress: [97, 98],
+                substeps: ['UI verified', 'Interface ready']
+            },
+            'system_ready': {
+                name: 'System Ready',
+                icon: '🚀',
+                phase: 'ready',
+                expectedProgress: [97, 99],
+                substeps: ['Final checks', 'Almost ready']
+            },
+            'finalizing': {
+                name: 'Finalizing',
+                icon: '⏳',
+                phase: 'ready',
+                expectedProgress: [98, 99],
+                substeps: ['Final initialization', 'Preparing launch']
+            },
             'ready': {
                 name: 'System Ready',
                 icon: '✅',

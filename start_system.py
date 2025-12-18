@@ -9095,30 +9095,69 @@ class AsyncSystemManager:
         """
         Wait for frontend to be ready with retries.
         Returns True if frontend becomes ready within max_wait seconds.
+        Broadcasts progress updates to loading page during wait.
         """
         frontend_port = self.ports.get('frontend', 3000)
         url = f"http://localhost:{frontend_port}"
         start_time = time.time()
         check_interval = 1.0  # Check every second
-        
+        last_progress_broadcast = 0  # Track last broadcast time
+        progress_broadcast_interval = 3  # Broadcast every 3 seconds
+
         print(f"{Colors.CYAN}Waiting for frontend (port {frontend_port}) to be ready...{Colors.ENDC}")
-        
+
+        check_count = 0
         while (time.time() - start_time) < max_wait:
+            check_count += 1
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
                         if resp.status in [200, 304]:
                             elapsed = time.time() - start_time
                             print(f"{Colors.GREEN}✓ Frontend ready after {elapsed:.1f}s{Colors.ENDC}")
+                            # Broadcast 97% when frontend becomes ready
+                            try:
+                                await session.post("http://localhost:3001/api/update-progress", json={
+                                    "stage": "frontend_ready",
+                                    "message": f"Frontend ready after {elapsed:.1f}s - finalizing...",
+                                    "progress": 97,
+                                    "timestamp": datetime.now().isoformat(),
+                                    "metadata": {"icon": "✅", "label": "Frontend Ready", "sublabel": f"Took {elapsed:.1f}s"}
+                                }, timeout=aiohttp.ClientTimeout(total=1))
+                            except:
+                                pass
                             return True
             except Exception:
                 pass
-            
+
             remaining = max_wait - (time.time() - start_time)
+            elapsed = time.time() - start_time
+
+            # Broadcast progress updates to loading page every few seconds
+            if elapsed - last_progress_broadcast >= progress_broadcast_interval:
+                last_progress_broadcast = elapsed
+                # Calculate progress between 95 and 97 based on elapsed time
+                wait_progress = min(96.5, 95 + (elapsed / max_wait) * 2)
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        await session.post("http://localhost:3001/api/update-progress", json={
+                            "stage": "waiting_for_frontend",
+                            "message": f"Frontend starting... ({int(remaining)}s remaining)",
+                            "progress": wait_progress,
+                            "timestamp": datetime.now().isoformat(),
+                            "metadata": {
+                                "icon": "⏳",
+                                "label": "Frontend Starting",
+                                "sublabel": f"{int(remaining)}s remaining"
+                            }
+                        }, timeout=aiohttp.ClientTimeout(total=1))
+                except:
+                    pass
+
             if remaining > 0:
                 print(f"{Colors.YELLOW}  Waiting for frontend... ({int(remaining)}s remaining){Colors.ENDC}", end="\r")
                 await asyncio.sleep(check_interval)
-        
+
         print(f"\n{Colors.WARNING}⚠️  Frontend did not respond within {max_wait}s{Colors.ENDC}")
         return False
 
@@ -14042,7 +14081,35 @@ except Exception as e:
             )
 
         # Run parallel health checks instead of fixed wait
+        # Broadcast progress: 86% - Starting health checks
+        try:
+            import aiohttp
+            url = "http://localhost:3001/api/update-progress"
+            async with aiohttp.ClientSession() as session:
+                await session.post(url, json={
+                    "stage": "health_checks",
+                    "message": "Running parallel health checks on all services...",
+                    "progress": 86,
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {"icon": "🔍", "label": "Health Checks", "sublabel": "Verifying services"}
+                }, timeout=aiohttp.ClientTimeout(total=1))
+        except:
+            pass
+
         await self._run_parallel_health_checks()
+
+        # Broadcast progress: 89% - Health checks complete
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post("http://localhost:3001/api/update-progress", json={
+                    "stage": "health_checks_complete",
+                    "message": "Health checks passed - verifying service availability...",
+                    "progress": 89,
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {"icon": "✓", "label": "Health Verified", "sublabel": "Services responding"}
+                }, timeout=aiohttp.ClientTimeout(total=1))
+        except:
+            pass
 
         # Verify services
         services = await self.verify_services()
@@ -14051,13 +14118,53 @@ except Exception as e:
             print(f"\n{Colors.FAIL}❌ No services started successfully{Colors.ENDC}")
             return False
 
+        # Broadcast progress: 92% - Services verified
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post("http://localhost:3001/api/update-progress", json={
+                    "stage": "services_verified",
+                    "message": "All services verified - preparing frontend...",
+                    "progress": 92,
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {"icon": "✅", "label": "Services Ready", "sublabel": "Backend online"}
+                }, timeout=aiohttp.ClientTimeout(total=1))
+        except:
+            pass
+
         # Print access info
         self.print_access_info()
+
+        # Broadcast progress: 94% - Starting frontend verification
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post("http://localhost:3001/api/update-progress", json={
+                    "stage": "frontend_verification",
+                    "message": "Verifying frontend interface is ready...",
+                    "progress": 94,
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {"icon": "🌐", "label": "Frontend Check", "sublabel": "Verifying UI"}
+                }, timeout=aiohttp.ClientTimeout(total=1))
+        except:
+            pass
 
         # CRITICAL: Verify frontend is actually ready BEFORE broadcasting completion
         # This is the root fix - don't tell loading page we're done until frontend is accessible
         frontend_ready = await self._verify_frontend_ready()
-        
+
+        if frontend_ready:
+            # Frontend is ready - broadcast 97% before final completion
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post("http://localhost:3001/api/update-progress", json={
+                        "stage": "system_ready",
+                        "message": "Frontend verified - preparing final initialization...",
+                        "progress": 97,
+                        "timestamp": datetime.now().isoformat(),
+                        "metadata": {"icon": "🚀", "label": "System Ready", "sublabel": "Final checks"}
+                    }, timeout=aiohttp.ClientTimeout(total=1))
+            except:
+                pass
+
         if not frontend_ready:
             print(f"{Colors.YELLOW}⚠️  Frontend not responding yet, waiting...{Colors.ENDC}")
             # Broadcast a "finalizing" stage while we wait
