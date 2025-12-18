@@ -1217,10 +1217,278 @@ class JARVISVoiceAPI:
             "message": "JARVIS going into standby mode. Call when you need me.",
         }
 
+    # =========================================================================
+    # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK HANDLING
+    # =========================================================================
+
+    async def _handle_proactive_screen_unlock(self, command: "JARVISCommand") -> Optional[Dict]:
+        """
+        Proactively detect locked screen and handle transparent unlock with continuation.
+
+        This enables autonomous workflows like:
+          "Hey JARVIS, search for dogs" → detect lock → verify voice → unlock → search
+
+        Args:
+            command: The JARVIS command being processed
+
+        Returns:
+            None if no action needed (screen unlocked or command exempt)
+            Dict with result if proactive unlock was performed and command executed
+        """
+        import asyncio
+        import re
+        import time
+
+        start_time = time.time()
+
+        try:
+            # ─────────────────────────────────────────────────────────────────
+            # Step 1: FAST Screen Lock Check (with timeout)
+            # ─────────────────────────────────────────────────────────────────
+            is_locked = await asyncio.wait_for(
+                self._fast_check_screen_locked(),
+                timeout=2.0
+            )
+
+            if not is_locked:
+                return None  # Screen not locked, proceed normally
+
+            logger.info(f"🔒 [CAI] Screen is LOCKED - analyzing command: '{command.text[:50]}...'")
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 2: Check if command requires screen access
+            # ─────────────────────────────────────────────────────────────────
+            requires_screen = self._command_requires_screen(command.text)
+
+            if not requires_screen:
+                logger.info(f"🔓 [CAI] Command doesn't require screen - skipping unlock")
+                return None
+
+            logger.info(f"📺 [CAI] Command requires screen access - initiating proactive unlock")
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 3: Extract continuation intent
+            # ─────────────────────────────────────────────────────────────────
+            continuation_action = self._extract_continuation_action(command.text)
+            logger.info(f"🎯 [CAI] Continuation: '{continuation_action}'")
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 4: Generate and speak acknowledgment
+            # ─────────────────────────────────────────────────────────────────
+            speaker_name = getattr(command, 'speaker_name', None) or "Sir"
+            acknowledgment = f"Your screen is locked. Let me verify your voice and unlock it so I can {continuation_action}."
+
+            logger.info(f"🎤 [CAI] Speaking acknowledgment: '{acknowledgment}'")
+            await self._speak_cai_message(acknowledgment)
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 5: Perform unlock via VBI
+            # ─────────────────────────────────────────────────────────────────
+            logger.info(f"🔐 [CAI] Performing VBI verification and unlock...")
+
+            unlock_result = await asyncio.wait_for(
+                self._perform_cai_unlock(command),
+                timeout=30.0
+            )
+
+            if not unlock_result.get("success", False):
+                logger.warning(f"❌ [CAI] Unlock failed: {unlock_result.get('response', 'Unknown error')}")
+                return {
+                    "response": unlock_result.get("response", "Unable to unlock screen."),
+                    "success": False,
+                    "command_type": "proactive_unlock_failed",
+                    "status": "error",
+                }
+
+            logger.info(f"✅ [CAI] Screen unlocked successfully!")
+
+            # Brief pause to ensure screen is fully unlocked
+            await asyncio.sleep(0.5)
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 6: POST-UNLOCK RE-ENTRY - Continue with original command
+            # ─────────────────────────────────────────────────────────────────
+            logger.info(f"🔄 [CAI] RE-ENTRY: Executing original command: '{command.text[:50]}...'")
+
+            # Mark command to prevent infinite loop
+            command._screen_just_unlocked = True
+
+            # Re-process the original command
+            continuation_result = await self.process_command(command)
+
+            # Add proactive unlock metadata
+            total_latency = (time.time() - start_time) * 1000
+            continuation_result["proactive_unlock"] = {
+                "performed": True,
+                "unlock_latency_ms": unlock_result.get("latency_ms", 0),
+                "total_latency_ms": total_latency,
+                "continuation_intent": continuation_action,
+            }
+
+            logger.info(f"✅ [CAI] Complete workflow finished in {total_latency:.0f}ms")
+
+            # Speak success if continuation succeeded
+            if continuation_result.get("success", False):
+                asyncio.create_task(self._speak_cai_message("Done."))
+
+            return continuation_result
+
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ [CAI] Timeout - falling back to normal processing")
+            return None
+        except Exception as e:
+            logger.warning(f"[CAI] Error: {e} - falling back to normal processing")
+            return None
+
+    async def _fast_check_screen_locked(self) -> bool:
+        """Fast, non-blocking screen lock detection."""
+        try:
+            # Strategy 1: Direct Quartz session check (fastest)
+            try:
+                from Quartz import CGSessionCopyCurrentDictionary
+                session_dict = CGSessionCopyCurrentDictionary()
+                if session_dict:
+                    is_locked = session_dict.get("CGSSessionScreenIsLocked", False)
+                    screen_saver = session_dict.get("CGSSessionScreenSaverIsRunning", False)
+                    return bool(is_locked or screen_saver)
+            except ImportError:
+                pass
+
+            # Strategy 2: Voice unlock detector
+            try:
+                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+                return bool(is_screen_locked())
+            except (ImportError, Exception):
+                pass
+
+            return False  # Assume unlocked if we can't determine
+        except Exception:
+            return False
+
+    def _command_requires_screen(self, text: str) -> bool:
+        """Check if command requires screen access."""
+        text_lower = text.lower()
+
+        # Commands that DON'T require screen
+        exempt_patterns = [
+            r"\b(lock|unlock)\s+(my\s+)?(screen|computer|mac)\b",
+            r"\bwhat\s+(time|is the time)\b",
+            r"\b(what's|how's)\s+the\s+weather\b",
+            r"\bset\s+(a\s+)?(timer|alarm|reminder)\b",
+            r"\b(play|pause|stop|skip)\s+(music|song|audio)\b",
+            r"\bhey\s+jarvis\b",
+            r"\bthank\s+you\b",
+            r"\bgoodbye\b",
+        ]
+
+        import re
+        for pattern in exempt_patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                return False
+
+        # Commands that DO require screen
+        screen_required_patterns = [
+            r"\b(search|google|look up|browse)\b",
+            r"\b(open|launch|start|run)\s+\w+",
+            r"\bgo\s+to\s+",
+            r"\b(create|edit|save|close)\s+(file|document|folder)",
+            r"\b(click|scroll|type|select)\b",
+        ]
+
+        for pattern in screen_required_patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                return True
+
+        # Default: assume needs screen for safety
+        return True
+
+    def _extract_continuation_action(self, text: str) -> str:
+        """Extract what user wants to do after unlock."""
+        import re
+        text_lower = text.lower()
+
+        patterns = [
+            (r"search\s+(?:for\s+)?(.+)", lambda m: f"search for {m.group(1)}"),
+            (r"google\s+(.+)", lambda m: f"search for {m.group(1)}"),
+            (r"open\s+(.+)", lambda m: f"open {m.group(1)}"),
+            (r"launch\s+(.+)", lambda m: f"launch {m.group(1)}"),
+            (r"go\s+to\s+(.+)", lambda m: f"navigate to {m.group(1)}"),
+        ]
+
+        for pattern, extractor in patterns:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                return extractor(match)
+
+        return "complete your request"
+
+    async def _speak_cai_message(self, message: str) -> None:
+        """Speak a CAI message using available TTS."""
+        try:
+            # Try direct macOS say command (most reliable)
+            import asyncio
+            process = await asyncio.create_subprocess_exec(
+                "say", "-v", "Daniel", message,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(process.wait(), timeout=10.0)
+        except Exception as e:
+            logger.debug(f"[CAI] Could not speak: {e}")
+
+    async def _perform_cai_unlock(self, command: "JARVISCommand") -> Dict:
+        """Perform screen unlock via VBI."""
+        try:
+            # Try robust unlock service
+            from voice_unlock.intelligent_voice_unlock_service import process_voice_unlock_robust
+
+            audio_data = getattr(command, 'audio_data', None)
+            speaker_name = getattr(command, 'speaker_name', None)
+
+            result = await process_voice_unlock_robust(
+                command="unlock my screen",
+                audio_data=audio_data,
+                sample_rate=16000,
+                mime_type="audio/webm",
+                speaker_name=speaker_name,
+            )
+
+            return {
+                "success": result.get("success", False),
+                "response": result.get("response", ""),
+                "latency_ms": result.get("total_duration_ms", 0),
+            }
+        except Exception as e:
+            logger.error(f"[CAI] Unlock error: {e}")
+
+            # Fallback: try direct unlock
+            try:
+                from backend.system_control.macos_controller import MacOSController
+                controller = MacOSController()
+                success, message = await controller.unlock_screen()
+                return {"success": success, "response": message, "latency_ms": 0}
+            except Exception as fallback_error:
+                logger.error(f"[CAI] Fallback unlock error: {fallback_error}")
+                return {"success": False, "response": str(fallback_error), "latency_ms": 0}
+
     @dynamic_error_handler
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+
+        # =====================================================================
+        # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK CHECK
+        # =====================================================================
+        # Detect locked screen and handle transparent unlock BEFORE processing
+        # This enables: "search for dogs" → detect lock → verify voice → unlock → search
+        # =====================================================================
+        if not getattr(command, '_screen_just_unlocked', False):
+            try:
+                proactive_result = await self._handle_proactive_screen_unlock(command)
+                if proactive_result is not None:
+                    return proactive_result
+            except Exception as cai_error:
+                logger.warning(f"[CAI] Proactive unlock check failed (continuing): {cai_error}")
 
         # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
         try:
