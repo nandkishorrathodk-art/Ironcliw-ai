@@ -3053,6 +3053,65 @@ app = FastAPI(
 )
 
 # ═══════════════════════════════════════════════════════════════
+# 🔒 ULTRA-FAST LOCK ENDPOINT (MODULE-LEVEL - Always Available)
+# Registered immediately at import time, bypasses ALL infrastructure
+# ═══════════════════════════════════════════════════════════════
+@app.post("/lock-now")
+@app.get("/lock-now")
+async def ultra_fast_lock():
+    """
+    Ultra-minimal lock endpoint that bypasses all infrastructure.
+    Registered at module level for immediate availability.
+    Tries multiple lock methods in order of reliability.
+    """
+    import asyncio
+    import shutil
+
+    async def run_cmd(cmd, timeout=3.0):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return proc.returncode == 0
+        except Exception:
+            return False
+
+    # Method 1: AppleScript Cmd+Ctrl+Q (works on all macOS versions)
+    if shutil.which("osascript"):
+        script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
+        if await run_cmd(["osascript", "-e", script]):
+            return {"success": True, "method": "applescript"}
+
+    # Method 2: CGSession (older macOS location)
+    cgsession_old = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+    if os.path.exists(cgsession_old):
+        if await run_cmd([cgsession_old, "-suspend"]):
+            return {"success": True, "method": "cgsession"}
+
+    # Method 3: LockScreen binary (newer macOS)
+    lockscreen = "/System/Library/CoreServices/RemoteManagement/AppleVNCServer.bundle/Contents/Support/LockScreen.app/Contents/MacOS/LockScreen"
+    if os.path.exists(lockscreen):
+        if await run_cmd([lockscreen]):
+            return {"success": True, "method": "lockscreen"}
+
+    # Method 4: pmset display sleep
+    if shutil.which("pmset"):
+        if await run_cmd(["pmset", "displaysleepnow"]):
+            return {"success": True, "method": "pmset"}
+
+    # Method 5: ScreenSaver
+    if os.path.exists("/System/Library/CoreServices/ScreenSaverEngine.app"):
+        if await run_cmd(["open", "-a", "ScreenSaverEngine"]):
+            return {"success": True, "method": "screensaver"}
+
+    return {"success": False, "error": "all_methods_failed"}
+
+logger.info("✅ Ultra-fast /lock-now endpoint registered (module-level)")
+
+# ═══════════════════════════════════════════════════════════════
 # ROBUST DYNAMIC CORS CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
 logger.info("🔒 Configuring CORS security...")
@@ -3924,53 +3983,8 @@ def mount_routers():
     except Exception as e:
         logger.warning(f"Screen Control API not available: {e}")
 
-    # =========================================================================
-    # 🔒 ULTRA-MINIMAL LOCK ENDPOINT - Bypasses ALL infrastructure
-    # This endpoint executes CGSession directly with zero dependencies
-    # =========================================================================
-    @app.post("/lock-now")
-    @app.get("/lock-now")
-    async def ultra_fast_lock():
-        """
-        Ultra-minimal lock endpoint that bypasses all infrastructure.
-        Executes CGSession directly - no controllers, no managers, no VBI.
-        """
-        import asyncio
-        import os
-        import shutil
-
-        async def run_cmd(cmd, timeout=3.0):
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await asyncio.wait_for(proc.communicate(), timeout=timeout)
-                return proc.returncode == 0
-            except:
-                return False
-
-        # Try CGSession first (most reliable)
-        cgsession = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
-        if os.path.exists(cgsession):
-            if await run_cmd([cgsession, "-suspend"]):
-                return {"success": True, "method": "cgsession"}
-
-        # Try AppleScript shortcut
-        if shutil.which("osascript"):
-            script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
-            if await run_cmd(["osascript", "-e", script]):
-                return {"success": True, "method": "applescript"}
-
-        # Try pmset
-        if shutil.which("pmset"):
-            if await run_cmd(["pmset", "displaysleepnow"]):
-                return {"success": True, "method": "pmset"}
-
-        return {"success": False, "error": "all_methods_failed"}
-
-    logger.info("✅ Ultra-fast lock endpoint mounted at /lock-now")
+    # Note: /lock-now endpoint is registered at module level (immediately after app creation)
+    # for guaranteed availability regardless of component initialization
 
     # Wake Word API - Always mount (has stub functionality)
     try:

@@ -2262,7 +2262,7 @@ class JARVISVoiceAPI:
                     _is_lock_command_fast = _is_lock and (_has_target or len(_cmd_lower.split()) <= 3)
 
                     if _is_lock_command_fast:
-                        logger.info(f"[JARVIS WS] 🔒⚡ ULTRA-FAST LOCK - direct CGSession execution")
+                        logger.info(f"[JARVIS WS] 🔒⚡ ULTRA-FAST LOCK - direct execution")
                         try:
                             import shutil
 
@@ -2281,21 +2281,30 @@ class JARVISVoiceAPI:
                             lock_success = False
                             lock_method = "none"
 
-                            # Try CGSession first (most reliable, no UI needed)
-                            cgsession = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
-                            if os.path.exists(cgsession):
-                                if await _run_lock_cmd([cgsession, "-suspend"]):
-                                    lock_success = True
-                                    lock_method = "cgsession"
-
-                            # Try AppleScript if CGSession failed
-                            if not lock_success and shutil.which("osascript"):
+                            # Method 1: AppleScript Cmd+Ctrl+Q (works on all macOS versions)
+                            if shutil.which("osascript"):
                                 script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
                                 if await _run_lock_cmd(["osascript", "-e", script]):
                                     lock_success = True
                                     lock_method = "applescript"
 
-                            # Try pmset as last resort
+                            # Method 2: CGSession (older macOS)
+                            if not lock_success:
+                                cgsession = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+                                if os.path.exists(cgsession):
+                                    if await _run_lock_cmd([cgsession, "-suspend"]):
+                                        lock_success = True
+                                        lock_method = "cgsession"
+
+                            # Method 3: LockScreen binary (newer macOS)
+                            if not lock_success:
+                                lockscreen = "/System/Library/CoreServices/RemoteManagement/AppleVNCServer.bundle/Contents/Support/LockScreen.app/Contents/MacOS/LockScreen"
+                                if os.path.exists(lockscreen):
+                                    if await _run_lock_cmd([lockscreen]):
+                                        lock_success = True
+                                        lock_method = "lockscreen"
+
+                            # Method 4: pmset
                             if not lock_success and shutil.which("pmset"):
                                 if await _run_lock_cmd(["pmset", "displaysleepnow"]):
                                     lock_success = True
