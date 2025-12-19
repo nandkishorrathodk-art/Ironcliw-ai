@@ -2033,40 +2033,51 @@ class ProcessCleanupManager:
     def _schedule_memory_relief(self, memory_percent: float) -> None:
         """
         Schedule async memory relief safely, handling both sync and async contexts.
+
+        CRITICAL FIX: Avoid creating new event loops in background threads, as this
+        can corrupt async state and cause "Future attached to different loop" errors.
+        Instead, use synchronous cleanup methods when not in an async context.
         """
-        # Select the appropriate relief coroutine
+        # Determine relief level
         if memory_percent >= 90:
-            coro = self._critical_memory_relief()
             level = "CRITICAL"
         elif memory_percent >= 80:
-            coro = self._high_memory_relief()
             level = "HIGH"
         elif memory_percent >= 70:
-            coro = self._moderate_memory_relief()
             level = "MODERATE"
         else:
             return  # No relief needed
 
-        # Try to schedule in existing event loop, or run in new one
+        # Try to schedule in existing event loop
         try:
             loop = asyncio.get_running_loop()
-            # We're in an async context - create task
-            asyncio.create_task(coro)
+            # We're in an async context - create task safely
+            if memory_percent >= 90:
+                asyncio.create_task(self._critical_memory_relief())
+            elif memory_percent >= 80:
+                asyncio.create_task(self._high_memory_relief())
+            else:
+                asyncio.create_task(self._moderate_memory_relief())
             logger.info(f"☁️  Scheduled {level} memory relief (async)")
         except RuntimeError:
-            # No running loop - run in a background thread to avoid blocking
-            import threading
+            # No running loop - use SYNCHRONOUS cleanup only!
+            # CRITICAL: Do NOT create new event loops in background threads
+            # as this corrupts async state and causes command processing to hang.
+            logger.info(f"☁️  Running {level} memory relief (sync-safe mode)")
 
-            def run_relief():
-                try:
-                    asyncio.run(coro)
-                    logger.info(f"☁️  Completed {level} memory relief (background)")
-                except Exception as e:
-                    logger.error(f"Background memory relief failed: {e}")
+            try:
+                # Synchronous cleanup actions that don't require async
+                self._cleanup_ipc_resources()
 
-            thread = threading.Thread(target=run_relief, daemon=True, name=f"memory-relief-{level}")
-            thread.start()
-            logger.info(f"☁️  Started {level} memory relief (background thread)")
+                # Garbage collection is safe from any context
+                import gc
+                gc.collect()
+
+                # Log completion
+                logger.info(f"☁️  Completed {level} memory relief (sync-safe)")
+
+            except Exception as e:
+                logger.error(f"Sync memory relief failed: {e}")
 
     async def _check_cloud_run_available(self) -> bool:
         """
