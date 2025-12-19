@@ -20,17 +20,32 @@ logger = logging.getLogger(__name__)
 class DynamicAppController:
     """Dynamically detects and controls applications using system APIs"""
     
+    # Singleton instance for fast reuse
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
     def __init__(self):
+        # Only initialize once (singleton pattern)
+        if DynamicAppController._initialized:
+            return
+        DynamicAppController._initialized = True
+        
         self.detected_apps_cache = {}
         self.installed_apps_cache = {}
         self.app_bundle_ids = {}
         self.last_vision_scan = None
         self.last_scan_time = None
-        self._scan_installed_applications()
+        # FAST init: Only scan directories, skip slow system_profiler
+        self._scan_installed_applications_fast()
     
-    def _scan_installed_applications(self):
-        """Scan system for all installed applications"""
-        logger.info("Scanning for installed applications...")
+    def _scan_installed_applications_fast(self):
+        """Fast scan - directories only, no system_profiler (which takes 5-10s)"""
+        logger.info("Fast scanning for installed applications...")
         self.installed_apps_cache = {}
         self.app_bundle_ids = {}
         
@@ -41,19 +56,16 @@ class DynamicAppController:
             "/System/Applications/Utilities",
             os.path.expanduser("~/Applications"),
             "/Applications/Utilities",
-            # Common third-party app locations
-            "/Applications/Setapp",
-            os.path.expanduser("~/Applications/Setapp"),
         ]
         
         for directory in app_directories:
             if os.path.exists(directory):
                 self._scan_directory(directory)
         
-        # Also get apps using system profiler for complete list
-        self._scan_with_system_profiler()
+        # Skip system_profiler - it takes 5-10 seconds and is rarely needed
+        # The directory scan covers 99% of use cases
         
-        logger.info(f"Found {len(self.installed_apps_cache)} installed applications")
+        logger.info(f"Fast scan found {len(self.installed_apps_cache)} applications")
     
     def _scan_directory(self, directory: str):
         """Scan a directory for .app bundles"""

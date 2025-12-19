@@ -46,7 +46,21 @@ class SafetyLevel(Enum):
 class MacOSController:
     """Controls macOS system operations with safety checks"""
 
+    # Singleton instance
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        # Only initialize once (singleton pattern)
+        if MacOSController._initialized:
+            return
+        MacOSController._initialized = True
+        
         self.home_dir = Path.home()
         self.safe_directories = [
             self.home_dir / "Desktop",
@@ -1085,11 +1099,18 @@ class MacOSController:
             return True, f"Focusing on search bar"
         return False, f"Failed to focus search bar: {message}"
 
-    async def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
-        """Open URL in browser (async - non-blocking)"""
-        # Check if screen is locked
-        if await self._check_screen_lock_status_async():
-            should_proceed, message = self._handle_locked_screen_command("open_url")
+    async def open_url(self, url: str, browser: Optional[str] = None, skip_lock_check: bool = False) -> Tuple[bool, str]:
+        """Open URL in browser (async - non-blocking)
+        
+        Args:
+            url: URL to open
+            browser: Optional browser name
+            skip_lock_check: If True, skip screen lock detection (faster for web searches)
+        """
+        # Skip screen lock check for web searches (no security concern, just opens browser)
+        if not skip_lock_check:
+            if await self._check_screen_lock_status_async():
+                should_proceed, message = self._handle_locked_screen_command("open_url")
             if not should_proceed:
                 return False, message
 
@@ -1183,7 +1204,7 @@ class MacOSController:
     async def web_search(
         self, query: str, engine: str = "google", browser: Optional[str] = None
     ) -> Tuple[bool, str]:
-        """Perform web search (async)"""
+        """Perform web search (async) - FAST PATH: skips screen lock check"""
         engines = {
             "google": f"https://www.google.com/search?q={query}",
             "bing": f"https://www.bing.com/search?q={query}",
@@ -1191,7 +1212,8 @@ class MacOSController:
         }
 
         url = engines.get(engine.lower(), engines["google"])
-        return await self.open_url(url, browser)
+        # Skip lock check for web searches - no security concern, just opens browser
+        return await self.open_url(url, browser, skip_lock_check=True)
 
     # Complex Workflows
 

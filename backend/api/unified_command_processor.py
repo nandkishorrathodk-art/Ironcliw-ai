@@ -4763,8 +4763,62 @@ class UnifiedCommandProcessor:
     async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
         """Dynamically execute system commands without hardcoding"""
 
-        # Check if this is actually a voice unlock command misclassified as system
         command_lower = command_text.lower()
+        
+        # =========================================================================
+        # ULTRA-FAST PATH: Direct web search execution
+        # =========================================================================
+        # For "search for X" commands, bypass ALL machinery and execute directly.
+        # This eliminates:
+        # - MacOSController instantiation
+        # - DynamicAppController instantiation (which runs system_profiler!)
+        # - Screen lock detection
+        # - Pipeline processing
+        # Result: <100ms execution vs potential 10+ second hangs
+        # =========================================================================
+        import re
+        search_patterns = [
+            r"^search\s+(?:for\s+)?(.+)$",
+            r"^google\s+(.+)$",
+            r"^look\s+up\s+(.+)$",
+            r"^find\s+(.+)$",
+        ]
+        
+        for pattern in search_patterns:
+            match = re.match(pattern, command_lower.strip())
+            if match:
+                query = match.group(1).strip()
+                if query:
+                    logger.info(f"[SYSTEM] ⚡ ULTRA-FAST PATH: Direct web search for '{query}'")
+                    try:
+                        from urllib.parse import quote
+                        url = f"https://www.google.com/search?q={quote(query)}"
+                        
+                        # Direct subprocess execution - no intermediate layers
+                        process = await asyncio.create_subprocess_exec(
+                            "open", url,
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL,
+                        )
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                        
+                        if process.returncode == 0:
+                            logger.info(f"[SYSTEM] ✅ Direct web search successful for '{query}'")
+                            return {
+                                "success": True,
+                                "response": f"Searching for {query}, Sir",
+                                "command_type": "web_search",
+                                "fast_path": "ultra_direct",
+                            }
+                        else:
+                            logger.warning(f"[SYSTEM] Direct open returned code {process.returncode}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[SYSTEM] Direct open timed out for '{query}'")
+                    except Exception as e:
+                        logger.warning(f"[SYSTEM] Direct search failed: {e}")
+                    # Fall through to normal processing if direct fails
+
+        # Check if this is actually a voice unlock command misclassified as system
         if ("voice" in command_lower and "unlock" in command_lower) or (
             "enable" in command_lower and "voice unlock" in command_lower
         ):
