@@ -239,7 +239,8 @@ def is_screen_locked() -> bool:
                     return True
 
                 detection_results.append(("Quartz", False))
-                logger.info("🔓 [SCREEN-DETECT] Quartz says UNLOCKED")
+                logger.info("🔓 [SCREEN-DETECT] Quartz says UNLOCKED - Trusting Quartz (Fast Path)")
+                return False
         except ImportError:
             logger.debug("[SCREEN-DETECT] Quartz not available, trying fallbacks")
         except Exception as e:

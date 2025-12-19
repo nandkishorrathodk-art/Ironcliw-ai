@@ -51,7 +51,7 @@ class DynamicPatternLearner:
         """Initialize with minimal base patterns that will be expanded"""
         # These are just seeds - the system will learn more
         self.app_verbs = {"open", "close", "launch", "quit", "start", "kill"}
-        self.system_verbs = {"set", "adjust", "toggle", "take", "enable", "disable"}
+        self.system_verbs = {"set", "adjust", "toggle", "take", "enable", "disable", "search", "find", "google"}
         self.query_indicators = {
             "what",
             "who",
@@ -1083,7 +1083,50 @@ class UnifiedCommandProcessor:
                     "error": str(e)
                 }
 
-        # NORMAL PATH: For all non-SCREEN_LOCK commands
+        # =========================================================================
+        # FAST PATH v4.0: SYSTEM commands bypass heavy processing
+        # =========================================================================
+        # System commands (search, open, navigate) don't need:
+        # - VBI/ECAPA verification (no security implications)
+        # - Context-aware handlers (direct execution)
+        # - Query complexity analysis (simple commands)
+        # - Goal inference (no autonomous decisions needed)
+        # Route directly to _execute_system_command for instant response.
+        # =========================================================================
+        if command_type == CommandType.SYSTEM:
+            logger.info("[UNIFIED] 🚀 SYSTEM command detected - FAST PATH v4.0")
+            logger.info("[UNIFIED]    ⚡ Bypassing VBI/ECAPA/Context handlers")
+            logger.info(f"[UNIFIED]    📝 Command: '{command_text}'")
+
+            try:
+                result = await asyncio.wait_for(
+                    self._execute_system_command(command_text),
+                    timeout=20.0  # 20 second timeout for system commands
+                )
+
+                logger.info(f"[UNIFIED] ✅ System command executed: success={result.get('success')}")
+
+                return {
+                    "success": result.get("success", False),
+                    "response": result.get("response", ""),
+                    "command_type": "system",
+                    "fast_path": True,
+                    **result
+                }
+            except asyncio.TimeoutError:
+                logger.error(f"[UNIFIED] ❌ System command timed out: '{command_text}'")
+                return {
+                    "success": False,
+                    "response": "The command timed out. Please try again.",
+                    "command_type": "system",
+                    "error": "timeout"
+                }
+            except Exception as e:
+                logger.error(f"[UNIFIED] ❌ System command failed: {e}")
+                # Fall through to normal processing if fast path fails
+                logger.info("[UNIFIED] Falling back to normal processing...")
+
+        # NORMAL PATH: For all non-SCREEN_LOCK and non-SYSTEM commands
         else:
             # Ensure resolvers are initialized (lazy init on first use)
             # ONLY for non-SCREEN_LOCK commands that may need VBI/ECAPA
@@ -1633,6 +1676,12 @@ class UnifiedCommandProcessor:
         # Dynamic system command detection using learned patterns
         first_word = words[0] if words else ""
 
+        # Check for web search commands explicitly (FAST PATH check)
+        if first_word in {"search", "google", "find", "lookup"} or (
+            first_word == "look" and len(words) > 1 and words[1] == "up"
+        ):
+            return CommandType.SYSTEM, 0.95
+
         # Check if first word is a learned verb
         if (
             first_word in self.pattern_learner.app_verbs
@@ -1808,7 +1857,7 @@ class UnifiedCommandProcessor:
         indicators += sum(1 for word in words if word in settings_words)
 
         # System actions
-        action_words = {"screenshot", "restart", "shutdown", "sleep", "lock", "unlock"}
+        action_words = {"screenshot", "restart", "shutdown", "sleep", "lock", "unlock", "search", "find", "google"}
         indicators += sum(1 for word in words if word in action_words)
 
         # File operations

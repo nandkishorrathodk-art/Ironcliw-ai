@@ -317,6 +317,23 @@ class MacOSController:
             context.metadata["success"] = False
             context.metadata["error"] = f"AppleScript unlock error: {e}"
 
+    async def _check_screen_lock_status_async(self) -> bool:
+        """
+        Check if screen is currently locked (ASYNC)
+        
+        Returns:
+            bool: True if screen is locked, False otherwise
+        """
+        try:
+            from voice_unlock.objc.server.screen_lock_detector import async_is_screen_locked
+            
+            self._is_locked = await async_is_screen_locked()
+            self._screen_lock_checked = True
+            return self._is_locked
+        except Exception as e:
+            logger.debug(f"Could not check screen lock status async: {e}")
+            return False
+
     def _check_screen_lock_status(self) -> bool:
         """
         Check if screen is currently locked
@@ -484,7 +501,7 @@ class MacOSController:
     async def open_application_pipeline(self, app_name: str) -> Tuple[bool, str]:
         """Open application through async pipeline (NEW METHOD)"""
         # Check if screen is locked
-        if self._check_screen_lock_status():
+        if await self._check_screen_lock_status_async():
             should_proceed, message = self._handle_locked_screen_command("open_application")
             if not should_proceed:
                 return False, message
@@ -826,7 +843,7 @@ class MacOSController:
     async def click_at(self, x: int, y: int) -> Tuple[bool, str]:
         """Click at specific coordinates"""
         # Check if screen is locked
-        if self._check_screen_lock_status():
+        if await self._check_screen_lock_status_async():
             should_proceed, message = self._handle_locked_screen_command("click_at")
             if not should_proceed:
                 return False, message
@@ -854,7 +871,7 @@ class MacOSController:
     async def click_and_hold(self, x: int, y: int, hold_duration: float = 0.2) -> Tuple[bool, str]:
         """Click and hold at specific coordinates (simulates human press-and-hold)"""
         # Check if screen is locked
-        if self._check_screen_lock_status():
+        if await self._check_screen_lock_status_async():
             should_proceed, message = self._handle_locked_screen_command("click_and_hold")
             if not should_proceed:
                 return False, message
@@ -1008,6 +1025,36 @@ class MacOSController:
                 return True, f"Typing '{text}'"
         return False, f"Failed to type: {message}"
 
+    async def click_search_bar_async(self, browser: Optional[str] = None) -> Tuple[bool, str]:
+        """Click on the browser's search/address bar (ASYNC)"""
+        # Check if screen is locked
+        if await self._check_screen_lock_status_async():
+            should_proceed, message = self._handle_locked_screen_command("click_search_bar")
+            if not should_proceed:
+                return False, message
+
+        if not browser:
+            browser = "Safari"
+        browser = self.app_aliases.get(browser.lower(), browser)
+
+        # Use keyboard shortcut to focus address bar (Cmd+L works in most browsers)
+        script = f"""
+        tell application "{browser}"
+            activate
+        end tell
+        tell application "System Events"
+            tell process "{browser}"
+                set frontmost to true
+                keystroke "l" using command down
+            end tell
+        end tell
+        """
+
+        success, message = await self.execute_applescript_async(script)
+        if success:
+            return True, f"Focusing on search bar"
+        return False, f"Failed to focus search bar: {message}"
+
     def click_search_bar(self, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Click on the browser's search/address bar"""
         # Check if screen is locked
@@ -1041,7 +1088,7 @@ class MacOSController:
     async def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Open URL in browser (async - non-blocking)"""
         # Check if screen is locked
-        if self._check_screen_lock_status():
+        if await self._check_screen_lock_status_async():
             should_proceed, message = self._handle_locked_screen_command("open_url")
             if not should_proceed:
                 return False, message
