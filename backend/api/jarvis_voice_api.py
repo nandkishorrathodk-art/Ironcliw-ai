@@ -1302,48 +1302,69 @@ class JARVISVoiceAPI:
 
             logger.info(f"✅ [CAI] Screen unlocked successfully!")
 
-            # Brief pause to ensure screen is fully unlocked
-            await asyncio.sleep(0.5)
+            # ─────────────────────────────────────────────────────────────────
+            # Step 6: EVENT-DRIVEN CONTINUATION PATTERN
+            # ─────────────────────────────────────────────────────────────────
+            # CRITICAL FIX: Do NOT recursively await process_command here!
+            # The recursive call kept the first request open while the second
+            # ran, confusing WebSocket state and causing "Processing..." hangs.
+            #
+            # Instead, we:
+            # 1. Return the unlock success immediately (clears frontend state)
+            # 2. Schedule the continuation as an INDEPENDENT task
+            # 3. The new task runs after this function returns
+            # ─────────────────────────────────────────────────────────────────
 
-            # ─────────────────────────────────────────────────────────────────
-            # Step 6: POST-UNLOCK RE-ENTRY - Continue with original command
-            # ─────────────────────────────────────────────────────────────────
-            logger.info(f"🔄 [CAI] RE-ENTRY: Executing original command: '{command.text[:50]}...'")
+            unlock_latency = (time.time() - start_time) * 1000
+            logger.info(f"🔓 [CAI] Unlock completed in {unlock_latency:.0f}ms - scheduling continuation")
 
             # Mark command to prevent infinite loop
             command._screen_just_unlocked = True
 
-            # Re-process the original command WITH TIMEOUT to prevent hanging
-            try:
-                continuation_result = await asyncio.wait_for(
-                    self.process_command(command),
-                    timeout=45.0  # 45 second timeout for continuation
-                )
-            except asyncio.TimeoutError:
-                logger.error(f"⏱️ [CAI] Post-unlock continuation timed out for: '{command.text}'")
-                continuation_result = {
-                    "success": False,
-                    "response": "I unlocked your screen, but the follow-up action timed out. Please try again.",
-                    "command_type": "proactive_unlock_timeout",
-                    "status": "partial",
-                }
+            # Create an independent continuation task
+            async def _execute_continuation():
+                """Execute the original command as a completely separate transaction."""
+                try:
+                    # Wait for frontend to process unlock response and reset state
+                    await asyncio.sleep(0.5)
 
-            # Add proactive unlock metadata
-            total_latency = (time.time() - start_time) * 1000
-            continuation_result["proactive_unlock"] = {
-                "performed": True,
-                "unlock_latency_ms": unlock_result.get("latency_ms", 0),
-                "total_latency_ms": total_latency,
-                "continuation_intent": continuation_action,
+                    logger.info(f"🔄 [CAI] CONTINUATION: Now executing '{command.text[:50]}...'")
+
+                    # Process as a NEW independent command
+                    continuation_result = await asyncio.wait_for(
+                        self.process_command(command),
+                        timeout=45.0
+                    )
+
+                    if continuation_result.get("success", False):
+                        logger.info(f"✅ [CAI] Continuation completed successfully")
+                    else:
+                        logger.warning(f"⚠️ [CAI] Continuation failed: {continuation_result.get('response', 'Unknown')}")
+
+                except asyncio.TimeoutError:
+                    logger.error(f"⏱️ [CAI] Continuation timed out for: '{command.text}'")
+                except Exception as e:
+                    logger.error(f"❌ [CAI] Continuation error: {e}")
+
+            # Schedule the continuation as an independent task (NOT awaited!)
+            asyncio.create_task(_execute_continuation())
+            logger.info(f"📋 [CAI] Continuation task scheduled - returning unlock success now")
+
+            # Return IMMEDIATELY with unlock success
+            # This allows the frontend to clear "Processing..." state
+            # The continuation task will start a NEW processing cycle
+            return {
+                "success": True,
+                "response": f"Screen unlocked. Now {continuation_action}...",
+                "command_type": "proactive_unlock_success",
+                "status": "unlocked",
+                "proactive_unlock": {
+                    "performed": True,
+                    "unlock_latency_ms": unlock_latency,
+                    "continuation_scheduled": True,
+                    "continuation_intent": continuation_action,
+                },
             }
-
-            logger.info(f"✅ [CAI] Complete workflow finished in {total_latency:.0f}ms")
-
-            # Speak success if continuation succeeded
-            if continuation_result.get("success", False):
-                asyncio.create_task(self._speak_cai_message("Done."))
-
-            return continuation_result
 
         except asyncio.TimeoutError:
             logger.warning(f"⏱️ [CAI] Timeout - falling back to normal processing")

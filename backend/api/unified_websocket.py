@@ -1197,6 +1197,9 @@ class UnifiedWebSocketManager:
                     elif is_unlock_command:
                         logger.info(f"[WS] 🔓 Detected UNLOCK command: '{command_text}' - routing to VBI")
 
+                    # Initialize result to None before processing branches
+                    result = None
+
                     if is_unlock_command and audio_data_received:
                         # ============================================================
                         # ROBUST VOICE UNLOCK v1.0.0 - Primary Handler
