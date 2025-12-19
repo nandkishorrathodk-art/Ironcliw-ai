@@ -610,6 +610,17 @@ class JARVISVoiceAPI:
         self.last_audio_data = None
         self.last_speaker_name = None
 
+        # ─────────────────────────────────────────────────────────────────
+        # BACKGROUND TASKS REGISTRY - Prevents Garbage Collection
+        # ─────────────────────────────────────────────────────────────────
+        # Critical for Event-Driven Continuation Pattern:
+        # When we schedule continuation tasks with asyncio.create_task(),
+        # we MUST hold a strong reference to prevent the GC from destroying
+        # the task before it completes. This set holds all background tasks
+        # and uses done callbacks to auto-cleanup finished tasks.
+        # ─────────────────────────────────────────────────────────────────
+        self._background_tasks: set[asyncio.Task] = set()
+
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
@@ -1228,6 +1239,12 @@ class JARVISVoiceAPI:
         This enables autonomous workflows like:
           "Hey JARVIS, search for dogs" → detect lock → verify voice → unlock → search
 
+        Features:
+          - Intelligent verbal transparency via CAI Voice Feedback Manager
+          - Dynamic, context-aware messages (time of day, speaker name)
+          - Progressive confidence communication
+          - Bulletproof continuation task scheduling
+
         Args:
             command: The JARVIS command being processed
 
@@ -1236,10 +1253,26 @@ class JARVISVoiceAPI:
             Dict with result if proactive unlock was performed and command executed
         """
         import asyncio
-        import re
         import time
 
         start_time = time.time()
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Initialize CAI Voice Feedback Manager for intelligent verbal transparency
+        # ─────────────────────────────────────────────────────────────────────
+        try:
+            from api.cai_voice_feedback_manager import (
+                get_cai_voice_manager,
+                CAIContext,
+                extract_continuation_action,
+            )
+            voice_manager = await asyncio.wait_for(
+                get_cai_voice_manager(),
+                timeout=2.0
+            )
+        except Exception as e:
+            logger.debug(f"[CAI] Voice manager not available: {e}")
+            voice_manager = None
 
         try:
             # ─────────────────────────────────────────────────────────────────
@@ -1267,24 +1300,50 @@ class JARVISVoiceAPI:
             logger.info(f"📺 [CAI] Command requires screen access - initiating proactive unlock")
 
             # ─────────────────────────────────────────────────────────────────
-            # Step 3: Extract continuation intent
-            # ─────────────────────────────────────────────────────────────────
-            continuation_action = self._extract_continuation_action(command.text)
-            logger.info(f"🎯 [CAI] Continuation: '{continuation_action}'")
-
-            # ─────────────────────────────────────────────────────────────────
-            # Step 4: Generate and speak acknowledgment
+            # Step 3: Create CAI Context for intelligent message generation
             # ─────────────────────────────────────────────────────────────────
             speaker_name = getattr(command, 'speaker_name', None) or "Sir"
-            acknowledgment = f"Your screen is locked. Let me verify your voice and unlock it so I can {continuation_action}."
 
-            logger.info(f"🎤 [CAI] Speaking acknowledgment: '{acknowledgment}'")
-            await self._speak_cai_message(acknowledgment)
+            # Use advanced extraction if available, fallback to local
+            if voice_manager:
+                continuation_action = extract_continuation_action(command.text)
+            else:
+                continuation_action = self._extract_continuation_action(command.text)
+
+            logger.info(f"🎯 [CAI] Continuation: '{continuation_action}'")
+
+            # Create CAIContext for intelligent, personalized messaging
+            cai_ctx = None
+            if voice_manager:
+                cai_ctx = CAIContext(
+                    command_text=command.text,
+                    continuation_action=continuation_action,
+                    speaker_name=speaker_name,
+                    is_screen_locked=True,
+                    start_time=start_time,
+                )
 
             # ─────────────────────────────────────────────────────────────────
-            # Step 5: Perform unlock via VBI
+            # Step 4: Generate and speak acknowledgment (DYNAMIC, CONTEXT-AWARE)
+            # ─────────────────────────────────────────────────────────────────
+            if voice_manager and cai_ctx:
+                # Use intelligent voice manager for time-of-day aware greeting
+                logger.info(f"🎤 [CAI] Using intelligent voice manager (time: {cai_ctx.time_of_day.value})")
+                await voice_manager.announce_lock_detected(cai_ctx)
+            else:
+                # Fallback to simple message
+                acknowledgment = f"Your screen is locked. Let me verify your voice and unlock it so I can {continuation_action}."
+                logger.info(f"🎤 [CAI] Speaking acknowledgment: '{acknowledgment}'")
+                await self._speak_cai_message(acknowledgment)
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 5: Perform unlock via VBI (with parallel voice announcements)
             # ─────────────────────────────────────────────────────────────────
             logger.info(f"🔐 [CAI] Performing VBI verification and unlock...")
+
+            # Announce VBI is starting (fire-and-forget - runs parallel to VBI)
+            if voice_manager and cai_ctx:
+                await voice_manager.announce_vbi_start(cai_ctx)
 
             unlock_result = await asyncio.wait_for(
                 self._perform_cai_unlock(command),
@@ -1292,15 +1351,63 @@ class JARVISVoiceAPI:
             )
 
             if not unlock_result.get("success", False):
-                logger.warning(f"❌ [CAI] Unlock failed: {unlock_result.get('response', 'Unknown error')}")
+                failure_reason = unlock_result.get("response", "Unable to unlock screen.")
+                logger.warning(f"❌ [CAI] Unlock failed: {failure_reason}")
+
+                # ─────────────────────────────────────────────────────────────
+                # VERBAL TRANSPARENCY: Speak intelligent failure message
+                # ─────────────────────────────────────────────────────────────
+                # Uses dynamic message generation based on failure reason
+                if voice_manager and cai_ctx:
+                    # Extract confidence if available
+                    confidence = unlock_result.get("confidence", 0.0)
+                    cai_ctx.vbi_confidence = confidence
+                    await voice_manager.announce_verification_result(
+                        cai_ctx,
+                        success=False,
+                        confidence=confidence,
+                        failure_reason=failure_reason
+                    )
+                else:
+                    # Fallback to simple message
+                    failure_message = f"I couldn't verify your voice. {failure_reason}"
+                    logger.info(f"🗣️ [CAI] Speaking failure: '{failure_message}'")
+                    await self._speak_cai_message(failure_message)
+
                 return {
-                    "response": unlock_result.get("response", "Unable to unlock screen."),
+                    "response": failure_reason,
                     "success": False,
                     "command_type": "proactive_unlock_failed",
                     "status": "error",
                 }
 
             logger.info(f"✅ [CAI] Screen unlocked successfully!")
+
+            # ─────────────────────────────────────────────────────────────────
+            # Step 5b: Speak unlock confirmation (INTELLIGENT VERBAL TRANSPARENCY)
+            # ─────────────────────────────────────────────────────────────────
+            # CRITICAL: User should HEAR that unlock succeeded and what's next
+            # Uses confidence-appropriate messaging (instant/high/good/borderline)
+            if voice_manager and cai_ctx:
+                # Update context with VBI confidence from result
+                cai_ctx.vbi_confidence = unlock_result.get("confidence", 0.85)
+                cai_ctx.was_unlocked = True
+                cai_ctx.unlock_latency_ms = (time.time() - start_time) * 1000
+
+                # Announce verification success (confidence-appropriate)
+                await voice_manager.announce_verification_result(
+                    cai_ctx,
+                    success=True,
+                    confidence=cai_ctx.vbi_confidence
+                )
+
+                # Announce unlock success with continuation preview
+                await voice_manager.announce_unlock_success(cai_ctx)
+            else:
+                # Fallback to simple message
+                unlock_confirmation = f"Screen unlocked. Now {continuation_action}."
+                logger.info(f"🗣️ [CAI] Speaking unlock confirmation: '{unlock_confirmation}'")
+                await self._speak_cai_message(unlock_confirmation)
 
             # ─────────────────────────────────────────────────────────────────
             # Step 6: EVENT-DRIVEN CONTINUATION PATTERN
@@ -1321,12 +1428,26 @@ class JARVISVoiceAPI:
             # Mark command to prevent infinite loop
             command._screen_just_unlocked = True
 
+            # Capture voice manager and context for the continuation closure
+            _voice_mgr = voice_manager
+            _cai_ctx = cai_ctx
+
             # Create an independent continuation task
             async def _execute_continuation():
-                """Execute the original command as a completely separate transaction."""
+                """
+                Execute the original command as a completely separate transaction.
+                Includes verbal transparency announcements at start and completion.
+                """
                 try:
                     # Wait for frontend to process unlock response and reset state
                     await asyncio.sleep(0.5)
+
+                    # ─────────────────────────────────────────────────────────────
+                    # VERBAL TRANSPARENCY: Announce continuation is starting
+                    # ─────────────────────────────────────────────────────────────
+                    # Fire-and-forget so we don't block the actual execution
+                    if _voice_mgr and _cai_ctx:
+                        await _voice_mgr.announce_continuation_start(_cai_ctx)
 
                     logger.info(f"🔄 [CAI] CONTINUATION: Now executing '{command.text[:50]}...'")
 
@@ -1338,17 +1459,59 @@ class JARVISVoiceAPI:
 
                     if continuation_result.get("success", False):
                         logger.info(f"✅ [CAI] Continuation completed successfully")
+
+                        # ─────────────────────────────────────────────────────────
+                        # VERBAL TRANSPARENCY: Announce completion with result
+                        # ─────────────────────────────────────────────────────────
+                        if _voice_mgr and _cai_ctx:
+                            result_msg = continuation_result.get("response", "")
+                            # Only announce completion if it's meaningful
+                            if result_msg and len(result_msg) < 200:
+                                await _voice_mgr.announce_task_completion(_cai_ctx, result_msg)
                     else:
-                        logger.warning(f"⚠️ [CAI] Continuation failed: {continuation_result.get('response', 'Unknown')}")
+                        error_msg = continuation_result.get("response", "Unknown error")
+                        logger.warning(f"⚠️ [CAI] Continuation failed: {error_msg}")
+
+                        # ─────────────────────────────────────────────────────────
+                        # VERBAL TRANSPARENCY: Announce error with guidance
+                        # ─────────────────────────────────────────────────────────
+                        if _voice_mgr and _cai_ctx:
+                            await _voice_mgr.announce_error(_cai_ctx, error_msg[:100])
 
                 except asyncio.TimeoutError:
                     logger.error(f"⏱️ [CAI] Continuation timed out for: '{command.text}'")
+                    if _voice_mgr and _cai_ctx:
+                        await _voice_mgr.announce_error(_cai_ctx, "The operation took too long")
                 except Exception as e:
                     logger.error(f"❌ [CAI] Continuation error: {e}")
+                    if _voice_mgr and _cai_ctx:
+                        await _voice_mgr.announce_error(_cai_ctx, str(e)[:100])
 
-            # Schedule the continuation as an independent task (NOT awaited!)
-            asyncio.create_task(_execute_continuation())
-            logger.info(f"📋 [CAI] Continuation task scheduled - returning unlock success now")
+            # ─────────────────────────────────────────────────────────────────
+            # BULLETPROOF TASK SCHEDULING - Prevents Garbage Collection
+            # ─────────────────────────────────────────────────────────────────
+            # CRITICAL: We MUST store a strong reference to the task!
+            # Without this, Python's garbage collector could destroy the task
+            # before it completes, causing the continuation to silently fail.
+            #
+            # The done_callback automatically removes the task from the set
+            # once it completes (success or failure), preventing memory leaks.
+            # ─────────────────────────────────────────────────────────────────
+            continuation_task = asyncio.create_task(
+                _execute_continuation(),
+                name=f"continuation_{command.text[:30]}_{time.time()}"
+            )
+
+            # Store strong reference to prevent GC from destroying the task
+            self._background_tasks.add(continuation_task)
+
+            # Auto-cleanup when task completes (prevents memory leaks)
+            continuation_task.add_done_callback(self._background_tasks.discard)
+
+            logger.info(
+                f"📋 [CAI] Continuation task scheduled (id={id(continuation_task)}, "
+                f"active_tasks={len(self._background_tasks)}) - returning unlock success now"
+            )
 
             # Return IMMEDIATELY with unlock success
             # This allows the frontend to clear "Processing..." state
