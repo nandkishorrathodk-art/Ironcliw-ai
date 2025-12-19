@@ -4,6 +4,182 @@ An intelligent voice-activated AI assistant with **Intelligent ECAPA Backend Orc
 
 ---
 
+## 🔄 NEW in v19.5.0: Self-Updating Lifecycle Manager (The Supervisor)
+
+JARVIS v19.5.0 introduces the **Self-Updating Lifecycle Manager** (The Supervisor) — a robust, external process supervisor that manages JARVIS as a child process. This architecture enables autonomous updates, automatic rollbacks on crash, idle-time maintenance, and an engaging "Maintenance Mode" UI.
+
+### The Supervisor Architecture: "The Mechanic & The Engine"
+
+Instead of JARVIS managing itself, we now have a **"Mechanic"** (the Supervisor) who maintains the **"Engine"** (JARVIS start_system.py).
+
+```mermaid
+graph TD
+    A[run_supervisor.py] -- Spawns --> B[start_system.py]
+    B -- Exit Code 100 --> A
+    A -- Checks GitHub Every 5min --> C{Update Found?}
+    C -- Yes --> D[Notify User: Voice + Badge]
+    D -- User Confirms --> E[Download & Install]
+    E -- Success --> F[Restart JARVIS]
+    E -- Failure --> G[Rollback to Stable]
+    F --> B
+    G --> B
+```
+
+### Key Features
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Autonomous Updates** | Git-based atomic updates with `pip` dependency resolution | Zero-touch maintenance |
+| **Auto-Detection** | Checks GitHub every 5 minutes for new commits | Proactive notifications |
+| **Update Badge** | Frontend notification badge + voice announcement | Dual-modality interaction |
+| **Maintenance Overlay** | Matrix Rain + Arc Reactor UI during updates | Professional "JARVIS is busy" UX |
+| **Automatic Rollback** | SQLite-based `version_history.db` for emergency revert | 99.9% availability |
+| **Idle Intelligence** | Updates only when system has been idle for >2 hours | Zero workflow interruption |
+| **TTS Narration** | Real-time voice feedback using macOS "Daniel" voice | Engaging system interaction |
+| **Process Cleanup** | Intelligent `psutil`-based termination of stuck instances | No more manual PID hunting |
+
+### How Updates Work
+
+**Automatic Detection:**
+- Supervisor polls GitHub every **5 minutes** (configurable)
+- On startup, immediately checks for updates
+- When idle for **2+ hours**, can trigger silent updates
+
+**Update Flow:**
+1. **Detection**: Supervisor detects new commit on remote branch
+2. **Notification**: 
+   - **Voice**: "Sir, I've detected a new update (v18.3). Shall I apply it?"
+   - **Frontend**: "Update Available" badge appears with "Update Now" / "Later" buttons
+3. **Confirmation**: User responds via voice ("Yes") or clicks "Update Now"
+4. **Maintenance Mode**: Frontend switches to Maintenance Overlay
+5. **Update Process**: `git pull` → `pip install` → `cargo build` (if Rust changes)
+6. **Restart**: JARVIS restarts with new code
+7. **Completion**: "Update complete. Systems nominal."
+
+### Maintenance Mode UI
+
+When JARVIS enters maintenance mode (Updating, Restarting, or Rolling Back), the frontend automatically switches from a "Connection Error" banner to a premium **Maintenance Overlay**:
+
+- **Matrix Rain Canvas**: Real-time falling Japanese/Alphanumeric characters.
+- **Arc Reactor Spinner**: Pulse-animated core with green matrix glow (#00ff41).
+- **Falling Particles**: 20 CSS-animated glowing green dots.
+- **Status Broadcast**: WebSocket-driven real-time progress messages.
+
+**Before Maintenance** (Update Available):
+- **Update Badge**: Red notification badge on settings icon
+- **Modal Dialog**: "Update Available" with summary and action buttons
+- **Voice Prompt**: TTS announcement asking for confirmation
+
+### Version History & Rollback (SQLite)
+
+The Supervisor maintains a meticulous **Version History** in `data/supervisor/version_history.db`:
+
+```sql
+-- Track every update and its stability
+CREATE TABLE version_history (
+    id INTEGER PRIMARY KEY,
+    git_commit TEXT,
+    git_branch TEXT,
+    timestamp DATETIME,
+    pip_freeze TEXT,
+    is_stable BOOLEAN,
+    boot_count INTEGER,
+    crash_count INTEGER,
+    notes TEXT
+);
+```
+
+If JARVIS crashes within 60 seconds of an update, the Supervisor **automatically detects the failure** and rolls back to the previous stable git commit.
+
+### How to Run
+
+**Recommended (With Supervisor):**
+```bash
+# Start JARVIS with the Supervisor (auto-updates enabled)
+python3 run_supervisor.py
+```
+
+**Legacy (Standalone):**
+```bash
+# Original entry point (manual updates only)
+python3 start_system.py --restart
+```
+
+**Key Difference:**
+- `run_supervisor.py`: Runs JARVIS as a child process, manages lifecycle, handles updates/rollbacks
+- `start_system.py`: Direct execution, no supervisor features
+
+### Voice Commands
+
+| Command | Action |
+|---------|--------|
+| **"Update yourself"** | Triggers immediate update (if running under supervisor) |
+| **"Check for updates"** | Forces immediate update check (bypasses 5-min interval) |
+| **"Rollback"** | Reverts to previous stable version |
+
+### Configuration
+
+The Supervisor can be configured via `backend/config/supervisor_config.yaml`:
+
+```yaml
+supervisor:
+  mode: auto  # manual | auto | scheduled
+  enabled: true
+
+update:
+  source:
+    type: github
+    remote: origin
+    branch: main  # Your working branch
+  check:
+    enabled: true
+    interval_seconds: 300  # Check every 5 minutes
+    on_startup: true
+  notification:
+    announce_changes: true
+    require_confirmation: true  # Ask before updating
+
+idle:
+  enabled: true
+  threshold_seconds: 7200  # 2 hours
+  silent_update_enabled: true
+
+rollback:
+  enabled: true
+  auto_on_boot_failure: true
+  max_versions: 5
+```
+
+**Environment Variable Overrides:**
+```bash
+export JARVIS_SUPERVISOR_UPDATE_BRANCH=feature/my-branch
+export JARVIS_SUPERVISOR_IDLE_THRESHOLD=3600  # 1 hour
+export JARVIS_SUPERVISOR_UPDATE_CHECK_INTERVAL=600  # 10 minutes
+```
+
+### Troubleshooting
+
+**Update fails:**
+- Check `logs/supervisor.log` for error details
+- Verify git remote is accessible: `git remote -v`
+- Ensure you have write permissions to the repo directory
+
+**Rollback not working:**
+- Check `data/supervisor/version_history.db` exists
+- Verify SQLite is accessible: `sqlite3 data/supervisor/version_history.db "SELECT * FROM version_history;"`
+
+**Frontend badge not appearing:**
+- Ensure WebSocket connection is active (check browser console)
+- Verify `/api/broadcast` endpoint is registered in `backend/main.py`
+- Check `backend/api/broadcast_router.py` is imported
+
+**Supervisor not detecting updates:**
+- Verify you're pushing to the correct branch (check `supervisor_config.yaml`)
+- Check GitHub API rate limits (default: 60 requests/hour)
+- Review `logs/supervisor.log` for update check errors
+
+---
+
 ## 💸 GCP Cost Guardrails (Root-Cause Fix) — Dec 2025
 
 This section documents a **root-cause fix** to prevent **unintentional GCP spend** (Cloud Run, Cloud SQL, Spot VMs) caused by “always-on” behavior in the codebase.
