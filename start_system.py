@@ -15569,7 +15569,10 @@ async def main():
 
     # Early check for multiple instances (before creating manager)
     # Skip check if --restart or --force-start is used
-    if not args.force_start and not args.restart:
+    # Also skip if running under supervisor (JARVIS_SUPERVISED=1)
+    is_supervised = os.environ.get("JARVIS_SUPERVISED") == "1"
+    
+    if not args.force_start and not args.restart and not is_supervised:
         # Check PID file first (faster and more reliable than ps)
         if pid_file.exists():
             try:
@@ -15592,6 +15595,7 @@ async def main():
                             print(
                                 f"   3. Or force start (risky): python start_system.py --force-start"
                             )
+                            print(f"   4. Or use supervisor: python3 run_supervisor.py")
                             print(
                                 f"\n{Colors.YELLOW}⚠️  Multiple instances = Multiple VMs = Higher costs!{Colors.ENDC}"
                             )

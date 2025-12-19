@@ -6,17 +6,19 @@ JARVIS Idle Detector
 System activity monitoring for the Self-Updating Lifecycle Manager.
 Detects user idle state to trigger silent updates.
 
+Uses subprocess-based approach with `ioreg` for macOS idle detection,
+which is safer and more reliable than direct IOKit ctypes bindings.
+
 Author: JARVIS System
-Version: 1.0.0
+Version: 1.1.0
 """
 
 from __future__ import annotations
 
 import asyncio
-import ctypes
-import ctypes.util
 import logging
 import platform
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -53,13 +55,16 @@ class IdleState:
 
 class IdleDetector:
     """
-    System activity monitoring.
+    System activity monitoring using subprocess-based detection.
+    
+    Uses macOS `ioreg` command for safe, reliable idle time detection
+    without the instability of direct ctypes IOKit bindings.
     
     Features:
-    - macOS IOKit integration (async)
+    - Safe subprocess-based detection (no segfaults)
     - Configurable idle threshold
-    - Activity pattern detection
-    - Do-not-disturb window support
+    - Activity pattern tracking
+    - Async-first design
     
     Example:
         >>> detector = IdleDetector(config)
@@ -80,144 +85,76 @@ class IdleDetector:
         self._last_active: datetime = datetime.now()
         self._idle_start: Optional[datetime] = None
         self._consecutive_idle_seconds: float = 0.0
+        self._last_idle_check: float = 0.0
+        self._cached_idle_time: float = 0.0
+        self._cache_ttl: float = 5.0  # Cache for 5 seconds
         
         self._on_idle: list[Callable[[], None]] = []
         self._on_active: list[Callable[[], None]] = []
         
-        # Load macOS frameworks if available
-        self._iokit: Optional[ctypes.CDLL] = None
-        self._core_foundation: Optional[ctypes.CDLL] = None
-        self._initialized = False
-        
-        if platform.system() == "Darwin":
-            self._init_macos()
+        self._is_macos = platform.system() == "Darwin"
         
         logger.info("🔧 Idle detector initialized")
     
-    def _init_macos(self) -> None:
-        """Initialize macOS IOKit for HID idle detection."""
-        try:
-            # Load IOKit
-            iokit_path = ctypes.util.find_library("IOKit")
-            if iokit_path:
-                self._iokit = ctypes.CDLL(iokit_path)
-            
-            # Load CoreFoundation
-            cf_path = ctypes.util.find_library("CoreFoundation")
-            if cf_path:
-                self._core_foundation = ctypes.CDLL(cf_path)
-            
-            if self._iokit and self._core_foundation:
-                self._initialized = True
-                logger.debug("✅ macOS IOKit initialized")
-            else:
-                logger.warning("⚠️ Could not load IOKit/CoreFoundation")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to initialize macOS idle detection: {e}")
-    
-    def _get_macos_idle_time(self) -> float:
+    async def _get_macos_idle_time_subprocess(self) -> float:
         """
-        Get idle time in seconds using macOS IOKit.
+        Get idle time using ioreg subprocess (safe alternative to ctypes).
         
         Returns:
             Idle time in seconds, or -1 if unavailable
         """
-        if not self._initialized or not self._iokit:
-            return -1.0
-        
         try:
-            # Define IOKit functions
-            IOServiceGetMatchingService = self._iokit.IOServiceGetMatchingService
-            IOServiceMatching = self._iokit.IOServiceMatching
-            IORegistryEntryCreateCFProperty = self._iokit.IORegistryEntryCreateCFProperty
-            IOObjectRelease = self._iokit.IOObjectRelease
+            # Use ioreg to get HIDIdleTime - this is safe and reliable
+            process = await asyncio.create_subprocess_exec(
+                "ioreg",
+                "-c", "IOHIDSystem",
+                "-d", "4",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
             
-            # Define CoreFoundation functions
-            CFStringCreateWithCString = self._core_foundation.CFStringCreateWithCString
-            CFNumberGetValue = self._core_foundation.CFNumberGetValue
-            CFRelease = self._core_foundation.CFRelease
+            stdout, _ = await asyncio.wait_for(
+                process.communicate(),
+                timeout=5.0,
+            )
             
-            # Set return types
-            IOServiceMatching.restype = ctypes.c_void_p
-            IOServiceGetMatchingService.restype = ctypes.c_uint
-            IORegistryEntryCreateCFProperty.restype = ctypes.c_void_p
-            CFStringCreateWithCString.restype = ctypes.c_void_p
-            
-            # Get HID idle time service
-            kCFAllocatorDefault = ctypes.c_void_p(0)
-            kCFStringEncodingASCII = 0x0600
-            
-            matching = IOServiceMatching(b"IOHIDSystem")
-            if not matching:
+            if process.returncode != 0:
                 return -1.0
             
-            service = IOServiceGetMatchingService(0, matching)
-            if not service:
-                return -1.0
+            # Parse output for HIDIdleTime
+            output = stdout.decode("utf-8", errors="ignore")
             
-            try:
-                # Create key string
-                key = CFStringCreateWithCString(
-                    kCFAllocatorDefault,
-                    b"HIDIdleTime",
-                    kCFStringEncodingASCII,
-                )
-                
-                if not key:
-                    return -1.0
-                
-                try:
-                    # Get idle time property
-                    idle_time_ref = IORegistryEntryCreateCFProperty(
-                        service,
-                        key,
-                        kCFAllocatorDefault,
-                        0,
-                    )
-                    
-                    if not idle_time_ref:
-                        return -1.0
-                    
-                    try:
-                        # Extract value (nanoseconds)
-                        idle_ns = ctypes.c_int64()
-                        kCFNumberSInt64Type = 4
-                        
-                        success = CFNumberGetValue(
-                            idle_time_ref,
-                            kCFNumberSInt64Type,
-                            ctypes.byref(idle_ns),
-                        )
-                        
-                        if success:
-                            return idle_ns.value / 1_000_000_000.0
-                        return -1.0
-                        
-                    finally:
-                        CFRelease(idle_time_ref)
-                        
-                finally:
-                    CFRelease(key)
-                    
-            finally:
-                IOObjectRelease(service)
-                
+            # Look for HIDIdleTime = <number>
+            match = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', output)
+            if match:
+                idle_ns = int(match.group(1))
+                return idle_ns / 1_000_000_000.0  # Convert nanoseconds to seconds
+            
+            return -1.0
+            
+        except asyncio.TimeoutError:
+            logger.debug("ioreg command timed out")
+            return -1.0
+        except FileNotFoundError:
+            logger.debug("ioreg command not found")
+            return -1.0
         except Exception as e:
             logger.debug(f"Failed to get macOS idle time: {e}")
             return -1.0
     
     async def _get_idle_time_async(self) -> float:
-        """Get idle time asynchronously."""
-        loop = asyncio.get_event_loop()
+        """Get idle time asynchronously with caching."""
+        current_time = time.time()
         
-        if platform.system() == "Darwin" and self._initialized:
-            # Run in executor to not block
-            idle_time = await loop.run_in_executor(
-                None,
-                self._get_macos_idle_time,
-            )
+        # Return cached value if still valid
+        if current_time - self._last_idle_check < self._cache_ttl:
+            return self._cached_idle_time
+        
+        if self._is_macos:
+            idle_time = await self._get_macos_idle_time_subprocess()
             if idle_time >= 0:
+                self._cached_idle_time = idle_time
+                self._last_idle_check = current_time
                 return idle_time
         
         # Fallback: use tracking-based approach
@@ -228,8 +165,7 @@ class IdleDetector:
         if not self.config.idle.enabled:
             return False
         
-        # Note: quiet_hours config would need to be added to IdleConfig
-        # For now, always return False
+        # Could add quiet hours support here
         return False
     
     def record_activity(self) -> None:
@@ -238,9 +174,9 @@ class IdleDetector:
         self._idle_start = None
         self._consecutive_idle_seconds = 0.0
     
-    def get_idle_state(self) -> IdleState:
-        """Get current idle state synchronously."""
-        idle_time = self._get_macos_idle_time()
+    async def get_idle_state(self) -> IdleState:
+        """Get current idle state."""
+        idle_time = await self._get_idle_time_async()
         
         if idle_time < 0:
             # Fallback

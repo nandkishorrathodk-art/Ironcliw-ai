@@ -348,7 +348,18 @@ class JARVISSupervisor:
         self._set_state(SupervisorState.UPDATING)
         logger.info("🔄 Update requested by JARVIS")
         
-        # Announce update starting
+        # Broadcast maintenance mode to frontend BEFORE JARVIS shuts down
+        try:
+            from .maintenance_broadcaster import broadcast_maintenance_mode
+            await broadcast_maintenance_mode(
+                reason="updating",
+                message="Downloading updates from repository...",
+                estimated_time=30,
+            )
+        except Exception as e:
+            logger.debug(f"Maintenance broadcast failed: {e}")
+        
+        # Announce update starting via TTS
         await self._narrator.narrate(NarratorEvent.UPDATE_STARTING, wait=True)
         
         if not self._update_engine:

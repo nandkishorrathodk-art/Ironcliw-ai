@@ -7,6 +7,11 @@ This script runs the JARVIS Lifecycle Supervisor, which sits above the main
 JARVIS application and manages its lifecycle including updates, restarts,
 and rollbacks.
 
+Features:
+- Automatic cleanup of existing JARVIS instances
+- Graceful termination with TTS announcements
+- Self-updating with voice feedback
+
 Usage:
     # Run supervisor (recommended way to start JARVIS)
     python run_supervisor.py
@@ -15,13 +20,14 @@ Usage:
     JARVIS_SUPERVISOR_CONFIG=/path/to/config.yaml python run_supervisor.py
 
 Author: JARVIS System
-Version: 1.0.0
+Version: 1.1.0
 """
 
 import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 # Add backend to path
@@ -62,11 +68,159 @@ def print_banner() -> None:
     print()
 
 
+async def cleanup_existing_instances() -> bool:
+    """
+    Automatically discover and cleanup existing JARVIS instances.
+    
+    Uses psutil for process discovery and graceful termination
+    with SIGINT → SIGTERM → SIGKILL cascade.
+    
+    Returns:
+        True if any instances were terminated
+    """
+    try:
+        import psutil
+        import signal
+    except ImportError:
+        print("  \033[33m⚠\033[0m psutil not available")
+        return False
+    
+    JARVIS_PATTERNS = ["start_system.py", "main.py"]
+    PID_FILES = [Path("/tmp/jarvis_master.pid"), Path("/tmp/jarvis.pid")]
+    
+    my_pid = os.getpid()
+    my_parent = os.getppid()
+    discovered = {}
+    
+    # 1. Check PID files
+    for pid_file in PID_FILES:
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                if psutil.pid_exists(pid) and pid not in (my_pid, my_parent):
+                    proc = psutil.Process(pid)
+                    cmdline = " ".join(proc.cmdline()).lower()
+                    if any(p in cmdline for p in JARVIS_PATTERNS):
+                        discovered[pid] = {
+                            "cmdline": cmdline,
+                            "age": time.time() - proc.create_time(),
+                        }
+            except (ValueError, psutil.NoSuchProcess):
+                pid_file.unlink(missing_ok=True)
+    
+    # 2. Scan process list
+    for proc in psutil.process_iter(['pid', 'cmdline', 'create_time']):
+        try:
+            pid = proc.info['pid']
+            if pid in (my_pid, my_parent) or pid in discovered:
+                continue
+            cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+            if any(p in cmdline for p in JARVIS_PATTERNS):
+                discovered[pid] = {
+                    "cmdline": cmdline,
+                    "age": time.time() - proc.info['create_time'],
+                }
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    
+    if not discovered:
+        print("  \033[32m●\033[0m No existing JARVIS instances found")
+        return False
+    
+    # Show what we found
+    print(f"  \033[33m●\033[0m Found {len(discovered)} existing instance(s):")
+    for pid, info in discovered.items():
+        age_min = info['age'] / 60
+        print(f"    └─ PID {pid} (running {age_min:.1f} min)")
+    print()
+    
+    # TTS announcement
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "say", "-v", "Daniel",
+            f"Detected {len(discovered)} existing instance. Shutting down gracefully.",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await process.wait()
+    except Exception:
+        pass
+    
+    # Terminate with cascade: SIGINT → SIGTERM → SIGKILL
+    terminated = 0
+    for pid in discovered:
+        try:
+            ps_proc = psutil.Process(pid)
+            
+            # Phase 1: SIGINT (graceful)
+            os.kill(pid, signal.SIGINT)
+            try:
+                ps_proc.wait(timeout=10.0)
+                terminated += 1
+                continue
+            except psutil.TimeoutExpired:
+                pass
+            
+            # Phase 2: SIGTERM
+            os.kill(pid, signal.SIGTERM)
+            try:
+                ps_proc.wait(timeout=5.0)
+                terminated += 1
+                continue
+            except psutil.TimeoutExpired:
+                pass
+            
+            # Phase 3: SIGKILL
+            os.kill(pid, signal.SIGKILL)
+            ps_proc.wait(timeout=2.0)
+            terminated += 1
+            
+        except (psutil.NoSuchProcess, ProcessLookupError):
+            terminated += 1
+        except Exception as e:
+            logging.debug(f"Failed to terminate {pid}: {e}")
+    
+    # Clean up PID files
+    for pid_file in PID_FILES:
+        try:
+            pid_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+    
+    if terminated > 0:
+        print(f"  \033[32m✓\033[0m Terminated {terminated} instance(s)")
+        # Announce completion
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "say", "-v", "Daniel", "Previous instance terminated. Starting fresh.",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await process.wait()
+        except Exception:
+            pass
+    
+    return terminated > 0
+
+
 async def main() -> None:
     """Main entry point for the supervisor."""
     from core.supervisor import JARVISSupervisor
     
     print_banner()
+    
+    # Step 1: Automatic cleanup of existing instances
+    print("  \033[90m[1/2] Checking for existing instances...\033[0m")
+    cleanup_needed = await cleanup_existing_instances()
+    
+    if cleanup_needed:
+        print()
+        # Brief pause to let ports release
+        await asyncio.sleep(1.0)
+    
+    # Step 2: Initialize supervisor
+    print("  \033[90m[2/2] Initializing supervisor...\033[0m")
+    print()
     
     supervisor = JARVISSupervisor()
     
@@ -95,3 +249,4 @@ async def main() -> None:
 if __name__ == "__main__":
     setup_logging()
     asyncio.run(main())
+
