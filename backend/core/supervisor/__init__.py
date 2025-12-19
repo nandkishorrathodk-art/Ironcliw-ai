@@ -14,6 +14,8 @@ Components:
 - `SupervisorNarrator` - TTS voice feedback (Daniel voice)
 - `UpdateIntentHandler` - Voice command integration
 - `supervisor_integration` - start_system.py bridge
+
+Note: Loading page is managed via loading_server.py at project root
 """
 
 from .supervisor_config import SupervisorConfig, get_supervisor_config

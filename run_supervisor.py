@@ -210,7 +210,7 @@ async def main() -> None:
     print_banner()
     
     # Step 1: Automatic cleanup of existing instances
-    print("  \033[90m[1/2] Checking for existing instances...\033[0m")
+    print("  \033[90m[1/3] Checking for existing instances...\033[0m")
     cleanup_needed = await cleanup_existing_instances()
     
     if cleanup_needed:
@@ -219,7 +219,7 @@ async def main() -> None:
         await asyncio.sleep(1.0)
     
     # Step 2: Initialize supervisor
-    print("  \033[90m[2/2] Initializing supervisor...\033[0m")
+    print("  \033[90m[2/3] Initializing supervisor...\033[0m")
     print()
     
     supervisor = JARVISSupervisor()
@@ -231,10 +231,14 @@ async def main() -> None:
     print(f"  \033[32m●\033[0m Idle Updates:  {'Enabled (' + str(config.idle.threshold_seconds // 3600) + 'h threshold)' if config.idle.enabled else 'Disabled'}")
     print(f"  \033[32m●\033[0m Auto-Rollback: {'Enabled' if config.rollback.auto_on_boot_failure else 'Disabled'}")
     print(f"  \033[32m●\033[0m Max Retries:   {config.health.max_crash_retries}")
+    print(f"  \033[32m●\033[0m Loading Page:  \033[1mEnabled\033[0m (port 3001)")
     print()
     print("\033[36m" + "-" * 65 + "\033[0m")
     print()
-    print("  \033[90mStarting JARVIS Core...\033[0m")
+    print("  \033[90m[3/3] Starting JARVIS with loading page...\033[0m")
+    print()
+    print("  \033[33m📡 Loading page will open in Chrome Incognito\033[0m")
+    print("  \033[33m   Watch real-time progress as JARVIS initializes!\033[0m")
     print()
     
     try:

@@ -41,6 +41,21 @@ from .narrator import (
     get_narrator,
 )
 
+# Import loading server functionality (lazy import to avoid circular deps)
+def _get_loading_server():
+    """Lazy import of loading_server module."""
+    import importlib.util
+    from pathlib import Path
+    
+    # loading_server.py is at project root
+    project_root = Path(__file__).parent.parent.parent.parent
+    loading_server_path = project_root / "loading_server.py"
+    
+    spec = importlib.util.spec_from_file_location("loading_server", loading_server_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 logger = logging.getLogger(__name__)
 
 
@@ -155,6 +170,10 @@ class JARVISSupervisor:
         # TTS Narrator for engaging feedback
         self._narrator: SupervisorNarrator = get_narrator()
         
+        # Loading page support (uses loading_server.py directly)
+        self._progress_reporter: Optional[Any] = None
+        self._show_loading_page: bool = True  # Can be disabled via env
+        
         # Components (lazy loaded)
         self._update_engine: Optional[Any] = None
         self._rollback_manager: Optional[Any] = None
@@ -211,14 +230,69 @@ class JARVISSupervisor:
             from .idle_detector import IdleDetector
             self._idle_detector = IdleDetector(self.config)
     
+    async def _open_loading_page(self) -> bool:
+        """
+        Open browser to loading page at localhost:3001.
+        
+        Uses Chrome Incognito for consistent, cache-free experience.
+        """
+        loading_url = "http://localhost:3001/"
+        
+        try:
+            # Launch Chrome Incognito with loading page
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/open", "-na", "Google Chrome",
+                "--args", "--incognito", "--new-window", "--start-fullscreen", loading_url,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await process.wait()
+            
+            logger.info(f"🌐 Opened loading page: {loading_url}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not open browser: {e}")
+            logger.info(f"📎 Please manually open: {loading_url}")
+            return False
+    
     async def _spawn_jarvis(self) -> int:
         """
         Spawn the JARVIS process and wait for exit.
+        
+        Includes loading page orchestration for visual feedback during startup.
         
         Returns:
             Exit code from the JARVIS process
         """
         self._set_state(SupervisorState.STARTING)
+        
+        # Start loading page if enabled (first start or after crash)
+        show_loading = self._show_loading_page and os.environ.get("JARVIS_NO_LOADING") != "1"
+        
+        if show_loading:
+            try:
+                loading_server = _get_loading_server()
+                
+                # Start loading server in background (if not already running)
+                await loading_server.start_loading_server_background()
+                
+                # Get progress reporter
+                self._progress_reporter = loading_server.get_progress_reporter()
+                
+                await self._progress_reporter.report(
+                    "supervisor_init",
+                    "Supervisor initializing...",
+                    5,
+                )
+                
+                # Open browser to loading page (only on first start)
+                if self.stats.total_starts == 0:
+                    await self._open_loading_page()
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Loading page unavailable: {e}")
+                self._progress_reporter = None
         
         # Build command
         python_executable = sys.executable
@@ -229,7 +303,19 @@ class JARVISSupervisor:
         env["JARVIS_SUPERVISED"] = "1"
         env["JARVIS_SUPERVISOR_PID"] = str(os.getpid())
         
+        # Tell start_system.py that supervisor is handling loading page
+        if self._progress_reporter:
+            env["JARVIS_SUPERVISOR_LOADING"] = "1"
+        
         logger.info(f"🚀 Spawning JARVIS: {' '.join(cmd)}")
+        
+        # Broadcast spawning stage
+        if self._progress_reporter:
+            await self._progress_reporter.report(
+                "spawning",
+                "Starting JARVIS Core...",
+                10,
+            )
         
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -251,9 +337,13 @@ class JARVISSupervisor:
             if self.stats.total_starts == 1:
                 await self._narrator.narrate(NarratorEvent.JARVIS_ONLINE)
             
-            # Start health monitoring
+            # Start health monitoring with loading page progress
             if self._health_monitor:
                 asyncio.create_task(self._monitor_health())
+            
+            # Start loading progress monitor (polls backend health and updates loading page)
+            if self._progress_reporter:
+                asyncio.create_task(self._monitor_startup_progress())
             
             # Wait for process to exit
             exit_code = await self._process.wait()
@@ -272,6 +362,141 @@ class JARVISSupervisor:
             return ExitCode.ERROR_CRASH
         finally:
             self._process = None
+            # Close progress reporter on exit
+            if self._progress_reporter:
+                try:
+                    await self._progress_reporter.close()
+                except Exception:
+                    pass
+                self._progress_reporter = None
+    
+    async def _monitor_startup_progress(self) -> None:
+        """
+        Monitor JARVIS startup and update loading page progress.
+        
+        Polls backend health endpoint and broadcasts stages until ready.
+        Uses loading_server.py for all progress updates.
+        """
+        if not self._progress_reporter:
+            return
+        
+        import aiohttp
+        
+        # Use dynamic port configuration from environment
+        backend_port = int(os.environ.get("BACKEND_PORT", "8010"))
+        frontend_port = int(os.environ.get("FRONTEND_PORT", "3000"))
+        
+        backend_url = f"http://localhost:{backend_port}"
+        frontend_url = f"http://localhost:{frontend_port}"
+        
+        stages_completed = set()
+        max_wait_seconds = 120  # 2 minute timeout
+        start_time = time.time()
+        
+        async def check_endpoint(url: str, timeout: float = 2.0) -> bool:
+            """Check if an endpoint is responding."""
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                        return resp.status == 200
+            except Exception:
+                return False
+        
+        # Progress percentages for each stage
+        progress_map = {
+            "backend": 40,
+            "database": 55,
+            "voice": 70,
+            "vision": 80,
+            "frontend": 90,
+        }
+        
+        while self.state == SupervisorState.RUNNING and self._progress_reporter:
+            elapsed = time.time() - start_time
+            
+            if elapsed > max_wait_seconds:
+                logger.warning("⚠️ Startup monitoring timeout")
+                await self._progress_reporter.fail(
+                    "Startup timeout - please check logs",
+                    error="Timeout after 2 minutes"
+                )
+                break
+            
+            try:
+                # Check backend health
+                backend_ready = await check_endpoint(f"{backend_url}/health")
+                
+                if backend_ready and "backend" not in stages_completed:
+                    stages_completed.add("backend")
+                    await self._progress_reporter.report(
+                        "api",
+                        "Backend API online!",
+                        progress_map["backend"],
+                    )
+                
+                # Once backend is ready, check for full system status
+                if backend_ready:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                f"{backend_url}/api/system/status",
+                                timeout=aiohttp.ClientTimeout(total=3.0)
+                            ) as resp:
+                                if resp.status == 200:
+                                    status = await resp.json()
+                                    
+                                    # Update stages based on status
+                                    if status.get("database_connected") and "database" not in stages_completed:
+                                        stages_completed.add("database")
+                                        await self._progress_reporter.report(
+                                            "database",
+                                            "Database connected",
+                                            progress_map["database"],
+                                        )
+                                    
+                                    if status.get("voice_ready") and "voice" not in stages_completed:
+                                        stages_completed.add("voice")
+                                        await self._progress_reporter.report(
+                                            "voice",
+                                            "Voice system ready",
+                                            progress_map["voice"],
+                                        )
+                                    
+                                    if status.get("vision_ready") and "vision" not in stages_completed:
+                                        stages_completed.add("vision")
+                                        await self._progress_reporter.report(
+                                            "vision",
+                                            "Vision system ready",
+                                            progress_map["vision"],
+                                        )
+                    except Exception:
+                        pass
+                
+                # Check frontend
+                frontend_ready = await check_endpoint(frontend_url)
+                
+                if frontend_ready and "frontend" not in stages_completed:
+                    stages_completed.add("frontend")
+                    await self._progress_reporter.report(
+                        "frontend",
+                        "Frontend ready!",
+                        progress_map["frontend"],
+                    )
+                
+                # If both backend and frontend are ready, complete!
+                if backend_ready and frontend_ready:
+                    await asyncio.sleep(0.5)  # Brief pause for visual effect
+                    await self._progress_reporter.complete(
+                        "JARVIS is online!",
+                        redirect_url=frontend_url,
+                    )
+                    logger.info("✅ Startup complete, loading page redirecting to main app")
+                    break
+                
+            except Exception as e:
+                logger.debug(f"Startup progress check error: {e}")
+            
+            await asyncio.sleep(1.0)  # Check every second
     
     async def _monitor_health(self) -> None:
         """Monitor JARVIS health while running."""
