@@ -1,0 +1,208 @@
+# JARVIS Self-Updating Lifecycle Manager Configuration
+# Zero hardcoding - all settings configurable and environment-overridable
+# Version: 1.0.0
+
+supervisor:
+  # Master enable/disable
+  enabled: true
+  
+  # Operation mode: manual, auto, scheduled
+  # manual: Only updates on voice command
+  # auto: Proactive notifications + idle updates
+  # scheduled: Cron-like scheduled updates
+  mode: auto
+  
+  # Logging configuration
+  logging:
+    level: INFO  # DEBUG, INFO, WARNING, ERROR
+    file: logs/supervisor.log
+    max_size_mb: 50
+    backup_count: 3
+
+# Update Detection & Application
+update:
+  # Source configuration
+  source:
+    type: github  # github, gitlab, local
+    remote: origin
+    branch: main
+    # For private repos, set GITHUB_TOKEN env var
+    
+  # Polling configuration
+  check:
+    enabled: true
+    interval_seconds: 300  # 5 minutes
+    on_startup: true
+    rate_limit_aware: true
+    
+  # Notification settings
+  notification:
+    enabled: true
+    announce_changes: true  # "Sir, a new update improves voice latency..."
+    require_confirmation: true  # Wait for user approval
+    
+  # Auto-apply settings (when confirmation not required)
+  auto_apply:
+    enabled: false
+    on_idle_only: true
+    
+  # Build steps (executed in order)
+  build_steps:
+    - name: git_pull
+      command: git pull --ff-only origin {branch}
+      timeout_seconds: 120
+      required: true
+      
+    - name: pip_install
+      command: pip install -r requirements.txt --quiet
+      timeout_seconds: 300
+      required: true
+      
+    - name: rust_build
+      command: cargo build --release
+      working_dir: backend/vision/jarvis-rust-core
+      timeout_seconds: 600
+      required: false  # Optional - may not exist
+      condition: path_exists(backend/vision/jarvis-rust-core/Cargo.toml)
+
+# Idle Detection & Auto-Update
+idle:
+  enabled: true
+  
+  # Idle threshold for silent updates
+  threshold_seconds: 7200  # 2 hours
+  
+  # Minimum consecutive idle time before triggering
+  min_consecutive_seconds: 300  # 5 minutes
+  
+  # Activity sources to monitor (macOS specific)
+  monitor:
+    keyboard: true
+    mouse: true
+    audio_output: false  # Don't count as idle if playing audio
+    
+  # Do-not-disturb windows (24h format)
+  quiet_hours:
+    enabled: false
+    start: "23:00"
+    end: "07:00"
+    
+  # Silent update behavior
+  silent_update:
+    enabled: true
+    announce_on_resume: true  # "I've updated while you were away, Sir"
+
+# Health Monitoring & Crash Detection
+health:
+  # Boot stability detection
+  boot_stability:
+    window_seconds: 60  # Must stay up this long
+    min_components_ready: 5  # Critical components
+    
+  # Crash handling
+  crash_detection:
+    max_retries: 3
+    retry_delay_seconds: 5
+    backoff_multiplier: 2.0  # Exponential backoff
+    
+  # Health checks
+  checks:
+    interval_seconds: 30
+    timeout_seconds: 10
+    endpoints:
+      - name: websocket
+        url: http://localhost:8010/health
+      - name: event_bus
+        internal: true
+        component: event_bus
+        
+  # Memory monitoring integration
+  memory:
+    warning_threshold_percent: 80
+    critical_threshold_percent: 90
+    pause_updates_on_pressure: true
+
+# Rollback Configuration
+rollback:
+  enabled: true
+  
+  # Version history
+  max_versions: 5
+  
+  # Storage location (relative to repo root)
+  history_db: data/supervisor/version_history.db
+  
+  # Auto-rollback triggers
+  auto_rollback:
+    on_boot_failure: true
+    on_crash_within_seconds: 60
+    on_health_check_failure: true
+    
+  # Snapshot strategy
+  snapshot:
+    include_pip_freeze: true
+    include_git_stash: false  # Stash local changes before update
+
+# Changelog Analysis (AI-powered)
+changelog:
+  enabled: true
+  
+  # Commit depth for analysis
+  max_commits: 20
+  
+  # AI summarization
+  summarization:
+    enabled: true
+    provider: local  # local, claude, openai
+    max_length_words: 50
+    
+  # Category detection
+  categories:
+    - security
+    - performance
+    - feature
+    - fix
+    - refactor
+    - docs
+
+# Security Settings
+security:
+  # GPG signature verification (future)
+  signature_verification:
+    enabled: false
+    required: false
+    trusted_keys: []
+    
+  # Update source restrictions
+  allowed_sources:
+    - github.com/drussell23/JARVIS-AI-Agent
+    
+  # Sandbox updates (run as current user, no sudo)
+  sandbox:
+    enabled: true
+    no_sudo: true
+
+# Event Integration
+events:
+  # Event types to emit
+  emit:
+    update_available: true
+    update_started: true
+    update_progress: true
+    update_complete: true
+    rollback_triggered: true
+    health_status_changed: true
+    
+  # Priority levels
+  priority:
+    update_available: NORMAL
+    update_started: HIGH
+    rollback_triggered: CRITICAL
+
+# Exit Codes (for supervisor-to-process communication)
+exit_codes:
+  clean_shutdown: 0
+  error_crash: 1
+  update_request: 100
+  rollback_request: 101
+  restart_request: 102

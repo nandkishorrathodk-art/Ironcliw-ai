@@ -149,6 +149,42 @@ event_types:
       priority: NORMAL
       persist: true
       ttl_override: 3600
+      
+  # Supervisor events (Self-Updating Lifecycle Manager)
+  supervisor:
+    update_available:
+      priority: NORMAL
+      persist: true
+      ttl_override: 86400
+    update_started:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+    update_progress:
+      priority: LOW
+      persist: false
+      ttl_override: 300
+    update_complete:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+    update_failed:
+      priority: CRITICAL
+      persist: true
+      ttl_override: 604800
+    rollback_triggered:
+      priority: CRITICAL
+      persist: true
+      ttl_override: 604800
+    health_status_changed:
+      priority: HIGH
+      persist: true
+      ttl_override: 3600
+    idle_detected:
+      priority: LOW
+      persist: false
+      ttl_override: 300
+
 
 # Event Filtering Rules
 filters:

@@ -199,6 +199,65 @@
         "category": "social",
         "priority": 40
       }
+    },
+    {
+      "label": "update_system",
+      "patterns": [
+        "update yourself",
+        "update system",
+        "update jarvis",
+        "check for updates",
+        "install updates",
+        "upgrade yourself",
+        "upgrade system",
+        "get latest version",
+        "update to latest",
+        "self update",
+        "system update",
+        "any updates available",
+        "are there updates",
+        "is there an update",
+        "new version available",
+        "apply update",
+        "install update"
+      ],
+      "examples": [
+        "Update yourself",
+        "JARVIS, check for updates",
+        "Is there a new version available?",
+        "Install the latest update"
+      ],
+      "metadata": {
+        "category": "system",
+        "priority": 90,
+        "requires_confirmation": true,
+        "exit_code": 100
+      }
+    },
+    {
+      "label": "rollback_system",
+      "patterns": [
+        "rollback",
+        "roll back",
+        "revert update",
+        "undo update",
+        "previous version",
+        "restore previous",
+        "go back",
+        "revert to stable"
+      ],
+      "examples": [
+        "Rollback to previous version",
+        "Undo the last update",
+        "Revert to stable"
+      ],
+      "metadata": {
+        "category": "system",
+        "priority": 85,
+        "requires_confirmation": true,
+        "exit_code": 101
+      }
     }
   ]
 }
+

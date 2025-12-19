@@ -13404,6 +13404,41 @@ except Exception as e:
                 print(f"{Colors.YELLOW}   ⚠️  Will run in local-only mode{Colors.ENDC}")
                 self.hybrid_enabled = False
 
+        # ═══════════════════════════════════════════════════════════════════
+        # SUPERVISOR INTEGRATION - Self-Updating Lifecycle Manager
+        # ═══════════════════════════════════════════════════════════════════
+        await broadcast_progress(
+            "supervisor_integration",
+            "Initializing Self-Updating Lifecycle Manager",
+            62,
+            {"icon": "🔄", "label": "Supervisor", "sublabel": "Auto-update integration"}
+        )
+        try:
+            from core.supervisor.supervisor_integration import (
+                setup_supervisor_integration,
+                is_supervised,
+            )
+            
+            # Setup supervisor integration (registers intent handlers)
+            supervised = await setup_supervisor_integration()
+            
+            if supervised:
+                print(f"\n{Colors.CYAN}🔄 Self-Updating Lifecycle Manager Active{Colors.ENDC}")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Running under supervisor (auto-update enabled)")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Voice commands: 'Update yourself', 'Rollback'")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Idle updates: Enabled (2hr threshold)")
+            else:
+                print(f"\n{Colors.YELLOW}🔄 Self-Updating Lifecycle Manager{Colors.ENDC}")
+                print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} Running standalone mode")
+                print(f"   • {Colors.CYAN}ℹ{Colors.ENDC} For auto-updates, run: python3 run_supervisor.py")
+                
+        except ImportError as e:
+            logger.debug(f"Supervisor integration not available: {e}")
+            print(f"\n{Colors.YELLOW}🔄 Supervisor Integration: Not available{Colors.ENDC}")
+        except Exception as e:
+            logger.warning(f"Supervisor integration failed: {e}")
+            print(f"{Colors.YELLOW}   ⚠️  Supervisor integration error: {e}{Colors.ENDC}")
+
         # Start Advanced Voice Unlock Metrics Monitor (with DB Browser auto-launch)
         await broadcast_progress(
             "metrics_monitor",
