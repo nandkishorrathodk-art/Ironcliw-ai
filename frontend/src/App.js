@@ -8,6 +8,7 @@ import ActionDisplay from './components/ActionDisplay';
 import ConfigDiagnostic from './components/ConfigDiagnostic';
 import MatrixBackground from './components/MatrixBackground';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
+import UpdateNotificationBadge from './components/UpdateNotificationBadge';
 
 function App() {
   const [input, setInput] = useState('');
@@ -128,6 +129,9 @@ function App() {
     <div className="App">
       {/* Maintenance Overlay - Shows during system updates/restarts */}
       <MaintenanceOverlay />
+      
+      {/* Update Notification Badge - Shows when updates are available */}
+      <UpdateNotificationBadge />
 
       {/* Matrix Background Animation */}
       <MatrixBackground

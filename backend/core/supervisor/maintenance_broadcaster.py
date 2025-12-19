@@ -148,3 +148,163 @@ async def announce_and_broadcast(
         broadcast_maintenance_mode(reason, ws_message or tts_message),
         return_exceptions=True,
     )
+
+
+async def broadcast_update_available(
+    commits_behind: int,
+    summary: str,
+    priority: str = "medium",
+    highlights: Optional[list[str]] = None,
+    security_update: bool = False,
+    breaking_changes: bool = False,
+    remote_sha: Optional[str] = None,
+    local_sha: Optional[str] = None,
+    backend_url: str = "http://localhost:8010",
+) -> bool:
+    """
+    Broadcast update available notification to frontend.
+    
+    This enables the frontend to display an "Update Available" badge
+    or notification modal with rich information about what's changed.
+    
+    Args:
+        commits_behind: Number of commits behind remote
+        summary: Human-readable summary of changes
+        priority: 'low' | 'medium' | 'high' | 'critical'
+        highlights: List of key changes (bullet points)
+        security_update: True if this includes security fixes
+        breaking_changes: True if this includes breaking changes
+        remote_sha: Short SHA of remote HEAD
+        local_sha: Short SHA of local HEAD
+        backend_url: Backend URL for broadcasting
+        
+    Returns:
+        True if broadcast successful
+    """
+    from datetime import datetime
+    
+    payload = {
+        "type": "update_available",
+        "data": {
+            "available": True,
+            "commits_behind": commits_behind,
+            "summary": summary,
+            "priority": priority,
+            "highlights": highlights or [],
+            "security_update": security_update,
+            "breaking_changes": breaking_changes,
+            "remote_sha": remote_sha,
+            "local_sha": local_sha,
+            "timestamp": datetime.now().isoformat(),
+        }
+    }
+    
+    # Try multiple potential broadcast endpoints
+    endpoints = [
+        f"{backend_url}/api/broadcast",
+        f"{backend_url}/api/system/broadcast",
+        f"{backend_url}/ws/broadcast",
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    endpoint,
+                    json={"event": "update_available", "data": payload["data"]},
+                    timeout=aiohttp.ClientTimeout(total=3.0),
+                ) as response:
+                    if response.status in (200, 201, 202, 204):
+                        logger.info(f"📡 Broadcast update_available: {commits_behind} commits, {summary}")
+                        return True
+        except aiohttp.ClientConnectorError:
+            continue
+        except asyncio.TimeoutError:
+            continue
+        except Exception as e:
+            logger.debug(f"Broadcast to {endpoint} failed: {e}")
+            continue
+    
+    logger.debug("Could not broadcast update_available (backend may be starting)")
+    return False
+
+
+async def broadcast_update_dismissed(
+    backend_url: str = "http://localhost:8010",
+) -> bool:
+    """
+    Broadcast that user dismissed the update notification.
+    
+    Allows frontend to hide the notification badge/modal.
+    
+    Args:
+        backend_url: Backend URL for broadcasting
+        
+    Returns:
+        True if broadcast successful
+    """
+    payload = {
+        "type": "update_dismissed",
+        "data": {
+            "available": False,
+        }
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{backend_url}/api/broadcast",
+                json={"event": "update_dismissed", "data": payload["data"]},
+                timeout=aiohttp.ClientTimeout(total=2.0),
+            ) as response:
+                if response.status in (200, 201, 202, 204):
+                    logger.info("📡 Broadcast update_dismissed")
+                    return True
+    except Exception as e:
+        logger.debug(f"Broadcast update_dismissed failed: {e}")
+    
+    return False
+
+
+async def broadcast_update_progress(
+    phase: str,
+    message: str,
+    progress_percent: int = 0,
+    backend_url: str = "http://localhost:8010",
+) -> bool:
+    """
+    Broadcast update progress to frontend.
+    
+    Enables frontend to show a progress indicator during updates.
+    
+    Args:
+        phase: 'downloading' | 'installing' | 'building' | 'verifying'
+        message: Human-readable progress message
+        progress_percent: 0-100 progress value
+        backend_url: Backend URL for broadcasting
+        
+    Returns:
+        True if broadcast successful
+    """
+    payload = {
+        "type": "update_progress",
+        "data": {
+            "phase": phase,
+            "message": message,
+            "progress": progress_percent,
+        }
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{backend_url}/api/broadcast",
+                json={"event": "update_progress", "data": payload["data"]},
+                timeout=aiohttp.ClientTimeout(total=2.0),
+            ) as response:
+                if response.status in (200, 201, 202, 204):
+                    return True
+    except Exception as e:
+        logger.debug(f"Broadcast update_progress failed: {e}")
+    
+    return False

@@ -27,6 +27,10 @@ class UnifiedWebSocketService {
     this.maintenanceMode = false;
     this.maintenanceReason = null; // 'updating' | 'restarting' | 'rollback' | null
 
+    // Update available state for notification badge
+    this.updateAvailable = false;
+    this.updateInfo = null; // { commits_behind, summary, priority, highlights, security_update, breaking_changes }
+
     // Wait for config and then connect
     this._initializeWhenReady();
   }
@@ -146,6 +150,58 @@ class UnifiedWebSocketService {
         reason: null,
         message: data?.message || 'JARVIS is back online',
       });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // UPDATE NOTIFICATION - "Update Available" Badge/Modal Events
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Handle update_available event from supervisor
+    this.client.on('update_available', (data) => {
+      console.log('📦 Update available notification received:', data);
+      this.updateAvailable = true;
+      this.updateInfo = {
+        commits_behind: data?.commits_behind || 0,
+        summary: data?.summary || 'Updates available',
+        priority: data?.priority || 'medium',
+        highlights: data?.highlights || [],
+        security_update: data?.security_update || false,
+        breaking_changes: data?.breaking_changes || false,
+        remote_sha: data?.remote_sha || null,
+        local_sha: data?.local_sha || null,
+        timestamp: data?.timestamp || new Date().toISOString(),
+      };
+      this._notifySubscribers('update_available', {
+        available: true,
+        ...this.updateInfo,
+      });
+    });
+
+    // Handle update_dismissed event (user clicked "later")
+    this.client.on('update_dismissed', (data) => {
+      console.log('📭 Update notification dismissed');
+      this.updateAvailable = false;
+      this.updateInfo = null;
+      this._notifySubscribers('update_available', {
+        available: false,
+      });
+    });
+
+    // Handle update_progress event (during update process)
+    this.client.on('update_progress', (data) => {
+      console.log('📊 Update progress:', data);
+      this._notifySubscribers('update_progress', {
+        phase: data?.phase || 'unknown',
+        message: data?.message || 'Updating...',
+        progress: data?.progress || 0,
+      });
+    });
+
+    // Clear update notification when entering maintenance mode for update
+    this.client.on('system_updating', () => {
+      // Clear the badge - user is acting on the update
+      this.updateAvailable = false;
+      this.updateInfo = null;
     });
   }
 
@@ -309,6 +365,31 @@ class UnifiedWebSocketService {
   }
 
   /**
+   * Check if an update is available
+   */
+  isUpdateAvailable() {
+    return this.updateAvailable;
+  }
+
+  /**
+   * Get update information
+   */
+  getUpdateInfo() {
+    return this.updateInfo;
+  }
+
+  /**
+   * Dismiss the update notification (user clicked "later")
+   */
+  dismissUpdate() {
+    this.updateAvailable = false;
+    this.updateInfo = null;
+    this._notifySubscribers('update_available', {
+      available: false,
+    });
+  }
+
+  /**
    * Notify all subscribers of an event
    */
   _notifySubscribers(eventType, data) {
@@ -342,6 +423,9 @@ export function useUnifiedWebSocket() {
   const [maintenanceMode, setMaintenanceMode] = React.useState(false);
   const [maintenanceReason, setMaintenanceReason] = React.useState(null);
   const [maintenanceMessage, setMaintenanceMessage] = React.useState(null);
+  // Update available state
+  const [updateAvailable, setUpdateAvailable] = React.useState(false);
+  const [updateInfo, setUpdateInfo] = React.useState(null);
   const service = React.useMemo(() => getUnifiedWebSocketService(), []);
 
   React.useEffect(() => {
@@ -357,9 +441,29 @@ export function useUnifiedWebSocket() {
       setMaintenanceMessage(data.message);
     });
 
+    // Subscribe to update available notifications
+    const unsubscribeUpdate = service.subscribe('update_available', (data) => {
+      setUpdateAvailable(data.available);
+      if (data.available) {
+        setUpdateInfo({
+          commits_behind: data.commits_behind,
+          summary: data.summary,
+          priority: data.priority,
+          highlights: data.highlights,
+          security_update: data.security_update,
+          breaking_changes: data.breaking_changes,
+          timestamp: data.timestamp,
+        });
+      } else {
+        setUpdateInfo(null);
+      }
+    });
+
     // Initial connection state
     setConnected(service.isConnected());
     setMaintenanceMode(service.isInMaintenanceMode());
+    setUpdateAvailable(service.isUpdateAvailable());
+    setUpdateInfo(service.getUpdateInfo());
 
     // Update stats periodically
     const interval = setInterval(() => {
@@ -369,6 +473,7 @@ export function useUnifiedWebSocket() {
     return () => {
       unsubscribeConnection();
       unsubscribeMaintenance();
+      unsubscribeUpdate();
       clearInterval(interval);
     };
   }, [service]);
@@ -380,6 +485,11 @@ export function useUnifiedWebSocket() {
     maintenanceMode,
     maintenanceReason,
     maintenanceMessage,
+    // Update available state
+    updateAvailable,
+    updateInfo,
+    dismissUpdate: () => service.dismissUpdate(),
+    // Actions
     connect: (capability) => service.connect(capability),
     disconnect: () => service.disconnect(),
     send: (message, capability) => service.send(message, capability),

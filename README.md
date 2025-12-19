@@ -1,12 +1,19 @@
-# JARVIS AI Assistant v19.0.0 - Intelligent ECAPA Backend Orchestration
+# JARVIS AI Assistant v19.6.0 - Intelligent Lifecycle & Cost Management
 
-An intelligent voice-activated AI assistant with **Intelligent ECAPA Backend Orchestrator v19.0.0** (Zero-Configuration Backend Selection + Concurrent Probing + Auto-Start Docker + Intelligent Fallback), **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Cloud ECAPA Client v19.2.0** (Intelligent Hybrid Cloud Voice Processing + Spot VM Auto-Creation + Cost-Aware Routing + 60% Cache Savings + RecentSpeakerCache Fast-Path Optimization with 98% Latency Reduction), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Self-Updating Lifecycle Manager v19.6.0** (Intelligent Update Notifications + Multi-Modal Communication + Changelog Analysis), **Intelligent Memory Pressure Controller v1.0** (Adaptive Thresholds + Effectiveness Tracking + Cooldown System), **Supervisor-Aware GCP Controller v1.0** (Budget Management + Idle Shutdown + Cost-Aware Routing), **Intelligent ECAPA Backend Orchestrator v19.0.0** (Zero-Configuration Backend Selection + Concurrent Probing + Auto-Start Docker + Intelligent Fallback), **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Cloud ECAPA Client v19.2.0** (Intelligent Hybrid Cloud Voice Processing + Spot VM Auto-Creation + Cost-Aware Routing + 60% Cache Savings + RecentSpeakerCache Fast-Path Optimization with 98% Latency Reduction), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
-## 🔄 NEW in v19.5.0: Self-Updating Lifecycle Manager (The Supervisor)
+## 🔄 NEW in v19.5.0+: Self-Updating Lifecycle Manager (The Supervisor)
 
-JARVIS v19.5.0 introduces the **Self-Updating Lifecycle Manager** (The Supervisor) — a robust, external process supervisor that manages JARVIS as a child process. This architecture enables autonomous updates, automatic rollbacks on crash, idle-time maintenance, and an engaging "Maintenance Mode" UI.
+JARVIS v19.5.0+ introduces the **Self-Updating Lifecycle Manager** (The Supervisor) — a robust, external process supervisor that manages JARVIS as a child process. This architecture enables autonomous updates, automatic rollbacks on crash, idle-time maintenance, and an engaging "Maintenance Mode" UI.
+
+**v19.6.0 Enhancements:**
+- ✅ **Intelligent Update Notifications** - Multi-modal notifications with smart deduplication
+- ✅ **Changelog Analysis** - Rich summaries of what's changing
+- ✅ **Priority-Based Delivery** - Security updates bypass delays
+- ✅ **User Activity Awareness** - Respectful, non-intrusive notifications
+- ✅ **Frontend Integration** - Update badge with modal and voice commands
 
 ### The Supervisor Architecture: "The Mechanic & The Engine"
 
@@ -30,13 +37,16 @@ graph TD
 | Feature | Description | Benefit |
 |---------|-------------|---------|
 | **Autonomous Updates** | Git-based atomic updates with `pip` dependency resolution | Zero-touch maintenance |
-| **Auto-Detection** | Checks GitHub every 5 minutes for new commits | Proactive notifications |
-| **Update Badge** | Frontend notification badge + voice announcement | Dual-modality interaction |
+| **Intelligent Notifications** | Multi-modal update notifications (Voice + WebSocket + Console) with smart deduplication | Full transparency, no spam |
+| **Auto-Detection** | Checks GitHub every 5 minutes for new commits with changelog analysis | Proactive, meaningful notifications |
+| **Update Badge** | Frontend notification badge + voice announcement with rich changelog summaries | Dual-modality interaction |
 | **Maintenance Overlay** | Matrix Rain + Arc Reactor UI during updates | Professional "JARVIS is busy" UX |
 | **Automatic Rollback** | SQLite-based `version_history.db` for emergency revert | 99.9% availability |
 | **Idle Intelligence** | Updates only when system has been idle for >2 hours | Zero workflow interruption |
 | **TTS Narration** | Real-time voice feedback using macOS "Daniel" voice | Engaging system interaction |
 | **Process Cleanup** | Intelligent `psutil`-based termination of stuck instances | No more manual PID hunting |
+| **Priority-Based Delivery** | Security updates bypass delays, breaking changes get high priority | Critical updates never missed |
+| **User Activity Awareness** | Configurable interrupt behavior (don't interrupt active use) | Respectful user experience |
 
 ### How Updates Work
 
@@ -55,6 +65,162 @@ graph TD
 5. **Update Process**: `git pull` → `pip install` → `cargo build` (if Rust changes)
 6. **Restart**: JARVIS restarts with new code
 7. **Completion**: "Update complete. Systems nominal."
+
+### Intelligent Update Notification System (v19.6.0)
+
+The Supervisor now includes an **Intelligent Update Notification Orchestrator** that provides multi-modal, context-aware notifications with zero spam.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              UpdateNotificationOrchestrator                     │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  _run_update_detector()                                   │   │
+│  │       │                                                   │   │
+│  │       ▼                                                   │   │
+│  │  UpdateNotificationOrchestrator                          │   │
+│  │       │                                                   │   │
+│  │       ├── ChangelogAnalyzer (rich summaries)             │   │
+│  │       │                                                   │   │
+│  │       └── notify_update_available()                      │   │
+│  │               │                                           │   │
+│  │               ├── Voice (TTS via narrator)              │   │
+│  │               │                                           │   │
+│  │               └── WebSocket (POST /api/broadcast)        │   │
+│  │                         │                                 │   │
+│  └───────┼───────────────────┼─────────────────────────────┘   │
+└──────────┼───────────────────┼─────────────────────────────────┘
+           │                   │
+           ▼                   ▼
+    ┌──────────────┐    ┌────────────────────────────────────┐
+    │ macOS "say"  │    │  Backend (FastAPI main.py)         │
+    │ command      │    │       │                             │
+    └──────────────┘    │  broadcast_router                    │
+                        │       │                             │
+                        │  BroadcastConnectionManager         │
+                        │       │                             │
+                        └───────┼─────────────────────────────┘
+                                │
+                                ▼
+                        ┌────────────────────────────────────┐
+                        │  Frontend (React App)              │
+                        │                                    │
+                        │  UnifiedWebSocketService           │
+                        │       │                             │
+                        │       ▼                             │
+                        │  <UpdateNotificationBadge />       │
+                        │  (Badge + Modal with rich info)    │
+                        │                                    │
+                        └────────────────────────────────────┘
+```
+
+#### Key Features
+
+**1. Smart Deduplication**
+- Same update = one notification (no spam)
+- Tracks notification hash to prevent duplicates
+- Minimum interval between notifications (60s default)
+
+**2. Priority-Based Delivery**
+- **CRITICAL**: Security updates bypass all delays
+- **HIGH**: Breaking changes get immediate attention
+- **MEDIUM**: Feature updates with normal flow
+- **LOW**: Routine updates respect user activity
+
+**3. User Activity Awareness**
+- Configurable interrupt behavior (`interrupt_active_user: false` by default)
+- Won't interrupt active use unless critical
+- Tracks last user activity timestamp
+
+**4. Rich Changelog Summaries**
+- Uses `ChangelogAnalyzer` to parse git commits
+- Categorizes changes (security, feature, fix, performance)
+- Generates human-friendly summaries for TTS
+- Highlights key changes in frontend modal
+
+**5. Multi-Channel Delivery**
+- **Voice (TTS)**: macOS `say` command with natural language
+- **WebSocket**: Real-time frontend badge/modal
+- **Console**: Developer logging
+
+**6. Reminder System**
+- Configurable reminder intervals (default: 15 minutes)
+- Max reminders limit (default: 3)
+- User can dismiss temporarily
+
+#### Configuration
+
+```yaml
+# backend/config/supervisor_config.yaml
+notification:
+  # Channel toggles
+  voice_enabled: true
+  websocket_enabled: true
+  console_enabled: true
+  
+  # Timing
+  min_interval_seconds: 60        # Min time between notifications
+  reminder_interval_seconds: 900  # Re-notify after 15 minutes
+  max_reminders: 3                # Max reminder notifications
+  
+  # Priority handling
+  security_immediate: true         # Always notify for security
+  
+  # User activity awareness  
+  interrupt_active_user: false    # Don't interrupt active use
+  active_timeout_seconds: 120     # Consider user "active" if recent activity
+  
+  # Content
+  announce_changes: true           # Use changelog analyzer
+  max_summary_words: 50           # TTS summary word limit
+```
+
+#### Frontend Integration
+
+The frontend includes a new `<UpdateNotificationBadge />` component:
+
+**Features:**
+- Animated floating badge (bottom-right)
+- Priority-based styling (normal green, security red, breaking orange)
+- Modal with rich update info (summary, highlights, voice hint)
+- "Update Now" and "Later" buttons
+- Matches JARVIS theme (#00ff41)
+
+**Usage:**
+```jsx
+// Already integrated in App.js
+import UpdateNotificationBadge from './components/UpdateNotificationBadge';
+
+<UpdateNotificationBadge />
+```
+
+#### Example Notification Flow
+
+**1. Update Detected:**
+```
+🔍 Update detector: Checking GitHub...
+📦 Update available: 3 commit(s) - 2 new features, 1 bug fix
+🔊 Spoke update notification
+📡 Broadcast update_available to frontend
+```
+
+**2. User Sees:**
+- **Voice**: "Sir, a system update is available with 2 new features and 1 bug fix. Shall I proceed with the update?"
+- **Frontend**: Badge appears with "Update Available" + commit count
+
+**3. User Clicks Badge:**
+- Modal opens with:
+  - Summary: "2 new features, 1 bug fix"
+  - Highlights: "✨ New Windows support", "🐛 Fixed vision pipeline"
+  - Voice hint: "💬 You can also say: 'JARVIS, update to the latest version'"
+  - Actions: "Later" | "Update Now"
+
+**4. User Clicks "Update Now":**
+- WebSocket sends `update_system` command
+- JARVIS exits with code 100
+- Supervisor takes over → Maintenance Overlay appears
 
 ### Maintenance Mode UI
 
@@ -180,7 +346,374 @@ export JARVIS_SUPERVISOR_UPDATE_CHECK_INTERVAL=600  # 10 minutes
 
 ---
 
+## 🧠 NEW in v19.6.0: Intelligent Memory Pressure Controller
+
+JARVIS v19.6.0 introduces an **Intelligent Memory Pressure Controller** that completely eliminates runaway cleanup loops and provides adaptive, effectiveness-based memory management.
+
+### The Problem (Before v19.6.0)
+
+The original memory cleanup system had critical issues:
+- **No cooldown**: Events fired every 5 seconds regardless of effectiveness
+- **No deduplication**: Multiple cleanup runs triggered simultaneously
+- **No effectiveness tracking**: Cleanup ran even when not helping
+- **Fixed thresholds**: Didn't adapt to system baseline (systems normally running at 80% memory)
+- **Duplicate cleanup**: Handler ran cleanup, then scheduler ran it again
+
+**Result**: Logs showed cleanup running every 5-7 seconds in a tight loop, with memory stuck at 80-82% (cleanup wasn't working).
+
+### The Solution: IntelligentMemoryController
+
+A state machine-based controller with adaptive thresholds and effectiveness tracking.
+
+#### State Machine
+
+```
+┌──────┐    ┌────────────┐    ┌────────────────┐    ┌──────────┐
+│ IDLE │───▶│ MONITORING │───▶│ RELIEF_PENDING │───▶│ COOLDOWN │
+└──────┘    └────────────┘    └────────────────┘    └──────────┘
+                  │                   │                   │
+                  │                   ▼                   │
+                  │           ┌──────────────┐            │
+                  │           │RELIEF_ACTIVE │────────────┘
+                  │           └──────────────┘
+                  │                   │
+                  │     (if ineffective 3x)
+                  │                   ▼
+                  │           ┌─────────┐
+                  └───────────│ BACKOFF │ (extended cooldown)
+                              └─────────┘
+```
+
+#### Key Features
+
+**1. Adaptive Thresholds**
+- Learns your system's memory baseline (median of last 60 samples)
+- Adjusts thresholds based on baseline:
+  - If baseline is 75% → thresholds become 80%+ (more tolerant)
+  - If baseline is 50% → thresholds become 65%+ (more aggressive)
+- Prevents constant triggering on high-memory systems
+
+**2. Effectiveness Tracking**
+- Tracks if cleanup actually reduced memory
+- Effective = memory dropped by 2%+ OR below high threshold
+- After 3 ineffective attempts → enters BACKOFF mode
+- Progressive cooldown increase (30s → 45s → 67s → ... up to 5 minutes)
+
+**3. Cooldown System**
+- **Base cooldown**: 30 seconds after relief
+- **Extended backoff**: Up to 5 minutes when cleanup isn't working
+- Prevents spam during ineffective cleanup periods
+
+**4. State Machine Protection**
+- Only one cleanup at a time (no overlapping runs)
+- RELIEF_PENDING → RELIEF_ACTIVE → COOLDOWN flow
+- Prevents duplicate cleanup execution
+
+**5. Event Deduplication**
+- Minimum 30 seconds between event emissions
+- Same memory level = one event (not repeated)
+- Tracks last emission timestamp
+
+#### Before vs After
+
+**Before (Your Log):**
+```
+14:47:26 - 🔥 Memory pressure detected: 80.7%
+14:47:26 - ☁️  Running HIGH memory relief
+14:47:29 - 🔥 Memory pressure detected: 80.7%  ← DUPLICATE!
+14:47:29 - ☁️  Running HIGH memory relief     ← DUPLICATE!
+14:47:35 - 🔥 Memory pressure detected: 81.9%
+... (every 5-7 seconds forever)
+```
+
+**After:**
+```
+14:47:26 - 🔥 Memory pressure: 80.7% - HIGH relief
+14:47:26 - ☁️  Running HIGH memory relief
+14:47:28 - 🧠 Relief effective: 80.7% → 78.2% (freed ~150MB)
+           [30 second cooldown begins]
+14:47:32 - Memory event suppressed: In cooldown (24s remaining)
+14:47:56 - 🔥 Memory pressure: 81.0% - HIGH relief
+           [if ineffective after 3 attempts, enters backoff]
+14:48:30 - 🧠 Entering backoff (cooldown: 90s)
+```
+
+#### Configuration
+
+The controller is automatically integrated with `process_cleanup_manager.py`. No configuration needed, but you can monitor it:
+
+```python
+from process_cleanup_manager import get_memory_controller
+
+controller = get_memory_controller()
+stats = controller.get_stats()
+
+# Returns:
+# {
+#   "state": "COOLDOWN",
+#   "memory_baseline": 78.5,
+#   "baseline_established": true,
+#   "thresholds": {
+#     "moderate": 80.0,
+#     "high": 85.0,
+#     "critical": 90.0
+#   },
+#   "current_cooldown": 30.0,
+#   "consecutive_ineffective": 0,
+#   "total_checks": 120,
+#   "total_events_emitted": 3,
+#   "total_events_suppressed": 117,
+#   "recent_success_rate": 0.8
+# }
+```
+
+#### API Integration
+
+The controller is exposed in `get_robust_status()`:
+
+```python
+from process_cleanup_manager import get_cleanup_manager
+
+cleanup_manager = get_cleanup_manager()
+status = cleanup_manager.get_robust_status()
+
+# Includes:
+# {
+#   "memory_controller": { ... stats ... },
+#   "circuit_breakers": { ... },
+#   "health": { ... }
+# }
+```
+
+#### Reset Function
+
+If the controller gets stuck in backoff, you can reset it:
+
+```python
+cleanup_manager.reset_memory_controller()
+# Returns: {"status": "success", "message": "Memory controller reset successfully"}
+```
+
+---
+
+## 💰 NEW in v19.6.0: Supervisor-Aware GCP Controller
+
+JARVIS v19.6.0 introduces a **Supervisor-Aware GCP Controller** that provides intelligent, cost-aware GCP Spot VM management with zero waste.
+
+### The Problem
+
+Previous GCP VM creation had no cost awareness:
+- VMs created without budget checks
+- No idle shutdown (VMs running indefinitely)
+- No effectiveness tracking (VMs created even when not helping)
+- No supervisor awareness (VMs created during updates/maintenance)
+- No anti-churn protection (could create many VMs per day)
+
+### The Solution: SupervisorAwareGCPController
+
+A unified decision engine that evaluates 7 factors before creating a VM:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SupervisorAwareGCPController                              │
+│                                                                              │
+│  Decision Pipeline:                                                          │
+│  ┌────────────────┐    ┌─────────────────┐    ┌──────────────────────┐      │
+│  │ VM Request     │───▶│ Decision Engine │───▶│ CREATE / DENY        │      │
+│  │ (memory_percent│    │                 │    │                      │      │
+│  │  trigger, etc) │    │ 7 Check Stages  │    │ DENY_BUDGET          │      │
+│  └────────────────┘    └─────────────────┘    │ DENY_MAINTENANCE     │      │
+│                                               │ DENY_CHURN           │      │
+│  Decision Checks:                             │ DENY_COOLDOWN        │      │
+│  1. Already have a VM? → DENY                 │ DENY_INEFFECTIVE     │      │
+│  2. Supervisor in maintenance? → DENY         │ DENY_LOCAL_OK        │      │
+│  3. Over daily VM limit? → DENY               │ DEFER                │      │
+│  4. Too soon after last VM? → DENY           └──────────────────────┘      │
+│  5. Over budget? → DENY                                                     │
+│  6. Recent VMs not effective? → DENY                                        │
+│  7. Memory controller says local OK? → DENY                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+**1. Budget Management**
+- **Daily budget**: $1.00/day default (configurable)
+- **Weekly budget**: $5.00/week default
+- **Emergency reserve**: 20% reserved for critical requests
+- Real-time budget tracking and denial when over limit
+
+**2. Anti-Churn Protection**
+- **Max VMs per day**: 5 (configurable)
+- **Minimum interval**: 30 minutes between VMs
+- **Minimum lifetime**: 5 minutes (don't create for short workloads)
+- Prevents runaway VM creation
+
+**3. Idle Auto-Shutdown**
+- **Warning threshold**: 10 minutes idle
+- **Shutdown threshold**: 15 minutes idle
+- Automatically terminates unused VMs
+- Tracks VM activity (requests handled)
+
+**4. Effectiveness Tracking**
+- Tracks if VMs actually helped reduce memory pressure
+- After 3 ineffective VMs → denies new requests
+- Prevents wasting money on VMs that don't help
+- Records success rate for analytics
+
+**5. Supervisor Integration**
+- **No VMs during updates**: Blocks creation during system maintenance
+- Coordinates with supervisor state machine
+- Graceful shutdown on supervisor stop
+- Respects supervisor lifecycle
+
+**6. Memory Intelligence Integration**
+- Uses `IntelligentMemoryController` insights
+- If memory controller is in backoff → good signal FOR VM creation
+- If local cleanup is effective → denies VM creation
+- Adaptive thresholds based on system baseline
+
+### Configuration
+
+All settings via environment variables (no hardcoding):
+
+```bash
+# Budget Controls
+GCP_DAILY_BUDGET=1.00          # $1/day max
+GCP_WEEKLY_BUDGET=5.00         # $5/week max
+GCP_EMERGENCY_RESERVE=20        # 20% reserved for emergencies
+
+# VM Creation Limits
+GCP_MAX_VMS_DAY=5              # Max 5 VMs per day
+GCP_MIN_INTERVAL_MINS=30        # 30 min between VMs
+GCP_MIN_VM_LIFE_MINS=5          # Don't create for <5min workloads
+
+# Idle Shutdown
+GCP_IDLE_WARN_MINS=10           # Warn at 10 min idle
+GCP_IDLE_SHUTDOWN_MINS=15       # Auto-terminate at 15 min idle
+
+# Memory Thresholds
+GCP_MIN_MEM_TRIGGER=88          # Minimum memory % to trigger VM
+GCP_CRIT_MEM_TRIGGER=95         # Critical memory % (always creates)
+
+# Effectiveness
+GCP_MIN_EFFECTIVENESS=0.5       # Minimum success rate (50%)
+
+# Spot VM Pricing
+GCP_SPOT_HOURLY=0.029           # e2-highmem-4 spot rate
+```
+
+### Integration Flow
+
+```
+Memory Pressure Event
+        │
+        ▼
+IntelligentMemoryController
+        │ (decides if local cleanup is effective)
+        │
+        ▼
+_trigger_gcp_spot_vm()
+        │
+        ▼
+SupervisorAwareGCPController.request_vm()
+        │
+        ├── Budget check → DENY_BUDGET
+        ├── Supervisor check → DENY_MAINTENANCE  
+        ├── Churn check → DENY_CHURN
+        ├── Cooldown check → DENY_COOLDOWN
+        ├── Effectiveness check → DENY_INEFFECTIVE
+        ├── Memory controller check → DENY_LOCAL_OK
+        │
+        └── All checks pass → CREATE
+                │
+                ▼
+        VM Created (with idle monitoring)
+                │
+                ▼
+        15 min idle → Auto-terminate
+```
+
+### Usage
+
+```python
+from core.supervisor_gcp_controller import (
+    get_supervisor_gcp_controller,
+    VMDecision,
+)
+
+controller = get_supervisor_gcp_controller()
+
+# Request a VM
+decision, reason = await controller.request_vm(
+    memory_percent=92.0,
+    trigger="memory_pressure",
+    urgency="high",
+    components=["ecapa_tdnn", "whisper"],
+    estimated_duration_minutes=30,
+)
+
+if decision == VMDecision.CREATE:
+    vm = await controller.create_vm()
+    # VM created successfully
+else:
+    # Denied: reason explains why
+    print(f"VM denied: {reason}")
+```
+
+### Statistics
+
+```python
+stats = controller.get_stats()
+
+# Returns:
+# {
+#   "state": "NONE",
+#   "supervisor_state": "running",
+#   "has_active_vm": false,
+#   "vms_created_today": 2,
+#   "max_vms_per_day": 5,
+#   "spend_today": 0.058,
+#   "budget_today": 1.0,
+#   "budget_remaining": 0.942,
+#   "effectiveness": {
+#     "effective_vms": 2,
+#     "ineffective_vms": 0,
+#     "rate": 1.0
+#   }
+# }
+```
+
+### Hybrid Router Integration
+
+The `HybridRouter` now includes cost-aware routing:
+
+- Checks budget before routing requests to GCP
+- Checks supervisor state (no GCP during maintenance)
+- Falls back to local when GCP is denied
+- Tracks cost-denied and supervisor-denied counts
+
+```python
+from core.hybrid_router import HybridRouter
+
+router = HybridRouter(config)
+analytics = router.get_analytics()
+
+# Includes:
+# {
+#   "cost_routing": {
+#     "cost_denied_count": 5,
+#     "supervisor_denied_count": 2,
+#     "fallback_to_local_count": 7
+#   }
+# }
+```
+
+---
+
 ## 💸 GCP Cost Guardrails (Root-Cause Fix) — Dec 2025
+
+> **Note**: As of v19.6.0, JARVIS includes the **Supervisor-Aware GCP Controller** (see section above) which provides intelligent, cost-aware VM management with budget limits, idle shutdown, and effectiveness tracking. The changes documented below are the foundational fixes; the Supervisor-Aware GCP Controller is the enhanced solution built on top.
 
 This section documents a **root-cause fix** to prevent **unintentional GCP spend** (Cloud Run, Cloud SQL, Spot VMs) caused by “always-on” behavior in the codebase.
 

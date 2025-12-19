@@ -4102,6 +4102,15 @@ def mount_routers():
         app.include_router(monitoring["router"], tags=["monitoring"])
         logger.info("✅ Monitoring API mounted at /monitoring")
 
+    # Supervisor Broadcast API (for update notifications + maintenance mode)
+    try:
+        from api.broadcast_router import broadcast_router, alt_router
+        app.include_router(broadcast_router, tags=["broadcast"])
+        app.include_router(alt_router, tags=["broadcast"])
+        logger.info("✅ Broadcast API mounted at /api/broadcast")
+    except ImportError as e:
+        logger.warning(f"⚠️ Broadcast API not available: {e}")
+
     # Context Intelligence API (router already has /context prefix)
     context = components.get("context", {})
     if context and context.get("router"):

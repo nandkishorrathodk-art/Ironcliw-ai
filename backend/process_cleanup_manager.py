@@ -61,6 +61,394 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# INTELLIGENT MEMORY CONTROLLER - Adaptive Memory Pressure Management
+# =============================================================================
+
+class MemoryReliefState(Enum):
+    """States for the memory relief state machine."""
+    IDLE = auto()           # Not actively managing memory
+    MONITORING = auto()     # Watching memory levels
+    RELIEF_PENDING = auto() # Relief scheduled but not started
+    RELIEF_ACTIVE = auto()  # Currently running relief
+    COOLDOWN = auto()       # Post-relief cooldown period
+    BACKOFF = auto()        # Extended backoff due to ineffective relief
+
+
+@dataclass
+class MemorySnapshot:
+    """Point-in-time memory state for tracking."""
+    timestamp: float
+    percent_used: float
+    available_gb: float
+    total_gb: float
+    swap_percent: float = 0.0
+
+
+@dataclass
+class ReliefAttempt:
+    """Record of a memory relief attempt."""
+    started_at: float
+    completed_at: float
+    level: str  # "MODERATE", "HIGH", "CRITICAL"
+    memory_before: float
+    memory_after: float
+    freed_mb: float
+    success: bool
+    actions_taken: List[str] = field(default_factory=list)
+
+
+class IntelligentMemoryController:
+    """
+    Intelligent memory pressure controller with adaptive thresholds.
+    
+    Prevents runaway cleanup loops by:
+    1. Tracking cleanup effectiveness (did memory actually drop?)
+    2. Enforcing cooldown periods between cleanup attempts
+    3. Adaptive backoff when cleanup isn't helping
+    4. Baseline detection to understand normal memory for this system
+    5. State machine to prevent duplicate/overlapping cleanup runs
+    6. Progressive thresholds based on system behavior
+    
+    This is the brain of memory management - the old approach was reactive,
+    this one is predictive and adaptive.
+    """
+    
+    def __init__(self):
+        # State machine
+        self._state = MemoryReliefState.IDLE
+        self._state_lock = threading.RLock()
+        
+        # Timing configuration (adaptive)
+        self._base_cooldown = 30.0      # Base cooldown after relief (seconds)
+        self._max_cooldown = 300.0      # Max cooldown (5 minutes)
+        self._min_check_interval = 5.0  # Minimum between checks
+        self._max_check_interval = 60.0 # Maximum between checks (backoff)
+        
+        # Current adaptive values
+        self._current_cooldown = self._base_cooldown
+        self._current_check_interval = self._min_check_interval
+        
+        # Effectiveness tracking
+        self._relief_history: deque = deque(maxlen=20)  # Last 20 attempts
+        self._consecutive_ineffective = 0
+        self._ineffective_threshold = 3  # After 3 ineffective attempts, backoff
+        
+        # Baseline detection
+        self._memory_baseline: Optional[float] = None
+        self._baseline_samples: deque = deque(maxlen=60)  # 5 minutes of samples at 5s interval
+        self._baseline_established = False
+        
+        # Adaptive thresholds
+        self._base_moderate_threshold = 70.0  # Default
+        self._base_high_threshold = 80.0      # Default
+        self._base_critical_threshold = 90.0  # Default
+        
+        # Current thresholds (adaptive)
+        self._moderate_threshold = self._base_moderate_threshold
+        self._high_threshold = self._base_high_threshold
+        self._critical_threshold = self._base_critical_threshold
+        
+        # Last action tracking
+        self._last_check_time: float = 0.0
+        self._last_relief_time: float = 0.0
+        self._last_event_emission: float = 0.0
+        self._event_emission_cooldown = 30.0  # Minimum between event emissions
+        
+        # Relief deduplication
+        self._pending_relief_level: Optional[str] = None
+        
+        # Stats
+        self._total_checks = 0
+        self._total_events_emitted = 0
+        self._total_events_suppressed = 0
+        self._total_relief_attempts = 0
+        
+        logger.info("🧠 Intelligent Memory Controller initialized")
+    
+    def record_memory_sample(self, percent_used: float) -> None:
+        """Record a memory sample for baseline calculation."""
+        with self._state_lock:
+            self._baseline_samples.append((time.time(), percent_used))
+            self._total_checks += 1
+            
+            # Recalculate baseline if we have enough samples
+            if len(self._baseline_samples) >= 30:
+                self._calculate_baseline()
+    
+    def _calculate_baseline(self) -> None:
+        """Calculate memory baseline from recent samples."""
+        if len(self._baseline_samples) < 30:
+            return
+        
+        samples = [s[1] for s in self._baseline_samples]
+        
+        # Use median as baseline (more robust than mean)
+        sorted_samples = sorted(samples)
+        median_idx = len(sorted_samples) // 2
+        self._memory_baseline = sorted_samples[median_idx]
+        
+        # Calculate standard deviation
+        mean = sum(samples) / len(samples)
+        variance = sum((x - mean) ** 2 for x in samples) / len(samples)
+        std_dev = variance ** 0.5
+        
+        # Adapt thresholds based on baseline
+        # If baseline is already high, be more tolerant
+        if self._memory_baseline > 75:
+            # System normally runs at high memory - adjust thresholds up
+            self._moderate_threshold = min(85.0, self._memory_baseline + 5)
+            self._high_threshold = min(92.0, self._memory_baseline + 10)
+            self._critical_threshold = 95.0
+            logger.info(
+                f"🧠 Adaptive thresholds (high baseline {self._memory_baseline:.1f}%): "
+                f"moderate={self._moderate_threshold:.0f}%, "
+                f"high={self._high_threshold:.0f}%, "
+                f"critical={self._critical_threshold:.0f}%"
+            )
+        elif self._memory_baseline < 50:
+            # System normally runs at low memory - be more aggressive
+            self._moderate_threshold = max(60.0, self._memory_baseline + 15)
+            self._high_threshold = max(70.0, self._memory_baseline + 25)
+            self._critical_threshold = max(85.0, self._memory_baseline + 40)
+        else:
+            # Normal range - use defaults
+            self._moderate_threshold = self._base_moderate_threshold
+            self._high_threshold = self._base_high_threshold
+            self._critical_threshold = self._base_critical_threshold
+        
+        if not self._baseline_established:
+            self._baseline_established = True
+            logger.info(
+                f"🧠 Memory baseline established: {self._memory_baseline:.1f}% "
+                f"(std_dev={std_dev:.1f}%)"
+            )
+    
+    def should_emit_event(self, current_memory: float) -> Tuple[bool, str, Optional[str]]:
+        """
+        Determine if a memory pressure event should be emitted.
+        
+        This is the core intelligence - decides whether to trigger cleanup.
+        
+        Returns:
+            Tuple of (should_emit, reason, relief_level)
+        """
+        now = time.time()
+        
+        with self._state_lock:
+            # Record sample for baseline
+            self.record_memory_sample(current_memory)
+            
+            # Check 1: Are we in cooldown?
+            if self._state == MemoryReliefState.COOLDOWN:
+                elapsed_since_relief = now - self._last_relief_time
+                if elapsed_since_relief < self._current_cooldown:
+                    remaining = self._current_cooldown - elapsed_since_relief
+                    self._total_events_suppressed += 1
+                    return False, f"In cooldown ({remaining:.0f}s remaining)", None
+                else:
+                    # Cooldown expired
+                    self._state = MemoryReliefState.MONITORING
+            
+            # Check 2: Are we in backoff?
+            if self._state == MemoryReliefState.BACKOFF:
+                elapsed_since_relief = now - self._last_relief_time
+                backoff_duration = self._current_cooldown * 2  # Extended backoff
+                if elapsed_since_relief < backoff_duration:
+                    remaining = backoff_duration - elapsed_since_relief
+                    self._total_events_suppressed += 1
+                    return False, f"In backoff ({remaining:.0f}s remaining)", None
+                else:
+                    # Backoff expired, reset ineffective counter
+                    self._consecutive_ineffective = 0
+                    self._state = MemoryReliefState.MONITORING
+            
+            # Check 3: Is relief already in progress?
+            if self._state in (MemoryReliefState.RELIEF_PENDING, MemoryReliefState.RELIEF_ACTIVE):
+                self._total_events_suppressed += 1
+                return False, f"Relief already in progress ({self._state.name})", None
+            
+            # Check 4: Minimum time between event emissions
+            elapsed_since_emission = now - self._last_event_emission
+            if elapsed_since_emission < self._event_emission_cooldown:
+                self._total_events_suppressed += 1
+                remaining = self._event_emission_cooldown - elapsed_since_emission
+                return False, f"Event emission cooldown ({remaining:.0f}s)", None
+            
+            # Check 5: Determine if we should act based on thresholds
+            relief_level = None
+            if current_memory >= self._critical_threshold:
+                relief_level = "CRITICAL"
+            elif current_memory >= self._high_threshold:
+                relief_level = "HIGH"
+            elif current_memory >= self._moderate_threshold:
+                relief_level = "MODERATE"
+            
+            if relief_level is None:
+                # Memory is within acceptable range
+                return False, "Memory within acceptable range", None
+            
+            # Check 6: Effectiveness check
+            if self._consecutive_ineffective >= self._ineffective_threshold:
+                # Recent cleanup attempts haven't helped
+                # Emit event but enter backoff after
+                self._total_events_emitted += 1
+                self._last_event_emission = now
+                self._state = MemoryReliefState.RELIEF_PENDING
+                self._pending_relief_level = relief_level
+                logger.warning(
+                    f"🧠 Memory at {current_memory:.1f}% - emitting event but "
+                    f"will enter backoff (cleanup not effective)"
+                )
+                return True, f"Emitting with backoff warning", relief_level
+            
+            # All checks passed - emit event
+            self._total_events_emitted += 1
+            self._last_event_emission = now
+            self._state = MemoryReliefState.RELIEF_PENDING
+            self._pending_relief_level = relief_level
+            
+            return True, f"Memory at {current_memory:.1f}% - {relief_level} relief needed", relief_level
+    
+    def relief_started(self, level: str, memory_before: float) -> None:
+        """Record that relief has started."""
+        with self._state_lock:
+            self._state = MemoryReliefState.RELIEF_ACTIVE
+            self._total_relief_attempts += 1
+    
+    def relief_completed(
+        self,
+        level: str,
+        memory_before: float,
+        memory_after: float,
+        actions_taken: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Record relief completion and calculate effectiveness.
+        
+        This is crucial for adaptive behavior - if cleanup isn't working,
+        we need to back off instead of hammering the system.
+        """
+        now = time.time()
+        freed_mb = (memory_before - memory_after) / 100 * psutil.virtual_memory().total / (1024 ** 2)
+        
+        # Determine if relief was effective
+        # Effective if: memory dropped by at least 2% OR we're below high threshold
+        memory_drop = memory_before - memory_after
+        success = memory_drop >= 2.0 or memory_after < self._high_threshold
+        
+        attempt = ReliefAttempt(
+            started_at=self._last_relief_time if self._last_relief_time else now - 1,
+            completed_at=now,
+            level=level,
+            memory_before=memory_before,
+            memory_after=memory_after,
+            freed_mb=max(0, freed_mb),
+            success=success,
+            actions_taken=actions_taken or [],
+        )
+        
+        with self._state_lock:
+            self._relief_history.append(attempt)
+            self._last_relief_time = now
+            
+            if success:
+                # Effective cleanup - reset counters, use base cooldown
+                self._consecutive_ineffective = 0
+                self._current_cooldown = self._base_cooldown
+                self._state = MemoryReliefState.COOLDOWN
+                
+                logger.info(
+                    f"🧠 Relief effective: {memory_before:.1f}% → {memory_after:.1f}% "
+                    f"(freed ~{freed_mb:.0f}MB)"
+                )
+            else:
+                # Ineffective cleanup - increase backoff
+                self._consecutive_ineffective += 1
+                
+                # Progressive cooldown increase
+                self._current_cooldown = min(
+                    self._current_cooldown * 1.5,
+                    self._max_cooldown
+                )
+                
+                if self._consecutive_ineffective >= self._ineffective_threshold:
+                    self._state = MemoryReliefState.BACKOFF
+                    logger.warning(
+                        f"🧠 Relief ineffective ({self._consecutive_ineffective}x): "
+                        f"{memory_before:.1f}% → {memory_after:.1f}%. "
+                        f"Entering backoff (cooldown: {self._current_cooldown:.0f}s)"
+                    )
+                else:
+                    self._state = MemoryReliefState.COOLDOWN
+                    logger.info(
+                        f"🧠 Relief partially effective: {memory_before:.1f}% → {memory_after:.1f}% "
+                        f"(cooldown: {self._current_cooldown:.0f}s)"
+                    )
+    
+    def get_current_check_interval(self) -> float:
+        """Get the current check interval based on state."""
+        with self._state_lock:
+            if self._state == MemoryReliefState.BACKOFF:
+                # Longer intervals during backoff
+                return min(30.0, self._current_check_interval * 2)
+            elif self._state == MemoryReliefState.COOLDOWN:
+                # Normal intervals during cooldown
+                return 10.0
+            else:
+                # Default interval
+                return self._min_check_interval
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get controller statistics."""
+        with self._state_lock:
+            recent_attempts = list(self._relief_history)[-5:]
+            success_rate = (
+                sum(1 for a in recent_attempts if a.success) / len(recent_attempts)
+                if recent_attempts else 0
+            )
+            
+            return {
+                "state": self._state.name,
+                "memory_baseline": self._memory_baseline,
+                "baseline_established": self._baseline_established,
+                "thresholds": {
+                    "moderate": self._moderate_threshold,
+                    "high": self._high_threshold,
+                    "critical": self._critical_threshold,
+                },
+                "current_cooldown": self._current_cooldown,
+                "consecutive_ineffective": self._consecutive_ineffective,
+                "total_checks": self._total_checks,
+                "total_events_emitted": self._total_events_emitted,
+                "total_events_suppressed": self._total_events_suppressed,
+                "total_relief_attempts": self._total_relief_attempts,
+                "recent_success_rate": success_rate,
+            }
+    
+    def reset(self) -> None:
+        """Reset controller state (for testing or recovery)."""
+        with self._state_lock:
+            self._state = MemoryReliefState.IDLE
+            self._current_cooldown = self._base_cooldown
+            self._consecutive_ineffective = 0
+            self._last_relief_time = 0.0
+            self._last_event_emission = 0.0
+            logger.info("🧠 Memory controller reset")
+
+
+# Global instance
+_memory_controller: Optional[IntelligentMemoryController] = None
+
+
+def get_memory_controller() -> IntelligentMemoryController:
+    """Get or create the global memory controller instance."""
+    global _memory_controller
+    if _memory_controller is None:
+        _memory_controller = IntelligentMemoryController()
+    return _memory_controller
+
+
+# =============================================================================
 # CIRCUIT BREAKER PATTERN - Fault Tolerance
 # =============================================================================
 
@@ -762,7 +1150,14 @@ class EventDrivenCleanupTrigger:
         logger.info("📡 Event-driven cleanup monitor stopped")
 
     def _monitor_loop(self) -> None:
-        """Background monitoring loop."""
+        """
+        Background monitoring loop with adaptive intervals.
+        
+        Uses IntelligentMemoryController to determine check frequency:
+        - Normal: 5 seconds
+        - Cooldown: 10 seconds
+        - Backoff: 30 seconds (when cleanup isn't effective)
+        """
         while self._running:
             try:
                 self._check_memory_pressure()
@@ -770,21 +1165,52 @@ class EventDrivenCleanupTrigger:
             except Exception as e:
                 logger.error(f"Monitor loop error: {e}")
 
-            time.sleep(self.check_interval)
+            # Use adaptive interval from memory controller
+            try:
+                controller = get_memory_controller()
+                interval = controller.get_current_check_interval()
+            except Exception:
+                interval = self.check_interval
+            
+            time.sleep(interval)
 
     def _check_memory_pressure(self) -> None:
-        """Check for memory pressure."""
+        """
+        Check for memory pressure using intelligent controller.
+        
+        The IntelligentMemoryController decides whether to emit an event
+        based on:
+        - Cooldown periods (don't spam cleanup)
+        - Effectiveness tracking (backoff if cleanup isn't working)
+        - Adaptive thresholds (based on system baseline)
+        - State machine (prevent overlapping cleanups)
+        """
         try:
             mem = psutil.virtual_memory()
-            if mem.percent / 100.0 >= self.memory_pressure_threshold:
+            memory_percent = mem.percent
+            
+            # Use intelligent controller to decide
+            controller = get_memory_controller()
+            should_emit, reason, relief_level = controller.should_emit_event(memory_percent)
+            
+            if should_emit:
+                # Include relief level in event data for handler
                 self.emit_event(CleanupEvent(
                     event_type=CleanupEventType.MEMORY_PRESSURE,
-                    priority=8,
+                    priority=10 if relief_level == "CRITICAL" else 8 if relief_level == "HIGH" else 6,
                     source="system_monitor",
-                    data={'memory_percent': mem.percent}
+                    data={
+                        'memory_percent': memory_percent,
+                        'relief_level': relief_level,
+                        'reason': reason,
+                    }
                 ))
-        except Exception:
-            pass
+            else:
+                # Log suppression at debug level to avoid log spam
+                logger.debug(f"Memory event suppressed: {reason}")
+                
+        except Exception as e:
+            logger.debug(f"Memory pressure check error: {e}")
 
     def _check_cpu_pressure(self) -> None:
         """Check for CPU pressure."""
@@ -2007,57 +2433,103 @@ class ProcessCleanupManager:
         """
         Handle memory pressure event with Hybrid Cloud awareness.
 
-        Enhanced v3.0.0:
+        Enhanced v3.1.0:
+        - IntelligentMemoryController integration for adaptive behavior
+        - Relief level from event data (MODERATE/HIGH/CRITICAL)
+        - Effectiveness tracking for cooldown/backoff decisions
+        - No duplicate cleanup runs (single path execution)
         - Cloud Run offload detection
         - Intelligent ML model migration to cloud
         - Hybrid cloud state management
         - Progressive memory relief strategies
         """
         memory_percent = event.data.get('memory_percent', 0)
-        logger.warning(f"🔥 Memory pressure detected: {memory_percent}%")
+        relief_level = event.data.get('relief_level', 'HIGH')
+        reason = event.data.get('reason', '')
+        
+        logger.warning(f"🔥 Memory pressure: {memory_percent:.1f}% - {relief_level} relief ({reason})")
 
         # Record metric
         self.health_monitor.metrics.current_memory_usage_percent = memory_percent / 100
 
-        # Progressive memory relief strategy - handle async safely
-        self._schedule_memory_relief(memory_percent)
+        # Get memory controller for tracking
+        controller = get_memory_controller()
+        controller.relief_started(relief_level, memory_percent)
+        
+        # Track actions taken for effectiveness reporting
+        actions_taken = []
 
-        # Trigger aggressive cleanup if enabled (synchronous fallback)
-        if self.config.get("aggressive_cleanup", True):
-            try:
-                self._cleanup_ipc_resources()
-                self._cleanup_orphaned_ports()
-            except Exception as e:
-                logger.error(f"Memory pressure cleanup failed: {e}")
+        # Progressive memory relief strategy - handle async safely
+        # IMPORTANT: Use relief_level from event, not recalculate
+        self._schedule_memory_relief_with_level(memory_percent, relief_level, actions_taken)
+
+        # Note: We do NOT run additional cleanup here - _schedule_memory_relief_with_level
+        # handles everything. This prevents duplicate cleanup runs.
+        
+        # Get post-cleanup memory and report to controller
+        try:
+            import psutil
+            mem_after = psutil.virtual_memory()
+            controller.relief_completed(
+                level=relief_level,
+                memory_before=memory_percent,
+                memory_after=mem_after.percent,
+                actions_taken=actions_taken,
+            )
+        except Exception as e:
+            logger.debug(f"Could not report relief completion: {e}")
 
     def _schedule_memory_relief(self, memory_percent: float) -> None:
         """
         Schedule async memory relief safely, handling both sync and async contexts.
+        
+        NOTE: This method recalculates relief level. For event-driven cleanup,
+        use _schedule_memory_relief_with_level() to use the level from the event.
+        """
+        # Determine relief level
+        controller = get_memory_controller()
+        if memory_percent >= controller._critical_threshold:
+            level = "CRITICAL"
+        elif memory_percent >= controller._high_threshold:
+            level = "HIGH"
+        elif memory_percent >= controller._moderate_threshold:
+            level = "MODERATE"
+        else:
+            return  # No relief needed
+        
+        self._schedule_memory_relief_with_level(memory_percent, level, [])
+    
+    def _schedule_memory_relief_with_level(
+        self,
+        memory_percent: float,
+        level: str,
+        actions_taken: List[str],
+    ) -> None:
+        """
+        Schedule async memory relief with pre-determined level.
 
         CRITICAL FIX: Avoid creating new event loops in background threads, as this
         can corrupt async state and cause "Future attached to different loop" errors.
         Instead, use synchronous cleanup methods when not in an async context.
+        
+        Args:
+            memory_percent: Current memory usage percentage
+            level: Relief level ("MODERATE", "HIGH", "CRITICAL") 
+            actions_taken: List to append actions for effectiveness tracking
         """
-        # Determine relief level
-        if memory_percent >= 90:
-            level = "CRITICAL"
-        elif memory_percent >= 80:
-            level = "HIGH"
-        elif memory_percent >= 70:
-            level = "MODERATE"
-        else:
-            return  # No relief needed
-
         # Try to schedule in existing event loop
         try:
             loop = asyncio.get_running_loop()
             # We're in an async context - create task safely
-            if memory_percent >= 90:
+            if level == "CRITICAL":
                 asyncio.create_task(self._critical_memory_relief())
-            elif memory_percent >= 80:
+                actions_taken.append("critical_relief_async")
+            elif level == "HIGH":
                 asyncio.create_task(self._high_memory_relief())
+                actions_taken.append("high_relief_async")
             else:
                 asyncio.create_task(self._moderate_memory_relief())
+                actions_taken.append("moderate_relief_async")
             logger.info(f"☁️  Scheduled {level} memory relief (async)")
         except RuntimeError:
             # No running loop - use SYNCHRONOUS cleanup only!
@@ -2068,10 +2540,12 @@ class ProcessCleanupManager:
             try:
                 # Synchronous cleanup actions that don't require async
                 self._cleanup_ipc_resources()
+                actions_taken.append("ipc_cleanup")
 
                 # Garbage collection is safe from any context
                 import gc
                 gc.collect()
+                actions_taken.append("gc_collect")
 
                 # Log completion
                 logger.info(f"☁️  Completed {level} memory relief (sync-safe)")
@@ -2286,10 +2760,14 @@ class ProcessCleanupManager:
 
     async def _trigger_gcp_spot_vm(self) -> Dict[str, Any]:
         """
-        Trigger GCP Spot VM creation for ML offload.
+        Trigger GCP Spot VM creation for ML offload using SupervisorAwareGCPController.
         
-        This is called when Cloud Run is not available or memory pressure is critical.
-        Uses the pre-initialized GCP VM Manager from startup.
+        This method uses the intelligent controller that:
+        - Checks budget before creating VMs
+        - Respects supervisor state (no VMs during updates)
+        - Uses memory controller insights for smarter decisions
+        - Tracks VM effectiveness to prevent waste
+        - Auto-terminates idle VMs
         
         Returns:
             Dict with VM creation status and details
@@ -2297,91 +2775,78 @@ class ProcessCleanupManager:
         result = {"success": False, "reason": "Not attempted"}
         
         try:
-            # Try to get the VM manager from app state (initialized at startup)
-            from main import app
-            vm_manager = getattr(app.state, 'gcp_vm_manager', None)
-            
-            if vm_manager is None:
-                # Fallback: try to get/create the VM manager directly
-                try:
-                    from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig
-                    import os
-                    
-                    config = VMManagerConfig(
-                        project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "jarvis-ai-436818"),
-                        zone=os.getenv("GCP_ZONE", "us-central1-a"),
-                        machine_type=os.getenv("GCP_ML_VM_TYPE", "e2-highmem-4"),
-                        use_spot=True,
-                    )
-                    vm_manager = await get_gcp_vm_manager(config)
-                    await vm_manager.initialize()
-                except Exception as e:
-                    logger.warning(f"⚠️  Could not initialize GCP VM Manager: {e}")
-                    result["reason"] = f"VM Manager init failed: {e}"
-                    return result
-            
-            if vm_manager is None:
-                result["reason"] = "VM Manager not available"
-                return result
-            
-            # Check memory status for VM creation decision
-            import psutil
-            mem = psutil.virtual_memory()
-            memory_pressure = mem.percent
-            available_gb = mem.available / (1024**3)
-            
-            # Create a memory snapshot with all required attributes
-            import platform as platform_module
-            total_gb = mem.total / (1024**3)
-            used_gb = mem.used / (1024**3)
-            
-            class MemorySnapshot:
-                def __init__(self):
-                    self.gcp_shift_recommended = True  # We're here because of critical memory
-                    self.memory_pressure = memory_pressure
-                    self.available_gb = available_gb
-                    self.used_gb = used_gb
-                    self.total_gb = total_gb
-                    self.usage_percent = memory_pressure
-                    self.reasoning = f"Critical memory pressure: {memory_pressure:.1f}%"
-                    # Platform info required by intelligent_gcp_optimizer
-                    self.platform = platform_module.system().lower()
-                    # macOS specific attributes
-                    self.macos_pressure_level = "critical" if memory_pressure > 85 else "warning" if memory_pressure > 70 else "normal"
-                    self.macos_is_swapping = memory_pressure > 75
-                    self.macos_page_outs = 0
-                    # Linux specific (None on macOS)
-                    self.linux_psi_some_avg10 = None
-                    self.linux_psi_full_avg10 = None
-            
-            snapshot = MemorySnapshot()
-            
-            # Check if we should create VM
-            should_create, reason, confidence = await vm_manager.should_create_vm(
-                snapshot,
-                trigger_reason=f"Critical memory relief ({memory_pressure:.0f}% pressure)"
+            # Use the new Supervisor-Aware GCP Controller
+            from core.supervisor_gcp_controller import (
+                get_supervisor_gcp_controller,
+                VMDecision,
             )
             
-            if should_create:
-                logger.info(f"🚀 Creating GCP Spot VM: {reason}")
-                vm = await vm_manager.create_vm(
-                    components=["ecapa_tdnn", "whisper", "speechbrain", "ml_models"],
-                    trigger_reason=f"Memory pressure relief: {reason}",
+            controller = get_supervisor_gcp_controller()
+            
+            # Get current memory pressure
+            import psutil
+            mem = psutil.virtual_memory()
+            memory_percent = mem.percent
+            
+            # Determine urgency based on memory level
+            if memory_percent >= 95:
+                urgency = "critical"
+            elif memory_percent >= 90:
+                urgency = "high"
+            else:
+                urgency = "medium"
+            
+            # Request VM through intelligent controller
+            decision, reason = await controller.request_vm(
+                memory_percent=memory_percent,
+                trigger="memory_pressure",
+                urgency=urgency,
+                components=["ecapa_tdnn", "whisper", "speechbrain"],
+                estimated_duration_minutes=30,
+            )
+            
+            if decision == VMDecision.CREATE:
+                # Approved - create the VM
+                logger.info(f"🚀 Creating GCP Spot VM (approved): {reason}")
+                
+                # Create the request object for the controller
+                from core.supervisor_gcp_controller import VMCreationRequest
+                from datetime import datetime
+                
+                request = VMCreationRequest(
+                    timestamp=datetime.now(),
+                    memory_percent=memory_percent,
+                    trigger_reason="memory_pressure",
+                    requested_by="process_cleanup_manager",
+                    urgency=urgency,
+                    components_needed=["ecapa_tdnn", "whisper", "speechbrain"],
+                    decision=decision,
+                    decision_reason=reason,
                 )
+                
+                vm = await controller.create_vm(request)
                 
                 if vm:
                     result = {
                         "success": True,
-                        "vm_id": vm.instance_id if hasattr(vm, 'instance_id') else str(vm),
-                        "ip": vm.ip_address if hasattr(vm, 'ip_address') else None,
+                        "vm_id": vm.instance_id,
                         "reason": reason,
+                        "budget_remaining": controller.get_remaining_budget(),
                     }
                     logger.info(f"✅ GCP Spot VM created: {result}")
                 else:
                     result["reason"] = "VM creation returned None"
             else:
-                result["reason"] = reason
-                logger.debug(f"GCP Spot VM not needed: {reason}")
+                # Not approved - return the reason
+                result["reason"] = f"{decision.value}: {reason}"
+                
+                # Log at appropriate level
+                if decision == VMDecision.DENY_BUDGET:
+                    logger.warning(f"💰 GCP VM denied - budget: {reason}")
+                elif decision == VMDecision.DENY_MAINTENANCE:
+                    logger.info(f"🔧 GCP VM denied - maintenance: {reason}")
+                else:
+                    logger.debug(f"GCP VM not needed: {reason}")
                 
         except Exception as e:
             logger.error(f"GCP Spot VM trigger failed: {e}")
@@ -2557,9 +3022,16 @@ class ProcessCleanupManager:
         Get comprehensive status of all robust components.
         Useful for debugging and monitoring.
         """
+        # Get memory controller stats
+        try:
+            memory_controller_stats = get_memory_controller().get_stats()
+        except Exception:
+            memory_controller_stats = {"error": "Could not get memory controller stats"}
+        
         return {
-            'version': '3.0.0',
+            'version': '3.1.0',
             'health': self.health_monitor.get_health_status(),
+            'memory_controller': memory_controller_stats,
             'circuit_breakers': {
                 'process_kill': self.process_kill_circuit.get_metrics(),
                 'port_cleanup': self.port_cleanup_circuit.get_metrics(),
@@ -2569,6 +3041,31 @@ class ProcessCleanupManager:
             'port_pool': self.port_pool.get_status(),
             'recent_events': self.event_trigger.get_recent_events(20),
         }
+    
+    def reset_memory_controller(self) -> Dict[str, str]:
+        """
+        Reset the intelligent memory controller state.
+        
+        Useful when:
+        - Memory controller is stuck in backoff mode
+        - Thresholds need to be recalibrated
+        - Testing/debugging
+        
+        Returns:
+            Status message
+        """
+        try:
+            controller = get_memory_controller()
+            controller.reset()
+            return {
+                "status": "success",
+                "message": "Memory controller reset successfully"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Failed to reset memory controller: {e}"
+            }
 
     def robust_force_restart_cleanup(self, skip_code_check: bool = True) -> List[Dict]:
         """

@@ -40,6 +40,12 @@ from .narrator import (
     NarratorEvent,
     get_narrator,
 )
+from .update_notification import (
+    UpdateNotificationOrchestrator,
+    NotificationChannel,
+    NotificationPriority,
+    get_notification_orchestrator,
+)
 
 # Import loading server functionality (lazy import to avoid circular deps)
 def _get_loading_server():
@@ -180,6 +186,7 @@ class JARVISSupervisor:
         self._health_monitor: Optional[Any] = None
         self._update_detector: Optional[Any] = None
         self._idle_detector: Optional[Any] = None
+        self._notification_orchestrator: Optional[UpdateNotificationOrchestrator] = None
         
         logger.info(f"🔧 Supervisor initialized (mode: {self.config.mode.value})")
     
@@ -229,6 +236,14 @@ class JARVISSupervisor:
         if self._idle_detector is None and self.config.idle.enabled:
             from .idle_detector import IdleDetector
             self._idle_detector = IdleDetector(self.config)
+        
+        # Initialize notification orchestrator with all required components
+        if self._notification_orchestrator is None:
+            self._notification_orchestrator = UpdateNotificationOrchestrator(
+                config=self.config,
+                narrator=self._narrator,
+                update_detector=self._update_detector,
+            )
     
     async def _open_loading_page(self) -> bool:
         """
@@ -670,28 +685,86 @@ class JARVISSupervisor:
             return False
     
     async def _run_update_detector(self) -> None:
-        """Background task: Check for updates periodically."""
+        """
+        Background task: Intelligent update detection and multi-modal notification.
+        
+        This method runs continuously in the background, checking for updates
+        and delivering notifications through multiple channels:
+        - Voice (TTS) announcements for immediate awareness
+        - WebSocket broadcasts for frontend badge/modal display
+        - Console logging for developer visibility
+        
+        Features:
+        - Intelligent deduplication (same update = one notification)
+        - Priority-based delivery (security updates are urgent)
+        - User activity awareness (configurable interrupt behavior)
+        - Rich changelog summaries for meaningful notifications
+        """
         if not self._update_detector:
+            logger.info("📭 Update detector not enabled")
             return
+        
+        if not self._notification_orchestrator:
+            logger.warning("⚠️ Notification orchestrator not initialized")
+            return
+        
+        logger.info("🔍 Update detector started - checking every "
+                   f"{self.config.update.check.interval_seconds}s")
+        
+        # Track consecutive failures for backoff
+        consecutive_failures = 0
+        max_failures_before_backoff = 3
+        backoff_multiplier = 1.0
         
         while not self._shutdown_event.is_set():
             try:
-                update_info = await self._update_detector.check_for_updates()
+                # Perform update check via orchestrator (handles notification internally)
+                result = await self._notification_orchestrator.check_and_notify()
                 
-                if update_info and update_info.available:
-                    logger.info(f"📦 Update available: {update_info.summary}")
+                if result and result.success:
+                    # Reset failure counter on success
+                    consecutive_failures = 0
+                    backoff_multiplier = 1.0
                     
-                    # Notify callbacks
+                    # Trigger legacy callbacks for extensibility
                     for callback in self._on_update_available:
                         try:
                             callback()
                         except Exception as e:
                             logger.error(f"Update available callback error: {e}")
+                    
+                    # If update is available but requires confirmation,
+                    # we're done until user acts or reminder interval passes
+                    if self.config.update.require_confirmation:
+                        logger.debug("📫 Waiting for user action on update")
                 
+            except asyncio.CancelledError:
+                logger.info("🛑 Update detector cancelled")
+                break
             except Exception as e:
-                logger.warning(f"Update check failed: {e}")
+                consecutive_failures += 1
+                logger.warning(f"Update check failed ({consecutive_failures}x): {e}")
+                
+                # Exponential backoff on repeated failures
+                if consecutive_failures >= max_failures_before_backoff:
+                    backoff_multiplier = min(backoff_multiplier * 1.5, 4.0)
+                    logger.info(f"📉 Backing off update checks (multiplier: {backoff_multiplier:.1f}x)")
             
-            await asyncio.sleep(self.config.update.check.interval_seconds)
+            # Wait for next check interval (with backoff if needed)
+            wait_time = self.config.update.check.interval_seconds * backoff_multiplier
+            
+            try:
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(),
+                    timeout=wait_time,
+                )
+                # If we get here, shutdown was signaled
+                break
+            except asyncio.TimeoutError:
+                # Normal timeout - continue checking
+                pass
+        
+        logger.info("🔍 Update detector stopped")
     
     async def _run_idle_detector(self) -> None:
         """Background task: Monitor for idle state and trigger silent updates."""

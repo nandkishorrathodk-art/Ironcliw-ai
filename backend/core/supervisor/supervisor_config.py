@@ -118,6 +118,36 @@ class ChangelogConfig:
 
 
 @dataclass
+class NotificationConfig:
+    """
+    Update notification configuration.
+    
+    Controls how users are notified about available updates
+    through multiple channels (voice, WebSocket, console).
+    """
+    # Channel toggles
+    voice_enabled: bool = True           # TTS announcements
+    websocket_enabled: bool = True       # Frontend badge/modal
+    console_enabled: bool = True         # Console logging
+    
+    # Timing
+    min_interval_seconds: int = 60       # Min time between notifications
+    reminder_interval_seconds: int = 900  # Re-notify after 15 minutes
+    max_reminders: int = 3               # Max reminder notifications
+    
+    # Priority handling
+    security_immediate: bool = True      # Always notify for security
+    
+    # User activity awareness  
+    interrupt_active_user: bool = False  # Don't interrupt active use
+    active_timeout_seconds: int = 120    # Consider user "active" if recent activity
+    
+    # Backend integration
+    backend_url: str = "http://localhost:8010"
+    websocket_timeout: float = 3.0
+
+
+@dataclass
 class ExitCodes:
     """Exit code mappings for supervisor communication."""
     clean_shutdown: int = 0
@@ -144,6 +174,7 @@ class SupervisorConfig:
     health: HealthConfig = field(default_factory=HealthConfig)
     rollback: RollbackConfig = field(default_factory=RollbackConfig)
     changelog: ChangelogConfig = field(default_factory=ChangelogConfig)
+    notification: NotificationConfig = field(default_factory=NotificationConfig)
     exit_codes: ExitCodes = field(default_factory=ExitCodes)
     
     # Runtime state

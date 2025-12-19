@@ -7,6 +7,10 @@ Automatically routes requests to optimal backend based on:
 - Historical performance
 - Real-time load
 - RAM-aware routing with memory pressure detection
+- Cost awareness (budget checking before GCP routing)
+- Supervisor state (no GCP during updates/maintenance)
+
+v2.0.0 - Supervisor-aware with cost optimization
 """
 
 import logging
@@ -16,6 +20,22 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+# Supervisor-aware GCP controller (lazy loaded)
+_gcp_controller = None
+
+
+def _get_gcp_controller():
+    """Lazy load the supervisor-aware GCP controller."""
+    global _gcp_controller
+    if _gcp_controller is None:
+        try:
+            from core.supervisor_gcp_controller import get_supervisor_gcp_controller
+            _gcp_controller = get_supervisor_gcp_controller()
+        except ImportError:
+            logger.debug("Supervisor GCP controller not available")
+    return _gcp_controller
 
 # Import RAM monitor (lazy to avoid circular imports)
 _ram_monitor = None
@@ -90,6 +110,13 @@ class HybridRouter:
         self._capabilities_cache_ttl = 60  # seconds
         self._capabilities_last_updated = {}
         # ================================================================
+
+        # ============== Supervisor-Aware Cost Optimization (v2.0) ==============
+        # Track cost-based routing decisions
+        self._cost_denied_count = 0
+        self._supervisor_denied_count = 0
+        self._fallback_to_local_count = 0
+        # ======================================================================
 
         logger.info(f"🎯 HybridRouter initialized with {len(self.rules)} rules")
 
@@ -338,17 +365,67 @@ class HybridRouter:
         return keywords
 
     def _make_decision(self, rule: Dict, context: RoutingContext) -> RouteDecision:
-        """Make routing decision based on rule"""
+        """
+        Make routing decision based on rule with cost and supervisor awareness.
+        
+        v2.0.0: Added checks for:
+        - Budget availability before routing to GCP
+        - Supervisor state (no GCP during updates/maintenance)
+        - Fallback to local when GCP is denied
+        """
         route_to = rule.get("route_to", "auto")
 
         if route_to == "auto":
             return RouteDecision.AUTO
-        elif route_to in ["local", "gcp", "cloud"]:
-            return RouteDecision.LOCAL if route_to == "local" else RouteDecision.CLOUD
+        elif route_to in ["local"]:
+            return RouteDecision.LOCAL
+        elif route_to in ["gcp", "cloud"]:
+            # ============== COST/SUPERVISOR CHECK (v2.0) ==============
+            # Before routing to GCP, check if we should/can
+            can_use_gcp, reason = self._can_route_to_gcp()
+            if not can_use_gcp:
+                logger.info(f"💰 GCP routing denied → falling back to local: {reason}")
+                self._fallback_to_local_count += 1
+                return RouteDecision.LOCAL
+            # ============================================================
+            return RouteDecision.CLOUD
         elif route_to == "none":
             return RouteDecision.NONE
         else:
             return RouteDecision.AUTO
+    
+    def _can_route_to_gcp(self) -> Tuple[bool, str]:
+        """
+        Check if we can route to GCP based on cost and supervisor state.
+        
+        Returns:
+            Tuple of (can_route, reason)
+        """
+        controller = _get_gcp_controller()
+        if controller is None:
+            # Controller not available - default to allowing GCP
+            return True, "No controller"
+        
+        # Check 1: Supervisor in maintenance?
+        if controller.is_maintenance_mode():
+            self._supervisor_denied_count += 1
+            return False, f"Supervisor in maintenance ({controller._supervisor_state.value})"
+        
+        # Check 2: Budget check (conservative - assume 0.5 hour usage)
+        can_afford, budget_reason = controller.can_afford_vm(0.5, is_emergency=False)
+        if not can_afford:
+            self._cost_denied_count += 1
+            return False, budget_reason
+        
+        return True, "OK"
+    
+    def get_cost_routing_stats(self) -> Dict[str, Any]:
+        """Get cost-aware routing statistics."""
+        return {
+            "cost_denied_count": self._cost_denied_count,
+            "supervisor_denied_count": self._supervisor_denied_count,
+            "fallback_to_local_count": self._fallback_to_local_count,
+        }
 
     def _calculate_confidence(self, rule: Dict, context: RoutingContext) -> float:
         """Calculate confidence score for routing decision"""
@@ -415,6 +492,8 @@ class HybridRouter:
                 else 0
             ),
             "backend_activity": self._get_activity_summary(),
+            # v2.0: Cost-aware routing stats
+            "cost_routing": self.get_cost_routing_stats(),
         }
 
     # ============== GCP IDLE TIME TRACKING IMPLEMENTATION (Phase 2.5) ==============
