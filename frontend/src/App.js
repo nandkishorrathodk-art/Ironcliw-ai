@@ -7,6 +7,7 @@ import WorkspaceMonitor from './components/WorkspaceMonitor';
 import ActionDisplay from './components/ActionDisplay';
 import ConfigDiagnostic from './components/ConfigDiagnostic';
 import MatrixBackground from './components/MatrixBackground';
+import MaintenanceOverlay from './components/MaintenanceOverlay';
 
 function App() {
   const [input, setInput] = useState('');
@@ -125,6 +126,9 @@ function App() {
 
   return (
     <div className="App">
+      {/* Maintenance Overlay - Shows during system updates/restarts */}
+      <MaintenanceOverlay />
+
       {/* Matrix Background Animation */}
       <MatrixBackground
         opacity={0.4}

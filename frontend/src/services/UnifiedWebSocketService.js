@@ -49,6 +49,12 @@ class UnifiedWebSocketService {
             path: `${config.WS_BASE_URL}/vision/ws/vision`,
             capabilities: ['vision', 'monitoring'],
             priority: 8
+          },
+          {
+            // Broadcast WebSocket for maintenance mode events from supervisor
+            path: `${config.WS_BASE_URL}/api/broadcast/ws`,
+            capabilities: ['broadcast', 'maintenance'],
+            priority: 5
           }
         ];
 

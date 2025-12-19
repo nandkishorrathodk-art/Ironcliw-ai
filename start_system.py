@@ -13439,6 +13439,31 @@ except Exception as e:
             logger.warning(f"Supervisor integration failed: {e}")
             print(f"{Colors.YELLOW}   ⚠️  Supervisor integration error: {e}{Colors.ENDC}")
 
+        # ═══════════════════════════════════════════════════════════════════
+        # BROADCAST ROUTER - Maintenance Mode WebSocket Events
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            from api.broadcast_router import broadcast_router, alt_router, manager as broadcast_manager
+            
+            # Register broadcast routers if app is available
+            if hasattr(self, 'app') and self.app:
+                self.app.include_router(broadcast_router)
+                self.app.include_router(alt_router)
+                self.broadcast_manager = broadcast_manager
+                print(f"\n{Colors.CYAN}📡 Broadcast Router Active{Colors.ENDC}")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} POST /api/broadcast - Maintenance event injection")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} WS /api/broadcast/ws - Real-time event stream")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Frontend will show MaintenanceOverlay during updates")
+            else:
+                # Store for later registration
+                self._broadcast_routers = [broadcast_router, alt_router]
+                self.broadcast_manager = broadcast_manager
+                print(f"\n{Colors.CYAN}📡 Broadcast Router: Pending registration{Colors.ENDC}")
+        except ImportError as e:
+            logger.debug(f"Broadcast router not available: {e}")
+        except Exception as e:
+            logger.warning(f"Broadcast router registration failed: {e}")
+
         # Start Advanced Voice Unlock Metrics Monitor (with DB Browser auto-launch)
         await broadcast_progress(
             "metrics_monitor",
