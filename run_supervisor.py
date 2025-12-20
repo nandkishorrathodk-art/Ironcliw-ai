@@ -985,6 +985,7 @@ class SupervisorBootstrapper:
         self.perf = PerformanceLogger()
         self.phase = StartupPhase.INIT
         self._shutdown_event = asyncio.Event()
+        self._loading_server_process: Optional[asyncio.subprocess.Process] = None  # Track for cleanup
     
     async def run(self) -> int:
         """
@@ -1109,16 +1110,21 @@ class SupervisorBootstrapper:
             self._print_config_summary(supervisor)
             self.perf.end("supervisor_init")
             
+            # Phase 3.5: Start Loading Page (BEFORE JARVIS spawns)
+            TerminalUI.print_divider()
+            print(f"  {TerminalUI.CYAN}🌐 Starting Loading Page Server...{TerminalUI.RESET}")
+            
+            await self._start_loading_page_ecosystem()
+            
             # Phase 4: Start JARVIS
             TerminalUI.print_divider()
-            TerminalUI.print_phase(4, 4, "Starting JARVIS with loading page")
+            TerminalUI.print_phase(4, 4, "Launching JARVIS Core")
             print()
             
-            print(f"  {TerminalUI.YELLOW}📡 Loading page will open in Chrome Incognito{TerminalUI.RESET}")
-            print(f"  {TerminalUI.YELLOW}   Watch real-time progress as JARVIS initializes!{TerminalUI.RESET}")
+            print(f"  {TerminalUI.YELLOW}📡 Watch real-time progress in the loading page!{TerminalUI.RESET}")
             
             if self.config.voice_enabled:
-                print(f"  {TerminalUI.YELLOW}🔊 Voice narration enabled - JARVIS will speak during startup{TerminalUI.RESET}")
+                print(f"  {TerminalUI.YELLOW}🔊 Voice narration enabled{TerminalUI.RESET}")
             
             print()
             
@@ -1141,9 +1147,125 @@ class SupervisorBootstrapper:
             return 1
         
         finally:
+            # Cleanup loading server if it was started
+            if self._loading_server_process:
+                try:
+                    self._loading_server_process.terminate()
+                    await asyncio.wait_for(self._loading_server_process.wait(), timeout=5.0)
+                    self.logger.info("Loading server terminated")
+                except asyncio.TimeoutError:
+                    self._loading_server_process.kill()
+                    self.logger.warning("Loading server killed (timeout)")
+                except Exception as e:
+                    self.logger.debug(f"Loading server cleanup error: {e}")
+            
             # Log performance summary
             summary = self.perf.get_summary()
             self.logger.info(f"Bootstrap performance: {summary}")
+    
+    async def _start_loading_page_ecosystem(self) -> None:
+        """
+        Start the loading page ecosystem BEFORE JARVIS spawns.
+        
+        This method:
+        1. Starts the loading_server.py subprocess
+        2. Waits for server to be ready (with retries)
+        3. Opens Chrome Incognito to the loading page
+        4. Sets JARVIS_SUPERVISOR_LOADING=1 so start_system.py knows to skip browser ops
+        
+        This ensures the user sees the loading page immediately when running
+        under supervisor, just like when running start_system.py directly.
+        """
+        loading_port = self.config.required_ports[2]  # 3001
+        loading_url = f"http://localhost:{loading_port}"
+        
+        try:
+            # Step 1: Start loading server subprocess
+            loading_server_script = Path(__file__).parent / "loading_server.py"
+            
+            if not loading_server_script.exists():
+                self.logger.warning(f"Loading server script not found: {loading_server_script}")
+                print(f"  {TerminalUI.YELLOW}⚠️  Loading server not available - will skip browser{TerminalUI.RESET}")
+                return
+            
+            self.logger.info(f"Starting loading server: {loading_server_script}")
+            
+            # Start as async subprocess
+            self._loading_server_process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(loading_server_script),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            
+            print(f"  {TerminalUI.GREEN}✓ Loading server started (PID {self._loading_server_process.pid}){TerminalUI.RESET}")
+            
+            # Step 2: Wait for server to be ready (with retries)
+            import aiohttp
+            
+            server_ready = False
+            max_retries = 20  # 10 seconds total
+            
+            for attempt in range(max_retries):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"{loading_url}/health",
+                            timeout=aiohttp.ClientTimeout(total=0.5)
+                        ) as resp:
+                            if resp.status == 200:
+                                server_ready = True
+                                break
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(0.5)
+            
+            if not server_ready:
+                self.logger.warning("Loading server didn't respond to health check")
+                print(f"  {TerminalUI.YELLOW}⚠️  Loading server slow to respond - continuing anyway{TerminalUI.RESET}")
+            else:
+                print(f"  {TerminalUI.GREEN}✓ Loading server ready at {loading_url}{TerminalUI.RESET}")
+            
+            # Step 3: Open Chrome Incognito window
+            if platform.system() == "Darwin":  # macOS
+                try:
+                    # Use macOS 'open' command to launch Chrome in Incognito mode
+                    # This is non-blocking and matches what start_system.py does
+                    open_cmd = [
+                        "open",
+                        "-na",
+                        "Google Chrome",
+                        "--args",
+                        "--incognito",
+                        "--new-window",
+                        loading_url
+                    ]
+                    
+                    await asyncio.create_subprocess_exec(
+                        *open_cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    
+                    print(f"  {TerminalUI.GREEN}✓ Chrome Incognito opened to loading page{TerminalUI.RESET}")
+                    
+                except Exception as e:
+                    self.logger.debug(f"Failed to open Chrome: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️  Could not open Chrome automatically{TerminalUI.RESET}")
+                    print(f"  {TerminalUI.CYAN}💡 Open manually: {loading_url}{TerminalUI.RESET}")
+            
+            # Step 4: Set environment variable to signal start_system.py
+            os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
+            self.logger.info("Set JARVIS_SUPERVISOR_LOADING=1")
+            
+            # Voice narration
+            await self.narrator.speak("Loading page ready. Starting JARVIS core.", wait=False)
+            
+            print()  # Blank line for readability
+            
+        except Exception as e:
+            self.logger.exception(f"Failed to start loading page ecosystem: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️  Loading page failed: {e}{TerminalUI.RESET}")
+            print(f"  {TerminalUI.CYAN}💡 JARVIS will start without loading page{TerminalUI.RESET}")
     
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""

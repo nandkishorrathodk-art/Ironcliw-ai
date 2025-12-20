@@ -237,48 +237,192 @@ class JARVISReloadManager:
 
         return len(hot_reload_files) > 0, hot_reload_files, cold_restart_files
 
-    async def find_jarvis_process(self) -> Optional[psutil.Process]:
-        """Find running JARVIS process dynamically"""
+    def _get_protected_pids(self) -> Set[int]:
+        """Get PIDs that should never be killed (current process and ancestors).
+
+        This prevents the reload manager from killing itself or the process
+        that launched it during startup.
+        """
+        protected = set()
+
+        try:
+            # Add current process
+            current_pid = os.getpid()
+            protected.add(current_pid)
+
+            # Add all ancestor processes (parent, grandparent, etc.)
+            # This protects the entire process chain: run_supervisor.py -> start_system.py -> etc.
+            try:
+                proc = psutil.Process(current_pid)
+                while proc.parent():
+                    parent = proc.parent()
+                    protected.add(parent.pid)
+                    proc = parent
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+            # Also protect any child processes we've spawned
+            try:
+                current_proc = psutil.Process(current_pid)
+                for child in current_proc.children(recursive=True):
+                    protected.add(child.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        except Exception as e:
+            logger.debug(f"Error getting protected PIDs: {e}")
+            # At minimum, protect current process
+            protected.add(os.getpid())
+
+        return protected
+
+    async def find_jarvis_process(self, exclude_protected: bool = True) -> Optional[psutil.Process]:
+        """Find running JARVIS process dynamically.
+
+        Args:
+            exclude_protected: If True, excludes current process and its ancestors/children
+                             to prevent killing the startup process chain.
+
+        Returns:
+            The JARVIS process if found, None otherwise.
+        """
+        protected_pids = self._get_protected_pids() if exclude_protected else set()
+
+        if protected_pids:
+            logger.debug(f"🛡️ Protected PIDs (will not be killed): {protected_pids}")
+
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
+                pid = proc.info.get('pid')
+
+                # Skip protected processes
+                if exclude_protected and pid in protected_pids:
+                    continue
+
                 cmdline = proc.info.get('cmdline', [])
                 if cmdline and any('main.py' in arg for arg in cmdline):
                     # Check if it's in our backend directory
                     if any(str(self.backend_dir) in arg for arg in cmdline):
+                        logger.debug(f"Found JARVIS process: PID {pid}")
                         return proc
-            except:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            except Exception as e:
+                logger.debug(f"Error checking process: {e}")
                 continue
         return None
 
-    async def stop_jarvis(self, force: bool = False):
-        """Stop JARVIS process gracefully or forcefully"""
-        logger.info("Stopping JARVIS...")
+    async def find_all_jarvis_processes(self, exclude_protected: bool = True) -> List[psutil.Process]:
+        """Find ALL running JARVIS processes (there might be stale ones).
 
-        # Try to stop our managed process first
-        if self.jarvis_process and self.jarvis_process.returncode is None:
-            try:
-                self.jarvis_process.terminate()
-                await asyncio.wait_for(self.jarvis_process.wait(), timeout=5)
-                logger.info("JARVIS stopped gracefully")
-                return
-            except asyncio.TimeoutError:
-                if force:
-                    self.jarvis_process.kill()
-                    await self.jarvis_process.wait()
-                    logger.info("JARVIS force killed")
-                    return
+        Args:
+            exclude_protected: If True, excludes current process chain from results.
 
-        # Find and stop any running JARVIS process
-        jarvis_proc = await self.find_jarvis_process()
-        if jarvis_proc:
+        Returns:
+            List of all JARVIS processes found.
+        """
+        protected_pids = self._get_protected_pids() if exclude_protected else set()
+        jarvis_processes = []
+
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                jarvis_proc.terminate()
-                jarvis_proc.wait(timeout=5)
-                logger.info(f"Stopped JARVIS process (PID: {jarvis_proc.pid})")
+                pid = proc.info.get('pid')
+
+                # Skip protected processes
+                if exclude_protected and pid in protected_pids:
+                    continue
+
+                cmdline = proc.info.get('cmdline', [])
+                if cmdline and any('main.py' in arg for arg in cmdline):
+                    # Check if it's in our backend directory
+                    if any(str(self.backend_dir) in arg for arg in cmdline):
+                        jarvis_processes.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
             except:
-                if force:
-                    jarvis_proc.kill()
-                    logger.info(f"Force killed JARVIS process (PID: {jarvis_proc.pid})")
+                continue
+
+        return jarvis_processes
+
+    async def stop_jarvis(self, force: bool = False, exclude_protected: bool = True):
+        """Stop JARVIS process gracefully or forcefully.
+
+        Args:
+            force: If True, use SIGKILL instead of SIGTERM for stubborn processes.
+            exclude_protected: If True, protects current process chain from being killed.
+                             This is critical during startup to prevent self-termination.
+        """
+        protected_pids = self._get_protected_pids() if exclude_protected else set()
+        current_pid = os.getpid()
+
+        logger.info(f"🛑 Stopping JARVIS... (protecting PID {current_pid} and {len(protected_pids)-1} related processes)")
+
+        stopped_count = 0
+
+        # Try to stop our managed process first (if it's not the current process)
+        if self.jarvis_process and self.jarvis_process.returncode is None:
+            managed_pid = self.jarvis_process.pid
+            if managed_pid not in protected_pids:
+                try:
+                    self.jarvis_process.terminate()
+                    await asyncio.wait_for(self.jarvis_process.wait(), timeout=5)
+                    logger.info(f"✅ JARVIS managed process stopped gracefully (PID: {managed_pid})")
+                    stopped_count += 1
+                    return
+                except asyncio.TimeoutError:
+                    if force:
+                        self.jarvis_process.kill()
+                        await self.jarvis_process.wait()
+                        logger.info(f"✅ JARVIS managed process force killed (PID: {managed_pid})")
+                        stopped_count += 1
+                        return
+            else:
+                logger.debug(f"⏭️ Skipping managed process (PID: {managed_pid}) - in protected set")
+
+        # Find and stop ALL stale JARVIS processes (excluding protected ones)
+        jarvis_procs = await self.find_all_jarvis_processes(exclude_protected=exclude_protected)
+
+        if not jarvis_procs:
+            logger.info("ℹ️ No stale JARVIS processes found to stop")
+            return
+
+        logger.info(f"🔍 Found {len(jarvis_procs)} JARVIS process(es) to stop")
+
+        for jarvis_proc in jarvis_procs:
+            try:
+                pid = jarvis_proc.pid
+
+                # Double-check protection (belt and suspenders)
+                if pid in protected_pids:
+                    logger.warning(f"⚠️ Skipping protected process (PID: {pid})")
+                    continue
+
+                # Try graceful termination first
+                jarvis_proc.terminate()
+
+                try:
+                    jarvis_proc.wait(timeout=5)
+                    logger.info(f"✅ Stopped JARVIS process (PID: {pid})")
+                    stopped_count += 1
+                except psutil.TimeoutExpired:
+                    if force:
+                        jarvis_proc.kill()
+                        logger.info(f"✅ Force killed JARVIS process (PID: {pid})")
+                        stopped_count += 1
+                    else:
+                        logger.warning(f"⚠️ Process {pid} didn't stop gracefully, use force=True to kill")
+
+            except psutil.NoSuchProcess:
+                logger.debug(f"Process already terminated")
+            except psutil.AccessDenied:
+                logger.warning(f"⚠️ Access denied stopping process (PID: {jarvis_proc.pid})")
+            except Exception as e:
+                logger.error(f"Error stopping process: {e}")
+
+        if stopped_count > 0:
+            logger.info(f"🧹 Cleaned up {stopped_count} JARVIS process(es)")
+        else:
+            logger.info("ℹ️ No processes were stopped (all protected or already gone)")
 
     async def start_jarvis(self) -> bool:
         """Start JARVIS with dynamic configuration"""
