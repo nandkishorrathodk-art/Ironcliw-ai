@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-JARVIS Update Intent Handler
-==============================
+JARVIS Update Intent Handler v2.0
+===================================
 
 Handles the "update system" voice command by speaking a confirmation
 and triggering sys.exit(100) to signal the supervisor to update.
+
+v2.0 CHANGE: Now uses UnifiedVoiceOrchestrator for voice output instead
+of spawning direct `say` processes.
 
 This module integrates with the JARVIS event system to register handlers
 for update-related intents without modifying the main start_system.py.
 
 Author: JARVIS System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -20,6 +23,13 @@ import logging
 import os
 import sys
 from typing import Any, Callable, Optional
+
+# v2.0: Import unified voice orchestrator
+from .unified_voice_orchestrator import (
+    get_voice_orchestrator,
+    VoicePriority,
+    VoiceSource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,26 +79,32 @@ class UpdateIntentHandler:
         self._speak_func = func
     
     async def _speak(self, text: str) -> None:
-        """Speak text using the configured TTS function."""
+        """Speak text using unified voice orchestrator."""
+        # First try the configured speak function if provided
         if self._speak_func:
             try:
                 result = self._speak_func(text)
                 if asyncio.iscoroutine(result):
                     await result
+                return
             except Exception as e:
-                logger.error(f"TTS error: {e}")
-        else:
-            # Fallback to macOS say command
-            logger.info(f"🔊 [ANNOUNCE]: {text}")
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "say", "-v", "Daniel", text,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                await proc.wait()
-            except Exception as e:
-                logger.debug(f"Fallback TTS failed: {e}")
+                logger.debug(f"Configured TTS error: {e}")
+
+        # v2.0: Fallback to unified voice orchestrator (not direct `say`)
+        logger.info(f"🔊 [ANNOUNCE]: {text}")
+        try:
+            orchestrator = get_voice_orchestrator()
+            if not orchestrator._running:
+                await orchestrator.start()
+
+            await orchestrator.speak(
+                text=text,
+                priority=VoicePriority.HIGH,
+                source=VoiceSource.UPDATE,
+                wait=True,
+            )
+        except Exception as e:
+            logger.debug(f"Voice orchestrator error: {e}")
     
     async def handle_update_request(
         self,

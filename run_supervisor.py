@@ -189,68 +189,85 @@ def setup_logging(config: BootstrapConfig) -> logging.Logger:
 
 
 # =============================================================================
-# Voice Narration - Async with Queuing
+# Voice Narration - Unified Orchestrator Integration (v2.0)
 # =============================================================================
 
 class AsyncVoiceNarrator:
     """
-    Async voice narrator with intelligent queuing.
-    
+    Async voice narrator that delegates to UnifiedVoiceOrchestrator.
+
+    v2.0 CHANGE: Instead of spawning direct `say` processes, this now
+    delegates to the unified orchestrator to ensure only ONE voice
+    speaks at a time across the entire JARVIS system.
+
     Features:
     - Non-blocking voice output
-    - Queue management to prevent overlap
+    - Queue management via unified orchestrator
     - Platform-aware (macOS only)
     - Graceful fallback on errors
+    - PREVENTS multiple voices during startup
     """
-    
+
     def __init__(self, config: BootstrapConfig):
         self.config = config
         self.enabled = config.voice_enabled and platform.system() == "Darwin"
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._speaking = False
-        self._shutdown = False
-    
+        self._orchestrator = None
+        self._started = False
+
+    async def _ensure_orchestrator(self):
+        """Ensure the unified orchestrator is initialized and started."""
+        if self._orchestrator is None:
+            try:
+                from backend.core.supervisor.unified_voice_orchestrator import (
+                    get_voice_orchestrator,
+                    VoicePriority,
+                    VoiceSource,
+                )
+                self._orchestrator = get_voice_orchestrator()
+                self._VoicePriority = VoicePriority
+                self._VoiceSource = VoiceSource
+            except ImportError as e:
+                # Fallback if orchestrator not available
+                logging.getLogger(__name__).debug(f"Voice orchestrator not available: {e}")
+                self.enabled = False
+                return
+
+        if not self._started and self._orchestrator:
+            await self._orchestrator.start()
+            self._started = True
+
     async def speak(self, text: str, wait: bool = True, priority: bool = False) -> None:
         """
-        Speak text asynchronously.
-        
+        Speak text through unified orchestrator.
+
         Args:
             text: Text to speak
             wait: Whether to wait for speech to complete
-            priority: If True, speak immediately (skip queue)
+            priority: If True, use CRITICAL priority (interrupts current)
         """
         if not self.enabled:
             return
-        
+
         try:
-            if priority and not self._speaking:
-                await self._speak_now(text, wait)
-            elif wait:
-                await self._speak_now(text, wait)
-            else:
-                # Fire and forget
-                asyncio.create_task(self._speak_now(text, False))
-        except Exception:
-            pass
-    
-    async def _speak_now(self, text: str, wait: bool) -> None:
-        """Execute speech command."""
-        self._speaking = True
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "say", "-v", self.config.voice_name, 
-                "-r", str(self.config.voice_rate), text,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+            await self._ensure_orchestrator()
+
+            if self._orchestrator is None:
+                return
+
+            # Map priority to VoicePriority
+            voice_priority = (
+                self._VoicePriority.CRITICAL if priority
+                else self._VoicePriority.MEDIUM
             )
-            if wait:
-                await asyncio.wait_for(process.wait(), timeout=30.0)
-        except asyncio.TimeoutError:
-            pass
-        except Exception:
-            pass
-        finally:
-            self._speaking = False
+
+            await self._orchestrator.speak(
+                text=text,
+                priority=voice_priority,
+                source=self._VoiceSource.SYSTEM,
+                wait=wait,
+            )
+        except Exception as e:
+            logging.getLogger(__name__).debug(f"Voice error: {e}")
 
 
 # =============================================================================
