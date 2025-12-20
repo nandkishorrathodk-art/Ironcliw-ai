@@ -1067,9 +1067,37 @@ class SupervisorBootstrapper:
                     f"Resources OK ({resources.memory_available_gb:.1f}GB RAM, "
                     f"{resources.disk_available_gb:.1f}GB disk)"
                 )
-            
+
+            # ═══════════════════════════════════════════════════════════════════
+            # CRITICAL: Propagate Intelligent Decisions to Child Processes
+            # ═══════════════════════════════════════════════════════════════════
+            # These environment variables are inherited by start_system.py and
+            # all JARVIS processes, ensuring the orchestrator's decisions are
+            # respected throughout the system.
+            # ═══════════════════════════════════════════════════════════════════
+            if resources.startup_mode:
+                os.environ["JARVIS_STARTUP_MODE"] = resources.startup_mode
+                self.logger.info(f"🔄 Propagating JARVIS_STARTUP_MODE={resources.startup_mode}")
+
+            if resources.cloud_activated:
+                os.environ["JARVIS_CLOUD_ACTIVATED"] = "true"
+                os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
+                self.logger.info("🔄 Propagating JARVIS_CLOUD_ACTIVATED=true")
+
+            if resources.arm64_simd_available:
+                os.environ["JARVIS_ARM64_SIMD"] = "true"
+                self.logger.info("🔄 Propagating JARVIS_ARM64_SIMD=true")
+
+            # Propagate memory constraints for adaptive loading
+            os.environ["JARVIS_AVAILABLE_RAM_GB"] = str(round(resources.memory_available_gb, 1))
+            os.environ["JARVIS_TOTAL_RAM_GB"] = str(round(resources.memory_total_gb, 1))
+
+            # Propagate warnings for downstream handling
+            if resources.warnings:
+                os.environ["JARVIS_STARTUP_WARNINGS"] = "|".join(resources.warnings[:5])
+
             self.perf.end("validation")
-            
+
             # Phase 3: Initialize supervisor
             self.perf.start("supervisor_init")
             TerminalUI.print_phase(3, 4, "Initializing supervisor")

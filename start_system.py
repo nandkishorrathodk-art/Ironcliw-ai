@@ -16202,11 +16202,44 @@ async def main():
         "decision_reason": None,
     }
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INTELLIGENT STARTUP MODE HANDLING
+    # ═══════════════════════════════════════════════════════════════════════════
+    # The supervisor (run_supervisor.py) determines the optimal startup mode
+    # based on available system resources and propagates it via environment vars.
+    # We respect that decision here to ensure coordinated behavior.
+    # ═══════════════════════════════════════════════════════════════════════════
+    startup_mode = os.getenv("JARVIS_STARTUP_MODE", "local_full")
+    cloud_activated = os.getenv("JARVIS_CLOUD_ACTIVATED", "").lower() == "true"
+    available_ram = float(os.getenv("JARVIS_AVAILABLE_RAM_GB", "8.0"))
+    total_ram = float(os.getenv("JARVIS_TOTAL_RAM_GB", "16.0"))
+
+    # Log startup mode if set by supervisor
+    if os.getenv("JARVIS_STARTUP_MODE"):
+        mode_display = {
+            "local_full": "🏠 Full Local Mode",
+            "cloud_first": "☁️  Cloud-First Mode",
+            "cloud_only": "☁️  Cloud-Only Mode"
+        }.get(startup_mode, startup_mode)
+        print(f"{Colors.GREEN}   Startup Mode: {mode_display} (from supervisor){Colors.ENDC}")
+        if cloud_activated:
+            print(f"{Colors.CYAN}   Cloud services activated for optimal performance{Colors.ENDC}")
+        print(f"{Colors.CYAN}   Available RAM: {available_ram:.1f}GB / {total_ram:.1f}GB{Colors.ENDC}")
+
     # Get configuration from args/environment (with smart defaults)
     force_docker = getattr(args, 'local_docker', False) or os.getenv("JARVIS_USE_LOCAL_DOCKER", "").lower() == "true"
     skip_docker = getattr(args, 'no_docker', False) or os.getenv("JARVIS_SKIP_DOCKER", "").lower() == "true"
     docker_rebuild = getattr(args, 'docker_rebuild', False)
-    prefer_cloud = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
+
+    # Prefer cloud based on supervisor decision or environment
+    # cloud_only mode forces cloud, cloud_first prefers cloud, local_full prefers local
+    if startup_mode == "cloud_only":
+        prefer_cloud = True
+        skip_docker = True  # Don't waste time probing Docker in cloud_only mode
+    elif startup_mode == "cloud_first" or cloud_activated:
+        prefer_cloud = True
+    else:
+        prefer_cloud = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
 
     # Get Cloud Run endpoint from environment
     # Note: Cloud Run URLs use project NUMBER (888774109345), not project ID (jarvis-473803)
