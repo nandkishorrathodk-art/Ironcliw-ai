@@ -135,7 +135,7 @@ class UpdateDetector:
     # Files to ignore for restart recommendation
     IGNORE_PATTERNS = [
         r".*\.md$",           # Documentation
-        r".*\.txt$",          # Text files (except requirements)
+        r"^(?!.*requirements).*\.txt$",  # Text files (except requirements*.txt)
         r"__pycache__",       # Cache
         r"\.pyc$",            # Compiled Python
         r"logs/",             # Log files
