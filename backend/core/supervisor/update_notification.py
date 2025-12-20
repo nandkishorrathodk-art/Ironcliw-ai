@@ -37,6 +37,13 @@ import aiohttp
 
 from .supervisor_config import SupervisorConfig, get_supervisor_config
 from .update_detector import UpdateDetector, UpdateInfo, LocalChangeInfo, ChangeType
+from .restart_coordinator import (
+    get_restart_coordinator,
+    RestartCoordinator,
+    RestartSource,
+    RestartUrgency,
+    request_restart,
+)
 
 if TYPE_CHECKING:
     from .changelog_analyzer import ChangelogAnalyzer, ChangelogSummary
@@ -824,14 +831,22 @@ class UpdateNotificationOrchestrator:
         """
         Schedule an automatic restart with user-transparent countdown.
 
-        Shows MaintenanceOverlay on frontend before restarting.
+        Uses the async-safe RestartCoordinator instead of sys.exit() to
+        properly signal the supervisor without causing asyncio task exceptions.
+
+        The RestartCoordinator handles:
+        - Countdown management
+        - Broadcast notifications
+        - Proper signaling to supervisor
+        - Cancellation support
         """
         delay = self._notification_config.auto_restart_delay_seconds
+        reason = info.restart_reason or "Code changes detected"
 
         # Broadcast restart notification to frontend
         await self._broadcast_restart_notification(
             message=f"Restarting in {delay} seconds to apply code changes",
-            reason=info.restart_reason or "Code changes detected",
+            reason=reason,
             estimated_time=delay,
         )
 
@@ -845,26 +860,32 @@ class UpdateNotificationOrchestrator:
             except Exception as e:
                 logger.debug(f"TTS failed: {e}")
 
-        # Wait before restart
         logger.info(f"⏱️ Auto-restart scheduled in {delay} seconds")
-        await asyncio.sleep(delay)
 
-        # Final broadcast before restart
-        await self._broadcast_restart_notification(
-            message="Restarting now...",
-            reason="Applying code changes",
-            estimated_time=15,
+        # Use async-safe restart coordinator instead of sys.exit(102)
+        # This properly signals the supervisor without raising SystemExit in an async task
+        success = await request_restart(
+            source=RestartSource.LOCAL_CHANGES,
+            reason=reason,
+            urgency=RestartUrgency.MEDIUM,
+            countdown_seconds=delay,
+            cancellable=True,
+            metadata={
+                "change_type": info.change_type.value if info.change_type else None,
+                "commits_since_start": info.commits_since_start,
+                "modified_files": info.modified_files[:10],
+                "current_branch": info.current_branch,
+            },
         )
 
-        # Trigger restart via supervisor exit code
-        logger.info("🔄 Triggering restart to apply code changes")
+        if success:
+            logger.info("🔄 Restart request submitted to coordinator")
+        else:
+            logger.warning("⚠️ Restart request was not accepted (may already be in progress)")
+
+        # Reset state after submitting request
         self._state.auto_restart_scheduled = False
         self._state.pending_restart = False
-
-        # Signal restart (exit code 102 = restart request)
-        # This will be caught by the supervisor which handles the actual restart
-        import sys
-        sys.exit(102)
 
     async def _broadcast_restart_notification(
         self,
@@ -901,11 +922,22 @@ class UpdateNotificationOrchestrator:
 
         return False
 
-    def cancel_auto_restart(self) -> None:
-        """Cancel a scheduled auto-restart."""
+    def cancel_auto_restart(self) -> bool:
+        """
+        Cancel a scheduled auto-restart.
+
+        Returns:
+            True if restart was cancelled, False otherwise
+        """
         if self._state.auto_restart_scheduled:
             self._state.auto_restart_scheduled = False
-            logger.info("🚫 Auto-restart cancelled by user")
+            # Use the coordinator to properly cancel
+            from .restart_coordinator import cancel_restart
+            cancelled = cancel_restart()
+            if cancelled:
+                logger.info("🚫 Auto-restart cancelled by user")
+            return cancelled
+        return False
 
     def get_local_change_state(self) -> dict[str, Any]:
         """Get current local change state for debugging/UI."""

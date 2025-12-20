@@ -53,6 +53,12 @@ from .update_notification import (
     NotificationPriority,
     get_notification_orchestrator,
 )
+from .restart_coordinator import (
+    get_restart_coordinator,
+    RestartCoordinator,
+    RestartRequest,
+    RestartSource,
+)
 
 # Import loading server functionality (lazy import to avoid circular deps)
 def _get_loading_server():
@@ -184,7 +190,11 @@ class JARVISSupervisor:
         self._shutdown_event = asyncio.Event()
         self._update_requested = asyncio.Event()
         self._rollback_requested = asyncio.Event()
-        
+        self._restart_requested = asyncio.Event()
+
+        # Restart coordinator for async-safe restart signaling
+        self._restart_coordinator: RestartCoordinator = get_restart_coordinator()
+
         # Callbacks for extensibility
         self._on_state_change: list[Callable[[SupervisorState], None]] = []
         self._on_crash: list[Callable[[int], None]] = []
@@ -1274,7 +1284,81 @@ class JARVISSupervisor:
                 logger.warning(f"Idle detection error: {e}")
             
             await asyncio.sleep(60)  # Check every minute
-    
+
+    async def _run_restart_monitor(self) -> None:
+        """
+        Background task: Monitor RestartCoordinator for restart signals.
+
+        This monitors the async-safe restart coordinator for restart requests
+        from components like UpdateNotificationOrchestrator. When a restart
+        is signaled, we properly terminate the child process to trigger a
+        restart in the main loop.
+
+        This replaces the old sys.exit(102) approach which didn't work
+        properly from async tasks.
+        """
+        logger.info("🔄 Restart monitor started")
+
+        while not self._shutdown_event.is_set():
+            try:
+                # Wait for restart signal (with timeout to allow shutdown check)
+                request = await self._restart_coordinator.wait_for_restart(timeout=5.0)
+
+                if request:
+                    logger.info(f"🔄 Restart signal received: {request.reason}")
+                    logger.info(f"   Source: {request.source.value}, Urgency: {request.urgency.value}")
+
+                    # Broadcast final notification before restart
+                    if self._notification_orchestrator:
+                        try:
+                            await self._notification_orchestrator._broadcast_restart_notification(
+                                message="Restarting now...",
+                                reason=request.reason,
+                                estimated_time=15,
+                            )
+                        except Exception as e:
+                            logger.debug(f"Restart notification broadcast failed: {e}")
+
+                    # Set the restart requested flag for main loop
+                    self._restart_requested.set()
+
+                    # Terminate child process to trigger restart in main loop
+                    if self._process and self._process.returncode is None:
+                        logger.info(f"📡 Terminating JARVIS (PID: {self._process.pid}) for restart")
+                        try:
+                            # Send SIGTERM for graceful shutdown
+                            self._process.send_signal(signal.SIGTERM)
+
+                            # Give it a moment to exit gracefully
+                            try:
+                                await asyncio.wait_for(
+                                    asyncio.shield(asyncio.create_task(self._wait_for_process_exit())),
+                                    timeout=10.0
+                                )
+                            except asyncio.TimeoutError:
+                                # Force kill if not exiting
+                                logger.warning("⚠️ Process not exiting, sending SIGKILL")
+                                self._process.kill()
+                        except ProcessLookupError:
+                            pass  # Process already exited
+
+                    # Exit monitor loop - restart will be handled by main loop
+                    break
+
+            except asyncio.CancelledError:
+                logger.info("🛑 Restart monitor cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Restart monitor error: {e}")
+                await asyncio.sleep(1)  # Prevent tight loop on errors
+
+        logger.info("🔄 Restart monitor stopped")
+
+    async def _wait_for_process_exit(self) -> None:
+        """Wait for the child process to exit."""
+        if self._process:
+            await self._process.wait()
+
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
         loop = asyncio.get_event_loop()
@@ -1329,13 +1413,20 @@ class JARVISSupervisor:
         # Setup signal handlers
         self._setup_signal_handlers()
         
+        # Initialize restart coordinator
+        await self._restart_coordinator.initialize()
+
         # Start background tasks
         tasks = []
         if self.config.update.check.enabled and self._update_detector:
             tasks.append(asyncio.create_task(self._run_update_detector()))
         if self.config.idle.enabled and self._idle_detector:
             tasks.append(asyncio.create_task(self._run_idle_detector()))
-        
+
+        # Start restart monitor (always enabled - handles async restart signals)
+        restart_monitor_task = asyncio.create_task(self._run_restart_monitor())
+        tasks.append(restart_monitor_task)
+
         # Get exit codes from config
         exit_codes = ExitCode.from_config(self.config)
         
@@ -1348,7 +1439,20 @@ class JARVISSupervisor:
                 
                 # Spawn JARVIS and wait for exit
                 exit_code = await self._spawn_jarvis()
-                
+
+                # Check if restart was triggered by restart coordinator
+                # (this takes precedence over exit code handling)
+                if self._restart_requested.is_set():
+                    self._restart_requested.clear()
+                    logger.info("🔄 Restart triggered by coordinator")
+                    self._set_state(SupervisorState.RESTARTING)
+                    await self._narrator.narrate(NarratorEvent.RESTART_STARTING)
+                    # Restart the restart monitor for next cycle
+                    if restart_monitor_task.done():
+                        restart_monitor_task = asyncio.create_task(self._run_restart_monitor())
+                        tasks.append(restart_monitor_task)
+                    continue
+
                 # Handle exit code
                 if exit_code == exit_codes["clean"]:
                     logger.info("✅ JARVIS shut down cleanly")
@@ -1383,14 +1487,17 @@ class JARVISSupervisor:
         finally:
             # Cleanup
             self._set_state(SupervisorState.SHUTTING_DOWN)
-            
+
+            # Cleanup restart coordinator
+            await self._restart_coordinator.cleanup()
+
             for task in tasks:
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
-            
+
             self._set_state(SupervisorState.STOPPED)
             logger.info("👋 Supervisor stopped")
     

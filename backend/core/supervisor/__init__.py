@@ -50,6 +50,15 @@ from .update_notification import (
     NotificationResult,
     get_notification_orchestrator,
 )
+from .restart_coordinator import (
+    RestartCoordinator,
+    RestartRequest,
+    RestartSource,
+    RestartUrgency,
+    get_restart_coordinator,
+    request_restart,
+    cancel_restart,
+)
 from .maintenance_broadcaster import (
     broadcast_maintenance_mode,
     broadcast_system_online,
@@ -123,6 +132,14 @@ __all__ = [
     "NotificationState",
     "NotificationResult",
     "get_notification_orchestrator",
+    # Restart Coordination
+    "RestartCoordinator",
+    "RestartRequest",
+    "RestartSource",
+    "RestartUrgency",
+    "get_restart_coordinator",
+    "request_restart",
+    "cancel_restart",
     # Broadcasting
     "broadcast_maintenance_mode",
     "broadcast_system_online",
