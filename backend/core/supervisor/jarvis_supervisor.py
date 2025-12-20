@@ -842,15 +842,44 @@ class JARVISSupervisor:
                 
                 # Check for timeout
                 if elapsed > adaptive_timeout:
-                    # Graceful degradation: if backend is ready but frontend isn't,
-                    # complete anyway in frontend-optional mode
-                    if backend_state.is_ready and frontend_optional:
+                    # ═══════════════════════════════════════════════════════════════════
+                    # INTELLIGENT TIMEOUT HANDLING
+                    # ═══════════════════════════════════════════════════════════════════
+                    # Priority 1: If both backend AND frontend are ready, complete now
+                    #             (subsystem components can finish in background)
+                    # Priority 2: If backend ready + frontend optional, complete with backend
+                    # Priority 3: If only backend ready, wait a bit more then complete
+                    # Priority 4: Nothing ready - actual failure
+                    # ═══════════════════════════════════════════════════════════════════
+
+                    if backend_state.is_ready and frontend_state.is_ready:
+                        # BOTH are ready - this is success, not failure!
+                        # The is_complete flag for subsystems shouldn't block overall startup
+                        logger.info("⏰ Timeout reached but backend+frontend are ready - completing startup")
+                        # Force the completion path by breaking to let completion check run
+                        # The completion check will now trigger because we're setting this manually
+                        if "backend" not in stages_completed:
+                            stages_completed.add("backend")
+                        if "frontend" not in stages_completed:
+                            stages_completed.add("frontend")
+                        # Don't break - let completion check run below
+                    elif backend_state.is_ready and frontend_optional:
                         logger.warning("⚠️ Frontend timeout, completing with backend only")
                         if "frontend" not in stages_completed:
                             stages_completed.add("frontend")
                             if self._progress_hub:
                                 await self._progress_hub.component_skipped("frontend", "Frontend timeout - skipped")
+                    elif backend_state.is_ready:
+                        # Backend ready but frontend not optional and not responding
+                        # Give a bit more time (extended timeout)
+                        extended_timeout = adaptive_timeout * 1.2  # 20% more time
+                        if elapsed > extended_timeout:
+                            logger.warning(f"⚠️ Extended timeout after {elapsed:.1f}s - completing with backend only")
+                            if "frontend" not in stages_completed:
+                                stages_completed.add("frontend")
+                        # Don't fail yet - let the loop continue
                     else:
+                        # Neither backend nor frontend ready - actual failure
                         logger.warning(f"⚠️ Startup timeout after {elapsed:.1f}s")
                         await self._progress_reporter.fail(
                             f"Startup timeout after {int(elapsed)}s",
@@ -990,32 +1019,56 @@ class JARVISSupervisor:
                             log_type="success"
                         )
                     
-                    # === COMPLETION CHECK ===
-                    # Complete when ALL conditions are met:
-                    # 1. Backend is ready (responding to /health)
-                    # 2. Backend reports is_complete=True (all components initialized)
-                    # 3. Frontend is ready OR frontend is optional
-                    #
-                    # The is_complete check ensures we don't complete prematurely
-                    # while components are still initializing in parallel_initializer
+                    # ═══════════════════════════════════════════════════════════════════
+                    # COMPLETION CHECK - More lenient for user experience
+                    # ═══════════════════════════════════════════════════════════════════
+                    # The key insight: Users care about backend API + frontend UI
+                    # being responsive. Subsystem components (voice, vision, ML) can
+                    # continue initializing in the background after "startup complete".
+                    # ═══════════════════════════════════════════════════════════════════
+
                     backend_fully_complete = system_status.get("is_complete", False) if system_status else False
 
+                    # Primary completion: All systems go
                     ready_for_completion = (
                         backend_ready and
                         backend_fully_complete and
                         (frontend_ready or frontend_optional)
                     )
 
-                    # Fallback: If backend has been ready for 30+ seconds but is_complete
-                    # is still false, check if we have most components ready
+                    # ═══════════════════════════════════════════════════════════════════
+                    # FALLBACK 1: Backend + Frontend ready for 30+ seconds
+                    # If both main services are up, complete startup even if
+                    # subsystems are still initializing
+                    # ═══════════════════════════════════════════════════════════════════
+                    if (not ready_for_completion and
+                        backend_ready and
+                        frontend_ready and
+                        elapsed > 30):
+                        logger.info("✅ Backend + Frontend ready for 30s+ - completing (subsystems will finish in background)")
+                        ready_for_completion = True
+
+                    # ═══════════════════════════════════════════════════════════════════
+                    # FALLBACK 2: Backend ready for 60+ seconds (original fallback)
+                    # ═══════════════════════════════════════════════════════════════════
                     if (not ready_for_completion and
                         backend_ready and
                         (frontend_ready or frontend_optional) and
-                        len(stages_completed) >= 5):
-                        # Check if we've been waiting too long with backend ready
+                        len(stages_completed) >= 2):  # Relaxed from 5 to 2 (backend + frontend/database)
                         if elapsed > 60:
                             logger.warning("⚠️ Backend ready but is_complete=False for 60s+, completing anyway")
                             ready_for_completion = True
+
+                    # ═══════════════════════════════════════════════════════════════════
+                    # FALLBACK 3: Timeout reached but services responding
+                    # If we hit timeout and both backend+frontend are up, complete
+                    # ═══════════════════════════════════════════════════════════════════
+                    if (not ready_for_completion and
+                        elapsed > adaptive_timeout and
+                        backend_ready and
+                        (frontend_ready or frontend_optional)):
+                        logger.info("⏰ Timeout reached with services ready - completing startup")
+                        ready_for_completion = True
 
                     # If completing without frontend, mark it as skipped
                     if ready_for_completion and not frontend_ready and frontend_optional:
