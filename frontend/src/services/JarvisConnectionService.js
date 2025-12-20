@@ -169,52 +169,146 @@ class JarvisConnectionService {
   // FAST PATH CONNECTION
   // ==========================================================================
 
+  /**
+   * Extract URL parameters for cross-origin fast-path connection.
+   * Loading page (port 3001) passes backend state via URL params since
+   * localStorage is origin-specific and doesn't work cross-port.
+   */
+  _getUrlFastPathParams() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const jarvisReady = urlParams.get('jarvis_ready');
+      const backendPort = urlParams.get('backend_port');
+      const timestamp = urlParams.get('ts');
+
+      if (jarvisReady === '1' && backendPort) {
+        const timeSinceRedirect = timestamp ? Date.now() - parseInt(timestamp) : 0;
+        return {
+          valid: true,
+          backendPort: parseInt(backendPort),
+          timeSinceRedirect,
+          timestamp: parseInt(timestamp) || Date.now()
+        };
+      }
+      return { valid: false };
+    } catch (error) {
+      console.debug('[JarvisConnection] URL param parsing error:', error.message);
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Clean URL parameters after consuming them (keep URL clean)
+   */
+  _cleanUrlParams() {
+    try {
+      const url = new URL(window.location.href);
+      const paramsToRemove = ['jarvis_ready', 'backend_port', 'ts'];
+      let modified = false;
+
+      paramsToRemove.forEach(param => {
+        if (url.searchParams.has(param)) {
+          url.searchParams.delete(param);
+          modified = true;
+        }
+      });
+
+      if (modified) {
+        // Replace URL without reloading page
+        window.history.replaceState({}, '', url.toString());
+        console.log('[JarvisConnection] ✓ Cleaned fast-path URL parameters');
+      }
+    } catch (error) {
+      // Non-critical, ignore
+    }
+  }
+
   async _tryFastPath() {
     try {
-      // Check localStorage for recently verified backend
+      // PRIORITY 1: Check URL parameters (from loading page redirect)
+      // This is the primary fast-path since localStorage is origin-specific
+      const urlParams = this._getUrlFastPathParams();
+
+      if (urlParams.valid) {
+        console.log(`[JarvisConnection] 🚀 URL fast-path: Backend ready on port ${urlParams.backendPort} (redirect ${Math.round(urlParams.timeSinceRedirect / 1000)}s ago)`);
+
+        // Construct URLs from the port
+        const backendUrl = `http://localhost:${urlParams.backendPort}`;
+        const wsUrl = `ws://localhost:${urlParams.backendPort}`;
+
+        // Quick health verification (should be instant since loading page verified it)
+        const isHealthy = await this._quickHealthCheck(backendUrl);
+
+        if (isHealthy) {
+          this.backendUrl = backendUrl;
+          this.wsUrl = wsUrl;
+
+          await this._initializeWebSocket();
+          this._startHealthMonitoring();
+
+          this._setState(ConnectionState.ONLINE);
+          this.consecutiveFailures = 0;
+
+          // Save to localStorage for future page refreshes
+          this._saveVerifiedState();
+
+          // Clean URL params after consuming
+          this._cleanUrlParams();
+
+          console.log('[JarvisConnection] ✅ URL fast-path connection successful - INSTANT READY');
+          return true;
+        } else {
+          console.warn('[JarvisConnection] URL fast-path health check failed, falling back');
+          this._cleanUrlParams();
+        }
+      }
+
+      // PRIORITY 2: Check localStorage for recently verified backend
+      // This handles page refreshes within the same origin
       const verified = localStorage.getItem('jarvis_backend_verified') === 'true';
       const verifiedAt = parseInt(localStorage.getItem('jarvis_backend_verified_at') || '0');
       const timeSinceVerification = Date.now() - verifiedAt;
-      
-      // Use fast path if verified within 5 minutes (300 seconds)
+
+      // Use localStorage fast path if verified within 5 minutes (300 seconds)
       // This handles page refreshes and tab switches
       if (!verified || timeSinceVerification > 300000) {
         return false;
       }
-      
+
       const backendUrl = localStorage.getItem('jarvis_backend_url');
       const wsUrl = localStorage.getItem('jarvis_backend_ws_url');
-      
+
       if (!backendUrl || !wsUrl) {
         return false;
       }
-      
+
       console.log(`[JarvisConnection] Fast-path: Backend verified ${Math.round(timeSinceVerification / 1000)}s ago`);
-      
+
       // Quick health verification
       const isHealthy = await this._quickHealthCheck(backendUrl);
       if (!isHealthy) {
         this._clearFastPathState();
         return false;
       }
-      
+
       // Set URLs and connect
       this.backendUrl = backendUrl;
       this.wsUrl = wsUrl;
-      
+
       await this._initializeWebSocket();
       this._startHealthMonitoring();
-      
+
       this._setState(ConnectionState.ONLINE);
       this.consecutiveFailures = 0;
-      
+
       // Clear fast-path state (one-time use)
       this._clearFastPathState();
-      
+
       return true;
     } catch (error) {
       console.warn('[JarvisConnection] Fast-path failed:', error.message);
       this._clearFastPathState();
+      this._cleanUrlParams();
       return false;
     }
   }

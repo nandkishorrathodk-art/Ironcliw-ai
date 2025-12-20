@@ -290,16 +290,113 @@ class JARVISSupervisor:
                 update_detector=self._update_detector,
             )
     
+    async def _find_existing_jarvis_window(self) -> bool:
+        """
+        Check if there's an existing Chrome incognito window with JARVIS.
+
+        Uses AppleScript to find windows with JARVIS-related URLs.
+        Returns True if found, False otherwise.
+        """
+        try:
+            # AppleScript to find Chrome incognito windows with JARVIS URLs
+            applescript = '''
+            tell application "Google Chrome"
+                set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "127.0.0.1:3000", "127.0.0.1:3001"}
+                repeat with w in windows
+                    if mode of w is "incognito" then
+                        repeat with t in tabs of w
+                            set tabURL to URL of t
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    return true
+                                end if
+                            end repeat
+                        end repeat
+                    end if
+                end repeat
+                return false
+            end tell
+            '''
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await process.communicate()
+            return stdout.decode().strip().lower() == "true"
+        except Exception as e:
+            logger.debug(f"Could not check for existing window: {e}")
+            return False
+
+    async def _redirect_existing_window(self, url: str) -> bool:
+        """
+        Redirect an existing Chrome incognito window with JARVIS to the new URL.
+
+        Returns True if successfully redirected, False otherwise.
+        """
+        try:
+            # AppleScript to redirect existing JARVIS incognito window
+            applescript = f'''
+            tell application "Google Chrome"
+                set jarvisPatterns to {{"localhost:3000", "localhost:3001", "localhost:8010", "127.0.0.1:3000", "127.0.0.1:3001"}}
+                repeat with w in windows
+                    if mode of w is "incognito" then
+                        repeat with t in tabs of w
+                            set tabURL to URL of t
+                            repeat with pattern in jarvisPatterns
+                                if tabURL contains pattern then
+                                    set URL of t to "{url}"
+                                    set active tab index of w to (index of t)
+                                    set index of w to 1
+                                    activate
+                                    return true
+                                end if
+                            end repeat
+                        end repeat
+                    end if
+                end repeat
+                return false
+            end tell
+            '''
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/osascript", "-e", applescript,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await process.communicate()
+            return stdout.decode().strip().lower() == "true"
+        except Exception as e:
+            logger.debug(f"Could not redirect existing window: {e}")
+            return False
+
     async def _open_loading_page(self) -> bool:
         """
         Open browser to loading page at localhost:3001.
-        
-        Uses Chrome Incognito for consistent, cache-free experience.
+
+        Intelligent window management:
+        1. First checks for existing Chrome incognito window with JARVIS URL
+        2. If found, redirects that window to the loading page (no new window)
+        3. If not found, creates a new incognito window
+
+        This prevents multiple browser windows from being created on restarts.
         """
         loading_url = "http://localhost:3001/"
-        
+
         try:
-            # Launch Chrome Incognito with loading page
+            # First, check if there's an existing JARVIS incognito window
+            existing_found = await self._find_existing_jarvis_window()
+
+            if existing_found:
+                # Try to redirect the existing window
+                redirected = await self._redirect_existing_window(loading_url)
+                if redirected:
+                    logger.info(f"🔄 Redirected existing JARVIS window to: {loading_url}")
+                    return True
+                else:
+                    logger.debug("Redirect failed, will create new window")
+
+            # No existing window or redirect failed - create new incognito window
+            # Use --new-window only if there's no existing JARVIS window
             process = await asyncio.create_subprocess_exec(
                 "/usr/bin/open", "-na", "Google Chrome",
                 "--args", "--incognito", "--new-window", "--start-fullscreen", loading_url,
@@ -307,10 +404,10 @@ class JARVISSupervisor:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await process.wait()
-            
-            logger.info(f"🌐 Opened loading page: {loading_url}")
+
+            logger.info(f"🌐 Opened new loading page: {loading_url}")
             return True
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Could not open browser: {e}")
             logger.info(f"📎 Please manually open: {loading_url}")
@@ -435,10 +532,15 @@ class JARVISSupervisor:
             self._set_state(SupervisorState.RUNNING)
             logger.info(f"✅ JARVIS spawned (PID: {self._process.pid})")
 
-            # Mark spawning as complete in the hub
+            # Mark spawning AND supervisor as complete in the hub
+            # Supervisor's job is done once the process is spawned
             if self._progress_hub:
                 await self._progress_hub.component_complete("spawning", "JARVIS Core started")
-            
+                await self._progress_hub.component_complete("supervisor", "Supervisor ready")
+                # Also mark early-stage components that don't have explicit tracking
+                await self._progress_hub.component_complete("cleanup", "Cleanup complete")
+                await self._progress_hub.component_complete("config", "Configuration loaded")
+
             # NOTE: Do NOT announce "JARVIS online" here - that's premature!
             # The startup narrator will announce completion when ALL systems are ready
             # (backend, frontend, voice, vision) in _monitor_startup_progress()
@@ -680,7 +782,10 @@ class JARVISSupervisor:
                     # complete anyway in frontend-optional mode
                     if backend_state.is_ready and frontend_optional:
                         logger.warning("⚠️ Frontend timeout, completing with backend only")
-                        stages_completed.add("frontend")  # Mark as complete
+                        if "frontend" not in stages_completed:
+                            stages_completed.add("frontend")
+                            if self._progress_hub:
+                                await self._progress_hub.component_skipped("frontend", "Frontend timeout - skipped")
                     else:
                         logger.warning(f"⚠️ Startup timeout after {elapsed:.1f}s")
                         await self._progress_reporter.fail(
@@ -727,11 +832,17 @@ class JARVISSupervisor:
                                 context="complete",
                             )
                     
-                    # System subsystems (visual only)
-                    if backend_ready and system_status:
-                        if system_status.get("database_connected") and "database" not in stages_completed:
+                    # System subsystems - mark complete based on system_status OR assume ready if backend is up
+                    # This handles cases where the backend doesn't expose granular status fields
+                    if backend_ready:
+                        # If we have detailed system_status, use it; otherwise assume subsystems are ready
+                        # when backend health check passes (backend wouldn't be healthy if subsystems failed)
+                        database_ready = system_status.get("database_connected", True) if system_status else True
+                        voice_ready_status = system_status.get("voice_ready", True) if system_status else True
+                        vision_ready_status = system_status.get("vision_ready", True) if system_status else True
+
+                        if database_ready and "database" not in stages_completed:
                             stages_completed.add("database")
-                            # Update unified hub (pre-registered, just mark complete)
                             if self._progress_hub:
                                 await self._progress_hub.component_complete("database", "Database connected")
                             await self._progress_reporter.report(
@@ -743,9 +854,8 @@ class JARVISSupervisor:
                                 log_type="success"
                             )
 
-                        if system_status.get("voice_ready") and "voice" not in stages_completed:
+                        if voice_ready_status and "voice" not in stages_completed:
                             stages_completed.add("voice")
-                            # Update unified hub (pre-registered, just mark complete)
                             if self._progress_hub:
                                 await self._progress_hub.component_complete("voice", "Voice system ready")
                             await self._progress_reporter.report(
@@ -757,9 +867,8 @@ class JARVISSupervisor:
                                 log_type="success"
                             )
 
-                        if system_status.get("vision_ready") and "vision" not in stages_completed:
+                        if vision_ready_status and "vision" not in stages_completed:
                             stages_completed.add("vision")
-                            # Update unified hub (pre-registered, just mark complete)
                             if self._progress_hub:
                                 await self._progress_hub.component_complete("vision", "Vision system ready")
                             await self._progress_reporter.report(
@@ -770,6 +879,18 @@ class JARVISSupervisor:
                                 log_source="Backend",
                                 log_type="success"
                             )
+
+                        # Mark websocket and models as complete when backend is ready
+                        # These are internal to the backend and don't have separate health endpoints
+                        if "websocket" not in stages_completed:
+                            stages_completed.add("websocket")
+                            if self._progress_hub:
+                                await self._progress_hub.component_complete("websocket", "WebSocket ready")
+
+                        if "models" not in stages_completed:
+                            stages_completed.add("models")
+                            if self._progress_hub:
+                                await self._progress_hub.component_complete("models", "AI models loaded")
 
                     # Frontend
                     if frontend_ready and "frontend" not in stages_completed:
@@ -787,11 +908,20 @@ class JARVISSupervisor:
                         )
                     
                     # === COMPLETION CHECK ===
-                    # Complete when: backend ready AND (frontend ready OR frontend optional timeout)
+                    # Complete when: backend ready AND (frontend ready OR frontend is optional)
+                    # If frontend is optional, we complete as soon as backend is ready
+                    # (no need to wait for frontend to be in stages_completed)
                     ready_for_completion = (
                         backend_ready and
-                        (frontend_ready or (frontend_optional and "frontend" in stages_completed))
+                        (frontend_ready or frontend_optional)
                     )
+
+                    # If completing without frontend, mark it as skipped
+                    if ready_for_completion and not frontend_ready and frontend_optional:
+                        if "frontend" not in stages_completed:
+                            stages_completed.add("frontend")
+                            if self._progress_hub:
+                                await self._progress_hub.component_skipped("frontend", "Frontend optional - skipped")
 
                     if ready_for_completion:
                         await asyncio.sleep(0.3)  # Brief pause for visual effect

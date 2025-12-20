@@ -1737,30 +1737,37 @@ class JARVISLoadingManager {
 
         console.log('[Complete] Proceeding with redirect...');
         
-        // CRITICAL: Persist backend readiness state for main app
-        // This prevents "CONNECTING TO BACKEND..." showing after loading completes
+        // CRITICAL: Pass backend readiness state to main app via URL parameters
+        // localStorage doesn't work cross-origin (port 3001 -> port 3000 are different origins)
+        // So we encode the state in the redirect URL instead
         const backendPort = this.config.backendPort || 8010;
         const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
         const wsUrl = `ws://${this.config.hostname}:${backendPort}`;
-        
-        try {
-            localStorage.setItem('jarvis_backend_verified', 'true');
-            localStorage.setItem('jarvis_backend_url', backendUrl);
-            localStorage.setItem('jarvis_backend_ws_url', wsUrl);
-            localStorage.setItem('jarvis_backend_verified_at', Date.now().toString());
-            localStorage.setItem('jarvis_backend_port', backendPort.toString());
-            console.log('[Complete] ✓ Backend readiness state persisted for main app');
-        } catch (e) {
-            console.warn('[Complete] Could not persist backend state:', e);
-        }
-        
+        const timestamp = Date.now().toString();
+
+        // Build redirect URL with backend readiness parameters
+        // The main app's JarvisConnectionService will read these for instant connection
+        const params = new URLSearchParams({
+            jarvis_ready: '1',
+            backend_port: backendPort.toString(),
+            ts: timestamp
+        });
+
+        // Append params to redirect URL
+        const finalRedirectUrl = redirectUrl.includes('?')
+            ? `${redirectUrl}&${params.toString()}`
+            : `${redirectUrl}?${params.toString()}`;
+
+        console.log('[Complete] ✓ Backend readiness encoded in redirect URL');
+        console.log(`[Complete] Redirect URL: ${finalRedirectUrl}`);
+
         this.cleanup();
 
         this.elements.subtitle.textContent = 'SYSTEM READY';
         this.elements.statusMessage.textContent = message || 'JARVIS is online!';
         this.updateStatusText('System ready', 'ready');
 
-        this.playEpicCompletionAnimation(redirectUrl);
+        this.playEpicCompletionAnimation(finalRedirectUrl);
     }
 
     async verifyBackendReady(redirectUrl) {
