@@ -1,6 +1,6 @@
 # JARVIS AI Assistant v19.6.0 - Intelligent Lifecycle & Cost Management
 
-An intelligent voice-activated AI assistant with **Live Operations Transparency v1.0** (Real-Time Operations Log + Supervisor-Backend Communication + Enhanced Progress Reporter), **Production-Grade Supervisor Bootstrap v2.0** (Parallel Process Discovery + Resource Validation + Dynamic Configuration + Performance Tracking), **Robust Startup Monitoring System v19.6.0** (Parallel Health Checks + Circuit Breaker + Adaptive Timeout + Smart Error Recovery), **Self-Updating Lifecycle Manager v19.6.0** (Intelligent Update Notifications + Multi-Modal Communication + Changelog Analysis), **Intelligent Memory Pressure Controller v1.0** (Adaptive Thresholds + Effectiveness Tracking + Cooldown System), **Supervisor-Aware GCP Controller v1.0** (Budget Management + Idle Shutdown + Cost-Aware Routing), **Intelligent ECAPA Backend Orchestrator v19.0.0** (Zero-Configuration Backend Selection + Concurrent Probing + Auto-Start Docker + Intelligent Fallback), **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Cloud ECAPA Client v19.2.0** (Intelligent Hybrid Cloud Voice Processing + Spot VM Auto-Creation + Cost-Aware Routing + 60% Cache Savings + RecentSpeakerCache Fast-Path Optimization with 98% Latency Reduction), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Unified Startup Progress System v2.0** (Single Source of Truth + Dynamic Component Registration + Accurate Ready Detection + Multi-Channel Synchronization), **Live Operations Transparency v1.0** (Real-Time Operations Log + Supervisor-Backend Communication + Enhanced Progress Reporter), **Production-Grade Supervisor Bootstrap v2.0** (Parallel Process Discovery + Resource Validation + Dynamic Configuration + Performance Tracking), **Robust Startup Monitoring System v19.6.0** (Parallel Health Checks + Circuit Breaker + Adaptive Timeout + Smart Error Recovery), **Self-Updating Lifecycle Manager v19.6.0** (Intelligent Update Notifications + Multi-Modal Communication + Changelog Analysis), **Intelligent Memory Pressure Controller v1.0** (Adaptive Thresholds + Effectiveness Tracking + Cooldown System), **Supervisor-Aware GCP Controller v1.0** (Budget Management + Idle Shutdown + Cost-Aware Routing), **Intelligent ECAPA Backend Orchestrator v19.0.0** (Zero-Configuration Backend Selection + Concurrent Probing + Auto-Start Docker + Intelligent Fallback), **Async-Safe Statistics Tracking v1.0** (Self-Healing Consistency Validation + Atomic Counter Operations + Mathematical Invariant Enforcement), **Global Session Manager v1.0** (Thread-Safe Singleton + Multi-Terminal Conflict Prevention + Cleanup Reliability), **Cost Optimization Framework v3.0** (Scale-to-Zero VMs + Semantic Voice Caching + Spot Instance Resilience + Tiered Storage + Intelligent Cache Management), **Cloud ECAPA Client v19.2.0** (Intelligent Hybrid Cloud Voice Processing + Spot VM Auto-Creation + Cost-Aware Routing + 60% Cache Savings + RecentSpeakerCache Fast-Path Optimization with 98% Latency Reduction), **Physics-Aware Voice Authentication v2.5** (Vocal Tract Length Verification + Reverberation Analysis + Doppler Effect Detection + Bayesian Confidence Fusion + 7-Layer Anti-Spoofing), **Bayesian Confidence Fusion** (Multi-factor probability fusion with adaptive priors), **Voice Authentication Enhancement v2.1** (ChromaDB Semantic Caching + Scale-to-Zero + Langfuse Audit Trail + Behavioral Pattern Recognition), **Dynamic Restart with UE State Detection** (detects stuck macOS processes in Uninterruptible Sleep state), **Self-Healing Port Fallback System** (automatically finds healthy ports when blocked), **Dynamic Port Configuration** (loads ports from config instead of hardcoding), **Memory-Aware Startup System** (auto-detects RAM and activates GCP cloud ML when constrained), **Process-Isolated ML Loading** (prevents event loop blocking with true async wrapping), **Database Connection Leak Prevention** (proper try/finally resource cleanup), **Parallel Model Loading** (4-worker ThreadPool for 3-4x faster startup), **Comprehensive Timeout Protection** (25s unlock, 10s transcription, 8s speaker ID), **Voice Profile Database Consolidation** (unified `jarvis_learning.db` with owner migration), **Unified Voice Cache Manager** (~1ms Instant Recognition vs 200-500ms), **4-Layer Cache Architecture** (L1 Session + L2 Preloaded Profiles + L3 Database + L4 Continuous Learning), **Voice Biometric Semantic Cache with Continuous Learning** (L1-L3 Cache Layers + SQLite Database Recording), **PRD v2.0 Voice Biometric Intelligence** (AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning, Platt/Isotonic Score Calibration, Comprehensive Anti-Spoofing), **AGI OS** (Autonomous General Intelligence Operating System), **Phase 2 Hybrid Database Sync** (Redis + Prometheus + ML Prefetching), **Advanced Process Detection System**, **Production-Grade Voice System**, **Cloud SQL Voice Biometric Storage**, **Real ECAPA-TDNN Speaker Embeddings**, **Advanced Voice Enrollment**, **Unified TTS Engine**, **Wake Word Detection**, **SpeechBrain STT Engine**, **CAI/SAI Locked Screen Auto-Unlock**, **Contextual Awareness Intelligence**, **Situational Awareness Intelligence**, **Backend Self-Awareness**, **Progressive Startup UX**, **GCP Spot VM Auto-Creation** (>85% memory → 32GB cloud offloading), **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **Platform-Aware Memory Monitoring**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
 
 ---
 
@@ -1279,6 +1279,181 @@ CIRCUIT_BREAKER_RETRY_SECONDS=5 # Seconds before half-open retry
 - Increase timeout: `STARTUP_TIMEOUT=300 python3 run_supervisor.py`
 - Check system resources (CPU, memory)
 - Review logs for slow operations
+
+---
+
+### Unified Startup Progress System v2.0 (December 2025)
+
+JARVIS v2.0 introduces the **Unified Startup Progress System** - a comprehensive solution that eliminates progress misalignment between the backend, frontend, WebSocket clients, and voice narrator by establishing a **single source of truth** for all startup progress tracking.
+
+#### The Problem We Solved
+
+**Before v2.0**, JARVIS had **THREE separate progress tracking systems** that were NOT synchronized:
+
+1. `loading_server.py` - Standalone loading page (port 3001)
+2. `startup_progress_api.py` - Backend WebSocket API (port 8010)
+3. `startup_progress_broadcaster.py` - WebSocket broadcaster with hardcoded weights
+
+**Issues:**
+- ❌ Progress percentages differed between frontend and backend (11% vs 16%)
+- ❌ Voice narrator said "JARVIS is ready" before system was truly ready
+- ❌ Each system calculated progress independently
+- ❌ No central authority for the "is_ready" state
+
+#### The Solution: Single Source of Truth
+
+```
+Before v2.0 (Misaligned):                After v2.0 (Synchronized):
+┌───────────────────┐                    ┌─────────────────────┐
+│ Loading Server    │ 11% ❌             │ UnifiedStartupHub   │
+│ (Own State)       │                     │ (Single Truth)      │
+├───────────────────┤                    └──────────┬──────────┘
+│ Startup API       │ 16% ❌                        │
+│ (Own State)       │                     ┌─────────┴─────────┐
+├───────────────────┤                     │                   │
+│ Broadcaster       │ 13% ❌              ▼         ▼         ▼
+│ (Own State)       │              Loading   Startup   Broadcast
+├───────────────────┤               Server    API      System
+│ Voice Narrator    │ "Ready" ❌     (Sync)  (Sync)   (Sync)
+│ (Too early)       │                 45%     45%      45%  ✅
+└───────────────────┘
+```
+
+#### Key Features
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Single Source of Truth** | `UnifiedStartupProgressHub` coordinates all progress tracking | Perfect synchronization across all systems |
+| **Dynamic Components** | No hardcoded component lists or weights | Easy to add/modify components |
+| **Weighted Progress** | Components have relative weights (backend=15, voice=10, etc.) | Accurate progress reflecting actual importance |
+| **Monotonic Progress** | Progress never decreases | Smooth, professional UX |
+| **Accurate Ready Detection** | Centralized `is_ready()` check | Voice only announces when truly ready |
+| **Event History** | Tracks all progress events | Easy debugging and auditing |
+| **Multi-Channel Sync** | Broadcasts to loading_server, API, broadcaster, WebSocket clients | All systems stay aligned |
+
+#### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              UnifiedStartupProgressHub                        │
+│              (Single Source of Truth)                         │
+│                                                               │
+│  • Dynamic component registration                            │
+│  • Weighted progress calculation                             │
+│  • Monotonic progress enforcement                            │
+│  • Accurate is_ready() detection                             │
+│  • Event history tracking                                    │
+│  • Multi-channel synchronization                             │
+└──────────────────┬───────────────────────────────────────────┘
+                   │
+      ┌────────────┴────────────┬──────────────┬────────────┐
+      │                         │              │            │
+      ▼                         ▼              ▼            ▼
+┌──────────┐            ┌──────────────┐  ┌────────┐  ┌─────────┐
+│ Loading  │            │  Startup     │  │Startup │  │ Voice   │
+│ Server   │            │  Progress    │  │Broad-  │  │ Narra-  │
+│ (3001)   │            │  API (8010)  │  │caster  │  │ tor     │
+│          │            │              │  │(WS)    │  │ (TTS)   │
+│ 45%  ✅  │◄───sync────│ 45%      ✅  │  │45%  ✅ │  │Ready✅  │
+└──────────┘            └──────────────┘  └────────┘  └─────────┘
+```
+
+#### How It Works
+
+1. **Hub Initialization:**
+   ```python
+   hub = get_progress_hub()
+   await hub.initialize(
+       loading_server_url="http://localhost:3001",
+       required_components=["backend", "frontend", "voice", "vision"]
+   )
+   ```
+
+2. **Dynamic Component Registration:**
+   ```python
+   await hub.register_component("backend", weight=15.0)
+   await hub.register_component("frontend", weight=10.0)
+   await hub.register_component("voice", weight=10.0)
+   ```
+
+3. **Progress Tracking:**
+   ```python
+   await hub.component_start("backend", "Starting backend...")
+   await hub.component_complete("backend", "Backend ready!")
+   # Progress automatically calculated: 15/55 = 27%
+   ```
+
+4. **Ready Detection:**
+   ```python
+   # CRITICAL: Check hub BEFORE announcing
+   if hub.is_ready():
+       await narrator.speak("JARVIS is online!")
+   ```
+
+5. **Automatic Synchronization:**
+   ```python
+   # Hub automatically syncs to all systems:
+   # - Loading server (HTTP POST)
+   # - Startup API (WebSocket)
+   # - Broadcaster (WebSocket)
+   # - Voice narrator (ready state)
+   ```
+
+#### Files Modified
+
+| File | Changes | Impact |
+|------|---------|--------|
+| **NEW:** `backend/core/unified_startup_progress.py` | Single source of truth hub | Core coordinator |
+| `backend/core/startup_progress_broadcaster.py` v2.0 | Delegates to hub | Removes independent state |
+| `backend/api/startup_progress_api.py` v2.0 | Delegates to hub + `/ready` endpoint | Accurate state access |
+| `loading_server.py` v2.0 | Enhanced state with hub sync | Better metadata handling |
+| `backend/core/supervisor/jarvis_supervisor.py` | Hub integration + ready fix | Prevents premature announcements |
+
+#### Benefits
+
+✅ **Accurate Progress**: All systems show identical percentages
+✅ **No Premature Announcements**: Voice only speaks when `is_ready() = True`
+✅ **Dynamic Components**: Add new components without touching multiple files
+✅ **Simplified Maintenance**: Update progress logic in one place
+✅ **Better UX**: Smooth, monotonic progress with coordinated feedback
+
+#### Quick Test
+
+```bash
+# Test the unified hub
+PYTHONPATH="$PWD:$PWD/backend" python3 -c "
+import asyncio
+from backend.core.unified_startup_progress import get_progress_hub
+
+async def main():
+    hub = get_progress_hub()
+    await hub.initialize(loading_server_url=None, required_components=['backend'])
+    await hub.register_component('backend', weight=15.0)
+    await hub.component_complete('backend', 'Ready!')
+    print(f'Progress: {hub.get_progress():.1f}%, Ready: {hub.is_ready()}')
+    await hub.mark_complete(True, 'System online!')
+    print(f'Progress: {hub.get_progress():.1f}%, Ready: {hub.is_ready()}')
+
+asyncio.run(main())
+"
+```
+
+**Expected Output:**
+```
+Progress: 100.0%, Ready: False
+Progress: 100.0%, Ready: True
+```
+
+#### Detailed Documentation
+
+See **[docs/UNIFIED_STARTUP_PROGRESS.md](docs/UNIFIED_STARTUP_PROGRESS.md)** for:
+- Complete API reference
+- Migration guide
+- Troubleshooting
+- Performance metrics
+- Architecture deep dive
+
+---
 
 ### Configuration
 

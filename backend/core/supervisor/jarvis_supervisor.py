@@ -59,15 +59,25 @@ def _get_loading_server():
     """Lazy import of loading_server module."""
     import importlib.util
     from pathlib import Path
-    
+
     # loading_server.py is at project root
     project_root = Path(__file__).parent.parent.parent.parent
     loading_server_path = project_root / "loading_server.py"
-    
+
     spec = importlib.util.spec_from_file_location("loading_server", loading_server_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+# Import the unified progress hub (single source of truth)
+def _get_progress_hub():
+    """Get the unified progress hub instance."""
+    try:
+        from backend.core.unified_startup_progress import get_progress_hub
+        return get_progress_hub()
+    except ImportError:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -182,14 +192,17 @@ class JARVISSupervisor:
         
         # TTS Narrator for engaging feedback
         self._narrator: SupervisorNarrator = get_narrator()
-        
+
         # Intelligent startup narrator for phase-aware narration
         self._startup_narrator: IntelligentStartupNarrator = get_startup_narrator()
-        
+
         # Loading page support (uses loading_server.py directly)
         self._progress_reporter: Optional[Any] = None
         self._show_loading_page: bool = True  # Can be disabled via env
-        
+
+        # Unified progress hub (single source of truth for all progress tracking)
+        self._progress_hub: Optional[Any] = None
+
         # Components (lazy loaded)
         self._update_engine: Optional[Any] = None
         self._rollback_manager: Optional[Any] = None
@@ -306,13 +319,24 @@ class JARVISSupervisor:
         if show_loading:
             try:
                 loading_server = _get_loading_server()
-                
+
                 # Start loading server in background (if not already running)
                 await loading_server.start_loading_server_background()
-                
+
                 # Get progress reporter
                 self._progress_reporter = loading_server.get_progress_reporter()
-                
+
+                # Initialize unified progress hub (single source of truth)
+                self._progress_hub = _get_progress_hub()
+                if self._progress_hub:
+                    await self._progress_hub.initialize(
+                        loading_server_url="http://localhost:3001",
+                        required_components=["backend", "frontend", "voice", "vision"]
+                    )
+                    # Register supervisor component
+                    await self._progress_hub.register_component("supervisor", weight=5.0)
+                    await self._progress_hub.component_start("supervisor", "Supervisor initializing...")
+
                 # Report progress with detailed log entry
                 await self._progress_reporter.report(
                     "supervisor_init",
@@ -323,14 +347,15 @@ class JARVISSupervisor:
                     log_type="info"
                 )
                 # NOTE: Don't announce SUPERVISOR_INIT here - run() already did it via _narrator
-                
+
                 # Open browser to loading page (only on first start)
                 if self.stats.total_starts == 0:
                     await self._open_loading_page()
-                    
+
             except Exception as e:
                 logger.warning(f"⚠️ Loading page unavailable: {e}")
                 self._progress_reporter = None
+                self._progress_hub = None
         
         # Build command
         python_executable = sys.executable
@@ -651,7 +676,12 @@ class JARVISSupervisor:
                     if backend_ready and "backend" not in stages_completed:
                         stages_completed.add("backend")
                         progress = calculate_progress()
-                        
+
+                        # Update unified hub (single source of truth)
+                        if self._progress_hub:
+                            await self._progress_hub.register_component("backend", weight=15.0)
+                            await self._progress_hub.component_complete("backend", "Backend API online!")
+
                         # Visual + Voice aligned with detailed log
                         await self._progress_reporter.report(
                             "api",
@@ -661,7 +691,7 @@ class JARVISSupervisor:
                             log_source="Backend",
                             log_type="success"
                         )
-                        
+
                         if "backend" not in key_milestones_narrated:
                             key_milestones_narrated.add("backend")
                             await self._startup_narrator.announce_phase(
@@ -675,6 +705,10 @@ class JARVISSupervisor:
                     if backend_ready and system_status:
                         if system_status.get("database_connected") and "database" not in stages_completed:
                             stages_completed.add("database")
+                            # Update unified hub
+                            if self._progress_hub:
+                                await self._progress_hub.register_component("database", weight=5.0)
+                                await self._progress_hub.component_complete("database", "Database connected")
                             await self._progress_reporter.report(
                                 "database",
                                 "Database connected",
@@ -683,9 +717,13 @@ class JARVISSupervisor:
                                 log_source="Backend",
                                 log_type="success"
                             )
-                        
+
                         if system_status.get("voice_ready") and "voice" not in stages_completed:
                             stages_completed.add("voice")
+                            # Update unified hub
+                            if self._progress_hub:
+                                await self._progress_hub.register_component("voice", weight=10.0)
+                                await self._progress_hub.component_complete("voice", "Voice system ready")
                             await self._progress_reporter.report(
                                 "voice",
                                 "Voice system ready",
@@ -694,9 +732,13 @@ class JARVISSupervisor:
                                 log_source="Backend",
                                 log_type="success"
                             )
-                        
+
                         if system_status.get("vision_ready") and "vision" not in stages_completed:
                             stages_completed.add("vision")
+                            # Update unified hub
+                            if self._progress_hub:
+                                await self._progress_hub.register_component("vision", weight=10.0)
+                                await self._progress_hub.component_complete("vision", "Vision system ready")
                             await self._progress_reporter.report(
                                 "vision",
                                 "Vision system ready",
@@ -705,10 +747,14 @@ class JARVISSupervisor:
                                 log_source="Backend",
                                 log_type="success"
                             )
-                    
+
                     # Frontend
                     if frontend_ready and "frontend" not in stages_completed:
                         stages_completed.add("frontend")
+                        # Update unified hub
+                        if self._progress_hub:
+                            await self._progress_hub.register_component("frontend", weight=10.0)
+                            await self._progress_hub.component_complete("frontend", "Frontend ready!")
                         await self._progress_reporter.report(
                             "frontend",
                             "Frontend ready!",
@@ -721,28 +767,34 @@ class JARVISSupervisor:
                     # === COMPLETION CHECK ===
                     # Complete when: backend ready AND (frontend ready OR frontend optional timeout)
                     ready_for_completion = (
-                        backend_ready and 
+                        backend_ready and
                         (frontend_ready or (frontend_optional and "frontend" in stages_completed))
                     )
-                    
+
                     if ready_for_completion:
                         await asyncio.sleep(0.3)  # Brief pause for visual effect
-                        
+
                         # Add complete stage
                         stages_completed.add("complete")
-                        
+
+                        # Mark unified hub as complete (CRITICAL: must happen BEFORE announcements)
+                        # This ensures all systems know we're truly ready
+                        if self._progress_hub:
+                            await self._progress_hub.mark_complete(True, "JARVIS is online!")
+
                         # Visual: Complete and redirect
                         await self._progress_reporter.complete(
                             "JARVIS is online!",
                             redirect_url=frontend_url,
                         )
-                        
-                        # Voice: Final announcement
+
+                        # Voice: Final announcement (only AFTER hub is marked complete)
+                        # This prevents premature "ready" announcements
                         duration = time.time() - start_time
                         await self._startup_narrator.announce_complete(
                             duration_seconds=duration,
                         )
-                        
+
                         logger.info(f"✅ Startup complete in {duration:.1f}s")
                         break
                     
@@ -757,6 +809,13 @@ class JARVISSupervisor:
             if session and not session.closed:
                 await session.close()
             await self._startup_narrator.stop()
+
+            # Cleanup unified hub session
+            if self._progress_hub:
+                try:
+                    await self._progress_hub.shutdown()
+                except Exception:
+                    pass
     
     async def _monitor_health(self) -> None:
         """Monitor JARVIS health while running."""

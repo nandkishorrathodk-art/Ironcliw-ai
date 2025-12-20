@@ -273,7 +273,12 @@ metrics = ServerMetrics()
 
 @dataclass
 class ProgressState:
-    """Thread-safe progress state with history tracking"""
+    """
+    Thread-safe progress state with history tracking.
+
+    v2.0 - Enhanced to sync with UnifiedStartupProgressHub.
+    All state is now received from the hub as the single source of truth.
+    """
 
     stage: str = "init"
     message: str = "Initializing JARVIS..."
@@ -293,6 +298,12 @@ class ProgressState:
     # ETag for caching
     _etag: Optional[str] = None
 
+    # NEW: Hub sync fields
+    is_ready: bool = False
+    components_ready: int = 0
+    total_components: int = 0
+    phase: str = "initializing"
+
     def update(self, stage: str, message: str, progress: float, metadata: Optional[Dict] = None) -> bool:
         """Update progress with monotonic enforcement. Returns True if progress changed."""
 
@@ -300,6 +311,7 @@ class ProgressState:
         if stage == 'complete':
             effective_progress = 100.0
             self.max_progress_seen = 100.0
+            self.is_ready = True
         elif progress > self.max_progress_seen:
             effective_progress = progress
             self.max_progress_seen = progress
@@ -315,19 +327,33 @@ class ProgressState:
 
         # Update state
         self.stage = stage
+        self.phase = stage  # Alias for hub compatibility
         self.message = message
         self.progress = effective_progress
         self.timestamp = datetime.now()
 
+        # Process metadata from hub
         if metadata:
             self.metadata = metadata
+            # Extract hub-specific fields
+            self.is_ready = metadata.get('is_ready', self.is_ready)
+            self.components_ready = metadata.get('components_ready', self.components_ready)
+            self.total_components = metadata.get('total_components', self.total_components)
+
+            # Update ready flags from metadata
+            if 'backend_ready' in metadata:
+                self.backend_ready = metadata['backend_ready']
+            if 'frontend_ready' in metadata:
+                self.frontend_ready = metadata['frontend_ready']
 
         # Track history
         self.history.append({
             "stage": stage,
             "message": message,
             "progress": effective_progress,
-            "timestamp": self.timestamp.isoformat()
+            "timestamp": self.timestamp.isoformat(),
+            "components_ready": self.components_ready,
+            "total_components": self.total_components
         })
 
         # Invalidate ETag
@@ -346,13 +372,17 @@ class ProgressState:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "stage": self.stage,
+            "phase": self.phase,
             "message": self.message,
             "progress": self.progress,
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
             "backend_ready": self.backend_ready,
             "frontend_ready": self.frontend_ready,
-            "websocket_ready": self.websocket_ready
+            "websocket_ready": self.websocket_ready,
+            "is_ready": self.is_ready,
+            "components_ready": self.components_ready,
+            "total_components": self.total_components
         }
 
 
@@ -780,6 +810,24 @@ async def get_progress_history(request: web.Request) -> web.Response:
     })
 
 
+async def get_ready_status(request: web.Request) -> web.Response:
+    """
+    Quick endpoint to check if system is truly ready.
+    Use this before announcing 'ready' via voice or UI.
+    """
+    return web.json_response({
+        "is_ready": progress_state.is_ready,
+        "progress": progress_state.progress,
+        "phase": progress_state.phase,
+        "stage": progress_state.stage,
+        "message": progress_state.message,
+        "components_ready": progress_state.components_ready,
+        "total_components": progress_state.total_components,
+        "backend_ready": progress_state.backend_ready,
+        "frontend_ready": progress_state.frontend_ready
+    })
+
+
 async def update_progress_endpoint(request: web.Request) -> web.Response:
     """HTTP endpoint for receiving progress updates from start_system.py."""
     try:
@@ -957,6 +1005,7 @@ def create_app() -> web.Application:
     # Progress endpoints
     app.router.add_get('/ws/startup-progress', websocket_handler)
     app.router.add_get('/api/startup-progress', get_progress)
+    app.router.add_get('/api/startup-progress/ready', get_ready_status)
     app.router.add_get('/api/progress-history', get_progress_history)
     app.router.add_post('/api/update-progress', update_progress_endpoint)
 
