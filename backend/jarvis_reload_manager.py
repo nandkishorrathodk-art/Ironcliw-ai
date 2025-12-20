@@ -38,14 +38,30 @@ class JARVISReloadManager:
         self.last_reload_file = self.cache_dir / "last_reload.json"
         self.config_file = self.cache_dir / "jarvis_config.json"
 
+        # ═══════════════════════════════════════════════════════════════════
+        # STARTUP GRACE PERIOD - Critical for preventing reload during init
+        # ═══════════════════════════════════════════════════════════════════
+        self._startup_time = time.time()
+        self._startup_grace_period = int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))  # 2 minutes default
+        self._startup_complete = False
+        self._grace_period_logged = False
+
         # Monitoring configuration
         self.watch_patterns = [
             "**/*.py",           # Python files
-            "**/requirements*.txt",  # Dependencies
             "**/*.yaml",         # Config files
             "**/*.yml",
-            "**/*.json",
-            "**/*.env"
+        ]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # COLD-RESTART FILES - These require full restart, not hot-reload
+        # Changes to these files are logged but don't trigger automatic restart
+        # ═══════════════════════════════════════════════════════════════════
+        self.cold_restart_patterns = [
+            "**/requirements*.txt",  # Dependencies require pip install
+            "**/*.env",              # Environment changes need full restart
+            "**/setup.py",           # Package changes need reinstall
+            "**/pyproject.toml",     # Package changes need reinstall
         ]
 
         # Exclude patterns
@@ -61,17 +77,50 @@ class JARVISReloadManager:
             "**/cache/**",
             "**/.git/**",        # Git directory
             "**/build/**",       # Build directories
-            "**/dist/**"
+            "**/dist/**",
+            "**/*.json",         # JSON files (config, not code)
         ]
 
         # Process management
         self.jarvis_process: Optional[asyncio.subprocess.Process] = None
         self.monitor_task: Optional[asyncio.Task] = None
-        self.restart_cooldown = 5  # Minimum seconds between restarts
+        self.restart_cooldown = 10  # Increased cooldown for stability
         self.last_restart_time = 0
 
         # Dynamic configuration
         self.config = self.load_config()
+
+    def is_in_startup_grace_period(self) -> bool:
+        """Check if we're still in the startup grace period.
+
+        During this period, file change detection is active but restarts
+        are suppressed to allow the system to fully initialize.
+        """
+        # Check environment variable from supervisor
+        if os.getenv("JARVIS_STARTUP_COMPLETE", "").lower() == "true":
+            self._startup_complete = True
+            return False
+
+        # Check time-based grace period
+        elapsed = time.time() - self._startup_time
+        if elapsed >= self._startup_grace_period:
+            if not self._grace_period_logged:
+                logger.info(f"⏰ Startup grace period ended after {elapsed:.0f}s - hot-reload now active")
+                self._grace_period_logged = True
+            return False
+
+        return True
+
+    def is_cold_restart_file(self, filepath: str) -> bool:
+        """Check if a file requires cold restart (not hot-reload)."""
+        from fnmatch import fnmatch
+        return any(fnmatch(filepath, pattern) for pattern in self.cold_restart_patterns)
+
+    def mark_startup_complete(self):
+        """Mark startup as complete, ending the grace period."""
+        self._startup_complete = True
+        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+        logger.info("✅ Startup marked complete - hot-reload fully active")
 
     def load_config(self) -> Dict:
         """Load or create dynamic configuration"""
@@ -138,8 +187,14 @@ class JARVISReloadManager:
 
         return hashes
 
-    def detect_code_changes(self) -> Tuple[bool, List[str]]:
-        """Detect if any code has changed since last check"""
+    def detect_code_changes(self) -> Tuple[bool, List[str], List[str]]:
+        """Detect if any code has changed since last check.
+
+        Returns:
+            Tuple of (has_hot_reload_changes, hot_reload_files, cold_restart_files)
+            - hot_reload_files: Files that can trigger automatic restart
+            - cold_restart_files: Files that need manual restart (requirements, .env, etc.)
+        """
         current_hashes = self.calculate_file_hashes()
 
         # Load previous hashes
@@ -151,24 +206,36 @@ class JARVISReloadManager:
             except:
                 pass
 
-        # Compare hashes
-        changed_files = []
+        # Separate hot-reload from cold-restart files
+        hot_reload_files = []
+        cold_restart_files = []
 
         # Check for modified or new files
         for file_path, current_hash in current_hashes.items():
             if file_path not in previous_hashes or previous_hashes[file_path] != current_hash:
-                changed_files.append(file_path)
+                if self.is_cold_restart_file(file_path):
+                    cold_restart_files.append(file_path)
+                else:
+                    hot_reload_files.append(file_path)
 
         # Check for deleted files
         for file_path in previous_hashes:
             if file_path not in current_hashes:
-                changed_files.append(f"[DELETED] {file_path}")
+                deleted_path = f"[DELETED] {file_path}"
+                if self.is_cold_restart_file(file_path):
+                    cold_restart_files.append(deleted_path)
+                else:
+                    hot_reload_files.append(deleted_path)
 
         # Save current hashes
         with open(self.code_hash_file, 'wb') as f:
             pickle.dump(current_hashes, f)
 
-        return len(changed_files) > 0, changed_files
+        # Log cold-restart files (informational only)
+        if cold_restart_files:
+            logger.info(f"📦 Cold-restart files changed (manual restart needed): {cold_restart_files}")
+
+        return len(hot_reload_files) > 0, hot_reload_files, cold_restart_files
 
     async def find_jarvis_process(self) -> Optional[psutil.Process]:
         """Find running JARVIS process dynamically"""
@@ -331,42 +398,64 @@ class JARVISReloadManager:
                     return
 
     async def monitor_loop(self):
-        """Main monitoring loop"""
+        """Main monitoring loop with startup grace period protection."""
         logger.info("Starting JARVIS monitor loop...")
+        logger.info(f"🛡️ Startup grace period: {self._startup_grace_period}s (no auto-restarts during this time)")
 
         while True:
             try:
                 await asyncio.sleep(10)  # Check every 10 seconds
 
+                # ═══════════════════════════════════════════════════════════════════
+                # STARTUP GRACE PERIOD CHECK
+                # ═══════════════════════════════════════════════════════════════════
+                in_grace_period = self.is_in_startup_grace_period()
+
                 # Check for code changes
                 if self.config.get('auto_reload', True):
-                    has_changes, changed_files = self.detect_code_changes()
+                    has_hot_changes, hot_files, cold_files = self.detect_code_changes()
 
-                    if has_changes:
-                        logger.info(f"Detected {len(changed_files)} file changes")
-                        for file in changed_files[:5]:  # Show first 5 changes
+                    if has_hot_changes:
+                        logger.info(f"🔍 Detected {len(hot_files)} hot-reload file changes")
+                        for file in hot_files[:5]:  # Show first 5 changes
                             logger.info(f"  - {file}")
-                        if len(changed_files) > 5:
-                            logger.info(f"  ... and {len(changed_files) - 5} more")
+                        if len(hot_files) > 5:
+                            logger.info(f"  ... and {len(hot_files) - 5} more")
 
-                        await self.restart_jarvis(f"Code changes detected ({len(changed_files)} files)")
+                        # ═══════════════════════════════════════════════════════════════════
+                        # CRITICAL: Respect startup grace period
+                        # ═══════════════════════════════════════════════════════════════════
+                        if in_grace_period:
+                            elapsed = time.time() - self._startup_time
+                            remaining = self._startup_grace_period - elapsed
+                            logger.info(
+                                f"⏳ Startup grace period active ({remaining:.0f}s remaining) - "
+                                f"deferring restart for {len(hot_files)} changed files"
+                            )
+                        else:
+                            await self.restart_jarvis(f"Code changes detected ({len(hot_files)} files)")
 
-                # Check if JARVIS is still running
+                    # Log cold-restart files separately (informational)
+                    if cold_files:
+                        logger.info(f"📦 Cold-restart files changed (requires manual restart): {cold_files}")
+
+                # Check if JARVIS is still running (but only act after grace period)
                 if self.jarvis_process and self.jarvis_process.returncode is not None:
                     logger.warning("JARVIS process died unexpectedly")
-                    if self.config.get('reload_on_error', True):
+                    if self.config.get('reload_on_error', True) and not in_grace_period:
                         await self.restart_jarvis("Process died")
+                    elif in_grace_period:
+                        logger.warning("⏳ Process died during grace period - supervisor should handle this")
 
-                # Check system resources
+                # Check system resources (logging only)
                 memory = psutil.virtual_memory()
                 cpu = psutil.cpu_percent(interval=1)
 
                 if memory.percent > self.config.get('memory_threshold_percent', 80):
-                    logger.warning(f"High memory usage: {memory.percent}%")
-                    # Could trigger a restart here if needed
+                    logger.debug(f"Memory usage: {memory.percent}%")
 
                 if cpu > self.config.get('cpu_threshold_percent', 70):
-                    logger.warning(f"High CPU usage: {cpu}%")
+                    logger.debug(f"CPU usage: {cpu}%")
 
             except Exception as e:
                 logger.error(f"Monitor loop error: {e}")
@@ -375,19 +464,23 @@ class JARVISReloadManager:
     async def run(self):
         """Main entry point"""
         logger.info("JARVIS Reload Manager starting...")
+        logger.info(f"🛡️ Grace period: {self._startup_grace_period}s before hot-reload activates")
 
         # Check if JARVIS is already running
         existing = await self.find_jarvis_process()
         if existing:
             logger.info(f"Found existing JARVIS process (PID: {existing.pid})")
 
-            # Check for code changes
-            has_changes, changed_files = self.detect_code_changes()
+            # Check for code changes (hot-reload only, not cold-restart files)
+            has_hot_changes, hot_files, cold_files = self.detect_code_changes()
 
-            if has_changes:
-                logger.info("Code changes detected, restarting with new code...")
+            if has_hot_changes:
+                logger.info(f"Hot-reload code changes detected ({len(hot_files)} files), restarting...")
                 await self.stop_jarvis(force=True)
                 await self.start_jarvis()
+            elif cold_files:
+                logger.info(f"Only cold-restart files changed ({cold_files}) - manual restart recommended")
+                logger.info("Attaching to existing process (dependencies may need update)")
             else:
                 logger.info("No code changes, attaching to existing process")
                 # We could monitor the existing process instead

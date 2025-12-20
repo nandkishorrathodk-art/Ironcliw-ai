@@ -8322,19 +8322,27 @@ class AsyncSystemManager:
 
                 reload_manager = JARVISReloadManager()
 
-                # Check for code changes
-                has_changes, changed_files = reload_manager.detect_code_changes()
-                if has_changes:
-                    print(
-                        f"{Colors.YELLOW}📝 Detected {len(changed_files)} code changes{Colors.ENDC}"
-                    )
-                    for file in changed_files[:3]:
-                        print(f"    - {file}")
-                    if len(changed_files) > 3:
-                        print(f"    ... and {len(changed_files) - 3} more")
+                # Check for code changes (hot-reload vs cold-restart separation)
+                has_hot_changes, hot_files, cold_files = reload_manager.detect_code_changes()
 
-                # Kill any existing JARVIS process if code changed
-                if has_changes:
+                # Report hot-reload file changes
+                if has_hot_changes:
+                    print(
+                        f"{Colors.YELLOW}📝 Detected {len(hot_files)} hot-reload code changes{Colors.ENDC}"
+                    )
+                    for file in hot_files[:3]:
+                        print(f"    - {file}")
+                    if len(hot_files) > 3:
+                        print(f"    ... and {len(hot_files) - 3} more")
+
+                # Report cold-restart files (informational)
+                if cold_files:
+                    print(
+                        f"{Colors.CYAN}📦 Cold-restart files changed (dependencies): {cold_files}{Colors.ENDC}"
+                    )
+
+                # Kill any existing JARVIS process if hot-reload code changed
+                if has_hot_changes:
                     await reload_manager.stop_jarvis(force=True)
                     print(f"{Colors.GREEN}✅ Cleared old instances for fresh start{Colors.ENDC}")
 

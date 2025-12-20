@@ -1048,6 +1048,13 @@ class JARVISSupervisor:
                             duration_seconds=duration,
                         )
 
+                        # ═══════════════════════════════════════════════════════════════════
+                        # CRITICAL: Signal to reload manager that startup is complete
+                        # This ends the grace period and enables hot-reload functionality
+                        # ═══════════════════════════════════════════════════════════════════
+                        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+                        logger.info("🔓 Startup complete signal sent - hot-reload now active")
+
                         logger.info(f"✅ Startup complete in {duration:.1f}s")
                         break
                     
@@ -1185,6 +1192,8 @@ class JARVISSupervisor:
                         await self._startup_narrator.announce_complete(
                             duration_seconds=duration,
                         )
+                        # Signal to reload manager that startup is complete
+                        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
                         logger.info(f"✅ Startup complete in {duration:.1f}s (no loading page)")
                         break
                     
