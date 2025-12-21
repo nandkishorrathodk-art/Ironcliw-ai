@@ -36,6 +36,7 @@ import asyncio
 import hashlib
 import subprocess
 import logging
+import time
 import weakref
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -45,6 +46,23 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# v8.0: UNIFIED SPEECH STATE INTEGRATION
+# =============================================================================
+# Import the centralized speech state manager for self-voice suppression.
+# This ensures ALL parts of the system (backend, frontend, VBI) know when
+# JARVIS is speaking and should reject incoming audio.
+# =============================================================================
+try:
+    from core.unified_speech_state import (
+        get_speech_state_manager_sync,
+        SpeechSource,
+    )
+    UNIFIED_SPEECH_STATE_AVAILABLE = True
+except ImportError:
+    UNIFIED_SPEECH_STATE_AVAILABLE = False
+    logger.debug("UnifiedSpeechStateManager not available - using local state only")
 
 
 class VoiceMode(Enum):
@@ -473,6 +491,21 @@ class RealTimeVoiceCommunicator:
                 # Speak the message
                 self._current_message = message
                 self._is_speaking = True
+                speech_start_time = time.time()
+                
+                # v8.0: Notify unified speech state manager
+                if UNIFIED_SPEECH_STATE_AVAILABLE:
+                    try:
+                        manager = get_speech_state_manager_sync()
+                        asyncio.create_task(
+                            manager.start_speaking(
+                                message.text,
+                                source=SpeechSource.TTS_BACKEND
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug(f"Unified speech state start error: {e}")
+                
                 self._fire_callbacks('speech_started', message)
 
                 try:
@@ -480,10 +513,21 @@ class RealTimeVoiceCommunicator:
                 except Exception as e:
                     logger.error("Error speaking message: %s", e)
                 finally:
+                    speech_duration_ms = (time.time() - speech_start_time) * 1000
                     self._is_speaking = False
                     self._current_message = None
                     self._last_speech_time = datetime.now()
                     self._speech_count_today += 1
+                    
+                    # v8.0: Notify unified speech state manager
+                    if UNIFIED_SPEECH_STATE_AVAILABLE:
+                        try:
+                            manager = get_speech_state_manager_sync()
+                            asyncio.create_task(
+                                manager.stop_speaking(actual_duration_ms=speech_duration_ms)
+                            )
+                        except Exception as e:
+                            logger.debug(f"Unified speech state stop error: {e}")
 
                     self._fire_callbacks('speech_finished', message)
 
@@ -822,6 +866,7 @@ class RealTimeVoiceCommunicator:
 
         # Acquire lock to prevent overlapping speech
         async with self._immediate_speech_lock:
+            speech_start_time = time.time()
             try:
                 # =========================================================
                 # 🔇 CRITICAL: Set is_speaking BEFORE speech starts
@@ -832,6 +877,17 @@ class RealTimeVoiceCommunicator:
                 # =========================================================
                 self._is_speaking = True
                 self._current_message = text  # Track what we're saying
+                
+                # v8.0: Notify unified speech state manager BEFORE speech
+                if UNIFIED_SPEECH_STATE_AVAILABLE:
+                    try:
+                        manager = get_speech_state_manager_sync()
+                        await manager.start_speaking(
+                            text,
+                            source=SpeechSource.TTS_BACKEND
+                        )
+                    except Exception as e:
+                        logger.debug(f"Unified speech state start error: {e}")
 
                 config = self._mode_configs.get(mode, self._mode_configs[VoiceMode.NORMAL])
 
@@ -864,11 +920,22 @@ class RealTimeVoiceCommunicator:
                 # The microphone might still pick up the tail end of JARVIS's
                 # speech (echo/reverb) even after the TTS process completes.
                 # Keep the flag set for 300ms to reject any trailing audio.
+                # v8.0: Unified state manager handles its own cooldown too.
                 # =========================================================
                 await asyncio.sleep(0.3)
 
+                speech_duration_ms = (time.time() - speech_start_time) * 1000
                 self._is_speaking = False  # Clear flag after buffer
                 self._current_message = None
+                
+                # v8.0: Notify unified speech state manager AFTER speech
+                if UNIFIED_SPEECH_STATE_AVAILABLE:
+                    try:
+                        manager = get_speech_state_manager_sync()
+                        await manager.stop_speaking(actual_duration_ms=speech_duration_ms)
+                    except Exception as e:
+                        logger.debug(f"Unified speech state stop error: {e}")
+                
                 return True
 
             except asyncio.TimeoutError:
@@ -881,12 +948,30 @@ class RealTimeVoiceCommunicator:
                     pass
                 self._is_speaking = False  # Always clear flag on error
                 self._current_message = None
+                
+                # v8.0: Notify unified speech state manager on error too
+                if UNIFIED_SPEECH_STATE_AVAILABLE:
+                    try:
+                        manager = get_speech_state_manager_sync()
+                        speech_duration_ms = (time.time() - speech_start_time) * 1000
+                        await manager.stop_speaking(actual_duration_ms=speech_duration_ms)
+                    except Exception:
+                        pass
                 return False
             except Exception as e:
                 logger.error("Immediate speech error: %s - %s", e, text[:50])
                 self._current_speech_process = None
                 self._is_speaking = False  # Always clear flag on error
                 self._current_message = None
+                
+                # v8.0: Notify unified speech state manager on error too
+                if UNIFIED_SPEECH_STATE_AVAILABLE:
+                    try:
+                        manager = get_speech_state_manager_sync()
+                        speech_duration_ms = (time.time() - speech_start_time) * 1000
+                        await manager.stop_speaking(actual_duration_ms=speech_duration_ms)
+                    except Exception:
+                        pass
                 return False
 
     async def vbi_stage_feedback(

@@ -56,6 +56,19 @@ class UnifiedWebSocketService {
     this.hotReloadActive = false;
     this.hotReloadStatus = null; // { state, fileCount, fileTypes, target, message, progress }
     this.devModeEnabled = false;
+    
+    // v8.0: Unified Speech State (Self-Voice Suppression)
+    // This state is synchronized from the backend to prevent the frontend
+    // from transcribing JARVIS's own voice (feedback loop/hallucinations)
+    this.speechState = {
+      isSpeaking: false,           // Backend is currently speaking
+      inCooldown: false,           // Post-speech cooldown active
+      cooldownRemainingMs: 0,      // Time until cooldown ends
+      lastSpokenText: '',          // Last spoken text (for similarity check)
+      speechStartedAt: null,       // When speech started
+      speechEndedAt: null,         // When speech ended
+      source: null,                // Speech source (tts_backend, cai_feedback, etc.)
+    };
 
     // Wait for config and then connect
     this._initializeWhenReady();
@@ -574,6 +587,53 @@ class UnifiedWebSocketService {
       };
       this._notifySubscribers('hot_reload', { active: false, ...this.hotReloadStatus });
     });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v8.0: UNIFIED SPEECH STATE (Self-Voice Suppression)
+    // ═══════════════════════════════════════════════════════════════════
+    // These events are broadcast from the backend UnifiedSpeechStateManager
+    // to keep the frontend in sync. This prevents the frontend from
+    // transcribing JARVIS's own voice output (feedback loop prevention).
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Handle speech state changes from backend
+    this.client.on('speech_state_change', (data) => {
+      const event = data?.event;
+      const state = data?.state || {};
+      
+      if (event === 'speech_started') {
+        console.log('🔇 [SPEECH STATE] JARVIS started speaking');
+        this.speechState = {
+          isSpeaking: true,
+          inCooldown: false,
+          cooldownRemainingMs: 0,
+          lastSpokenText: state.current_text || '',
+          speechStartedAt: state.speech_started_at || Date.now(),
+          speechEndedAt: null,
+          source: state.current_source || 'unknown',
+        };
+        this._notifySubscribers('speech_state', { ...this.speechState, event: 'started' });
+      } else if (event === 'speech_ended') {
+        console.log('🔇 [SPEECH STATE] JARVIS stopped speaking, cooldown active');
+        this.speechState = {
+          ...this.speechState,
+          isSpeaking: false,
+          inCooldown: state.in_cooldown || false,
+          cooldownRemainingMs: state.cooldown_remaining_ms || 0,
+          speechEndedAt: state.speech_ended_at || Date.now(),
+        };
+        this._notifySubscribers('speech_state', { ...this.speechState, event: 'ended' });
+        
+        // Auto-clear cooldown after the duration
+        if (this.speechState.cooldownRemainingMs > 0) {
+          setTimeout(() => {
+            this.speechState.inCooldown = false;
+            this.speechState.cooldownRemainingMs = 0;
+            this._notifySubscribers('speech_state', { ...this.speechState, event: 'cooldown_ended' });
+          }, this.speechState.cooldownRemainingMs);
+        }
+      }
+    });
   }
 
   /**
@@ -861,6 +921,17 @@ export function useUnifiedWebSocket() {
   const [hotReloadStatus, setHotReloadStatus] = React.useState(null);
   const [devModeEnabled, setDevModeEnabled] = React.useState(false);
   
+  // v8.0: Unified Speech State (Self-Voice Suppression)
+  const [speechState, setSpeechState] = React.useState({
+    isSpeaking: false,
+    inCooldown: false,
+    cooldownRemainingMs: 0,
+    lastSpokenText: '',
+    speechStartedAt: null,
+    speechEndedAt: null,
+    source: null,
+  });
+  
   const service = React.useMemo(() => getUnifiedWebSocketService(), []);
 
   React.useEffect(() => {
@@ -983,6 +1054,20 @@ export function useUnifiedWebSocket() {
     const unsubscribeDevMode = service.subscribe('dev_mode', (data) => {
       setDevModeEnabled(data.enabled);
     });
+    
+    // v8.0: Subscribe to Speech State changes (Self-Voice Suppression)
+    const unsubscribeSpeechState = service.subscribe('speech_state', (data) => {
+      setSpeechState({
+        isSpeaking: data.isSpeaking,
+        inCooldown: data.inCooldown,
+        cooldownRemainingMs: data.cooldownRemainingMs || 0,
+        lastSpokenText: data.lastSpokenText || '',
+        speechStartedAt: data.speechStartedAt,
+        speechEndedAt: data.speechEndedAt,
+        source: data.source,
+        event: data.event, // 'started', 'ended', 'cooldown_ended'
+      });
+    });
 
     // Initial connection state
     setConnected(service.isConnected());
@@ -1014,6 +1099,7 @@ export function useUnifiedWebSocket() {
       unsubscribePrimeDirective();
       unsubscribeHotReload();
       unsubscribeDevMode();
+      unsubscribeSpeechState();
       clearInterval(interval);
     };
   }, [service]);
@@ -1045,6 +1131,10 @@ export function useUnifiedWebSocket() {
     hotReloadActive,
     hotReloadStatus,
     devModeEnabled,
+    // v8.0: Unified Speech State (Self-Voice Suppression)
+    speechState,
+    isJarvisSpeaking: speechState.isSpeaking || speechState.inCooldown, // Convenience helper
+    shouldBlockAudio: () => speechState.isSpeaking || speechState.inCooldown, // Method for audio processing
     // Actions
     connect: (capability) => service.connect(capability),
     disconnect: () => service.disconnect(),

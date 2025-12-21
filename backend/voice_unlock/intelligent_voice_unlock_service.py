@@ -5590,25 +5590,55 @@ async def process_voice_unlock_robust(
             voice = None
 
     # =========================================================================
-    # 🔇 SELF-VOICE SUPPRESSION - Prevent JARVIS from hearing its own voice
+    # 🔇 SELF-VOICE SUPPRESSION v2.0 - Prevent JARVIS from hearing its own voice
     # =========================================================================
-    # If JARVIS is currently speaking, this audio is likely JARVIS's own voice
-    # being picked up by the microphone. Reject it immediately to prevent
-    # feedback loops and "hallucinations".
+    # Uses UnifiedSpeechStateManager for accurate cross-system state tracking.
+    # Checks: currently speaking, cooldown period, and text similarity.
     # =========================================================================
-    if voice and voice.is_speaking:
-        logger.warning("🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio - JARVIS is currently speaking")
-        return {
-            "success": False,
-            "response": None,  # Silent rejection - don't speak or it creates more echo
-            "speaker_name": "Unknown",
-            "confidence": 0.0,
-            "total_duration_ms": (time.time() - start) * 1000,
-            "error": "self_voice_suppression",
-            "trace_id": f"echo_reject_{int(time.time())}",
-            "stages": [{"stage": "self_voice_check", "success": False, "reason": "jarvis_speaking"}],
-            "handler": "robust_v1_echo_suppressed"
-        }
+    try:
+        from core.unified_speech_state import get_speech_state_manager_sync
+        speech_manager = get_speech_state_manager_sync()
+        
+        # Use unified manager for comprehensive check (speaking + cooldown + similarity)
+        rejection = speech_manager.should_reject_audio()
+        
+        if rejection.reject:
+            reason = rejection.reason
+            details = rejection.details
+            logger.warning(
+                f"🔇 [SELF-VOICE-SUPPRESSION v2] Rejecting audio - reason: {reason}, "
+                f"details: {details}"
+            )
+            return {
+                "success": False,
+                "response": None,  # Silent rejection - don't speak or it creates more echo
+                "speaker_name": "Unknown",
+                "confidence": 0.0,
+                "total_duration_ms": (time.time() - start) * 1000,
+                "error": "self_voice_suppression",
+                "rejection_reason": reason,
+                "rejection_details": details,
+                "trace_id": f"echo_reject_{int(time.time())}",
+                "stages": [{"stage": "self_voice_check", "success": False, "reason": reason}],
+                "handler": "robust_v2_unified_echo_suppressed"
+            }
+    except ImportError:
+        # Fallback to legacy check if unified manager not available
+        if voice and voice.is_speaking:
+            logger.warning("🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio - JARVIS is currently speaking")
+            return {
+                "success": False,
+                "response": None,
+                "speaker_name": "Unknown",
+                "confidence": 0.0,
+                "total_duration_ms": (time.time() - start) * 1000,
+                "error": "self_voice_suppression",
+                "trace_id": f"echo_reject_{int(time.time())}",
+                "stages": [{"stage": "self_voice_check", "success": False, "reason": "jarvis_speaking"}],
+                "handler": "robust_v1_echo_suppressed"
+            }
+    except Exception as e:
+        logger.debug(f"Self-voice check error (non-fatal): {e}")
 
     # Get dynamic owner name (will be updated after verification with actual speaker)
     dynamic_owner_name = None

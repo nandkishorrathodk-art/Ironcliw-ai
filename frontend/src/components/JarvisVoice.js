@@ -833,6 +833,7 @@ const JarvisVoice = () => {
 
   /**
    * 🔇 Check if recognized text should be blocked (REF-BASED for synchronous access)
+   * v8.0: Now ALSO checks backend UnifiedSpeechStateManager via WebSocket
    * This is a backup check in case recognition wasn't paused properly
    */
   const shouldBlockSelfVoice = (recognizedText) => {
@@ -840,18 +841,60 @@ const JarvisVoice = () => {
     const now = Date.now();
     const text = recognizedText?.toLowerCase().trim() || '';
 
-    // Check 1: Currently speaking
+    // =========================================================================
+    // v8.0: PRIORITY CHECK - Backend Unified Speech State
+    // =========================================================================
+    // This is the most reliable source of truth because the backend knows
+    // EXACTLY when TTS is happening and manages a global cooldown.
+    // =========================================================================
+    try {
+      const { getUnifiedWebSocketService } = require('../services/UnifiedWebSocketService');
+      const wsService = getUnifiedWebSocketService();
+      if (wsService && wsService.speechState) {
+        const backendState = wsService.speechState;
+        
+        // Backend says speaking - trust it absolutely
+        if (backendState.isSpeaking) {
+          console.log('🔇 [Self-Voice v8] BLOCKED by backend: JARVIS speaking');
+          return { block: true, reason: 'backend_speaking' };
+        }
+        
+        // Backend says in cooldown - trust it
+        if (backendState.inCooldown && backendState.cooldownRemainingMs > 0) {
+          console.log(`🔇 [Self-Voice v8] BLOCKED by backend: cooldown ${backendState.cooldownRemainingMs}ms`);
+          return { block: true, reason: `backend_cooldown_${backendState.cooldownRemainingMs}ms` };
+        }
+        
+        // Check text similarity against backend's last spoken text
+        if (backendState.lastSpokenText && text) {
+          const similarity = calculateTextSimilarityQuick(text, backendState.lastSpokenText.toLowerCase());
+          if (similarity > 0.5) {
+            console.log(`🔇 [Self-Voice v8] BLOCKED by backend similarity: ${(similarity * 100).toFixed(0)}%`);
+            return { block: true, reason: `backend_similarity_${(similarity * 100).toFixed(0)}%` };
+          }
+        }
+      }
+    } catch (e) {
+      // WebSocket service not available - fall back to local checks
+      console.debug('[Self-Voice v8] Backend check unavailable, using local checks');
+    }
+
+    // =========================================================================
+    // LOCAL CHECKS (Fallback/Additional Layer)
+    // =========================================================================
+    
+    // Check 1: Currently speaking (local state)
     if (suppression.isSpeaking) {
       return { block: true, reason: 'currently_speaking' };
     }
 
-    // Check 2: Within cooldown period
+    // Check 2: Within cooldown period (local state)
     const timeSinceEnd = now - suppression.speakingEndTime;
     if (timeSinceEnd < suppression.cooldownMs && suppression.speakingEndTime > 0) {
       return { block: true, reason: `cooldown_${timeSinceEnd}ms` };
     }
 
-    // Check 3: Text similarity with last spoken
+    // Check 3: Text similarity with last spoken (local state)
     if (suppression.lastSpokenText && text) {
       const similarity = calculateTextSimilarityQuick(text, suppression.lastSpokenText);
       if (similarity > 0.5) {
@@ -859,7 +902,7 @@ const JarvisVoice = () => {
       }
     }
 
-    // Check 4: Match against recent spoken texts
+    // Check 4: Match against recent spoken texts (local state)
     for (const recent of suppression.recentSpokenTexts) {
       const age = now - recent.timestamp;
       if (age < 15000) { // Only check texts from last 15 seconds
