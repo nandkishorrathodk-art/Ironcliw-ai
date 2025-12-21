@@ -1559,8 +1559,9 @@ class SupervisorBootstrapper:
         Monitor JARVIS startup and broadcast progress to loading page.
         
         v4.0: This is the CRITICAL missing piece that was causing the 97% hang.
-        The supervisor MUST monitor startup and broadcast completion when it
-        sets JARVIS_SUPERVISOR_LOADING=1.
+        v4.1: Now checks /health/ready for OPERATIONAL readiness, not just HTTP response.
+              This prevents "OFFLINE - SEARCHING FOR BACKEND" by ensuring services
+              are actually ready before broadcasting completion.
         
         Args:
             max_wait: Maximum time to wait for JARVIS to be ready
@@ -1575,16 +1576,18 @@ class SupervisorBootstrapper:
         
         start_time = time.time()
         last_progress = 0
-        backend_ready = False
+        backend_http_ready = False
+        backend_operational = False
         frontend_ready = False
+        last_status = None
         
-        self.logger.info("🔍 Monitoring JARVIS startup...")
+        self.logger.info("🔍 Monitoring JARVIS startup (v4.1 - operational check)...")
         
         while (time.time() - start_time) < max_wait:
             elapsed = time.time() - start_time
             
-            # Phase 1: Check backend health
-            if not backend_ready:
+            # Phase 1a: Check backend HTTP health
+            if not backend_http_ready:
                 try:
                     async with aiohttp.ClientSession(
                         timeout=aiohttp.ClientTimeout(total=3.0)
@@ -1593,19 +1596,68 @@ class SupervisorBootstrapper:
                             f"http://localhost:{backend_port}/health"
                         ) as resp:
                             if resp.status == 200:
-                                backend_ready = True
-                                self.logger.info("✅ Backend is ready")
+                                backend_http_ready = True
+                                self.logger.info("✅ Backend HTTP responding")
                                 await self._broadcast_to_loading_page(
-                                    "backend_ready",
-                                    "Backend services online",
-                                    85,
-                                    {"icon": "✅", "label": "Backend Ready"}
+                                    "backend_http",
+                                    "Backend server online",
+                                    70,
+                                    {"icon": "⏳", "label": "Backend Starting"}
                                 )
                 except Exception:
                     pass
             
-            # Phase 2: Check frontend
-            if backend_ready and not frontend_ready:
+            # Phase 1b: Check backend OPERATIONAL readiness
+            if backend_http_ready and not backend_operational:
+                try:
+                    async with aiohttp.ClientSession(
+                        timeout=aiohttp.ClientTimeout(total=5.0)
+                    ) as session:
+                        async with session.get(
+                            f"http://localhost:{backend_port}/health/ready"
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                status = data.get("status", "unknown")
+                                
+                                # Log status changes
+                                if status != last_status:
+                                    self.logger.info(f"📊 Backend status: {status}")
+                                    last_status = status
+                                
+                                # Check for operational readiness
+                                is_ready = (
+                                    data.get("ready") == True or
+                                    data.get("operational") == True or
+                                    status in ["ready", "operational"]
+                                )
+                                
+                                # Also accept if WebSocket is ready (core functionality)
+                                websocket_ready = data.get("details", {}).get("websocket_ready", False)
+                                
+                                if is_ready or (websocket_ready and elapsed > 45):
+                                    backend_operational = True
+                                    self.logger.info("✅ Backend operationally ready")
+                                    await self._broadcast_to_loading_page(
+                                        "backend_ready",
+                                        "Backend services ready",
+                                        85,
+                                        {"icon": "✅", "label": "Backend Ready", "backend_ready": True}
+                                    )
+                except Exception as e:
+                    # /health/ready might not exist - fallback after 60s
+                    if backend_http_ready and elapsed > 60:
+                        backend_operational = True
+                        self.logger.warning(f"⚠️ /health/ready unavailable, accepting after {elapsed:.0f}s")
+                        await self._broadcast_to_loading_page(
+                            "backend_ready",
+                            "Backend services ready (fallback)",
+                            85,
+                            {"icon": "⚠️", "label": "Backend Ready", "backend_ready": True}
+                        )
+            
+            # Phase 2: Check frontend (only after backend is operational)
+            if backend_operational and not frontend_ready:
                 try:
                     async with aiohttp.ClientSession(
                         timeout=aiohttp.ClientTimeout(total=2.0)
@@ -1615,19 +1667,19 @@ class SupervisorBootstrapper:
                         ) as resp:
                             if resp.status in [200, 304]:
                                 frontend_ready = True
-                                self.logger.info("✅ Frontend is ready")
+                                self.logger.info("✅ Frontend ready")
                                 await self._broadcast_to_loading_page(
                                     "frontend_ready",
                                     "Frontend interface ready",
                                     95,
-                                    {"icon": "✅", "label": "Frontend Ready"}
+                                    {"icon": "✅", "label": "Frontend Ready", "frontend_ready": True}
                                 )
                 except Exception:
                     pass
             
-            # Phase 3: Both ready = complete!
-            if backend_ready and frontend_ready:
-                self.logger.info("🎉 JARVIS startup complete!")
+            # Phase 3: Both OPERATIONALLY ready = complete!
+            if backend_operational and frontend_ready:
+                self.logger.info("🎉 JARVIS startup complete (all systems operational)!")
                 
                 # Broadcast 100% completion
                 await self._broadcast_to_loading_page(
@@ -1637,8 +1689,9 @@ class SupervisorBootstrapper:
                     {
                         "icon": "✅",
                         "label": "Complete",
-                        "sublabel": "System ready!",
+                        "sublabel": "All systems operational!",
                         "success": True,
+                        "backend_ready": True,
                         "frontend_verified": True,
                         "redirect_url": f"http://localhost:{frontend_port}",
                     }
@@ -1651,41 +1704,68 @@ class SupervisorBootstrapper:
             if progress > last_progress + 5:  # Update every 5%
                 last_progress = progress
                 
-                if not backend_ready:
+                if not backend_http_ready:
                     status_msg = f"Starting backend... ({int(elapsed)}s)"
+                    stage = "backend_starting"
+                elif not backend_operational:
+                    status_msg = f"Backend initializing services... ({int(elapsed)}s)"
+                    stage = "backend_init"
                 elif not frontend_ready:
                     status_msg = f"Starting frontend... ({int(elapsed)}s)"
+                    stage = "frontend_starting"
                 else:
                     status_msg = "Finalizing..."
+                    stage = "finalizing"
                 
                 await self._broadcast_to_loading_page(
-                    "supervisor_monitoring",
+                    stage,
                     status_msg,
                     min(progress, 94),  # Cap at 94% until truly complete
                     {"icon": "⏳", "label": "Starting", "sublabel": status_msg}
                 )
             
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(1.5)  # Slightly slower polling
         
-        # Timeout - broadcast anyway to unblock the loading page
-        self.logger.warning(f"⚠️ JARVIS startup timeout after {max_wait}s")
+        # Timeout - Only broadcast if we have SOME progress
+        self.logger.warning(f"⚠️ JARVIS startup monitoring timeout after {max_wait}s")
+        self.logger.warning(f"   Status: http={backend_http_ready}, operational={backend_operational}, frontend={frontend_ready}")
         
-        await self._broadcast_to_loading_page(
-            "complete",
-            "JARVIS started (may still be initializing)",
-            100,
-            {
-                "icon": "⚠️",
-                "label": "Complete",
-                "sublabel": "Still initializing...",
-                "success": True,
-                "frontend_verified": frontend_ready,
-                "redirect_url": f"http://localhost:{frontend_port}",
-                "warning": "Startup took longer than expected",
-            }
-        )
+        # If backend is operational and frontend is ready, we can complete
+        if backend_operational and frontend_ready:
+            await self._broadcast_to_loading_page(
+                "complete",
+                "JARVIS is online!",
+                100,
+                {
+                    "icon": "✅",
+                    "label": "Complete",
+                    "sublabel": "System ready!",
+                    "success": True,
+                    "backend_ready": True,
+                    "frontend_verified": True,
+                    "redirect_url": f"http://localhost:{frontend_port}",
+                }
+            )
+            return True
         
-        return backend_ready  # Return true if at least backend is ready
+        # If only backend HTTP is responding (not operational), broadcast warning
+        if backend_http_ready:
+            await self._broadcast_to_loading_page(
+                "startup_slow",
+                "JARVIS is starting slowly...",
+                90,
+                {
+                    "icon": "⚠️",
+                    "label": "Slow Startup",
+                    "sublabel": "Services still initializing...",
+                    "backend_ready": backend_operational,
+                    "frontend_verified": frontend_ready,
+                    "warning": "Startup took longer than expected",
+                }
+            )
+        
+        # Return true if backend is at least operational
+        return backend_operational
     
     async def _wait_for_ports_release(self, max_wait: float = 5.0) -> bool:
         """

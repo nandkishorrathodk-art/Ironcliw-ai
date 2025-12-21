@@ -1113,25 +1113,27 @@ class JARVISSupervisor:
                         ready_for_completion = True
 
                     # ═══════════════════════════════════════════════════════════════════
-                    # FALLBACK 2: Quick completion when both services are responding
-                    # v4.0: If frontend is ready AND backend HTTP responds, complete quickly
-                    # Don't wait for ML models - they can warm up in background
+                    # FALLBACK 2: WebSocket ready + HTTP responding (after 45 seconds)
+                    # v4.0: More conservative - wait for WebSocket confirmation
+                    # The loading page will do its own verification before redirecting
                     # ═══════════════════════════════════════════════════════════════════
+                    websocket_ready = system_status.get("websocket_ready", False) if system_status else False
                     if (not ready_for_completion and
                         backend_ready and
-                        frontend_ready and
-                        elapsed > 15):
-                        logger.info(f"✅ Frontend + Backend responding after {elapsed:.1f}s - completing")
+                        websocket_ready and
+                        (frontend_ready or frontend_optional) and
+                        elapsed > 45):
+                        logger.info(f"✅ WebSocket + HTTP ready after {elapsed:.1f}s - completing")
                         ready_for_completion = True
 
                     # ═══════════════════════════════════════════════════════════════════
                     # FALLBACK 3: Complete when backend is responding (no frontend)
-                    # v4.0: For headless mode or slow frontend
+                    # v4.0: For headless mode or slow frontend (after 60 seconds)
                     # ═══════════════════════════════════════════════════════════════════
                     if (not ready_for_completion and
                         backend_ready and
                         frontend_optional and
-                        elapsed > 30):
+                        elapsed > 60):
                         services_ready = system_status.get("services_ready", []) if system_status else []
                         services_failed = system_status.get("services_failed", []) if system_status else []
                         

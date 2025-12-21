@@ -1772,38 +1772,84 @@ class JARVISLoadingManager {
     }
 
     async handleCompletion(success, redirectUrl, message) {
-        // Intelligent completion handling with robust frontend waiting
-        const backendOk = await this.quickBackendCheck();
-
-        if (!success && !backendOk) {
-            this.showError(message || 'Startup completed with errors');
-            this.updateStatusText('Startup failed', 'error');
-            return;
-        }
-
+        // ═══════════════════════════════════════════════════════════════════════════
+        // v4.0: ROBUST COMPLETION HANDLING
+        // Never redirect until BOTH backend AND frontend are VERIFIED operational
+        // This prevents the "OFFLINE - SEARCHING FOR BACKEND" issue
+        // ═══════════════════════════════════════════════════════════════════════════
+        
         // Stop regular polling - we're in completion mode now
         this.state.redirecting = true;
-        console.log('[Complete] ✓ Backend ready, waiting for frontend...');
+        console.log('[Complete] Starting completion verification...');
 
-        // Update UI to show we're waiting for frontend
+        // Update UI to show we're finalizing
         this.elements.subtitle.textContent = 'FINALIZING';
         this.state.progress = 95;
         this.state.targetProgress = 95;
         this.updateProgressBar();
 
-        // CRITICAL: Wait for frontend with intelligent retries
-        // Never redirect until frontend is actually responding
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STEP 1: Wait for BACKEND to be OPERATIONALLY ready (not just HTTP responding)
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[Complete] Step 1: Waiting for backend to be operationally ready...');
+        this.updateStatusText('Waiting for backend services...', 'loading');
+        
+        const backendOperational = await this.waitForBackendOperational();
+        
+        if (!backendOperational) {
+            // Backend didn't become operational in time
+            console.warn('[Complete] Backend not operational - showing error');
+            this.showError(message || 'Backend services failed to initialize. Please check the console.');
+            this.updateStatusText('Backend services unavailable', 'error');
+            return;
+        }
+        
+        console.log('[Complete] ✓ Backend operationally ready');
+        this.state.progress = 97;
+        this.state.targetProgress = 97;
+        this.updateProgressBar();
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STEP 2: Wait for FRONTEND to be responding
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[Complete] Step 2: Waiting for frontend...');
+        this.updateStatusText('Waiting for user interface...', 'loading');
+        
         const frontendReady = await this.waitForFrontendWithRetries();
 
         if (!frontendReady) {
-            // After all retries, show error but allow manual retry
             this.showError('Frontend failed to start. Please check the console.');
             this.updateStatusText('Frontend unavailable', 'error');
             return;
         }
 
-        // Frontend is confirmed ready - now we can redirect!
-        console.log('[Complete] ✓ Frontend verified ready, proceeding with redirect...');
+        console.log('[Complete] ✓ Frontend ready');
+        this.state.progress = 99;
+        this.state.targetProgress = 99;
+        this.updateProgressBar();
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STEP 3: FINAL verification - make sure backend STILL responds after frontend wait
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[Complete] Step 3: Final system verification...');
+        this.updateStatusText('Final system check...', 'verifying');
+        
+        const finalBackendCheck = await this.quickBackendCheck();
+        if (!finalBackendCheck) {
+            console.warn('[Complete] Final backend check failed - retrying...');
+            await this.sleep(2000);
+            const retryCheck = await this.quickBackendCheck();
+            if (!retryCheck) {
+                this.showError('Backend became unavailable. Please refresh.');
+                this.updateStatusText('Backend connection lost', 'error');
+                return;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // ALL SYSTEMS VERIFIED - Safe to redirect
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[Complete] ✓ All systems verified - proceeding with redirect');
 
         // Update UI to show completion
         this.elements.subtitle.textContent = 'SYSTEM READY';
@@ -1840,6 +1886,134 @@ class JARVISLoadingManager {
 
         this.cleanup();
         this.playEpicCompletionAnimation(finalRedirectUrl);
+    }
+
+    async waitForBackendOperational() {
+        /**
+         * v4.0: Wait for backend to be OPERATIONALLY ready, not just HTTP responding.
+         * 
+         * This is the CRITICAL gate that prevents "OFFLINE - SEARCHING FOR BACKEND"
+         * by ensuring the backend is fully initialized before redirecting.
+         * 
+         * Checks:
+         * 1. /health endpoint responds
+         * 2. /health/ready returns ready=true (services operational)
+         * 3. WebSocket endpoint is accessible
+         */
+        const config = {
+            maxWaitTime: 90000,        // Maximum 90 seconds for backend
+            initialDelay: 1000,         // Start with 1s between checks
+            maxDelay: 3000,             // Cap delay at 3 seconds
+            backoffMultiplier: 1.3,     // Increase delay by 30% each attempt
+        };
+
+        const backendPort = this.config.backendPort || 8010;
+        const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
+        
+        const startTime = Date.now();
+        let attempt = 0;
+        let delay = config.initialDelay;
+        let lastStatus = null;
+
+        console.log('[Backend Wait] Starting intelligent wait for backend operational state...');
+
+        while (Date.now() - startTime < config.maxWaitTime) {
+            attempt++;
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+            try {
+                // Check 1: Basic health endpoint
+                const healthResponse = await fetch(`${backendUrl}/health`, {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(5000)
+                });
+
+                if (!healthResponse.ok) {
+                    console.log(`[Backend Wait] Attempt ${attempt}: Health check failed (${healthResponse.status})`);
+                    this.elements.statusMessage.textContent = `Backend starting... (${elapsed}s)`;
+                    await this.sleep(delay);
+                    delay = Math.min(delay * config.backoffMultiplier, config.maxDelay);
+                    continue;
+                }
+
+                // Check 2: Operational readiness endpoint
+                try {
+                    const readyResponse = await fetch(`${backendUrl}/health/ready`, {
+                        method: 'GET',
+                        cache: 'no-cache',
+                        signal: AbortSignal.timeout(5000)
+                    });
+
+                    if (readyResponse.ok) {
+                        const readyData = await readyResponse.json();
+                        
+                        // Log status changes
+                        const status = readyData.status || 'unknown';
+                        if (status !== lastStatus) {
+                            console.log(`[Backend Wait] Status changed: ${lastStatus} -> ${status}`);
+                            lastStatus = status;
+                        }
+
+                        // Check if operationally ready
+                        // ready=true OR operational=true OR status includes "ready"
+                        const isOperational = 
+                            readyData.ready === true || 
+                            readyData.operational === true ||
+                            status === 'ready' ||
+                            status === 'operational';
+
+                        if (isOperational) {
+                            console.log(`[Backend Wait] ✓ Backend operational after ${attempt} attempts (${elapsed}s)`);
+                            console.log('[Backend Wait] Ready data:', readyData);
+                            return true;
+                        }
+
+                        // Show detailed status to user
+                        const details = readyData.details || {};
+                        const mlStatus = details.ml_models_status || 'initializing';
+                        this.elements.statusMessage.textContent = `Initializing services... (${mlStatus})`;
+                        
+                        // If we have WebSocket ready, that's a good sign - accept after 30s
+                        if (elapsed > 30 && details.websocket_ready === true) {
+                            console.log(`[Backend Wait] ✓ WebSocket ready, accepting after ${elapsed}s`);
+                            return true;
+                        }
+                    }
+                } catch (readyError) {
+                    // /health/ready might not exist - fall back to basic check
+                    console.debug('[Backend Wait] /health/ready failed:', readyError.message);
+                    
+                    // If basic health works and we've waited 30s, accept it
+                    if (elapsed > 30) {
+                        console.log(`[Backend Wait] ✓ Basic health OK, accepting after ${elapsed}s`);
+                        return true;
+                    }
+                }
+
+                // Backend is responding but not fully ready - keep waiting
+                console.log(`[Backend Wait] Attempt ${attempt}: Backend responding but not operational (${elapsed}s)`);
+                this.elements.statusMessage.textContent = `Backend initializing... (${elapsed}s)`;
+                
+            } catch (error) {
+                console.debug(`[Backend Wait] Attempt ${attempt} failed: ${error.message}`);
+                this.elements.statusMessage.textContent = `Waiting for backend... (${elapsed}s)`;
+            }
+
+            await this.sleep(delay);
+            delay = Math.min(delay * config.backoffMultiplier, config.maxDelay);
+        }
+
+        // Timeout - but do a final check
+        console.warn('[Backend Wait] Timeout reached, doing final check...');
+        const finalCheck = await this.quickBackendCheck();
+        if (finalCheck) {
+            console.log('[Backend Wait] Final check passed - accepting');
+            return true;
+        }
+
+        console.error(`[Backend Wait] ✗ Backend failed to become operational after ${config.maxWaitTime / 1000}s`);
+        return false;
     }
 
     async waitForFrontendWithRetries() {
