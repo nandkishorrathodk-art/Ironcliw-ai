@@ -2032,9 +2032,20 @@ class JARVISLoadingManager {
                             status === 'operational';
 
                         if (isOperational) {
-                            console.log(`[Backend Wait] ✓ Backend operational after ${attempt} attempts (${elapsed}s)`);
-                            console.log('[Backend Wait] Ready data:', readyData);
-                            return true;
+                            // v5.0: Also verify WebSocket connectivity before declaring ready
+                            console.log(`[Backend Wait] Backend operational, verifying WebSocket...`);
+                            this.elements.statusMessage.textContent = 'Verifying WebSocket connection...';
+                            
+                            const wsReady = await this.verifyWebSocketConnectivity();
+                            if (wsReady) {
+                                console.log(`[Backend Wait] ✓ Backend + WebSocket operational after ${attempt} attempts (${elapsed}s)`);
+                                console.log('[Backend Wait] Ready data:', readyData);
+                                return true;
+                            } else {
+                                console.log('[Backend Wait] WebSocket not ready yet, continuing...');
+                                this.elements.statusMessage.textContent = 'WebSocket initializing...';
+                                // Continue waiting - WebSocket might need more time
+                            }
                         }
 
                         // Show detailed status to user
@@ -2042,20 +2053,31 @@ class JARVISLoadingManager {
                         const mlStatus = details.ml_models_status || 'initializing';
                         this.elements.statusMessage.textContent = `Initializing services... (${mlStatus})`;
                         
-                        // If we have WebSocket ready, that's a good sign - accept after 30s
-                        if (elapsed > 30 && details.websocket_ready === true) {
-                            console.log(`[Backend Wait] ✓ WebSocket ready, accepting after ${elapsed}s`);
-                            return true;
+                        // If we have WebSocket ready indication, verify it actually works
+                        if (elapsed > 30 && (details.websocket_ready === true || readyData.operational === true)) {
+                            // Verify WebSocket actually connects
+                            const wsVerified = await this.verifyWebSocketConnectivity();
+                            if (wsVerified) {
+                                console.log(`[Backend Wait] ✓ WebSocket verified, accepting after ${elapsed}s`);
+                                return true;
+                            } else {
+                                console.log('[Backend Wait] WebSocket indicator true but verification failed');
+                            }
                         }
                     }
                 } catch (readyError) {
-                    // /health/ready might not exist - fall back to basic check
+                    // /health/ready might not exist - fall back to basic check + WebSocket
                     console.debug('[Backend Wait] /health/ready failed:', readyError.message);
                     
-                    // If basic health works and we've waited 30s, accept it
+                    // If basic health works and WebSocket connects, we're good
                     if (elapsed > 30) {
-                        console.log(`[Backend Wait] ✓ Basic health OK, accepting after ${elapsed}s`);
-                        return true;
+                        const wsVerified = await this.verifyWebSocketConnectivity();
+                        if (wsVerified) {
+                            console.log(`[Backend Wait] ✓ Basic health + WebSocket OK, accepting after ${elapsed}s`);
+                            return true;
+                        } else {
+                            console.log('[Backend Wait] Basic health OK but WebSocket not ready');
+                        }
                     }
                 }
 
@@ -2082,6 +2104,53 @@ class JARVISLoadingManager {
 
         console.error(`[Backend Wait] ✗ Backend failed to become operational after ${config.maxWaitTime / 1000}s`);
         return false;
+    }
+
+    async verifyWebSocketConnectivity() {
+        /**
+         * v5.0: Verify WebSocket is accepting connections before redirect.
+         * 
+         * This prevents the "CONNECTING..." issue where HTTP is ready but
+         * WebSocket isn't accepting connections yet.
+         * 
+         * Returns true if WebSocket can connect, false otherwise.
+         */
+        const backendPort = this.config.backendPort || 8010;
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${this.config.hostname}:${backendPort}/ws/chat`;
+        
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.log('[WebSocket Verify] Connection timeout');
+                resolve(false);
+            }, 5000);
+            
+            try {
+                const ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    clearTimeout(timeout);
+                    console.log('[WebSocket Verify] ✓ Connection successful');
+                    ws.close(1000, 'Verification complete');
+                    resolve(true);
+                };
+                
+                ws.onerror = (error) => {
+                    clearTimeout(timeout);
+                    console.log('[WebSocket Verify] Connection failed:', error);
+                    resolve(false);
+                };
+                
+                ws.onclose = () => {
+                    // This fires after successful open+close or on error
+                };
+                
+            } catch (error) {
+                clearTimeout(timeout);
+                console.log('[WebSocket Verify] Exception:', error.message);
+                resolve(false);
+            }
+        });
     }
 
     async waitForFrontendWithRetries() {

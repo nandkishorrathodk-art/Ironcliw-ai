@@ -163,33 +163,45 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # Also disable telemetry
 
 # =============================================================================
-# v4.0 FIX: Pre-import numba in MAIN THREAD to prevent circular import errors
+# v5.0 FIX: CENTRALIZED numba pre-import - MUST be first before ANY other imports
 # =============================================================================
 # numba has threading issues when imported from multiple threads simultaneously
 # causing: "cannot import name 'get_hashable_key' from partially initialized module"
-# The fix is to import numba FIRST in the main thread before any parallel imports
+#
+# Solution: Use centralized numba_preload module with process-level locking
+# This MUST happen before parallel_import_components() or any ThreadPoolExecutor
 # =============================================================================
 try:
-    # Disable JIT during initial import to avoid circular import issues
-    os.environ['NUMBA_DISABLE_JIT'] = '1'
-    os.environ['NUMBA_NUM_THREADS'] = '1'
+    from core.numba_preload import ensure_numba_initialized, get_numba_status
     
-    import numba
-    # Force initialization of the problematic module
+    # This blocks until numba is fully initialized in THIS thread
+    success = ensure_numba_initialized(timeout=30.0)
+    status = get_numba_status()
+    
+    if success:
+        print(f"[STARTUP] numba {status['version']} pre-initialized via centralized loader")
+    elif status['status'] == 'not_installed':
+        print("[STARTUP] numba not installed (optional)")
+    else:
+        print(f"[STARTUP] numba pre-initialization issue: {status.get('error', 'unknown')}")
+        
+except ImportError:
+    # If core.numba_preload doesn't exist yet, fall back to direct import
+    print("[STARTUP] numba_preload not available, using direct import")
     try:
+        os.environ['NUMBA_DISABLE_JIT'] = '1'
+        os.environ['NUMBA_NUM_THREADS'] = '1'
+        import numba
         from numba.core import utils as _numba_utils
         if hasattr(_numba_utils, 'get_hashable_key'):
             _ = _numba_utils.get_hashable_key
-    except (ImportError, AttributeError):
-        pass
-    
-    print(f"[STARTUP] numba {numba.__version__} pre-initialized in main thread")
-    
-    # Re-enable JIT after import
-    os.environ.pop('NUMBA_DISABLE_JIT', None)
-    os.environ.pop('NUMBA_NUM_THREADS', None)
-except ImportError:
-    print("[STARTUP] numba not installed (optional)")
+        print(f"[STARTUP] numba {numba.__version__} pre-initialized (fallback)")
+        os.environ.pop('NUMBA_DISABLE_JIT', None)
+        os.environ.pop('NUMBA_NUM_THREADS', None)
+    except ImportError:
+        print("[STARTUP] numba not installed (optional)")
+    except Exception as e:
+        print(f"[STARTUP] numba pre-import fallback warning: {e}")
 except Exception as e:
     print(f"[STARTUP] numba pre-import warning: {e}")
 
