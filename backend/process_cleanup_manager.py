@@ -2,9 +2,9 @@
 """
 Intelligent Process Cleanup Manager for JARVIS
 ===============================================
-v3.0.0 - Enhanced with Hybrid Cloud & Cloud Run Integration
+v4.0.0 - Zero-Touch & Supervisor Integration Edition
 
-Features:
+Core Features:
 - Circuit Breaker pattern for fault tolerance
 - Health monitoring with Prometheus-style metrics
 - Retry logic with exponential backoff
@@ -16,13 +16,23 @@ Features:
 - GCP VM session tracking and cleanup
 - Async parallel process cleanup
 
-v3.0.0 NEW - Hybrid Cloud Integration:
+v3.0.0 - Hybrid Cloud Integration:
 - Cloud Run ECAPA endpoint health checking
 - Intelligent ML model offload to cloud under memory pressure
 - Progressive memory relief strategies (moderate/high/critical)
 - Automatic cloud routing activation when local memory is constrained
 - Non-essential process cleanup with memory tracking
 - Hybrid cloud status reporting
+
+v4.0.0 NEW - Zero-Touch & Supervisor Integration:
+- Supervisor-aware cleanup (respects supervisor state)
+- Zero-Touch update coordination (pause cleanup during updates)
+- Dead Man's Switch integration (rollback-safe cleanup)
+- AGI OS task awareness (don't kill active AI tasks)
+- Prime Directives respect (protected process list)
+- Cleanup event broadcasting to supervisor
+- Pre-update resource validation
+- Post-rollback cleanup coordination
 """
 
 import asyncio
@@ -2191,11 +2201,236 @@ class GCPVMSessionManager:
         return len(self.get_active_sessions())
 
 
+# =============================================================================
+# v4.0: SUPERVISOR INTEGRATION - Zero-Touch & AGI OS Awareness
+# =============================================================================
+
+@dataclass
+class SupervisorCleanupState:
+    """
+    v4.0: Tracks supervisor state for cleanup coordination.
+    
+    Prevents cleanup operations during critical supervisor operations:
+    - Zero-Touch updates (don't kill processes during update)
+    - DMS monitoring (don't interfere with health checks)
+    - Rollbacks (let rollback complete before cleanup)
+    - Protected processes (Prime Directives)
+    """
+    
+    # Supervisor connection state
+    connected: bool = False
+    last_heartbeat: Optional[float] = None
+    
+    # Zero-Touch state
+    zero_touch_active: bool = False
+    zero_touch_phase: str = "idle"
+    
+    # DMS state
+    dms_active: bool = False
+    dms_probation_remaining: float = 0.0
+    
+    # Protected processes (from Prime Directives)
+    protected_processes: Set[int] = field(default_factory=set)
+    protected_patterns: List[str] = field(default_factory=lambda: [
+        "run_supervisor",
+        "jarvis_supervisor",
+        "dead_man_switch",
+        "rollback_manager",
+    ])
+    
+    # Cleanup permissions
+    cleanup_allowed: bool = True
+    cleanup_paused_reason: Optional[str] = None
+    
+    def should_allow_cleanup(self) -> Tuple[bool, Optional[str]]:
+        """
+        Check if cleanup operations should proceed.
+        
+        Returns:
+            Tuple of (allowed, reason_if_blocked)
+        """
+        # During Zero-Touch update, pause cleanup
+        if self.zero_touch_active:
+            if self.zero_touch_phase in ('applying', 'validating', 'staging'):
+                return False, f"Zero-Touch update in progress: {self.zero_touch_phase}"
+        
+        # During DMS monitoring, be very careful
+        if self.dms_active:
+            if self.dms_probation_remaining > 5.0:  # More than 5s remaining
+                return False, f"DMS probation active: {self.dms_probation_remaining:.1f}s remaining"
+        
+        # Explicit pause
+        if not self.cleanup_allowed:
+            return False, self.cleanup_paused_reason or "Cleanup explicitly paused"
+        
+        return True, None
+    
+    def is_process_protected(self, pid: int, cmdline: str = "") -> bool:
+        """
+        Check if a process is protected from cleanup.
+        
+        Args:
+            pid: Process ID
+            cmdline: Command line of the process
+            
+        Returns:
+            True if process should not be killed
+        """
+        # Explicit PID protection
+        if pid in self.protected_processes:
+            return True
+        
+        # Pattern-based protection
+        cmdline_lower = cmdline.lower()
+        for pattern in self.protected_patterns:
+            if pattern.lower() in cmdline_lower:
+                return True
+        
+        return False
+    
+    def update_from_supervisor(self, data: Dict[str, Any]) -> None:
+        """Update state from supervisor heartbeat or event."""
+        self.connected = True
+        self.last_heartbeat = time.time()
+        
+        if 'zero_touch' in data:
+            zt = data['zero_touch']
+            self.zero_touch_active = zt.get('active', False)
+            self.zero_touch_phase = zt.get('phase', 'idle')
+        
+        if 'dms' in data:
+            dms = data['dms']
+            self.dms_active = dms.get('active', False)
+            self.dms_probation_remaining = dms.get('probation_remaining', 0.0)
+        
+        if 'protected_pids' in data:
+            self.protected_processes = set(data['protected_pids'])
+        
+        if 'cleanup_allowed' in data:
+            self.cleanup_allowed = data['cleanup_allowed']
+            self.cleanup_paused_reason = data.get('cleanup_paused_reason')
+
+
+@dataclass
+class AGIOSCleanupIntegration:
+    """
+    v4.0: AGI OS integration for intelligent cleanup decisions.
+    
+    Prevents cleanup of processes that are:
+    - Running active AI tasks
+    - Part of autonomous action execution
+    - Processing user requests
+    """
+    
+    # AGI OS connection state
+    enabled: bool = False
+    connected: bool = False
+    
+    # Active task tracking
+    active_tasks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    
+    # Process-to-task mapping
+    process_tasks: Dict[int, str] = field(default_factory=dict)
+    
+    # Configuration
+    protect_active_tasks: bool = True
+    task_timeout_seconds: float = 300.0  # 5 minute timeout for stale tasks
+    
+    def is_process_busy(self, pid: int) -> Tuple[bool, Optional[str]]:
+        """
+        Check if a process is running an active AGI OS task.
+        
+        Returns:
+            Tuple of (is_busy, task_description)
+        """
+        if not self.enabled or not self.protect_active_tasks:
+            return False, None
+        
+        if pid not in self.process_tasks:
+            return False, None
+        
+        task_id = self.process_tasks[pid]
+        if task_id not in self.active_tasks:
+            return False, None
+        
+        task = self.active_tasks[task_id]
+        
+        # Check if task is stale
+        started_at = task.get('started_at', 0)
+        if time.time() - started_at > self.task_timeout_seconds:
+            # Task is stale, remove it
+            del self.active_tasks[task_id]
+            del self.process_tasks[pid]
+            return False, None
+        
+        return True, task.get('description', 'Active AGI OS task')
+    
+    def register_task(self, pid: int, task_id: str, description: str = "") -> None:
+        """Register an active task for a process."""
+        self.active_tasks[task_id] = {
+            'pid': pid,
+            'description': description,
+            'started_at': time.time(),
+        }
+        self.process_tasks[pid] = task_id
+    
+    def complete_task(self, task_id: str) -> None:
+        """Mark a task as complete."""
+        if task_id in self.active_tasks:
+            task = self.active_tasks.pop(task_id)
+            pid = task.get('pid')
+            if pid and pid in self.process_tasks:
+                del self.process_tasks[pid]
+    
+    def cleanup_stale_tasks(self) -> int:
+        """Remove stale tasks. Returns count of removed tasks."""
+        stale_ids = []
+        now = time.time()
+        
+        for task_id, task in self.active_tasks.items():
+            if now - task.get('started_at', 0) > self.task_timeout_seconds:
+                stale_ids.append(task_id)
+        
+        for task_id in stale_ids:
+            self.complete_task(task_id)
+        
+        return len(stale_ids)
+    
+    async def query_agi_os_status(self) -> bool:
+        """Query AGI OS for current status. Returns True if connected."""
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
+                port = int(os.getenv('BACKEND_PORT', '8010'))
+                async with session.get(f'http://localhost:{port}/agi-os/status') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        self.enabled = data.get('enabled', False)
+                        self.connected = True
+                        
+                        # Update active tasks
+                        if 'active_tasks' in data:
+                            for task in data['active_tasks']:
+                                if 'pid' in task and 'id' in task:
+                                    self.register_task(
+                                        task['pid'],
+                                        task['id'],
+                                        task.get('description', '')
+                                    )
+                        
+                        return True
+        except Exception as e:
+            logger.debug(f"AGI OS query failed: {e}")
+        
+        self.connected = False
+        return False
+
+
 class ProcessCleanupManager:
     """
     Enhanced Process Cleanup Manager for JARVIS
     ============================================
-    v2.0.0 - Enterprise-Grade Robustness
+    v4.0.0 - Zero-Touch & Supervisor Integration
 
     Features:
     - Circuit breaker pattern for fault tolerance
@@ -2206,6 +2441,9 @@ class ProcessCleanupManager:
     - Resource pool management
     - UE (Uninterruptible Sleep) state detection
     - GCP VM session tracking
+    - Zero-Touch update awareness (v4.0)
+    - Supervisor state integration (v4.0)
+    - AGI OS task protection (v4.0)
     """
 
     def __init__(self):
@@ -2248,6 +2486,10 @@ class ProcessCleanupManager:
             max_delay=10.0,
             multiplier=2.0
         )
+        
+        # v4.0: Zero-Touch & Supervisor Integration
+        self._supervisor_state = SupervisorCleanupState()
+        self._agi_os_integration = AGIOSCleanupIntegration()
 
         # Register event handlers
         self._register_event_handlers()
@@ -4518,6 +4760,27 @@ class ProcessCleanupManager:
     async def smart_cleanup(self, dry_run: bool = False) -> Dict[str, any]:
         """Perform intelligent cleanup of problematic processes"""
         logger.info("🧹 Starting intelligent process cleanup...")
+        
+        # v4.0: Check supervisor state before cleanup
+        allowed, reason = self._supervisor_state.should_allow_cleanup()
+        if not allowed:
+            logger.info(f"⏸️ Cleanup paused: {reason}")
+            return {
+                "timestamp": datetime.now(),
+                "paused": True,
+                "pause_reason": reason,
+                "actions": [],
+                "freed_resources": {"cpu_percent": 0, "memory_mb": 0},
+            }
+        
+        # v4.0: Query AGI OS for active tasks
+        try:
+            await self._agi_os_integration.query_agi_os_status()
+            stale_count = self._agi_os_integration.cleanup_stale_tasks()
+            if stale_count:
+                logger.debug(f"Cleaned {stale_count} stale AGI OS tasks")
+        except Exception as e:
+            logger.debug(f"AGI OS query skipped: {e}")
 
         # First, handle code change cleanup
         code_cleanup = self.cleanup_old_instances_on_code_change()
@@ -4573,6 +4836,19 @@ class ProcessCleanupManager:
         for candidate in candidates:
             if candidate["priority"] < 0.3:
                 continue  # Skip low priority
+            
+            # v4.0: Check supervisor protection
+            pid = candidate.get("pid", 0)
+            cmdline = candidate.get("cmdline", "")
+            if self._supervisor_state.is_process_protected(pid, cmdline):
+                logger.debug(f"Skipping supervisor-protected process: {candidate['name']} (PID {pid})")
+                continue
+            
+            # v4.0: Check AGI OS task protection
+            is_busy, task_desc = self._agi_os_integration.is_process_busy(pid)
+            if is_busy:
+                logger.debug(f"Skipping AGI OS busy process: {candidate['name']} (PID {pid}) - {task_desc}")
+                continue
 
             # Skip protected processes - check both exact match and substring
             should_skip = False
@@ -5503,12 +5779,41 @@ class ProcessCleanupManager:
 
 
 # Convenience functions for integration
-async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
+async def cleanup_system_for_jarvis(
+    dry_run: bool = False,
+    supervisor_state: Optional[Dict[str, Any]] = None,
+    respect_zero_touch: bool = True,
+) -> Dict[str, any]:
     """
     Main entry point for cleaning up system before JARVIS starts.
     Includes orphaned VM cleanup.
+    
+    v4.0: Now supervisor-aware:
+    - Can receive supervisor state to coordinate cleanup
+    - Respects Zero-Touch update phases
+    - Protects DMS-monitored processes
+    
+    Args:
+        dry_run: If True, don't actually kill processes
+        supervisor_state: Optional supervisor state dict for coordination
+        respect_zero_touch: If True, pause during Zero-Touch updates
     """
     manager = ProcessCleanupManager()
+    
+    # v4.0: Update supervisor state if provided
+    if supervisor_state:
+        manager._supervisor_state.update_from_supervisor(supervisor_state)
+    
+    # v4.0: Check if cleanup should proceed
+    if respect_zero_touch:
+        allowed, reason = manager._supervisor_state.should_allow_cleanup()
+        if not allowed:
+            logger.info(f"⏸️ System cleanup paused: {reason}")
+            return {
+                "paused": True,
+                "pause_reason": reason,
+                "actions": [],
+            }
 
     # Check for crash recovery first
     if manager.check_for_segfault_recovery():
@@ -5524,6 +5829,79 @@ async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
         logger.info(f"Cleaned up {len(vm_report['vms_deleted'])} orphaned VMs")
 
     return await manager.smart_cleanup(dry_run=dry_run)
+
+
+async def validate_resources_for_update() -> Dict[str, Any]:
+    """
+    v4.0: Validate system resources before applying a Zero-Touch update.
+    
+    Called by the supervisor before applying an update to ensure
+    the system is in a good state.
+    
+    Returns:
+        Dict with validation results and any issues found.
+    """
+    manager = ProcessCleanupManager()
+    state = manager.analyze_system_state()
+    
+    issues = []
+    warnings = []
+    
+    # Check memory
+    if state["memory_percent"] > 85:
+        issues.append(f"High memory usage: {state['memory_percent']:.1f}%")
+    elif state["memory_percent"] > 70:
+        warnings.append(f"Elevated memory usage: {state['memory_percent']:.1f}%")
+    
+    # Check CPU
+    if state["cpu_percent"] > 90:
+        issues.append(f"High CPU usage: {state['cpu_percent']:.1f}%")
+    elif state["cpu_percent"] > 70:
+        warnings.append(f"Elevated CPU usage: {state['cpu_percent']:.1f}%")
+    
+    # Check for stuck processes
+    if state["stuck_processes"]:
+        warnings.append(f"{len(state['stuck_processes'])} stuck processes detected")
+    
+    # Check for zombies
+    if state["zombie_processes"]:
+        warnings.append(f"{len(state['zombie_processes'])} zombie processes detected")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings,
+        "memory_percent": state["memory_percent"],
+        "cpu_percent": state["cpu_percent"],
+        "stuck_count": len(state["stuck_processes"]),
+        "zombie_count": len(state["zombie_processes"]),
+        "recommendation": "proceed" if len(issues) == 0 else "cleanup_first",
+    }
+
+
+async def post_rollback_cleanup() -> Dict[str, Any]:
+    """
+    v4.0: Cleanup after a DMS-triggered rollback.
+    
+    Called by the supervisor after a rollback to clean up any
+    processes from the failed version.
+    
+    Returns:
+        Cleanup report.
+    """
+    logger.info("🔄 Running post-rollback cleanup...")
+    manager = ProcessCleanupManager()
+    
+    # Force cleanup of any processes that might be from the failed version
+    # Clear Python cache to ensure fresh imports
+    manager._clear_python_cache()
+    
+    # Check for crash recovery
+    if manager.check_for_segfault_recovery():
+        logger.info("Performed crash recovery during rollback cleanup")
+    
+    # Run cleanup
+    return await manager.smart_cleanup(dry_run=False)
 
 
 def get_system_recommendations() -> List[str]:

@@ -114,6 +114,10 @@ class VoiceSource(str, Enum):
     INTENT = "intent"
     SYSTEM = "system"
     EXTERNAL = "external"
+    # v2.0: Zero-Touch Autonomous Update System
+    AUTONOMOUS = "autonomous"          # Zero-Touch autonomous updates
+    DEAD_MAN_SWITCH = "dead_man_switch" # Post-update stability monitoring
+    PRIME_DIRECTIVES = "prime_directives"  # Safety constraint violations
 
 
 @dataclass

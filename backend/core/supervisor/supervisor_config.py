@@ -108,6 +108,126 @@ class RollbackConfig:
 
 
 @dataclass
+class ZeroTouchConfig:
+    """
+    Zero-Touch Autonomous Update Configuration.
+    
+    Enables JARVIS to autonomously detect, validate, apply, and verify
+    updates without human intervention - transforming it from a "tool"
+    into a "living organism" that can evolve safely.
+    
+    Safety Features:
+    1. JARVIS busy-state check before update
+    2. Staging area with dry-run validation
+    3. Dead Man's Switch post-update monitoring
+    4. Automatic rollback on failure
+    5. Immutable core protection
+    """
+    # Master toggle for autonomous updates
+    enabled: bool = False  # OFF by default - must be explicitly enabled
+    
+    # Pre-Update Safety Checks
+    check_jarvis_busy: bool = True           # Query JARVIS internal state before update
+    busy_check_endpoint: str = "/health/busy"  # Endpoint to check busy state
+    busy_check_timeout: float = 5.0          # Timeout for busy check
+    require_idle_system: bool = True         # Require macOS idle before update
+    min_idle_seconds: int = 300              # Minimum 5 minutes idle
+    
+    # Staging & Validation
+    use_staging_area: bool = True            # Download to staging before merge
+    staging_directory: str = ".jarvis_staging"
+    dry_run_pip: bool = True                 # Dry-run pip install before real install
+    validate_syntax: bool = True             # Python syntax validation
+    validate_imports: bool = True            # Check for import errors
+    max_staging_age_seconds: int = 3600      # Clean up old staging after 1 hour
+    
+    # Auto-Apply Triggers
+    apply_security_updates: bool = True      # Always apply security fixes immediately
+    apply_minor_updates: bool = True         # Apply minor version updates
+    apply_major_updates: bool = False        # Major updates require confirmation
+    max_commits_auto: int = 10               # Don't auto-apply if > 10 commits behind
+    
+    # Timing & Scheduling
+    preferred_update_hours: tuple = (2, 6)   # Prefer updates between 2-6 AM
+    force_idle_window: bool = False          # Only update during idle windows
+    cooldown_after_update_seconds: int = 300 # Wait 5 min between updates
+    
+    # Notifications
+    announce_before_update: bool = True      # Voice: "Applying update..."
+    announce_after_update: bool = True       # Voice: "Update complete" / "Update failed"
+    notify_on_auto_update: bool = True       # WebSocket notification on auto-update
+
+
+@dataclass
+class PrimeDirectivesConfig:
+    """
+    Prime Directives - Immutable Safety Constraints for Autonomous JARVIS.
+    
+    These are the "constitutional" constraints that JARVIS cannot override,
+    even in autonomous mode. They represent the ethical and safety boundaries
+    that protect both the user and the system.
+    
+    The Immutable Core Protection ensures JARVIS cannot:
+    - Modify the Supervisor itself
+    - Disable safety mechanisms
+    - Act without user consent for dangerous operations
+    """
+    # === CORE IMMUTABLE DIRECTIVES ===
+    
+    # File Protection - JARVIS cannot modify these patterns
+    protected_files: tuple = (
+        "run_supervisor.py",                 # The God Process
+        "backend/core/supervisor/*.py",      # All supervisor modules
+        ".git/hooks/*",                      # Git hooks
+        "*.pem", "*.key", "*.crt",           # Cryptographic keys
+    )
+    
+    # The Supervisor is READ-ONLY to JARVIS process
+    supervisor_read_only: bool = True
+    
+    # JARVIS cannot update its own Prime Directives
+    directives_immutable: bool = True
+    
+    # === USER CONSENT REQUIREMENTS ===
+    
+    # Actions that ALWAYS require user confirmation
+    confirm_before_delete_gb: float = 1.0    # Confirm before deleting > 1GB
+    confirm_before_network_change: bool = True  # Confirm network config changes
+    confirm_before_system_settings: bool = True  # Confirm macOS system changes
+    confirm_before_credential_access: bool = True  # Confirm accessing passwords
+    
+    # === OPERATION LIMITS ===
+    
+    # Resource usage limits JARVIS cannot exceed autonomously
+    max_autonomous_api_calls_per_hour: int = 1000
+    max_autonomous_file_changes_per_update: int = 100
+    max_autonomous_memory_gb: float = 8.0
+    max_autonomous_cpu_percent: float = 80.0
+    
+    # Time limits
+    max_autonomous_operation_seconds: int = 300  # 5 min max for any single operation
+    
+    # === ROLLBACK PROTECTION ===
+    
+    # Number of stable versions to always keep
+    min_stable_versions: int = 3
+    
+    # Never auto-rollback if uptime > this (user is actively using)
+    no_rollback_if_uptime_hours: float = 24.0
+    
+    # === TRANSPARENCY REQUIREMENTS ===
+    
+    # Always log these actions (cannot be disabled)
+    always_log_updates: bool = True
+    always_log_rollbacks: bool = True
+    always_log_config_changes: bool = True
+    always_log_file_modifications: bool = True
+    
+    # Voice announcement for significant actions
+    announce_significant_actions: bool = True
+
+
+@dataclass
 class DeadManSwitchConfig:
     """
     Dead Man's Switch Configuration - Post-Update Stability Verification.
@@ -214,6 +334,11 @@ class SupervisorConfig:
     Complete supervisor configuration.
     
     Loaded from YAML with environment variable overrides.
+    
+    v2.0 - Zero-Touch Autonomous Updates:
+    - `zero_touch`: Autonomous update configuration
+    - `prime_directives`: Immutable safety constraints
+    - `dead_man_switch`: Post-update stability verification
     """
     enabled: bool = True
     mode: SupervisorMode = SupervisorMode.AUTO
@@ -229,9 +354,27 @@ class SupervisorConfig:
     exit_codes: ExitCodes = field(default_factory=ExitCodes)
     dead_man_switch: DeadManSwitchConfig = field(default_factory=DeadManSwitchConfig)
     
+    # v2.0: Zero-Touch Autonomous Updates
+    zero_touch: ZeroTouchConfig = field(default_factory=ZeroTouchConfig)
+    prime_directives: PrimeDirectivesConfig = field(default_factory=PrimeDirectivesConfig)
+    
     # Runtime state
     config_path: Optional[Path] = None
     _last_modified: float = 0.0
+    
+    @property
+    def is_zero_touch_enabled(self) -> bool:
+        """Check if Zero-Touch mode is fully enabled."""
+        return (
+            self.zero_touch.enabled and 
+            self.update.auto_apply_enabled and 
+            not self.update.require_confirmation
+        )
+    
+    @property
+    def is_autonomous_mode(self) -> bool:
+        """Check if JARVIS is in full autonomous mode."""
+        return self.is_zero_touch_enabled and self.mode == SupervisorMode.AUTO
 
 
 def _env_override(key: str, default: Any, cast_type: type = str) -> Any:
@@ -421,6 +564,68 @@ def load_config(config_path: Optional[Path] = None) -> SupervisorConfig:
         track_boot_metrics=dms_data.get("track_boot_metrics", True),
     )
     
+    # Build Zero-Touch config
+    zt_data = raw_config.get("zero_touch", {})
+    zt_triggers = zt_data.get("triggers", {})
+    zt_staging = zt_data.get("staging", {})
+    zt_timing = zt_data.get("timing", {})
+    zero_touch_config = ZeroTouchConfig(
+        enabled=_env_override("zero_touch_enabled", zt_data.get("enabled", False), bool),
+        check_jarvis_busy=zt_data.get("check_jarvis_busy", True),
+        busy_check_endpoint=zt_data.get("busy_check_endpoint", "/health/busy"),
+        busy_check_timeout=zt_data.get("busy_check_timeout", 5.0),
+        require_idle_system=zt_data.get("require_idle_system", True),
+        min_idle_seconds=zt_data.get("min_idle_seconds", 300),
+        use_staging_area=zt_staging.get("enabled", True),
+        staging_directory=zt_staging.get("directory", ".jarvis_staging"),
+        dry_run_pip=zt_staging.get("dry_run_pip", True),
+        validate_syntax=zt_staging.get("validate_syntax", True),
+        validate_imports=zt_staging.get("validate_imports", True),
+        max_staging_age_seconds=zt_staging.get("max_age_seconds", 3600),
+        apply_security_updates=zt_triggers.get("security", True),
+        apply_minor_updates=zt_triggers.get("minor", True),
+        apply_major_updates=zt_triggers.get("major", False),
+        max_commits_auto=zt_triggers.get("max_commits", 10),
+        preferred_update_hours=tuple(zt_timing.get("preferred_hours", [2, 6])),
+        force_idle_window=zt_timing.get("force_idle_window", False),
+        cooldown_after_update_seconds=zt_timing.get("cooldown_seconds", 300),
+        announce_before_update=zt_data.get("announce_before", True),
+        announce_after_update=zt_data.get("announce_after", True),
+        notify_on_auto_update=zt_data.get("notify_on_auto", True),
+    )
+    
+    # Build Prime Directives config
+    pd_data = raw_config.get("prime_directives", {})
+    pd_consent = pd_data.get("consent", {})
+    pd_limits = pd_data.get("limits", {})
+    pd_transparency = pd_data.get("transparency", {})
+    prime_directives_config = PrimeDirectivesConfig(
+        protected_files=tuple(pd_data.get("protected_files", [
+            "run_supervisor.py",
+            "backend/core/supervisor/*.py",
+            ".git/hooks/*",
+            "*.pem", "*.key", "*.crt",
+        ])),
+        supervisor_read_only=pd_data.get("supervisor_read_only", True),
+        directives_immutable=pd_data.get("directives_immutable", True),
+        confirm_before_delete_gb=pd_consent.get("delete_gb_threshold", 1.0),
+        confirm_before_network_change=pd_consent.get("network_changes", True),
+        confirm_before_system_settings=pd_consent.get("system_settings", True),
+        confirm_before_credential_access=pd_consent.get("credential_access", True),
+        max_autonomous_api_calls_per_hour=pd_limits.get("api_calls_per_hour", 1000),
+        max_autonomous_file_changes_per_update=pd_limits.get("file_changes_per_update", 100),
+        max_autonomous_memory_gb=pd_limits.get("memory_gb", 8.0),
+        max_autonomous_cpu_percent=pd_limits.get("cpu_percent", 80.0),
+        max_autonomous_operation_seconds=pd_limits.get("operation_seconds", 300),
+        min_stable_versions=pd_data.get("min_stable_versions", 3),
+        no_rollback_if_uptime_hours=pd_data.get("no_rollback_uptime_hours", 24.0),
+        always_log_updates=pd_transparency.get("log_updates", True),
+        always_log_rollbacks=pd_transparency.get("log_rollbacks", True),
+        always_log_config_changes=pd_transparency.get("log_config_changes", True),
+        always_log_file_modifications=pd_transparency.get("log_file_mods", True),
+        announce_significant_actions=pd_transparency.get("announce_actions", True),
+    )
+    
     # Build main config
     logging_data = supervisor_data.get("logging", {})
     config = SupervisorConfig(
@@ -435,6 +640,8 @@ def load_config(config_path: Optional[Path] = None) -> SupervisorConfig:
         changelog=changelog_config,
         exit_codes=exit_codes,
         dead_man_switch=dms_config,
+        zero_touch=zero_touch_config,
+        prime_directives=prime_directives_config,
         config_path=Path(config_path) if config_path else None,
     )
     

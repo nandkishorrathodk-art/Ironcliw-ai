@@ -3950,6 +3950,102 @@ async def health_check():
     }
 
 
+# ============================================================================
+# Zero-Touch Update Support: JARVIS Busy State Endpoint
+# ============================================================================
+
+@app.get("/health/busy")
+async def health_busy():
+    """
+    Check if JARVIS is currently busy with active tasks.
+    
+    Used by the Zero-Touch autonomous update system to determine
+    if it's safe to apply updates without interrupting active work.
+    
+    Returns:
+        busy: True if JARVIS is processing tasks
+        active_tasks: Count of currently running tasks
+        active_operations: List of active operation types
+        safe_to_update: True if update can proceed safely
+    """
+    active_tasks = 0
+    active_operations = []
+    
+    # Check for active voice processing
+    if hasattr(app.state, "voice_engine"):
+        try:
+            voice_state = app.state.voice_engine
+            if hasattr(voice_state, "is_processing") and voice_state.is_processing:
+                active_tasks += 1
+                active_operations.append("voice_processing")
+        except Exception:
+            pass
+    
+    # Check for active ML audio streams
+    if hasattr(app.state, "ml_audio_state"):
+        try:
+            ml_state = app.state.ml_audio_state
+            if hasattr(ml_state, "active_streams"):
+                stream_count = len(ml_state.active_streams)
+                if stream_count > 0:
+                    active_tasks += stream_count
+                    active_operations.append(f"audio_streams:{stream_count}")
+        except Exception:
+            pass
+    
+    # Check for active vision tasks
+    if hasattr(app.state, "vision_analyzer"):
+        try:
+            analyzer = app.state.vision_analyzer
+            if hasattr(analyzer, "is_processing") and analyzer.is_processing:
+                active_tasks += 1
+                active_operations.append("vision_processing")
+        except Exception:
+            pass
+    
+    # Check for active AI conversations (chat completions in progress)
+    if hasattr(app.state, "active_conversations"):
+        try:
+            conv_count = len(app.state.active_conversations)
+            if conv_count > 0:
+                active_tasks += conv_count
+                active_operations.append(f"conversations:{conv_count}")
+        except Exception:
+            pass
+    
+    # Check for active tool executions
+    if hasattr(app.state, "tool_orchestrator"):
+        try:
+            orchestrator = app.state.tool_orchestrator
+            if hasattr(orchestrator, "active_executions"):
+                exec_count = len(orchestrator.active_executions)
+                if exec_count > 0:
+                    active_tasks += exec_count
+                    active_operations.append(f"tool_executions:{exec_count}")
+        except Exception:
+            pass
+    
+    # Check for active file operations
+    if hasattr(app.state, "file_operations_in_progress"):
+        try:
+            file_ops = app.state.file_operations_in_progress
+            if file_ops and len(file_ops) > 0:
+                active_tasks += len(file_ops)
+                active_operations.append(f"file_operations:{len(file_ops)}")
+        except Exception:
+            pass
+    
+    is_busy = active_tasks > 0
+    
+    return {
+        "busy": is_busy,
+        "active_tasks": active_tasks,
+        "active_operations": active_operations,
+        "safe_to_update": not is_busy,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
 @app.get("/hybrid/status")
 async def hybrid_status():
     """

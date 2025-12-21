@@ -1435,35 +1435,55 @@ class JARVISSupervisor:
         
         return True
     
-    async def _handle_update_request(self) -> bool:
+    async def _handle_update_request(self, zero_touch: bool = False) -> bool:
         """
-        Handle an update request (exit code 100).
+        Handle an update request (exit code 100 or Zero-Touch trigger).
         
-        This method now integrates with the Dead Man's Switch:
-        1. Captures current commit BEFORE update
-        2. Applies update
-        3. Sets flags for post-update probation
-        4. On next boot, Dead Man's Switch monitors stability
+        This method now integrates with:
+        - Dead Man's Switch for post-update stability verification
+        - Zero-Touch mode for autonomous updates with full validation
+        - Prime Directives for immutable core protection
+        
+        v2.0 Flow:
+        1. (Zero-Touch) Run pre-flight checks
+        2. (Zero-Touch) Stage and validate update
+        3. Captures current commit BEFORE update
+        4. Applies update (with Zero-Touch validation if enabled)
+        5. Sets flags for post-update probation
+        6. On next boot, Dead Man's Switch monitors stability
+        
+        Args:
+            zero_touch: If True, use full Zero-Touch validation pipeline
         
         Returns:
             True if update successful, False if failed
         """
+        # Determine if this should be a Zero-Touch update
+        is_zero_touch = zero_touch or self.config.is_zero_touch_enabled
+        
         self._set_state(SupervisorState.UPDATING)
-        logger.info("🔄 Update requested by JARVIS")
+        mode_str = "Zero-Touch" if is_zero_touch else "Manual"
+        logger.info(f"🔄 Update requested ({mode_str} mode)")
         
         # Broadcast maintenance mode to frontend BEFORE JARVIS shuts down
         try:
             from .maintenance_broadcaster import broadcast_maintenance_mode
             await broadcast_maintenance_mode(
                 reason="updating",
-                message="Downloading updates from repository...",
-                estimated_time=30,
+                message=f"{'Autonomous' if is_zero_touch else 'Manual'} update in progress...",
+                estimated_time=45 if is_zero_touch else 30,  # Zero-Touch takes longer (validation)
             )
         except Exception as e:
             logger.debug(f"Maintenance broadcast failed: {e}")
         
         # Announce update starting via TTS
-        await self._narrator.narrate(NarratorEvent.UPDATE_STARTING, wait=True)
+        if is_zero_touch and self.config.zero_touch.announce_before_update:
+            await self._narrator.speak(
+                "Starting autonomous update with full validation.",
+                wait=True
+            )
+        else:
+            await self._narrator.narrate(NarratorEvent.UPDATE_STARTING, wait=True)
         
         if not self._update_engine:
             logger.error("❌ Update engine not initialized")
@@ -1471,6 +1491,26 @@ class JARVISSupervisor:
             return False
         
         try:
+            # ═══════════════════════════════════════════════════════════════════
+            # ZERO-TOUCH ONLY: Pre-flight safety checks with enhanced narration
+            # ═══════════════════════════════════════════════════════════════════
+            if is_zero_touch:
+                logger.info("🚀 Running Zero-Touch pre-flight checks...")
+                
+                # v3.0: Narrate pre-flight initiation
+                await self._narrator.narrate(NarratorEvent.ZERO_TOUCH_PRE_FLIGHT)
+                
+                can_update, reason = await self._update_engine.can_auto_update()
+                if not can_update:
+                    logger.warning(f"⚠️ Zero-Touch blocked: {reason}")
+                    
+                    # v3.0: Use enhanced blocked narration
+                    await self._narrator.narrate_zero_touch_blocked(reason=reason)
+                    return False
+                
+                # v3.0: Pre-flight passed narration
+                await self._narrator.narrate(NarratorEvent.ZERO_TOUCH_PRE_FLIGHT_PASSED)
+            
             # ═══════════════════════════════════════════════════════════════════
             # DEAD MAN'S SWITCH INTEGRATION: Capture current commit BEFORE update
             # ═══════════════════════════════════════════════════════════════════
@@ -1494,15 +1534,31 @@ class JARVISSupervisor:
                 elif progress.phase.value == "verifying":
                     await self._narrator.narrate(NarratorEvent.VERIFYING)
             
-            # Perform update
-            result = await self._update_engine.apply_update()
+            # ═══════════════════════════════════════════════════════════════════
+            # PERFORM UPDATE: With or without Zero-Touch validation
+            # ═══════════════════════════════════════════════════════════════════
+            result = await self._update_engine.apply_update(zero_touch=is_zero_touch)
             
             # Check if result is a boolean or UpdateResult object
             success = result.success if hasattr(result, 'success') else result
             
             if success:
                 self.stats.total_updates += 1
-                logger.info("✅ Update applied successfully")
+                
+                # Log Zero-Touch specific info
+                classification_str = None
+                files_validated = 0
+                
+                if hasattr(result, 'was_zero_touch') and result.was_zero_touch:
+                    logger.info("✅ Zero-Touch update applied successfully")
+                    if hasattr(result, 'classification') and result.classification:
+                        classification_str = result.classification.value
+                        logger.info(f"   Classification: {classification_str}")
+                    if hasattr(result, 'validation_report') and result.validation_report:
+                        files_validated = result.validation_report.files_checked
+                        logger.info(f"   Validated: {files_validated} files")
+                else:
+                    logger.info("✅ Update applied successfully")
                 
                 # ═══════════════════════════════════════════════════════════════════
                 # DEAD MAN'S SWITCH: Set up post-update probation
@@ -1513,26 +1569,69 @@ class JARVISSupervisor:
                     logger.info(f"🎯 Dead Man's Switch armed for {self._pending_update_commit[:12] if self._pending_update_commit else 'unknown'}")
                     logger.info(f"   Probation period: {self.config.dead_man_switch.probation_seconds}s")
                 
-                # Announce success
+                # ═══════════════════════════════════════════════════════════════════
+                # v3.0: Enhanced success narration
+                # ═══════════════════════════════════════════════════════════════════
                 version = self._update_engine.get_progress().message or ""
-                await self._narrator.narrate(
-                    NarratorEvent.UPDATE_COMPLETE,
-                    version=version,
-                    wait=True,
-                )
+                if is_zero_touch and self.config.zero_touch.announce_after_update:
+                    # Use enhanced Zero-Touch narration
+                    await self._narrator.narrate_zero_touch_complete(
+                        success=True,
+                        new_version=self._pending_update_commit,
+                        duration_seconds=result.duration_seconds if hasattr(result, 'duration_seconds') else 0.0,
+                    )
+                    
+                    # If validation was performed, narrate that too
+                    if files_validated > 0:
+                        await self._narrator.narrate_zero_touch_validation(
+                            files_checked=files_validated,
+                        )
+                else:
+                    await self._narrator.narrate(
+                        NarratorEvent.UPDATE_COMPLETE,
+                        version=version,
+                        wait=True,
+                    )
                 
                 # Note: crash count reset moved to _on_dms_stable callback
                 # We only reset after probation passes
                 return True
             else:
-                logger.error("❌ Update failed")
-                await self._narrator.narrate(NarratorEvent.UPDATE_FAILED)
+                error_msg = result.error if hasattr(result, 'error') else "Unknown error"
+                logger.error(f"❌ Update failed: {error_msg}")
+                
+                # ═══════════════════════════════════════════════════════════════════
+                # v3.0: Enhanced failure narration
+                # ═══════════════════════════════════════════════════════════════════
+                if is_zero_touch:
+                    # Check for validation failures
+                    if hasattr(result, 'validation_report') and result.validation_report:
+                        vr = result.validation_report
+                        await self._narrator.narrate_zero_touch_validation(
+                            files_checked=vr.files_checked,
+                            syntax_errors=len(vr.syntax_errors),
+                            import_errors=len(vr.import_errors),
+                            pip_conflicts=len(vr.pip_conflicts),
+                        )
+                    
+                    await self._narrator.narrate_zero_touch_complete(
+                        success=False,
+                        error=error_msg,
+                    )
+                else:
+                    await self._narrator.narrate(NarratorEvent.UPDATE_FAILED)
+                
                 self._is_post_update = False
                 return False
                 
         except Exception as e:
             logger.error(f"❌ Update error: {e}")
             self._is_post_update = False
+            if is_zero_touch:
+                await self._narrator.speak(
+                    f"Autonomous update error. {str(e)[:50]}",
+                    wait=False
+                )
             return False
     
     async def _handle_rollback_request(self) -> bool:
@@ -1608,11 +1707,16 @@ class JARVISSupervisor:
         
         This runs concurrently with JARVIS and monitors its health
         during the post-update probation period.
+        
+        v3.0: Now uses enhanced narrator for intelligent DMS status updates.
         """
         if not self._dead_man_switch or not self._is_post_update:
             return
         
         logger.info("🎯 Starting Dead Man's Switch probation monitor...")
+        
+        # Reset narrator context for fresh DMS tracking
+        self._narrator.reset_context()
         
         try:
             # Start probation
@@ -1621,13 +1725,25 @@ class JARVISSupervisor:
                 previous_commit=self._previous_commit or "unknown",
             )
             
-            # Run probation loop
+            # v3.0: Enhanced narration for DMS start
+            await self._narrator.narrate_dms_status(
+                state="monitoring",
+                probation_remaining=float(self.config.dead_man_switch.probation_seconds),
+            )
+            
+            # Run probation loop with status callback for narration
+            self._dead_man_switch.on_status_change(self._on_dms_status_change)
+            
             status = await self._dead_man_switch.run_probation_loop()
             
-            # Handle result
+            # Handle result with enhanced narration
             if status.state == ProbationState.ROLLING_BACK:
                 # Rollback was triggered - need to restart
                 logger.warning("🔄 Dead Man's Switch triggered rollback - restarting...")
+                
+                # v3.0: Enhanced rollback narration
+                await self._narrator.narrate_dms_status(state="rollback")
+                
                 self._restart_requested.set()
                 
                 # Terminate current process
@@ -1637,10 +1753,41 @@ class JARVISSupervisor:
             elif status.state == ProbationState.COMMITTED:
                 logger.info("✅ Dead Man's Switch: Probation passed!")
                 
+                # v3.0: Enhanced success narration
+                await self._narrator.narrate_dms_status(
+                    state="committed",
+                    health_score=status.health_score,
+                )
+                
         except asyncio.CancelledError:
             logger.info("🛑 Dead Man's Switch probation cancelled")
         except Exception as e:
             logger.error(f"❌ Dead Man's Switch error: {e}")
+    
+    def _on_dms_status_change(self, status: "ProbationStatus") -> None:
+        """
+        Callback for Dead Man's Switch status changes (v3.0).
+        
+        Used for real-time narration of DMS state changes.
+        """
+        # Schedule async narration in event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._narrate_dms_status_async(status))
+        except Exception as e:
+            logger.debug(f"DMS status narration scheduling failed: {e}")
+    
+    async def _narrate_dms_status_async(self, status: "ProbationStatus") -> None:
+        """Async handler for DMS status change narration."""
+        state_str = status.state.value if hasattr(status.state, 'value') else str(status.state)
+        
+        await self._narrator.narrate_dms_status(
+            state=state_str,
+            health_score=status.health_score,
+            consecutive_failures=status.consecutive_failures,
+            probation_remaining=status.remaining_seconds,
+        )
     
     async def _on_local_change_detected(self, info: "LocalChangeInfo") -> None:
         """
@@ -1782,9 +1929,20 @@ class JARVISSupervisor:
         logger.info("🔍 Update detector stopped")
     
     async def _run_idle_detector(self) -> None:
-        """Background task: Monitor for idle state and trigger silent updates."""
+        """
+        Background task: Monitor for idle state and trigger silent/Zero-Touch updates.
+        
+        v2.0: Enhanced with Zero-Touch autonomous update support.
+        When Zero-Touch mode is enabled, this will:
+        1. Check system idle state
+        2. Query JARVIS busy state
+        3. Validate update safety
+        4. Auto-apply if all conditions pass
+        """
         if not self._idle_detector or not self.config.idle.enabled:
             return
+        
+        logger.info("😴 Idle detector started")
         
         while not self._shutdown_event.is_set():
             try:
@@ -1796,13 +1954,89 @@ class JARVISSupervisor:
                         update_info = await self._update_detector.check_for_updates()
                         
                         if update_info and update_info.available:
-                            logger.info("😴 System idle with update available - requesting silent update")
-                            self._update_requested.set()
+                            # ═══════════════════════════════════════════════════════════════════
+                            # ZERO-TOUCH MODE: Full autonomous update pipeline with enhanced narration
+                            # ═══════════════════════════════════════════════════════════════════
+                            if self.config.is_zero_touch_enabled:
+                                # v3.0: Check and classify the update
+                                can_auto, reason = await self._can_zero_touch_update()
+                                
+                                if can_auto:
+                                    logger.info(f"🤖 Zero-Touch: Auto-applying update ({reason})")
+                                    
+                                    # v3.0: Get update classification for intelligent narration
+                                    classification = await self._update_engine.classify_update()
+                                    
+                                    # Announce before update with classification context
+                                    if self.config.zero_touch.announce_before_update:
+                                        await self._narrator.narrate(NarratorEvent.ZERO_TOUCH_INITIATED)
+                                        
+                                        # Classification-specific narration
+                                        await self._narrator.narrate_zero_touch_update(
+                                            classification=classification.value,
+                                            commits=update_info.commits_behind if hasattr(update_info, 'commits_behind') else 0,
+                                        )
+                                    
+                                    self._update_requested.set()
+                                else:
+                                    logger.debug(f"🤖 Zero-Touch: Skipped - {reason}")
+                                    
+                                    # v3.0: Narrate why update was deferred
+                                    if "busy" in reason.lower():
+                                        await self._narrator.narrate(NarratorEvent.UPDATE_DEFERRED)
+                            else:
+                                # Standard silent update (requires confirmation or already approved)
+                                logger.info("😴 System idle with update available - requesting silent update")
+                                self._update_requested.set()
                 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.warning(f"Idle detection error: {e}")
             
             await asyncio.sleep(60)  # Check every minute
+        
+        logger.info("😴 Idle detector stopped")
+    
+    async def _can_zero_touch_update(self) -> tuple[bool, str]:
+        """
+        Check if Zero-Touch auto-update can be performed.
+        
+        This is the gatekeeper for autonomous updates.
+        
+        Returns:
+            Tuple of (can_update, reason)
+        """
+        if not self._update_engine:
+            return False, "Update engine not initialized"
+        
+        # Delegate to update engine's comprehensive check
+        return await self._update_engine.can_auto_update()
+    
+    def _check_immutable_core(self, files: list[str]) -> tuple[bool, list[str]]:
+        """
+        Check if update modifies immutable core files.
+        
+        Prime Directives: The Supervisor is READ-ONLY to JARVIS.
+        
+        Args:
+            files: List of files being modified
+            
+        Returns:
+            Tuple of (is_safe, list of protected files found)
+        """
+        if not self.config.prime_directives.supervisor_read_only:
+            return True, []
+        
+        import fnmatch
+        
+        protected = []
+        for pattern in self.config.prime_directives.protected_files:
+            for file in files:
+                if fnmatch.fnmatch(file, pattern):
+                    protected.append(f"{file} (matches {pattern})")
+        
+        return len(protected) == 0, protected
 
     async def _run_restart_monitor(self) -> None:
         """

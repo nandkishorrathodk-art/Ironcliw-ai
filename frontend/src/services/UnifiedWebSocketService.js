@@ -1,8 +1,14 @@
 /**
- * Unified WebSocket Service v3.0
- * ==============================
+ * Unified WebSocket Service v3.0 - Zero-Touch Edition
+ * =====================================================
  * Uses DynamicWebSocketClient for all WebSocket operations
  * Provides a simplified API for components that need WebSocket connectivity
+ * 
+ * v3.0 Features:
+ * - Zero-Touch autonomous update status tracking
+ * - Dead Man's Switch (DMS) monitoring state
+ * - Update classification awareness (security/critical/minor/major)
+ * - Prime Directives violation notifications
  */
 
 import React from 'react';
@@ -25,15 +31,26 @@ class UnifiedWebSocketService {
 
     // Maintenance mode state for tracking system updates/restarts
     this.maintenanceMode = false;
-    this.maintenanceReason = null; // 'updating' | 'restarting' | 'rollback' | null
+    this.maintenanceReason = null; // 'updating' | 'restarting' | 'rollback' | 'zero_touch' | 'dms_rollback' | null
 
     // Update available state for notification badge
     this.updateAvailable = false;
-    this.updateInfo = null; // { commits_behind, summary, priority, highlights, security_update, breaking_changes }
+    this.updateInfo = null; // { commits_behind, summary, priority, highlights, security_update, breaking_changes, classification, zeroTouchEligible }
 
     // Local change awareness state (v2.0)
     this.localChangesDetected = false;
     this.localChangeInfo = null; // { changeType, summary, commits_since_start, restart_recommended, restart_reason }
+    
+    // v3.0: Zero-Touch Autonomous Update State
+    this.zeroTouchActive = false;
+    this.zeroTouchStatus = null; // { state, classification, message, validationProgress, filesValidated, totalFiles, commits, filesChanged, validationReport }
+    
+    // v3.0: Dead Man's Switch State
+    this.dmsActive = false;
+    this.dmsStatus = null; // { healthScore, probationRemaining, probationTotal, consecutiveFailures, state }
+    
+    // v3.0: Prime Directives State
+    this.primeDirectiveViolation = null; // { type, action, file, limit, timestamp }
 
     // Wait for config and then connect
     this._initializeWhenReady();
@@ -228,6 +245,213 @@ class UnifiedWebSocketService {
     this.client.on('code_changes_detected', (data) => {
       console.log('📁 Code changes detected:', data);
       this._handleLocalChange(data, 'uncommitted');
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v3.0: ZERO-TOUCH AUTONOMOUS UPDATE EVENTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Zero-Touch update initiated
+    this.client.on('zero_touch_initiated', (data) => {
+      console.log('🤖 Zero-Touch autonomous update initiated:', data);
+      this.zeroTouchActive = true;
+      this.maintenanceMode = true;
+      this.maintenanceReason = 'zero_touch';
+      this.zeroTouchStatus = {
+        state: 'initiated',
+        classification: data?.classification || null,
+        message: data?.message || 'Autonomous update starting...',
+        commits: data?.commits || 0,
+        filesChanged: data?.files_changed || 0,
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+      this._notifySubscribers('maintenance_mode', {
+        active: true,
+        reason: 'zero_touch',
+        message: this.zeroTouchStatus.message,
+      });
+    });
+
+    // Zero-Touch staging phase
+    this.client.on('zero_touch_staging', (data) => {
+      console.log('📦 Zero-Touch staging:', data);
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: 'staging',
+        message: data?.message || 'Staging update for validation...',
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+    });
+
+    // Zero-Touch validation phase
+    this.client.on('zero_touch_validating', (data) => {
+      console.log('🔍 Zero-Touch validating:', data);
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: 'validating',
+        message: data?.message || 'Validating code...',
+        validationProgress: data?.progress || 0,
+        filesValidated: data?.files_validated || 0,
+        totalFiles: data?.total_files || 0,
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+    });
+
+    // Zero-Touch validation complete
+    this.client.on('zero_touch_validation_complete', (data) => {
+      console.log('✓ Zero-Touch validation complete:', data);
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: data?.passed ? 'applying' : 'validation_failed',
+        validationProgress: 100,
+        validationReport: data?.report || null,
+        message: data?.passed ? 'Validation passed, applying update...' : 'Validation failed',
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+    });
+
+    // Zero-Touch applying
+    this.client.on('zero_touch_applying', (data) => {
+      console.log('⚡ Zero-Touch applying:', data);
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: 'applying',
+        message: data?.message || 'Applying validated update...',
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+    });
+
+    // Zero-Touch complete (success)
+    this.client.on('zero_touch_complete', (data) => {
+      console.log('✅ Zero-Touch complete:', data);
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: 'dms_monitoring',
+        message: data?.message || 'Update applied. Monitoring stability...',
+        newVersion: data?.new_version || null,
+      };
+      this._notifySubscribers('zero_touch', { active: true, ...this.zeroTouchStatus });
+    });
+
+    // Zero-Touch failed
+    this.client.on('zero_touch_failed', (data) => {
+      console.log('❌ Zero-Touch failed:', data);
+      this.zeroTouchActive = false;
+      this.maintenanceMode = false;
+      this.maintenanceReason = null;
+      this.zeroTouchStatus = {
+        ...this.zeroTouchStatus,
+        state: 'failed',
+        message: data?.message || 'Autonomous update failed',
+        error: data?.error || null,
+      };
+      this._notifySubscribers('zero_touch', { active: false, ...this.zeroTouchStatus });
+      this._notifySubscribers('maintenance_mode', { active: false, reason: null });
+    });
+
+    // Zero-Touch blocked (pre-flight check failed)
+    this.client.on('zero_touch_blocked', (data) => {
+      console.log('🚫 Zero-Touch blocked:', data);
+      this._notifySubscribers('zero_touch_blocked', {
+        reason: data?.reason || 'Pre-flight check failed',
+        willRetryAt: data?.will_retry_at || null,
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v3.0: DEAD MAN'S SWITCH (DMS) EVENTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    // DMS probation started
+    this.client.on('dms_probation_start', (data) => {
+      console.log('🎯 DMS probation started:', data);
+      this.dmsActive = true;
+      this.dmsStatus = {
+        state: 'monitoring',
+        healthScore: 1.0,
+        probationRemaining: data?.probation_seconds || 30,
+        probationTotal: data?.probation_seconds || 30,
+        consecutiveFailures: 0,
+      };
+      this._notifySubscribers('dms_status', { active: true, ...this.dmsStatus });
+    });
+
+    // DMS heartbeat update
+    this.client.on('dms_heartbeat', (data) => {
+      console.log('💓 DMS heartbeat:', data);
+      this.dmsStatus = {
+        ...this.dmsStatus,
+        healthScore: data?.health_score ?? this.dmsStatus?.healthScore ?? 1.0,
+        probationRemaining: data?.remaining_seconds ?? this.dmsStatus?.probationRemaining ?? 0,
+        consecutiveFailures: data?.consecutive_failures ?? 0,
+      };
+      this._notifySubscribers('dms_status', { active: true, ...this.dmsStatus });
+    });
+
+    // DMS probation passed (version committed as stable)
+    this.client.on('dms_probation_passed', (data) => {
+      console.log('✅ DMS probation passed:', data);
+      this.dmsActive = false;
+      this.zeroTouchActive = false;
+      this.maintenanceMode = false;
+      this.maintenanceReason = null;
+      this.dmsStatus = { ...this.dmsStatus, state: 'passed' };
+      this.zeroTouchStatus = { ...this.zeroTouchStatus, state: 'complete' };
+      this._notifySubscribers('dms_status', { active: false, ...this.dmsStatus });
+      this._notifySubscribers('zero_touch', { active: false, ...this.zeroTouchStatus });
+      this._notifySubscribers('maintenance_mode', { 
+        active: false, 
+        reason: null,
+        message: data?.message || 'Update verified stable' 
+      });
+    });
+
+    // DMS rollback triggered
+    this.client.on('dms_rollback_triggered', (data) => {
+      console.log('🔄 DMS rollback triggered:', data);
+      this.maintenanceReason = 'dms_rollback';
+      this.dmsStatus = { ...this.dmsStatus, state: 'rolling_back' };
+      this._notifySubscribers('dms_status', { active: true, ...this.dmsStatus });
+      this._notifySubscribers('maintenance_mode', {
+        active: true,
+        reason: 'dms_rollback',
+        message: data?.message || 'Stability check failed. Rolling back...',
+      });
+    });
+
+    // DMS rollback complete
+    this.client.on('dms_rollback_complete', (data) => {
+      console.log('✅ DMS rollback complete:', data);
+      this.dmsActive = false;
+      this.zeroTouchActive = false;
+      this.maintenanceMode = false;
+      this.maintenanceReason = null;
+      this.dmsStatus = null;
+      this.zeroTouchStatus = null;
+      this._notifySubscribers('dms_status', { active: false });
+      this._notifySubscribers('zero_touch', { active: false });
+      this._notifySubscribers('maintenance_mode', { 
+        active: false, 
+        reason: null,
+        message: data?.message || 'Rolled back to previous stable version' 
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v3.0: PRIME DIRECTIVES EVENTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Prime directive violation
+    this.client.on('prime_directive_violation', (data) => {
+      console.log('⚠️ Prime directive violation:', data);
+      this.primeDirectiveViolation = {
+        type: data?.type || 'unknown',
+        action: data?.action || null,
+        file: data?.file || null,
+        limit: data?.limit || null,
+        timestamp: new Date().toISOString(),
+      };
+      this._notifySubscribers('prime_directive_violation', this.primeDirectiveViolation);
     });
 
     // Handle generic local changes
@@ -509,6 +733,15 @@ export function useUnifiedWebSocket() {
   // Local change awareness state (v2.0)
   const [localChangesDetected, setLocalChangesDetected] = React.useState(false);
   const [localChangeInfo, setLocalChangeInfo] = React.useState(null);
+  // v3.0: Zero-Touch autonomous update state
+  const [zeroTouchActive, setZeroTouchActive] = React.useState(false);
+  const [zeroTouchStatus, setZeroTouchStatus] = React.useState(null);
+  // v3.0: Dead Man's Switch state
+  const [dmsActive, setDmsActive] = React.useState(false);
+  const [dmsStatus, setDmsStatus] = React.useState(null);
+  // v3.0: Prime Directives state
+  const [primeDirectiveViolation, setPrimeDirectiveViolation] = React.useState(null);
+  
   const service = React.useMemo(() => getUnifiedWebSocketService(), []);
 
   React.useEffect(() => {
@@ -535,6 +768,8 @@ export function useUnifiedWebSocket() {
           highlights: data.highlights,
           security_update: data.security_update,
           breaking_changes: data.breaking_changes,
+          classification: data.classification,
+          zeroTouchEligible: data.zero_touch_eligible,
           timestamp: data.timestamp,
         });
       } else {
@@ -560,6 +795,50 @@ export function useUnifiedWebSocket() {
         setLocalChangeInfo(null);
       }
     });
+    
+    // v3.0: Subscribe to Zero-Touch updates
+    const unsubscribeZeroTouch = service.subscribe('zero_touch', (data) => {
+      setZeroTouchActive(data.active);
+      if (data.active) {
+        setZeroTouchStatus({
+          state: data.state,
+          classification: data.classification,
+          message: data.message,
+          validationProgress: data.validationProgress,
+          filesValidated: data.filesValidated,
+          totalFiles: data.totalFiles,
+          commits: data.commits,
+          filesChanged: data.filesChanged,
+          validationReport: data.validationReport,
+          newVersion: data.newVersion,
+        });
+      } else {
+        setZeroTouchStatus(null);
+      }
+    });
+    
+    // v3.0: Subscribe to DMS status
+    const unsubscribeDms = service.subscribe('dms_status', (data) => {
+      setDmsActive(data.active);
+      if (data.active) {
+        setDmsStatus({
+          state: data.state,
+          healthScore: data.healthScore,
+          probationRemaining: data.probationRemaining,
+          probationTotal: data.probationTotal,
+          consecutiveFailures: data.consecutiveFailures,
+        });
+      } else {
+        setDmsStatus(null);
+      }
+    });
+    
+    // v3.0: Subscribe to Prime Directive violations
+    const unsubscribePrimeDirective = service.subscribe('prime_directive_violation', (data) => {
+      setPrimeDirectiveViolation(data);
+      // Auto-clear after 10 seconds
+      setTimeout(() => setPrimeDirectiveViolation(null), 10000);
+    });
 
     // Initial connection state
     setConnected(service.isConnected());
@@ -568,6 +847,10 @@ export function useUnifiedWebSocket() {
     setUpdateInfo(service.getUpdateInfo());
     setLocalChangesDetected(service.hasLocalChanges?.() || false);
     setLocalChangeInfo(service.getLocalChangeInfo?.() || null);
+    setZeroTouchActive(service.zeroTouchActive || false);
+    setZeroTouchStatus(service.zeroTouchStatus || null);
+    setDmsActive(service.dmsActive || false);
+    setDmsStatus(service.dmsStatus || null);
 
     // Update stats periodically
     const interval = setInterval(() => {
@@ -579,6 +862,9 @@ export function useUnifiedWebSocket() {
       unsubscribeMaintenance();
       unsubscribeUpdate();
       unsubscribeLocalChanges();
+      unsubscribeZeroTouch();
+      unsubscribeDms();
+      unsubscribePrimeDirective();
       clearInterval(interval);
     };
   }, [service]);
@@ -598,6 +884,14 @@ export function useUnifiedWebSocket() {
     localChangesDetected,
     localChangeInfo,
     dismissLocalChanges: () => service.dismissLocalChanges?.(),
+    // v3.0: Zero-Touch autonomous update
+    zeroTouchActive,
+    zeroTouchStatus,
+    // v3.0: Dead Man's Switch
+    dmsActive,
+    dmsStatus,
+    // v3.0: Prime Directives
+    primeDirectiveViolation,
     // Actions
     connect: (capability) => service.connect(capability),
     disconnect: () => service.disconnect(),

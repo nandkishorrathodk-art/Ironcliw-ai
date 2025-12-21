@@ -1,23 +1,33 @@
 """
-Self-Updating Lifecycle Manager - Supervisor Module v2.0
+Self-Updating Lifecycle Manager - Supervisor Module v3.0 - Zero-Touch Edition
 
 Exposes core supervisor components for JARVIS self-management.
 
 Components:
 - `JARVISSupervisor` - Main lifecycle watchdog
-- `UpdateEngine` - Async parallel update orchestration
+- `UpdateEngine` - Async parallel update orchestration (v2.0: Zero-Touch support)
 - `RollbackManager` - Version history and rollback logic
+- `DeadManSwitch` - Post-update stability verification
 - `HealthMonitor` - Boot health & stability checks
 - `UpdateDetector` - GitHub polling and change detection
 - `ChangelogAnalyzer` - AI-powered commit summarization
 - `IdleDetector` - System activity monitoring
-- `UnifiedVoiceOrchestrator` - SINGLE SOURCE OF TRUTH for all voice output (v2.0)
-- `SupervisorNarrator` - TTS voice feedback (now delegates to orchestrator)
-- `IntelligentStartupNarrator` - Phase-aware startup narration (now delegates to orchestrator)
-- `UpdateNotificationOrchestrator` - Multi-modal notification system (TTS + WebSocket)
+- `UnifiedVoiceOrchestrator` - SINGLE SOURCE OF TRUTH for all voice output
+- `SupervisorNarrator` - TTS voice feedback (v3.0: Zero-Touch narration)
+- `IntelligentStartupNarrator` - Phase-aware startup narration
+- `UpdateNotificationOrchestrator` - Multi-modal notification system
 - `UpdateIntentHandler` - Voice command integration
 - `supervisor_integration` - start_system.py bridge
 - `maintenance_broadcaster` - WebSocket broadcast utilities for frontend
+
+v3.0 - Zero-Touch Edition Features:
+- Autonomous update detection and application
+- Pre-flight safety checks (busy state, idle, resources)
+- Staging area with dry-run validation
+- Update classification (security/minor/major)
+- Dead Man's Switch post-update monitoring
+- Prime Directives (immutable safety constraints)
+- Intelligent context-aware narration
 
 v2.0: All voice output now goes through UnifiedVoiceOrchestrator to prevent
 concurrent `say` processes ("multiple voices" issue).
@@ -25,15 +35,46 @@ concurrent `say` processes ("multiple voices" issue).
 Note: Loading page is managed via loading_server.py at project root
 """
 
-from .supervisor_config import SupervisorConfig, get_supervisor_config
+from .supervisor_config import (
+    SupervisorConfig,
+    get_supervisor_config,
+    # v3.0: Zero-Touch configuration
+    ZeroTouchConfig,
+    PrimeDirectivesConfig,
+    DeadManSwitchConfig,
+)
 from .jarvis_supervisor import JARVISSupervisor, SupervisorState, ExitCode
-from .update_engine import UpdateEngine, UpdatePhase
-from .rollback_manager import RollbackManager, VersionSnapshot
+from .update_engine import (
+    UpdateEngine,
+    UpdatePhase,
+    # v3.0: Zero-Touch components
+    UpdateClassification,
+    ValidationResult,
+    ValidationReport,
+    StagingInfo,
+    PreFlightCheckResult,
+)
+from .rollback_manager import (
+    RollbackManager,
+    VersionSnapshot,
+    # v3.0: Dead Man's Switch
+    DeadManSwitch,
+    ProbationState,
+    ProbationStatus,
+    RollbackDecision,
+)
 from .health_monitor import HealthMonitor, HealthStatus
 from .update_detector import UpdateDetector, UpdateInfo
 from .changelog_analyzer import ChangelogAnalyzer, ChangelogSummary, CommitSummary
 from .idle_detector import IdleDetector, ActivityLevel
-from .narrator import SupervisorNarrator, NarratorEvent, get_narrator
+from .narrator import (
+    SupervisorNarrator,
+    NarratorEvent,
+    get_narrator,
+    # v3.0: Zero-Touch narration
+    NarratorConfig as SupervisorNarratorConfig,
+    NarrationContext,
+)
 from .startup_narrator import (
     IntelligentStartupNarrator,
     StartupPhase,
@@ -102,6 +143,10 @@ __all__ = [
     # Config
     "SupervisorConfig",
     "get_supervisor_config",
+    # v3.0: Zero-Touch Config
+    "ZeroTouchConfig",
+    "PrimeDirectivesConfig",
+    "DeadManSwitchConfig",
     # Supervisor
     "JARVISSupervisor",
     "SupervisorState",
@@ -109,9 +154,20 @@ __all__ = [
     # Update Engine
     "UpdateEngine",
     "UpdatePhase",
+    # v3.0: Zero-Touch Update Components
+    "UpdateClassification",
+    "ValidationResult",
+    "ValidationReport",
+    "StagingInfo",
+    "PreFlightCheckResult",
     # Rollback
     "RollbackManager",
     "VersionSnapshot",
+    # v3.0: Dead Man's Switch
+    "DeadManSwitch",
+    "ProbationState",
+    "ProbationStatus",
+    "RollbackDecision",
     # Health
     "HealthMonitor",
     "HealthStatus",
@@ -129,11 +185,13 @@ __all__ = [
     "SupervisorNarrator",
     "NarratorEvent",
     "get_narrator",
+    # v3.0: Enhanced Narrator Config
+    "SupervisorNarratorConfig",
+    "NarrationContext",
     # Startup Narrator (v19.6.0)
     "IntelligentStartupNarrator",
     "StartupPhase",
     "NarrationPriority",
-    "NarrationConfig",
     "get_startup_narrator",
     "get_phase_from_stage",
     "narrate_phase",
@@ -187,4 +245,4 @@ __all__ = [
     "speak_critical",
 ]
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"  # Zero-Touch Edition

@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
-JARVIS Supervisor Entry Point - Production Grade v2.0
-======================================================
+JARVIS Supervisor Entry Point - Production Grade v3.0 (Zero-Touch Edition)
+===========================================================================
 
 Advanced, robust, async, parallel, intelligent, and dynamic supervisor entry point.
 
-Features:
+v3.0 Zero-Touch Features:
+- Autonomous self-updating without human intervention
+- Dead Man's Switch for post-update stability verification
+- Prime Directives (immutable safety constraints)
+- Update classification (security/critical/minor/major)
+- Staging area with dry-run validation
+- AGI OS integration for intelligent decision making
+
+Core Features:
 - Parallel process discovery and termination with cascade strategy
 - Async resource validation (memory, disk, ports, network)
 - Dynamic configuration with environment variable overrides
@@ -20,9 +28,20 @@ Architecture:
     ┌─────────────────────────────────────────────────────────────┐
     │  SupervisorBootstrapper (this file)                         │
     │  ├── ParallelProcessCleaner (async process termination)     │
-    │  ├── SystemResourceValidator (pre-flight checks)            │
+    │  ├── IntelligentResourceOrchestrator (pre-flight checks)    │
     │  ├── DynamicConfigLoader (env + yaml + defaults)            │
+    │  ├── AGIOSBridge (intelligent decision propagation)         │
     │  └── IntelligentStartupOrchestrator (phased initialization) │
+    └─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+    ┌─────────────────────────────────────────────────────────────┐
+    │  JARVISSupervisor (core/supervisor/jarvis_supervisor.py)     │
+    │  ├── ZeroTouchEngine (autonomous updates)                   │
+    │  ├── DeadManSwitch (stability verification)                 │
+    │  ├── UpdateEngine (staging, validation, classification)     │
+    │  ├── RollbackManager (version history, snapshots)           │
+    │  └── SupervisorNarrator v3.0 (intelligent voice feedback)   │
     └─────────────────────────────────────────────────────────────┘
 
 Usage:
@@ -38,8 +57,17 @@ Usage:
     # Skip resource validation (faster startup)
     SKIP_RESOURCE_CHECK=true python run_supervisor.py
 
+    # Enable Zero-Touch autonomous updates
+    JARVIS_ZERO_TOUCH_ENABLED=true python run_supervisor.py
+
+    # Configure Dead Man's Switch probation period
+    JARVIS_DMS_PROBATION_SECONDS=60 python run_supervisor.py
+
+    # Require idle system before auto-updates
+    JARVIS_ZERO_TOUCH_REQUIRE_IDLE=true python run_supervisor.py
+
 Author: JARVIS System
-Version: 2.0.0
+Version: 3.0.0
 """
 
 from __future__ import annotations
@@ -112,6 +140,26 @@ class BootstrapConfig:
         Path("/tmp/jarvis.pid"),
         Path("/tmp/jarvis_supervisor.pid"),
     ])
+    
+    # =========================================================================
+    # v3.0: Zero-Touch Autonomous Update Settings
+    # =========================================================================
+    zero_touch_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_ENABLED", "false").lower() == "true")
+    zero_touch_require_idle: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_REQUIRE_IDLE", "true").lower() == "true")
+    zero_touch_check_busy: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_CHECK_BUSY", "true").lower() == "true")
+    zero_touch_auto_security: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_SECURITY", "true").lower() == "true")
+    zero_touch_auto_critical: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_CRITICAL", "true").lower() == "true")
+    zero_touch_auto_minor: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_MINOR", "true").lower() == "true")
+    zero_touch_auto_major: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_MAJOR", "false").lower() == "true")
+    
+    # Dead Man's Switch settings
+    dms_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_DMS_ENABLED", "true").lower() == "true")
+    dms_probation_seconds: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_PROBATION_SECONDS", "30")))
+    dms_max_failures: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_MAX_FAILURES", "3")))
+    
+    # AGI OS integration
+    agi_os_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_ENABLED", "true").lower() == "true")
+    agi_os_approval_for_updates: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_APPROVAL_UPDATES", "false").lower() == "true")
 
 
 class StartupPhase(Enum):
@@ -956,13 +1004,16 @@ class TerminalUI:
         """Print an engaging startup banner."""
         print()
         print(f"{cls.CYAN}{'=' * 65}{cls.RESET}")
-        print(f"{cls.CYAN}{' ' * 15}⚡ JARVIS LIFECYCLE SUPERVISOR ⚡{' ' * 15}{cls.RESET}")
+        print(f"{cls.CYAN}{' ' * 10}⚡ JARVIS LIFECYCLE SUPERVISOR v3.0 ⚡{' ' * 10}{cls.RESET}")
+        print(f"{cls.CYAN}{' ' * 18}Zero-Touch Edition{' ' * 18}{cls.RESET}")
         print(f"{cls.CYAN}{'=' * 65}{cls.RESET}")
         print()
-        print(f"  {cls.YELLOW}🤖 Self-Updating • Self-Healing • Autonomous{cls.RESET}")
+        print(f"  {cls.YELLOW}🤖 Self-Updating • Self-Healing • Autonomous • AGI-Powered{cls.RESET}")
         print()
         print(f"  {cls.GRAY}The Living OS - Manages updates, restarts, and rollbacks")
         print(f"  while keeping JARVIS online and responsive.{cls.RESET}")
+        print()
+        print(f"  {cls.GRAY}Zero-Touch: Autonomous updates with Dead Man's Switch{cls.RESET}")
         print()
         print(f"{cls.CYAN}{'-' * 65}{cls.RESET}")
         print()
@@ -1167,6 +1218,12 @@ class SupervisorBootstrapper:
             # Propagate warnings for downstream handling
             if resources.warnings:
                 os.environ["JARVIS_STARTUP_WARNINGS"] = "|".join(resources.warnings[:5])
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v3.0: Propagate Zero-Touch & AGI OS Settings to Child Processes
+            # ═══════════════════════════════════════════════════════════════════
+            await self._propagate_zero_touch_settings()
+            await self._propagate_agi_os_settings()
 
             self.perf.end("validation")
 
@@ -1420,6 +1477,55 @@ class SupervisorBootstrapper:
         signal.signal(signal.SIGTERM, handle_signal)
         # SIGINT is handled by KeyboardInterrupt
     
+    async def _propagate_zero_touch_settings(self) -> None:
+        """
+        Propagate Zero-Touch settings to child processes via environment variables.
+        
+        These are read by JARVISSupervisor to configure autonomous update behavior.
+        """
+        # Zero-Touch master switch
+        if self.config.zero_touch_enabled:
+            os.environ["JARVIS_ZERO_TOUCH_ENABLED"] = "true"
+            self.logger.info("🤖 Zero-Touch autonomous updates ENABLED")
+            
+            # Propagate individual settings
+            os.environ["JARVIS_ZERO_TOUCH_REQUIRE_IDLE"] = str(self.config.zero_touch_require_idle).lower()
+            os.environ["JARVIS_ZERO_TOUCH_CHECK_BUSY"] = str(self.config.zero_touch_check_busy).lower()
+            os.environ["JARVIS_ZERO_TOUCH_AUTO_SECURITY"] = str(self.config.zero_touch_auto_security).lower()
+            os.environ["JARVIS_ZERO_TOUCH_AUTO_CRITICAL"] = str(self.config.zero_touch_auto_critical).lower()
+            os.environ["JARVIS_ZERO_TOUCH_AUTO_MINOR"] = str(self.config.zero_touch_auto_minor).lower()
+            os.environ["JARVIS_ZERO_TOUCH_AUTO_MAJOR"] = str(self.config.zero_touch_auto_major).lower()
+        
+        # Dead Man's Switch settings
+        if self.config.dms_enabled:
+            os.environ["JARVIS_DMS_ENABLED"] = "true"
+            os.environ["JARVIS_DMS_PROBATION_SECONDS"] = str(self.config.dms_probation_seconds)
+            os.environ["JARVIS_DMS_MAX_FAILURES"] = str(self.config.dms_max_failures)
+            self.logger.info(f"🎯 Dead Man's Switch: {self.config.dms_probation_seconds}s probation")
+    
+    async def _propagate_agi_os_settings(self) -> None:
+        """
+        Propagate AGI OS settings for intelligent integration.
+        
+        When enabled, AGI OS can:
+        - Use VoiceApprovalManager for update consent
+        - Push update events to ProactiveEventStream
+        - Leverage IntelligentActionOrchestrator for optimal timing
+        """
+        if self.config.agi_os_enabled:
+            os.environ["JARVIS_AGI_OS_ENABLED"] = "true"
+            
+            if self.config.agi_os_approval_for_updates:
+                os.environ["JARVIS_AGI_OS_APPROVAL_UPDATES"] = "true"
+                self.logger.info("🧠 AGI OS: Voice approval for updates ENABLED")
+            
+            # Check if AGI OS is available
+            try:
+                from backend.agi_os import get_agi_os
+                self.logger.info("🧠 AGI OS module available - will integrate with supervisor")
+            except ImportError:
+                self.logger.debug("AGI OS module not available - supervisor will operate independently")
+    
     def _print_config_summary(self, supervisor) -> None:
         """Print supervisor configuration summary."""
         config = supervisor.config
@@ -1428,11 +1534,21 @@ class SupervisorBootstrapper:
         idle_status = f"Enabled ({config.idle.threshold_seconds // 3600}h threshold)" if config.idle.enabled else "Disabled"
         rollback_status = "Enabled" if config.rollback.auto_on_boot_failure else "Disabled"
         
+        # v3.0: Zero-Touch status
+        zero_touch_status = "Enabled" if self.config.zero_touch_enabled else "Disabled"
+        dms_status = f"Enabled ({self.config.dms_probation_seconds}s)" if self.config.dms_enabled else "Disabled"
+        
         TerminalUI.print_info("Mode", config.mode.value.upper(), highlight=True)
         TerminalUI.print_info("Update Check", update_status)
         TerminalUI.print_info("Idle Updates", idle_status)
         TerminalUI.print_info("Auto-Rollback", rollback_status)
         TerminalUI.print_info("Max Retries", str(config.health.max_crash_retries))
+        
+        # v3.0: Zero-Touch info
+        TerminalUI.print_info("Zero-Touch", zero_touch_status, highlight=self.config.zero_touch_enabled)
+        TerminalUI.print_info("Dead Man's Switch", dms_status)
+        TerminalUI.print_info("AGI OS Integration", "Enabled" if self.config.agi_os_enabled else "Disabled")
+        
         TerminalUI.print_info("Loading Page", f"Enabled (port {self.config.required_ports[2]})", highlight=True)
         TerminalUI.print_info("Voice Narration", "Enabled" if self.config.voice_enabled else "Disabled", highlight=True)
 

@@ -1,5 +1,5 @@
 /**
- * JARVIS Advanced Loading Manager v5.0
+ * JARVIS Advanced Loading Manager v5.1 - Zero-Touch Edition
  *
  * ARCHITECTURE: Display-only client that trusts start_system.py as authority
  *
@@ -24,6 +24,12 @@
  * - Request deduplication and throttling
  * - Epic cinematic completion animation
  * - Quick sanity check before redirect (safety net only)
+ * 
+ * v5.1 Zero-Touch Features:
+ * - Zero-Touch autonomous update stage tracking
+ * - Dead Man's Switch monitoring display
+ * - Update validation progress
+ * - DMS rollback stage handling
  */
 
 class JARVISLoadingManager {
@@ -403,6 +409,71 @@ class JARVISLoadingManager {
                 phase: 'error',
                 expectedProgress: [0, 0],
                 substeps: ['Error occurred']
+            },
+            
+            // === v3.0: ZERO-TOUCH AUTONOMOUS UPDATE STAGES ===
+            'zero_touch_initiated': {
+                name: 'Zero-Touch Update',
+                icon: '🤖',
+                phase: 'zero_touch',
+                expectedProgress: [0, 10],
+                substeps: ['Autonomous update initiated', 'Preparing update']
+            },
+            'zero_touch_staging': {
+                name: 'Staging Update',
+                icon: '📦',
+                phase: 'zero_touch',
+                expectedProgress: [10, 30],
+                substeps: ['Downloading changes', 'Creating staging area']
+            },
+            'zero_touch_validating': {
+                name: 'Validating Code',
+                icon: '🔍',
+                phase: 'zero_touch',
+                expectedProgress: [30, 50],
+                substeps: ['Syntax check', 'Import validation', 'Dependency check']
+            },
+            'zero_touch_validation_passed': {
+                name: 'Validation Passed',
+                icon: '✓',
+                phase: 'zero_touch',
+                expectedProgress: [50, 55],
+                substeps: ['All checks passed', 'Ready to apply']
+            },
+            'zero_touch_applying': {
+                name: 'Applying Update',
+                icon: '⚡',
+                phase: 'zero_touch',
+                expectedProgress: [55, 70],
+                substeps: ['Merging changes', 'Updating dependencies']
+            },
+            'zero_touch_restarting': {
+                name: 'Restarting JARVIS',
+                icon: '🔄',
+                phase: 'zero_touch',
+                expectedProgress: [70, 85],
+                substeps: ['Shutting down', 'Starting new version']
+            },
+            'dms_monitoring': {
+                name: 'Stability Monitor',
+                icon: '🎯',
+                phase: 'zero_touch',
+                expectedProgress: [85, 95],
+                substeps: ['Dead Man\'s Switch active', 'Verifying stability']
+            },
+            'dms_passed': {
+                name: 'Update Stable',
+                icon: '✅',
+                phase: 'complete',
+                expectedProgress: [95, 100],
+                substeps: ['Version committed as stable']
+            },
+            'dms_rollback': {
+                name: 'Rolling Back',
+                icon: '⏪',
+                phase: 'zero_touch',
+                expectedProgress: [85, 90],
+                substeps: ['Stability check failed', 'Reverting to previous version']
             }
         };
 
@@ -652,6 +723,12 @@ class JARVISLoadingManager {
             .detailed-status-panel .phase-value.ready { color: #00ffff; background: rgba(0, 255, 255, 0.1); }
             .detailed-status-panel .phase-value.complete { color: #00ff41; background: rgba(0, 255, 65, 0.15); }
             .detailed-status-panel .phase-value.error { color: #ff4444; background: rgba(255, 68, 68, 0.1); }
+            .detailed-status-panel .phase-value.zero_touch { color: #00aaff; background: rgba(0, 170, 255, 0.15); animation: ztPulse 1.5s ease-in-out infinite; }
+            
+            @keyframes ztPulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.7; }
+            }
             
             .detailed-status-panel .stage-header {
                 display: flex;
@@ -1561,7 +1638,8 @@ class JARVISLoadingManager {
                     'initialization': 'Initialization',
                     'ready': 'Ready',
                     'complete': 'Complete',
-                    'error': 'Error'
+                    'error': 'Error',
+                    'zero_touch': 'Zero-Touch Update'
                 };
                 phaseValue.textContent = phaseNames[phase] || phase;
                 phaseValue.className = `phase-value ${phase}`;

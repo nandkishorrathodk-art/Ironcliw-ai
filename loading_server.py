@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-JARVIS Loading Server v3.0 - Production-Grade Startup Progress Server
-======================================================================
+JARVIS Loading Server v4.0 - Zero-Touch Edition
+================================================
 
 Serves the loading page independently from frontend/backend during restart.
 Provides real-time progress updates via WebSocket and HTTP polling.
 
-Features:
+Core Features:
 - Monotonic progress enforcement (never decreases)
 - CORS support for cross-origin requests
 - WebSocket for real-time updates with heartbeat
@@ -17,6 +17,14 @@ Features:
 - Dynamic configuration from environment
 - Graceful degradation and recovery
 - Request queuing for burst handling
+
+v4.0 Zero-Touch Features:
+- Zero-Touch autonomous update stage tracking
+- Dead Man's Switch (DMS) status broadcasting
+- Update classification awareness (security/critical/minor/major)
+- Validation progress and results display
+- Supervisor event integration
+- AGI OS status relay
 
 Port: 3001 (separate from frontend:3000 and backend:8010)
 """
@@ -272,11 +280,70 @@ metrics = ServerMetrics()
 # =============================================================================
 
 @dataclass
+class ZeroTouchState:
+    """
+    v4.0: Zero-Touch autonomous update state tracking.
+    """
+    active: bool = False
+    state: str = "idle"  # initiated, staging, validating, applying, dms_monitoring, complete, failed
+    classification: Optional[str] = None  # security, critical, minor, major, patch
+    message: str = ""
+    validation_progress: float = 0.0
+    files_validated: int = 0
+    total_files: int = 0
+    commits: int = 0
+    files_changed: int = 0
+    validation_report: Optional[Dict] = None
+    started_at: Optional[datetime] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "state": self.state,
+            "classification": self.classification,
+            "message": self.message,
+            "validationProgress": self.validation_progress,
+            "filesValidated": self.files_validated,
+            "totalFiles": self.total_files,
+            "commits": self.commits,
+            "filesChanged": self.files_changed,
+            "validationReport": self.validation_report,
+            "startedAt": self.started_at.isoformat() if self.started_at else None,
+        }
+
+
+@dataclass
+class DMSState:
+    """
+    v4.0: Dead Man's Switch state tracking.
+    """
+    active: bool = False
+    state: str = "idle"  # monitoring, passed, rolling_back
+    health_score: float = 1.0
+    probation_remaining: float = 0.0
+    probation_total: float = 30.0
+    consecutive_failures: int = 0
+    started_at: Optional[datetime] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "state": self.state,
+            "healthScore": self.health_score,
+            "probationRemaining": self.probation_remaining,
+            "probationTotal": self.probation_total,
+            "consecutiveFailures": self.consecutive_failures,
+            "startedAt": self.started_at.isoformat() if self.started_at else None,
+        }
+
+
+@dataclass
 class ProgressState:
     """
     Thread-safe progress state with history tracking.
 
     v2.0 - Enhanced to sync with UnifiedStartupProgressHub.
+    v4.0 - Added Zero-Touch and DMS state tracking.
     All state is now received from the hub as the single source of truth.
     """
 
@@ -298,11 +365,19 @@ class ProgressState:
     # ETag for caching
     _etag: Optional[str] = None
 
-    # NEW: Hub sync fields
+    # Hub sync fields
     is_ready: bool = False
     components_ready: int = 0
     total_components: int = 0
     phase: str = "initializing"
+    
+    # v4.0: Zero-Touch state
+    zero_touch: ZeroTouchState = field(default_factory=ZeroTouchState)
+    dms: DMSState = field(default_factory=DMSState)
+    
+    # v4.0: Supervisor integration
+    supervisor_connected: bool = False
+    agi_os_enabled: bool = False
 
     def update(self, stage: str, message: str, progress: float, metadata: Optional[Dict] = None) -> bool:
         """Update progress with monotonic enforcement. Returns True if progress changed."""
@@ -345,6 +420,38 @@ class ProgressState:
                 self.backend_ready = metadata['backend_ready']
             if 'frontend_ready' in metadata:
                 self.frontend_ready = metadata['frontend_ready']
+            
+            # v4.0: Zero-Touch state processing
+            if 'zero_touch' in metadata:
+                zt = metadata['zero_touch']
+                self.zero_touch.active = zt.get('active', False)
+                self.zero_touch.state = zt.get('state', self.zero_touch.state)
+                self.zero_touch.classification = zt.get('classification')
+                self.zero_touch.message = zt.get('message', '')
+                self.zero_touch.validation_progress = zt.get('validation_progress', 0.0)
+                self.zero_touch.files_validated = zt.get('files_validated', 0)
+                self.zero_touch.total_files = zt.get('total_files', 0)
+                self.zero_touch.commits = zt.get('commits', 0)
+                self.zero_touch.files_changed = zt.get('files_changed', 0)
+                self.zero_touch.validation_report = zt.get('validation_report')
+                if zt.get('started_at'):
+                    self.zero_touch.started_at = datetime.fromisoformat(zt['started_at'])
+            
+            # v4.0: DMS state processing
+            if 'dms' in metadata:
+                dms = metadata['dms']
+                self.dms.active = dms.get('active', False)
+                self.dms.state = dms.get('state', self.dms.state)
+                self.dms.health_score = dms.get('health_score', 1.0)
+                self.dms.probation_remaining = dms.get('probation_remaining', 0.0)
+                self.dms.probation_total = dms.get('probation_total', 30.0)
+                self.dms.consecutive_failures = dms.get('consecutive_failures', 0)
+            
+            # v4.0: Supervisor integration
+            if 'supervisor_connected' in metadata:
+                self.supervisor_connected = metadata['supervisor_connected']
+            if 'agi_os_enabled' in metadata:
+                self.agi_os_enabled = metadata['agi_os_enabled']
 
         # Track history
         self.history.append({
@@ -382,7 +489,12 @@ class ProgressState:
             "websocket_ready": self.websocket_ready,
             "is_ready": self.is_ready,
             "components_ready": self.components_ready,
-            "total_components": self.total_components
+            "total_components": self.total_components,
+            # v4.0: Zero-Touch state
+            "zero_touch": self.zero_touch.to_dict(),
+            "dms": self.dms.to_dict(),
+            "supervisor_connected": self.supervisor_connected,
+            "agi_os_enabled": self.agi_os_enabled,
         }
 
 
@@ -872,6 +984,254 @@ async def handle_options(request: web.Request) -> web.Response:
 
 
 # =============================================================================
+# v4.0: Zero-Touch Update Endpoints
+# =============================================================================
+
+async def get_zero_touch_status(request: web.Request) -> web.Response:
+    """
+    v4.0: Get Zero-Touch autonomous update status.
+    
+    Returns the current state of any Zero-Touch update in progress,
+    including validation status and DMS monitoring.
+    """
+    return web.json_response({
+        "zero_touch": progress_state.zero_touch.to_dict(),
+        "dms": progress_state.dms.to_dict(),
+        "supervisor_connected": progress_state.supervisor_connected,
+        "agi_os_enabled": progress_state.agi_os_enabled,
+    })
+
+
+async def update_zero_touch_status(request: web.Request) -> web.Response:
+    """
+    v4.0: Update Zero-Touch state from supervisor.
+    
+    Called by the JARVISSupervisor to broadcast Zero-Touch update progress.
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+        
+        # Map event to state
+        event_state_map = {
+            'zero_touch_initiated': 'initiated',
+            'zero_touch_staging': 'staging',
+            'zero_touch_validating': 'validating',
+            'zero_touch_validation_complete': 'applying' if data.get('passed') else 'validation_failed',
+            'zero_touch_applying': 'applying',
+            'zero_touch_complete': 'dms_monitoring',
+            'zero_touch_failed': 'failed',
+        }
+        
+        new_state = event_state_map.get(event_type, progress_state.zero_touch.state)
+        
+        # Update Zero-Touch state
+        progress_state.zero_touch.active = data.get('active', event_type != 'zero_touch_failed')
+        progress_state.zero_touch.state = new_state
+        progress_state.zero_touch.classification = data.get('classification', progress_state.zero_touch.classification)
+        progress_state.zero_touch.message = data.get('message', '')
+        progress_state.zero_touch.validation_progress = data.get('validation_progress', progress_state.zero_touch.validation_progress)
+        progress_state.zero_touch.files_validated = data.get('files_validated', progress_state.zero_touch.files_validated)
+        progress_state.zero_touch.total_files = data.get('total_files', progress_state.zero_touch.total_files)
+        progress_state.zero_touch.commits = data.get('commits', progress_state.zero_touch.commits)
+        progress_state.zero_touch.files_changed = data.get('files_changed', progress_state.zero_touch.files_changed)
+        
+        if event_type == 'zero_touch_initiated':
+            progress_state.zero_touch.started_at = datetime.now()
+        
+        if data.get('validation_report'):
+            progress_state.zero_touch.validation_report = data['validation_report']
+        
+        # Broadcast to all WebSocket clients
+        broadcast_data = {
+            "type": event_type,
+            **data,
+            "zero_touch": progress_state.zero_touch.to_dict(),
+        }
+        await connection_manager.broadcast(broadcast_data)
+        
+        logger.info(f"[Zero-Touch] {event_type}: {progress_state.zero_touch.message}")
+        
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "zero_touch": progress_state.zero_touch.to_dict(),
+        })
+        
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Zero-Touch] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def update_dms_status(request: web.Request) -> web.Response:
+    """
+    v4.0: Update Dead Man's Switch status from supervisor.
+    
+    Called by the JARVISSupervisor to broadcast DMS heartbeats and state changes.
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'dms_heartbeat')
+        
+        # Update DMS state
+        if event_type == 'dms_probation_start':
+            progress_state.dms.active = True
+            progress_state.dms.state = 'monitoring'
+            progress_state.dms.probation_total = data.get('probation_seconds', 30.0)
+            progress_state.dms.probation_remaining = progress_state.dms.probation_total
+            progress_state.dms.started_at = datetime.now()
+            progress_state.dms.health_score = 1.0
+            progress_state.dms.consecutive_failures = 0
+            
+        elif event_type == 'dms_heartbeat':
+            progress_state.dms.health_score = data.get('health_score', progress_state.dms.health_score)
+            progress_state.dms.probation_remaining = data.get('remaining_seconds', progress_state.dms.probation_remaining)
+            progress_state.dms.consecutive_failures = data.get('consecutive_failures', progress_state.dms.consecutive_failures)
+            
+        elif event_type == 'dms_probation_passed':
+            progress_state.dms.active = False
+            progress_state.dms.state = 'passed'
+            progress_state.dms.probation_remaining = 0.0
+            progress_state.zero_touch.active = False
+            progress_state.zero_touch.state = 'complete'
+            
+        elif event_type == 'dms_rollback_triggered':
+            progress_state.dms.state = 'rolling_back'
+            
+        elif event_type == 'dms_rollback_complete':
+            progress_state.dms.active = False
+            progress_state.dms.state = 'idle'
+            progress_state.zero_touch.active = False
+            progress_state.zero_touch.state = 'idle'
+        
+        # Broadcast to all WebSocket clients
+        broadcast_data = {
+            "type": event_type,
+            **data,
+            "dms": progress_state.dms.to_dict(),
+        }
+        await connection_manager.broadcast(broadcast_data)
+        
+        if event_type != 'dms_heartbeat':
+            logger.info(f"[DMS] {event_type}: {data.get('message', '')}")
+        
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "dms": progress_state.dms.to_dict(),
+        })
+        
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[DMS] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def supervisor_event_handler(request: web.Request) -> web.Response:
+    """
+    v4.0: Unified supervisor event handler.
+    
+    Handles all supervisor events including:
+    - Zero-Touch updates
+    - DMS status
+    - Maintenance mode
+    - System online/offline
+    - Prime directive violations
+    
+    This is the main integration point between JARVISSupervisor and the loading server.
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('type', data.get('event', 'unknown'))
+        
+        # Mark supervisor as connected
+        progress_state.supervisor_connected = True
+        
+        # Route to appropriate handler based on event type
+        if event_type.startswith('zero_touch_'):
+            # Zero-Touch events
+            progress_state.zero_touch.active = event_type != 'zero_touch_failed'
+            if event_type == 'zero_touch_initiated':
+                progress_state.zero_touch.state = 'initiated'
+                progress_state.zero_touch.started_at = datetime.now()
+            elif event_type == 'zero_touch_staging':
+                progress_state.zero_touch.state = 'staging'
+            elif event_type == 'zero_touch_validating':
+                progress_state.zero_touch.state = 'validating'
+                progress_state.zero_touch.validation_progress = data.get('progress', 0)
+                progress_state.zero_touch.files_validated = data.get('files_validated', 0)
+                progress_state.zero_touch.total_files = data.get('total_files', 0)
+            elif event_type == 'zero_touch_applying':
+                progress_state.zero_touch.state = 'applying'
+            elif event_type == 'zero_touch_complete':
+                progress_state.zero_touch.state = 'dms_monitoring'
+            elif event_type == 'zero_touch_failed':
+                progress_state.zero_touch.state = 'failed'
+                progress_state.zero_touch.active = False
+            
+            progress_state.zero_touch.message = data.get('message', '')
+            progress_state.zero_touch.classification = data.get('classification', progress_state.zero_touch.classification)
+            
+        elif event_type.startswith('dms_'):
+            # DMS events
+            if event_type == 'dms_probation_start':
+                progress_state.dms.active = True
+                progress_state.dms.state = 'monitoring'
+                progress_state.dms.probation_total = data.get('probation_seconds', 30)
+                progress_state.dms.probation_remaining = progress_state.dms.probation_total
+                progress_state.dms.started_at = datetime.now()
+            elif event_type == 'dms_heartbeat':
+                progress_state.dms.health_score = data.get('health_score', 1.0)
+                progress_state.dms.probation_remaining = data.get('remaining_seconds', 0)
+                progress_state.dms.consecutive_failures = data.get('consecutive_failures', 0)
+            elif event_type == 'dms_probation_passed':
+                progress_state.dms.active = False
+                progress_state.dms.state = 'passed'
+                progress_state.zero_touch.state = 'complete'
+                progress_state.zero_touch.active = False
+            elif event_type == 'dms_rollback_triggered':
+                progress_state.dms.state = 'rolling_back'
+            elif event_type == 'dms_rollback_complete':
+                progress_state.dms.active = False
+                progress_state.dms.state = 'idle'
+                progress_state.zero_touch.active = False
+                
+        elif event_type == 'system_updating':
+            # Enter maintenance mode for update
+            progress_state.phase = 'maintenance'
+            progress_state.message = data.get('message', 'Updating JARVIS...')
+            
+        elif event_type == 'system_online':
+            # System back online
+            progress_state.phase = 'ready'
+            progress_state.is_ready = True
+            
+        elif event_type == 'agi_os_status':
+            # AGI OS status update
+            progress_state.agi_os_enabled = data.get('enabled', False)
+        
+        # Broadcast to all WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "zero_touch": progress_state.zero_touch.to_dict(),
+            "dms": progress_state.dms.to_dict(),
+        })
+        
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "processed": True,
+        })
+        
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Supervisor Event] Error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+# =============================================================================
 # Watchdog System
 # =============================================================================
 
@@ -1008,6 +1368,12 @@ def create_app() -> web.Application:
     app.router.add_get('/api/startup-progress/ready', get_ready_status)
     app.router.add_get('/api/progress-history', get_progress_history)
     app.router.add_post('/api/update-progress', update_progress_endpoint)
+    
+    # v4.0: Zero-Touch and supervisor endpoints
+    app.router.add_get('/api/zero-touch/status', get_zero_touch_status)
+    app.router.add_post('/api/zero-touch/update', update_zero_touch_status)
+    app.router.add_post('/api/dms/update', update_dms_status)
+    app.router.add_post('/api/supervisor/event', supervisor_event_handler)
 
     # CORS preflight
     app.router.add_route('OPTIONS', '/{path:.*}', handle_options)
@@ -1042,7 +1408,7 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     resolved_manager = path_resolver.resolve("loading-manager.js")
 
     logger.info(f"{'='*60}")
-    logger.info(f" JARVIS Loading Server v3.0 - Dynamic & Robust")
+    logger.info(f" JARVIS Loading Server v4.0 - Zero-Touch Edition")
     logger.info(f"{'='*60}")
     logger.info(f" Server:      http://{host}:{port}")
     logger.info(f" WebSocket:   ws://{host}:{port}/ws/startup-progress")
@@ -1053,10 +1419,16 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     logger.info(f"   loading-manager.js: {'✓' if resolved_manager else '✗'} {resolved_manager or 'NOT FOUND'}")
     logger.info(f"   Search paths:      {len(path_resolver.search_paths)}")
     logger.info(f"{'='*60}")
+    logger.info(f" v4.0 Zero-Touch Endpoints:")
+    logger.info(f"   GET  /api/zero-touch/status")
+    logger.info(f"   POST /api/zero-touch/update")
+    logger.info(f"   POST /api/dms/update")
+    logger.info(f"   POST /api/supervisor/event")
+    logger.info(f"{'='*60}")
     logger.info(f" CORS:        Enabled for all origins")
     logger.info(f" Rate Limit:  {config.rate_limit_requests} req/{config.rate_limit_window}s")
     logger.info(f" Max WS:      {config.ws_max_connections} connections")
-    logger.info(f" Mode:        RELAY (start_system.py is authority)")
+    logger.info(f" Mode:        RELAY (start_system.py + supervisor as authority)")
     logger.info(f"{'='*60}")
 
     return runner
@@ -1296,6 +1668,142 @@ class StartupProgressReporter:
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
+    
+    # =========================================================================
+    # v4.0: Zero-Touch Update Reporting
+    # =========================================================================
+    
+    async def zero_touch_event(
+        self,
+        event_type: str,
+        message: str = "",
+        classification: Optional[str] = None,
+        validation_progress: float = 0.0,
+        files_validated: int = 0,
+        total_files: int = 0,
+        commits: int = 0,
+        files_changed: int = 0,
+        validation_report: Optional[Dict] = None,
+        **kwargs
+    ) -> bool:
+        """
+        v4.0: Report Zero-Touch autonomous update event.
+        
+        Args:
+            event_type: One of: zero_touch_initiated, zero_touch_staging, 
+                       zero_touch_validating, zero_touch_applying, 
+                       zero_touch_complete, zero_touch_failed
+            message: Human-readable status message
+            classification: Update type (security/critical/minor/major/patch)
+            validation_progress: Validation progress (0-100)
+            files_validated: Number of files validated
+            total_files: Total files to validate
+            commits: Number of commits in update
+            files_changed: Number of files changed
+            validation_report: Validation results dict
+        """
+        if not self._enabled:
+            return False
+        
+        payload = {
+            "event": event_type,
+            "message": message,
+            "classification": classification,
+            "validation_progress": validation_progress,
+            "files_validated": files_validated,
+            "total_files": total_files,
+            "commits": commits,
+            "files_changed": files_changed,
+            "validation_report": validation_report,
+            "active": event_type != 'zero_touch_failed',
+            **kwargs
+        }
+        
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/zero-touch/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"Zero-Touch event failed: {e}")
+        return False
+    
+    async def dms_event(
+        self,
+        event_type: str,
+        health_score: float = 1.0,
+        remaining_seconds: float = 0.0,
+        probation_seconds: float = 30.0,
+        consecutive_failures: int = 0,
+        message: str = "",
+        **kwargs
+    ) -> bool:
+        """
+        v4.0: Report Dead Man's Switch event.
+        
+        Args:
+            event_type: One of: dms_probation_start, dms_heartbeat, 
+                       dms_probation_passed, dms_rollback_triggered, 
+                       dms_rollback_complete
+            health_score: Current health score (0.0-1.0)
+            remaining_seconds: Remaining probation time
+            probation_seconds: Total probation period
+            consecutive_failures: Number of consecutive health check failures
+            message: Human-readable status message
+        """
+        if not self._enabled:
+            return False
+        
+        payload = {
+            "event": event_type,
+            "health_score": health_score,
+            "remaining_seconds": remaining_seconds,
+            "probation_seconds": probation_seconds,
+            "consecutive_failures": consecutive_failures,
+            "message": message,
+            **kwargs
+        }
+        
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/dms/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"DMS event failed: {e}")
+        return False
+    
+    async def supervisor_event(
+        self,
+        event_type: str,
+        **kwargs
+    ) -> bool:
+        """
+        v4.0: Report generic supervisor event.
+        
+        Args:
+            event_type: Event type identifier
+            **kwargs: Additional event data
+        """
+        if not self._enabled:
+            return False
+        
+        payload = {
+            "type": event_type,
+            **kwargs
+        }
+        
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/supervisor/event"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"Supervisor event failed: {e}")
+        return False
 
 
 # Global reporter instance
