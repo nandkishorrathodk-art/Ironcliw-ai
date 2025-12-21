@@ -10534,12 +10534,14 @@ class AsyncSystemManager:
                     cache_state = cache.state.value if hasattr(cache.state, 'value') else str(cache.state)
 
                     # Get profile details dynamically - NO hardcoding!
+                    # v7.0: Use is_primary_user field for accurate owner detection
                     preloaded = cache.get_preloaded_profiles()
                     profile_details = []
                     has_owner = False
 
                     for name, profile in preloaded.items():
-                        is_owner = profile.source == "learning_database"
+                        # v7.0 FIX: Check is_primary_user field, not source
+                        is_owner = getattr(profile, 'is_primary_user', False)
                         if is_owner:
                             has_owner = True
                         profile_details.append({

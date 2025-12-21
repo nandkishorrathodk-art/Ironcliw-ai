@@ -1228,9 +1228,10 @@ async def load_voice_auth():
                     logger.info(f"[WARMUP] ✅ Voice Biometric Intelligence ready ({vbi_profiles} profiles)")
 
                     # Log loaded profiles dynamically - no hardcoding!
+                    # v7.0: Use is_primary_user field for accurate owner detection
                     preloaded = vbi._unified_cache.get_preloaded_profiles()
                     for profile_name, profile_data in preloaded.items():
-                        is_owner = profile_data.source == "learning_database"
+                        is_owner = getattr(profile_data, 'is_primary_user', False)
                         owner_tag = " [PRIMARY OWNER]" if is_owner else ""
                         logger.info(
                             f"[WARMUP]    └─ VBI: {profile_name}{owner_tag} "
@@ -1239,8 +1240,9 @@ async def load_voice_auth():
                         )
 
                     # Verify at least one owner profile exists
+                    # v7.0 FIX: Check is_primary_user field, not source
                     has_owner = any(
-                        p.source == "learning_database"
+                        getattr(p, 'is_primary_user', False)
                         for p in preloaded.values()
                     )
                     if not has_owner and vbi_profiles > 0:

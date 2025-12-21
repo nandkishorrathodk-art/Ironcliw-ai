@@ -273,6 +273,10 @@ class VoiceProfile:
     last_verified: Optional[datetime] = None
     created_at: datetime = field(default_factory=datetime.now)
     source: str = "database"
+    
+    # v7.0: Owner detection - CRITICAL for voice unlock
+    # This field is loaded from `is_primary_user` in the database
+    is_primary_user: bool = False
 
     # Voice evolution tracking
     baseline_embedding: Optional[np.ndarray] = None
@@ -1233,6 +1237,7 @@ class UnifiedVoiceCacheManager:
                                 total_samples=profile_data.total_samples,
                                 avg_confidence=profile_data.recognition_confidence,
                                 source=profile_data.source.value,
+                                is_primary_user=profile_data.is_primary_user,  # v7.0: Store owner status
                             )
                             self._preloaded_profiles[speaker_name] = profile
                             loaded += 1
@@ -1262,6 +1267,7 @@ class UnifiedVoiceCacheManager:
                                 total_samples=profile_data.total_samples,
                                 avg_confidence=profile_data.recognition_confidence,
                                 source=profile_data.source.value,
+                                is_primary_user=profile_data.is_primary_user,  # v7.0: Store owner status
                             )
                             
                             # Copy acoustic features if available
@@ -1393,6 +1399,7 @@ class UnifiedVoiceCacheManager:
                             total_samples=samples,
                             avg_confidence=confidence,
                             source="learning_database",
+                            is_primary_user=bool(is_primary),  # v7.0: Store owner status
                         )
 
                         if updated_at:
@@ -1585,6 +1592,7 @@ class UnifiedVoiceCacheManager:
                                 if len(embedding) < 50:
                                     continue
                                 
+                                is_owner = bool(row.get('is_primary_user', 0))
                                 profile = VoiceProfile(
                                     speaker_name=speaker_name,
                                     embedding=embedding,
@@ -1592,12 +1600,13 @@ class UnifiedVoiceCacheManager:
                                     total_samples=row.get('total_samples', 0),
                                     avg_confidence=row.get('recognition_confidence', 0.0),
                                     source="cloudsql",
+                                    is_primary_user=is_owner,  # v7.0: Store owner status
                                 )
                                 
                                 self._preloaded_profiles[speaker_name] = profile
                                 loaded += 1
                                 
-                                owner_tag = " [OWNER]" if row.get('is_primary_user') else ""
+                                owner_tag = " [OWNER]" if is_owner else ""
                                 logger.info(
                                     f"✅ Loaded from CloudSQL: {speaker_name}{owner_tag} "
                                     f"(dim={len(embedding)})"
@@ -1651,6 +1660,7 @@ class UnifiedVoiceCacheManager:
                     if len(embedding) < 50:
                         continue
                     
+                    is_owner = bool(row["is_primary_user"]) if row["is_primary_user"] else False
                     profile = VoiceProfile(
                         speaker_name=speaker_name,
                         embedding=embedding,
@@ -1658,6 +1668,7 @@ class UnifiedVoiceCacheManager:
                         total_samples=row["total_samples"] or 0,
                         avg_confidence=row["recognition_confidence"] or 0.0,
                         source="learning_database_post_bootstrap",
+                        is_primary_user=is_owner,  # v7.0: Store owner status
                     )
                     
                     self._preloaded_profiles[speaker_name] = profile
@@ -2612,6 +2623,7 @@ class UnifiedVoiceCacheManager:
                             dtype=np.float32
                         )
                         if len(embedding) >= 50:
+                            is_owner = bool(profile.get('is_primary_user', False))
                             self._preloaded_profiles[profile['speaker_name']] = VoiceProfile(
                                 speaker_name=profile['speaker_name'],
                                 embedding=embedding,
@@ -2619,6 +2631,7 @@ class UnifiedVoiceCacheManager:
                                 total_samples=profile.get('total_samples', 0),
                                 avg_confidence=profile.get('recognition_confidence', 0.0),
                                 source="emergency_learning_db",
+                                is_primary_user=is_owner,  # v7.0: Store owner status
                             )
                             loaded += 1
                             
@@ -3149,8 +3162,66 @@ class UnifiedVoiceCacheManager:
     # =========================================================================
 
     def get_preloaded_profiles(self) -> Dict[str, VoiceProfile]:
-        """Get all preloaded profiles"""
-        return self._preloaded_profiles.copy()
+        """
+        Get all preloaded profiles with intelligent owner detection.
+        
+        v7.0: If there's only ONE profile and no owner is marked, automatically
+        treat that profile as the owner. This handles the common case where:
+        1. A single-user system has only one enrolled profile
+        2. The enrollment didn't explicitly set is_primary_user=True
+        
+        Returns:
+            Dict mapping speaker names to VoiceProfile objects
+        """
+        profiles = self._preloaded_profiles.copy()
+        
+        # v7.0 FIX: Intelligent owner detection
+        if profiles:
+            # Check if any profile is marked as owner
+            has_explicit_owner = any(p.is_primary_user for p in profiles.values())
+            
+            if not has_explicit_owner:
+                # No explicit owner - apply intelligent detection
+                if len(profiles) == 1:
+                    # Single profile = implicit owner
+                    single_profile = next(iter(profiles.values()))
+                    single_profile.is_primary_user = True
+                    logger.debug(
+                        f"[v7.0] Auto-detected owner: {single_profile.speaker_name} "
+                        "(only profile in system)"
+                    )
+                else:
+                    # Multiple profiles - find best candidate
+                    # Priority: highest samples > highest confidence > first created
+                    candidates = sorted(
+                        profiles.values(),
+                        key=lambda p: (p.total_samples, p.avg_confidence),
+                        reverse=True
+                    )
+                    best_candidate = candidates[0]
+                    best_candidate.is_primary_user = True
+                    logger.debug(
+                        f"[v7.0] Auto-detected owner: {best_candidate.speaker_name} "
+                        f"(best: {best_candidate.total_samples} samples, "
+                        f"{best_candidate.avg_confidence:.1%} confidence)"
+                    )
+        
+        return profiles
+
+    def get_owner_profile(self) -> Optional[VoiceProfile]:
+        """
+        Get the owner's profile, using intelligent detection.
+        
+        v7.0: Uses get_preloaded_profiles() which auto-detects owner if not set.
+        
+        Returns:
+            VoiceProfile for the owner, or None if no profiles exist
+        """
+        profiles = self.get_preloaded_profiles()
+        for profile in profiles.values():
+            if profile.is_primary_user:
+                return profile
+        return None
 
     def get_profile(self, speaker_name: str) -> Optional[VoiceProfile]:
         """Get a specific profile"""
