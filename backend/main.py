@@ -163,27 +163,41 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # Also disable telemetry
 
 # =============================================================================
-# v5.0 FIX: CENTRALIZED numba pre-import - MUST be first before ANY other imports
+# v6.0 FIX: CENTRALIZED numba pre-import - MUST be first before ANY other imports
 # =============================================================================
 # numba has threading issues when imported from multiple threads simultaneously
 # causing: "cannot import name 'get_hashable_key' from partially initialized module"
 #
-# Solution: Use centralized numba_preload module with process-level locking
+# v6.0 Solution: Use centralized numba_preload module with:
+# 1. Process-level locking (threading.Lock)
+# 2. Blocking wait mechanism (threading.Event)
+# 3. Global marker for other modules to check
+#
 # This MUST happen before parallel_import_components() or any ThreadPoolExecutor
+# Other modules use wait_for_numba() which BLOCKS until this completes
 # =============================================================================
+_numba_init_success = False
 try:
-    from core.numba_preload import ensure_numba_initialized, get_numba_status
+    from core.numba_preload import (
+        ensure_numba_initialized, 
+        get_numba_status,
+        set_numba_bypass_marker
+    )
     
-    # This blocks until numba is fully initialized in THIS thread
-    success = ensure_numba_initialized(timeout=30.0)
-    status = get_numba_status()
+    # This blocks until numba is fully initialized in THIS thread (main thread)
+    # Other threads that call wait_for_numba() will BLOCK until this completes
+    _numba_init_success = ensure_numba_initialized(timeout=30.0)
+    _numba_status = get_numba_status()
     
-    if success:
-        print(f"[STARTUP] numba {status['version']} pre-initialized via centralized loader")
-    elif status['status'] == 'not_installed':
+    # Set global marker so other modules know initialization was attempted
+    set_numba_bypass_marker()
+    
+    if _numba_init_success:
+        print(f"[STARTUP] ✅ numba {_numba_status['version']} pre-initialized via centralized loader (main thread)")
+    elif _numba_status['status'] == 'not_installed':
         print("[STARTUP] numba not installed (optional)")
     else:
-        print(f"[STARTUP] numba pre-initialization issue: {status.get('error', 'unknown')}")
+        print(f"[STARTUP] ⚠️ numba pre-initialization issue: {_numba_status.get('error', 'unknown')}")
         
 except ImportError:
     # If core.numba_preload doesn't exist yet, fall back to direct import
@@ -195,15 +209,20 @@ except ImportError:
         from numba.core import utils as _numba_utils
         if hasattr(_numba_utils, 'get_hashable_key'):
             _ = _numba_utils.get_hashable_key
-        print(f"[STARTUP] numba {numba.__version__} pre-initialized (fallback)")
+        print(f"[STARTUP] ✅ numba {numba.__version__} pre-initialized (fallback)")
         os.environ.pop('NUMBA_DISABLE_JIT', None)
         os.environ.pop('NUMBA_NUM_THREADS', None)
+        _numba_init_success = True
+        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
     except ImportError:
         print("[STARTUP] numba not installed (optional)")
+        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
     except Exception as e:
-        print(f"[STARTUP] numba pre-import fallback warning: {e}")
+        print(f"[STARTUP] ⚠️ numba pre-import fallback warning: {e}")
+        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
 except Exception as e:
-    print(f"[STARTUP] numba pre-import warning: {e}")
+    print(f"[STARTUP] ⚠️ numba pre-import warning: {e}")
+    os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
 
 # Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific

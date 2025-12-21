@@ -71,6 +71,8 @@ class StartupPhase(str, Enum):
     FRONTEND = "frontend"
     WEBSOCKET = "websocket"
     COMPLETE = "complete"
+    PARTIAL = "partial"  # v5.0: Partial completion (some services unavailable)
+    WARNING = "warning"  # v5.0: Warning state (startup taking too long)
     FAILED = "failed"
     RECOVERY = "recovery"
 
@@ -258,6 +260,35 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
             "Good to be back, Sir. How may I assist you?",
             "Systems restored. Ready when you are.",
             "Initialization complete. At your service.",
+        ],
+    },
+    # v5.0: Partial completion messages (accurate, not falsely claiming full readiness)
+    StartupPhase.PARTIAL: {
+        "partial": [
+            "JARVIS is partially online. Some features may be limited.",
+            "Systems are partially ready. A few services are still initializing.",
+            "I'm mostly ready, but some capabilities are still loading.",
+            "Core systems online. Some advanced features are temporarily unavailable.",
+        ],
+        "warning": [
+            "Startup took longer than expected. Some services may not be available.",
+            "Extended startup time. I'm running with reduced capabilities.",
+        ],
+    },
+    # v5.0: Warning messages for slow startup (accurate progress feedback)
+    StartupPhase.WARNING: {
+        "slow": [
+            "Startup is taking longer than usual. Please bear with me.",
+            "Still initializing. This is taking a bit more time than expected.",
+            "Working on it. Some components need extra time today.",
+        ],
+        "timeout": [
+            "I'm having trouble starting some services. Give me another moment.",
+            "Some systems are slower to respond. I'll keep trying.",
+        ],
+        "services_unavailable": [
+            "Some services could not be started. I'll work with what's available.",
+            "A few components failed to load. Core functions are still operational.",
         ],
     },
     StartupPhase.FAILED: {
@@ -604,8 +635,11 @@ class IntelligentStartupNarrator:
         """
         Announce startup completion.
         
+        v5.0 Integration: Now uses IntelligentStartupAnnouncer for dynamic,
+        context-aware completion messages instead of static templates.
+        
         Args:
-            message: Optional custom completion message
+            message: Optional custom completion message (overrides intelligent generation)
             duration_seconds: Total startup duration
         """
         # Complete any remaining phase
@@ -616,17 +650,38 @@ class IntelligentStartupNarrator:
         
         self._current_phase = StartupPhase.COMPLETE
         
-        # Use custom message or pick from templates
-        if message:
-            text = message
+        # v5.0: Use IntelligentStartupAnnouncer for dynamic completion messages
+        if not message:
+            try:
+                from agi_os.intelligent_startup_announcer import (
+                    get_intelligent_announcer,
+                    StartupType,
+                )
+                
+                announcer = await get_intelligent_announcer()
+                
+                # Determine startup type based on duration
+                startup_type = StartupType.COLD_BOOT
+                if duration_seconds and duration_seconds > 120:
+                    startup_type = StartupType.SLOW_BOOT
+                
+                # Generate intelligent, context-aware message
+                text = await announcer.generate_startup_message(startup_type=startup_type)
+                
+                logger.info(f"[Narrator] Using intelligent announcement: \"{text}\"")
+                
+            except Exception as e:
+                logger.debug(f"IntelligentStartupAnnouncer unavailable, using templates: {e}")
+                # Fallback to static templates
+                text = self._get_phase_message(StartupPhase.COMPLETE, "complete") or "JARVIS online."
+                
+                # Add duration context for long startups
+                if duration_seconds and duration_seconds > 30:
+                    duration_min = int(duration_seconds // 60)
+                    if duration_min > 0:
+                        text = f"{text} Startup took {duration_min} minute{'s' if duration_min > 1 else ''}."
         else:
-            text = self._get_phase_message(StartupPhase.COMPLETE, "complete") or "JARVIS online."
-        
-        # Add duration context for long startups
-        if duration_seconds and duration_seconds > 30:
-            duration_min = int(duration_seconds // 60)
-            if duration_min > 0:
-                text = f"{text} Startup took {duration_min} minute{'s' if duration_min > 1 else ''}."
+            text = message
         
         await self._speak(text, NarrationPriority.CRITICAL)
     
@@ -652,6 +707,103 @@ class IntelligentStartupNarrator:
         else:
             text = "Recovery failed. Please check the logs."
         await self._speak(text, NarrationPriority.HIGH)
+
+    async def announce_warning(
+        self,
+        message: str,
+        context: str = "slow",
+    ) -> None:
+        """
+        v5.0: Announce a warning during startup.
+        
+        This provides ACCURATE feedback when startup is taking too long
+        or when some services are unavailable. Does NOT falsely claim readiness.
+        
+        Args:
+            message: Warning message (for logging)
+            context: Warning context - 'slow', 'timeout', or 'services_unavailable'
+        """
+        # Get appropriate warning message
+        text = self._get_phase_message(StartupPhase.WARNING, context)
+        if not text:
+            # Fallback to the provided message
+            text = message
+        
+        await self._speak(text, NarrationPriority.HIGH)
+        
+        # Log the warning
+        logger.warning(f"[Narrator Warning] {context}: {message}")
+
+    async def announce_partial_complete(
+        self,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
+        progress: int = 50,
+        duration_seconds: Optional[float] = None,
+    ) -> None:
+        """
+        v5.0: Announce PARTIAL completion (some services unavailable).
+        
+        This provides ACCURATE feedback instead of falsely claiming
+        "JARVIS is fully ready" when it's not.
+        
+        v5.0 Integration: Uses IntelligentStartupAnnouncer for dynamic,
+        context-aware partial completion messages.
+        
+        Args:
+            services_ready: List of services that are ready
+            services_failed: List of services that failed
+            progress: Current progress percentage
+            duration_seconds: Total startup duration
+        """
+        self._current_phase = StartupPhase.PARTIAL
+        
+        # v5.0: Use IntelligentStartupAnnouncer for dynamic partial completion
+        try:
+            from agi_os.intelligent_startup_announcer import get_intelligent_announcer
+            
+            announcer = await get_intelligent_announcer()
+            
+            # Generate intelligent, context-aware partial completion message
+            text = await announcer.generate_partial_completion_message(
+                services_ready=services_ready,
+                services_failed=services_failed,
+                progress=progress,
+                duration_seconds=duration_seconds,
+            )
+            
+            logger.info(f"[Narrator] Using intelligent partial announcement: \"{text}\"")
+            
+        except Exception as e:
+            logger.debug(f"IntelligentStartupAnnouncer unavailable for partial: {e}")
+            
+            # Fallback to static templates
+            ready_count = len(services_ready) if services_ready else 0
+            failed_count = len(services_failed) if services_failed else 0
+            
+            if failed_count > 0:
+                text = self._get_phase_message(StartupPhase.PARTIAL, "partial")
+                if failed_count == 1:
+                    text = f"{text} One service is temporarily unavailable."
+                else:
+                    text = f"{text} {failed_count} services are temporarily unavailable."
+            elif progress < 50:
+                text = self._get_phase_message(StartupPhase.WARNING, "services_unavailable")
+            else:
+                text = self._get_phase_message(StartupPhase.PARTIAL, "partial")
+            
+            if duration_seconds and duration_seconds > 120:
+                minutes = int(duration_seconds // 60)
+                text = f"{text} Startup took {minutes} minutes."
+        
+        await self._speak(text, NarrationPriority.CRITICAL)
+        
+        # Log details
+        ready_count = len(services_ready) if services_ready else 0
+        failed_count = len(services_failed) if services_failed else 0
+        logger.info(f"[Narrator] Partial completion: {ready_count} ready, {failed_count} failed, {progress}%")
+        if services_failed:
+            logger.info(f"[Narrator] Failed services: {services_failed}")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get narrator statistics."""
@@ -733,4 +885,26 @@ async def narrate_error(error_message: str) -> None:
     """Convenience function to narrate an error."""
     narrator = get_startup_narrator()
     await narrator.announce_error(error_message)
+
+
+async def narrate_warning(message: str, context: str = "slow") -> None:
+    """v5.0: Convenience function to narrate a warning."""
+    narrator = get_startup_narrator()
+    await narrator.announce_warning(message, context)
+
+
+async def narrate_partial_complete(
+    services_ready: Optional[List[str]] = None,
+    services_failed: Optional[List[str]] = None,
+    progress: int = 50,
+    duration_seconds: Optional[float] = None,
+) -> None:
+    """v5.0: Convenience function to narrate partial completion."""
+    narrator = get_startup_narrator()
+    await narrator.announce_partial_complete(
+        services_ready=services_ready,
+        services_failed=services_failed,
+        progress=progress,
+        duration_seconds=duration_seconds,
+    )
 

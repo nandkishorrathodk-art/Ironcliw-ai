@@ -310,13 +310,17 @@ class WhisperImportManager:
         """
         Pre-import numba using centralized process-level loader.
         
-        v5.0: Uses core.numba_preload for thread-safe, process-level singleton.
+        v6.0: Uses core.numba_preload with BLOCKING wait for thread safety.
         
         This solves the circular import issue:
         "cannot import name 'get_hashable_key' from partially initialized module"
         
         The centralized loader ensures numba is initialized exactly ONCE
         in the main thread before any parallel imports can access it.
+        
+        CRITICAL: Uses wait_for_numba() which BLOCKS until the main thread's
+        initialization completes. This prevents race conditions where parallel
+        threads try to import numba simultaneously.
         
         Returns numba version if successful, None otherwise.
         """
@@ -325,12 +329,13 @@ class WhisperImportManager:
             return self._numba_version_cache
         
         try:
-            # Use centralized numba_preload module (process-level singleton)
-            from core.numba_preload import ensure_numba_initialized, get_numba_status
+            # v6.0: Use wait_for_numba which BLOCKS until main thread completes
+            from core.numba_preload import wait_for_numba, get_numba_status, is_numba_ready
             
-            # This will block if numba is currently being initialized by another thread
-            # but will return immediately if already initialized
-            success = ensure_numba_initialized(timeout=30.0)
+            # CRITICAL: This BLOCKS until the main thread's numba initialization completes
+            # This prevents the "circular import" race condition
+            logger.debug(f"[whisper] Waiting for numba initialization (thread: {threading.current_thread().name})...")
+            success = wait_for_numba(timeout=60.0)
             status = get_numba_status()
             
             if success:

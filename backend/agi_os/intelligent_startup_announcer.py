@@ -84,7 +84,9 @@ class SystemStatus(Enum):
     """Overall system status levels."""
     OPTIMAL = "optimal"         # All systems perfect
     GOOD = "good"              # Minor issues, fully functional
+    PARTIAL = "partial"        # v5.0: Partial completion - some services unavailable
     DEGRADED = "degraded"      # Some components offline
+    SLOW = "slow"              # v5.0: Startup took longer than expected
     CRITICAL = "critical"      # Major issues
 
 
@@ -104,6 +106,8 @@ class StartupType(Enum):
     WAKE_FROM_SLEEP = "wake_sleep"      # Resume from sleep
     SERVICE_RESTART = "restart"         # Backend restart
     SCREEN_UNLOCK = "unlock"            # Screen unlock
+    PARTIAL_BOOT = "partial_boot"       # v5.0: Partial completion (some services failed)
+    SLOW_BOOT = "slow_boot"             # v5.0: Extended startup time
 
 
 # =============================================================================
@@ -384,6 +388,45 @@ class StatusComponent(PhraseComponent):
                 return [f"{active}/{total} systems."]
             else:
                 return [f"{active} of {total} systems ready."]
+
+        # v5.0: Partial completion (some services unavailable but usable)
+        elif sys.status == SystemStatus.PARTIAL:
+            active = sys.active_components
+            total = sys.total_components
+            failed = len(sys.failed_components)
+            if tone == AnnouncementTone.FORMAL:
+                return [
+                    f"Partially ready. {active} of {total} systems operational.",
+                    f"Core systems online. {failed} component{'s are' if failed > 1 else ' is'} still initializing.",
+                    f"Systems partially available. Some features may be limited.",
+                ]
+            elif tone == AnnouncementTone.FRIENDLY:
+                return [
+                    f"Almost there! {active} of {total} systems ready.",
+                    f"Most things are working. A few services are still waking up.",
+                ]
+            elif tone == AnnouncementTone.WITTY:
+                return [
+                    f"Operating at {int((active/total)*100)}% capacity. Not bad for a partial boot.",
+                    f"{active} systems ready, {failed} still hitting snooze.",
+                ]
+            else:
+                return [f"Partial startup: {active} of {total} systems ready."]
+
+        # v5.0: Slow startup (took longer than expected)
+        elif sys.status == SystemStatus.SLOW:
+            if tone == AnnouncementTone.FORMAL:
+                return [
+                    "Startup took longer than usual. All available services are now ready.",
+                    "Extended initialization complete. Systems are now operational.",
+                ]
+            elif tone == AnnouncementTone.WITTY:
+                return [
+                    "That took a bit longer than planned. Better late than never.",
+                    "Sorry for the wait. All systems are finally online.",
+                ]
+            else:
+                return ["Startup complete after extended initialization."]
 
         # Degraded
         elif sys.status == SystemStatus.DEGRADED:
@@ -750,6 +793,9 @@ class IntelligentStartupAnnouncer:
         self._initialized = False
         self._voice = None
         self._VoiceMode = None
+        self._use_orchestrator = False
+        self._voice_priority = None
+        self._speech_topic = None
         self._message_history: List[Tuple[datetime, str, AnnouncementTone]] = []
 
         # Configuration
@@ -766,13 +812,34 @@ class IntelligentStartupAnnouncer:
             return True
 
         try:
-            from .realtime_voice_communicator import get_voice_communicator, VoiceMode
+            # v5.0: Use UnifiedVoiceOrchestrator as the single voice coordinator
+            # This ensures all voice output goes through one place, preventing
+            # overlapping speech between startup_narrator and intelligent_announcer
+            try:
+                from core.supervisor.unified_voice_orchestrator import (
+                    get_voice_orchestrator,
+                    VoicePriority,
+                    SpeechTopic,
+                )
+                
+                self._voice = get_voice_orchestrator()
+                self._voice_priority = VoicePriority.CRITICAL
+                self._speech_topic = SpeechTopic.STARTUP
+                self._use_orchestrator = True
+                
+                logger.info("IntelligentStartupAnnouncer using UnifiedVoiceOrchestrator")
+                
+            except ImportError:
+                # Fallback to realtime_voice_communicator if orchestrator unavailable
+                from .realtime_voice_communicator import get_voice_communicator, VoiceMode
+                
+                self._voice = await get_voice_communicator()
+                self._VoiceMode = VoiceMode
+                self._use_orchestrator = False
+                
+                logger.info("IntelligentStartupAnnouncer using realtime_voice_communicator")
 
-            self._voice = await get_voice_communicator()
-            self._VoiceMode = VoiceMode
             self._initialized = True
-
-            logger.info("IntelligentStartupAnnouncer initialized")
             return True
 
         except Exception as e:
@@ -903,15 +970,140 @@ class IntelligentStartupAnnouncer:
         # Generate message
         message = await self.generate_startup_message(startup_type, tone_override)
 
-        # Speak it
+        # Speak it using the appropriate voice system
         spoken = False
         if self._voice:
             try:
-                await self._voice.speak(message, mode=self._VoiceMode.NORMAL)
+                if self._use_orchestrator:
+                    # Use UnifiedVoiceOrchestrator (v5.0)
+                    await self._voice.speak(
+                        message,
+                        priority=self._voice_priority,
+                        topic=self._speech_topic,
+                    )
+                else:
+                    # Fallback to realtime_voice_communicator
+                    await self._voice.speak(message, mode=self._VoiceMode.NORMAL)
                 spoken = True
             except Exception as e:
                 logger.error(f"Failed to speak announcement: {e}")
 
+        return message, spoken
+
+    async def generate_partial_completion_message(
+        self,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
+        progress: int = 50,
+        duration_seconds: Optional[float] = None,
+        tone_override: Optional[AnnouncementTone] = None,
+    ) -> str:
+        """
+        v5.0: Generate a PARTIAL completion message.
+        
+        This provides ACCURATE feedback when startup completes with some
+        services unavailable, instead of falsely claiming full readiness.
+        
+        Args:
+            services_ready: List of services that initialized successfully
+            services_failed: List of services that failed to start
+            progress: Current progress percentage
+            duration_seconds: How long startup took
+            tone_override: Force a specific tone
+            
+        Returns:
+            Context-aware partial completion message
+        """
+        # Gather context
+        ctx = await self.gather_full_context(StartupType.PARTIAL_BOOT)
+        
+        # Override system status based on what we know
+        ready_count = len(services_ready) if services_ready else 0
+        failed_count = len(services_failed) if services_failed else 0
+        total = ready_count + failed_count
+        
+        ctx.system.active_components = ready_count
+        ctx.system.total_components = total if total > 0 else ctx.system.total_components
+        ctx.system.failed_components = services_failed or []
+        
+        # Set appropriate status
+        if failed_count == 0:
+            ctx.system.status = SystemStatus.GOOD
+        elif progress >= 80:
+            ctx.system.status = SystemStatus.GOOD
+        elif progress >= 50:
+            ctx.system.status = SystemStatus.PARTIAL
+        else:
+            ctx.system.status = SystemStatus.DEGRADED
+        
+        # If startup was very slow, note that
+        if duration_seconds and duration_seconds > 120:
+            ctx.system.status = SystemStatus.SLOW
+        
+        # Select tone - be more formal/serious for partial completion
+        if tone_override:
+            tone = tone_override
+        elif ctx.system.status in (SystemStatus.DEGRADED, SystemStatus.CRITICAL):
+            tone = AnnouncementTone.FORMAL
+        else:
+            tone = self.select_tone(ctx)
+        
+        # Synthesize message
+        message = self._synthesizer.synthesize(
+            ctx=ctx,
+            tone=tone,
+            include_status=True,
+            include_calendar=False,  # Skip calendar for partial - keep it focused
+            include_ready=True,
+        )
+        
+        # Track history
+        self._message_history.append((datetime.now(), message, tone))
+        
+        logger.info(f"Generated partial completion message [{tone.value}]: \"{message}\"")
+        
+        return message
+
+    async def announce_partial_completion(
+        self,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
+        progress: int = 50,
+        duration_seconds: Optional[float] = None,
+    ) -> Tuple[str, bool]:
+        """
+        v5.0: Generate and speak a partial completion message.
+        
+        Returns:
+            Tuple of (message, was_spoken)
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        message = await self.generate_partial_completion_message(
+            services_ready=services_ready,
+            services_failed=services_failed,
+            progress=progress,
+            duration_seconds=duration_seconds,
+        )
+        
+        spoken = False
+        if self._voice:
+            try:
+                if self._use_orchestrator:
+                    # Use UnifiedVoiceOrchestrator (v5.0)
+                    await self._voice.speak(
+                        message,
+                        priority=self._voice_priority,
+                        topic=self._speech_topic,
+                    )
+                else:
+                    # Fallback to realtime_voice_communicator
+                    await self._voice.speak(message, mode=self._VoiceMode.NORMAL)
+                spoken = True
+            except Exception as e:
+                logger.error(f"Failed to speak partial announcement: {e}")
+        
         return message, spoken
 
     def get_statistics(self) -> Dict[str, Any]:

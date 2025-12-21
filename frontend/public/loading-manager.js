@@ -402,6 +402,37 @@ class JARVISLoadingManager {
                 substeps: ['Ready for commands']
             },
 
+            // === v5.0: PARTIAL COMPLETION & SLOW STARTUP STAGES ===
+            // These handle cases where startup takes longer than expected
+            'partial_complete': {
+                name: 'Partially Ready',
+                icon: '⚠️',
+                phase: 'ready',
+                expectedProgress: [50, 95],
+                substeps: ['Some services available', 'Some features may be limited']
+            },
+            'startup_slow': {
+                name: 'Startup Slow',
+                icon: '⏳',
+                phase: 'initialization',
+                expectedProgress: [30, 80],
+                substeps: ['Services initializing slowly', 'Please wait...']
+            },
+            'startup_timeout': {
+                name: 'Startup Timeout',
+                icon: '⏰',
+                phase: 'ready',
+                expectedProgress: [50, 95],
+                substeps: ['Extended startup time', 'Some services may be unavailable']
+            },
+            'services_warming': {
+                name: 'Services Warming Up',
+                icon: '🔥',
+                phase: 'initialization',
+                expectedProgress: [70, 95],
+                substeps: ['ML models loading', 'This may take a moment...']
+            },
+
             // === ERROR STATE ===
             'failed': {
                 name: 'Startup Failed',
@@ -1637,6 +1668,35 @@ class JARVISLoadingManager {
             this.handleCompletion(success, redirectUrl, message);
         }
 
+        // v5.0: Handle PARTIAL completion (supervisor FALLBACK 5)
+        // System is usable but some services are unavailable
+        if (stage === 'partial_complete') {
+            const success = true; // Partial is still a success, just limited
+            const redirectUrl = metadata.redirect_url || `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
+            
+            // Show warning about partial completion
+            console.warn('[Progress] ⚠️ Partial completion - some services unavailable');
+            console.warn('[Progress] Services ready:', metadata.services_ready || []);
+            console.warn('[Progress] Services failed:', metadata.services_failed || []);
+            
+            // Update status to reflect partial state
+            this.updateStatusText('Partially ready - some features limited', 'warning');
+            
+            // Show notification about partial completion
+            this.showPartialCompletionNotice(metadata.services_ready, metadata.services_failed);
+            
+            // Still proceed to main app after brief delay
+            setTimeout(() => {
+                this.handleCompletion(success, redirectUrl, message || 'JARVIS partially ready');
+            }, 2000);
+        }
+
+        // v5.0: Handle slow startup notification
+        if (stage === 'startup_slow' || stage === 'startup_timeout' || stage === 'services_warming') {
+            this.updateStatusText(message || 'Startup taking longer than usual...', 'warning');
+            // Don't redirect - let the system continue trying
+        }
+
         // Handle failure - but be smart about it
         if (stage === 'failed' || metadata.success === false) {
             // Don't show error if we've made significant progress - backend might be up
@@ -1686,6 +1746,9 @@ class JARVISLoadingManager {
                     'initialization': 'Initialization',
                     'ready': 'Ready',
                     'complete': 'Complete',
+                    'partial': 'Partial Ready',
+                    'warning': 'Warning',
+                    'slow': 'Slow Startup',
                     'error': 'Error',
                     'zero_touch': 'Zero-Touch Update'
                 };
@@ -1827,6 +1890,9 @@ class JARVISLoadingManager {
                 'verifying': 'VERIFYING',
                 'finalizing': 'FINALIZING',
                 'ready': 'SYSTEM READY',
+                'partial': 'PARTIALLY READY',
+                'slow': 'STARTUP SLOW',
+                'warming': 'SERVICES WARMING',
                 'error': 'ERROR',
                 'warning': 'WARNING'
             };
@@ -2396,6 +2462,47 @@ class JARVISLoadingManager {
 
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    showPartialCompletionNotice(servicesReady = [], servicesFailed = []) {
+        /**
+         * v5.0: Show notice about partial completion
+         * This is displayed when the system times out but is partially usable.
+         */
+        const readyCount = servicesReady.length;
+        const failedCount = servicesFailed.length;
+        
+        // Update the status message to reflect partial state
+        if (this.elements.statusMessage) {
+            if (failedCount > 0) {
+                this.elements.statusMessage.textContent = 
+                    `${readyCount} services ready, ${failedCount} unavailable`;
+            } else {
+                this.elements.statusMessage.textContent = 
+                    'System partially ready - loading remaining services...';
+            }
+        }
+        
+        // Update subtitle to warning state
+        if (this.elements.subtitle) {
+            this.elements.subtitle.textContent = 'PARTIALLY READY';
+        }
+        
+        // Change progress bar to warning color
+        if (this.elements.progressBar) {
+            this.elements.progressBar.style.background = 
+                'linear-gradient(90deg, #ff9500 0%, #ffcc00 100%)';
+        }
+        
+        // Log details
+        console.warn('[Partial] Services ready:', servicesReady);
+        console.warn('[Partial] Services failed:', servicesFailed);
+        
+        // Add to operation log
+        this.addLogEntry('System', `Partial startup: ${readyCount} ready, ${failedCount} unavailable`, 'warning');
+        if (failedCount > 0) {
+            this.addLogEntry('System', `Unavailable: ${servicesFailed.join(', ')}`, 'warning');
+        }
     }
 
     async showError(message) {

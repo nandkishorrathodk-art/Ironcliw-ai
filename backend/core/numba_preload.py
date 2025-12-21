@@ -1,5 +1,5 @@
 """
-JARVIS Numba Pre-loader v1.0.0
+JARVIS Numba Pre-loader v2.0.0
 ==============================
 
 CRITICAL: This module must be imported FIRST, before ANY other imports
@@ -14,25 +14,37 @@ The error occurs when:
 3. Thread B also tries to import numba.core.utils
 4. Thread B sees a partially initialized module and fails
 
-The solution:
+v2.0.0 Solution (ROBUST):
 1. Use a PROCESS-LEVEL lock (not just thread lock)
 2. Disable numba JIT during initial import
 3. Force full initialization in main thread FIRST
-4. Set a global flag to prevent re-import attempts
-5. Expose version info for health checks
+4. Use threading.Event for BLOCKING wait by other threads
+5. Set GLOBAL MARKER that whisper can check
+6. Expose version info for health checks
+7. Add secondary safeguard for parallel imports
 
 Usage in main.py (MUST BE FIRST IMPORT):
     # CRITICAL: Pre-load numba before ANY other imports
     from core.numba_preload import ensure_numba_initialized, get_numba_status
     ensure_numba_initialized()
+    
+Usage in whisper_audio_fix.py (or any numba-using module):
+    from core.numba_preload import wait_for_numba, is_numba_ready
+    
+    # This BLOCKS until main thread's numba init completes
+    wait_for_numba(timeout=30.0)
+    
+    # Now safe to import whisper/librosa/etc
+    import whisper
 """
 
 import os
 import sys
 import threading
 import logging
+import time
 from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -229,6 +241,85 @@ def is_numba_ready() -> bool:
     return False
 
 
+def wait_for_numba(timeout: float = 60.0) -> bool:
+    """
+    BLOCKING wait for numba initialization to complete.
+    
+    v2.0: This is the KEY function for parallel safety.
+    Other modules should call this BEFORE importing numba-dependent packages.
+    
+    This ensures:
+    1. If main thread is initializing, we WAIT for it to complete
+    2. If main thread already completed, we return immediately
+    3. If no initialization started, we trigger it ourselves
+    
+    Args:
+        timeout: Maximum time to wait (seconds)
+        
+    Returns:
+        True if numba is available, False if not installed or failed
+    """
+    global _numba_info
+    
+    # Fast path - already initialized
+    if _initialization_complete.is_set():
+        return _numba_info.status == NumbaStatus.READY
+    
+    # Check if initialization is in progress by another thread
+    start_time = time.time()
+    
+    # Try to acquire lock (with short timeout to check status)
+    while time.time() - start_time < timeout:
+        # Check if completed while waiting
+        if _initialization_complete.is_set():
+            return _numba_info.status == NumbaStatus.READY
+        
+        # Try to acquire lock for initialization
+        acquired = _numba_lock.acquire(timeout=0.5)
+        
+        if acquired:
+            try:
+                # Double-check after acquiring lock
+                if _initialization_complete.is_set():
+                    return _numba_info.status == NumbaStatus.READY
+                
+                # We're the initializing thread
+                logger.info(f"[wait_for_numba] Initializing from thread: {threading.current_thread().name}")
+                _numba_info.status = NumbaStatus.INITIALIZING
+                success = _do_numba_import()
+                
+                # Signal completion
+                _initialization_complete.set()
+                return success
+                
+            finally:
+                _numba_lock.release()
+        
+        # Lock not acquired - another thread is initializing
+        # Wait for the event with shorter timeout to allow status checks
+        if _initialization_complete.wait(timeout=1.0):
+            return _numba_info.status == NumbaStatus.READY
+    
+    # Timeout
+    logger.warning(f"[wait_for_numba] Timeout after {timeout}s waiting for numba")
+    return False
+
+
+def set_numba_bypass_marker():
+    """
+    Set a global marker that signals numba has been attempted.
+    Other modules can check this to avoid redundant initialization attempts.
+    """
+    os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+
+
+def get_numba_bypass_marker() -> bool:
+    """
+    Check if numba initialization has been attempted.
+    """
+    return os.environ.get('_JARVIS_NUMBA_INIT_ATTEMPTED') == '1'
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Auto-initialize if this module is imported directly
 # This ensures numba is ready as soon as this module loads
@@ -236,4 +327,5 @@ def is_numba_ready() -> bool:
 if __name__ != "__main__":
     # Only auto-init if not run as script
     ensure_numba_initialized()
+    set_numba_bypass_marker()
 

@@ -1145,15 +1145,88 @@ class JARVISSupervisor:
 
                     # ═══════════════════════════════════════════════════════════════════
                     # FALLBACK 4: Last resort timeout (after adaptive_timeout * 1.2)
-                    # Only with explicit warning - this indicates a startup problem
+                    # v5.0: INTELLIGENT completion check - DON'T declare ready if:
+                    #   - Status is "unknown" (backend isn't reporting properly)
+                    #   - No services are ready (system is clearly still initializing)
+                    #   - Progress is below 50% (major components missing)
+                    # This prevents false "ready" announcements that confuse users
                     # ═══════════════════════════════════════════════════════════════════
                     if (not ready_for_completion and
                         elapsed > adaptive_timeout * 1.2 and
                         backend_ready and
                         (frontend_ready or frontend_optional)):
-                        logger.warning(f"⏰ Extended timeout ({elapsed:.0f}s) - completing with available services")
-                        logger.warning(f"   Status: {backend_status}, Services: {system_status.get('services_ready', [])}")
+                        
+                        services_ready = system_status.get('services_ready', []) if system_status else []
+                        current_progress = get_progress()
+                        
+                        # v5.0: Intelligent readiness check - system must show REAL progress
+                        is_actually_ready = (
+                            # Status must not be unknown
+                            backend_status != "unknown" and
+                            backend_status != "error" and
+                            # Either services are ready OR progress indicates readiness
+                            (len(services_ready) > 0 or current_progress >= 50)
+                        )
+                        
+                        if is_actually_ready:
+                            logger.warning(f"⏰ Extended timeout ({elapsed:.0f}s) - completing with available services")
+                            logger.warning(f"   Status: {backend_status}, Services: {services_ready}, Progress: {current_progress}%")
+                            ready_for_completion = True
+                        else:
+                            # System is NOT actually ready - log but DON'T declare complete
+                            # This prevents the "JARVIS is ready" announcement when it's clearly not
+                            logger.warning(
+                                f"⏰ Extended timeout ({elapsed:.0f}s) but system NOT ready - continuing wait"
+                            )
+                            logger.warning(
+                                f"   Status: {backend_status}, Services: {services_ready}, "
+                                f"Progress: {current_progress}% (need >50% or services ready)"
+                            )
+                            # Extend the timeout to give system more time
+                            # Will check again on next iteration
+
+                    # ═══════════════════════════════════════════════════════════════════
+                    # FALLBACK 5: HARD timeout - system is stuck (after 2x adaptive_timeout)
+                    # v5.0: If we've waited 2x the timeout and system is STILL not ready,
+                    # mark as partial completion with clear warning to user
+                    # ═══════════════════════════════════════════════════════════════════
+                    hard_timeout = adaptive_timeout * 2.0
+                    if (not ready_for_completion and
+                        elapsed > hard_timeout and
+                        backend_ready):  # At least HTTP is responding
+                        
+                        services_ready = system_status.get('services_ready', []) if system_status else []
+                        current_progress = get_progress()
+                        
+                        logger.error(
+                            f"⚠️ HARD TIMEOUT ({elapsed:.0f}s) - System stuck in partial state"
+                        )
+                        logger.error(
+                            f"   Status: {backend_status}, Services: {services_ready}, Progress: {current_progress}%"
+                        )
+                        
+                        # v5.0: Use accurate partial completion announcement
+                        await self._startup_narrator.announce_partial_complete(
+                            services_ready=services_ready,
+                            services_failed=system_status.get('services_failed', []) if system_status else [],
+                            progress=current_progress,
+                            duration_seconds=elapsed,
+                        )
+                        
+                        # Mark as partial completion - allows user to interact with available features
                         ready_for_completion = True
+                        
+                        # Report partial completion to loading page
+                        await self._progress_reporter.report(
+                            "partial_complete",
+                            f"Partial startup - {current_progress}% ready",
+                            current_progress,
+                            metadata={
+                                "partial": True,
+                                "services_ready": services_ready,
+                                "services_failed": system_status.get('services_failed', []) if system_status else [],
+                            }
+                        )
 
                     # If completing without frontend, mark it as skipped
                     if ready_for_completion and not frontend_ready and frontend_optional:
