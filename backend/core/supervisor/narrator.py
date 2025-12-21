@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
-JARVIS Supervisor Voice Narrator v3.0 - Zero-Touch Edition
-===========================================================
+JARVIS Supervisor Voice Narrator v4.0 - Intelligent Speech Edition
+===================================================================
 
 Intelligent, context-aware TTS narrator for the supervisor to provide engaging
 voice feedback during updates, restarts, and system events.
+
+v4.0 Features:
+- Intelligent speech context tracking (prevents repetition)
+- Topic-based cooldowns (avoid repeating same topic too soon)
+- Semantic deduplication (skip similar messages)
+- Natural pacing (pauses between rapid-fire messages)
+- Message coalescing (batch similar messages into summaries)
+- Adaptive verbosity (reduce chatter during long operations)
 
 v3.0 Features:
 - Zero-Touch autonomous update narration
@@ -21,7 +29,7 @@ its own `say` processes. This prevents the "multiple voices" issue where
 concurrent narrator systems would speak simultaneously.
 
 Author: JARVIS System
-Version: 3.0.0
+Version: 4.0.0
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ from .unified_voice_orchestrator import (
     get_voice_orchestrator,
     VoicePriority,
     VoiceSource,
+    SpeechTopic,
 )
 
 logger = logging.getLogger(__name__)
@@ -612,38 +621,93 @@ class SupervisorNarrator:
         # The orchestrator will be stopped by the supervisor at shutdown
         pass
 
-    async def speak(self, text: str, wait: bool = False) -> None:
+    async def speak(
+        self,
+        text: str,
+        wait: bool = False,
+        priority: VoicePriority = VoicePriority.MEDIUM,
+        topic: Optional[SpeechTopic] = None,
+    ) -> None:
         """
         Speak arbitrary text through unified orchestrator.
 
         Args:
             text: Text to speak
             wait: If True, wait for speech to complete
+            priority: Message priority (v4.0)
+            topic: Speech topic for intelligent grouping (v4.0)
         """
         if not self.config.enabled:
             logger.debug(f"🔇 Narrator disabled, skipping: {text[:50]}...")
             return
 
-        # v2.0: Delegate to unified orchestrator
+        # v4.0: Delegate to unified orchestrator with topic
         await self._orchestrator.speak(
             text=text,
-            priority=VoicePriority.MEDIUM,
+            priority=priority,
             source=VoiceSource.SUPERVISOR,
             wait=wait,
+            topic=topic,
         )
     
+    def _event_to_topic(self, event: NarratorEvent) -> SpeechTopic:
+        """v4.0: Map narrator event to speech topic for intelligent grouping."""
+        event_value = event.value.lower()
+        
+        if 'startup' in event_value or 'online' in event_value:
+            return SpeechTopic.STARTUP
+        elif 'shutdown' in event_value:
+            return SpeechTopic.SHUTDOWN
+        elif 'update' in event_value or 'download' in event_value or 'install' in event_value:
+            return SpeechTopic.UPDATE
+        elif 'rollback' in event_value or 'revert' in event_value:
+            return SpeechTopic.ROLLBACK
+        elif 'error' in event_value or 'fail' in event_value or 'crash' in event_value:
+            return SpeechTopic.ERROR
+        elif 'health' in event_value or 'heartbeat' in event_value:
+            return SpeechTopic.HEALTH
+        elif 'zero_touch' in event_value or 'autonomous' in event_value:
+            return SpeechTopic.ZERO_TOUCH
+        elif 'dms' in event_value or 'probation' in event_value:
+            return SpeechTopic.DMS
+        elif 'progress' in event_value:
+            return SpeechTopic.PROGRESS
+        else:
+            return SpeechTopic.GENERAL
+    
+    def _event_to_priority(self, event: NarratorEvent) -> VoicePriority:
+        """v4.0: Map narrator event to appropriate priority."""
+        event_value = event.value.lower()
+        
+        # Critical events
+        if any(kw in event_value for kw in ['crash', 'fail', 'error', 'violation', 'rollback']):
+            return VoicePriority.HIGH
+        # Important milestones
+        elif any(kw in event_value for kw in ['complete', 'online', 'passed', 'success']):
+            return VoicePriority.HIGH
+        # Standard updates
+        elif any(kw in event_value for kw in ['start', 'init', 'begin']):
+            return VoicePriority.MEDIUM
+        # Progress updates
+        elif 'progress' in event_value:
+            return VoicePriority.LOW
+        else:
+            return VoicePriority.MEDIUM
+
     async def narrate(
         self,
         event: NarratorEvent,
         wait: bool = False,
+        priority: Optional[VoicePriority] = None,
         **kwargs,
     ) -> None:
         """
-        Narrate a supervisor event.
+        Narrate a supervisor event with intelligent topic handling.
         
         Args:
             event: The event to narrate
             wait: If True, wait for speech to complete
+            priority: Override priority (auto-inferred if not provided)
             **kwargs: Template variables (e.g., summary, version)
         """
         templates = NARRATION_TEMPLATES.get(event, [])
@@ -664,8 +728,12 @@ class SupervisorNarrator:
             logger.warning(f"Missing template variable: {e}")
             text = template
         
-        logger.info(f"🔊 Narrating: {text}")
-        await self.speak(text, wait=wait)
+        # v4.0: Infer topic and priority from event
+        topic = self._event_to_topic(event)
+        inferred_priority = priority or self._event_to_priority(event)
+        
+        logger.info(f"🔊 Narrating ({topic.value}, {inferred_priority.name}): {text}")
+        await self.speak(text, wait=wait, priority=inferred_priority, topic=topic)
     
     async def announce_update_progress(
         self,
@@ -674,6 +742,8 @@ class SupervisorNarrator:
     ) -> None:
         """
         Announce update progress with optional detail.
+        
+        v4.0: Uses topic-based cooldown to prevent rapid-fire announcements.
         
         Args:
             phase: Current phase name
@@ -690,9 +760,10 @@ class SupervisorNarrator:
         
         event = phase_map.get(phase.lower())
         if event:
-            await self.narrate(event)
+            # v4.0: Use LOW priority for progress updates to allow skipping
+            await self.narrate(event, priority=VoicePriority.LOW)
         elif detail:
-            await self.speak(detail)
+            await self.speak(detail, priority=VoicePriority.LOW, topic=SpeechTopic.UPDATE)
     
     def set_voice(self, voice: NarratorVoice) -> None:
         """Change the narrator voice."""
@@ -892,8 +963,13 @@ class SupervisorNarrator:
             
             # Only announce first heartbeat or recovery
             if self._context.heartbeat_failures > 0:
-                # Recovering from failures
-                await self.speak("Health recovered. Resuming normal monitoring.", wait=wait)
+                # Recovering from failures - use HIGH priority
+                await self.speak(
+                    "Health recovered. Resuming normal monitoring.",
+                    wait=wait,
+                    priority=VoicePriority.HIGH,
+                    topic=SpeechTopic.DMS,
+                )
                 self._context.heartbeat_failures = 0
         
         elif state == "heartbeat_failed":

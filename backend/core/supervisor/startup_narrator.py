@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-JARVIS Intelligent Startup Narrator v2.0
-=========================================
+JARVIS Intelligent Startup Narrator v3.0 - Intelligent Speech Edition
+======================================================================
 
 Provides intelligent, phase-aware voice narration during JARVIS startup.
 Coordinates with the visual loading page to provide complementary
 (not redundant) audio feedback.
+
+v3.0 ENHANCEMENTS:
+- Topic-based cooldowns (startup topic prevents repetitive announcements)
+- Semantic deduplication (skip similar startup messages)
+- Natural pacing (intelligent pauses during rapid progress)
 
 v2.0 CHANGE: Now delegates to UnifiedVoiceOrchestrator instead of spawning
 its own `say` processes. This prevents the "multiple voices" issue where
@@ -20,10 +25,10 @@ Features:
 - Console and voice output coordination
 - User activity awareness
 - Parallel execution support
-- UNIFIED VOICE COORDINATION (v2.0)
+- UNIFIED VOICE COORDINATION (v2.0+)
 
 Author: JARVIS System
-Version: 2.0.0
+Version: 3.0.0
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ from .unified_voice_orchestrator import (
     get_voice_orchestrator,
     VoicePriority,
     VoiceSource,
+    SpeechTopic,
     UnifiedVoiceOrchestrator,
 )
 
@@ -443,7 +449,7 @@ class IntelligentStartupNarrator:
         # Update last narration time
         self._last_narration_time = datetime.now()
 
-        # v2.0: Delegate to unified voice orchestrator
+        # v3.0: Delegate to unified voice orchestrator with topic
         if self.config.voice_enabled:
             voice_priority = self._map_priority(priority)
             wait = (priority == NarrationPriority.CRITICAL)
@@ -453,6 +459,7 @@ class IntelligentStartupNarrator:
                 priority=voice_priority,
                 source=VoiceSource.STARTUP,
                 wait=wait,
+                topic=SpeechTopic.STARTUP,  # v3.0: Use startup topic for cooldowns
             )
 
     async def _queue_narration(

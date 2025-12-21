@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS Unified Voice Orchestrator v1.0
-=======================================
+JARVIS Unified Voice Orchestrator v2.0 - Intelligent Speech Edition
+====================================================================
 
 Production-grade voice coordination system that ensures ONLY ONE VOICE
 speaks at a time across the entire JARVIS system.
@@ -18,6 +18,14 @@ SOLUTION:
     - Intelligent deduplication (avoid redundant announcements)
     - Async-safe singleton pattern
     - Process lifecycle management (proper cleanup)
+
+v2.0 ENHANCEMENTS:
+    - Speech State Machine: Tracks conversation context to prevent topic repetition
+    - Semantic Deduplication: Groups similar messages (not just exact matches)
+    - Message Coalescing: Combines rapid-fire messages into summaries
+    - Natural Pacing: Adds intelligent pauses between messages
+    - Topic Cooldown: Prevents repeating the same topic too frequently
+    - Intelligent Summarization: Batches multiple similar messages
 
 Architecture:
     ┌──────────────────────────────────────────────────────────────┐
@@ -120,6 +128,21 @@ class VoiceSource(str, Enum):
     PRIME_DIRECTIVES = "prime_directives"  # Safety constraint violations
 
 
+class SpeechTopic(str, Enum):
+    """Topics for semantic grouping and cooldown tracking."""
+    STARTUP = "startup"
+    SHUTDOWN = "shutdown"
+    UPDATE = "update"
+    ROLLBACK = "rollback"
+    ERROR = "error"
+    HEALTH = "health"
+    AUTHENTICATION = "authentication"
+    ZERO_TOUCH = "zero_touch"
+    DMS = "dms"
+    PROGRESS = "progress"
+    GENERAL = "general"
+
+
 @dataclass
 class VoiceConfig:
     """Configuration for the unified voice orchestrator."""
@@ -161,6 +184,26 @@ class VoiceConfig:
     # Priority settings
     interrupt_on_critical: bool = True  # Critical messages interrupt current speech
     skip_low_when_busy: bool = True     # Skip LOW priority when queue is large
+    
+    # v2.0: Intelligent Speech Settings
+    topic_cooldown_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_VOICE_TOPIC_COOLDOWN", "15.0"))
+    )
+    natural_pause_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_VOICE_NATURAL_PAUSE", "0.5"))
+    )
+    coalesce_window_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_VOICE_COALESCE_WINDOW", "3.0"))
+    )
+    max_coalesced_messages: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_VOICE_MAX_COALESCE", "5"))
+    )
+    semantic_dedup_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VOICE_SEMANTIC_DEDUP", "true").lower() == "true"
+    )
+    semantic_similarity_threshold: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_VOICE_SIMILARITY_THRESHOLD", "0.7"))
+    )
 
 
 @dataclass
@@ -173,6 +216,7 @@ class VoiceMessage:
     wait_for_completion: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
     completion_event: Optional[asyncio.Event] = None
+    topic: SpeechTopic = SpeechTopic.GENERAL  # v2.0: Topic for semantic grouping
 
     # For deduplication
     @property
@@ -181,6 +225,26 @@ class VoiceMessage:
         # Normalize text (lowercase, strip whitespace)
         normalized = self.text.lower().strip()
         return hashlib.md5(normalized.encode()).hexdigest()[:16]
+    
+    @property
+    def keywords(self) -> Set[str]:
+        """Extract keywords for semantic similarity."""
+        # Common words to exclude
+        stopwords = {
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'to', 'of',
+            'in', 'for', 'on', 'with', 'at', 'by', 'from', 'up', 'about', 'into',
+            'through', 'during', 'before', 'after', 'above', 'below', 'between',
+            'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when',
+            'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other',
+            'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than',
+            'too', 'very', 'just', 'and', 'but', 'if', 'or', 'as', 'i', 'you', 'he',
+            'she', 'it', 'we', 'they', 'sir', 'now', 'please', 'moment',
+        }
+        words = set(self.text.lower().split())
+        # Remove stopwords and short words
+        return {w for w in words if w not in stopwords and len(w) > 2}
 
     def __lt__(self, other):
         """For priority queue ordering (higher priority first)."""
@@ -191,6 +255,75 @@ class VoiceMessage:
             # Same priority: earlier message first
             return self.created_at < other.created_at
         return NotImplemented
+
+
+@dataclass
+class SpeechContext:
+    """
+    v2.0: Tracks conversation context for intelligent speech management.
+    
+    Prevents topic repetition, enables message coalescing, and maintains
+    natural conversation flow.
+    """
+    # Topic cooldown tracking
+    topic_last_spoken: Dict[SpeechTopic, float] = field(default_factory=dict)
+    
+    # Recent message tracking for coalescing
+    recent_messages: deque = field(default_factory=lambda: deque(maxlen=20))
+    
+    # Current speech state
+    current_topic: Optional[SpeechTopic] = None
+    last_message_time: float = 0.0
+    messages_in_burst: int = 0
+    
+    # Semantic tracking
+    recent_keywords: deque = field(default_factory=lambda: deque(maxlen=100))
+    
+    def is_topic_on_cooldown(self, topic: SpeechTopic, cooldown_seconds: float) -> bool:
+        """Check if a topic is on cooldown."""
+        if topic not in self.topic_last_spoken:
+            return False
+        elapsed = time.time() - self.topic_last_spoken[topic]
+        return elapsed < cooldown_seconds
+    
+    def record_topic(self, topic: SpeechTopic) -> None:
+        """Record that a topic was just spoken about."""
+        self.topic_last_spoken[topic] = time.time()
+        self.current_topic = topic
+    
+    def get_semantic_similarity(self, message: VoiceMessage) -> float:
+        """
+        Calculate semantic similarity to recent messages.
+        Returns 0.0-1.0 where higher = more similar.
+        """
+        if not self.recent_keywords:
+            return 0.0
+        
+        msg_keywords = message.keywords
+        if not msg_keywords:
+            return 0.0
+        
+        # Count overlapping keywords
+        recent_set = set(self.recent_keywords)
+        overlap = len(msg_keywords & recent_set)
+        
+        # Normalize by message keyword count
+        return overlap / len(msg_keywords) if msg_keywords else 0.0
+    
+    def record_message(self, message: VoiceMessage) -> None:
+        """Record a spoken message."""
+        self.recent_messages.append({
+            'text': message.text,
+            'topic': message.topic,
+            'time': time.time(),
+        })
+        self.recent_keywords.extend(message.keywords)
+        self.last_message_time = time.time()
+        self.messages_in_burst += 1
+    
+    def reset_burst(self) -> None:
+        """Reset burst counter (after natural pause)."""
+        self.messages_in_burst = 0
 
 
 @dataclass
@@ -267,10 +400,51 @@ class UnifiedVoiceOrchestrator:
         # Callbacks
         self._on_speak_start: List[Callable[[VoiceMessage], None]] = []
         self._on_speak_end: List[Callable[[VoiceMessage, float], None]] = []
+        
+        # v2.0: Speech context for intelligent management
+        self._context = SpeechContext()
+        
+        # v2.0: Message coalescing buffer
+        self._coalesce_buffer: List[VoiceMessage] = []
+        self._coalesce_timer: Optional[asyncio.Task] = None
+        
+        # v2.0: Topic inference patterns
+        self._topic_patterns: Dict[str, SpeechTopic] = {
+            'startup': SpeechTopic.STARTUP,
+            'initializ': SpeechTopic.STARTUP,
+            'boot': SpeechTopic.STARTUP,
+            'online': SpeechTopic.STARTUP,
+            'shutdown': SpeechTopic.SHUTDOWN,
+            'stopping': SpeechTopic.SHUTDOWN,
+            'goodbye': SpeechTopic.SHUTDOWN,
+            'update': SpeechTopic.UPDATE,
+            'download': SpeechTopic.UPDATE,
+            'install': SpeechTopic.UPDATE,
+            'rollback': SpeechTopic.ROLLBACK,
+            'revert': SpeechTopic.ROLLBACK,
+            'error': SpeechTopic.ERROR,
+            'fail': SpeechTopic.ERROR,
+            'crash': SpeechTopic.ERROR,
+            'health': SpeechTopic.HEALTH,
+            'monitor': SpeechTopic.HEALTH,
+            'status': SpeechTopic.HEALTH,
+            'authent': SpeechTopic.AUTHENTICATION,
+            'verif': SpeechTopic.AUTHENTICATION,
+            'unlock': SpeechTopic.AUTHENTICATION,
+            'zero-touch': SpeechTopic.ZERO_TOUCH,
+            'autonomous': SpeechTopic.ZERO_TOUCH,
+            'dead man': SpeechTopic.DMS,
+            'probation': SpeechTopic.DMS,
+            'dms': SpeechTopic.DMS,
+            'progress': SpeechTopic.PROGRESS,
+            'percent': SpeechTopic.PROGRESS,
+            '%': SpeechTopic.PROGRESS,
+        }
 
         logger.info(
-            f"🔊 Unified Voice Orchestrator initialized "
-            f"(voice: {self.config.voice}, enabled: {self.config.enabled})"
+            f"🔊 Unified Voice Orchestrator v2.0 initialized "
+            f"(voice: {self.config.voice}, enabled: {self.config.enabled}, "
+            f"semantic_dedup: {self.config.semantic_dedup_enabled})"
         )
 
     async def start(self) -> None:
@@ -327,9 +501,10 @@ class UnifiedVoiceOrchestrator:
         source: VoiceSource = VoiceSource.SYSTEM,
         wait: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
+        topic: Optional[SpeechTopic] = None,
     ) -> bool:
         """
-        Queue a message to be spoken.
+        Queue a message to be spoken with intelligent filtering.
 
         Args:
             text: Text to speak
@@ -337,6 +512,7 @@ class UnifiedVoiceOrchestrator:
             source: Source of the message
             wait: If True, wait for message to be spoken
             metadata: Additional context
+            topic: Optional speech topic for grouping (auto-inferred if not provided)
 
         Returns:
             True if message was queued, False if skipped/deduplicated
@@ -347,6 +523,9 @@ class UnifiedVoiceOrchestrator:
         if not self.config.enabled:
             logger.debug(f"🔇 Voice disabled, skipping: {text[:50]}...")
             return False
+        
+        # v2.0: Infer topic if not provided
+        inferred_topic = topic or self._infer_topic(text)
 
         # Create message
         completion_event = asyncio.Event() if wait else None
@@ -357,13 +536,41 @@ class UnifiedVoiceOrchestrator:
             wait_for_completion=wait,
             metadata=metadata or {},
             completion_event=completion_event,
+            topic=inferred_topic,
         )
 
-        # Check deduplication
+        # Check deduplication (exact match)
         if self.config.dedup_enabled and self._is_duplicate(message):
-            logger.debug(f"🔇 Deduplicated: {text[:50]}...")
+            logger.debug(f"🔇 Deduplicated (exact): {text[:50]}...")
             self._metrics.messages_deduplicated += 1
+            if completion_event:
+                completion_event.set()  # Don't leave caller waiting
             return False
+        
+        # v2.0: Check semantic similarity (skip if too similar to recent)
+        if self.config.semantic_dedup_enabled and priority != VoicePriority.CRITICAL:
+            similarity = self._context.get_semantic_similarity(message)
+            if similarity > self.config.semantic_similarity_threshold:
+                logger.debug(
+                    f"🔇 Deduplicated (semantic, {similarity:.2f}): {text[:50]}..."
+                )
+                self._metrics.messages_deduplicated += 1
+                if completion_event:
+                    completion_event.set()
+                return False
+        
+        # v2.0: Check topic cooldown (skip if same topic spoken recently)
+        if priority not in (VoicePriority.CRITICAL, VoicePriority.HIGH):
+            if self._context.is_topic_on_cooldown(
+                inferred_topic, self.config.topic_cooldown_seconds
+            ):
+                logger.debug(
+                    f"🔇 Topic on cooldown ({inferred_topic.value}): {text[:50]}..."
+                )
+                self._metrics.messages_skipped += 1
+                if completion_event:
+                    completion_event.set()
+                return False
 
         # Check queue capacity for low priority
         if (
@@ -373,6 +580,8 @@ class UnifiedVoiceOrchestrator:
         ):
             logger.debug(f"🔇 Queue busy, skipping low priority: {text[:50]}...")
             self._metrics.messages_skipped += 1
+            if completion_event:
+                completion_event.set()
             return False
 
         # Queue the message
@@ -386,8 +595,8 @@ class UnifiedVoiceOrchestrator:
             self._metrics.current_queue_size = self._queue.qsize()
 
             logger.debug(
-                f"🔊 Queued ({priority.name}, {source.value}): {text[:50]}... "
-                f"(queue size: {self._queue.qsize()})"
+                f"🔊 Queued ({priority.name}, {source.value}, {inferred_topic.value}): "
+                f"{text[:50]}... (queue size: {self._queue.qsize()})"
             )
 
             # Handle critical interrupt
@@ -403,11 +612,25 @@ class UnifiedVoiceOrchestrator:
         except asyncio.TimeoutError:
             logger.warning("🔇 Queue full, message dropped")
             self._metrics.messages_skipped += 1
+            if completion_event:
+                completion_event.set()
             return False
         except asyncio.QueueFull:
             logger.warning("🔇 Queue full, message dropped")
             self._metrics.messages_skipped += 1
+            if completion_event:
+                completion_event.set()
             return False
+    
+    def _infer_topic(self, text: str) -> SpeechTopic:
+        """Infer the topic of a message from its content."""
+        text_lower = text.lower()
+        
+        for pattern, topic in self._topic_patterns.items():
+            if pattern in text_lower:
+                return topic
+        
+        return SpeechTopic.GENERAL
 
     async def speak_and_wait(
         self,
@@ -415,9 +638,69 @@ class UnifiedVoiceOrchestrator:
         priority: VoicePriority = VoicePriority.MEDIUM,
         source: VoiceSource = VoiceSource.SYSTEM,
         metadata: Optional[Dict[str, Any]] = None,
+        topic: Optional[SpeechTopic] = None,
     ) -> bool:
         """Speak and wait for completion."""
-        return await self.speak(text, priority, source, wait=True, metadata=metadata)
+        return await self.speak(
+            text, priority, source, wait=True, metadata=metadata, topic=topic
+        )
+    
+    async def speak_if_not_busy(
+        self,
+        text: str,
+        priority: VoicePriority = VoicePriority.LOW,
+        source: VoiceSource = VoiceSource.SYSTEM,
+        topic: Optional[SpeechTopic] = None,
+    ) -> bool:
+        """
+        v2.0: Speak only if not currently speaking and queue is empty.
+        
+        Use for optional announcements that shouldn't interrupt.
+        """
+        if self.is_speaking() or self._queue.qsize() > 0:
+            logger.debug(f"🔇 Busy, skipping optional: {text[:50]}...")
+            return False
+        return await self.speak(text, priority, source, topic=topic)
+    
+    async def speak_summary(
+        self,
+        messages: List[str],
+        priority: VoicePriority = VoicePriority.MEDIUM,
+        source: VoiceSource = VoiceSource.SYSTEM,
+        topic: Optional[SpeechTopic] = None,
+    ) -> bool:
+        """
+        v2.0: Speak a summarized version of multiple messages.
+        
+        Coalesces multiple messages into a single announcement.
+        """
+        if not messages:
+            return False
+        
+        if len(messages) == 1:
+            return await self.speak(messages[0], priority, source, topic=topic)
+        
+        # Create summary
+        count = len(messages)
+        if count <= 3:
+            summary = ". ".join(messages)
+        else:
+            # Summarize: first message + count
+            summary = f"{messages[0]}. Plus {count - 1} more updates."
+        
+        return await self.speak(summary, priority, source, topic=topic)
+    
+    def clear_topic_cooldown(self, topic: SpeechTopic) -> None:
+        """v2.0: Clear cooldown for a specific topic (for forced announcements)."""
+        if topic in self._context.topic_last_spoken:
+            del self._context.topic_last_spoken[topic]
+            logger.debug(f"🔊 Cleared cooldown for topic: {topic.value}")
+    
+    def clear_all_cooldowns(self) -> None:
+        """v2.0: Clear all topic cooldowns."""
+        self._context.topic_last_spoken.clear()
+        self._context.recent_keywords.clear()
+        logger.debug("🔊 Cleared all cooldowns")
 
     async def _process_queue(self) -> None:
         """Process the voice queue (single consumer)."""
@@ -476,6 +759,20 @@ class UnifiedVoiceOrchestrator:
         # Acquire the global speech lock
         async with self._speech_lock:
             start_time = time.time()
+            
+            # v2.0: Add natural pause if we've been speaking rapidly
+            if self._context.messages_in_burst > 2:
+                pause = self.config.natural_pause_seconds * min(
+                    self._context.messages_in_burst - 2, 3
+                )
+                if pause > 0:
+                    logger.debug(f"🔊 Natural pause: {pause:.2f}s")
+                    await asyncio.sleep(pause)
+            
+            # v2.0: Reset burst counter if enough time has passed
+            elapsed_since_last = time.time() - self._context.last_message_time
+            if elapsed_since_last > 5.0:
+                self._context.reset_burst()
 
             # Notify callbacks
             for callback in self._on_speak_start:
@@ -485,7 +782,10 @@ class UnifiedVoiceOrchestrator:
                     logger.debug(f"Speak start callback error: {e}")
 
             # Log
-            logger.info(f"🔊 Speaking ({message.priority.name}): {message.text}")
+            logger.info(
+                f"🔊 Speaking ({message.priority.name}, {message.topic.value}): "
+                f"{message.text}"
+            )
 
             # Speak
             if self._is_macos and self.config.enabled:
@@ -500,6 +800,10 @@ class UnifiedVoiceOrchestrator:
 
             # Record fingerprint for deduplication
             self._record_fingerprint(message)
+            
+            # v2.0: Record context
+            self._context.record_message(message)
+            self._context.record_topic(message.topic)
 
             # Notify callbacks
             for callback in self._on_speak_end:
@@ -611,6 +915,7 @@ async def speak(
     priority: VoicePriority = VoicePriority.MEDIUM,
     source: VoiceSource = VoiceSource.SYSTEM,
     wait: bool = False,
+    topic: Optional[SpeechTopic] = None,
 ) -> bool:
     """
     Convenience function to speak through the unified orchestrator.
@@ -620,27 +925,36 @@ async def speak(
     orchestrator = get_voice_orchestrator()
     if not orchestrator._running:
         await orchestrator.start()
-    return await orchestrator.speak(text, priority, source, wait)
+    return await orchestrator.speak(text, priority, source, wait, topic=topic)
 
 
 async def speak_and_wait(
     text: str,
     priority: VoicePriority = VoicePriority.MEDIUM,
     source: VoiceSource = VoiceSource.SYSTEM,
+    topic: Optional[SpeechTopic] = None,
 ) -> bool:
     """Convenience function to speak and wait for completion."""
-    return await speak(text, priority, source, wait=True)
+    return await speak(text, priority, source, wait=True, topic=topic)
 
 
 # Compatibility aliases for easier migration
-async def speak_supervisor(text: str, wait: bool = False) -> bool:
+async def speak_supervisor(
+    text: str,
+    wait: bool = False,
+    topic: Optional[SpeechTopic] = None,
+) -> bool:
     """Speak from supervisor source."""
-    return await speak(text, VoicePriority.MEDIUM, VoiceSource.SUPERVISOR, wait)
+    return await speak(text, VoicePriority.MEDIUM, VoiceSource.SUPERVISOR, wait, topic)
 
 
-async def speak_startup(text: str, priority: VoicePriority = VoicePriority.MEDIUM) -> bool:
+async def speak_startup(
+    text: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    topic: Optional[SpeechTopic] = None,
+) -> bool:
     """Speak from startup source."""
-    return await speak(text, priority, VoiceSource.STARTUP)
+    return await speak(text, priority, VoiceSource.STARTUP, topic=topic or SpeechTopic.STARTUP)
 
 
 async def speak_critical(text: str, source: VoiceSource = VoiceSource.SYSTEM) -> bool:

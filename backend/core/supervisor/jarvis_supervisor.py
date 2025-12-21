@@ -50,6 +50,8 @@ from .startup_narrator import (
 from .unified_voice_orchestrator import (
     get_voice_orchestrator,
     UnifiedVoiceOrchestrator,
+    SpeechTopic,
+    VoicePriority,
 )
 from .update_notification import (
     UpdateNotificationOrchestrator,
@@ -1478,9 +1480,12 @@ class JARVISSupervisor:
         
         # Announce update starting via TTS
         if is_zero_touch and self.config.zero_touch.announce_before_update:
+            # v4.0: Use topic-aware speak for Zero-Touch
             await self._narrator.speak(
                 "Starting autonomous update with full validation.",
-                wait=True
+                wait=True,
+                priority=VoicePriority.HIGH,
+                topic=SpeechTopic.ZERO_TOUCH,
             )
         else:
             await self._narrator.narrate(NarratorEvent.UPDATE_STARTING, wait=True)
@@ -1628,9 +1633,12 @@ class JARVISSupervisor:
             logger.error(f"❌ Update error: {e}")
             self._is_post_update = False
             if is_zero_touch:
+                # v4.0: Use topic-aware speak for error
                 await self._narrator.speak(
                     f"Autonomous update error. {str(e)[:50]}",
-                    wait=False
+                    wait=False,
+                    priority=VoicePriority.HIGH,
+                    topic=SpeechTopic.ERROR,
                 )
             return False
     

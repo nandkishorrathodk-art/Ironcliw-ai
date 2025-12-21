@@ -7650,20 +7650,27 @@ class AsyncSystemManager:
             print(f"\n{Colors.BLUE}🔍 Process & Cache Management System v4.0{Colors.ENDC}")
             print(f"{Colors.CYAN}   Checking for code changes and process cleanup needs...{Colors.ENDC}")
             
+            # v15.0: Zero-Touch state awareness (read directly from environment)
+            zero_touch_active = os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
+            zero_touch_phase = os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle")
+            dms_active = os.environ.get("JARVIS_DMS_ACTIVE", "false").lower() == "true"
+            
             # v15.0: Show Zero-Touch awareness
-            if _zero_touch_active:
-                print(f"{Colors.CYAN}   🔄 Zero-Touch mode: {_zero_touch_phase}{Colors.ENDC}")
+            if zero_touch_active:
+                print(f"{Colors.CYAN}   🔄 Zero-Touch mode: {zero_touch_phase}{Colors.ENDC}")
+            if dms_active:
+                print(f"{Colors.CYAN}   🛡️ DMS monitoring active{Colors.ENDC}")
 
             manager = ProcessCleanupManager()
             
             # v15.0: Update supervisor state if available
             supervisor_state = {}
-            if os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true":
+            if zero_touch_active:
                 supervisor_state["zero_touch"] = {
                     "active": True,
-                    "phase": os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle"),
+                    "phase": zero_touch_phase,
                 }
-            if os.environ.get("JARVIS_DMS_ACTIVE", "false").lower() == "true":
+            if dms_active:
                 supervisor_state["dms"] = {
                     "active": True,
                     "probation_remaining": float(os.environ.get("JARVIS_DMS_PROBATION_REMAINING", "0")),
@@ -7672,7 +7679,7 @@ class AsyncSystemManager:
                 manager._supervisor_state.update_from_supervisor(supervisor_state)
             
             # v15.0: Validate resources if in Zero-Touch mode or before restart
-            if _zero_touch_active or os.environ.get("JARVIS_VALIDATE_RESOURCES", "false").lower() == "true":
+            if zero_touch_active or os.environ.get("JARVIS_VALIDATE_RESOURCES", "false").lower() == "true":
                 print(f"\n{Colors.CYAN}🔬 Validating system resources for update...{Colors.ENDC}")
                 try:
                     validation = await validate_resources_for_update()
