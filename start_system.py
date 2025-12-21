@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v14.2.0 - PRD v2.0 VOICE INTELLIGENCE EDITION
+Unified startup script for JARVIS AI System v15.0.0 - Zero-Touch Edition
 Advanced Browser Automation + v2.0 ML-Powered Intelligence Systems + PRD v2.0 Voice Biometrics
 ⚡ ULTRA-OPTIMIZED: 30% Memory Target (4.8GB on 16GB Systems)
 🤖 AUTONOMOUS: Self-Discovering, Self-Healing, Self-Optimizing
 🧠 INTELLIGENT: 6 Upgraded v2.0 Systems with Proactive Monitoring
 🔐 PRD v2.0: AAM-Softmax + Center Loss + Triplet Loss + Platt/Isotonic Calibration
+🔄 ZERO-TOUCH: Autonomous updates with Dead Man's Switch protection (v15.0)
 
 The JARVIS backend loads 11 critical components + 6 intelligent systems:
 
@@ -7643,12 +7644,65 @@ class AsyncSystemManager:
                 ProcessCleanupManager,
                 emergency_cleanup,
                 prevent_multiple_jarvis_instances,
+                validate_resources_for_update,
             )
 
-            print(f"\n{Colors.BLUE}🔍 Process & Cache Management System{Colors.ENDC}")
+            print(f"\n{Colors.BLUE}🔍 Process & Cache Management System v4.0{Colors.ENDC}")
             print(f"{Colors.CYAN}   Checking for code changes and process cleanup needs...{Colors.ENDC}")
+            
+            # v15.0: Show Zero-Touch awareness
+            if _zero_touch_active:
+                print(f"{Colors.CYAN}   🔄 Zero-Touch mode: {_zero_touch_phase}{Colors.ENDC}")
 
             manager = ProcessCleanupManager()
+            
+            # v15.0: Update supervisor state if available
+            supervisor_state = {}
+            if os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true":
+                supervisor_state["zero_touch"] = {
+                    "active": True,
+                    "phase": os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle"),
+                }
+            if os.environ.get("JARVIS_DMS_ACTIVE", "false").lower() == "true":
+                supervisor_state["dms"] = {
+                    "active": True,
+                    "probation_remaining": float(os.environ.get("JARVIS_DMS_PROBATION_REMAINING", "0")),
+                }
+            if supervisor_state:
+                manager._supervisor_state.update_from_supervisor(supervisor_state)
+            
+            # v15.0: Validate resources if in Zero-Touch mode or before restart
+            if _zero_touch_active or os.environ.get("JARVIS_VALIDATE_RESOURCES", "false").lower() == "true":
+                print(f"\n{Colors.CYAN}🔬 Validating system resources for update...{Colors.ENDC}")
+                try:
+                    validation = await validate_resources_for_update()
+                    
+                    if validation["valid"]:
+                        print(f"{Colors.GREEN}   ✓ Resource validation passed{Colors.ENDC}")
+                        print(f"     Memory: {validation['memory_percent']:.1f}%  CPU: {validation['cpu_percent']:.1f}%")
+                    else:
+                        print(f"{Colors.YELLOW}   ⚠️  Resource validation found issues:{Colors.ENDC}")
+                        for issue in validation["issues"]:
+                            print(f"     • {Colors.FAIL}{issue}{Colors.ENDC}")
+                        
+                        # If recommendation is cleanup_first, trigger cleanup
+                        if validation["recommendation"] == "cleanup_first":
+                            print(f"{Colors.CYAN}   → Running pre-update cleanup...{Colors.ENDC}")
+                            await manager.smart_cleanup(dry_run=False)
+                            
+                            # Re-validate after cleanup
+                            validation = await validate_resources_for_update()
+                            if validation["valid"]:
+                                print(f"{Colors.GREEN}   ✓ Post-cleanup validation passed{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.YELLOW}   ⚠️  Still have resource issues (proceeding anyway){Colors.ENDC}")
+                    
+                    # Show warnings if any
+                    for warning in validation.get("warnings", []):
+                        print(f"     {Colors.YELLOW}⚠ {warning}{Colors.ENDC}")
+                        
+                except Exception as e:
+                    print(f"{Colors.YELLOW}   ⚠️  Resource validation error: {e}{Colors.ENDC}")
 
             # Check for code changes (triggers enhanced backend process cleanup)
             code_changed = manager._detect_code_changes()
@@ -13524,13 +13578,13 @@ except Exception as e:
                 self.hybrid_enabled = False
 
         # ═══════════════════════════════════════════════════════════════════
-        # SUPERVISOR INTEGRATION - Self-Updating Lifecycle Manager
+        # SUPERVISOR INTEGRATION - Zero-Touch Self-Updating Lifecycle Manager
         # ═══════════════════════════════════════════════════════════════════
         await broadcast_progress(
             "supervisor_integration",
-            "Initializing Self-Updating Lifecycle Manager",
+            "Initializing Zero-Touch Lifecycle Manager",
             62,
-            {"icon": "🔄", "label": "Supervisor", "sublabel": "Auto-update integration"}
+            {"icon": "🔄", "label": "Supervisor", "sublabel": "Zero-Touch integration"}
         )
         try:
             from core.supervisor.supervisor_integration import (
@@ -13541,15 +13595,39 @@ except Exception as e:
             # Setup supervisor integration (registers intent handlers)
             supervised = await setup_supervisor_integration()
             
+            # v15.0: Check Zero-Touch configuration
+            zero_touch_enabled = os.environ.get("JARVIS_ZERO_TOUCH_ENABLED", "false").lower() == "true"
+            dms_enabled = os.environ.get("JARVIS_DMS_ENABLED", "true").lower() == "true"
+            agi_os_enabled = os.environ.get("JARVIS_AGI_OS_ENABLED", "true").lower() == "true"
+            
             if supervised:
-                print(f"\n{Colors.CYAN}🔄 Self-Updating Lifecycle Manager Active{Colors.ENDC}")
-                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Running under supervisor (auto-update enabled)")
+                print(f"\n{Colors.CYAN}🔄 Zero-Touch Lifecycle Manager Active{Colors.ENDC}")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Running under supervisor v3.0")
                 print(f"   • {Colors.GREEN}✓{Colors.ENDC} Voice commands: 'Update yourself', 'Rollback'")
-                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Idle updates: Enabled (2hr threshold)")
+                
+                # Zero-Touch status
+                if zero_touch_enabled:
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Zero-Touch: {Colors.GREEN}ENABLED{Colors.ENDC} (autonomous updates)")
+                else:
+                    print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} Zero-Touch: {Colors.YELLOW}DISABLED{Colors.ENDC}")
+                
+                # DMS status
+                if dms_enabled:
+                    probation_sec = int(os.environ.get("JARVIS_DMS_PROBATION_SECONDS", "30"))
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} Dead Man's Switch: {Colors.GREEN}ENABLED{Colors.ENDC} ({probation_sec}s probation)")
+                else:
+                    print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} Dead Man's Switch: {Colors.YELLOW}DISABLED{Colors.ENDC}")
+                
+                # AGI OS status
+                if agi_os_enabled:
+                    print(f"   • {Colors.GREEN}✓{Colors.ENDC} AGI OS: {Colors.GREEN}ENABLED{Colors.ENDC}")
+                else:
+                    print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} AGI OS: {Colors.YELLOW}DISABLED{Colors.ENDC}")
+                    
             else:
-                print(f"\n{Colors.YELLOW}🔄 Self-Updating Lifecycle Manager{Colors.ENDC}")
+                print(f"\n{Colors.YELLOW}🔄 Zero-Touch Lifecycle Manager{Colors.ENDC}")
                 print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} Running standalone mode")
-                print(f"   • {Colors.CYAN}ℹ{Colors.ENDC} For auto-updates, run: python3 run_supervisor.py")
+                print(f"   • {Colors.CYAN}ℹ{Colors.ENDC} For Zero-Touch updates, run: python3 run_supervisor.py")
                 
         except ImportError as e:
             logger.debug(f"Supervisor integration not available: {e}")
@@ -15683,6 +15761,139 @@ async def stop_docker_ecapa_service() -> bool:
         return False
 
 
+# =============================================================================
+# v15.0: ZERO-TOUCH UPDATE SUPPORT FUNCTIONS
+# =============================================================================
+
+async def validate_system_for_zero_touch_update() -> dict:
+    """
+    v15.0: Validate system resources before applying a Zero-Touch update.
+    
+    Called by the supervisor before applying an update to ensure
+    the system is in a good state. This is the entry point for
+    the supervisor to check if an update is safe to apply.
+    
+    Returns:
+        Dict with:
+        - valid: bool - True if system is ready for update
+        - issues: List[str] - Critical issues that block update
+        - warnings: List[str] - Non-critical warnings
+        - memory_percent: float - Current memory usage
+        - cpu_percent: float - Current CPU usage
+        - recommendation: str - 'proceed', 'cleanup_first', or 'defer'
+    """
+    try:
+        # Add backend to path if needed
+        backend_dir = Path(__file__).parent / "backend"
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        
+        from process_cleanup_manager import validate_resources_for_update
+        
+        # Run the validation
+        validation = await validate_resources_for_update()
+        
+        # Add JARVIS-specific checks
+        import psutil
+        
+        # Check if JARVIS is currently processing
+        jarvis_busy = False
+        try:
+            import aiohttp
+            port = int(os.environ.get('BACKEND_PORT', '8010'))
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
+                async with session.get(f'http://localhost:{port}/health/busy') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        jarvis_busy = data.get('busy', False)
+                        if jarvis_busy:
+                            active_tasks = data.get('active_tasks', 0)
+                            validation['issues'].append(f"JARVIS is busy ({active_tasks} active tasks)")
+                            validation['valid'] = False
+        except Exception:
+            # Can't reach JARVIS - that's actually OK for update
+            pass
+        
+        # Check available disk space (need at least 1GB for staging)
+        try:
+            disk = psutil.disk_usage(str(Path(__file__).parent))
+            free_gb = disk.free / (1024**3)
+            if free_gb < 1.0:
+                validation['issues'].append(f"Low disk space: {free_gb:.1f}GB free")
+                validation['valid'] = False
+            elif free_gb < 2.0:
+                validation['warnings'].append(f"Disk space low: {free_gb:.1f}GB free")
+            validation['disk_free_gb'] = free_gb
+        except Exception:
+            pass
+        
+        # Determine recommendation
+        if not validation['valid']:
+            if any('busy' in issue.lower() for issue in validation['issues']):
+                validation['recommendation'] = 'defer'  # Wait for JARVIS to be idle
+            else:
+                validation['recommendation'] = 'cleanup_first'
+        else:
+            validation['recommendation'] = 'proceed'
+        
+        return validation
+        
+    except Exception as e:
+        return {
+            'valid': False,
+            'issues': [f'Validation error: {e}'],
+            'warnings': [],
+            'memory_percent': 0,
+            'cpu_percent': 0,
+            'recommendation': 'defer',
+            'error': str(e),
+        }
+
+
+async def run_pre_update_cleanup() -> dict:
+    """
+    v15.0: Run cleanup before applying a Zero-Touch update.
+    
+    Called by the supervisor to clean up resources before an update.
+    
+    Returns:
+        Dict with cleanup results.
+    """
+    try:
+        backend_dir = Path(__file__).parent / "backend"
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        
+        from process_cleanup_manager import cleanup_system_for_jarvis
+        
+        # Build supervisor state
+        supervisor_state = {
+            "zero_touch": {
+                "active": True,
+                "phase": "pre_cleanup",
+            }
+        }
+        
+        # Run cleanup with supervisor state
+        result = await cleanup_system_for_jarvis(
+            dry_run=False,
+            supervisor_state=supervisor_state,
+            respect_zero_touch=False,  # Allow cleanup during Zero-Touch pre-phase
+        )
+        
+        return {
+            'success': not result.get('paused', False),
+            'actions': result.get('actions', []),
+            'freed_memory_mb': result.get('freed_resources', {}).get('memory_mb', 0),
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+        }
+
+
 async def main():
     """Main entry point"""
     global _manager
@@ -16208,11 +16419,17 @@ async def main():
 
     # Loading server process (module scope for cleanup)
     loading_server_process = None
+    
+    # v15.0: Zero-Touch state awareness
+    _zero_touch_active = os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
+    _zero_touch_phase = os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle")
 
     # Helper function to broadcast progress to loading server
     async def broadcast_to_loading_server(stage, message, progress, metadata=None):
         """
         Send progress update to loading server via HTTP.
+        
+        v15.0: Now Zero-Touch aware - includes Zero-Touch state in broadcasts.
 
         CRITICAL: When JARVIS_SUPERVISOR_LOADING=1, the supervisor is the authority
         for progress updates. start_system.py should NOT broadcast progress in this mode
@@ -16221,7 +16438,8 @@ async def main():
         # Skip if supervisor is handling loading page
         if os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1":
             # Only print to console for visibility, don't broadcast
-            print(f"  {Colors.CYAN}📊 [Supervisor Mode] {progress}% - {message}{Colors.ENDC}")
+            zt_indicator = " [ZT]" if _zero_touch_active else ""
+            print(f"  {Colors.CYAN}📊 [Supervisor Mode{zt_indicator}] {progress}% - {message}{Colors.ENDC}")
             return
 
         try:
@@ -16235,11 +16453,19 @@ async def main():
             }
             if metadata:
                 data["metadata"] = metadata
+            
+            # v15.0: Include Zero-Touch state if active
+            if _zero_touch_active:
+                data["zero_touch"] = {
+                    "active": True,
+                    "phase": _zero_touch_phase,
+                }
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=1)) as resp:
                     if resp.status == 200:
-                        print(f"  {Colors.CYAN}📊 Progress: {progress}% - {message}{Colors.ENDC}")
+                        zt_indicator = " [ZT]" if _zero_touch_active else ""
+                        print(f"  {Colors.CYAN}📊 Progress{zt_indicator}: {progress}% - {message}{Colors.ENDC}")
         except Exception as e:
             # Silently fail - loading server might not be ready yet
             pass
