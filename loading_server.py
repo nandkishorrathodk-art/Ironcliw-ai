@@ -834,17 +834,46 @@ async def serve_static_file(request: web.Request) -> web.Response:
 
 
 async def health_check(request: web.Request) -> web.Response:
-    """Health check endpoint with detailed status."""
+    """
+    Lightweight health check endpoint.
+    
+    This endpoint is called frequently by the supervisor to check if the
+    loading server is running. It should return IMMEDIATELY without doing
+    any heavy work like checking backend/frontend status.
+    
+    For detailed system status, use /api/status instead.
+    """
+    # Fast response - just confirm the server is running
+    uptime = (datetime.now() - metrics.start_time).total_seconds()
+    return web.json_response({
+        "status": "ok",
+        "message": "Loading server running",
+        "service": "jarvis_loading_server",
+        "version": "4.0.0",
+        "uptime_seconds": round(uptime, 2),
+    })
+
+
+async def detailed_status(request: web.Request) -> web.Response:
+    """
+    Detailed status endpoint with full system health check.
+    
+    This does the heavy work of checking backend and frontend.
+    Use /health for quick liveness checks.
+    """
     system_ready, reason = await health_checker.check_all_parallel()
 
     return web.json_response({
         "status": "ok" if system_ready else "degraded",
         "message": reason,
         "service": "jarvis_loading_server",
-        "version": "3.0.0",
+        "version": "4.0.0",
         "progress": progress_state.progress,
         "backend_ready": progress_state.backend_ready,
         "frontend_ready": progress_state.frontend_ready,
+        "is_ready": progress_state.is_ready,
+        "components_ready": progress_state.components_ready,
+        "total_components": progress_state.total_components,
         "metrics": metrics.to_dict()
     })
 
@@ -1358,8 +1387,9 @@ def create_app() -> web.Application:
     app.router.add_get('/{filename:.*\\.(svg|png|jpg|jpeg|ico|css|woff|woff2|ttf)}', serve_static_file)
 
     # Health and metrics
-    app.router.add_get('/health', health_check)
-    app.router.add_get('/health/ping', health_check)
+    app.router.add_get('/health', health_check)         # Fast liveness check
+    app.router.add_get('/health/ping', health_check)    # Alias for liveness
+    app.router.add_get('/api/status', detailed_status)  # Detailed system status
     app.router.add_get('/metrics', get_metrics)
 
     # Progress endpoints

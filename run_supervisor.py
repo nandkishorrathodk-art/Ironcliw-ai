@@ -1359,28 +1359,76 @@ class SupervisorBootstrapper:
             
             print(f"  {TerminalUI.GREEN}✓ Loading server started (PID {self._loading_server_process.pid}){TerminalUI.RESET}")
             
-            # Step 2: Wait for server to be ready (with retries)
+            # Step 2: Wait for server to be ready (intelligent adaptive health check)
             import aiohttp
             
             server_ready = False
-            max_retries = 20  # 10 seconds total
+            health_url = f"{loading_url}/health"
             
-            for attempt in range(max_retries):
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
-                            f"{loading_url}/health",
-                            timeout=aiohttp.ClientTimeout(total=0.5)
-                        ) as resp:
+            # Adaptive retry configuration
+            initial_delay = 0.1  # Start fast
+            max_delay = 1.0      # Cap at 1 second
+            max_wait_time = 15.0 # Total wait budget (seconds)
+            timeout_per_request = 1.0  # Generous timeout per request
+            
+            start_time = time.time()
+            attempt = 0
+            current_delay = initial_delay
+            
+            # Single session for connection reuse
+            connector = aiohttp.TCPConnector(
+                limit=1,
+                enable_cleanup_closed=True,
+                force_close=False,
+            )
+            
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=timeout_per_request)
+            ) as session:
+                while (time.time() - start_time) < max_wait_time:
+                    attempt += 1
+                    try:
+                        async with session.get(health_url) as resp:
                             if resp.status == 200:
                                 server_ready = True
+                                elapsed = time.time() - start_time
+                                self.logger.info(
+                                    f"Loading server ready after {attempt} attempts ({elapsed:.2f}s)"
+                                )
                                 break
-                except (aiohttp.ClientError, asyncio.TimeoutError):
-                    await asyncio.sleep(0.5)
+                            else:
+                                self.logger.debug(
+                                    f"Health check attempt {attempt}: status {resp.status}"
+                                )
+                    except aiohttp.ClientConnectorError:
+                        # Server not listening yet - this is expected during startup
+                        pass
+                    except asyncio.TimeoutError:
+                        # Request timed out - server might be slow
+                        self.logger.debug(f"Health check attempt {attempt}: timeout")
+                    except Exception as e:
+                        self.logger.debug(f"Health check attempt {attempt}: {type(e).__name__}")
+                    
+                    # Adaptive backoff: start fast, slow down over time
+                    await asyncio.sleep(current_delay)
+                    current_delay = min(current_delay * 1.5, max_delay)
+                    
+                    # Progress indicator every ~2 seconds
+                    if attempt % 5 == 0:
+                        elapsed = time.time() - start_time
+                        print(f"  {TerminalUI.CYAN}⏳ Waiting for loading server... ({elapsed:.1f}s){TerminalUI.RESET}")
             
             if not server_ready:
-                self.logger.warning("Loading server didn't respond to health check")
-                print(f"  {TerminalUI.YELLOW}⚠️  Loading server slow to respond - continuing anyway{TerminalUI.RESET}")
+                elapsed = time.time() - start_time
+                self.logger.warning(
+                    f"Loading server didn't respond after {attempt} attempts ({elapsed:.1f}s)"
+                )
+                # Check if process is still running
+                if self._loading_server_process.returncode is not None:
+                    print(f"  {TerminalUI.RED}✗ Loading server exited unexpectedly (code: {self._loading_server_process.returncode}){TerminalUI.RESET}")
+                else:
+                    print(f"  {TerminalUI.YELLOW}⚠️  Loading server slow to respond - continuing (may still be starting){TerminalUI.RESET}")
             else:
                 print(f"  {TerminalUI.GREEN}✓ Loading server ready at {loading_url}{TerminalUI.RESET}")
             
