@@ -144,7 +144,9 @@ class BootstrapConfig:
     # =========================================================================
     # v3.0: Zero-Touch Autonomous Update Settings
     # =========================================================================
-    zero_touch_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_ENABLED", "false").lower() == "true")
+    # Default: ENABLED - JARVIS should be a living, self-updating system
+    # Disable with: JARVIS_ZERO_TOUCH_ENABLED=false
+    zero_touch_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_ENABLED", "true").lower() == "true")
     zero_touch_require_idle: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_REQUIRE_IDLE", "true").lower() == "true")
     zero_touch_check_busy: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_CHECK_BUSY", "true").lower() == "true")
     zero_touch_auto_security: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_SECURITY", "true").lower() == "true")

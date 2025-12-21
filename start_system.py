@@ -7822,17 +7822,25 @@ class AsyncSystemManager:
                     print(f"{Colors.GREEN}✓ Supervisor verified ports are clear{Colors.ENDC}")
                     return True  # Trust supervisor's verification
 
-            can_start, message = prevent_multiple_jarvis_instances()
+            # v4.0: prevent_multiple_jarvis_instances now handles auto-cleanup internally
+            can_start, message = prevent_multiple_jarvis_instances(
+                auto_cleanup=self.auto_cleanup,
+                max_retries=3,
+            )
             if can_start:
                 print(f"{Colors.GREEN}✓ {message}{Colors.ENDC}")
             else:
                 print(f"{Colors.WARNING}⚠️ {message}{Colors.ENDC}")
                 if self.auto_cleanup:
-                    print(f"{Colors.YELLOW}Forcing cleanup for fresh start...{Colors.ENDC}")
+                    # Last resort: emergency cleanup
+                    print(f"{Colors.YELLOW}🚨 Attempting emergency cleanup...{Colors.ENDC}")
                     emergency_cleanup(force=True)
                     await asyncio.sleep(2)
-                    # Re-check after cleanup
-                    can_start, message = prevent_multiple_jarvis_instances()
+                    # Final re-check after emergency cleanup
+                    can_start, message = prevent_multiple_jarvis_instances(
+                        auto_cleanup=False,  # Already tried auto, skip this time
+                        max_retries=1,
+                    )
                     if can_start:
                         print(f"{Colors.GREEN}✓ {message}{Colors.ENDC}")
                     else:

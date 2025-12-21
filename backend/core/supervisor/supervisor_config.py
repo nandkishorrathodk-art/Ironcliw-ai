@@ -124,7 +124,9 @@ class ZeroTouchConfig:
     5. Immutable core protection
     """
     # Master toggle for autonomous updates
-    enabled: bool = False  # OFF by default - must be explicitly enabled
+    # v4.0: Now ON by default - JARVIS is a living, self-updating system
+    # Disable with environment variable or config: JARVIS_ZERO_TOUCH_ENABLED=false
+    enabled: bool = True
     
     # Pre-Update Safety Checks
     check_jarvis_busy: bool = True           # Query JARVIS internal state before update
