@@ -12353,6 +12353,18 @@ if (typeof localStorage !== 'undefined') {
             logger.info("🔒 Browser already opened this session - skipping duplicate open")
             print(f"{Colors.CYAN}🔒 Browser already opened - skipping duplicate window{Colors.ENDC}")
             return  # CRITICAL: Return early to prevent duplicate windows
+        
+        # v5.0: Check browser lock file - if locked, run_supervisor.py is managing browser
+        browser_lock_file = Path("/tmp/jarvis_browser.lock")
+        if browser_lock_file.exists():
+            try:
+                lock_age = time.time() - browser_lock_file.stat().st_mtime
+                if lock_age < 30:  # Lock is recent
+                    logger.info("🔒 Browser managed by run_supervisor.py (lock file) - skipping")
+                    print(f"{Colors.CYAN}🔒 Browser managed by supervisor - skipping duplicate window{Colors.ENDC}")
+                    return
+            except Exception:
+                pass
 
         # Determine URL to open
         if custom_url:

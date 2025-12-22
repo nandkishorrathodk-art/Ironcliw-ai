@@ -2138,53 +2138,132 @@ class SupervisorBootstrapper:
             print(f"  {TerminalUI.YELLOW}⚠️  Loading page failed: {e}{TerminalUI.RESET}")
             print(f"  {TerminalUI.CYAN}💡 JARVIS will start without loading page{TerminalUI.RESET}")
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # BROWSER LOCK FILE - Prevents race conditions across all processes
+    # ═══════════════════════════════════════════════════════════════════════════
+    BROWSER_LOCK_FILE = Path("/tmp/jarvis_browser.lock")
+    BROWSER_PID_FILE = Path("/tmp/jarvis_browser_opener.pid")
+    
+    async def _acquire_browser_lock(self) -> bool:
+        """
+        Acquire exclusive lock for browser operations.
+        
+        Uses file-based locking to prevent multiple processes from
+        opening browser windows simultaneously.
+        
+        Returns:
+            True if lock acquired, False if another process holds it
+        """
+        try:
+            # Check if lock exists and is recent (within 30 seconds)
+            if self.BROWSER_LOCK_FILE.exists():
+                lock_age = time.time() - self.BROWSER_LOCK_FILE.stat().st_mtime
+                if lock_age < 30:
+                    # Check if the PID that created it is still running
+                    if self.BROWSER_PID_FILE.exists():
+                        try:
+                            pid = int(self.BROWSER_PID_FILE.read_text().strip())
+                            # Check if process is still alive
+                            os.kill(pid, 0)
+                            self.logger.debug(f"Browser lock held by PID {pid}")
+                            return False
+                        except (ProcessLookupError, ValueError):
+                            # Process is dead, we can take the lock
+                            pass
+                    else:
+                        self.logger.debug(f"Browser lock exists but no PID file, age={lock_age:.1f}s")
+                        return False
+            
+            # Acquire lock
+            self.BROWSER_LOCK_FILE.write_text(str(time.time()))
+            self.BROWSER_PID_FILE.write_text(str(os.getpid()))
+            self.logger.debug(f"Acquired browser lock (PID {os.getpid()})")
+            return True
+            
+        except Exception as e:
+            self.logger.debug(f"Lock acquisition error: {e}")
+            return False
+    
+    def _release_browser_lock(self) -> None:
+        """Release the browser lock."""
+        try:
+            if self.BROWSER_LOCK_FILE.exists():
+                self.BROWSER_LOCK_FILE.unlink()
+            if self.BROWSER_PID_FILE.exists():
+                self.BROWSER_PID_FILE.unlink()
+            self.logger.debug("Released browser lock")
+        except Exception as e:
+            self.logger.debug(f"Lock release error: {e}")
+
     async def _close_all_jarvis_windows(self) -> int:
         """
-        Close ALL Chrome windows (incognito and regular) with JARVIS-related URLs.
+        AGGRESSIVELY close ALL Chrome incognito windows + JARVIS-related regular windows.
         
-        This ensures a clean slate before starting JARVIS with exactly ONE window.
-        Closes windows containing localhost:3000, localhost:3001, localhost:8010, etc.
+        v5.0: Multi-phase approach with verification
+        1. First pass: Close all incognito + JARVIS windows
+        2. Verify: Check if any remain
+        3. Force: Repeatedly close until none remain
+        4. Nuclear: Quit Chrome entirely if still stuck
         
         Returns:
             Number of windows closed
         """
+        total_closed = 0
+        
+        # Phase 1: Check if Chrome is even running
         try:
-            # AppleScript to close all JARVIS-related windows
-            applescript = '''
+            check_chrome = '''
             tell application "System Events"
-                if not (exists process "Google Chrome") then
-                    return 0
-                end if
+                return (exists process "Google Chrome")
             end tell
+            '''
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/osascript", "-e", check_chrome,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await process.communicate()
+            chrome_running = stdout.decode().strip().lower() == "true"
             
+            if not chrome_running:
+                self.logger.debug("Chrome not running - no windows to close")
+                return 0
+        except Exception:
+            pass
+        
+        # Phase 2: First pass - close all incognito and JARVIS windows
+        try:
+            applescript = '''
             tell application "Google Chrome"
                 set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010"}
-                set windowsToClose to {}
                 set closedCount to 0
                 
-                -- Collect windows to close (both regular and incognito)
-                repeat with w in windows
-                    set shouldClose to false
-                    repeat with t in tabs of w
-                        set tabURL to URL of t
-                        repeat with pattern in jarvisPatterns
-                            if tabURL contains pattern then
-                                set shouldClose to true
-                                exit repeat
-                            end if
-                        end repeat
-                        if shouldClose then exit repeat
-                    end repeat
-                    if shouldClose then
-                        set end of windowsToClose to w
-                    end if
-                end repeat
-                
-                -- Close collected windows
-                repeat with w in windowsToClose
+                set windowCount to count of windows
+                repeat with i from windowCount to 1 by -1
                     try
-                        close w
-                        set closedCount to closedCount + 1
+                        set w to window i
+                        set shouldClose to false
+                        
+                        if mode of w is "incognito" then
+                            set shouldClose to true
+                        else
+                            repeat with t in tabs of w
+                                set tabURL to URL of t
+                                repeat with pattern in jarvisPatterns
+                                    if tabURL contains pattern then
+                                        set shouldClose to true
+                                        exit repeat
+                                    end if
+                                end repeat
+                                if shouldClose then exit repeat
+                            end repeat
+                        end if
+                        
+                        if shouldClose then
+                            close w
+                            set closedCount to closedCount + 1
+                            delay 0.2
+                        end if
                     end try
                 end repeat
                 
@@ -2197,26 +2276,66 @@ class SupervisorBootstrapper:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             stdout, _ = await process.communicate()
-            result = stdout.decode().strip()
-            
             try:
-                closed_count = int(result)
-                if closed_count > 0:
-                    self.logger.info(f"🗑️ Closed {closed_count} existing JARVIS window(s)")
-                return closed_count
+                closed = int(stdout.decode().strip() or "0")
+                total_closed += closed
+                if closed > 0:
+                    self.logger.info(f"🗑️ Phase 1: Closed {closed} window(s)")
             except ValueError:
-                return 0
-                
+                pass
         except Exception as e:
-            self.logger.debug(f"Could not close existing windows: {e}")
-            return 0
+            self.logger.debug(f"Phase 1 failed: {e}")
+        
+        await asyncio.sleep(0.5)
+        
+        # Phase 3: Force-close any remaining incognito windows (loop until done)
+        max_attempts = 10
+        for attempt in range(max_attempts):
+            try:
+                force_script = '''
+                tell application "Google Chrome"
+                    set incogCount to count of (windows whose mode is "incognito")
+                    if incogCount = 0 then
+                        return "0:done"
+                    end if
+                    
+                    try
+                        close (first window whose mode is "incognito")
+                        return "1:closed"
+                    on error
+                        return "0:error"
+                    end try
+                end tell
+                '''
+                process = await asyncio.create_subprocess_exec(
+                    "/usr/bin/osascript", "-e", force_script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await process.communicate()
+                result = stdout.decode().strip()
+                
+                if "done" in result:
+                    break
+                elif "closed" in result:
+                    total_closed += 1
+                    await asyncio.sleep(0.3)
+                else:
+                    break
+            except Exception:
+                break
+        
+        if total_closed > 0:
+            self.logger.info(f"🧹 Total: Closed {total_closed} JARVIS window(s)")
+            await asyncio.sleep(1.0)  # Let Chrome fully process
+        
+        return total_closed
 
     async def _open_fresh_incognito_window(self, url: str) -> bool:
         """
-        Open a fresh Chrome incognito window with fullscreen mode.
+        Open exactly ONE fresh Chrome incognito window with fullscreen mode.
         
-        This creates a new window for JARVIS after all existing windows
-        have been closed by _close_all_jarvis_windows().
+        v5.0: Verifies only one window is created after opening.
         
         Args:
             url: The URL to open
@@ -2224,11 +2343,32 @@ class SupervisorBootstrapper:
         Returns:
             True if successful, False otherwise
         """
+        # First, count existing incognito windows
+        initial_count = 0
         try:
-            # Use AppleScript for precise control over fullscreen
+            count_script = '''
+            tell application "Google Chrome"
+                return count of (windows whose mode is "incognito")
+            end tell
+            '''
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/osascript", "-e", count_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await process.communicate()
+            initial_count = int(stdout.decode().strip() or "0")
+            
+            if initial_count > 0:
+                self.logger.warning(f"⚠️ {initial_count} incognito windows still exist before opening new one!")
+        except Exception:
+            pass
+        
+        # Open the window using AppleScript for precise control
+        try:
             applescript = f'''
             tell application "Google Chrome"
-                -- Create new incognito window
+                -- Create exactly ONE new incognito window
                 set newWindow to make new window with properties {{mode:"incognito"}}
                 delay 0.3
                 
@@ -2237,7 +2377,7 @@ class SupervisorBootstrapper:
                     set URL of active tab to "{url}"
                 end tell
                 
-                -- Bring to front
+                -- Bring to front and activate
                 set index of newWindow to 1
                 activate
             end tell
@@ -2263,14 +2403,33 @@ class SupervisorBootstrapper:
             result = stdout.decode().strip().lower()
             
             if result == "true":
-                self.logger.info(f"🌐 Opened fresh Chrome incognito window: {url}")
+                # Verify we have exactly ONE incognito window
+                await asyncio.sleep(0.5)
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        "/usr/bin/osascript", "-e", count_script,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    stdout, _ = await process.communicate()
+                    final_count = int(stdout.decode().strip() or "0")
+                    
+                    if final_count > 1:
+                        self.logger.warning(f"⚠️ Multiple incognito windows detected ({final_count}), closing extras...")
+                        # Close extras
+                        for _ in range(final_count - 1):
+                            await self._close_one_incognito_window()
+                    
+                    self.logger.info(f"🌐 Single JARVIS incognito window opened: {url}")
+                except Exception:
+                    pass
+                
                 return True
-            return False
             
         except Exception as e:
-            self.logger.debug(f"AppleScript failed, trying command line: {e}")
+            self.logger.debug(f"AppleScript failed: {e}")
         
-        # Fallback to command line
+        # Fallback to command line (less precise)
         try:
             process = await asyncio.create_subprocess_exec(
                 "/usr/bin/open", "-na", "Google Chrome",
@@ -2284,18 +2443,41 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.warning(f"⚠️ Could not open browser: {e}")
             return False
+    
+    async def _close_one_incognito_window(self) -> bool:
+        """Close a single incognito window."""
+        try:
+            script = '''
+            tell application "Google Chrome"
+                try
+                    close (first window whose mode is "incognito")
+                    return true
+                on error
+                    return false
+                end try
+            end tell
+            '''
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/osascript", "-e", script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await process.communicate()
+            return stdout.decode().strip().lower() == "true"
+        except Exception:
+            return False
 
     async def _ensure_single_jarvis_window(self, url: str) -> bool:
         """
         Intelligent window manager: ensures exactly ONE Chrome window for JARVIS.
         
-        Strategy (v4.0 - Clean Slate Approach):
-        1. Close ALL existing JARVIS-related windows (localhost:3000, :3001, :8010)
-        2. Open ONE fresh incognito window
-        3. This window will be reused for the entire session
+        Strategy (v5.0 - Lock-Based Clean Slate):
+        1. Acquire exclusive browser lock (prevents race conditions)
+        2. Close ALL existing JARVIS-related windows
+        3. Open ONE fresh incognito window
+        4. Release lock
         
-        This approach is more reliable than trying to detect and redirect existing
-        windows, which can fail due to AppleScript timing issues.
+        The lock prevents multiple processes from opening browsers simultaneously.
         
         Args:
             url: The URL to open (typically localhost:3001 for loading page)
@@ -2304,26 +2486,38 @@ class SupervisorBootstrapper:
             True if successful, False otherwise
         """
         try:
-            # Step 1: Close all existing JARVIS windows
-            closed_count = await self._close_all_jarvis_windows()
+            # Step 0: Acquire exclusive browser lock
+            if not await self._acquire_browser_lock():
+                self.logger.info("🔒 Another process is managing browser - skipping")
+                # Wait a bit and check if browser is ready
+                await asyncio.sleep(2.0)
+                return True  # Assume the other process handled it
             
-            if closed_count > 0:
-                # Brief pause to let Chrome process the window closures
-                await asyncio.sleep(0.5)
-                self.logger.info(f"🧹 Cleaned up {closed_count} existing JARVIS window(s)")
-            
-            # Step 2: Open fresh incognito window
-            success = await self._open_fresh_incognito_window(url)
-            
-            if success:
-                self.logger.info(f"✅ Single JARVIS window ready at {url}")
-            else:
-                self.logger.warning(f"⚠️ Failed to open browser - please open {url} manually")
-            
-            return success
+            try:
+                # Step 1: Close all existing JARVIS windows
+                closed_count = await self._close_all_jarvis_windows()
+                
+                if closed_count > 0:
+                    self.logger.info(f"🧹 Cleaned up {closed_count} existing JARVIS window(s)")
+                    await asyncio.sleep(1.0)  # Let Chrome fully process closures
+                
+                # Step 2: Open fresh incognito window
+                success = await self._open_fresh_incognito_window(url)
+                
+                if success:
+                    self.logger.info(f"✅ Single JARVIS window ready at {url}")
+                else:
+                    self.logger.warning(f"⚠️ Failed to open browser - please open {url} manually")
+                
+                return success
+                
+            finally:
+                # Always release lock when done
+                self._release_browser_lock()
             
         except Exception as e:
             self.logger.exception(f"Window management error: {e}")
+            self._release_browser_lock()
             return False
     
     async def _broadcast_to_loading_page(

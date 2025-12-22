@@ -331,16 +331,37 @@ class JARVISSupervisor:
             
             logger.info("🎯 Dead Man's Switch initialized")
     
+    # Browser lock file - shared with run_supervisor.py
+    BROWSER_LOCK_FILE = Path("/tmp/jarvis_browser.lock")
+    
+    def _is_browser_locked(self) -> bool:
+        """Check if another process holds the browser lock."""
+        try:
+            if self.BROWSER_LOCK_FILE.exists():
+                lock_age = time.time() - self.BROWSER_LOCK_FILE.stat().st_mtime
+                # If lock is recent (within 30 seconds), someone else is managing browser
+                if lock_age < 30:
+                    return True
+            return False
+        except Exception:
+            return False
+    
     async def _close_all_jarvis_windows(self) -> int:
         """
-        Close ALL Chrome windows (incognito and regular) with JARVIS-related URLs.
+        Close ALL Chrome incognito windows + JARVIS-related regular windows.
         
-        v4.0 Clean Slate Approach: Ensures exactly ONE window for JARVIS
-        by closing all existing windows first.
+        v5.0: Check browser lock first - if locked, skip (another process is handling it)
         
         Returns:
             Number of windows closed
         """
+        # Check if browser is being managed by another process
+        if self._is_browser_locked():
+            logger.info("🔒 Browser management locked by run_supervisor.py - skipping")
+            return 0
+        
+        total_closed = 0
+        
         try:
             applescript = '''
             tell application "System Events"
@@ -351,30 +372,34 @@ class JARVISSupervisor:
             
             tell application "Google Chrome"
                 set jarvisPatterns to {"localhost:3000", "localhost:3001", "localhost:8010", "127.0.0.1:3000", "127.0.0.1:3001", "127.0.0.1:8010"}
-                set windowsToClose to {}
                 set closedCount to 0
                 
-                repeat with w in windows
-                    set shouldClose to false
-                    repeat with t in tabs of w
-                        set tabURL to URL of t
-                        repeat with pattern in jarvisPatterns
-                            if tabURL contains pattern then
-                                set shouldClose to true
-                                exit repeat
-                            end if
-                        end repeat
-                        if shouldClose then exit repeat
-                    end repeat
-                    if shouldClose then
-                        set end of windowsToClose to w
-                    end if
-                end repeat
-                
-                repeat with w in windowsToClose
+                set windowCount to count of windows
+                repeat with i from windowCount to 1 by -1
                     try
-                        close w
-                        set closedCount to closedCount + 1
+                        set w to window i
+                        set shouldClose to false
+                        
+                        if mode of w is "incognito" then
+                            set shouldClose to true
+                        else
+                            repeat with t in tabs of w
+                                set tabURL to URL of t
+                                repeat with pattern in jarvisPatterns
+                                    if tabURL contains pattern then
+                                        set shouldClose to true
+                                        exit repeat
+                                    end if
+                                end repeat
+                                if shouldClose then exit repeat
+                            end repeat
+                        end if
+                        
+                        if shouldClose then
+                            close w
+                            set closedCount to closedCount + 1
+                            delay 0.2
+                        end if
                     end try
                 end repeat
                 
@@ -387,38 +412,43 @@ class JARVISSupervisor:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             stdout, _ = await process.communicate()
-            result = stdout.decode().strip()
             
             try:
-                closed_count = int(result)
-                if closed_count > 0:
-                    logger.info(f"🗑️ Closed {closed_count} existing JARVIS window(s)")
-                return closed_count
+                total_closed = int(stdout.decode().strip() or "0")
             except ValueError:
-                return 0
-                
+                pass
+                    
         except Exception as e:
             logger.debug(f"Could not close existing windows: {e}")
-            return 0
+        
+        if total_closed > 0:
+            logger.info(f"🗑️ Closed {total_closed} existing JARVIS window(s)")
+            await asyncio.sleep(1.0)
+        
+        return total_closed
 
     async def _open_loading_page(self) -> bool:
         """
         Open browser to loading page at localhost:3001.
         
-        v4.0 Clean Slate Approach:
-        1. Close ALL existing JARVIS windows (localhost:3000, :3001, :8010)
-        2. Open ONE fresh incognito window
+        v5.0: Check browser lock first - if locked, skip since
+        run_supervisor.py is already managing the browser.
         
         This ensures exactly one browser window for JARVIS.
         """
         loading_url = "http://localhost:3001/"
+
+        # Check if browser is being managed by run_supervisor.py
+        if self._is_browser_locked():
+            logger.info("🔒 Browser managed by run_supervisor.py - skipping _open_loading_page")
+            return True  # Return True since browser IS open, just not by us
 
         try:
             # Step 1: Close all existing JARVIS windows
             closed_count = await self._close_all_jarvis_windows()
             
             if closed_count > 0:
-                await asyncio.sleep(0.5)  # Let Chrome process the closures
+                await asyncio.sleep(1.0)  # Let Chrome process the closures
                 logger.info(f"🧹 Cleaned up {closed_count} existing JARVIS window(s)")
             
             # Step 2: Open fresh incognito window with fullscreen
