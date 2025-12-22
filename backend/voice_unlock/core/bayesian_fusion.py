@@ -60,11 +60,12 @@ class BayesianFusionConfig:
     BEHAVIORAL_WEIGHT = float(os.getenv("BAYESIAN_BEHAVIORAL_WEIGHT", "0.20"))
     CONTEXT_WEIGHT = float(os.getenv("BAYESIAN_CONTEXT_WEIGHT", "0.10"))
 
-    # Decision thresholds
-    AUTHENTICATE_THRESHOLD = float(os.getenv("BAYESIAN_AUTH_THRESHOLD", "0.85"))
-    REJECT_THRESHOLD = float(os.getenv("BAYESIAN_REJECT_THRESHOLD", "0.40"))
+    # Decision thresholds - SECURITY FIXED
+    # Previous 40% reject threshold was insecure - allowed similar voices through!
+    AUTHENTICATE_THRESHOLD = float(os.getenv("BAYESIAN_AUTH_THRESHOLD", "0.85"))  # Accept at 85%+
+    REJECT_THRESHOLD = float(os.getenv("BAYESIAN_REJECT_THRESHOLD", "0.70"))  # Reject below 70% (was 40%!)
     CHALLENGE_RANGE = (
-        float(os.getenv("BAYESIAN_CHALLENGE_LOW", "0.40")),
+        float(os.getenv("BAYESIAN_CHALLENGE_LOW", "0.70")),  # Challenge zone 70-85% (was 40-85%!)
         float(os.getenv("BAYESIAN_CHALLENGE_HIGH", "0.85"))
     )
 

@@ -2402,8 +2402,16 @@ class SpeakerVerificationService:
         self.speechbrain_engine = None
         self.initialized = False
         self.speaker_profiles = {}  # Cache of speaker profiles
-        self.verification_threshold = 0.40  # 40% confidence for verification (matches owner-aware fusion threshold)
-        self.legacy_threshold = 0.40  # 40% for legacy profiles with dimension mismatch
+        # SECURITY-CRITICAL: Biometric verification thresholds
+        # 40% was WAY too low - allowed family members to unlock!
+        # Voice biometrics requires 80%+ for security:
+        # - < 0.50: Random/different speakers
+        # - 0.50-0.70: Similar voices (family members!)
+        # - 0.70-0.85: Good match, but not definitive
+        # - 0.85-0.95: Strong match, likely same person
+        # - > 0.95: Near-certain same person
+        self.verification_threshold = float(os.environ.get('VOICE_VERIFICATION_THRESHOLD', '0.80'))  # 80% minimum for security
+        self.legacy_threshold = float(os.environ.get('VOICE_LEGACY_THRESHOLD', '0.75'))  # 75% for legacy profiles
         self.profile_quality_scores = {}  # Track profile quality (1.0 = native, <1.0 = legacy)
 
         # Thread pool for CPU-intensive operations (non-blocking async)
@@ -2497,7 +2505,9 @@ class SpeakerVerificationService:
         # Dynamic calibration mode
         self.calibration_mode = False
         self.calibration_samples = []
-        self.calibration_threshold = 0.10  # Very low threshold during calibration
+        # SECURITY FIX: Calibration threshold was 10% which is insecure
+        # Even during calibration, we need minimum security (60%)
+        self.calibration_threshold = float(os.environ.get('VOICE_CALIBRATION_THRESHOLD', '0.60'))
         self.auto_calibrate_on_failure = True  # Auto-enter calibration after repeated failures
         self.failure_count = {}  # Track consecutive failures per speaker
         self.max_failures_before_calibration = 3
@@ -5203,22 +5213,23 @@ class SpeakerVerificationService:
                         "verification_time_ms": verify_time_ms,
                     }
 
-                # UNLOCK-THRESHOLD MATCH: If similarity >= 40% (unlock threshold), use cache result
-                # This avoids falling through to potentially broken SpeechBrain path
-                elif cache_result.similarity >= 0.40:
+                # SECURITY FIX: Secondary cache verification path
+                # REMOVED insecure 40% threshold - was allowing family members to unlock!
+                # Now requires 80% minimum for security (matches self.verification_threshold)
+                elif cache_result.similarity >= self.verification_threshold:
                     unified_cache_hit = True
                     self._unified_cache_hits += 1
 
                     verify_end = time_module.perf_counter()
                     verify_time_ms = (verify_end - verify_start) * 1000
 
-                    # Determine verification based on unlock threshold
-                    is_verified = cache_result.similarity >= 0.40
+                    # Verify against secure threshold
+                    is_verified = cache_result.similarity >= self.verification_threshold
 
                     logger.info(
-                        f"🔐 UNIFIED CACHE UNLOCK MATCH: {cache_result.speaker_name} "
-                        f"(similarity={cache_result.similarity:.2%}, verified={is_verified}, "
-                        f"verified in {verify_time_ms:.1f}ms)"
+                        f"🔐 UNIFIED CACHE SECURE MATCH: {cache_result.speaker_name} "
+                        f"(similarity={cache_result.similarity:.2%}, threshold={self.verification_threshold:.0%}, "
+                        f"verified={is_verified}, time={verify_time_ms:.1f}ms)"
                     )
 
                     # Get profile for additional metadata
@@ -5230,10 +5241,19 @@ class SpeakerVerificationService:
                         "speaker_name": cache_result.speaker_name,
                         "is_owner": profile.get("is_primary_user", True),
                         "security_level": profile.get("security_level", "standard"),
-                        "match_source": "unified_cache_unlock_path",
+                        "match_source": "unified_cache_secure_path",
                         "match_type": cache_result.match_type,
                         "verification_time_ms": verify_time_ms,
+                        "threshold_used": self.verification_threshold,
                     }
+                # Below threshold - log rejection and fall through to full verification
+                elif cache_result.similarity >= 0.50:
+                    # Log for debugging - similarity detected but below secure threshold
+                    logger.info(
+                        f"⚠️ CACHE BELOW THRESHOLD: {cache_result.speaker_name} "
+                        f"(similarity={cache_result.similarity:.2%} < threshold={self.verification_threshold:.0%}) - "
+                        f"falling through to full verification"
+                    )
 
             except asyncio.TimeoutError:
                 self._unified_cache_misses += 1
@@ -5559,15 +5579,19 @@ class SpeakerVerificationService:
         recent_attempts = attempts[-10:]  # Last 10 attempts
         successful_confidences = [a["confidence"] for a in recent_attempts if a.get("verified", False)]
 
+        # SECURITY FIX: Define minimum secure threshold - NEVER go below 70%
+        # Previous values (20-25%) were dangerously insecure!
+        min_secure_threshold = float(os.environ.get('VOICE_MIN_ADAPTIVE_THRESHOLD', '0.70'))
+
         if not successful_confidences:
-            # No successful attempts recently - lower threshold progressively
+            # No successful attempts recently - lower threshold progressively but stay secure
             avg_confidence = sum(a["confidence"] for a in recent_attempts) / len(recent_attempts)
-            if avg_confidence > 0.10:
+            if avg_confidence > 0.50:  # Raised from 0.10 - require meaningful similarity
                 # There's some similarity, progressively lower threshold
-                # Factor in number of consecutive failures
-                failure_factor = min(self.failure_count.get(speaker_name, 0) * 0.05, 0.2)
-                adaptive_threshold = max(0.20, avg_confidence * (0.9 - failure_factor))
-                logger.info(f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} (lowered from {base_threshold:.2%}, failures: {self.failure_count.get(speaker_name, 0)})")
+                # Factor in number of consecutive failures (reduced impact)
+                failure_factor = min(self.failure_count.get(speaker_name, 0) * 0.02, 0.08)
+                adaptive_threshold = max(min_secure_threshold, avg_confidence * (0.95 - failure_factor))
+                logger.info(f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} (lowered from {base_threshold:.2%}, min_secure={min_secure_threshold:.0%})")
                 return adaptive_threshold
             return base_threshold
 
@@ -5575,9 +5599,9 @@ class SpeakerVerificationService:
         avg_confidence = sum(successful_confidences) / len(successful_confidences)
         min_confidence = min(successful_confidences)
 
-        # Set threshold slightly below minimum successful confidence
-        # This allows for natural variation in voice
-        adaptive_threshold = max(0.25, min(base_threshold, min_confidence * 0.90))
+        # SECURITY FIX: Set threshold slightly below minimum successful confidence
+        # but NEVER below the minimum secure threshold (70%)
+        adaptive_threshold = max(min_secure_threshold, min(base_threshold, min_confidence * 0.92))
 
         logger.info(
             f"📊 Adaptive threshold for {speaker_name}: {adaptive_threshold:.2%} "

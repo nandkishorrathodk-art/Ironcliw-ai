@@ -80,11 +80,18 @@ class EnrollmentSettings:
 
 @dataclass
 class AuthenticationSettings:
-    """Advanced biometric authentication settings with owner-aware anti-spoof fusion"""
-    # Owner-aware fusion thresholds - identity signal dominates over anti-spoofing
-    base_threshold: float = float(os.getenv('VOICE_UNLOCK_BASE_THRESHOLD', '0.40'))  # Owner threshold with fusion boost
-    high_security_threshold: float = float(os.getenv('VOICE_UNLOCK_HIGH_SEC_THRESHOLD', '0.60'))  # Elevated for non-owner
-    critical_ops_threshold: float = float(os.getenv('VOICE_UNLOCK_CRITICAL_THRESHOLD', '0.75'))  # Highest for sensitive ops
+    """Advanced biometric authentication settings with secure thresholds"""
+    # SECURITY-CRITICAL: Biometric verification thresholds
+    # Previous 40% base threshold was INSECURE - allowed family members to unlock!
+    # Voice biometrics similarity scale:
+    # - < 0.50: Random/different speakers (REJECT)
+    # - 0.50-0.70: Similar voices, likely family (REJECT)
+    # - 0.70-0.85: Good match, could be similar voices (CHALLENGE)
+    # - 0.85-0.95: Strong match, likely same person (ACCEPT)
+    # - > 0.95: Near-certain same person (INSTANT ACCEPT)
+    base_threshold: float = float(os.getenv('VOICE_UNLOCK_BASE_THRESHOLD', '0.80'))  # 80% minimum for security
+    high_security_threshold: float = float(os.getenv('VOICE_UNLOCK_HIGH_SEC_THRESHOLD', '0.85'))  # 85% for elevated security
+    critical_ops_threshold: float = float(os.getenv('VOICE_UNLOCK_CRITICAL_THRESHOLD', '0.90'))  # 90% for sensitive ops
     
     # Multi-factor authentication weights
     voice_pattern_weight: float = float(os.getenv('VOICE_PATTERN_WEIGHT', '0.40'))

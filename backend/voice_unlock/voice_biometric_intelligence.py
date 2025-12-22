@@ -332,12 +332,13 @@ class VBIConfig:
         self.enable_vtl_verification = os.getenv('VBI_VTL_ENABLED', 'true').lower() == 'true'
         self.vtl_deviation_threshold_cm = float(os.getenv('VBI_VTL_DEVIATION_CM', '2.0'))
 
-        # Bayesian confidence fusion
+        # Bayesian confidence fusion - SECURITY FIXED thresholds
+        # Previous 40% reject threshold was insecure - allowed similar voices through!
         self.enable_bayesian_fusion = os.getenv('VBI_BAYESIAN_FUSION', 'true').lower() == 'true'
-        self.bayesian_auth_threshold = float(os.getenv('VBI_BAYESIAN_AUTH_THRESHOLD', '0.85'))
-        self.bayesian_reject_threshold = float(os.getenv('VBI_BAYESIAN_REJECT_THRESHOLD', '0.40'))
-        self.bayesian_challenge_low = float(os.getenv('VBI_BAYESIAN_CHALLENGE_LOW', '0.40'))
-        self.bayesian_challenge_high = float(os.getenv('VBI_BAYESIAN_CHALLENGE_HIGH', '0.85'))
+        self.bayesian_auth_threshold = float(os.getenv('VBI_BAYESIAN_AUTH_THRESHOLD', '0.85'))  # Accept at 85%+
+        self.bayesian_reject_threshold = float(os.getenv('VBI_BAYESIAN_REJECT_THRESHOLD', '0.70'))  # Reject below 70% (was 40%!)
+        self.bayesian_challenge_low = float(os.getenv('VBI_BAYESIAN_CHALLENGE_LOW', '0.70'))  # Challenge zone starts at 70% (was 40%!)
+        self.bayesian_challenge_high = float(os.getenv('VBI_BAYESIAN_CHALLENGE_HIGH', '0.85'))  # Challenge zone ends at 85%
 
         # Bayesian evidence weights (must sum to 1.0)
         self.bayesian_ml_weight = float(os.getenv('VBI_BAYESIAN_ML_WEIGHT', '0.40'))
@@ -2090,12 +2091,14 @@ class VoiceBiometricIntelligence:
                 result.verified = False
                 self._stats['spoofing_detections'] += 1
             else:
-                # Determine if verified
+                # SECURITY FIX: Only verify for high-confidence levels
+                # BORDERLINE (70-75%) should NOT auto-unlock - requires challenge
+                # Previous code allowed BORDERLINE which was insecure
                 result.verified = result.level in [
-                    RecognitionLevel.INSTANT,
-                    RecognitionLevel.CONFIDENT,
-                    RecognitionLevel.GOOD,
-                    RecognitionLevel.BORDERLINE,
+                    RecognitionLevel.INSTANT,    # >92% - Immediate unlock
+                    RecognitionLevel.CONFIDENT,  # 85-92% - Clear match, unlock
+                    RecognitionLevel.GOOD,       # 75-85% - Solid match, unlock
+                    # REMOVED: RecognitionLevel.BORDERLINE - 70-75% requires challenge
                 ]
 
                 if result.verified:
@@ -2810,10 +2813,10 @@ class VoiceBiometricIntelligence:
                         cache_result.similarity,
                         True  # Was cached
                     )
-                elif cache_result and cache_result.similarity >= 0.40:
-                    # CRITICAL FIX: Return partial similarity >= 40% (unlock threshold)
-                    # This prevents falling through to speaker engine which returns 0%
-                    # The 40% threshold is the minimum for unlock consideration
+                elif cache_result and cache_result.similarity >= 0.75:
+                    # SECURITY FIX: Partial match now requires 75% minimum (was 40%!)
+                    # 40% was insecure - allowed family members with similar voices to unlock!
+                    # 75% ensures meaningful voice similarity before considering unlock
                     logger.info(
                         f"📊 Unified cache PARTIAL match: {cache_result.speaker_name} "
                         f"({cache_result.similarity:.1%}) - returning for progressive confidence"
@@ -2831,12 +2834,18 @@ class VoiceBiometricIntelligence:
                     diagnostics['cache_similarity'] = similarity
                     diagnostics['cache_match_type'] = match_type
 
-                    # If we got a non-zero similarity (but < 40%), log for debugging
-                    if similarity > 0:
-                        diagnostics['failure_reasons'].append(f'below_unlock_threshold_{similarity:.0%}')
+                    # Log similarities below secure threshold (75%) for debugging
+                    if similarity >= 0.40 and similarity < 0.75:
+                        diagnostics['failure_reasons'].append(f'similar_voice_rejected_{similarity:.0%}')
+                        logger.warning(
+                            f"⚠️ SECURITY: Similar voice detected but REJECTED "
+                            f"(similarity={similarity:.1%} < 75% threshold) - possible family member or similar voice"
+                        )
+                    elif similarity > 0:
+                        diagnostics['failure_reasons'].append(f'below_secure_threshold_{similarity:.0%}')
                         logger.info(
                             f"📊 Unified cache low match: similarity={similarity:.1%}, "
-                            f"type={match_type} (below 40% unlock threshold)"
+                            f"type={match_type} (below 75% secure threshold)"
                         )
                     else:
                         diagnostics['failure_reasons'].append('zero_similarity')
