@@ -1058,6 +1058,19 @@ AudioQualityStatsDisplay {
   opacity: 0.4;
 }
 
+.proactive-unlock-step.error .step-icon {
+  background: rgba(255, 107, 107, 0.3);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+  animation: proactive-step-error-shake 0.5s ease-in-out;
+}
+
+@keyframes proactive-step-error-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-3px); }
+  40%, 80% { transform: translateX(3px); }
+}
+
 .proactive-unlock-step .step-label {
   font-size: 11px;
   color: #a090c0;

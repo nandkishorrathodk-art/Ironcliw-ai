@@ -3151,8 +3151,50 @@ class IntelligentVoiceUnlockService:
         - Parallel keychain service lookup
         - Circuit breaker pattern
         - Comprehensive metrics
+        
+        SECURITY v9.0: This function MUST only be called AFTER voice verification!
+        It checks context_analysis.speaker_verified to ensure voice was verified.
         """
         try:
+            # ═══════════════════════════════════════════════════════════════════
+            # v9.0 SECURITY GATE: Verify that voice was already verified!
+            # This is a CRITICAL check to prevent password typing without auth.
+            # ═══════════════════════════════════════════════════════════════════
+            speaker_verified = context_analysis.get("speaker_verified", False)
+            verification_score = context_analysis.get("verification_score", 0.0)
+            unlock_type = context_analysis.get("unlock_type", "unknown")
+            
+            # Check if unlock is allowed
+            unlock_allowed = scenario_analysis.get("unlock_allowed", False)
+            
+            if not speaker_verified:
+                logger.error(
+                    f"🚫 [SECURITY] _perform_unlock called without speaker_verified=True! "
+                    f"context_analysis={context_analysis}"
+                )
+                return {
+                    "success": False,
+                    "reason": "not_verified",
+                    "message": "Security: Voice verification required before unlock.",
+                }
+            
+            if not unlock_allowed:
+                logger.error(
+                    f"🚫 [SECURITY] _perform_unlock called with unlock_allowed=False! "
+                    f"scenario_analysis={scenario_analysis}"
+                )
+                return {
+                    "success": False,
+                    "reason": "unlock_not_allowed",
+                    "message": "Security: Unlock not permitted for this scenario.",
+                }
+            
+            # Log the security context
+            logger.info(
+                f"✅ [SECURITY] Unlock authorized: type={unlock_type}, "
+                f"score={verification_score:.1%}, speaker={speaker_name}"
+            )
+            
             # Get password from keychain using enhanced service (non-blocking, cached)
             from macos_keychain_unlock import get_keychain_unlock_service
 

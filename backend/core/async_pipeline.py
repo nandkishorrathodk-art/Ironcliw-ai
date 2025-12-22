@@ -1655,9 +1655,6 @@ class AdvancedAsyncPipeline:
             )
 
             logger.info(f"🎤 [PROACTIVE-CAI] Acknowledgment: '{acknowledgment}'")
-            
-            # Broadcast: Verifying voice
-            await broadcast_progress("verifying_voice", f"Verifying your voice, {speaker_name or user_name}...", 25)
 
             # Speak the acknowledgment and WAIT for completion
             # This ensures the microphone doesn't pick up JARVIS's voice during VBI
@@ -1667,45 +1664,203 @@ class AdvancedAsyncPipeline:
             # This prevents the VBI from processing any trailing audio of JARVIS's voice
             await asyncio.sleep(0.5)
             
-            # Broadcast: Voice verified, unlocking
-            await broadcast_progress("unlocking", "Voice verified. Unlocking screen...", 50)
-
             # ─────────────────────────────────────────────────────────────────
-            # Step 7: Perform VBI verification and unlock
+            # Step 7: CRITICAL SECURITY - VERIFY VOICE FIRST, THEN UNLOCK
             # ─────────────────────────────────────────────────────────────────
-            logger.info(f"🔐 [PROACTIVE-CAI] Performing VBI verification and unlock...")
+            # v9.0: Separated VBI verification from unlock execution
+            # Password MUST NOT be typed until voice is 100% verified!
+            # ─────────────────────────────────────────────────────────────────
+            
+            # Broadcast: Starting voice verification
+            await broadcast_progress("verifying_voice", f"Verifying your voice, {speaker_name or user_name}...", 25)
 
-            unlock_result = await self._fast_lock_unlock(
-                text="unlock my screen",  # Internal unlock command
-                user_name=user_name,
-                metadata={
-                    **(metadata or {}),
-                    "proactive_unlock": True,
-                    "original_command": text,
-                    "continuation_intent": continuation_action,
-                },
-                audio_data=audio_data,
-                speaker_name=speaker_name,
-            )
+            logger.info(f"🔐 [PROACTIVE-CAI] Step 7a: VOICE VERIFICATION (blocking until complete)...")
 
-            if not unlock_result.get("success", False):
-                # Unlock failed - return the failure result
-                logger.warning(
-                    f"❌ [PROACTIVE-CAI] Unlock failed: {unlock_result.get('response', 'Unknown error')}"
-                )
-                # Broadcast: Error
+            # ═══════════════════════════════════════════════════════════════════
+            # STAGE 1: VOICE VERIFICATION ONLY (NO UNLOCK YET)
+            # ═══════════════════════════════════════════════════════════════════
+            vbi_verified = False
+            vbi_result = None
+            vbi_speaker = None
+            vbi_confidence = 0.0
+            
+            if audio_data:
+                try:
+                    from backend.voice_unlock.voice_biometric_intelligence import (
+                        get_voice_biometric_intelligence,
+                    )
+                    
+                    vbi = await get_voice_biometric_intelligence()
+                    
+                    # Create context for VBI - VERIFICATION ONLY
+                    vbi_context = {
+                        "text": text,
+                        "user_name": user_name,
+                        "speaker_name": speaker_name,
+                        "source": "proactive_unlock_verification",
+                        "command_type": "verify_only",  # CRITICAL: Don't unlock!
+                        "original_command": text,
+                    }
+                    
+                    # Run VBI verification with strict timeout
+                    try:
+                        vbi_result = await asyncio.wait_for(
+                            vbi.verify_and_announce(
+                                audio_data=audio_data,
+                                context=vbi_context,
+                                speak=False,  # Don't speak - we handle voice feedback
+                            ),
+                            timeout=15.0  # 15 second max for verification
+                        )
+                        
+                        if vbi_result is not None:
+                            vbi_verified = vbi_result.verified
+                            vbi_confidence = vbi_result.confidence
+                            vbi_speaker = vbi_result.speaker_name
+                            
+                            logger.info(
+                                f"🔐 [PROACTIVE-CAI-VBI] verified={vbi_verified}, "
+                                f"confidence={vbi_confidence:.1%}, speaker={vbi_speaker}"
+                            )
+                            
+                            # Check for spoofing
+                            if vbi_result.spoofing_detected:
+                                logger.warning(f"🚨 [SECURITY] Spoofing detected: {vbi_result.spoofing_reason}")
+                                await broadcast_progress(
+                                    "error", 
+                                    f"Security alert: {vbi_result.spoofing_reason}", 
+                                    30, 
+                                    status="error"
+                                )
+                                return {
+                                    "success": False,
+                                    "response": f"Security alert: {vbi_result.spoofing_reason}",
+                                    "command_type": "proactive_unlock_blocked",
+                                    "error": "spoofing_detected",
+                                }
+                                
+                    except asyncio.TimeoutError:
+                        logger.warning("⏱️ [PROACTIVE-CAI] VBI verification timed out after 15s")
+                        vbi_verified = False
+                        
+                except ImportError as e:
+                    logger.debug(f"🔐 [PROACTIVE-CAI] VBI not available: {e}")
+                except Exception as e:
+                    logger.warning(f"🔐 [PROACTIVE-CAI] VBI verification error: {e}")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # SECURITY GATE: MUST BE VERIFIED BEFORE PROCEEDING
+            # ═══════════════════════════════════════════════════════════════════
+            if not vbi_verified:
+                logger.error(f"❌ [PROACTIVE-CAI] SECURITY: Voice NOT verified - blocking unlock!")
                 await broadcast_progress(
                     "error", 
-                    unlock_result.get('response', 'Unlock failed'), 
-                    50, 
+                    "Voice verification failed. Cannot unlock.", 
+                    35, 
                     status="error"
                 )
-                return unlock_result
+                return {
+                    "success": False,
+                    "response": "I couldn't verify your voice. Please try again.",
+                    "command_type": "proactive_unlock_failed",
+                    "error": "voice_not_verified",
+                    "vbi_confidence": vbi_confidence,
+                }
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STAGE 2: VOICE VERIFIED → NOW UNLOCK
+            # ═══════════════════════════════════════════════════════════════════
+            logger.info(f"✅ [PROACTIVE-CAI] Voice VERIFIED ({vbi_confidence:.1%}) - now unlocking...")
+            
+            # Broadcast: Voice verified, NOW unlocking
+            await broadcast_progress(
+                "voice_verified", 
+                f"Voice verified ({vbi_confidence:.0%})! Unlocking screen...", 
+                55
+            )
+            
+            # Small pause for user to see verification success
+            await asyncio.sleep(0.3)
+            
+            # Broadcast: Actually unlocking
+            await broadcast_progress("unlocking", "Typing password...", 65)
+            
+            # Now perform the actual unlock using the verified VBI result
+            try:
+                from backend.voice_unlock.intelligent_voice_unlock_service import (
+                    get_intelligent_unlock_service,
+                )
+                
+                unlock_service = get_intelligent_unlock_service()
+                
+                # Initialize if needed
+                if not unlock_service.initialized:
+                    await asyncio.wait_for(unlock_service.initialize(), timeout=5.0)
+                
+                # Prepare verified context - VBI already verified the speaker!
+                context_analysis = {
+                    "unlock_type": "vbi_verified_proactive",
+                    "verification_score": vbi_confidence,
+                    "confidence": vbi_confidence,
+                    "speaker_verified": True,
+                    "vbi_level": vbi_result.level.value if hasattr(vbi_result.level, 'value') else str(vbi_result.level),
+                    "vbi_method": vbi_result.verification_method.value if hasattr(vbi_result.verification_method, 'value') else str(vbi_result.verification_method),
+                }
+                scenario_analysis = {
+                    "scenario": "proactive_unlock_vbi_verified",
+                    "risk_level": "low" if vbi_confidence > 0.85 else "medium",
+                    "unlock_allowed": True,
+                    "reason": f"VBI verified at {vbi_confidence:.1%} confidence for proactive unlock"
+                }
+                
+                # ONLY NOW type the password - voice is verified!
+                unlock_result = await asyncio.wait_for(
+                    unlock_service._perform_unlock(
+                        speaker_name=vbi_speaker or speaker_name or user_name,
+                        context_analysis=context_analysis,
+                        scenario_analysis=scenario_analysis
+                    ),
+                    timeout=15.0
+                )
+                
+                if not unlock_result.get("success", False):
+                    logger.warning(f"❌ [PROACTIVE-CAI] Unlock execution failed: {unlock_result.get('message', 'Unknown')}")
+                    await broadcast_progress(
+                        "error", 
+                        unlock_result.get('message', 'Unlock failed'), 
+                        70, 
+                        status="error"
+                    )
+                    return {
+                        "success": False,
+                        "response": unlock_result.get('message', 'Screen unlock failed'),
+                        "command_type": "proactive_unlock_failed",
+                        "error": "unlock_execution_failed",
+                    }
+                    
+            except asyncio.TimeoutError:
+                logger.error("⏱️ [PROACTIVE-CAI] Unlock execution timed out")
+                await broadcast_progress("error", "Unlock timed out", 70, status="error")
+                return {
+                    "success": False,
+                    "response": "Unlock timed out. Please try again.",
+                    "command_type": "proactive_unlock_failed",
+                    "error": "unlock_timeout",
+                }
+            except Exception as e:
+                logger.error(f"❌ [PROACTIVE-CAI] Unlock error: {e}")
+                await broadcast_progress("error", f"Unlock error: {str(e)[:50]}", 70, status="error")
+                return {
+                    "success": False,
+                    "response": f"Unlock error: {str(e)[:50]}",
+                    "command_type": "proactive_unlock_failed",
+                    "error": "unlock_exception",
+                }
 
             logger.info(f"✅ [PROACTIVE-CAI] Screen unlocked successfully!")
             
             # Broadcast: Unlocked successfully
-            await broadcast_progress("unlocked", "Screen unlocked! Executing command...", 70)
+            await broadcast_progress("unlocked", "Screen unlocked! Executing command...", 80)
 
             # ─────────────────────────────────────────────────────────────────
             # Step 8: EVENT-DRIVEN CONTINUATION PATTERN

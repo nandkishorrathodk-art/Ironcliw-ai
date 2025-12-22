@@ -1945,12 +1945,12 @@ const JarvisVoice = () => {
         console.log('%c[PROACTIVE-UNLOCK]', 'color: #00bfff; font-weight: bold',
           `Stage: ${stage} (${progress}%) - ${message}`);
         
-        // Stage icon mapping
+        // Stage icon mapping - v9.0: Added voice_verified as distinct stage
         const stageIcons = {
           'screen_detected': '🔒',
           'verifying_voice': '🎤',
-          'voice_verified': '✅',
-          'unlocking': '🔐',
+          'voice_verified': '✅',  // SECURITY: Voice confirmed BEFORE unlock
+          'unlocking': '🔐',       // Only after voice_verified
           'unlocked': '🔓',
           'executing': '🚀',
           'complete': '✨',
@@ -5151,41 +5151,44 @@ const JarvisVoice = () => {
             </span>
           </div>
 
-          {/* Flow Steps Visualization */}
+          {/* Flow Steps Visualization - v9.0: Added voice_verified before unlocking */}
           <div className="proactive-unlock-steps">
             {[
-              { key: 'screen_detected', label: 'Screen Locked', icon: '🔒' },
-              { key: 'verifying_voice', label: 'Verify Voice', icon: '🎤' },
-              { key: 'unlocking', label: 'Unlocking', icon: '🔐' },
+              { key: 'screen_detected', label: 'Detected', icon: '🔒' },
+              { key: 'verifying_voice', label: 'Verify', icon: '🎤' },
+              { key: 'voice_verified', label: 'Verified', icon: '✅' },
+              { key: 'unlocking', label: 'Unlock', icon: '🔐' },
               { key: 'executing', label: 'Execute', icon: '🚀' },
-              { key: 'complete', label: 'Complete', icon: '✨' },
+              { key: 'complete', label: 'Done', icon: '✨' },
             ].map((step, idx) => {
+              // v9.0: SECURITY - voice_verified MUST come before unlocking
               const currentStageOrder = {
                 'screen_detected': 0,
                 'verifying_voice': 1,
-                'voice_verified': 2,
-                'unlocking': 2,
-                'unlocked': 3,
-                'executing': 3,
-                'complete': 4,
+                'voice_verified': 2,  // CRITICAL: Voice confirmed
+                'unlocking': 3,       // Only after verified
+                'unlocked': 4,
+                'executing': 4,
+                'complete': 5,
                 'error': -1,
               };
-              const currentOrder = currentStageOrder[proactiveUnlockProgress.stage] || 0;
+              const currentOrder = currentStageOrder[proactiveUnlockProgress.stage] ?? 0;
               const stepOrder = idx;
               const isActive = stepOrder === currentOrder;
               const isComplete = stepOrder < currentOrder || proactiveUnlockProgress.stage === 'complete';
               const isFuture = stepOrder > currentOrder;
+              const isError = proactiveUnlockProgress.status === 'error';
               
               return (
                 <div 
                   key={step.key} 
-                  className={`proactive-unlock-step ${isActive ? 'active' : ''} ${isComplete ? 'complete' : ''} ${isFuture ? 'future' : ''}`}
+                  className={`proactive-unlock-step ${isActive ? 'active' : ''} ${isComplete ? 'complete' : ''} ${isFuture ? 'future' : ''} ${isError && isActive ? 'error' : ''}`}
                 >
                   <span className="step-icon">
-                    {isComplete && step.key !== 'complete' ? '✓' : step.icon}
+                    {isError && isActive ? '❌' : isComplete && step.key !== 'complete' ? '✓' : step.icon}
                   </span>
                   <span className="step-label">{step.label}</span>
-                  {idx < 4 && <span className="step-connector"></span>}
+                  {idx < 5 && <span className="step-connector"></span>}
                 </div>
               );
             })}
