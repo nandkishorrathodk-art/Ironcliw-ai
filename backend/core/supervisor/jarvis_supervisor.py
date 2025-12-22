@@ -455,7 +455,7 @@ class JARVISSupervisor:
             applescript = f'''
             tell application "Google Chrome"
                 set newWindow to make new window with properties {{mode:"incognito"}}
-                delay 0.3
+                delay 0.5
                 tell newWindow
                     set URL of active tab to "{loading_url}"
                 end tell
@@ -463,10 +463,15 @@ class JARVISSupervisor:
                 activate
             end tell
             
-            delay 0.5
+            -- Enter fullscreen mode (more reliable via menu)
+            delay 1.0
             tell application "System Events"
                 tell process "Google Chrome"
+                    set frontmost to true
+                    delay 0.3
                     try
+                        click menu item "Enter Full Screen" of menu "View" of menu bar 1
+                    on error
                         keystroke "f" using {{command down, control down}}
                     end try
                 end tell

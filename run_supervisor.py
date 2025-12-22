@@ -2370,7 +2370,7 @@ class SupervisorBootstrapper:
             tell application "Google Chrome"
                 -- Create exactly ONE new incognito window
                 set newWindow to make new window with properties {{mode:"incognito"}}
-                delay 0.3
+                delay 0.5
                 
                 -- Navigate to URL
                 tell newWindow
@@ -2382,11 +2382,17 @@ class SupervisorBootstrapper:
                 activate
             end tell
             
-            -- Toggle fullscreen after brief delay
-            delay 0.5
+            -- Enter fullscreen mode (Cmd+Ctrl+F)
+            delay 1.0
             tell application "System Events"
                 tell process "Google Chrome"
+                    set frontmost to true
+                    delay 0.3
+                    -- Use menu bar for more reliable fullscreen
                     try
+                        click menu item "Enter Full Screen" of menu "View" of menu bar 1
+                    on error
+                        -- Fallback to keyboard shortcut
                         keystroke "f" using {{command down, control down}}
                     end try
                 end tell
