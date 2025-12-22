@@ -73,6 +73,28 @@ except ImportError:
             return None
         CostTracker = None
 
+# v9.0: Rate limit manager integration
+RATE_LIMIT_MANAGER_AVAILABLE = False
+try:
+    from core.gcp_rate_limit_manager import (
+        get_rate_limit_manager,
+        GCPService,
+        OperationType,
+        RateLimitExceededError,
+    )
+    RATE_LIMIT_MANAGER_AVAILABLE = True
+except ImportError:
+    try:
+        from .gcp_rate_limit_manager import (
+            get_rate_limit_manager,
+            GCPService,
+            OperationType,
+            RateLimitExceededError,
+        )
+        RATE_LIMIT_MANAGER_AVAILABLE = True
+    except ImportError:
+        pass
+
 logger = logging.getLogger(__name__)
 
 # Type variable for generic retry decorator
@@ -408,6 +430,52 @@ class VMManagerConfig:
         return cls(**{k: v for k, v in data.items() if hasattr(cls, k)})
 
 
+@dataclass
+class QuotaInfo:
+    """
+    v9.0: Intelligent GCP Quota tracking with caching.
+    Prevents unnecessary VM creation attempts when quotas are exceeded.
+    """
+    metric: str  # e.g., "CPUS_ALL_REGIONS", "IN_USE_ADDRESSES"
+    limit: float
+    usage: float
+    available: float = field(init=False)
+    is_exceeded: bool = field(init=False)
+    region: Optional[str] = None
+    last_checked: float = field(default_factory=time.time)
+    cache_ttl_seconds: int = 60  # Cache for 60 seconds
+    
+    def __post_init__(self):
+        self.available = max(0, self.limit - self.usage)
+        self.is_exceeded = self.usage >= self.limit
+    
+    @property
+    def is_stale(self) -> bool:
+        """Check if quota info is stale and needs refresh."""
+        return time.time() - self.last_checked > self.cache_ttl_seconds
+    
+    @property
+    def utilization_percent(self) -> float:
+        """Return quota utilization as a percentage."""
+        return (self.usage / self.limit * 100) if self.limit > 0 else 100.0
+
+
+@dataclass
+class QuotaCheckResult:
+    """
+    Result of pre-flight quota check before VM creation.
+    """
+    can_create: bool
+    blocking_quotas: List[QuotaInfo] = field(default_factory=list)
+    warning_quotas: List[QuotaInfo] = field(default_factory=list)  # >80% utilized
+    checked_at: float = field(default_factory=time.time)
+    message: str = ""
+    
+    @property
+    def has_warnings(self) -> bool:
+        return len(self.warning_quotas) > 0
+
+
 class GCPVMManager:
     """
     Advanced GCP Spot VM auto-creation and lifecycle manager.
@@ -419,6 +487,7 @@ class GCPVMManager:
     - Robust error handling with retries
     - Cost tracking integration
     - Health monitoring with auto-recovery
+    - v9.0: Intelligent quota checking before VM creation
 
     Integrates with:
     - intelligent_gcp_optimizer: For VM creation decisions
@@ -434,6 +503,7 @@ class GCPVMManager:
         self.instances_client: Optional[InstancesClientType] = None
         self.zones_client: Optional[ZonesClientType] = None
         self.zone_operations_client = None  # For polling operation status
+        self.regions_client = None  # For quota checking
 
         # Integrations (initialized safely)
         self.cost_tracker: Optional[Any] = None  # CostTracker or None
@@ -444,6 +514,12 @@ class GCPVMManager:
         self.creating_vms: Dict[str, asyncio.Task] = {}
         self._vm_lock = asyncio.Lock()  # Protect VM state modifications
         self._init_lock = asyncio.Lock()  # Protect initialization
+
+        # v9.0: Quota cache to avoid repeated API calls
+        self._quota_cache: Dict[str, QuotaInfo] = {}
+        self._quota_cache_lock = asyncio.Lock()
+        self._quota_exceeded_until: float = 0  # Cooldown after quota exceeded
+        self._quota_cooldown_seconds: int = 300  # 5 minute cooldown
 
         # Circuit breakers for fault tolerance
         self._circuit_breakers = {
@@ -462,6 +538,11 @@ class GCPVMManager:
                 failure_threshold=5,  # More lenient for non-critical operations
                 recovery_timeout=30.0,
             ),
+            "quota_check": CircuitBreaker(
+                name="quota_check",
+                failure_threshold=3,
+                recovery_timeout=60.0,
+            ),
         }
 
         # Monitoring
@@ -472,6 +553,8 @@ class GCPVMManager:
         self.stats = {
             "total_created": 0,
             "total_failed": 0,
+            "quota_blocks": 0,
+            "quota_checks": 0,
             "total_terminated": 0,
             "current_active": 0,
             "total_cost": 0.0,
@@ -588,6 +671,210 @@ class GCPVMManager:
         except Exception as e:
             logger.warning(f"⚠️  GCP optimizer initialization failed (non-critical): {e}")
             self.gcp_optimizer = None
+        
+        # Initialize regions client for quota checking
+        try:
+            loop = asyncio.get_event_loop()
+            self.regions_client = await loop.run_in_executor(
+                None, compute_v1.RegionsClient
+            )
+            logger.info("✅ Regions client initialized for quota checking")
+        except Exception as e:
+            logger.warning(f"⚠️  Regions client initialization failed (quota checking limited): {e}")
+            self.regions_client = None
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v9.0: INTELLIGENT QUOTA MANAGEMENT
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    async def check_quotas_before_creation(self) -> QuotaCheckResult:
+        """
+        v9.0: Pre-flight quota check before attempting VM creation.
+        
+        Checks critical quotas like CPUS_ALL_REGIONS and IN_USE_ADDRESSES
+        to avoid wasted API calls when quotas are exceeded.
+        
+        Returns:
+            QuotaCheckResult with can_create=True if quotas allow VM creation
+        """
+        self.stats["quota_checks"] += 1
+        
+        # Check if we're in quota cooldown period
+        if time.time() < self._quota_exceeded_until:
+            remaining = self._quota_exceeded_until - time.time()
+            logger.info(f"⏳ Quota cooldown active ({remaining:.0f}s remaining) - skipping VM creation")
+            return QuotaCheckResult(
+                can_create=False,
+                message=f"Quota cooldown active ({remaining:.0f}s remaining)",
+                blocking_quotas=list(self._quota_cache.values())
+            )
+        
+        # Circuit breaker check
+        circuit = self._circuit_breakers["quota_check"]
+        can_execute, circuit_reason = circuit.can_execute()
+        if not can_execute:
+            logger.warning(f"⚠️  Quota check circuit breaker open: {circuit_reason}")
+            # Assume quotas are OK if we can't check (optimistic)
+            return QuotaCheckResult(can_create=True, message="Quota check unavailable - proceeding optimistically")
+        
+        blocking_quotas: List[QuotaInfo] = []
+        warning_quotas: List[QuotaInfo] = []
+        
+        try:
+            # Check critical quotas in parallel
+            quota_checks = await asyncio.gather(
+                self._check_cpu_quota(),
+                self._check_address_quota(),
+                self._check_instance_quota(),
+                return_exceptions=True
+            )
+            
+            for result in quota_checks:
+                if isinstance(result, Exception):
+                    logger.warning(f"⚠️  Quota check error (non-fatal): {result}")
+                    continue
+                if result is None:
+                    continue
+                    
+                quota_info: QuotaInfo = result
+                
+                # Cache the quota info
+                async with self._quota_cache_lock:
+                    self._quota_cache[quota_info.metric] = quota_info
+                
+                if quota_info.is_exceeded:
+                    blocking_quotas.append(quota_info)
+                    logger.warning(
+                        f"🚫 QUOTA EXCEEDED: {quota_info.metric} "
+                        f"({quota_info.usage:.0f}/{quota_info.limit:.0f})"
+                    )
+                elif quota_info.utilization_percent > 80:
+                    warning_quotas.append(quota_info)
+                    logger.info(
+                        f"⚠️  High quota utilization: {quota_info.metric} "
+                        f"({quota_info.utilization_percent:.0f}%)"
+                    )
+            
+            circuit.record_success()
+            
+            if blocking_quotas:
+                # Set cooldown to avoid repeated failures
+                self._quota_exceeded_until = time.time() + self._quota_cooldown_seconds
+                self.stats["quota_blocks"] += 1
+                
+                blocked_names = ", ".join(q.metric for q in blocking_quotas)
+                return QuotaCheckResult(
+                    can_create=False,
+                    blocking_quotas=blocking_quotas,
+                    warning_quotas=warning_quotas,
+                    message=f"Quota exceeded: {blocked_names}. Cooldown: {self._quota_cooldown_seconds}s"
+                )
+            
+            return QuotaCheckResult(
+                can_create=True,
+                warning_quotas=warning_quotas,
+                message="All quotas OK" if not warning_quotas else f"Quotas OK with {len(warning_quotas)} warnings"
+            )
+            
+        except Exception as e:
+            circuit.record_failure(e)
+            logger.error(f"❌ Quota check failed: {e}")
+            # Proceed optimistically if quota check fails
+            return QuotaCheckResult(can_create=True, message=f"Quota check error: {e} - proceeding optimistically")
+    
+    async def _check_cpu_quota(self) -> Optional[QuotaInfo]:
+        """Check CPUS_ALL_REGIONS quota."""
+        return await self._get_quota_metric("CPUS_ALL_REGIONS")
+    
+    async def _check_address_quota(self) -> Optional[QuotaInfo]:
+        """Check IN_USE_ADDRESSES quota for the region."""
+        return await self._get_quota_metric("IN_USE_ADDRESSES", region=self.config.region)
+    
+    async def _check_instance_quota(self) -> Optional[QuotaInfo]:
+        """Check INSTANCES quota for the region."""
+        return await self._get_quota_metric("INSTANCES", region=self.config.region)
+    
+    async def _get_quota_metric(
+        self, metric: str, region: Optional[str] = None
+    ) -> Optional[QuotaInfo]:
+        """
+        Get a specific quota metric from GCP.
+        Uses cache if available and not stale.
+        """
+        cache_key = f"{metric}:{region or 'global'}"
+        
+        # Check cache first
+        async with self._quota_cache_lock:
+            if cache_key in self._quota_cache:
+                cached = self._quota_cache[cache_key]
+                if not cached.is_stale:
+                    return cached
+        
+        if not self.regions_client or not self.config.project_id:
+            return None
+        
+        try:
+            # Query quota from GCP
+            target_region = region or self.config.region
+            
+            region_info = await asyncio.to_thread(
+                self.regions_client.get,
+                project=self.config.project_id,
+                region=target_region
+            )
+            
+            # Find the quota in the region's quotas list
+            for quota in region_info.quotas:
+                if quota.metric == metric:
+                    quota_info = QuotaInfo(
+                        metric=metric,
+                        limit=quota.limit,
+                        usage=quota.usage,
+                        region=target_region
+                    )
+                    return quota_info
+            
+            # Quota not found - might be a global quota
+            # For global quotas like CPUS_ALL_REGIONS, we need to sum across regions
+            # or check project-level quotas (simplified here)
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch quota {metric}: {e}")
+            return None
+    
+    def _is_quota_exceeded_error(self, error: Exception) -> Tuple[bool, Optional[str]]:
+        """
+        v9.0: Detect if an error is a quota exceeded error.
+        
+        Returns:
+            (is_quota_error, quota_name or None)
+        """
+        error_str = str(error).lower()
+        
+        quota_patterns = [
+            ("quota", "CPUS_ALL_REGIONS"),
+            ("quota 'cpus", "CPUS_ALL_REGIONS"),
+            ("quota 'in_use_addresses", "IN_USE_ADDRESSES"),
+            ("quota 'instances", "INSTANCES"),
+            ("quota exceeded", None),  # Generic quota exceeded
+            ("resource_exhausted", None),
+        ]
+        
+        for pattern, quota_name in quota_patterns:
+            if pattern in error_str:
+                # Try to extract the specific quota from the error message
+                if quota_name is None:
+                    # Parse from error: "Quota 'CPUS_ALL_REGIONS' exceeded"
+                    import re
+                    match = re.search(r"quota '([A-Z_]+)'", str(error), re.IGNORECASE)
+                    if match:
+                        quota_name = match.group(1).upper()
+                    else:
+                        quota_name = "UNKNOWN"
+                return True, quota_name
+        
+        return False, None
 
     async def should_create_vm(
         self, memory_snapshot, trigger_reason: str = ""
@@ -644,6 +931,8 @@ class GCPVMManager:
         """
         Create a new GCP Spot VM instance with circuit breaker protection.
 
+        v9.0: Now includes pre-flight quota checking to avoid wasted API calls.
+
         Args:
             components: List of components that will run on this VM
             trigger_reason: Why this VM is being created
@@ -664,9 +953,52 @@ class GCPVMManager:
             self.stats["circuit_breaks"] += 1
             return None
 
+        # ═══════════════════════════════════════════════════════════════════════════
+        # v9.0: PRE-FLIGHT QUOTA CHECK
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Check quotas BEFORE attempting VM creation to avoid:
+        # 1. Wasted API calls that will fail anyway
+        # 2. Multiple retry attempts that all fail with the same error
+        # 3. Unnecessary delays and error logs
+        # ═══════════════════════════════════════════════════════════════════════════
+        quota_check = await self.check_quotas_before_creation()
+        
+        if not quota_check.can_create:
+            logger.warning(f"🚫 VM creation blocked by quota check: {quota_check.message}")
+            for quota in quota_check.blocking_quotas:
+                logger.warning(
+                    f"   ├─ {quota.metric}: {quota.usage:.0f}/{quota.limit:.0f} "
+                    f"({quota.utilization_percent:.0f}% used)"
+                )
+            return None
+        
+        if quota_check.has_warnings:
+            logger.info(f"⚠️  Quota warnings (proceeding anyway):")
+            for quota in quota_check.warning_quotas:
+                logger.info(
+                    f"   ├─ {quota.metric}: {quota.usage:.0f}/{quota.limit:.0f} "
+                    f"({quota.utilization_percent:.0f}% used)"
+                )
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # v9.0: RATE LIMIT CHECK
+        # ═══════════════════════════════════════════════════════════════════════════
+        if RATE_LIMIT_MANAGER_AVAILABLE:
+            try:
+                rate_manager = await get_rate_limit_manager()
+                acquired, reason = await rate_manager.acquire(
+                    GCPService.COMPUTE_ENGINE, OperationType.WRITE, timeout=10.0
+                )
+                if not acquired:
+                    logger.warning(f"⏳ Rate limit prevents VM creation: {reason}")
+                    return None
+            except Exception as e:
+                logger.debug(f"Rate limit check failed (proceeding): {e}")
+
         logger.info(f"🚀 Creating GCP Spot VM...")
         logger.info(f"   Components: {', '.join(components)}")
         logger.info(f"   Trigger: {trigger_reason}")
+        logger.info(f"   Quota check: {quota_check.message}")
 
         attempt = 0
         last_error = None
@@ -764,6 +1096,50 @@ class GCPVMManager:
                 self.stats["last_error"] = str(e)
                 self.stats["last_error_time"] = datetime.now().isoformat()
                 logger.error(f"❌ Attempt {attempt} failed: {e}")
+                
+                # v9.0: Detect quota exceeded errors and stop retrying immediately
+                is_quota_error, quota_name = self._is_quota_exceeded_error(e)
+                if is_quota_error:
+                    logger.error(f"🚫 QUOTA EXCEEDED ({quota_name}) - stopping retries immediately")
+                    
+                    # Set cooldown to prevent future attempts
+                    self._quota_exceeded_until = time.time() + self._quota_cooldown_seconds
+                    self.stats["quota_blocks"] += 1
+                    
+                    # Update quota cache with exceeded status
+                    if quota_name:
+                        async with self._quota_cache_lock:
+                            self._quota_cache[quota_name] = QuotaInfo(
+                                metric=quota_name,
+                                limit=0,  # Unknown
+                                usage=0,  # Unknown
+                                region=self.config.region,
+                            )
+                            self._quota_cache[quota_name].is_exceeded = True  # Force exceeded
+                    
+                    # Report to rate limit manager
+                    if RATE_LIMIT_MANAGER_AVAILABLE:
+                        try:
+                            rate_manager = await get_rate_limit_manager()
+                            rate_manager.handle_quota_exceeded(GCPService.COMPUTE_ENGINE, quota_name)
+                        except Exception:
+                            pass
+                    
+                    # Don't retry - quotas won't change in seconds
+                    break
+                
+                # v9.0: Detect rate limit (429) errors
+                is_429 = "429" in str(e) or "too many requests" in str(e).lower()
+                if is_429:
+                    logger.error(f"🚫 RATE LIMITED (429) - entering cooldown")
+                    if RATE_LIMIT_MANAGER_AVAILABLE:
+                        try:
+                            rate_manager = await get_rate_limit_manager()
+                            rate_manager.handle_429_response(GCPService.COMPUTE_ENGINE)
+                        except Exception:
+                            pass
+                    # Still retry after cooldown
+                    await asyncio.sleep(60)  # 60 second cooldown for 429
 
                 if attempt < self.config.max_create_attempts:
                     delay = self.config.retry_delay_seconds * attempt
@@ -774,8 +1150,15 @@ class GCPVMManager:
         circuit.record_failure(last_error)
         
         self.stats["total_failed"] += 1
-        logger.error(f"❌ Failed to create VM after {self.config.max_create_attempts} attempts")
-        logger.error(f"   Last error: {last_error}")
+        
+        # Check if this was a quota failure
+        is_quota_error, quota_name = self._is_quota_exceeded_error(last_error) if last_error else (False, None)
+        if is_quota_error:
+            logger.error(f"❌ VM creation failed due to quota: {quota_name}")
+            logger.error(f"   Cooldown active for {self._quota_cooldown_seconds}s")
+        else:
+            logger.error(f"❌ Failed to create VM after {self.config.max_create_attempts} attempts")
+            logger.error(f"   Last error: {last_error}")
 
         return None
 
@@ -1074,6 +1457,389 @@ class GCPVMManager:
         Features:
         - Health monitoring
         - Cost tracking and efficiency scoring
+        - Idle VM detection and auto-termination
+        - Memory pressure monitoring (terminate when local RAM normalizes)
+        - Detailed metrics collection (CPU, memory, network, disk)
+        """
+        logger.info("🔍 VM monitoring loop started (intelligent cost-cutting enabled)")
+        self.is_monitoring = True
+
+        while self.is_monitoring:
+            try:
+                await asyncio.sleep(self.config.health_check_interval)
+
+                for vm_name, vm in list(self.managed_vms.items()):
+                    # Update cost and efficiency
+                    vm.update_cost()
+                    vm.update_efficiency_score()
+
+                    # === INTELLIGENT COST-CUTTING CHECKS ===
+
+                    # 1. Check VM lifetime (hard limit)
+                    if vm.uptime_hours >= self.config.max_vm_lifetime_hours:
+                        logger.info(
+                            f"⏰ VM {vm_name} exceeded max lifetime ({self.config.max_vm_lifetime_hours}h)"
+                        )
+                        await self.terminate_vm(vm_name, reason="Max lifetime exceeded")
+                        continue
+
+                    # 2. Check if VM is wasting money (idle + low efficiency)
+                    idle_limit = float(self.config.idle_timeout_minutes)
+                    is_idle = vm.idle_time_minutes > idle_limit
+                    is_wasting_money = is_idle and (vm.cost_efficiency_score < 30.0)
+
+                    if is_wasting_money:
+                        logger.warning(
+                            f"💰 VM {vm_name} is wasting money: "
+                            f"idle for {vm.idle_time_minutes:.1f}m, "
+                            f"efficiency score: {vm.cost_efficiency_score:.1f}%"
+                        )
+                        await self.terminate_vm(
+                            vm_name,
+                            reason=(
+                                f"Cost waste: idle {vm.idle_time_minutes:.1f}m "
+                                f"(limit {idle_limit:.0f}m), efficiency {vm.cost_efficiency_score:.1f}%"
+                            ),
+                        )
+                        continue
+
+                    # 3. Check if local memory pressure normalized (VM no longer needed)
+                    try:
+                        import psutil
+                        local_mem_percent = psutil.virtual_memory().percent
+
+                        # If local RAM dropped below 70%, VM is no longer needed
+                        if local_mem_percent < 70:
+                            logger.info(
+                                f"📉 Local RAM normalized ({local_mem_percent:.1f}%) - "
+                                f"VM {vm_name} no longer needed"
+                            )
+                            await self.terminate_vm(
+                                vm_name,
+                                reason=f"Memory pressure resolved (local RAM: {local_mem_percent:.1f}%)"
+                            )
+                            continue
+                    except Exception as mem_check_error:
+                        logger.debug(f"Could not check local memory: {mem_check_error}")
+
+                    # === DETAILED METRICS COLLECTION (GCP Console-like) ===
+                    try:
+                        # Get instance details from GCP
+                        instance = await asyncio.to_thread(
+                            self.instances_client.get,
+                            project=self.config.project_id,
+                            zone=self.config.zone,
+                            instance=vm_name,
+                        )
+
+                        # Update VM state
+                        status_map = {
+                            "PROVISIONING": VMState.PROVISIONING,
+                            "STAGING": VMState.STAGING,
+                            "RUNNING": VMState.RUNNING,
+                            "STOPPING": VMState.STOPPING,
+                            "TERMINATED": VMState.TERMINATED,
+                        }
+                        vm.state = status_map.get(instance.status, VMState.UNKNOWN)
+
+                        # Collect CPU metrics (from GCP Monitoring API if available)
+                        # For now, we'll use placeholder - in production, integrate with GCP Monitoring API
+                        # TODO: Integrate with google-cloud-monitoring for real CPU/network/disk metrics
+
+                        # Estimate metrics based on VM activity
+                        if vm.component_usage_count > 0:
+                            # Active VM - higher resource usage
+                            vm.cpu_percent = min(80.0, 30.0 + (vm.component_usage_count % 50))
+                            vm.memory_used_gb = min(28.0, 10.0 + (vm.component_usage_count % 18))
+                        else:
+                            # Idle VM - minimal resources
+                            vm.cpu_percent = 5.0
+                            vm.memory_used_gb = 2.0
+
+                        # Health status
+                        is_healthy = vm.state == VMState.RUNNING
+                        vm.last_health_check = time.time()
+                        vm.health_status = "healthy" if is_healthy else "unhealthy"
+
+                        if not is_healthy:
+                            logger.warning(f"⚠️  VM {vm_name} health check failed (state: {vm.state.value})")
+
+                        # Log cost efficiency warnings
+                        if vm.cost_efficiency_score < 50:
+                            logger.warning(
+                                f"⚠️  VM {vm_name} low efficiency: {vm.cost_efficiency_score:.1f}% "
+                                f"(idle: {vm.idle_time_minutes:.1f}m)"
+                            )
+
+                    except Exception as metrics_error:
+                        logger.debug(f"Could not collect metrics for {vm_name}: {metrics_error}")
+
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}", exc_info=True)
+
+    async def _health_check_vm(self, vm_name: str) -> bool:
+        """Perform health check on a VM"""
+        if vm_name not in self.managed_vms:
+            return False
+
+        vm = self.managed_vms[vm_name]
+
+        try:
+            # Get instance status from GCP
+            instance = await asyncio.to_thread(
+                self.instances_client.get,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+            )
+
+            # Update state
+            status_map = {
+                "PROVISIONING": VMState.PROVISIONING,
+                "STAGING": VMState.STAGING,
+                "RUNNING": VMState.RUNNING,
+                "STOPPING": VMState.STOPPING,
+                "TERMINATED": VMState.TERMINATED,
+            }
+            vm.state = status_map.get(instance.status, VMState.UNKNOWN)
+
+            return vm.state == VMState.RUNNING
+
+        except Exception as e:
+            logger.error(f"Health check failed for {vm_name}: {e}")
+            return False
+
+    async def cleanup_all_vms(self, reason: str = "System shutdown"):
+        """Terminate all managed VMs with cost summary"""
+        if not self.managed_vms:
+            logger.info("ℹ️  No VMs to clean up")
+            return
+
+        logger.info(f"🧹 Cleaning up all VMs: {reason}")
+
+        # Calculate total costs before terminating
+        total_session_cost = 0.0
+        total_uptime_hours = 0.0
+        vm_count = len(self.managed_vms)
+
+        for vm in self.managed_vms.values():
+            vm.update_cost()
+            total_session_cost += vm.total_cost
+            total_uptime_hours += vm.uptime_hours
+
+        # Terminate all VMs
+        tasks = []
+        for vm_name in list(self.managed_vms.keys()):
+            tasks.append(self.terminate_vm(vm_name, reason=reason))
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Display cost summary
+        logger.info("✅ All VMs cleaned up")
+        logger.info("=" * 60)
+        logger.info("💰 GCP VM COST SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"   VMs Terminated:  {vm_count}")
+        logger.info(f"   Total Uptime:    {total_uptime_hours:.2f} hours")
+        logger.info(f"   Session Cost:    ${total_session_cost:.4f}")
+        logger.info(f"   Total Lifetime:  ${self.stats['total_cost']:.4f}")
+        logger.info("=" * 60)
+
+    async def cleanup(self):
+        """Cleanup and shutdown"""
+        self.is_monitoring = False
+
+        if self.monitoring_task:
+            self.monitoring_task.cancel()
+            try:
+                await self.monitoring_task
+            except asyncio.CancelledError:
+                pass
+
+        await self.cleanup_all_vms(reason="Manager shutdown")
+
+        self.initialized = False
+        logger.info("🧹 GCP VM Manager cleaned up")
+
+    def get_stats(self) -> Dict:
+        """Get comprehensive manager statistics including circuit breaker status"""
+        circuit_status = {}
+        for name, circuit in self._circuit_breakers.items():
+            circuit_status[name] = {
+                "state": circuit.state.value,
+                "failure_count": circuit.failure_count,
+                "can_execute": circuit.can_execute()[0],
+            }
+        
+        # Calculate VM costs summary
+        total_vm_cost = sum(vm.total_cost for vm in self.managed_vms.values())
+        
+        return {
+            **self.stats,
+            "managed_vms": len(self.managed_vms),
+            "creating_vms": len(self.creating_vms),
+            "current_vm_cost": total_vm_cost,
+            "circuit_breakers": circuit_status,
+            "config": self.config.to_dict(),
+            "initialized": self.initialized,
+        }
+
+    def get_circuit_breaker_status(self) -> Dict[str, Dict]:
+        """Get detailed circuit breaker status"""
+        return {
+            name: {
+                "state": circuit.state.value,
+                "failure_count": circuit.failure_count,
+                "failure_threshold": circuit.failure_threshold,
+                "recovery_timeout": circuit.recovery_timeout,
+                "last_failure_time": circuit.last_failure_time,
+                "can_execute": circuit.can_execute()[0],
+                "reason": circuit.can_execute()[1],
+            }
+            for name, circuit in self._circuit_breakers.items()
+        }
+
+    def reset_circuit_breaker(self, name: str) -> bool:
+        """Manually reset a circuit breaker"""
+        if name in self._circuit_breakers:
+            circuit = self._circuit_breakers[name]
+            circuit.state = CircuitState.CLOSED
+            circuit.failure_count = 0
+            circuit.half_open_calls = 0
+            logger.info(f"🔌 Circuit breaker '{name}' manually reset")
+            return True
+        return False
+
+
+# ============================================================================
+# SINGLETON MANAGEMENT
+# ============================================================================
+
+_gcp_vm_manager: Optional[GCPVMManager] = None
+_manager_lock = asyncio.Lock()
+
+
+async def get_gcp_vm_manager(config: Optional[VMManagerConfig] = None) -> GCPVMManager:
+    """
+    Get or create singleton GCP VM Manager with thread-safe initialization.
+    
+    Args:
+        config: Optional configuration override
+        
+    Returns:
+        Initialized GCPVMManager instance
+        
+    Raises:
+        RuntimeError: If GCP Compute API is not available
+    """
+    global _gcp_vm_manager
+
+    # Quick check without lock
+    if _gcp_vm_manager is not None and _gcp_vm_manager.initialized:
+        return _gcp_vm_manager
+
+    async with _manager_lock:
+        # Double-check after acquiring lock
+        if _gcp_vm_manager is None:
+            _gcp_vm_manager = GCPVMManager(config=config)
+        
+        if not _gcp_vm_manager.initialized:
+            await _gcp_vm_manager.initialize()
+
+        return _gcp_vm_manager
+
+
+async def get_gcp_vm_manager_safe(config: Optional[VMManagerConfig] = None) -> Optional[GCPVMManager]:
+    """
+    Safely get GCP VM Manager, returning None if not available.
+    
+    This is useful when you want to use the manager if available
+    but don't want to fail if GCP is not configured.
+    
+    Args:
+        config: Optional configuration override
+        
+    Returns:
+        GCPVMManager instance or None if not available
+    """
+    try:
+        return await get_gcp_vm_manager(config)
+    except Exception as e:
+        logger.debug(f"GCP VM Manager not available: {e}")
+        return None
+
+
+async def create_vm_if_needed(
+    memory_snapshot, 
+    components: List[str], 
+    trigger_reason: str, 
+    metadata: Optional[Dict] = None
+) -> Optional[VMInstance]:
+    """
+    Convenience function: Check if VM needed and create if so.
+
+    Args:
+        memory_snapshot: Memory pressure snapshot
+        components: Components to run on the VM
+        trigger_reason: Why this VM is being created
+        metadata: Additional metadata
+        
+    Returns:
+        VMInstance if created, None otherwise
+    """
+    try:
+        # Explicit opt-in guardrail (prevents surprise spend).
+        # Accept legacy GCP_VM_ENABLED, otherwise use JARVIS_SPOT_VM_ENABLED.
+        enabled_flag = os.getenv("GCP_VM_ENABLED")
+        if enabled_flag is None:
+            enabled_flag = os.getenv("JARVIS_SPOT_VM_ENABLED", "false")
+        if str(enabled_flag).lower() != "true":
+            logger.info("ℹ️  Spot VM creation disabled by configuration")
+            return None
+
+        manager = await get_gcp_vm_manager_safe()
+        
+        if manager is None:
+            logger.debug("GCP VM Manager not available - cannot create VM")
+            return None
+
+        should_create, reason, confidence = await manager.should_create_vm(
+            memory_snapshot, trigger_reason
+        )
+
+        if should_create:
+            logger.info(f"✅ VM creation recommended: {reason} (confidence: {confidence:.2%})")
+            return await manager.create_vm(components, trigger_reason, metadata)
+        else:
+            logger.info(f"ℹ️  VM creation not needed: {reason}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error in create_vm_if_needed: {e}")
+        return None
+
+
+async def cleanup_vm_manager():
+    """Cleanup the global VM manager instance"""
+    global _gcp_vm_manager
+    
+    async with _manager_lock:
+        if _gcp_vm_manager is not None:
+            await _gcp_vm_manager.cleanup()
+            _gcp_vm_manager = None
+            logger.info("🧹 GCP VM Manager singleton cleaned up")
+
+
+def is_vm_manager_available() -> bool:
+    """Check if VM manager is available without initializing"""
+    return COMPUTE_AVAILABLE
+
+
+def get_vm_manager_sync() -> Optional[GCPVMManager]:
+    """Get VM manager synchronously (only if already initialized)"""
+    return _gcp_vm_manager if _gcp_vm_manager and _gcp_vm_manager.initialized else None
+
         - Idle VM detection and auto-termination
         - Memory pressure monitoring (terminate when local RAM normalizes)
         - Detailed metrics collection (CPU, memory, network, disk)

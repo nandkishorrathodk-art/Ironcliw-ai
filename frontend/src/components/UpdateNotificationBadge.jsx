@@ -527,23 +527,23 @@ const UpdateNotificationBadge = () => {
                                 </>
                             ) : (
                                 <>
-                                    <button
-                                        className="btn-later"
-                                        onClick={handleLater}
-                                        disabled={updating}
-                                    >
-                                        {restartCountdown !== null ? 'Cancel' : 'Later'}
-                                    </button>
-                                    <button
-                                        className={isLocalChange ? 'btn-restart' : 'btn-update'}
-                                        onClick={isLocalChange ? handleRestartNow : handleUpdateNow}
-                                        disabled={updating}
-                                    >
-                                        {updating
-                                            ? (isLocalChange ? 'Restarting...' : 'Updating...')
-                                            : (isLocalChange ? 'Restart Now' : 'Update Now')
-                                        }
-                                    </button>
+                            <button
+                                className="btn-later"
+                                onClick={handleLater}
+                                disabled={updating}
+                            >
+                                {restartCountdown !== null ? 'Cancel' : 'Later'}
+                            </button>
+                            <button
+                                className={isLocalChange ? 'btn-restart' : 'btn-update'}
+                                onClick={isLocalChange ? handleRestartNow : handleUpdateNow}
+                                disabled={updating}
+                            >
+                                {updating
+                                    ? (isLocalChange ? 'Restarting...' : 'Updating...')
+                                    : (isLocalChange ? 'Restart Now' : 'Update Now')
+                                }
+                            </button>
                                 </>
                             )}
                         </div>

@@ -1663,7 +1663,7 @@ class AdvancedAsyncPipeline:
             # v8.0: Brief pause after speech to let audio echo dissipate
             # This prevents the VBI from processing any trailing audio of JARVIS's voice
             await asyncio.sleep(0.5)
-            
+
             # ─────────────────────────────────────────────────────────────────
             # Step 7: CRITICAL SECURITY - VERIFY VOICE FIRST, THEN UNLOCK
             # ─────────────────────────────────────────────────────────────────
@@ -1699,14 +1699,14 @@ class AdvancedAsyncPipeline:
                         "speaker_name": speaker_name,
                         "source": "proactive_unlock_verification",
                         "command_type": "verify_only",  # CRITICAL: Don't unlock!
-                        "original_command": text,
+                    "original_command": text,
                     }
                     
                     # Run VBI verification with strict timeout
                     try:
                         vbi_result = await asyncio.wait_for(
                             vbi.verify_and_announce(
-                                audio_data=audio_data,
+                audio_data=audio_data,
                                 context=vbi_context,
                                 speak=False,  # Don't speak - we handle voice feedback
                             ),
@@ -1821,9 +1821,9 @@ class AdvancedAsyncPipeline:
                         scenario_analysis=scenario_analysis
                     ),
                     timeout=15.0
-                )
-                
-                if not unlock_result.get("success", False):
+            )
+
+            if not unlock_result.get("success", False):
                     logger.warning(f"❌ [PROACTIVE-CAI] Unlock execution failed: {unlock_result.get('message', 'Unknown')}")
                     await broadcast_progress(
                         "error", 

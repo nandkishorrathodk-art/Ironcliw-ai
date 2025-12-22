@@ -1548,3 +1548,29 @@ async def transcribe_with_whisper(
         sample_rate=sample_rate,
         mode=mode
     )
+            return None
+
+# Global instance
+_whisper_handler = WhisperAudioHandler()
+
+async def transcribe_with_whisper(
+    audio_data,
+    sample_rate: int = None,
+    mode: str = 'general'
+):
+    """
+    Global transcription function with VAD + windowing support
+
+    Args:
+        audio_data: Audio bytes or base64 string
+        sample_rate: Optional sample rate from frontend (browser-reported)
+        mode: Processing mode ('general', 'unlock', or 'command')
+              - 'general': 5s window, standard processing
+              - 'unlock': 2s window, ultra-fast for unlock flow
+              - 'command': 3s window, optimized for command detection
+    """
+    return await _whisper_handler.transcribe_any_format(
+        audio_data,
+        sample_rate=sample_rate,
+        mode=mode
+    )

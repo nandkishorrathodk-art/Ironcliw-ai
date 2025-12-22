@@ -5960,7 +5960,7 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
     Args:
         auto_cleanup: If True, automatically clean up conflicting processes
         max_retries: Maximum cleanup attempts before giving up
-        
+
     Returns:
         Tuple[bool, str]: (can_start, message)
         - can_start: True if it's safe to start JARVIS
@@ -5982,16 +5982,16 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
 
         # Step 3: Check for existing JARVIS processes and port conflicts
         for attempt in range(max_retries):
-            jarvis_processes = manager._find_jarvis_processes()
-            other_processes = [p for p in jarvis_processes if p["pid"] != current_pid]
-            
+        jarvis_processes = manager._find_jarvis_processes()
+        other_processes = [p for p in jarvis_processes if p["pid"] != current_pid]
+
             if not other_processes:
                 # No conflicts
                 break
                 
             # Check for port conflicts
             port_conflict_pids = []
-            
+
             for proc_info in other_processes:
                 try:
                     proc = psutil.Process(proc_info["pid"])
@@ -5999,10 +5999,10 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
                         if hasattr(conn.laddr, 'port') and conn.laddr.port == target_port:
                             if conn.status == "LISTEN":
                                 port_conflict_pids.append(proc_info["pid"])
-                                break
+                            break
                 except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
                     continue
-            
+
             if port_conflict_pids:
                 if auto_cleanup and attempt < max_retries - 1:
                     # v4.0: Automatically clean up conflicting processes
@@ -6036,11 +6036,11 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
                     
                 else:
                     # Max retries exceeded or auto_cleanup disabled
-                    return (
-                        False,
+                return (
+                    False,
                         f"JARVIS instance already running on port {target_port} (PIDs: {port_conflict_pids}). "
                         f"Use --emergency-cleanup to force restart.",
-                    )
+                )
             else:
                 # Other processes exist but no port conflict
                 return (

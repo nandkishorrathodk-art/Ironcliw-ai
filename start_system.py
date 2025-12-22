@@ -16517,6 +16517,54 @@ async def main():
     # All detection and selection happens automatically - no flags needed!
     # Override with: --local-docker (force Docker), --no-docker (skip Docker)
     # ═══════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INTELLIGENT RATE ORCHESTRATOR INITIALIZATION (v20.0.0)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Initialize the ML-powered rate limiting system that:
+    # - Predicts rate limit breaches BEFORE they happen using Holt-Winters forecasting
+    # - Adaptively throttles GCP, CloudSQL, and Claude API calls with PID control
+    # - Schedules requests with priority-based queuing
+    # ═══════════════════════════════════════════════════════════════════════════
+    rate_orchestrator_enabled = os.getenv("JARVIS_RATE_ORCHESTRATOR_ENABLED", "true").lower() == "true"
+    
+    if rate_orchestrator_enabled:
+        try:
+            try:
+                from core.intelligent_rate_orchestrator import (
+                    get_rate_orchestrator,
+                    ServiceType,
+                )
+            except ImportError:
+                from backend.core.intelligent_rate_orchestrator import (
+                    get_rate_orchestrator,
+                    ServiceType,
+                )
+            
+            # Initialize and start the rate orchestrator
+            rate_orchestrator = await get_rate_orchestrator()
+            
+            # Log status
+            stats = rate_orchestrator.get_stats()
+            service_count = len(stats.get("services", {}))
+            
+            print(f"{Colors.GREEN}✓ Rate Limiting: ML Forecasting + Adaptive Throttling{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Services monitored: {service_count} (GCP, CloudSQL, Claude){Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Forecasting: Holt-Winters time-series analysis{Colors.ENDC}")
+            print(f"{Colors.CYAN}   • Throttling: PID control with adaptive adjustment{Colors.ENDC}")
+            
+            # Propagate to child processes
+            os.environ["JARVIS_ML_RATE_FORECASTING"] = "true"
+            
+        except ImportError as e:
+            logger.warning(f"⚠️ Intelligent Rate Orchestrator not available: {e}")
+            print(f"{Colors.YELLOW}⚠️ Rate Limiting: Basic mode (ML forecasting unavailable){Colors.ENDC}")
+            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Rate Orchestrator: {e}")
+            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+    else:
+        print(f"{Colors.YELLOW}ℹ️ Rate Limiting: Disabled (JARVIS_RATE_ORCHESTRATOR_ENABLED=false){Colors.ENDC}")
+
     print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
     print(f"{Colors.CYAN}🧠 Intelligent ECAPA Backend Orchestrator v19.0.0{Colors.ENDC}")
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}")

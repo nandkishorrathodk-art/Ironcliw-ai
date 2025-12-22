@@ -4491,3 +4491,35 @@ async def get_drift_status(user_id: Optional[str] = None):
     except Exception as e:
         logger.error(f"Drift status error: {e}")
         raise HTTPException(status_code=500, detail=f"Drift status failed: {str(e)}")
+
+        if not vbi._drift_detector_available or not vbi._drift_detector:
+            return {
+                "available": False,
+                "message": "Drift detection not enabled",
+                "drift_status": {},
+            }
+
+        # Get drift status
+        status = await vbi._drift_detector.get_status(
+            user_id=user_id or vbi._owner_name or "owner"
+        )
+
+        return {
+            "available": True,
+            "user_id": user_id or vbi._owner_name,
+            "drift_status": status,
+            "config": {
+                "threshold": vbi._config.drift_threshold,
+                "auto_adapt": vbi._config.drift_auto_adapt,
+                "adaptation_rate": vbi._config.drift_adaptation_rate,
+            },
+            "stats": {
+                "drift_detections": vbi._stats.get('drift_detections', 0),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Drift status error: {e}")
+        raise HTTPException(status_code=500, detail=f"Drift status failed: {str(e)}")

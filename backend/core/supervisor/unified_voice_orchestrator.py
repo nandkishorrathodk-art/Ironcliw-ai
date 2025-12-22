@@ -570,7 +570,7 @@ class UnifiedVoiceOrchestrator:
                 self._metrics.messages_skipped += 1
                 if completion_event:
                     completion_event.set()
-                return False
+            return False
 
         # Check queue capacity for low priority
         if (

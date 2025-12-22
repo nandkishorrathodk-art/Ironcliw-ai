@@ -1,11 +1,18 @@
 """
-Claude API-powered Chatbot for JARVIS
+Claude API-powered Chatbot for JARVIS v2.0
 Leverages Anthropic's Claude API for high-quality responses with minimal local resource usage
+
+v2.0 Updates:
+- Intelligent rate limiting with ML forecasting
+- Adaptive throttling for API calls
+- Predictive rate limit breach detection
+- Automatic request scheduling and retry
 """
 
 import asyncio
 import logging
 import os
+import random
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +26,30 @@ except ImportError:
         SECRET_MANAGER_AVAILABLE = True
     except ImportError:
         SECRET_MANAGER_AVAILABLE = False
+
+# Import intelligent rate orchestrator
+RATE_ORCHESTRATOR_AVAILABLE = False
+try:
+    from core.intelligent_rate_orchestrator import (
+        get_rate_orchestrator,
+        ServiceType,
+        OperationType as RateOpType,
+        RequestPriority,
+        with_intelligent_rate_limit,
+    )
+    RATE_ORCHESTRATOR_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.core.intelligent_rate_orchestrator import (
+            get_rate_orchestrator,
+            ServiceType,
+            OperationType as RateOpType,
+            RequestPriority,
+            with_intelligent_rate_limit,
+        )
+        RATE_ORCHESTRATOR_AVAILABLE = True
+    except ImportError:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -134,66 +165,30 @@ You excel at understanding context and providing insightful, well-structured res
                 logger.warning(f"Intelligent selection failed, falling back to Claude API: {e}")
                 # Continue to direct Claude API below
 
-        # Fallback: Direct Claude API
+        # Fallback: Direct Claude API with intelligent rate limiting
         if not self.is_available():
             return "Claude API is not available. Please install anthropic package and set API key."
 
         try:
-            # Build messages for the API
-            messages = self._build_messages(user_input)
-
-            # Make API call
-            start_time = datetime.now()
-
-            # Use async client for better performance
-            if not self.client:
-                raise ValueError("Claude client not initialized")
-
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=self.system_prompt,
-                messages=messages,
-            )
-
-            # Extract response
-            ai_response = response.content[0].text
-
-            # Track usage
-            self.api_calls_made += 1
-            if hasattr(response, "usage"):
-                # Claude API usage structure
-                if hasattr(response.usage, "input_tokens") and hasattr(
-                    response.usage, "output_tokens"
-                ):
-                    self.total_tokens_used += (
-                        response.usage.input_tokens + response.usage.output_tokens
-                    )
-
-            # Log performance
-            response_time = (datetime.now() - start_time).total_seconds()
-            token_info = "N/A"  # nosec B105
-            if hasattr(response, "usage"):
-                if hasattr(response.usage, "input_tokens") and hasattr(
-                    response.usage, "output_tokens"
-                ):
-                    token_info = (
-                        f"in:{response.usage.input_tokens}, out:{response.usage.output_tokens}"
-                    )
-            logger.info(
-                f"Claude API call completed in {response_time:.2f}s "
-                f"(model: {self.model}, tokens: {token_info})"
-            )
-
-            # Update conversation history
-            self._update_history(user_input, ai_response)
-
-            return ai_response
-
+            # Use intelligent rate limiting if available
+            if RATE_ORCHESTRATOR_AVAILABLE:
+                return await self._call_claude_with_rate_limiting(user_input)
+            else:
+                return await self._call_claude_direct(user_input)
+                
         except anthropic.APIError as e:
             logger.error(f"Claude API error: {e}")
+            
+            # Handle rate limiting specifically
+            if "rate" in str(e).lower() or "429" in str(e):
+                if RATE_ORCHESTRATOR_AVAILABLE:
+                    orchestrator = await get_rate_orchestrator()
+                    await orchestrator.record_error(ServiceType.CLAUDE_API, is_rate_limit=True)
+                return (
+                    "⚠️ Claude API is currently rate limited. Please wait a moment and try again. "
+                    "JARVIS is automatically adjusting request rates to prevent this."
+                )
+            
             if "credit balance is too low" in str(e):
                 return (
                     "⚠️ Your Anthropic account needs credits to use Claude. "
@@ -204,6 +199,106 @@ You excel at understanding context and providing insightful, well-structured res
         except Exception as e:
             logger.error(f"Unexpected error in Claude chatbot: {e}")
             return "I encountered an unexpected error. Please try again."
+    
+    async def _call_claude_with_rate_limiting(self, user_input: str) -> str:
+        """
+        Call Claude API with intelligent rate limiting and forecasting.
+        
+        This method:
+        1. Checks with the intelligent rate orchestrator before calling
+        2. Uses ML forecasting to predict rate limit issues
+        3. Implements adaptive throttling based on historical patterns
+        4. Automatically retries with exponential backoff
+        """
+        orchestrator = await get_rate_orchestrator()
+        
+        # Check for predicted rate limit breach
+        will_breach, probability, recommendation = await orchestrator.predict_breach(
+            ServiceType.CLAUDE_API, window_hours=1
+        )
+        
+        if will_breach and probability > 0.7:
+            logger.warning(f"⚡ Rate limit breach predicted ({probability:.0%}): {recommendation}")
+            # Add extra delay before making the call
+            delay = min(5.0, probability * 10.0)
+            await asyncio.sleep(delay)
+        
+        # Use the rate-limited wrapper
+        async def make_call():
+            return await self._call_claude_direct(user_input)
+        
+        return await with_intelligent_rate_limit(
+            service=ServiceType.CLAUDE_API,
+            operation=RateOpType.QUERY,
+            func=make_call,
+            priority=RequestPriority.NORMAL,
+            max_retries=3,
+            base_delay=1.0,
+        )
+    
+    async def _call_claude_direct(self, user_input: str) -> str:
+        """Direct Claude API call without rate limiting wrapper."""
+        # Build messages for the API
+        messages = self._build_messages(user_input)
+
+        # Make API call
+        start_time = datetime.now()
+
+        # Use async client for better performance
+        if not self.client:
+            raise ValueError("Claude client not initialized")
+
+        response = await asyncio.to_thread(
+            self.client.messages.create,
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            system=self.system_prompt,
+            messages=messages,
+        )
+
+        # Extract response
+        ai_response = response.content[0].text
+
+        # Track usage
+        self.api_calls_made += 1
+        if hasattr(response, "usage"):
+            # Claude API usage structure
+            if hasattr(response.usage, "input_tokens") and hasattr(
+                response.usage, "output_tokens"
+            ):
+                self.total_tokens_used += (
+                    response.usage.input_tokens + response.usage.output_tokens
+                )
+                
+                # Record token usage with rate orchestrator
+                if RATE_ORCHESTRATOR_AVAILABLE:
+                    try:
+                        orchestrator = await get_rate_orchestrator()
+                        await orchestrator.record_success(ServiceType.CLAUDE_API)
+                        await orchestrator.record_success(ServiceType.CLAUDE_TOKENS)
+                    except Exception:
+                        pass
+
+        # Log performance
+        response_time = (datetime.now() - start_time).total_seconds()
+        token_info = "N/A"  # nosec B105
+        if hasattr(response, "usage"):
+            if hasattr(response.usage, "input_tokens") and hasattr(
+                response.usage, "output_tokens"
+            ):
+                token_info = (
+                    f"in:{response.usage.input_tokens}, out:{response.usage.output_tokens}"
+                )
+        logger.info(
+            f"Claude API call completed in {response_time:.2f}s "
+            f"(model: {self.model}, tokens: {token_info})"
+        )
+
+        # Update conversation history
+        self._update_history(user_input, ai_response)
+
+        return ai_response
 
     def _build_messages(self, user_input: str) -> List[Dict[str, str]]:
         """Build message list for Claude API including conversation history"""

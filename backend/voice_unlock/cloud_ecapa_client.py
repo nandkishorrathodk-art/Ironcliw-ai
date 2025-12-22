@@ -67,6 +67,19 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# v9.0: Rate limit manager integration for Cloud Run API
+RATE_LIMIT_MANAGER_AVAILABLE = False
+try:
+    from core.gcp_rate_limit_manager import (
+        get_rate_limit_manager,
+        get_rate_limit_manager_sync,
+        GCPService,
+        OperationType,
+    )
+    RATE_LIMIT_MANAGER_AVAILABLE = True
+except ImportError:
+    pass
+
 
 # =============================================================================
 # BACKEND TYPES
@@ -2890,6 +2903,19 @@ async def verify_speaker_cloud(
         audio_data: Raw audio bytes
         reference_embedding: Reference speaker embedding
         sample_rate: Audio sample rate
+        threshold: Verification threshold
+
+    Returns:
+        Verification result
+    """
+    client = await get_cloud_ecapa_client()
+    return await client.verify_speaker(
+        audio_data,
+        reference_embedding,
+        sample_rate,
+        threshold=threshold
+    )
+
         threshold: Verification threshold
 
     Returns:

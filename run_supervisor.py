@@ -1849,6 +1849,16 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             await self._propagate_zero_touch_settings()
             await self._propagate_agi_os_settings()
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # v5.0: Initialize Intelligent Rate Orchestrator (ML Forecasting)
+            # ═══════════════════════════════════════════════════════════════════
+            # This starts the ML-powered rate limiting system that:
+            # - Predicts rate limit breaches BEFORE they happen
+            # - Adaptively throttles GCP, CloudSQL, and Claude API calls
+            # - Uses time-series forecasting for intelligent request scheduling
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_rate_orchestrator()
 
             self.perf.end("validation")
 
@@ -2192,6 +2202,8 @@ class SupervisorBootstrapper:
         v4.1: Now checks /health/ready for OPERATIONAL readiness, not just HTTP response.
               This prevents "OFFLINE - SEARCHING FOR BACKEND" by ensuring services
               are actually ready before broadcasting completion.
+        v9.0: ADAPTIVE TIMEOUT - Extends wait time when heavy initialization detected
+              (Docker startup, Cloud Run initialization, ML model loading, etc.)
         
         Args:
             max_wait: Maximum time to wait for JARVIS to be ready
@@ -2211,9 +2223,29 @@ class SupervisorBootstrapper:
         frontend_ready = False
         last_status = None
         
-        self.logger.info("🔍 Monitoring JARVIS startup (v4.1 - operational check)...")
+        # v9.0: Adaptive timeout tracking
+        adaptive_max_wait = max_wait
+        timeout_extended = False
+        extension_reasons: List[str] = []
         
-        while (time.time() - start_time) < max_wait:
+        # Check for conditions that require extended timeouts
+        docker_needs_start = not self._is_docker_running()
+        if docker_needs_start:
+            adaptive_max_wait += 60  # +60s for Docker startup
+            extension_reasons.append("Docker startup")
+        
+        # Check if this is a cold start (first run after long idle)
+        if os.getenv("JARVIS_COLD_START") == "1":
+            adaptive_max_wait += 30  # +30s for cold start
+            extension_reasons.append("Cold start")
+        
+        if extension_reasons:
+            self.logger.info(f"⏱️  Adaptive timeout: {adaptive_max_wait:.0f}s (base: {max_wait}s)")
+            self.logger.info(f"   Extensions: {', '.join(extension_reasons)}")
+        
+        self.logger.info("🔍 Monitoring JARVIS startup (v9.0 - adaptive timeout)...")
+
+        while (time.time() - start_time) < adaptive_max_wait:
             elapsed = time.time() - start_time
             
             # Phase 1a: Check backend HTTP health
@@ -2286,6 +2318,31 @@ class SupervisorBootstrapper:
                                         85,
                                         {"icon": "✅", "label": "Backend Ready", "backend_ready": True}
                                     )
+                                
+                                # v9.0: Dynamic timeout extension for slow services
+                                # If we detect heavy initialization in progress, extend the timeout
+                                if not timeout_extended:
+                                    ml_warmup = data.get("ml_warmup_info", {})
+                                    is_warming = ml_warmup.get("is_warming_up", False)
+                                    
+                                    # Detect Docker/Cloud Run initialization
+                                    cloud_init = data.get("cloud_init", {})
+                                    docker_starting = cloud_init.get("docker_starting", False)
+                                    cloud_run_init = cloud_init.get("cloud_run_initializing", False)
+                                    
+                                    if is_warming and elapsed > 60:
+                                        # ML models taking long - extend timeout
+                                        adaptive_max_wait = max(adaptive_max_wait, start_time + elapsed + 60)
+                                        timeout_extended = True
+                                        self.logger.info(f"⏱️  Extended timeout for ML warmup: +60s (new max: {adaptive_max_wait - start_time:.0f}s)")
+                                    
+                                    if docker_starting or cloud_run_init:
+                                        # Cloud services initializing - extend timeout
+                                        adaptive_max_wait = max(adaptive_max_wait, start_time + elapsed + 90)
+                                        timeout_extended = True
+                                        service = "Docker" if docker_starting else "Cloud Run"
+                                        self.logger.info(f"⏱️  Extended timeout for {service}: +90s (new max: {adaptive_max_wait - start_time:.0f}s)")
+                                        
                 except Exception as e:
                     # /health/ready might not exist - fallback after 45s if /health works
                     if backend_http_ready and elapsed > 45:
@@ -2369,8 +2426,10 @@ class SupervisorBootstrapper:
             await asyncio.sleep(1.5)  # Slightly slower polling
         
         # Timeout - Only broadcast if we have SOME progress
-        self.logger.warning(f"⚠️ JARVIS startup monitoring timeout after {max_wait}s")
+        self.logger.warning(f"⚠️ JARVIS startup monitoring timeout after {adaptive_max_wait}s")
         self.logger.warning(f"   Status: http={backend_http_ready}, operational={backend_operational}, frontend={frontend_ready}")
+        if extension_reasons:
+            self.logger.warning(f"   Timeout was extended for: {', '.join(extension_reasons)}")
         
         # If backend is operational and frontend is ready, we can complete
         if backend_operational and frontend_ready:
@@ -2408,6 +2467,25 @@ class SupervisorBootstrapper:
         
         # Return true if backend is at least operational
         return backend_operational
+    
+    def _is_docker_running(self) -> bool:
+        """
+        v9.0: Check if Docker daemon is currently running.
+        Used for adaptive timeout calculation.
+        
+        Returns:
+            True if Docker is running, False otherwise
+        """
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=3.0
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return False
     
     async def _wait_for_ports_release(self, max_wait: float = 5.0) -> bool:
         """
@@ -2508,6 +2586,63 @@ class SupervisorBootstrapper:
                 self.logger.info("🧠 AGI OS module available - will integrate with supervisor")
             except ImportError:
                 self.logger.debug("AGI OS module not available - supervisor will operate independently")
+    
+    async def _initialize_rate_orchestrator(self) -> None:
+        """
+        v5.0: Initialize the Intelligent Rate Orchestrator for ML-powered rate limiting.
+        
+        This starts the ML forecasting system that:
+        - Predicts rate limit breaches BEFORE they happen
+        - Adaptively throttles GCP, CloudSQL, and Claude API calls
+        - Uses Holt-Winters exponential smoothing for time-series forecasting
+        - Implements PID control for smooth throttle adjustments
+        - Schedules requests with priority-based queuing
+        
+        The orchestrator runs background tasks for:
+        - Continuous throttle adjustment (every 1 second)
+        - Forecast model updates (every 1 minute)
+        """
+        try:
+            try:
+                from core.intelligent_rate_orchestrator import (
+                    get_rate_orchestrator,
+                    ServiceType,
+                )
+            except ImportError:
+                from backend.core.intelligent_rate_orchestrator import (
+                    get_rate_orchestrator,
+                    ServiceType,
+                )
+            
+            # Initialize and start the orchestrator
+            orchestrator = await get_rate_orchestrator()
+            
+            # Log initial status
+            stats = orchestrator.get_stats()
+            service_count = len(stats.get("services", {}))
+            
+            self.logger.info(f"🎯 Intelligent Rate Orchestrator initialized")
+            self.logger.info(f"   • ML Forecasting: Enabled (Holt-Winters time-series)")
+            self.logger.info(f"   • Adaptive Throttling: Enabled (PID control)")
+            self.logger.info(f"   • Services Configured: {service_count}")
+            self.logger.info(f"   • Background Tasks: Adjustment loop, Forecast loop")
+            
+            # Propagate rate orchestrator availability to child processes
+            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "true"
+            os.environ["JARVIS_ML_RATE_FORECASTING"] = "true"
+            
+            # Print status
+            print(f"  {TerminalUI.GREEN}✓ Rate Limiting: ML Forecasting + Adaptive Throttling{TerminalUI.RESET}")
+            
+        except ImportError as e:
+            self.logger.warning(f"⚠️ Intelligent Rate Orchestrator not available: {e}")
+            self.logger.warning("   Rate limiting will use basic fallback mode")
+            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ Rate Limiting: Basic mode (ML forecasting unavailable){TerminalUI.RESET}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Rate Orchestrator: {e}")
+            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
     
     async def _on_hot_reload_triggered(self, changed_files: List[str]) -> None:
         """

@@ -406,3 +406,66 @@ async def broadcast_maintenance_event(
 def get_routers():
     """Get all routers to include in the FastAPI app."""
     return [broadcast_router, alt_router]
+
+            
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
+    except Exception as e:
+        logger.debug(f"WebSocket error: {e}")
+        await manager.disconnect(websocket)
+
+
+# ==============================================================================
+# Alternative Endpoint (for compatibility)
+# ==============================================================================
+
+# Also register at root /broadcast for compatibility with maintenance_broadcaster.py
+alt_router = APIRouter(tags=["broadcast"])
+
+
+@alt_router.post("/broadcast")
+async def broadcast_event_alt(event: BroadcastEvent) -> BroadcastResponse:
+    """Alternative endpoint at /broadcast for compatibility."""
+    return await broadcast_event(event)
+
+
+@alt_router.websocket("/ws/broadcast")
+async def broadcast_ws_alt(websocket: WebSocket):
+    """Alternative WebSocket endpoint at /ws/broadcast."""
+    await broadcast_websocket(websocket)
+
+
+# ==============================================================================
+# Utility Functions
+# ==============================================================================
+
+async def broadcast_maintenance_event(
+    reason: str,
+    message: str,
+    estimated_time: int = 30,
+) -> int:
+    """
+    Broadcast a maintenance event directly (for internal use).
+    
+    Args:
+        reason: 'updating' | 'restarting' | 'rollback'
+        message: Human-readable status message
+        estimated_time: Seconds until back online
+        
+    Returns:
+        Number of clients notified
+    """
+    event_message = {
+        "type": f"system_{reason}",
+        "message": message,
+        "estimated_time": estimated_time,
+        "reason": reason,
+        "timestamp": datetime.now().isoformat(),
+    }
+    
+    return await manager.broadcast(event_message)
+
+
+def get_routers():
+    """Get all routers to include in the FastAPI app."""
+    return [broadcast_router, alt_router]

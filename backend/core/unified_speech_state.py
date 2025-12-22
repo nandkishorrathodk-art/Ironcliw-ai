@@ -680,3 +680,28 @@ async def register_with_websocket_service() -> bool:
         logger.warning(f"Failed to register speech state broadcaster: {e}")
         return False
 
+
+async def register_with_websocket_service() -> bool:
+    """
+    Register speech state broadcasts with the unified WebSocket service.
+    
+    Call this during app startup to enable frontend synchronization.
+    
+    Returns:
+        True if registration successful
+    """
+    try:
+        manager = await get_speech_state_manager()
+        
+        from api.broadcast_router import manager as broadcast_manager
+        
+        async def broadcast_speech_state(message: Dict[str, Any]) -> None:
+            await broadcast_manager.broadcast(message)
+        
+        manager.register_websocket_broadcaster(broadcast_speech_state)
+        logger.info("✅ Speech state registered with WebSocket broadcaster")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to register speech state broadcaster: {e}")
+        return False
+

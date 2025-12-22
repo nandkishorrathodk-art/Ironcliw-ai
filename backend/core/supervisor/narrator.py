@@ -574,7 +574,7 @@ class SupervisorNarrator:
     - Update classification-based announcements
     - Dead Man's Switch status narration
     - Prime Directives violation alerts
-    
+
     v2.0: Now delegates ALL voice output to UnifiedVoiceOrchestrator,
     ensuring only one voice speaks at a time across the entire system.
 
@@ -693,7 +693,7 @@ class SupervisorNarrator:
             return VoicePriority.LOW
         else:
             return VoicePriority.MEDIUM
-
+    
     async def narrate(
         self,
         event: NarratorEvent,

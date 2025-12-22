@@ -391,3 +391,189 @@ def track_api_call(endpoint: str, response_time_ms: float, success: bool = True)
 
     if not success:
         stats["error_count"] += 1
+
+
+# =============================================================================
+# v9.0: GCP RATE LIMIT & QUOTA MONITORING
+# =============================================================================
+
+@router.get("/gcp/rate-limits")
+async def get_gcp_rate_limit_status() -> Dict[str, Any]:
+    """
+    Get current GCP rate limit and quota status.
+    
+    Returns comprehensive rate limiting information for all GCP services:
+    - Token bucket state (available tokens, capacity)
+    - Sliding window state (current requests, limit)
+    - Quota utilization
+    - Cooldown status
+    - Statistics (requests made, rate limited, etc.)
+    """
+    try:
+        from core.gcp_rate_limit_manager import get_rate_limit_manager
+        
+        manager = await get_rate_limit_manager()
+        status = manager.get_status()
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "rate_limits": status
+        }
+    except ImportError:
+        return {
+            "status": "unavailable",
+            "message": "GCP Rate Limit Manager not available",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting rate limit status: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@router.get("/gcp/quotas")
+async def get_gcp_quota_status() -> Dict[str, Any]:
+    """
+    Get current GCP quota status.
+    
+    Returns:
+    - Cached quota information
+    - Quota utilization percentages
+    - Exceeded quotas (if any)
+    """
+    try:
+        from core.gcp_rate_limit_manager import get_rate_limit_manager
+        
+        manager = await get_rate_limit_manager()
+        
+        # Check quotas for VM creation
+        can_create, blocking_quotas, message = await manager.check_quota_for_vm()
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "can_create_vm": can_create,
+            "message": message,
+            "blocking_quotas": [
+                {
+                    "metric": q.metric_name,
+                    "limit": q.limit,
+                    "usage": q.usage,
+                    "available": q.available,
+                    "utilization_percent": q.utilization_percent,
+                    "region": q.region,
+                }
+                for q in blocking_quotas
+            ],
+            "quota_manager_status": manager._quota_manager.get_status() if hasattr(manager, '_quota_manager') else {}
+        }
+    except ImportError:
+        return {
+            "status": "unavailable",
+            "message": "GCP Rate Limit Manager not available",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting quota status: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+# =============================================================================
+# v9.0: GCP RATE LIMIT & QUOTA MONITORING
+# =============================================================================
+
+@router.get("/gcp/rate-limits")
+async def get_gcp_rate_limit_status() -> Dict[str, Any]:
+    """
+    Get current GCP rate limit and quota status.
+    
+    Returns comprehensive rate limiting information for all GCP services:
+    - Token bucket state (available tokens, capacity)
+    - Sliding window state (current requests, limit)
+    - Quota utilization
+    - Cooldown status
+    - Statistics (requests made, rate limited, etc.)
+    """
+    try:
+        from core.gcp_rate_limit_manager import get_rate_limit_manager
+        
+        manager = await get_rate_limit_manager()
+        status = manager.get_status()
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "rate_limits": status
+        }
+    except ImportError:
+        return {
+            "status": "unavailable",
+            "message": "GCP Rate Limit Manager not available",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting rate limit status: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+@router.get("/gcp/quotas")
+async def get_gcp_quota_status() -> Dict[str, Any]:
+    """
+    Get current GCP quota status.
+    
+    Returns:
+    - Cached quota information
+    - Quota utilization percentages
+    - Exceeded quotas (if any)
+    """
+    try:
+        from core.gcp_rate_limit_manager import get_rate_limit_manager
+        
+        manager = await get_rate_limit_manager()
+        
+        # Check quotas for VM creation
+        can_create, blocking_quotas, message = await manager.check_quota_for_vm()
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "can_create_vm": can_create,
+            "message": message,
+            "blocking_quotas": [
+                {
+                    "metric": q.metric_name,
+                    "limit": q.limit,
+                    "usage": q.usage,
+                    "available": q.available,
+                    "utilization_percent": q.utilization_percent,
+                    "region": q.region,
+                }
+                for q in blocking_quotas
+            ],
+            "quota_manager_status": manager._quota_manager.get_status() if hasattr(manager, '_quota_manager') else {}
+        }
+    except ImportError:
+        return {
+            "status": "unavailable",
+            "message": "GCP Rate Limit Manager not available",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting quota status: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }

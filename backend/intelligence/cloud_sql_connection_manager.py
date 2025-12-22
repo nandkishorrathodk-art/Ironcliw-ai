@@ -59,6 +59,40 @@ try:
 except ImportError:
     ASYNCPG_AVAILABLE = False
 
+# v9.0: Rate limit manager integration for CloudSQL Admin API
+RATE_LIMIT_MANAGER_AVAILABLE = False
+try:
+    from core.gcp_rate_limit_manager import (
+        get_rate_limit_manager_sync,
+        GCPService,
+        OperationType,
+    )
+    RATE_LIMIT_MANAGER_AVAILABLE = True
+except ImportError:
+    pass
+
+# v10.0: Intelligent Rate Orchestrator for ML-powered rate limiting
+INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE = False
+try:
+    from core.intelligent_rate_orchestrator import (
+        get_rate_orchestrator,
+        ServiceType as RateServiceType,
+        OperationType as RateOpType,
+        RequestPriority,
+    )
+    INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.core.intelligent_rate_orchestrator import (
+            get_rate_orchestrator,
+            ServiceType as RateServiceType,
+            OperationType as RateOpType,
+            RequestPriority,
+        )
+        INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE = True
+    except ImportError:
+        pass
+
 logger = logging.getLogger(__name__)
 
 # Type variable for generic async operations
@@ -1067,7 +1101,12 @@ class CloudSQLConnectionManager:
     @asynccontextmanager
     async def connection(self):
         """
-        Acquire connection with leak tracking and circuit breaker.
+        Acquire connection with leak tracking, circuit breaker, and ML-powered rate limiting.
+
+        v10.0: Integrates with IntelligentRateOrchestrator for:
+        - Predictive rate limit forecasting
+        - Adaptive throttling based on usage patterns
+        - Priority-based request scheduling
 
         Usage:
             async with manager.connection() as conn:
@@ -1084,6 +1123,22 @@ class CloudSQLConnectionManager:
             raise RuntimeError(
                 f"Circuit breaker OPEN - retry in {self._conn_config.recovery_timeout_seconds}s"
             )
+
+        # v10.0: Intelligent rate limiting with ML forecasting
+        if INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE:
+            try:
+                orchestrator = await get_rate_orchestrator()
+                acquired, reason = await orchestrator.acquire(
+                    RateServiceType.CLOUDSQL_CONNECTIONS,
+                    RateOpType.QUERY,
+                    RequestPriority.NORMAL,
+                )
+                if not acquired:
+                    logger.warning(f"⚡ CloudSQL connection throttled: {reason}")
+                    # Add small delay but don't block
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"Rate orchestrator check failed: {e}")
 
         start_time = time.time()
         conn = None
@@ -1635,6 +1690,18 @@ _manager_lock = threading.Lock()
 
 
 def get_connection_manager() -> CloudSQLConnectionManager:
+    """Get singleton connection manager instance."""
+    global _manager
+    with _manager_lock:
+        if _manager is None:
+            _manager = CloudSQLConnectionManager()
+        return _manager
+
+
+async def get_connection_manager_async() -> CloudSQLConnectionManager:
+    """Get singleton connection manager instance (async version)."""
+    return get_connection_manager()
+
     """Get singleton connection manager instance."""
     global _manager
     with _manager_lock:
