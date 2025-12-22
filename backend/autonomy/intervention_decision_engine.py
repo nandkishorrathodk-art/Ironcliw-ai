@@ -810,4 +810,10 @@ class InterventionTiming:
         
         # Learn from timing patterns
         timing_key = f"{user_state.value}_{decision.intervention_level.value}"
-        if timing
+        if timing_key in self.timing_patterns:
+            avg_delay = self.timing_patterns[timing_key]
+            base_delay = (base_delay + avg_delay) / 2
+
+        return base_delay
+
+# Module truncated - needs restoration from backup

@@ -898,4 +898,8 @@ class WorkspaceAutomation:
         Returns:
             Workflow ID that could automate this pattern, or None
         """
-        if
+        if pattern_key in self.pattern_to_workflow:
+            return self.pattern_to_workflow[pattern_key]
+        return None
+
+# Module truncated - needs restoration from backup

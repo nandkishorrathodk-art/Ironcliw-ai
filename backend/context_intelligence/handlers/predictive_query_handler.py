@@ -342,6 +342,10 @@ class ClaudeVisionAnalyzer:
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=self.api_key)
 
-            prompt = f"""Analyze this terminal output:
+            prompt = """Analyze this terminal output"""
+            return None
+        except Exception as e:
+            return None
+
+# Module truncated - needs restoration from backup

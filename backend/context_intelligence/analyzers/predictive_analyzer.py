@@ -824,4 +824,8 @@ class PredictiveAnalyzer:
             ],
             PredictiveQueryType.NEXT_STEPS: [
                 re.compile(r'\bwhat\s+should\s+i\s+(do|work on)\s+next\b', re.I),
-                re.compile(r'\b(next\s+steps|what\'?s\s+
+                re.compile(r'\b(next\s+steps|what\'?s\s+next)\b', re.I),
+            ],
+        }
+
+# Module truncated - needs restoration from backup

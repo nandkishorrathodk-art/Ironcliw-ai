@@ -794,4 +794,9 @@ class ActivityCorrelationEngine:
                 score += 0.6
 
         # Code → Test
-        if act1.activity_type == "ide" and act2.activity_
+        if act1.activity_type == "ide" and act2.activity_type == "terminal":
+                score += 0.5
+
+        return score
+
+# Module truncated - needs restoration from backup

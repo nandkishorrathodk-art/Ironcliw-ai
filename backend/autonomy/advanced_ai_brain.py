@@ -845,4 +845,7 @@ class AdvancedAIBrain:
                         problem_id=f"optimization_{datetime.now().timestamp()}",
                         description=f"Optimize {pattern['area']}",
                         problem_type=ProblemType.PRODUCTIVITY_ENHANCEMENT,
-                        constraints=pattern.
+                        constraints=pattern.get('constraints', []),
+                    )
+
+# Module truncated - needs restoration from backup

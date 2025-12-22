@@ -869,4 +869,6 @@ if __name__ == "__main__":
         print("=" * 70)
 
         # Test 1: Explicit reference
-        print("\n
+        print("\nTest 1")
+
+# Module truncated - needs restoration from backup

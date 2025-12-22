@@ -979,4 +979,8 @@ class PatternLearner:
         
         return target_words
     
-    def extract_entities(self,
+    def extract_entities(self, text: str) -> List[str]:
+        """Extract entities from text"""
+        return []
+
+# Module truncated - needs restoration from backup

@@ -837,4 +837,8 @@ def get_screen_lock_detector() -> ScreenLockContextDetector:
         >>> context = await detector.check_screen_context("open Safari")
     """
     global _detector
-    if _
+    if _detector is None:
+        _detector = ScreenLockContextDetector()
+    return _detector
+
+# Module truncated - needs restoration from backup

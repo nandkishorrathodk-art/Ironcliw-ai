@@ -974,3 +974,7 @@ Include reasoning."""
             
         Raises:
             Exception
+    """
+    pass
+
+# Module truncated - needs restoration from backup

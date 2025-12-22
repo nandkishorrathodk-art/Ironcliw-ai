@@ -1000,4 +1000,9 @@ class NotificationVisionIntegration:
         notification_intelligence: The notification intelligence system
     """
 
-    def __init__(self
+    def __init__(self):
+        """Initialize the handler"""
+        self.vision_pipeline = None
+        self.notification_intelligence = None
+
+# Module truncated - needs restoration from backup

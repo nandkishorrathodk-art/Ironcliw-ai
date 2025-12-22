@@ -837,4 +837,8 @@ class ContextAwareCommandHandler:
         except Exception as e:
             logger.error(f"[CONTEXT AWARE] ❌ Failed to speak message: {e}")
 
-    def _add_step(self, description: str, details: Dict[str,
+    def _add_step(self, description: str, details: Dict[str, Any]) -> None:
+        """Add step to the handler"""
+        pass
+
+# Module truncated - needs restoration from backup

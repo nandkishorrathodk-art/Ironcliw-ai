@@ -827,4 +827,9 @@ class ErrorRecoveryManager:
         
         if 'vision' in error_msg or 'screen' in error_msg or 'capture' in error_msg:
             return ErrorCategory.VISION
-        elif 'ocr' in error_
+        elif 'ocr' in error_msg or 'text' in error_msg:
+            return ErrorCategory.OCR
+        else:
+            return ErrorCategory.UNKNOWN
+
+# Module truncated - needs restoration from backup

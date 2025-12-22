@@ -798,4 +798,6 @@ if __name__ == "__main__":
     # Capture frontmost window
     result = engine.capture_frontmost_window()
     if result['success']:
-        print(f"\nCaptured frontmost window in {result['capture_
+        print(f"\nCaptured frontmost window in {result['capture_time_ms']}ms")
+
+# Module truncated - needs restoration from backup

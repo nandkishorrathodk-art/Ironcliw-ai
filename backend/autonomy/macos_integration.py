@@ -906,6 +906,10 @@ Respond with: SAFE or UNSAFE and brief reason."""
 
 Current System State:
 - CPU Usage: {state.cpu_usage}%
-- Memory Usage: {state.memory_usage}%
-- Active Apps: {', '.join(state.active_apps[:5])}
-- On Battery: {state.power_status.get('on_battery', False)}
+
+- On Battery: {state.power_status.get('on_battery', False)}"""
+            return prompt
+        except Exception as e:
+            return ""
+
+# Module truncated - needs restoration from backup
