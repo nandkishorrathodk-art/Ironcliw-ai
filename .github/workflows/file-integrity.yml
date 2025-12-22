@@ -1,0 +1,213 @@
+# JARVIS File Integrity CI/CD Workflow
+# =====================================
+# 
+# This workflow runs on every push and pull request to:
+# 1. Validate all Python files for syntax errors
+# 2. Detect truncated/corrupted files
+# 3. Check for common issues that lead to file corruption
+#
+# Blocks merges if integrity issues are found.
+
+name: File Integrity Check
+
+on:
+  push:
+    branches: [main, develop, feature/**]
+    paths:
+      - '**.py'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '**.py'
+  workflow_dispatch:
+    inputs:
+      full_scan:
+        description: 'Run full repository scan'
+        required: false
+        default: 'false'
+
+jobs:
+  integrity-check:
+    name: Python File Integrity
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comparison
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Get changed files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, compare against base branch
+            echo "files=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD | grep '\.py$' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          else
+            # For pushes, compare against previous commit
+            echo "files=$(git diff --name-only --diff-filter=ACM HEAD~1...HEAD | grep '\.py$' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Check file syntax
+        id: syntax-check
+        run: |
+          ERRORS=0
+          ERROR_FILES=""
+          
+          # Check changed files or all files if full scan requested
+          if [ "${{ github.event.inputs.full_scan }}" = "true" ]; then
+            FILES=$(find . -name "*.py" -not -path "./.git/*" -not -path "./venv/*" -not -path "./__pycache__/*")
+          else
+            FILES="${{ steps.changed-files.outputs.files }}"
+          fi
+          
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              if ! python -m py_compile "$file" 2>/dev/null; then
+                echo "❌ Syntax error in: $file"
+                python -m py_compile "$file" 2>&1 || true
+                ERRORS=$((ERRORS + 1))
+                ERROR_FILES="$ERROR_FILES $file"
+              fi
+            fi
+          done
+          
+          if [ $ERRORS -gt 0 ]; then
+            echo "syntax_errors=$ERRORS" >> $GITHUB_OUTPUT
+            echo "error_files=$ERROR_FILES" >> $GITHUB_OUTPUT
+            echo ""
+            echo "::error::Found $ERRORS file(s) with syntax errors"
+            exit 1
+          else
+            echo "✅ All files passed syntax check"
+            echo "syntax_errors=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Check for truncation patterns
+        id: truncation-check
+        if: always()
+        run: |
+          WARNINGS=0
+          
+          # Patterns that indicate truncation
+          PATTERNS=(
+            '"""[^"]*$'           # Unclosed triple-quoted docstring
+            "'''[^']*$"           # Unclosed triple-quoted string
+            '^\s*def\s+\w+\s*\([^)]*$'  # Incomplete function definition
+            '^\s*class\s+\w+.*:$'       # Empty class at end of file
+          )
+          
+          if [ "${{ github.event.inputs.full_scan }}" = "true" ]; then
+            FILES=$(find . -name "*.py" -not -path "./.git/*" -not -path "./venv/*")
+          else
+            FILES="${{ steps.changed-files.outputs.files }}"
+          fi
+          
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              # Check last 10 lines for truncation patterns
+              LAST_LINES=$(tail -10 "$file" 2>/dev/null || echo "")
+              
+              for pattern in "${PATTERNS[@]}"; do
+                if echo "$LAST_LINES" | grep -qE "$pattern"; then
+                  echo "⚠️ Possible truncation in: $file"
+                  echo "   Pattern: $pattern"
+                  WARNINGS=$((WARNINGS + 1))
+                fi
+              done
+            fi
+          done
+          
+          if [ $WARNINGS -gt 0 ]; then
+            echo "truncation_warnings=$WARNINGS" >> $GITHUB_OUTPUT
+            echo "::warning::Found $WARNINGS potential truncation(s)"
+          else
+            echo "✅ No truncation patterns detected"
+            echo "truncation_warnings=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run integrity guardian
+        if: always()
+        run: |
+          # Run the file integrity guardian if available
+          if [ -f "backend/core/file_integrity_guardian.py" ]; then
+            echo "Running File Integrity Guardian..."
+            
+            if [ "${{ github.event.inputs.full_scan }}" = "true" ]; then
+              python backend/core/file_integrity_guardian.py check backend/ -r || {
+                echo "::warning::Some files have integrity issues"
+              }
+            else
+              # Check only changed files
+              for file in ${{ steps.changed-files.outputs.files }}; do
+                if [ -f "$file" ]; then
+                  python backend/core/file_integrity_guardian.py check "$file" || true
+                fi
+              done
+            fi
+          else
+            echo "File Integrity Guardian not found, skipping advanced checks"
+          fi
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## File Integrity Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.syntax-check.outputs.syntax_errors }}" != "0" ]; then
+            echo "❌ **Syntax Errors:** ${{ steps.syntax-check.outputs.syntax_errors }} file(s)" >> $GITHUB_STEP_SUMMARY
+            echo "Files: ${{ steps.syntax-check.outputs.error_files }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Syntax Check:** Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ steps.truncation-check.outputs.truncation_warnings }}" != "0" ]; then
+            echo "⚠️ **Truncation Warnings:** ${{ steps.truncation-check.outputs.truncation_warnings }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Truncation Check:** Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Additional job for comprehensive scan on main branch
+  full-integrity-scan:
+    name: Full Repository Scan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Count Python files
+        run: |
+          COUNT=$(find . -name "*.py" -not -path "./.git/*" -not -path "./venv/*" | wc -l)
+          echo "Found $COUNT Python files"
+      
+      - name: Full syntax check
+        run: |
+          ERRORS=0
+          
+          while IFS= read -r file; do
+            if ! python -m py_compile "$file" 2>/dev/null; then
+              echo "❌ $file"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done < <(find . -name "*.py" -not -path "./.git/*" -not -path "./venv/*")
+          
+          if [ $ERRORS -gt 0 ]; then
+            echo "::error::Found $ERRORS files with syntax errors"
+            exit 1
+          fi
+          
+          echo "✅ All Python files have valid syntax"
+

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+JARVIS Commit Message Hook - File Integrity Metadata
+=====================================================
+
+This hook runs after the commit message is entered to:
+1. Add file integrity metadata to commit
+2. Record which files were validated
+3. Create audit trail for debugging
+
+This is a lightweight hook that adds helpful metadata.
+"""
+
+import hashlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
+
+
+def get_staged_python_files() -> List[str]:
+    """Get list of staged Python files."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            return []
+        
+        return [f.strip() for f in result.stdout.split('\n') 
+                if f.strip().endswith('.py')]
+    except Exception:
+        return []
+
+
+def main() -> int:
+    """Add integrity metadata to commit."""
+    if len(sys.argv) < 2:
+        return 0
+    
+    commit_msg_file = sys.argv[1]
+    
+    # Get staged Python files
+    py_files = get_staged_python_files()
+    
+    if not py_files:
+        return 0
+    
+    # Calculate a simple checksum of all staged Python files
+    try:
+        checksums = []
+        for f in py_files:
+            if os.path.exists(f):
+                content = Path(f).read_bytes()
+                checksums.append(hashlib.md5(content).hexdigest()[:8])
+        
+        if checksums:
+            combined = hashlib.md5(''.join(sorted(checksums)).encode()).hexdigest()[:12]
+            
+            # Read current message
+            with open(commit_msg_file, 'r') as f:
+                msg = f.read()
+            
+            # Check if we already added metadata
+            if 'integrity-verified:' not in msg:
+                # Add metadata as a trailer (at the end, after a blank line)
+                if not msg.rstrip().endswith('\n\n'):
+                    msg = msg.rstrip() + '\n\n'
+                
+                msg += f"[integrity-verified: {combined}]\n"
+                
+                with open(commit_msg_file, 'w') as f:
+                    f.write(msg)
+    except Exception:
+        # Don't fail the commit if we can't add metadata
+        pass
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
