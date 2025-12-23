@@ -185,6 +185,20 @@ try:
 except ImportError:
     DIRECT_COMPUTER_USE_AVAILABLE = False
 
+try:
+    from core.agentic_watchdog import (
+        AgenticWatchdog,
+        get_watchdog,
+        start_watchdog,
+        Heartbeat,
+        AgenticMode,
+        WatchdogConfig,
+    )
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    AgenticMode = None
+
 
 # ============================================================================
 # Task Runner Modes
@@ -278,11 +292,14 @@ class AgenticTaskRunner:
         self._autonomous_agent: Optional[AutonomousAgent] = None
         self._computer_use_tool: Optional[ComputerUseTool] = None
         self._computer_use_connector: Optional[ClaudeComputerUseConnector] = None
+        self._watchdog: Optional[AgenticWatchdog] = None
 
         # State
         self._initialized = False
         self._tasks_executed = 0
         self._tasks_succeeded = 0
+        self._current_task_id: Optional[str] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
 
         self.logger.info("AgenticTaskRunner created")
         self._log_available_components()
@@ -297,6 +314,7 @@ class AgenticTaskRunner:
             "Neural Mesh": NEURAL_MESH_AVAILABLE,
             "Multi-Space Vision": MULTI_SPACE_AVAILABLE,
             "Direct Computer Use": DIRECT_COMPUTER_USE_AVAILABLE,
+            "Agentic Watchdog": WATCHDOG_AVAILABLE,
         }
 
         self.logger.info("Available components:")
@@ -359,8 +377,9 @@ class AgenticTaskRunner:
             # Initialize Autonomous Agent
             if AUTONOMOUS_AGENT_AVAILABLE:
                 try:
+                    from autonomy.autonomous_agent import AgentMode as AAMode
                     agent_config = AgentConfig(
-                        mode=AgentMode.SUPERVISED,
+                        mode=AAMode.SUPERVISED,
                         personality=AgentPersonality.HELPFUL,
                     )
                     self._autonomous_agent = AutonomousAgent(config=agent_config)
@@ -369,6 +388,18 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.warning(f"✗ Autonomous Agent initialization failed: {e}")
 
+            # Initialize Agentic Watchdog (safety supervisor)
+            if WATCHDOG_AVAILABLE:
+                try:
+                    self._watchdog = await start_watchdog(
+                        tts_callback=self.tts_callback
+                    )
+                    # Register kill callback to stop current task
+                    self._watchdog.on_kill(self._on_watchdog_kill)
+                    self.logger.info("✓ Agentic Watchdog initialized (safety layer active)")
+                except Exception as e:
+                    self.logger.warning(f"✗ Watchdog initialization failed: {e}")
+
             self._initialized = True
             self.logger.info("Agentic Task Runner initialized successfully")
             return True
@@ -376,6 +407,102 @@ class AgenticTaskRunner:
         except Exception as e:
             self.logger.error(f"Initialization failed: {e}")
             return False
+
+    # =========================================================================
+    # Watchdog Integration
+    # =========================================================================
+
+    async def _on_watchdog_kill(self):
+        """Called by watchdog when kill switch is triggered."""
+        self.logger.warning("[AGENTIC] Watchdog kill switch triggered - stopping task")
+
+        # Stop heartbeat
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+
+        # Clear current task
+        self._current_task_id = None
+
+    async def _heartbeat_loop(self, goal: str, mode: str):
+        """Emit heartbeats to watchdog during task execution."""
+        if not self._watchdog or not WATCHDOG_AVAILABLE:
+            return
+
+        actions_count = 0
+
+        try:
+            while True:
+                await asyncio.sleep(2.0)  # Heartbeat every 2 seconds
+
+                if not self._current_task_id:
+                    break
+
+                heartbeat = Heartbeat(
+                    task_id=self._current_task_id,
+                    goal=goal,
+                    current_action=f"Executing ({mode})",
+                    actions_count=actions_count,
+                    timestamp=time.time(),
+                    mode=AgenticMode.AUTONOMOUS if mode == "autonomous" else AgenticMode.SUPERVISED,
+                )
+
+                self._watchdog.receive_heartbeat(heartbeat)
+                actions_count += 1
+
+        except asyncio.CancelledError:
+            pass
+
+    async def _start_watchdog_task(self, goal: str, mode: str):
+        """Start watchdog monitoring for this task."""
+        if not self._watchdog or not WATCHDOG_AVAILABLE:
+            return
+
+        # Generate task ID
+        self._current_task_id = f"task_{int(time.time())}_{id(self)}"
+
+        # Notify watchdog of task start
+        watchdog_mode = AgenticMode.AUTONOMOUS if mode == "autonomous" else AgenticMode.SUPERVISED
+        await self._watchdog.task_started(
+            task_id=self._current_task_id,
+            goal=goal,
+            mode=watchdog_mode
+        )
+
+        # Start heartbeat loop
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(goal, mode)
+        )
+
+        self.logger.info(f"[AGENTIC] Watchdog armed for task: {self._current_task_id}")
+
+    async def _stop_watchdog_task(self, success: bool):
+        """Stop watchdog monitoring for this task."""
+        # Stop heartbeat
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+
+        # Notify watchdog
+        if self._watchdog and self._current_task_id:
+            await self._watchdog.task_completed(
+                task_id=self._current_task_id,
+                success=success
+            )
+
+        self._current_task_id = None
+
+    # =========================================================================
+    # Task Execution
+    # =========================================================================
 
     async def run(
         self,
@@ -399,11 +526,27 @@ class AgenticTaskRunner:
         if not self._initialized:
             await self.initialize()
 
+        # Check if watchdog allows execution
+        if self._watchdog and not self._watchdog.is_agentic_allowed():
+            return AgenticTaskResult(
+                success=False,
+                goal=goal,
+                mode=mode.value,
+                execution_time_ms=0,
+                actions_count=0,
+                reasoning_steps=0,
+                final_message="Agentic execution blocked by watchdog safety system",
+                error="Watchdog kill switch active or in cooldown",
+            )
+
         self._tasks_executed += 1
         start_time = time.time()
 
         self.logger.info(f"[AGENTIC] Executing goal: {goal}")
         self.logger.info(f"[AGENTIC] Mode: {mode.value}")
+
+        # Start watchdog monitoring
+        await self._start_watchdog_task(goal, mode.value)
 
         try:
             # Execute based on mode
@@ -422,11 +565,18 @@ class AgenticTaskRunner:
             result.execution_time_ms = execution_time
             result.mode = mode.value
 
+            # Stop watchdog monitoring
+            await self._stop_watchdog_task(result.success)
+
             self.logger.info(f"[AGENTIC] Task completed: success={result.success}")
             return result
 
         except Exception as e:
             self.logger.error(f"[AGENTIC] Task failed: {e}", exc_info=True)
+
+            # Stop watchdog monitoring
+            await self._stop_watchdog_task(False)
+
             return AgenticTaskResult(
                 success=False,
                 goal=goal,
@@ -606,6 +756,20 @@ class AgenticTaskRunner:
         """Gracefully shutdown all components."""
         self.logger.info("Shutting down Agentic Task Runner...")
 
+        # Stop any running heartbeat
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+
+        # Stop watchdog
+        if self._watchdog and WATCHDOG_AVAILABLE:
+            from core.agentic_watchdog import stop_watchdog
+            await stop_watchdog()
+
         if self._uae and self._uae.is_active:
             await self._uae.stop()
 
@@ -617,6 +781,17 @@ class AgenticTaskRunner:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get runner statistics."""
+        watchdog_status = None
+        if self._watchdog:
+            status = self._watchdog.get_status()
+            watchdog_status = {
+                "mode": status.mode.value,
+                "kill_switch_armed": status.kill_switch_armed,
+                "heartbeat_healthy": status.heartbeat_healthy,
+                "consecutive_failures": status.consecutive_failures,
+                "uptime_seconds": status.uptime_seconds,
+            }
+
         return {
             "tasks_executed": self._tasks_executed,
             "tasks_succeeded": self._tasks_succeeded,
@@ -624,6 +799,7 @@ class AgenticTaskRunner:
                 self._tasks_succeeded / self._tasks_executed
                 if self._tasks_executed > 0 else 0.0
             ),
+            "watchdog": watchdog_status,
             "components": {
                 "uae": self._uae is not None,
                 "neural_mesh": self._neural_mesh is not None,

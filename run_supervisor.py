@@ -1707,14 +1707,16 @@ class HotReloadWatcher:
 class SupervisorBootstrapper:
     """
     Intelligent orchestrator for supervisor startup.
-    
+
     Features:
     - Phased startup with dependency resolution
     - Parallel operations where possible
     - Graceful error handling and recovery
     - Performance tracking and reporting
+    - Two-tier agentic security (v1.0)
+    - Watchdog safety supervision
     """
-    
+
     def __init__(self):
         self.config = BootstrapConfig()
         self.logger = setup_logging(self.config)
@@ -1723,16 +1725,22 @@ class SupervisorBootstrapper:
         self.phase = StartupPhase.INIT
         self._shutdown_event = asyncio.Event()
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None  # Track for cleanup
-        
+
         # v5.0: Hot Reload Watcher for dev mode
         self._hot_reload = HotReloadWatcher(self.config, self.logger)
         self._hot_reload.set_restart_callback(self._on_hot_reload_triggered)
         self._supervisor: Optional[Any] = None  # Reference to running supervisor for restart
-        
+
+        # v6.0: Agentic Watchdog and Tiered Router for Two-Tier Security
+        self._watchdog = None
+        self._tiered_router = None
+        self._watchdog_enabled = os.getenv("JARVIS_WATCHDOG_ENABLED", "true").lower() == "true"
+        self._tiered_routing_enabled = os.getenv("JARVIS_TIERED_ROUTING", "true").lower() == "true"
+
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
         os.environ["CI"] = "true"
-        
+
         self._setup_signal_handlers()
     
     async def run(self) -> int:
@@ -1878,6 +1886,16 @@ class SupervisorBootstrapper:
             # - Uses time-series forecasting for intelligent request scheduling
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_rate_orchestrator()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v6.0: Initialize Two-Tier Agentic Security System
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables the Two-Tier security model:
+            # - Tier 1 (JARVIS): Safe APIs, read-only, Gemini Flash
+            # - Tier 2 (JARVIS ACCESS): Full Computer Use, strict VBIA, Claude
+            # - Watchdog monitors heartbeats and can trigger kill switch
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_agentic_security()
 
             self.perf.end("validation")
 
@@ -3099,7 +3117,129 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize Rate Orchestrator: {e}")
             os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
-    
+
+    async def _initialize_agentic_security(self) -> None:
+        """
+        v6.0: Initialize the Two-Tier Agentic Security System.
+
+        This starts the safety supervision layer for agentic (Computer Use) execution:
+        - AgenticWatchdog: Monitors heartbeats, activity rates, triggers kill switch
+        - TieredCommandRouter: Routes commands based on Tier 1 (safe) vs Tier 2 (agentic)
+        - VBIA Integration: Strict voice authentication for Tier 2 commands
+
+        Two-Tier Security Model:
+        - Tier 1 "JARVIS": Safe APIs, read-only, optional auth, Gemini Flash
+        - Tier 2 "JARVIS ACCESS": Full Computer Use, strict VBIA, Claude Sonnet
+
+        Safety Features:
+        - Heartbeat monitoring with configurable timeout
+        - Activity rate limiting (prevents click storms)
+        - Automatic downgrade to passive mode on anomalies
+        - Voice announcement of safety events
+        - Comprehensive audit logging
+        """
+        try:
+            # Initialize Watchdog
+            if self._watchdog_enabled:
+                try:
+                    from core.agentic_watchdog import (
+                        start_watchdog,
+                        WatchdogConfig,
+                        AgenticMode,
+                    )
+
+                    # Create TTS callback for watchdog announcements
+                    async def watchdog_tts(text: str):
+                        await self.narrator.speak(text, wait=False)
+
+                    self._watchdog = await start_watchdog(
+                        tts_callback=watchdog_tts if self.config.voice_enabled else None
+                    )
+
+                    self.logger.info("🛡️ Agentic Watchdog initialized")
+                    self.logger.info("   • Kill Switch: Armed (heartbeat timeout, activity spike)")
+                    self.logger.info("   • Safety Mode: Active monitoring")
+
+                    os.environ["JARVIS_WATCHDOG_ENABLED"] = "true"
+                    print(f"  {TerminalUI.GREEN}✓ Watchdog: Active safety monitoring{TerminalUI.RESET}")
+
+                except ImportError as e:
+                    self.logger.warning(f"⚠️ Agentic Watchdog not available: {e}")
+                    os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
+                    print(f"  {TerminalUI.YELLOW}⚠️ Watchdog: Not available{TerminalUI.RESET}")
+
+            # Initialize Tiered VBIA Adapter
+            vbia_adapter = None
+            if self._tiered_routing_enabled:
+                try:
+                    from core.tiered_vbia_adapter import (
+                        TieredVBIAAdapter,
+                        TieredVBIAConfig,
+                        get_tiered_vbia_adapter,
+                    )
+
+                    vbia_adapter = await get_tiered_vbia_adapter()
+                    self.logger.info("🔐 Tiered VBIA Adapter initialized")
+                    print(f"  {TerminalUI.GREEN}✓ VBIA Adapter: Tiered authentication ready{TerminalUI.RESET}")
+
+                except ImportError as e:
+                    self.logger.warning(f"⚠️ Tiered VBIA Adapter not available: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️ VBIA Adapter: Not available (will use fallback){TerminalUI.RESET}")
+
+            # Initialize Tiered Router
+            if self._tiered_routing_enabled:
+                try:
+                    from core.tiered_command_router import (
+                        TieredCommandRouter,
+                        TieredRouterConfig,
+                    )
+
+                    # Create TTS callback for router announcements
+                    async def router_tts(text: str):
+                        await self.narrator.speak(text, wait=False)
+
+                    config = TieredRouterConfig()
+
+                    # Wire up VBIA adapter callbacks
+                    vbia_callback = None
+                    liveness_callback = None
+                    if vbia_adapter:
+                        vbia_callback = vbia_adapter.verify_speaker
+                        liveness_callback = vbia_adapter.verify_liveness
+
+                    self._tiered_router = TieredCommandRouter(
+                        config=config,
+                        vbia_callback=vbia_callback,
+                        liveness_callback=liveness_callback,
+                        tts_callback=router_tts if self.config.voice_enabled else None,
+                    )
+
+                    self.logger.info("🎯 Two-Tier Command Router initialized")
+                    self.logger.info(f"   • Tier 1: {config.tier1_backend} (safe, low-auth)")
+                    self.logger.info(f"   • Tier 2: {config.tier2_backend} (agentic, strict-auth)")
+                    self.logger.info(f"   • VBIA Thresholds: T1={config.tier1_vbia_threshold:.0%}, T2={config.tier2_vbia_threshold:.0%}")
+                    self.logger.info(f"   • VBIA Adapter: {'Connected' if vbia_adapter else 'Fallback mode'}")
+
+                    os.environ["JARVIS_TIERED_ROUTING"] = "true"
+                    os.environ["JARVIS_TIER2_BACKEND"] = config.tier2_backend
+                    print(f"  {TerminalUI.GREEN}✓ Two-Tier Security: T1=Gemini, T2=Claude+VBIA{TerminalUI.RESET}")
+
+                except ImportError as e:
+                    self.logger.warning(f"⚠️ Tiered Router not available: {e}")
+                    os.environ["JARVIS_TIERED_ROUTING"] = "false"
+                    print(f"  {TerminalUI.YELLOW}⚠️ Tiered Routing: Not available{TerminalUI.RESET}")
+
+            # Log overall status
+            if self._watchdog_enabled or self._tiered_routing_enabled:
+                self.logger.info("✅ Two-Tier Agentic Security System ready")
+            else:
+                self.logger.info("ℹ️ Agentic security disabled (use JARVIS_WATCHDOG_ENABLED=true to enable)")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Agentic Security: {e}")
+            os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
+            os.environ["JARVIS_TIERED_ROUTING"] = "false"
+
     async def _on_hot_reload_triggered(self, changed_files: List[str]) -> None:
         """
         v5.0: Handle hot reload trigger - restart JARVIS with new code.
