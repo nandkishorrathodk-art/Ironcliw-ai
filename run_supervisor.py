@@ -1734,8 +1734,11 @@ class SupervisorBootstrapper:
         # v6.0: Agentic Watchdog and Tiered Router for Two-Tier Security
         self._watchdog = None
         self._tiered_router = None
+        self._agentic_runner = None  # v6.0: Unified Agentic Task Runner
+        self._vbia_adapter = None    # v6.0: Tiered VBIA Adapter
         self._watchdog_enabled = os.getenv("JARVIS_WATCHDOG_ENABLED", "true").lower() == "true"
         self._tiered_routing_enabled = os.getenv("JARVIS_TIERED_ROUTING", "true").lower() == "true"
+        self._agentic_runner_enabled = os.getenv("JARVIS_AGENTIC_RUNNER", "true").lower() == "true"
 
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
@@ -3224,13 +3227,58 @@ class SupervisorBootstrapper:
                     os.environ["JARVIS_TIER2_BACKEND"] = config.tier2_backend
                     print(f"  {TerminalUI.GREEN}✓ Two-Tier Security: T1=Gemini, T2=Claude+VBIA{TerminalUI.RESET}")
 
+                    # Store VBIA adapter for later use
+                    self._vbia_adapter = vbia_adapter
+
                 except ImportError as e:
                     self.logger.warning(f"⚠️ Tiered Router not available: {e}")
                     os.environ["JARVIS_TIERED_ROUTING"] = "false"
                     print(f"  {TerminalUI.YELLOW}⚠️ Tiered Routing: Not available{TerminalUI.RESET}")
 
+            # Initialize Agentic Task Runner (unified execution engine)
+            if self._agentic_runner_enabled:
+                try:
+                    from core.agentic_task_runner import (
+                        AgenticTaskRunner,
+                        AgenticRunnerConfig,
+                        set_agentic_runner,
+                    )
+
+                    # Create TTS callback for runner narration
+                    async def runner_tts(text: str):
+                        await self.narrator.speak(text, wait=False)
+
+                    runner_config = AgenticRunnerConfig()
+                    self._agentic_runner = AgenticTaskRunner(
+                        config=runner_config,
+                        tts_callback=runner_tts if self.config.voice_enabled else None,
+                        watchdog=self._watchdog,
+                        logger=self.logger,
+                    )
+
+                    # Initialize the runner
+                    await self._agentic_runner.initialize()
+
+                    # Set global instance for access by other components
+                    set_agentic_runner(self._agentic_runner)
+
+                    # Wire router's execute_tier2 to use the runner
+                    if self._tiered_router:
+                        self._wire_router_to_runner()
+
+                    self.logger.info("🤖 Agentic Task Runner initialized")
+                    self.logger.info(f"   • Watchdog: {'Attached' if self._watchdog else 'Independent'}")
+                    self.logger.info(f"   • Ready: {self._agentic_runner.is_ready}")
+                    os.environ["JARVIS_AGENTIC_RUNNER"] = "true"
+                    print(f"  {TerminalUI.GREEN}✓ Agentic Runner: Computer Use ready{TerminalUI.RESET}")
+
+                except ImportError as e:
+                    self.logger.warning(f"⚠️ Agentic Runner not available: {e}")
+                    os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
+                    print(f"  {TerminalUI.YELLOW}⚠️ Agentic Runner: Not available{TerminalUI.RESET}")
+
             # Log overall status
-            if self._watchdog_enabled or self._tiered_routing_enabled:
+            if self._watchdog_enabled or self._tiered_routing_enabled or self._agentic_runner_enabled:
                 self.logger.info("✅ Two-Tier Agentic Security System ready")
             else:
                 self.logger.info("ℹ️ Agentic security disabled (use JARVIS_WATCHDOG_ENABLED=true to enable)")
@@ -3239,6 +3287,54 @@ class SupervisorBootstrapper:
             self.logger.error(f"❌ Failed to initialize Agentic Security: {e}")
             os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
             os.environ["JARVIS_TIERED_ROUTING"] = "false"
+            os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
+
+    def _wire_router_to_runner(self) -> None:
+        """
+        Wire the TieredCommandRouter's execute_tier2 to use the AgenticTaskRunner.
+
+        This creates a seamless flow:
+        Voice Command -> TieredRouter -> AgenticRunner -> Computer Use
+        """
+        if not self._tiered_router or not self._agentic_runner:
+            return
+
+        # Store reference for the closure
+        runner = self._agentic_runner
+        vbia_adapter = self._vbia_adapter
+
+        async def execute_tier2_via_runner(command: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+            """Execute Tier 2 command via the unified AgenticTaskRunner."""
+            from core.agentic_task_runner import RunnerMode
+
+            try:
+                # Execute via runner
+                result = await runner.run(
+                    goal=command,
+                    mode=RunnerMode.AUTONOMOUS,
+                    context=context,
+                    narrate=True,
+                )
+
+                return {
+                    "success": result.success,
+                    "response": result.final_message,
+                    "actions_count": result.actions_count,
+                    "duration_ms": result.execution_time_ms,
+                    "mode": result.mode,
+                    "watchdog_status": result.watchdog_status,
+                }
+
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "response": f"Task execution failed: {e}",
+                }
+
+        # Monkey-patch the router's execute_tier2 method
+        self._tiered_router.execute_tier2 = execute_tier2_via_runner
+        self.logger.debug("[Supervisor] Router execute_tier2 wired to AgenticRunner")
 
     async def _on_hot_reload_triggered(self, changed_files: List[str]) -> None:
         """
