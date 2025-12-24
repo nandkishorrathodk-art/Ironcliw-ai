@@ -572,6 +572,198 @@ class JARVISLoadingManager {
                 phase: 'hot_reload',
                 expectedProgress: [100, 100],
                 substeps: ['Changes applied', 'Ready']
+            },
+
+            // ===================================================================
+            // v9.4: ADVANCED INTELLIGENCE STAGES
+            // Data Flywheel, JARVIS-Prime, Learning Goals, Reactor-Core, Neural Mesh
+            // ===================================================================
+
+            // === Data Flywheel (Experience Collection & Training Data) ===
+            'flywheel_init': {
+                name: 'Data Flywheel Init',
+                icon: '🔄',
+                phase: 'initialization',
+                expectedProgress: [72, 74],
+                substeps: ['Initializing experience collection', 'Connecting to training DB']
+            },
+            'flywheel_ready': {
+                name: 'Data Flywheel Active',
+                icon: '🌀',
+                phase: 'initialization',
+                expectedProgress: [74, 76],
+                substeps: ['Experience capture active', 'Training pipeline connected'],
+                detailFields: ['experiences', 'training_schedule', 'quality_threshold']
+            },
+
+            // === JARVIS-Prime (Tier-0 Local Brain) ===
+            'jarvis_prime_init': {
+                name: 'JARVIS-Prime Init',
+                icon: '🧠',
+                phase: 'initialization',
+                expectedProgress: [76, 78],
+                substeps: ['Loading local model', 'Initializing inference engine']
+            },
+            'jarvis_prime_loading_model': {
+                name: 'Loading Model',
+                icon: '📥',
+                phase: 'initialization',
+                expectedProgress: [78, 82],
+                substeps: ['Downloading model weights', 'Loading into memory']
+            },
+            'jarvis_prime_ready': {
+                name: 'JARVIS-Prime Active',
+                icon: '🧠',
+                phase: 'initialization',
+                expectedProgress: [82, 84],
+                substeps: ['Local inference ready', 'Tier-0 routing enabled'],
+                detailFields: ['tier', 'model', 'memory_mb', 'cloud_fallback']
+            },
+
+            // === Learning Goals Discovery (Auto-learning Topics) ===
+            'learning_goals_init': {
+                name: 'Learning Goals Init',
+                icon: '📚',
+                phase: 'initialization',
+                expectedProgress: [84, 85],
+                substeps: ['Initializing topic discovery', 'Loading goal queue']
+            },
+            'learning_goals_discovering': {
+                name: 'Discovering Topics',
+                icon: '🔍',
+                phase: 'initialization',
+                expectedProgress: [85, 86],
+                substeps: ['Analyzing conversations', 'Extracting learning topics']
+            },
+            'learning_goals_discovered': {
+                name: 'Learning Topics Active',
+                icon: '🎯',
+                phase: 'initialization',
+                expectedProgress: [86, 87],
+                substeps: ['Topic discovery enabled', 'Auto-learning active'],
+                detailFields: ['active_topics', 'queued_topics', 'sources']
+            },
+
+            // === Reactor-Core Training (Model Fine-tuning) ===
+            'reactor_core_init': {
+                name: 'Reactor-Core Init',
+                icon: '⚛️',
+                phase: 'initialization',
+                expectedProgress: [87, 88],
+                substeps: ['Initializing training orchestrator', 'Connecting to GCS']
+            },
+            'reactor_core_training': {
+                name: 'Model Training',
+                icon: '🔥',
+                phase: 'training',
+                expectedProgress: [0, 100],
+                substeps: ['Fine-tuning in progress', 'Optimizing model'],
+                detailFields: ['epoch', 'loss', 'progress', 'eta']
+            },
+            'reactor_core_ready': {
+                name: 'Reactor-Core Ready',
+                icon: '⚛️',
+                phase: 'initialization',
+                expectedProgress: [88, 89],
+                substeps: ['Training pipeline active', 'Scheduled training enabled'],
+                detailFields: ['next_training', 'experiences_queued', 'model_version']
+            },
+
+            // === Model Manager (Auto-download & Memory-aware Selection) ===
+            'model_manager_init': {
+                name: 'Model Manager Init',
+                icon: '📦',
+                phase: 'initialization',
+                expectedProgress: [75, 76],
+                substeps: ['Initializing model manager', 'Checking available models']
+            },
+            'model_manager_checking': {
+                name: 'Checking Models',
+                icon: '🔍',
+                phase: 'initialization',
+                expectedProgress: [76, 77],
+                substeps: ['Scanning model directory', 'Checking reactor-core models']
+            },
+            'model_manager_downloading': {
+                name: 'Downloading Model',
+                icon: '📥',
+                phase: 'initialization',
+                expectedProgress: [77, 81],
+                substeps: ['Downloading model weights', 'Please wait...'],
+                detailFields: ['model', 'size_mb', 'progress', 'source']
+            },
+            'model_manager_ready': {
+                name: 'Model Manager Ready',
+                icon: '✅',
+                phase: 'initialization',
+                expectedProgress: [81, 82],
+                substeps: ['Model loaded', 'Ready for inference'],
+                detailFields: ['model', 'size_mb', 'source', 'memory_used']
+            },
+
+            // === Neural Mesh (Multi-Agent Coordination) ===
+            'neural_mesh_init': {
+                name: 'Neural Mesh Init',
+                icon: '🕸️',
+                phase: 'initialization',
+                expectedProgress: [89, 90],
+                substeps: ['Starting coordinator', 'Initializing communication bus']
+            },
+            'neural_mesh_agents_loading': {
+                name: 'Loading Agents',
+                icon: '🤖',
+                phase: 'initialization',
+                expectedProgress: [90, 92],
+                substeps: ['Registering production agents', 'Starting agent pool']
+            },
+            'neural_mesh_bridge': {
+                name: 'JARVIS Bridge',
+                icon: '🌉',
+                phase: 'initialization',
+                expectedProgress: [92, 93],
+                substeps: ['Connecting JARVIS systems', 'Cross-system integration']
+            },
+            'neural_mesh_ready': {
+                name: 'Neural Mesh Active',
+                icon: '🕸️',
+                phase: 'initialization',
+                expectedProgress: [93, 94],
+                substeps: ['Multi-agent system online', 'Knowledge graph active'],
+                detailFields: ['agents', 'messages', 'knowledge_entries', 'workflows']
+            },
+
+            // === UAE (Unified Awareness Engine) ===
+            'uae_init': {
+                name: 'UAE Initializing',
+                icon: '👁️',
+                phase: 'initialization',
+                expectedProgress: [70, 71],
+                substeps: ['Starting awareness engine', 'Loading vision models']
+            },
+            'uae_ready': {
+                name: 'UAE Active',
+                icon: '👁️',
+                phase: 'initialization',
+                expectedProgress: [71, 72],
+                substeps: ['Screen awareness active', 'Chain-of-thought enabled'],
+                detailFields: ['mode', 'vision_model', 'capture_interval']
+            },
+
+            // === SAI (Spatial Awareness Intelligence) ===
+            'sai_init': {
+                name: 'SAI Initializing',
+                icon: '🗺️',
+                phase: 'initialization',
+                expectedProgress: [68, 69],
+                substeps: ['Starting spatial awareness', 'Connecting to yabai']
+            },
+            'sai_ready': {
+                name: 'SAI Active',
+                icon: '🗺️',
+                phase: 'initialization',
+                expectedProgress: [69, 70],
+                substeps: ['Window tracking active', 'Workspace awareness enabled'],
+                detailFields: ['spaces', 'windows', 'focused_app']
             }
         };
 
@@ -613,6 +805,95 @@ class JARVISLoadingManager {
                 watchdogStatus: 'initializing',
                 watchdogMode: 'idle',
                 overallStatus: 'initializing'
+            },
+
+            // ===================================================================
+            // v9.4: Advanced Intelligence State
+            // ===================================================================
+
+            // Data Flywheel (Experience Collection)
+            flywheel: {
+                active: false,
+                experiences: 0,
+                trainingSchedule: 'none',
+                qualityThreshold: 0.3,
+                status: 'inactive'
+            },
+
+            // JARVIS-Prime (Tier-0 Local Brain)
+            jarvisPrime: {
+                active: false,
+                tier: 'unknown',
+                model: 'none',
+                memoryMb: 0,
+                cloudFallback: false,
+                status: 'inactive'
+            },
+
+            // Learning Goals Discovery
+            learningGoals: {
+                active: false,
+                activeTopics: 0,
+                queuedTopics: 0,
+                sources: [],
+                lastDiscovery: null,
+                status: 'inactive'
+            },
+
+            // Reactor-Core Training
+            reactorCore: {
+                active: false,
+                training: false,
+                epoch: 0,
+                loss: 0,
+                progress: 0,
+                eta: null,
+                nextTraining: null,
+                experiencesQueued: 0,
+                modelVersion: 'none',
+                status: 'inactive'
+            },
+
+            // Model Manager
+            modelManager: {
+                active: false,
+                model: 'none',
+                sizeMb: 0,
+                source: 'unknown',
+                memoryUsed: 0,
+                downloadProgress: 0,
+                status: 'idle'
+            },
+
+            // Neural Mesh (Multi-Agent Coordination)
+            neuralMesh: {
+                active: false,
+                production: false,
+                agents: 0,
+                agentsOnline: 0,
+                messages: 0,
+                knowledgeEntries: 0,
+                workflows: 0,
+                bridgeStatus: 'disconnected',
+                status: 'inactive'
+            },
+
+            // UAE (Unified Awareness Engine)
+            uae: {
+                active: false,
+                mode: 'standard',
+                visionModel: 'default',
+                captureInterval: 1000,
+                status: 'inactive'
+            },
+
+            // SAI (Spatial Awareness Intelligence)
+            sai: {
+                active: false,
+                spaces: 0,
+                windows: 0,
+                focusedApp: null,
+                status: 'inactive'
             }
         };
 
@@ -1747,6 +2028,151 @@ class JARVISLoadingManager {
                     this.addLogEntry('Security', tt.message || 'Partial security ready', 'warning');
                 }
             }
+
+            // ===================================================================
+            // v9.4: Advanced Intelligence Metadata Handling
+            // ===================================================================
+
+            // Data Flywheel (Experience Collection)
+            if (metadata.flywheel) {
+                const fw = metadata.flywheel;
+                this.state.flywheel = {
+                    active: fw.active || false,
+                    experiences: fw.experiences || 0,
+                    trainingSchedule: fw.training_schedule || fw.trainingSchedule || 'none',
+                    qualityThreshold: fw.quality_threshold || fw.qualityThreshold || 0.3,
+                    status: fw.status || 'inactive'
+                };
+                if (fw.active) {
+                    this.addLogEntry('Flywheel', `Experience collection active: ${fw.experiences || 0} stored`, 'success');
+                }
+                this.updateAdvancedStatusPanel('flywheel');
+            }
+
+            // JARVIS-Prime (Tier-0 Local Brain)
+            if (metadata.jarvis_prime || metadata.jarvisPrime) {
+                const jp = metadata.jarvis_prime || metadata.jarvisPrime;
+                this.state.jarvisPrime = {
+                    active: jp.active || false,
+                    tier: jp.tier || 'unknown',
+                    model: jp.model || jp.model_name || 'none',
+                    memoryMb: jp.memory_mb || jp.memoryMb || 0,
+                    cloudFallback: jp.cloud_fallback || jp.cloudFallback || false,
+                    status: jp.status || 'inactive'
+                };
+                if (jp.active) {
+                    this.addLogEntry('Prime', `JARVIS-Prime ${jp.tier || 'local'}: ${jp.model || 'model'} loaded`, 'success');
+                }
+                this.updateAdvancedStatusPanel('jarvis_prime');
+            }
+
+            // Learning Goals Discovery
+            if (metadata.learning_goals || metadata.learningGoals) {
+                const lg = metadata.learning_goals || metadata.learningGoals;
+                this.state.learningGoals = {
+                    active: lg.active || false,
+                    activeTopics: lg.active_topics || lg.activeTopics || 0,
+                    queuedTopics: lg.queued_topics || lg.queuedTopics || 0,
+                    sources: lg.sources || [],
+                    lastDiscovery: lg.last_discovery || lg.lastDiscovery || null,
+                    status: lg.status || 'inactive'
+                };
+                if (lg.active_topics || lg.activeTopics) {
+                    this.addLogEntry('Learning', `${lg.active_topics || lg.activeTopics} active learning topics`, 'info');
+                }
+                this.updateAdvancedStatusPanel('learning_goals');
+            }
+
+            // Reactor-Core Training
+            if (metadata.reactor_core || metadata.reactorCore) {
+                const rc = metadata.reactor_core || metadata.reactorCore;
+                this.state.reactorCore = {
+                    active: rc.active || false,
+                    training: rc.training || false,
+                    epoch: rc.epoch || 0,
+                    loss: rc.loss || 0,
+                    progress: rc.progress || 0,
+                    eta: rc.eta || null,
+                    nextTraining: rc.next_training || rc.nextTraining || null,
+                    experiencesQueued: rc.experiences_queued || rc.experiencesQueued || 0,
+                    modelVersion: rc.model_version || rc.modelVersion || 'none',
+                    status: rc.status || 'inactive'
+                };
+                if (rc.training) {
+                    this.addLogEntry('Training', `Training epoch ${rc.epoch}: loss ${rc.loss?.toFixed(4) || 'N/A'}`, 'info');
+                }
+                this.updateAdvancedStatusPanel('reactor_core');
+            }
+
+            // Model Manager (Auto-download & Selection)
+            if (metadata.model_manager || metadata.modelManager) {
+                const mm = metadata.model_manager || metadata.modelManager;
+                this.state.modelManager = {
+                    active: mm.active || false,
+                    model: mm.model || mm.model_name || 'none',
+                    sizeMb: mm.size_mb || mm.sizeMb || 0,
+                    source: mm.source || 'unknown',
+                    memoryUsed: mm.memory_used || mm.memoryUsed || 0,
+                    downloadProgress: mm.download_progress || mm.downloadProgress || 0,
+                    status: mm.status || 'idle'
+                };
+                if (mm.status === 'downloading') {
+                    this.addLogEntry('Model', `Downloading ${mm.model}: ${mm.download_progress || 0}%`, 'info');
+                } else if (mm.status === 'ready') {
+                    this.addLogEntry('Model', `Model ${mm.model} ready (${mm.size_mb}MB)`, 'success');
+                }
+                this.updateAdvancedStatusPanel('model_manager');
+            }
+
+            // Neural Mesh (Multi-Agent Coordination)
+            if (metadata.neural_mesh || metadata.neuralMesh) {
+                const nm = metadata.neural_mesh || metadata.neuralMesh;
+                this.state.neuralMesh = {
+                    active: nm.active || false,
+                    production: nm.production || nm.production_mode || false,
+                    agents: nm.agents || nm.agents_registered || 0,
+                    agentsOnline: nm.agents_online || nm.agentsOnline || 0,
+                    messages: nm.messages || nm.messages_published || 0,
+                    knowledgeEntries: nm.knowledge_entries || nm.knowledgeEntries || 0,
+                    workflows: nm.workflows || nm.workflows_completed || 0,
+                    bridgeStatus: nm.bridge_status || nm.bridgeStatus || 'disconnected',
+                    status: nm.status || 'inactive'
+                };
+                if (nm.active) {
+                    this.addLogEntry('Mesh', `Neural Mesh: ${nm.agents || 0} agents, ${nm.knowledge_entries || 0} knowledge entries`, 'success');
+                }
+                this.updateAdvancedStatusPanel('neural_mesh');
+            }
+
+            // UAE (Unified Awareness Engine)
+            if (metadata.uae) {
+                const uae = metadata.uae;
+                this.state.uae = {
+                    active: uae.active || false,
+                    mode: uae.mode || 'standard',
+                    visionModel: uae.vision_model || uae.visionModel || 'default',
+                    captureInterval: uae.capture_interval || uae.captureInterval || 1000,
+                    status: uae.status || 'inactive'
+                };
+                if (uae.active) {
+                    this.addLogEntry('UAE', 'Screen awareness active', 'success');
+                }
+            }
+
+            // SAI (Spatial Awareness Intelligence)
+            if (metadata.sai) {
+                const sai = metadata.sai;
+                this.state.sai = {
+                    active: sai.active || false,
+                    spaces: sai.spaces || 0,
+                    windows: sai.windows || 0,
+                    focusedApp: sai.focused_app || sai.focusedApp || null,
+                    status: sai.status || 'inactive'
+                };
+                if (sai.active) {
+                    this.addLogEntry('SAI', `Tracking ${sai.windows || 0} windows across ${sai.spaces || 0} spaces`, 'info');
+                }
+            }
         }
 
         // Handle special log-only stages
@@ -2017,6 +2443,325 @@ class JARVISLoadingManager {
             if (!state.tier2Operational) {
                 tier2.classList.add('inactive');
             }
+        }
+    }
+
+    /**
+     * v9.4: Update Advanced Intelligence Status Panel
+     * Dynamically creates/updates UI for flywheel, prime, learning goals, reactor-core,
+     * model manager, and neural mesh status.
+     */
+    updateAdvancedStatusPanel(systemName) {
+        // Get or create the advanced status container
+        let advancedPanel = document.getElementById('advanced-intelligence-panel');
+        if (!advancedPanel) {
+            advancedPanel = this.createAdvancedIntelligencePanel();
+            if (!advancedPanel) return;
+        }
+
+        // Update specific system based on name
+        switch (systemName) {
+            case 'flywheel':
+                this.updateFlywheelUI(advancedPanel);
+                break;
+            case 'jarvis_prime':
+                this.updateJarvisPrimeUI(advancedPanel);
+                break;
+            case 'learning_goals':
+                this.updateLearningGoalsUI(advancedPanel);
+                break;
+            case 'reactor_core':
+                this.updateReactorCoreUI(advancedPanel);
+                break;
+            case 'model_manager':
+                this.updateModelManagerUI(advancedPanel);
+                break;
+            case 'neural_mesh':
+                this.updateNeuralMeshUI(advancedPanel);
+                break;
+        }
+    }
+
+    /**
+     * Create the advanced intelligence status panel container
+     */
+    createAdvancedIntelligencePanel() {
+        const panelContent = document.getElementById('panel-content');
+        if (!panelContent) return null;
+
+        // Check if already exists
+        let panel = document.getElementById('advanced-intelligence-panel');
+        if (panel) return panel;
+
+        // Create panel
+        panel = document.createElement('div');
+        panel.id = 'advanced-intelligence-panel';
+        panel.className = 'advanced-intelligence';
+        panel.innerHTML = `
+            <div class="security-header" style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(0, 255, 65, 0.2);">
+                <span class="security-title">🧠 Advanced Intelligence</span>
+                <span class="security-badge initializing" id="ai-badge">Initializing</span>
+            </div>
+            <div class="ai-systems-grid" id="ai-systems-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;"></div>
+        `;
+
+        // Insert after two-tier security section
+        const twoTier = document.getElementById('two-tier-security');
+        if (twoTier) {
+            twoTier.after(panel);
+        } else {
+            panelContent.appendChild(panel);
+        }
+
+        return panel;
+    }
+
+    /**
+     * Update Data Flywheel UI
+     */
+    updateFlywheelUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('flywheel-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'flywheel-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">🌀</span>
+                <div class="security-info">
+                    <div class="security-label">Data Flywheel</div>
+                    <div class="security-status" id="flywheel-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.flywheel;
+        const statusText = item.querySelector('#flywheel-status-text');
+        if (state.active) {
+            item.className = 'security-item ready';
+            statusText.textContent = `${state.experiences} experiences`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update JARVIS-Prime UI
+     */
+    updateJarvisPrimeUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('prime-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'prime-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">🧠</span>
+                <div class="security-info">
+                    <div class="security-label">JARVIS-Prime</div>
+                    <div class="security-status" id="prime-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.jarvisPrime;
+        const statusText = item.querySelector('#prime-status-text');
+        if (state.active) {
+            item.className = 'security-item ready';
+            const tier = state.tier === 'local' ? 'Local' : state.tier === 'cloud' ? 'Cloud' : state.tier;
+            statusText.textContent = `${tier}: ${state.model}`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update Learning Goals UI
+     */
+    updateLearningGoalsUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('learning-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'learning-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">📚</span>
+                <div class="security-info">
+                    <div class="security-label">Learning Goals</div>
+                    <div class="security-status" id="learning-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.learningGoals;
+        const statusText = item.querySelector('#learning-status-text');
+        if (state.active) {
+            item.className = 'security-item ready';
+            statusText.textContent = `${state.activeTopics} active, ${state.queuedTopics} queued`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update Reactor-Core UI
+     */
+    updateReactorCoreUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('reactor-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'reactor-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">⚛️</span>
+                <div class="security-info">
+                    <div class="security-label">Reactor-Core</div>
+                    <div class="security-status" id="reactor-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.reactorCore;
+        const statusText = item.querySelector('#reactor-status-text');
+        if (state.training) {
+            item.className = 'security-item ready';
+            statusText.textContent = `Epoch ${state.epoch}: ${(state.loss || 0).toFixed(4)}`;
+        } else if (state.active) {
+            item.className = 'security-item ready';
+            statusText.textContent = `${state.experiencesQueued} queued`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update Model Manager UI
+     */
+    updateModelManagerUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('model-mgr-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'model-mgr-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">📦</span>
+                <div class="security-info">
+                    <div class="security-label">Model Manager</div>
+                    <div class="security-status" id="model-mgr-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.modelManager;
+        const statusText = item.querySelector('#model-mgr-status-text');
+        if (state.status === 'downloading') {
+            item.className = 'security-item pending';
+            statusText.textContent = `Downloading: ${state.downloadProgress}%`;
+        } else if (state.status === 'ready') {
+            item.className = 'security-item ready';
+            statusText.textContent = `${state.model} (${state.sizeMb}MB)`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update Neural Mesh UI
+     */
+    updateNeuralMeshUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let item = document.getElementById('mesh-status-item');
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'mesh-status-item';
+            item.className = 'security-item';
+            item.innerHTML = `
+                <span class="security-icon">🕸️</span>
+                <div class="security-info">
+                    <div class="security-label">Neural Mesh</div>
+                    <div class="security-status" id="mesh-status-text">Initializing...</div>
+                </div>
+            `;
+            grid.appendChild(item);
+        }
+
+        const state = this.state.neuralMesh;
+        const statusText = item.querySelector('#mesh-status-text');
+        if (state.active) {
+            item.className = 'security-item ready';
+            statusText.textContent = `${state.agents} agents, ${state.knowledgeEntries} KB`;
+        } else {
+            item.className = 'security-item pending';
+            statusText.textContent = state.status || 'Initializing...';
+        }
+
+        this.updateAIBadge();
+    }
+
+    /**
+     * Update the Advanced Intelligence badge based on system states
+     */
+    updateAIBadge() {
+        const badge = document.getElementById('ai-badge');
+        if (!badge) return;
+
+        const systems = [
+            this.state.flywheel?.active,
+            this.state.jarvisPrime?.active,
+            this.state.learningGoals?.active,
+            this.state.reactorCore?.active,
+            this.state.modelManager?.status === 'ready',
+            this.state.neuralMesh?.active
+        ];
+
+        const activeCount = systems.filter(Boolean).length;
+        const totalCount = systems.length;
+
+        badge.className = 'security-badge';
+        if (activeCount === 0) {
+            badge.classList.add('initializing');
+            badge.textContent = 'Initializing';
+        } else if (activeCount < totalCount) {
+            badge.classList.add('initializing');
+            badge.textContent = `${activeCount}/${totalCount} Active`;
+        } else {
+            badge.classList.add('operational');
+            badge.textContent = 'Operational';
         }
     }
 
