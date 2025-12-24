@@ -122,6 +122,17 @@ class FlywheelConfig:
         ))
     )
 
+    # SQLite Training Database (v9.0)
+    training_db_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_TRAINING_DB_ENABLED", "true").lower() == "true"
+    )
+    training_db_path: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "JARVIS_TRAINING_DB",
+            Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent" / "data" / "training_db" / "jarvis_training.db"
+        ))
+    )
+
     # Data collection settings
     experience_lookback_hours: int = 24
     min_experiences_for_training: int = 100
@@ -258,6 +269,10 @@ class UnifiedDataFlywheel:
         self._watcher = None
         self._observability = None
 
+        # v9.0: SQLite Training Database
+        self._training_db = None
+        self._training_db_conn = None
+
         # Last training timestamp
         self._last_training: Optional[datetime] = None
 
@@ -355,6 +370,280 @@ class UnifiedDataFlywheel:
             logger.info("[Flywheel] ObservabilityHub initialized")
         except ImportError as e:
             logger.warning(f"[Flywheel] ObservabilityHub not available: {e}")
+
+        # v9.0: Initialize SQLite Training Database
+        if self.config.training_db_enabled:
+            await self._init_training_database()
+
+    async def _init_training_database(self) -> None:
+        """
+        v9.0: Initialize SQLite training database for experience storage.
+
+        The training database stores:
+        - Experiences from JARVIS interactions
+        - Scraped web content
+        - Learning goals and topics
+        - Training run history
+        - Model deployment records
+        """
+        import sqlite3
+
+        try:
+            # Ensure directory exists
+            db_path = Path(self.config.training_db_path)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Connect to database
+            self._training_db_conn = sqlite3.connect(str(db_path))
+            cursor = self._training_db_conn.cursor()
+
+            # Create tables if they don't exist
+            cursor.executescript("""
+                -- Experiences table: Records of JARVIS interactions
+                CREATE TABLE IF NOT EXISTS experiences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    source TEXT NOT NULL,
+                    input_text TEXT NOT NULL,
+                    output_text TEXT NOT NULL,
+                    context TEXT,
+                    quality_score REAL DEFAULT 0.5,
+                    used_in_training INTEGER DEFAULT 0,
+                    training_run_id INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Scraped content table: Web documentation
+                CREATE TABLE IF NOT EXISTS scraped_content (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT UNIQUE NOT NULL,
+                    title TEXT,
+                    content TEXT NOT NULL,
+                    topic TEXT,
+                    quality_score REAL DEFAULT 0.5,
+                    scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    used_in_training INTEGER DEFAULT 0
+                );
+
+                -- Learning goals table: Topics to learn
+                CREATE TABLE IF NOT EXISTS learning_goals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT UNIQUE NOT NULL,
+                    priority INTEGER DEFAULT 5,
+                    source TEXT DEFAULT 'auto',
+                    urls TEXT,
+                    discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    completed INTEGER DEFAULT 0
+                );
+
+                -- Training runs table: Training history
+                CREATE TABLE IF NOT EXISTS training_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_at DATETIME NOT NULL,
+                    completed_at DATETIME,
+                    status TEXT DEFAULT 'running',
+                    experiences_used INTEGER DEFAULT 0,
+                    pages_used INTEGER DEFAULT 0,
+                    training_steps INTEGER DEFAULT 0,
+                    final_loss REAL,
+                    model_path TEXT,
+                    gguf_path TEXT,
+                    gcs_path TEXT,
+                    error TEXT
+                );
+
+                -- Create indexes for performance
+                CREATE INDEX IF NOT EXISTS idx_experiences_timestamp ON experiences(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_experiences_used ON experiences(used_in_training);
+                CREATE INDEX IF NOT EXISTS idx_scraped_url ON scraped_content(url);
+                CREATE INDEX IF NOT EXISTS idx_goals_priority ON learning_goals(priority DESC);
+            """)
+
+            self._training_db_conn.commit()
+            self._training_db = db_path
+
+            # Get stats for logging
+            cursor.execute("SELECT COUNT(*) FROM experiences")
+            exp_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM scraped_content")
+            scraped_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM learning_goals WHERE completed = 0")
+            goals_count = cursor.fetchone()[0]
+
+            logger.info(
+                f"[Flywheel] SQLite Training Database initialized: {db_path} "
+                f"(experiences: {exp_count}, scraped: {scraped_count}, pending goals: {goals_count})"
+            )
+
+        except Exception as e:
+            logger.error(f"[Flywheel] Failed to initialize training database: {e}")
+            self._training_db = None
+            self._training_db_conn = None
+
+    def add_experience(
+        self,
+        source: str,
+        input_text: str,
+        output_text: str,
+        context: Optional[Dict[str, Any]] = None,
+        quality_score: float = 0.5
+    ) -> Optional[int]:
+        """
+        Add an experience to the training database.
+
+        Args:
+            source: Source of the experience (voice, text, api, automation)
+            input_text: User's input
+            output_text: JARVIS's response
+            context: Additional context (JSON serializable)
+            quality_score: Quality score (0.0 to 1.0)
+
+        Returns:
+            Experience ID if successful, None otherwise
+        """
+        if not self._training_db_conn:
+            logger.warning("[Flywheel] Training database not initialized")
+            return None
+
+        try:
+            import time
+            cursor = self._training_db_conn.cursor()
+
+            context_json = json.dumps(context) if context else None
+
+            cursor.execute("""
+                INSERT INTO experiences (timestamp, source, input_text, output_text, context, quality_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (time.time(), source, input_text, output_text, context_json, quality_score))
+
+            self._training_db_conn.commit()
+            experience_id = cursor.lastrowid
+
+            logger.debug(f"[Flywheel] Added experience {experience_id} from {source}")
+            return experience_id
+
+        except Exception as e:
+            logger.error(f"[Flywheel] Failed to add experience: {e}")
+            return None
+
+    def add_scraped_content(
+        self,
+        url: str,
+        title: str,
+        content: str,
+        topic: Optional[str] = None,
+        quality_score: float = 0.5
+    ) -> Optional[int]:
+        """
+        Add scraped web content to the training database.
+
+        Args:
+            url: Source URL
+            title: Page title
+            content: Processed text content
+            topic: Associated learning topic
+            quality_score: Quality score (0.0 to 1.0)
+
+        Returns:
+            Content ID if successful, None otherwise
+        """
+        if not self._training_db_conn:
+            logger.warning("[Flywheel] Training database not initialized")
+            return None
+
+        try:
+            cursor = self._training_db_conn.cursor()
+
+            cursor.execute("""
+                INSERT OR REPLACE INTO scraped_content (url, title, content, topic, quality_score, scraped_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (url, title, content, topic, quality_score))
+
+            self._training_db_conn.commit()
+            content_id = cursor.lastrowid
+
+            logger.debug(f"[Flywheel] Added scraped content {content_id} from {url}")
+            return content_id
+
+        except Exception as e:
+            logger.error(f"[Flywheel] Failed to add scraped content: {e}")
+            return None
+
+    def add_learning_goal(
+        self,
+        topic: str,
+        priority: int = 5,
+        source: str = "auto",
+        urls: Optional[List[str]] = None
+    ) -> bool:
+        """
+        Add a learning goal to the training database.
+
+        Args:
+            topic: Topic name
+            priority: Priority (1-10)
+            source: Source of the goal (auto, user, trending)
+            urls: URLs to scrape for this topic
+
+        Returns:
+            True if added successfully
+        """
+        if not self._training_db_conn:
+            logger.warning("[Flywheel] Training database not initialized")
+            return False
+
+        try:
+            cursor = self._training_db_conn.cursor()
+
+            urls_str = ",".join(urls) if urls else None
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO learning_goals (topic, priority, source, urls)
+                VALUES (?, ?, ?, ?)
+            """, (topic, priority, source, urls_str))
+
+            self._training_db_conn.commit()
+            return cursor.rowcount > 0
+
+        except Exception as e:
+            logger.error(f"[Flywheel] Failed to add learning goal: {e}")
+            return False
+
+    def get_training_db_stats(self) -> Dict[str, Any]:
+        """Get statistics from the training database."""
+        if not self._training_db_conn:
+            return {"error": "Training database not initialized"}
+
+        try:
+            cursor = self._training_db_conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) FROM experiences")
+            total_experiences = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM experiences WHERE used_in_training = 0")
+            unused_experiences = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM scraped_content")
+            total_scraped = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM learning_goals WHERE completed = 0")
+            pending_goals = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM training_runs WHERE status = 'completed'")
+            completed_runs = cursor.fetchone()[0]
+
+            return {
+                "total_experiences": total_experiences,
+                "unused_experiences": unused_experiences,
+                "total_scraped": total_scraped,
+                "pending_goals": pending_goals,
+                "completed_training_runs": completed_runs,
+                "db_path": str(self._training_db) if self._training_db else None,
+            }
+
+        except Exception as e:
+            logger.error(f"[Flywheel] Failed to get training DB stats: {e}")
+            return {"error": str(e)}
 
     async def _cleanup_components(self) -> None:
         """Cleanup all components."""

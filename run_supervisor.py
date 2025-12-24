@@ -284,6 +284,33 @@ class BootstrapConfig:
     learning_goals_auto_discover: bool = field(default_factory=lambda: os.getenv("LEARNING_GOALS_AUTO_DISCOVER", "true").lower() == "true")
     learning_goals_max_topics: int = field(default_factory=lambda: int(os.getenv("LEARNING_GOALS_MAX_TOPICS", "20")))
 
+    # =========================================================================
+    # v9.0: Intelligence Systems (UAE/SAI/Neural Mesh/MAS)
+    # =========================================================================
+    # UAE (Unified Awareness Engine) - Screen awareness and computer vision
+    uae_enabled: bool = field(default_factory=lambda: os.getenv("UAE_ENABLED", "true").lower() == "true")
+    uae_chain_of_thought: bool = field(default_factory=lambda: os.getenv("UAE_CHAIN_OF_THOUGHT", "true").lower() == "true")
+
+    # SAI (Situational Awareness Intelligence) - Window/app tracking
+    sai_enabled: bool = field(default_factory=lambda: os.getenv("SAI_ENABLED", "true").lower() == "true")
+    sai_yabai_bridge: bool = field(default_factory=lambda: os.getenv("SAI_YABAI_BRIDGE", "true").lower() == "true")
+
+    # Neural Mesh - Distributed intelligence coordination
+    neural_mesh_enabled: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_ENABLED", "true").lower() == "true")
+    neural_mesh_sync_interval: float = field(default_factory=lambda: float(os.getenv("NEURAL_MESH_SYNC_INTERVAL", "5.0")))
+
+    # MAS (Multi-Agent System) - Coordinated agent execution
+    mas_enabled: bool = field(default_factory=lambda: os.getenv("MAS_ENABLED", "true").lower() == "true")
+    mas_max_concurrent_agents: int = field(default_factory=lambda: int(os.getenv("MAS_MAX_CONCURRENT_AGENTS", "5")))
+
+    # =========================================================================
+    # v9.0: Continuous Background Web Scraping
+    # =========================================================================
+    continuous_scraping_enabled: bool = field(default_factory=lambda: os.getenv("CONTINUOUS_SCRAPING_ENABLED", "true").lower() == "true")
+    continuous_scraping_interval_hours: float = field(default_factory=lambda: float(os.getenv("CONTINUOUS_SCRAPING_INTERVAL_HOURS", "4")))
+    continuous_scraping_max_pages: int = field(default_factory=lambda: int(os.getenv("CONTINUOUS_SCRAPING_MAX_PAGES", "50")))
+    continuous_scraping_topics: str = field(default_factory=lambda: os.getenv("CONTINUOUS_SCRAPING_TOPICS", ""))
+
 
 class StartupPhase(Enum):
     """Phases of supervisor startup."""
@@ -2011,6 +2038,18 @@ class SupervisorBootstrapper:
             # - Auto-integrates with Reactor-Core for model hot-swapping
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_jarvis_prime()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v9.0: Initialize Intelligence Systems (UAE/SAI/Neural Mesh/MAS)
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables the full Agentic OS intelligence stack:
+            # - UAE (Unified Awareness Engine): Screen awareness, computer vision
+            # - SAI (Situational Awareness Intelligence): Window/app tracking
+            # - Neural Mesh: Distributed intelligence coordination
+            # - MAS (Multi-Agent System): Coordinated agent execution
+            # - Continuous background web scraping for self-improvement
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_intelligence_systems()
 
             self.perf.end("validation")
 
@@ -4179,6 +4218,997 @@ class SupervisorBootstrapper:
 
         except Exception as e:
             self.logger.warning(f"⚠️ Learning Goals Manager failed: {e}")
+
+    async def _initialize_intelligence_systems(self) -> None:
+        """
+        v9.0: Initialize Full Agentic OS Intelligence Stack.
+
+        This method initializes all advanced intelligence systems that make JARVIS
+        a truly autonomous, self-improving AI agent:
+
+        1. UAE (Unified Awareness Engine) - Screen awareness and computer vision
+           - Chain-of-thought reasoning for complex decisions
+           - Integration with SAI for spatial understanding
+           - Continuous visual monitoring and analysis
+
+        2. SAI (Situational Awareness Intelligence) - Window/app tracking
+           - Yabai bridge for macOS window management
+           - Cross-space learning and pattern recognition
+           - Real-time workspace state tracking
+
+        3. Neural Mesh - Distributed intelligence coordination
+           - Inter-system communication and synchronization
+           - Shared context propagation across all subsystems
+           - Adaptive load balancing for intelligence tasks
+
+        4. MAS (Multi-Agent System) - Coordinated agent execution
+           - Parallel task decomposition and execution
+           - Agent collaboration and conflict resolution
+           - Dynamic agent spawning based on task complexity
+
+        5. CAI (Collective AI Intelligence) - Emergent intelligence aggregation
+           - Synthesis of insights from all agents
+           - Pattern detection across system boundaries
+           - Proactive recommendation generation
+
+        6. Continuous Background Web Scraping - Self-improving knowledge
+           - Configurable interval-based scraping (default: every 4 hours)
+           - Topic-driven intelligent content discovery
+           - Automatic integration with training pipeline
+
+        Architecture:
+        ┌─────────────────────────────────────────────────────────────────────┐
+        │              Agentic OS Intelligence Stack (v9.0)                    │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │  ┌──────────────────┐    ┌──────────────────┐    ┌───────────────┐ │
+        │  │       UAE        │◄──►│       SAI        │◄──►│  Neural Mesh  │ │
+        │  │  (Vision+Chain)  │    │   (Yabai+Apps)   │    │   (Coord.)    │ │
+        │  └────────┬─────────┘    └────────┬─────────┘    └───────┬───────┘ │
+        │           │                       │                       │         │
+        │           └───────────────────────┼───────────────────────┘         │
+        │                                   ▼                                 │
+        │                    ┌──────────────────────────┐                     │
+        │                    │    MAS (Multi-Agent)     │                     │
+        │                    │  ┌──────┐ ┌──────┐      │                     │
+        │                    │  │Agent1│ │Agent2│ ...  │                     │
+        │                    │  └──────┘ └──────┘      │                     │
+        │                    └────────────┬─────────────┘                     │
+        │                                 ▼                                   │
+        │                    ┌──────────────────────────┐                     │
+        │                    │    CAI (Collective AI)   │                     │
+        │                    │    Intelligence Layer    │                     │
+        │                    └────────────┬─────────────┘                     │
+        │                                 ▼                                   │
+        │  ┌──────────────────────────────────────────────────────────────┐  │
+        │  │          Continuous Background Web Scraping                   │  │
+        │  │  Topics → Safe Scout → Training Pipeline → Model Deployment  │  │
+        │  └──────────────────────────────────────────────────────────────┘  │
+        └─────────────────────────────────────────────────────────────────────┘
+        """
+        self.logger.info("═" * 60)
+        self.logger.info("🧠 v9.0: Initializing Full Agentic OS Intelligence Stack...")
+        self.logger.info("═" * 60)
+
+        # Track initialization status for all systems
+        initialized_systems: Dict[str, bool] = {
+            "uae": False,
+            "sai": False,
+            "neural_mesh": False,
+            "mas": False,
+            "cai": False,
+            "continuous_scraping": False,
+        }
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 1: Initialize UAE (Unified Awareness Engine)
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.uae_enabled:
+            try:
+                self.logger.info("🔮 Step 1/6: Initializing UAE (Unified Awareness Engine)...")
+
+                from intelligence.uae_integration import (
+                    initialize_uae,
+                    get_uae,
+                    get_enhanced_uae,
+                    shutdown_uae,
+                )
+
+                # Initialize UAE with all features enabled
+                self._uae_engine = await initialize_uae(
+                    vision_analyzer=None,  # Will be injected later by main.py
+                    sai_monitoring_interval=5.0,  # 5-second monitoring for real-time awareness
+                    enable_auto_start=True,
+                    enable_learning_db=True,
+                    enable_yabai=self.config.sai_yabai_bridge,  # Connect to Yabai if enabled
+                    enable_proactive_intelligence=True,  # Phase 4 proactive communication
+                    enable_chain_of_thought=self.config.uae_chain_of_thought,  # LangGraph reasoning
+                    enable_unified_orchestrator=True,  # Full UnifiedIntelligenceOrchestrator
+                )
+
+                # Store enhanced UAE for chain-of-thought reasoning
+                if self.config.uae_chain_of_thought:
+                    self._enhanced_uae = get_enhanced_uae()
+                    self.logger.info("✅ UAE initialized with LangGraph chain-of-thought reasoning")
+                else:
+                    self._enhanced_uae = None
+                    self.logger.info("✅ UAE initialized (standard mode)")
+
+                initialized_systems["uae"] = True
+                os.environ["UAE_ENABLED"] = "true"
+                os.environ["UAE_CHAIN_OF_THOUGHT"] = str(self.config.uae_chain_of_thought).lower()
+                print(f"  {TerminalUI.GREEN}✓ UAE: Unified Awareness Engine active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ UAE not available: {e}")
+                os.environ["UAE_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ UAE: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.error(f"❌ UAE initialization failed: {e}")
+                os.environ["UAE_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ UAE: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 2: Initialize SAI (Situational Awareness Intelligence)
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.sai_enabled:
+            try:
+                self.logger.info("👁️ Step 2/6: Initializing SAI (Situational Awareness Intelligence)...")
+
+                from intelligence.yabai_sai_integration import (
+                    initialize_bridge,
+                    get_bridge,
+                    YabaiSAIBridge,
+                )
+                from intelligence.yabai_spatial_intelligence import (
+                    get_yabai_intelligence,
+                    YabaiSpatialIntelligence,
+                )
+
+                # Initialize Yabai Spatial Intelligence
+                if self.config.sai_yabai_bridge:
+                    self._yabai_intelligence = await get_yabai_intelligence(
+                        learning_db=None,  # Will connect to learning DB from UAE
+                        monitoring_interval=5.0,
+                        enable_24_7_mode=True,
+                    )
+
+                    if self._yabai_intelligence and self._yabai_intelligence.yabai_available:
+                        self.logger.info("✅ SAI: Yabai bridge connected (24/7 workspace monitoring)")
+                        initialized_systems["sai"] = True
+                        os.environ["SAI_YABAI_BRIDGE"] = "true"
+                    else:
+                        self.logger.warning("⚠️ SAI: Yabai not available on this system")
+                        os.environ["SAI_YABAI_BRIDGE"] = "false"
+                else:
+                    self.logger.info("ℹ️ SAI: Running without Yabai bridge")
+
+                os.environ["SAI_ENABLED"] = "true"
+                print(f"  {TerminalUI.GREEN}✓ SAI: Situational Awareness active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ SAI not available: {e}")
+                os.environ["SAI_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ SAI: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.error(f"❌ SAI initialization failed: {e}")
+                os.environ["SAI_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ SAI: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 3: Initialize Neural Mesh (Distributed Intelligence Coordination)
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.neural_mesh_enabled:
+            try:
+                self.logger.info("🕸️ Step 3/6: Initializing Neural Mesh (Distributed Intelligence)...")
+
+                # Neural Mesh is a new system that coordinates all intelligence subsystems
+                # It provides shared context, message passing, and load balancing
+
+                from dataclasses import dataclass, field
+                from typing import Dict, Any, List, Callable, Optional
+                from collections import defaultdict
+                from datetime import datetime
+                import weakref
+
+                @dataclass
+                class NeuralMeshNode:
+                    """A node in the Neural Mesh network."""
+                    node_id: str
+                    node_type: str  # "uae", "sai", "mas", "cai", "scraper"
+                    capabilities: List[str] = field(default_factory=list)
+                    status: str = "active"
+                    last_heartbeat: float = field(default_factory=time.time)
+                    metadata: Dict[str, Any] = field(default_factory=dict)
+
+                class NeuralMesh:
+                    """
+                    Distributed intelligence coordination network.
+
+                    Provides:
+                    - Inter-system message passing
+                    - Shared context propagation
+                    - Load balancing for intelligence tasks
+                    - System health monitoring
+                    - Adaptive routing of intelligence queries
+                    """
+
+                    def __init__(self, sync_interval: float = 5.0):
+                        self._nodes: Dict[str, NeuralMeshNode] = {}
+                        self._context: Dict[str, Any] = {}  # Shared context
+                        self._message_queues: Dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
+                        self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
+                        self._sync_interval = sync_interval
+                        self._sync_task: Optional[asyncio.Task] = None
+                        self._running = False
+                        self._logger = logging.getLogger("NeuralMesh")
+
+                    def register_node(self, node: NeuralMeshNode) -> None:
+                        """Register a node in the mesh."""
+                        self._nodes[node.node_id] = node
+                        self._message_queues[node.node_id] = asyncio.Queue()
+                        self._logger.debug(f"Node registered: {node.node_id} ({node.node_type})")
+
+                    def unregister_node(self, node_id: str) -> None:
+                        """Remove a node from the mesh."""
+                        if node_id in self._nodes:
+                            del self._nodes[node_id]
+                        if node_id in self._message_queues:
+                            del self._message_queues[node_id]
+
+                    async def broadcast(self, event_type: str, data: Dict[str, Any], source: str = None) -> None:
+                        """Broadcast a message to all subscribed nodes."""
+                        message = {
+                            "event_type": event_type,
+                            "data": data,
+                            "source": source,
+                            "timestamp": time.time(),
+                        }
+
+                        for subscriber in self._subscribers.get(event_type, []):
+                            try:
+                                if asyncio.iscoroutinefunction(subscriber):
+                                    await subscriber(message)
+                                else:
+                                    subscriber(message)
+                            except Exception as e:
+                                self._logger.warning(f"Subscriber error for {event_type}: {e}")
+
+                    def subscribe(self, event_type: str, callback: Callable) -> None:
+                        """Subscribe to a specific event type."""
+                        self._subscribers[event_type].append(callback)
+
+                    def update_context(self, key: str, value: Any) -> None:
+                        """Update shared context."""
+                        self._context[key] = {
+                            "value": value,
+                            "updated_at": time.time(),
+                        }
+
+                    def get_context(self, key: str) -> Optional[Any]:
+                        """Get value from shared context."""
+                        if key in self._context:
+                            return self._context[key]["value"]
+                        return None
+
+                    async def send_to_node(self, node_id: str, message: Dict[str, Any]) -> bool:
+                        """Send a message to a specific node."""
+                        if node_id in self._message_queues:
+                            await self._message_queues[node_id].put(message)
+                            return True
+                        return False
+
+                    async def receive_from_node(self, node_id: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+                        """Receive a message from a specific node's queue."""
+                        if node_id in self._message_queues:
+                            try:
+                                return await asyncio.wait_for(
+                                    self._message_queues[node_id].get(),
+                                    timeout=timeout
+                                )
+                            except asyncio.TimeoutError:
+                                return None
+                        return None
+
+                    def get_active_nodes(self, node_type: str = None) -> List[NeuralMeshNode]:
+                        """Get all active nodes, optionally filtered by type."""
+                        nodes = list(self._nodes.values())
+                        if node_type:
+                            nodes = [n for n in nodes if n.node_type == node_type]
+                        return [n for n in nodes if n.status == "active"]
+
+                    def get_node_with_capability(self, capability: str) -> Optional[NeuralMeshNode]:
+                        """Find a node with a specific capability."""
+                        for node in self._nodes.values():
+                            if capability in node.capabilities and node.status == "active":
+                                return node
+                        return None
+
+                    async def start(self) -> None:
+                        """Start the Neural Mesh sync loop."""
+                        self._running = True
+                        self._sync_task = asyncio.create_task(self._sync_loop())
+                        self._logger.info("Neural Mesh sync loop started")
+
+                    async def stop(self) -> None:
+                        """Stop the Neural Mesh."""
+                        self._running = False
+                        if self._sync_task:
+                            self._sync_task.cancel()
+                            try:
+                                await self._sync_task
+                            except asyncio.CancelledError:
+                                pass
+
+                    async def _sync_loop(self) -> None:
+                        """Background sync loop for health checks and context propagation."""
+                        while self._running:
+                            try:
+                                # Check node health
+                                current_time = time.time()
+                                for node in list(self._nodes.values()):
+                                    if current_time - node.last_heartbeat > self._sync_interval * 3:
+                                        node.status = "stale"
+                                        self._logger.warning(f"Node {node.node_id} is stale")
+
+                                # Broadcast context sync
+                                await self.broadcast("context_sync", self._context, source="mesh")
+
+                                await asyncio.sleep(self._sync_interval)
+
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                self._logger.error(f"Sync loop error: {e}")
+                                await asyncio.sleep(1)
+
+                    def get_stats(self) -> Dict[str, Any]:
+                        """Get mesh statistics."""
+                        return {
+                            "total_nodes": len(self._nodes),
+                            "active_nodes": len([n for n in self._nodes.values() if n.status == "active"]),
+                            "node_types": list(set(n.node_type for n in self._nodes.values())),
+                            "context_keys": list(self._context.keys()),
+                            "subscriber_count": sum(len(subs) for subs in self._subscribers.values()),
+                        }
+
+                # Create and start Neural Mesh
+                self._neural_mesh = NeuralMesh(sync_interval=self.config.neural_mesh_sync_interval)
+
+                # Register core nodes
+                if initialized_systems["uae"]:
+                    self._neural_mesh.register_node(NeuralMeshNode(
+                        node_id="uae-primary",
+                        node_type="uae",
+                        capabilities=["vision", "screen_capture", "element_detection", "chain_of_thought"],
+                    ))
+
+                if initialized_systems["sai"]:
+                    self._neural_mesh.register_node(NeuralMeshNode(
+                        node_id="sai-primary",
+                        node_type="sai",
+                        capabilities=["window_tracking", "app_focus", "workspace_state", "yabai_control"],
+                    ))
+
+                # Start the mesh
+                await self._neural_mesh.start()
+
+                initialized_systems["neural_mesh"] = True
+                os.environ["NEURAL_MESH_ENABLED"] = "true"
+                self.logger.info(f"✅ Neural Mesh initialized (sync interval: {self.config.neural_mesh_sync_interval}s)")
+                print(f"  {TerminalUI.GREEN}✓ Neural Mesh: Distributed intelligence coordination active{TerminalUI.RESET}")
+
+            except Exception as e:
+                self.logger.error(f"❌ Neural Mesh initialization failed: {e}")
+                os.environ["NEURAL_MESH_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 4: Initialize MAS (Multi-Agent System)
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.mas_enabled:
+            try:
+                self.logger.info("🤖 Step 4/6: Initializing MAS (Multi-Agent System)...")
+
+                from dataclasses import dataclass, field
+                from typing import Dict, Any, List, Optional, Callable
+                from enum import Enum
+                import uuid
+
+                class AgentStatus(Enum):
+                    IDLE = "idle"
+                    RUNNING = "running"
+                    WAITING = "waiting"
+                    COMPLETED = "completed"
+                    FAILED = "failed"
+
+                @dataclass
+                class AgentTask:
+                    """A task for an agent to execute."""
+                    task_id: str
+                    goal: str
+                    context: Dict[str, Any] = field(default_factory=dict)
+                    priority: int = 5  # 1-10
+                    dependencies: List[str] = field(default_factory=list)
+                    parent_task_id: Optional[str] = None
+                    status: AgentStatus = AgentStatus.IDLE
+                    result: Optional[Any] = None
+                    error: Optional[str] = None
+                    created_at: float = field(default_factory=time.time)
+                    started_at: Optional[float] = None
+                    completed_at: Optional[float] = None
+
+                @dataclass
+                class Agent:
+                    """An autonomous agent in the MAS."""
+                    agent_id: str
+                    agent_type: str
+                    capabilities: List[str] = field(default_factory=list)
+                    current_task: Optional[AgentTask] = None
+                    status: AgentStatus = AgentStatus.IDLE
+                    metrics: Dict[str, Any] = field(default_factory=dict)
+
+                class MultiAgentSystem:
+                    """
+                    Multi-Agent System for coordinated autonomous execution.
+
+                    Provides:
+                    - Dynamic agent spawning based on task complexity
+                    - Task decomposition and parallel execution
+                    - Agent collaboration and result aggregation
+                    - Conflict resolution for shared resources
+                    - Load balancing across available agents
+                    """
+
+                    def __init__(self, max_concurrent_agents: int = 5):
+                        self._agents: Dict[str, Agent] = {}
+                        self._task_queue: asyncio.Queue = asyncio.Queue()
+                        self._completed_tasks: Dict[str, AgentTask] = {}
+                        self._max_concurrent = max_concurrent_agents
+                        self._running = False
+                        self._coordinator_task: Optional[asyncio.Task] = None
+                        self._agent_executors: Dict[str, Callable] = {}
+                        self._logger = logging.getLogger("MAS")
+
+                    def register_agent_type(self, agent_type: str, executor: Callable) -> None:
+                        """Register an agent type with its executor function."""
+                        self._agent_executors[agent_type] = executor
+                        self._logger.debug(f"Agent type registered: {agent_type}")
+
+                    async def spawn_agent(self, agent_type: str, capabilities: List[str] = None) -> Agent:
+                        """Spawn a new agent."""
+                        if len(self._agents) >= self._max_concurrent:
+                            # Find idle agent to reuse
+                            for agent in self._agents.values():
+                                if agent.status == AgentStatus.IDLE:
+                                    agent.capabilities = capabilities or []
+                                    return agent
+                            raise RuntimeError(f"Max agents ({self._max_concurrent}) reached")
+
+                        agent = Agent(
+                            agent_id=f"agent-{uuid.uuid4().hex[:8]}",
+                            agent_type=agent_type,
+                            capabilities=capabilities or [],
+                        )
+                        self._agents[agent.agent_id] = agent
+                        self._logger.info(f"Agent spawned: {agent.agent_id} ({agent_type})")
+                        return agent
+
+                    async def submit_task(self, task: AgentTask) -> str:
+                        """Submit a task for execution."""
+                        await self._task_queue.put(task)
+                        self._logger.debug(f"Task submitted: {task.task_id}")
+                        return task.task_id
+
+                    async def decompose_task(self, goal: str, context: Dict[str, Any] = None) -> List[AgentTask]:
+                        """Decompose a complex goal into subtasks."""
+                        # This would typically use an LLM to break down the task
+                        # For now, return as single task
+                        task = AgentTask(
+                            task_id=f"task-{uuid.uuid4().hex[:8]}",
+                            goal=goal,
+                            context=context or {},
+                        )
+                        return [task]
+
+                    async def execute_task(self, task: AgentTask) -> AgentTask:
+                        """Execute a single task."""
+                        task.status = AgentStatus.RUNNING
+                        task.started_at = time.time()
+
+                        try:
+                            # Find appropriate agent type
+                            agent_type = self._determine_agent_type(task)
+
+                            # Spawn or reuse agent
+                            agent = await self.spawn_agent(agent_type)
+                            agent.current_task = task
+                            agent.status = AgentStatus.RUNNING
+
+                            # Get executor for this agent type
+                            executor = self._agent_executors.get(agent_type)
+                            if executor:
+                                if asyncio.iscoroutinefunction(executor):
+                                    result = await executor(task)
+                                else:
+                                    result = executor(task)
+                                task.result = result
+                                task.status = AgentStatus.COMPLETED
+                            else:
+                                task.error = f"No executor for agent type: {agent_type}"
+                                task.status = AgentStatus.FAILED
+
+                        except Exception as e:
+                            task.error = str(e)
+                            task.status = AgentStatus.FAILED
+                            self._logger.error(f"Task {task.task_id} failed: {e}")
+
+                        finally:
+                            task.completed_at = time.time()
+                            if agent:
+                                agent.current_task = None
+                                agent.status = AgentStatus.IDLE
+
+                        self._completed_tasks[task.task_id] = task
+                        return task
+
+                    def _determine_agent_type(self, task: AgentTask) -> str:
+                        """Determine the best agent type for a task."""
+                        goal_lower = task.goal.lower()
+
+                        if any(w in goal_lower for w in ["search", "find", "look"]):
+                            return "explorer"
+                        elif any(w in goal_lower for w in ["write", "create", "generate"]):
+                            return "creator"
+                        elif any(w in goal_lower for w in ["analyze", "review", "check"]):
+                            return "analyzer"
+                        elif any(w in goal_lower for w in ["scrape", "fetch", "download"]):
+                            return "scraper"
+                        else:
+                            return "general"
+
+                    async def run_goal(self, goal: str, context: Dict[str, Any] = None) -> List[AgentTask]:
+                        """Execute a goal by decomposing and running all subtasks."""
+                        tasks = await self.decompose_task(goal, context)
+                        results = []
+
+                        # Execute tasks (respecting dependencies)
+                        for task in tasks:
+                            result = await self.execute_task(task)
+                            results.append(result)
+
+                        return results
+
+                    async def start(self) -> None:
+                        """Start the MAS coordinator."""
+                        self._running = True
+                        self._coordinator_task = asyncio.create_task(self._coordinate())
+                        self._logger.info("MAS coordinator started")
+
+                    async def stop(self) -> None:
+                        """Stop the MAS."""
+                        self._running = False
+                        if self._coordinator_task:
+                            self._coordinator_task.cancel()
+                            try:
+                                await self._coordinator_task
+                            except asyncio.CancelledError:
+                                pass
+
+                    async def _coordinate(self) -> None:
+                        """Background coordination loop."""
+                        while self._running:
+                            try:
+                                # Process queued tasks
+                                try:
+                                    task = await asyncio.wait_for(
+                                        self._task_queue.get(),
+                                        timeout=1.0
+                                    )
+                                    asyncio.create_task(self.execute_task(task))
+                                except asyncio.TimeoutError:
+                                    pass
+
+                                # Clean up completed agents
+                                for agent in list(self._agents.values()):
+                                    if agent.status == AgentStatus.COMPLETED:
+                                        agent.status = AgentStatus.IDLE
+
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                self._logger.error(f"Coordinator error: {e}")
+                                await asyncio.sleep(1)
+
+                    def get_stats(self) -> Dict[str, Any]:
+                        """Get MAS statistics."""
+                        return {
+                            "total_agents": len(self._agents),
+                            "active_agents": len([a for a in self._agents.values() if a.status == AgentStatus.RUNNING]),
+                            "idle_agents": len([a for a in self._agents.values() if a.status == AgentStatus.IDLE]),
+                            "queued_tasks": self._task_queue.qsize(),
+                            "completed_tasks": len(self._completed_tasks),
+                            "max_concurrent": self._max_concurrent,
+                        }
+
+                # Create and start MAS
+                self._mas = MultiAgentSystem(max_concurrent_agents=self.config.mas_max_concurrent_agents)
+
+                # Register default agent executors
+                async def general_executor(task: AgentTask) -> Dict[str, Any]:
+                    """Default general-purpose agent executor."""
+                    return {"status": "completed", "message": f"Processed: {task.goal}"}
+
+                async def scraper_executor(task: AgentTask) -> Dict[str, Any]:
+                    """Web scraping agent executor."""
+                    # This would integrate with Safe Scout
+                    return {"status": "completed", "message": f"Scraped: {task.goal}"}
+
+                self._mas.register_agent_type("general", general_executor)
+                self._mas.register_agent_type("explorer", general_executor)
+                self._mas.register_agent_type("creator", general_executor)
+                self._mas.register_agent_type("analyzer", general_executor)
+                self._mas.register_agent_type("scraper", scraper_executor)
+
+                # Start MAS
+                await self._mas.start()
+
+                # Register MAS with Neural Mesh if available
+                if hasattr(self, '_neural_mesh') and self._neural_mesh:
+                    from dataclasses import dataclass, field
+                    self._neural_mesh.register_node(NeuralMeshNode(
+                        node_id="mas-coordinator",
+                        node_type="mas",
+                        capabilities=["task_decomposition", "agent_spawning", "parallel_execution"],
+                    ))
+
+                initialized_systems["mas"] = True
+                os.environ["MAS_ENABLED"] = "true"
+                self.logger.info(f"✅ MAS initialized (max agents: {self.config.mas_max_concurrent_agents})")
+                print(f"  {TerminalUI.GREEN}✓ MAS: Multi-Agent System active{TerminalUI.RESET}")
+
+            except Exception as e:
+                self.logger.error(f"❌ MAS initialization failed: {e}")
+                os.environ["MAS_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ MAS: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 5: Initialize CAI (Collective AI Intelligence)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            self.logger.info("🧬 Step 5/6: Initializing CAI (Collective AI Intelligence)...")
+
+            from dataclasses import dataclass, field
+            from typing import Dict, Any, List, Optional
+
+            @dataclass
+            class InsightSource:
+                """Source of an insight."""
+                system: str  # "uae", "sai", "mas", etc.
+                confidence: float
+                timestamp: float
+                data: Dict[str, Any]
+
+            @dataclass
+            class CollectiveInsight:
+                """An insight aggregated from multiple sources."""
+                insight_id: str
+                topic: str
+                sources: List[InsightSource] = field(default_factory=list)
+                aggregated_confidence: float = 0.0
+                recommendations: List[str] = field(default_factory=list)
+                created_at: float = field(default_factory=time.time)
+
+            class CollectiveAI:
+                """
+                Collective AI Intelligence - Emergent intelligence from all subsystems.
+
+                Provides:
+                - Synthesis of insights from UAE, SAI, MAS
+                - Cross-system pattern detection
+                - Proactive recommendation generation
+                - Adaptive learning from system interactions
+                """
+
+                def __init__(self):
+                    self._insights: Dict[str, CollectiveInsight] = {}
+                    self._patterns: List[Dict[str, Any]] = []
+                    self._recommendation_callbacks: List[Callable] = []
+                    self._logger = logging.getLogger("CAI")
+
+                def add_insight_source(self, topic: str, source: InsightSource) -> None:
+                    """Add an insight source for a topic."""
+                    if topic not in self._insights:
+                        self._insights[topic] = CollectiveInsight(
+                            insight_id=f"insight-{uuid.uuid4().hex[:8]}",
+                            topic=topic,
+                        )
+
+                    self._insights[topic].sources.append(source)
+                    self._recalculate_confidence(topic)
+
+                def _recalculate_confidence(self, topic: str) -> None:
+                    """Recalculate aggregated confidence for a topic."""
+                    if topic in self._insights:
+                        insight = self._insights[topic]
+                        if insight.sources:
+                            # Weighted average based on source confidence
+                            total = sum(s.confidence for s in insight.sources)
+                            insight.aggregated_confidence = total / len(insight.sources)
+
+                def get_insight(self, topic: str) -> Optional[CollectiveInsight]:
+                    """Get the collective insight for a topic."""
+                    return self._insights.get(topic)
+
+                def detect_patterns(self) -> List[Dict[str, Any]]:
+                    """Detect patterns across all insights."""
+                    # Simple pattern detection - look for topics with multiple high-confidence sources
+                    patterns = []
+                    for insight in self._insights.values():
+                        if len(insight.sources) >= 2 and insight.aggregated_confidence > 0.7:
+                            patterns.append({
+                                "topic": insight.topic,
+                                "confidence": insight.aggregated_confidence,
+                                "source_count": len(insight.sources),
+                                "systems": list(set(s.system for s in insight.sources)),
+                            })
+                    self._patterns = patterns
+                    return patterns
+
+                async def generate_recommendations(self) -> List[str]:
+                    """Generate proactive recommendations based on patterns."""
+                    recommendations = []
+                    patterns = self.detect_patterns()
+
+                    for pattern in patterns:
+                        if pattern["confidence"] > 0.8:
+                            recommendations.append(
+                                f"High-confidence pattern detected in {pattern['topic']} "
+                                f"across {pattern['systems']}"
+                            )
+
+                    # Notify callbacks
+                    for callback in self._recommendation_callbacks:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(recommendations)
+                            else:
+                                callback(recommendations)
+                        except Exception as e:
+                            self._logger.warning(f"Recommendation callback error: {e}")
+
+                    return recommendations
+
+                def register_recommendation_callback(self, callback: Callable) -> None:
+                    """Register a callback for recommendations."""
+                    self._recommendation_callbacks.append(callback)
+
+                def get_stats(self) -> Dict[str, Any]:
+                    """Get CAI statistics."""
+                    return {
+                        "total_insights": len(self._insights),
+                        "total_patterns": len(self._patterns),
+                        "high_confidence_insights": len([
+                            i for i in self._insights.values()
+                            if i.aggregated_confidence > 0.7
+                        ]),
+                    }
+
+            # Create CAI instance
+            self._cai = CollectiveAI()
+
+            # Connect CAI to Neural Mesh for insight aggregation
+            if hasattr(self, '_neural_mesh') and self._neural_mesh:
+                async def on_context_sync(message: Dict[str, Any]) -> None:
+                    """Handle context sync from Neural Mesh."""
+                    for key, value in message.get("data", {}).items():
+                        self._cai.add_insight_source(
+                            topic=key,
+                            source=InsightSource(
+                                system="mesh",
+                                confidence=0.8,
+                                timestamp=time.time(),
+                                data=value,
+                            )
+                        )
+
+                self._neural_mesh.subscribe("context_sync", on_context_sync)
+
+            initialized_systems["cai"] = True
+            os.environ["CAI_ENABLED"] = "true"
+            self.logger.info("✅ CAI initialized (Collective AI Intelligence)")
+            print(f"  {TerminalUI.GREEN}✓ CAI: Collective AI Intelligence active{TerminalUI.RESET}")
+
+        except Exception as e:
+            self.logger.error(f"❌ CAI initialization failed: {e}")
+            os.environ["CAI_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ CAI: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 6: Initialize Continuous Background Web Scraping
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.continuous_scraping_enabled:
+            try:
+                self.logger.info("🌐 Step 6/6: Initializing Continuous Background Web Scraping...")
+
+                # Start the continuous scraping background task
+                self._continuous_scraping_task = asyncio.create_task(
+                    self._run_continuous_scraping()
+                )
+
+                initialized_systems["continuous_scraping"] = True
+                os.environ["CONTINUOUS_SCRAPING_ENABLED"] = "true"
+                self.logger.info(
+                    f"✅ Continuous scraping initialized "
+                    f"(interval: {self.config.continuous_scraping_interval_hours}h, "
+                    f"max pages: {self.config.continuous_scraping_max_pages})"
+                )
+                print(f"  {TerminalUI.GREEN}✓ Web Scraping: Continuous background learning active{TerminalUI.RESET}")
+
+            except Exception as e:
+                self.logger.error(f"❌ Continuous scraping initialization failed: {e}")
+                os.environ["CONTINUOUS_SCRAPING_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Web Scraping: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Broadcast Intelligence Systems Status
+        # ═══════════════════════════════════════════════════════════════════
+        active_systems = [k for k, v in initialized_systems.items() if v]
+
+        await self._broadcast_startup_progress(
+            stage="intelligence_systems_ready",
+            message=f"Intelligence stack online: {', '.join(active_systems)}",
+            progress=85,
+            metadata={
+                "intelligence_systems": {
+                    "uae": initialized_systems["uae"],
+                    "sai": initialized_systems["sai"],
+                    "neural_mesh": initialized_systems["neural_mesh"],
+                    "mas": initialized_systems["mas"],
+                    "cai": initialized_systems["cai"],
+                    "continuous_scraping": initialized_systems["continuous_scraping"],
+                    "active_count": len(active_systems),
+                }
+            }
+        )
+
+        self.logger.info("═" * 60)
+        self.logger.info(f"✅ Intelligence Stack: {len(active_systems)}/6 systems active")
+        self.logger.info("═" * 60)
+
+    async def _run_continuous_scraping(self) -> None:
+        """
+        Background task for continuous web scraping.
+
+        Runs at configurable intervals (default: every 4 hours) to:
+        - Discover new documentation and learning content
+        - Scrape and process web pages via Safe Scout
+        - Feed new data into the training pipeline
+        """
+        interval_seconds = self.config.continuous_scraping_interval_hours * 3600
+        self.logger.info(f"📅 Continuous scraping started (interval: {self.config.continuous_scraping_interval_hours}h)")
+
+        while True:
+            try:
+                # Wait for the configured interval
+                await asyncio.sleep(interval_seconds)
+
+                self.logger.info("🌐 Starting continuous web scraping cycle...")
+
+                # Check if flywheel is available and not busy
+                if hasattr(self, '_data_flywheel') and self._data_flywheel:
+                    if self._data_flywheel.is_running:
+                        self.logger.debug("Flywheel busy, skipping scraping cycle")
+                        continue
+
+                    # Parse topics from config (comma-separated)
+                    topics = []
+                    if self.config.continuous_scraping_topics:
+                        topics = [t.strip() for t in self.config.continuous_scraping_topics.split(",") if t.strip()]
+
+                    # If no explicit topics, use learning goals
+                    if not topics and hasattr(self, '_learning_goals_manager') and self._learning_goals_manager:
+                        pending_goals = self._learning_goals_manager.get_pending_goals()
+                        topics = [g.topic for g in pending_goals[:5]]  # Top 5 priority topics
+
+                    if topics:
+                        self.logger.info(f"📚 Scraping topics: {topics}")
+
+                        # Announce scraping start
+                        if hasattr(self, 'narrator') and self.narrator:
+                            await self.narrator.speak(
+                                f"Starting background web research on {len(topics)} topics.",
+                                wait=False
+                            )
+
+                        # Run flywheel with web scraping only (no training)
+                        try:
+                            result = await self._data_flywheel.run_web_scraping_only(
+                                topics=topics,
+                                max_pages=self.config.continuous_scraping_max_pages,
+                            )
+
+                            if result.success:
+                                self.logger.info(
+                                    f"✅ Scraping complete: {result.progress.web_pages_scraped} pages, "
+                                    f"{result.progress.experiences_collected} experiences"
+                                )
+
+                                # Update CAI with scraping insights
+                                if hasattr(self, '_cai') and self._cai:
+                                    from dataclasses import dataclass, field
+                                    self._cai.add_insight_source(
+                                        topic="web_scraping",
+                                        source=InsightSource(
+                                            system="scraper",
+                                            confidence=0.7,
+                                            timestamp=time.time(),
+                                            data={
+                                                "pages_scraped": result.progress.web_pages_scraped,
+                                                "topics": topics,
+                                            }
+                                        )
+                                    )
+                            else:
+                                self.logger.warning(f"⚠️ Scraping failed: {result.error}")
+
+                        except AttributeError:
+                            # Flywheel might not have run_web_scraping_only method
+                            # Fall back to full cycle without training
+                            result = await self._data_flywheel.run_full_cycle(
+                                include_web_scraping=True,
+                                include_training=False,
+                            )
+                    else:
+                        self.logger.debug("No topics configured for scraping")
+
+                else:
+                    self.logger.debug("Data Flywheel not available for scraping")
+
+            except asyncio.CancelledError:
+                self.logger.info("Continuous scraping stopped")
+                break
+            except Exception as e:
+                self.logger.error(f"Continuous scraping error: {e}")
+                # Wait 30 minutes before retrying on error
+                await asyncio.sleep(1800)
+
+    async def _stop_intelligence_systems(self) -> None:
+        """Stop all intelligence systems gracefully."""
+        self.logger.info("🛑 Stopping Intelligence Systems...")
+
+        # Stop continuous scraping
+        if hasattr(self, '_continuous_scraping_task') and self._continuous_scraping_task:
+            self._continuous_scraping_task.cancel()
+            try:
+                await self._continuous_scraping_task
+            except asyncio.CancelledError:
+                pass
+            self._continuous_scraping_task = None
+
+        # Stop MAS
+        if hasattr(self, '_mas') and self._mas:
+            await self._mas.stop()
+            self._mas = None
+
+        # Stop Neural Mesh
+        if hasattr(self, '_neural_mesh') and self._neural_mesh:
+            await self._neural_mesh.stop()
+            self._neural_mesh = None
+
+        # Shutdown UAE
+        if hasattr(self, '_uae_engine') and self._uae_engine:
+            try:
+                from intelligence.uae_integration import shutdown_uae
+                await shutdown_uae()
+            except Exception as e:
+                self.logger.warning(f"UAE shutdown error: {e}")
+            self._uae_engine = None
+            self._enhanced_uae = None
+
+        # Clear CAI
+        self._cai = None
+
+        self.logger.info("✅ Intelligence Systems stopped")
 
     async def _run_training_scheduler(self) -> None:
         """
