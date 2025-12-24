@@ -399,6 +399,11 @@ class JarvisPrimeClient:
         """
         Decide which routing mode to use based on memory and availability.
 
+        Priority Order:
+        1. Local (RAM >= 8GB) - FREE, fastest
+        2. Cloud Run (always available if configured) - ~$0.02/request
+        3. Gemini API (if API key configured) - cheapest fallback
+
         Returns:
             Tuple of (mode, reason)
         """
@@ -410,27 +415,39 @@ class JarvisPrimeClient:
         available_gb = self._memory_monitor.get_available_gb()
 
         # Decision logic
+        # Priority 1: Local if we have enough RAM
         if available_gb >= self.config.memory_threshold_local_gb:
-            # Plenty of RAM - use local
             cb = self._circuit_breakers[RoutingMode.LOCAL]
             if cb.allow_request():
                 return RoutingMode.LOCAL, f"Sufficient RAM ({available_gb:.1f}GB >= {self.config.memory_threshold_local_gb}GB)"
             else:
                 logger.info(f"[JarvisPrimeClient] Local circuit breaker OPEN, trying Cloud Run")
 
-        if available_gb >= self.config.memory_threshold_cloud_gb and self.config.use_cloud_run:
-            # Low RAM but enough for Cloud Run coordination
+        # Priority 2: Cloud Run (lightweight HTTP call, works even with low RAM)
+        # Cloud Run is always available regardless of memory since it's just an HTTP call
+        if self.config.use_cloud_run and self.config.cloud_run_url:
             cb = self._circuit_breakers[RoutingMode.CLOUD_RUN]
             if cb.allow_request():
-                return RoutingMode.CLOUD_RUN, f"Low RAM ({available_gb:.1f}GB) - using Cloud Run"
+                if available_gb < self.config.memory_threshold_local_gb:
+                    return RoutingMode.CLOUD_RUN, f"Low RAM ({available_gb:.1f}GB) - using Cloud Run"
+                else:
+                    return RoutingMode.CLOUD_RUN, f"Cloud Run available (RAM: {available_gb:.1f}GB)"
             else:
                 logger.info(f"[JarvisPrimeClient] Cloud Run circuit breaker OPEN, trying Gemini")
 
+        # Priority 3: Gemini API (if configured)
         if self.config.use_gemini_fallback and self.config.gemini_api_key:
-            # Very low RAM - use Gemini API
             cb = self._circuit_breakers[RoutingMode.GEMINI_API]
             if cb.allow_request():
-                return RoutingMode.GEMINI_API, f"Very low RAM ({available_gb:.1f}GB) - using Gemini API"
+                return RoutingMode.GEMINI_API, f"Using Gemini API fallback (RAM: {available_gb:.1f}GB)"
+            else:
+                logger.info(f"[JarvisPrimeClient] Gemini circuit breaker OPEN")
+
+        # Priority 4: Try local anyway (might work with some memory pressure)
+        if available_gb >= 2.0:  # Minimum 2GB for any operation
+            cb = self._circuit_breakers[RoutingMode.LOCAL]
+            if cb.allow_request():
+                return RoutingMode.LOCAL, f"Attempting local with low RAM ({available_gb:.1f}GB)"
 
         return RoutingMode.DISABLED, f"All backends unavailable (RAM: {available_gb:.1f}GB)"
 
@@ -506,6 +523,8 @@ class JarvisPrimeClient:
 
             if resp.status_code == 200:
                 data = resp.json()
+                # Service is available if it responds with 200
+                # Model might not be loaded, but we can still route to it
                 return HealthStatus(
                     available=True,
                     latency_ms=latency,
@@ -513,7 +532,10 @@ class JarvisPrimeClient:
                 )
             else:
                 return HealthStatus(available=False, error=f"HTTP {resp.status_code}")
+        except asyncio.TimeoutError:
+            return HealthStatus(available=False, error="Connection timeout (cold start?)")
         except Exception as e:
+            logger.debug(f"[JarvisPrimeClient] Cloud Run health check error: {e}")
             return HealthStatus(available=False, error=str(e))
 
     async def _check_gemini_health(self) -> HealthStatus:
