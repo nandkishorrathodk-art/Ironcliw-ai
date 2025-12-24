@@ -49,17 +49,17 @@ variable "tier" {
 # =============================================================================
 
 resource "google_redis_instance" "cache" {
-  name               = "jarvis-redis"
-  memory_size_gb     = var.memory_size_gb
-  tier               = var.tier
-  region             = var.region
-  project            = var.project_id
-  
+  name           = "jarvis-redis"
+  memory_size_gb = var.memory_size_gb
+  tier           = var.tier
+  region         = var.region
+  project        = var.project_id
+
   authorized_network = var.network_id
   connect_mode       = "DIRECT_PEERING"
 
-  redis_version      = "REDIS_7_0"
-  display_name       = "JARVIS Intelligence Cache"
+  redis_version = "REDIS_7_0"
+  display_name  = "JARVIS Intelligence Cache"
 
   # Maintenance window - early morning on Sunday to minimize disruption
   maintenance_policy {

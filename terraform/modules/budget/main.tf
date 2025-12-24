@@ -29,7 +29,7 @@ variable "billing_account_id" {
 variable "monthly_budget_usd" {
   description = "Monthly budget in USD"
   type        = number
-  default     = 10  # $10/month for solo developer
+  default     = 10 # $10/month for solo developer
 }
 
 variable "alert_emails" {
@@ -41,7 +41,7 @@ variable "alert_emails" {
 variable "alert_thresholds" {
   description = "Budget percentage thresholds for alerts"
   type        = list(number)
-  default     = [0.25, 0.50, 0.75, 0.90, 1.0]  # 25%, 50%, 75%, 90%, 100%
+  default     = [0.25, 0.50, 0.75, 0.90, 1.0] # 25%, 50%, 75%, 90%, 100%
 }
 
 # =============================================================================
@@ -57,7 +57,7 @@ resource "google_billing_budget" "jarvis_budget" {
 
   budget_filter {
     projects = ["projects/${var.project_id}"]
-    
+
     # Track all services, but you could filter to specific ones:
     # services = ["services/24E6-581D-38E5"]  # Compute Engine
   }

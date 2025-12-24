@@ -1,13 +1,13 @@
 terraform {
   required_version = ">= 1.0.0"
-  
+
   required_providers {
     google = {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
   }
-  
+
   backend "gcs" {
     bucket = "jarvis-473803-terraform-state"
     prefix = "prod"
@@ -28,12 +28,12 @@ provider "google" {
 
 module "budget" {
   source = "./modules/budget"
-  
+
   project_id         = var.project_id
   billing_account_id = var.billing_account_id
   monthly_budget_usd = var.monthly_budget_usd
   alert_emails       = var.alert_emails
-  alert_thresholds   = [0.25, 0.50, 0.75, 0.90, 1.0]  # Alert at 25%, 50%, 75%, 90%, 100%
+  alert_thresholds   = [0.25, 0.50, 0.75, 0.90, 1.0] # Alert at 25%, 50%, 75%, 90%, 100%
 }
 
 # =============================================================================
@@ -68,19 +68,19 @@ module "monitoring" {
 
 module "compute" {
   count = var.enable_spot_vm_template ? 1 : 0
-  
-  source       = "./modules/compute"
-  project_id   = var.project_id
-  region       = var.region
-  zone         = var.zone
-  network_id   = module.network.vpc_id
-  subnet_id    = module.network.subnet_id
-  
+
+  source     = "./modules/compute"
+  project_id = var.project_id
+  region     = var.region
+  zone       = var.zone
+  network_id = module.network.vpc_id
+  subnet_id  = module.network.subnet_id
+
   # Cost-optimized settings for solo developer
   machine_type        = var.spot_vm_machine_type
   disk_size_gb        = var.spot_vm_disk_size_gb
   max_runtime_seconds = var.spot_vm_max_runtime_hours * 3600
-  
+
   depends_on = [module.network]
 }
 
@@ -100,14 +100,14 @@ module "compute" {
 
 module "storage" {
   count = var.enable_redis ? 1 : 0
-  
+
   source         = "./modules/storage"
   project_id     = var.project_id
   region         = var.region
   network_id     = module.network.vpc_id
   memory_size_gb = var.redis_memory_size_gb
   tier           = var.redis_tier
-  
+
   depends_on = [module.network]
 }
 
@@ -139,7 +139,7 @@ locals {
       cost     = "$0/month"
       notes    = "Always free"
     }
-    
+
     # Optional resources
     spot_vm_template = {
       resource = "Instance Template"
@@ -152,10 +152,10 @@ locals {
       notes    = var.enable_redis ? "⚠️ This is the main cost driver" : "Using local/in-memory cache"
     }
   }
-  
+
   # Total estimated monthly cost
   total_monthly_estimate = var.enable_redis ? var.redis_memory_size_gb * 15 : 0
-  
+
   # Cost warnings
   cost_warnings = compact([
     var.enable_redis ? "⚠️ Redis enabled: ~$${var.redis_memory_size_gb * 15}/month" : "",
@@ -206,5 +206,68 @@ module "jarvis_prime" {
   subnet_id  = var.enable_redis ? module.network.subnet_id : null
 
   depends_on = [module.network]
+}
+
+# =============================================================================
+# 🤖 JARVIS BACKEND CLOUD RUN (v9.4)
+# =============================================================================
+# ⚠️ COST: Pay-per-request (~$0 when idle, ~$0.05-0.15/hr when running)
+#
+# Deploys the full JARVIS-AI-Agent backend with:
+# - Neural Mesh (60+ agents)
+# - Data Flywheel
+# - Intelligent Continuous Scraping
+# - Multi-repo integration
+#
+# Prerequisites:
+# 1. Build and push Docker image:
+#    docker build -f docker/Dockerfile.backend -t us-central1-docker.pkg.dev/jarvis-473803/jarvis-backend/jarvis-backend:latest .
+#    docker push us-central1-docker.pkg.dev/jarvis-473803/jarvis-backend/jarvis-backend:latest
+#
+# 2. Set ANTHROPIC_API_KEY in Secret Manager:
+#    gcloud secrets create anthropic-api-key --replication-policy=automatic
+#    echo -n "sk-ant-..." | gcloud secrets versions add anthropic-api-key --data-file=-
+#
+# 3. Enable the module:
+#    terraform apply -var="enable_jarvis_backend=true"
+
+module "jarvis_backend" {
+  count  = var.enable_jarvis_backend ? 1 : 0
+  source = "./modules/jarvis_backend"
+
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.developer_mode ? "dev" : "prod"
+
+  # Cloud Run configuration
+  image_tag     = var.jarvis_backend_image_tag
+  min_instances = var.jarvis_backend_min_instances
+  max_instances = var.jarvis_backend_max_instances
+  memory        = var.jarvis_backend_memory
+  cpu           = var.jarvis_backend_cpu
+  concurrency   = var.jarvis_backend_concurrency
+
+  # Neural Mesh configuration
+  neural_mesh_enabled    = var.neural_mesh_enabled
+  neural_mesh_max_agents = var.neural_mesh_max_agents
+
+  # Integration with JARVIS-Prime (if enabled)
+  jarvis_prime_url = var.enable_jarvis_prime && length(module.jarvis_prime) > 0 ? module.jarvis_prime[0].service_url : ""
+
+  # Optional: Connect to Redis (if enabled)
+  redis_host = var.enable_redis && length(module.storage) > 0 ? module.storage[0].redis_host : ""
+  redis_port = var.enable_redis && length(module.storage) > 0 ? module.storage[0].redis_port : 6379
+
+  # Optional: GCS bucket for models
+  gcs_bucket = var.jarvis_gcs_bucket
+
+  # Secret Manager
+  anthropic_api_key_secret = var.anthropic_api_key_secret
+
+  # Optional: VPC access for Redis
+  network_id = var.enable_redis ? module.network.vpc_id : null
+  subnet_id  = var.enable_redis ? module.network.subnet_id : null
+
+  depends_on = [module.network, module.jarvis_prime]
 }
 

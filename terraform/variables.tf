@@ -32,51 +32,51 @@ variable "zone" {
 variable "developer_mode" {
   description = "Enable developer mode for cost savings (disables Redis, uses minimal resources)"
   type        = bool
-  default     = true  # Default to true for solo developer
+  default     = true # Default to true for solo developer
 }
 
 variable "enable_redis" {
   description = "Enable Cloud Memorystore Redis (costs ~$0.02/hour = $15/month minimum)"
   type        = bool
-  default     = false  # Disabled by default, use local Redis during development
+  default     = false # Disabled by default, use local Redis during development
 }
 
 variable "enable_spot_vm_template" {
   description = "Create Spot VM instance template for dynamic scaling"
   type        = bool
-  default     = true  # Enabled - needed for memory offloading
+  default     = true # Enabled - needed for memory offloading
 }
 
 # Spot VM Configuration
 variable "spot_vm_machine_type" {
   description = "Machine type for Spot VMs (e2-micro is cheapest, e2-highmem-4 for ML)"
   type        = string
-  default     = "e2-medium"  # Good balance of cost/performance for development
+  default     = "e2-medium" # Good balance of cost/performance for development
 }
 
 variable "spot_vm_disk_size_gb" {
   description = "Boot disk size for Spot VMs in GB"
   type        = number
-  default     = 20  # Reduced from 50GB to save on disk costs
+  default     = 20 # Reduced from 50GB to save on disk costs
 }
 
 variable "spot_vm_max_runtime_hours" {
   description = "Maximum runtime for Spot VMs before auto-termination (Triple-Lock safety)"
   type        = number
-  default     = 3  # 3 hours max - aligned with cost_tracker
+  default     = 3 # 3 hours max - aligned with cost_tracker
 }
 
 # Redis Configuration (if enabled)
 variable "redis_memory_size_gb" {
   description = "Redis memory size in GB (minimum 1GB for Cloud Memorystore)"
   type        = number
-  default     = 1  # Minimum size
+  default     = 1 # Minimum size
 }
 
 variable "redis_tier" {
   description = "Redis tier (BASIC is cheapest, STANDARD_HA for production)"
   type        = string
-  default     = "BASIC"  # Cheapest option
+  default     = "BASIC" # Cheapest option
 }
 
 # =============================================================================
@@ -87,19 +87,19 @@ variable "redis_tier" {
 variable "billing_account_id" {
   description = "GCP Billing Account ID for budget alerts (find via: gcloud billing accounts list)"
   type        = string
-  default     = ""  # Leave empty to skip budget creation (you can still use monitoring alerts)
+  default     = "" # Leave empty to skip budget creation (you can still use monitoring alerts)
 }
 
 variable "monthly_budget_usd" {
   description = "Monthly budget in USD - alerts trigger at 25%, 50%, 75%, 90%, 100%"
   type        = number
-  default     = 10  # $10/month is plenty for solo development with Spot VMs
+  default     = 10 # $10/month is plenty for solo development with Spot VMs
 }
 
 variable "alert_emails" {
   description = "Email addresses to notify on budget alerts"
   type        = list(string)
-  default     = []  # Add your email: ["your@email.com"]
+  default     = [] # Add your email: ["your@email.com"]
 }
 
 # =============================================================================
@@ -109,13 +109,13 @@ variable "alert_emails" {
 variable "max_concurrent_vms" {
   description = "Maximum number of Spot VMs that can run simultaneously"
   type        = number
-  default     = 2  # Limit to 2 VMs max for cost safety
+  default     = 2 # Limit to 2 VMs max for cost safety
 }
 
 variable "max_daily_vm_hours" {
   description = "Maximum total VM hours per day (for cost calculations)"
   type        = number
-  default     = 6  # 6 hours * $0.03/hr = $0.18/day max
+  default     = 6 # 6 hours * $0.03/hr = $0.18/day max
 }
 
 # =============================================================================
@@ -127,7 +127,7 @@ variable "max_daily_vm_hours" {
 variable "enable_jarvis_prime" {
   description = "Enable JARVIS-Prime Cloud Run deployment"
   type        = bool
-  default     = false  # Disabled by default - enable after pushing Docker image
+  default     = false # Disabled by default - enable after pushing Docker image
 }
 
 variable "jarvis_prime_image_tag" {
@@ -139,7 +139,7 @@ variable "jarvis_prime_image_tag" {
 variable "jarvis_prime_min_instances" {
   description = "Minimum Cloud Run instances (0 = scale to zero when idle)"
   type        = number
-  default     = 0  # Scale to zero for cost savings
+  default     = 0 # Scale to zero for cost savings
 }
 
 variable "jarvis_prime_max_instances" {
@@ -151,7 +151,7 @@ variable "jarvis_prime_max_instances" {
 variable "jarvis_prime_memory" {
   description = "Memory allocation for JARVIS-Prime (e.g., '4Gi', '8Gi')"
   type        = string
-  default     = "4Gi"  # 4GB is enough for Q4_K_M models
+  default     = "4Gi" # 4GB is enough for Q4_K_M models
 }
 
 variable "jarvis_prime_cpu" {
@@ -164,5 +164,80 @@ variable "jarvis_prime_model_gcs_path" {
   description = "GCS path to GGUF model for JARVIS-Prime Cloud Run"
   type        = string
   default     = ""
+}
+
+# =============================================================================
+# JARVIS BACKEND CLOUD RUN (v9.4)
+# =============================================================================
+# Full JARVIS-AI-Agent backend deployment with Neural Mesh and Data Flywheel.
+# Costs ~$0 when idle (scales to zero), ~$0.05-0.15/hr when running.
+
+variable "enable_jarvis_backend" {
+  description = "Enable JARVIS Backend Cloud Run deployment"
+  type        = bool
+  default     = false # Disabled by default - enable after pushing Docker image
+}
+
+variable "jarvis_backend_image_tag" {
+  description = "Docker image tag for JARVIS Backend"
+  type        = string
+  default     = "latest"
+}
+
+variable "jarvis_backend_min_instances" {
+  description = "Minimum Cloud Run instances (0 = scale to zero when idle)"
+  type        = number
+  default     = 0
+}
+
+variable "jarvis_backend_max_instances" {
+  description = "Maximum Cloud Run instances for auto-scaling"
+  type        = number
+  default     = 5
+}
+
+variable "jarvis_backend_memory" {
+  description = "Memory allocation for JARVIS Backend (e.g., '4Gi', '8Gi')"
+  type        = string
+  default     = "4Gi"
+}
+
+variable "jarvis_backend_cpu" {
+  description = "CPU allocation for JARVIS Backend"
+  type        = string
+  default     = "2"
+}
+
+variable "jarvis_backend_concurrency" {
+  description = "Maximum concurrent requests per instance"
+  type        = number
+  default     = 80
+}
+
+# Neural Mesh Configuration
+variable "neural_mesh_enabled" {
+  description = "Enable Neural Mesh with 60+ agents"
+  type        = bool
+  default     = true
+}
+
+variable "neural_mesh_max_agents" {
+  description = "Maximum number of Neural Mesh agents"
+  type        = number
+  default     = 60
+}
+
+# GCS Configuration
+variable "jarvis_gcs_bucket" {
+  description = "GCS bucket for JARVIS models and data"
+  type        = string
+  default     = ""
+}
+
+# Secret Manager
+variable "anthropic_api_key_secret" {
+  description = "Secret Manager secret ID for Anthropic API key"
+  type        = string
+  default     = "anthropic-api-key"
 }
 

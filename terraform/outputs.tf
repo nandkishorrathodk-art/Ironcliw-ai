@@ -12,7 +12,7 @@ output "cost_summary" {
     fixed_monthly_cost = var.enable_redis ? "~$${var.redis_memory_size_gb * 15}/month (Redis)" : "$0/month (all free tier!)"
     variable_costs     = "Spot VMs: ~$0.01-0.03/hour when running"
     budget_alerts      = var.billing_account_id != "" ? "Enabled at $${var.monthly_budget_usd}/month" : "Not configured (add billing_account_id)"
-    
+
     breakdown = {
       network          = "$0 (free)"
       security         = "$0 (free tier)"
@@ -21,7 +21,7 @@ output "cost_summary" {
       spot_vm_template = "$0 (template free)"
       redis            = var.enable_redis ? "~$${var.redis_memory_size_gb * 15}/mo" : "$0 (disabled)"
     }
-    
+
     warnings = compact([
       var.enable_redis ? "⚠️ Redis is your main cost - consider disabling for dev" : "",
       var.billing_account_id == "" ? "⚠️ Budget alerts not configured - add billing_account_id" : "",
@@ -41,10 +41,10 @@ output "developer_mode" {
 output "budget_status" {
   description = "Budget alert configuration"
   value = {
-    configured         = var.billing_account_id != ""
-    monthly_budget     = "$${var.monthly_budget_usd}"
-    alert_thresholds   = ["25%", "50%", "75%", "90%", "100%"]
-    forecasted_alerts  = true
+    configured        = var.billing_account_id != ""
+    monthly_budget    = "$${var.monthly_budget_usd}"
+    alert_thresholds  = ["25%", "50%", "75%", "90%", "100%"]
+    forecasted_alerts = true
   }
 }
 
@@ -156,13 +156,13 @@ output "triple_lock_status" {
 output "quick_start" {
   description = "Helpful commands for managing infrastructure"
   value = {
-    check_costs       = "gcloud billing accounts list"
-    list_vms          = "gcloud compute instances list --filter='labels.app=jarvis'"
-    delete_all_vms    = "gcloud compute instances delete $(gcloud compute instances list --filter='labels.app=jarvis' --format='value(name)') --zone=${var.zone} --quiet"
-    local_redis       = "docker run -d -p 6379:6379 --name jarvis-redis redis:alpine"
-    terraform_plan    = "terraform plan"
-    terraform_apply   = "terraform apply"
-    enable_redis      = "terraform apply -var='enable_redis=true'"
+    check_costs         = "gcloud billing accounts list"
+    list_vms            = "gcloud compute instances list --filter='labels.app=jarvis'"
+    delete_all_vms      = "gcloud compute instances delete $(gcloud compute instances list --filter='labels.app=jarvis' --format='value(name)') --zone=${var.zone} --quiet"
+    local_redis         = "docker run -d -p 6379:6379 --name jarvis-redis redis:alpine"
+    terraform_plan      = "terraform plan"
+    terraform_apply     = "terraform apply"
+    enable_redis        = "terraform apply -var='enable_redis=true'"
     enable_jarvis_prime = "terraform apply -var='enable_jarvis_prime=true'"
   }
 }
@@ -204,6 +204,82 @@ output "jarvis_prime_deployment_steps" {
     step_4 = "Push image: docker push ${var.region}-docker.pkg.dev/${var.project_id}/jarvis-prime/jarvis-prime:latest"
     step_5 = "Enable module: terraform apply -var='enable_jarvis_prime=true'"
     step_6 = "Test: curl $(terraform output -raw jarvis_prime_url)/health"
+  }
+}
+
+# =============================================================================
+# 🤖 JARVIS BACKEND CLOUD RUN (v9.4)
+# =============================================================================
+
+output "jarvis_backend_url" {
+  description = "JARVIS Backend Cloud Run service URL"
+  value       = var.enable_jarvis_backend ? module.jarvis_backend[0].service_url : null
+}
+
+output "jarvis_backend_status" {
+  description = "JARVIS Backend deployment status"
+  value = {
+    enabled           = var.enable_jarvis_backend
+    service_url       = var.enable_jarvis_backend ? module.jarvis_backend[0].service_url : "Not deployed"
+    artifact_registry = var.enable_jarvis_backend ? module.jarvis_backend[0].artifact_registry_repository : "N/A"
+    docker_push       = var.enable_jarvis_backend ? module.jarvis_backend[0].docker_push_command : "Enable first with: terraform apply -var='enable_jarvis_backend=true'"
+    docker_build      = var.enable_jarvis_backend ? module.jarvis_backend[0].docker_build_command : "N/A"
+
+    config = {
+      min_instances = var.jarvis_backend_min_instances
+      max_instances = var.jarvis_backend_max_instances
+      memory        = var.jarvis_backend_memory
+      cpu           = var.jarvis_backend_cpu
+      concurrency   = var.jarvis_backend_concurrency
+      neural_mesh   = var.neural_mesh_enabled ? "enabled (${var.neural_mesh_max_agents} agents)" : "disabled"
+    }
+
+    integration = {
+      jarvis_prime = var.enable_jarvis_prime ? "connected" : "not deployed"
+      redis        = var.enable_redis ? "connected" : "not deployed"
+    }
+
+    cost_estimate = var.enable_jarvis_backend ? "~$0 idle, ~$0.05-0.15/hr running" : "$0 (disabled)"
+  }
+}
+
+output "jarvis_backend_deployment_steps" {
+  description = "Steps to deploy JARVIS Backend to Cloud Run"
+  value = {
+    step_1 = "Set API key in Secret Manager: echo -n 'sk-ant-...' | gcloud secrets versions add anthropic-api-key --data-file=-"
+    step_2 = "Auth with GCR: gcloud auth configure-docker ${var.region}-docker.pkg.dev"
+    step_3 = "Build Docker image: docker build -f docker/Dockerfile.backend -t ${var.region}-docker.pkg.dev/${var.project_id}/jarvis-backend/jarvis-backend:latest ."
+    step_4 = "Push image: docker push ${var.region}-docker.pkg.dev/${var.project_id}/jarvis-backend/jarvis-backend:latest"
+    step_5 = "Enable module: terraform apply -var='enable_jarvis_backend=true'"
+    step_6 = "Test: curl $(terraform output -raw jarvis_backend_url)/health"
+  }
+}
+
+# =============================================================================
+# 🚀 UNIFIED DEPLOYMENT STATUS
+# =============================================================================
+
+output "unified_stack_status" {
+  description = "Status of the unified JARVIS stack"
+  value = {
+    components = {
+      jarvis_backend = var.enable_jarvis_backend ? "deployed" : "not deployed"
+      jarvis_prime   = var.enable_jarvis_prime ? "deployed" : "not deployed"
+      redis          = var.enable_redis ? "deployed" : "not deployed (use local)"
+      spot_vms       = var.enable_spot_vm_template ? "template ready" : "disabled"
+    }
+
+    urls = {
+      backend = var.enable_jarvis_backend ? module.jarvis_backend[0].service_url : null
+      prime   = var.enable_jarvis_prime ? module.jarvis_prime[0].service_url : null
+    }
+
+    quick_deploy = {
+      full_stack   = "terraform apply -var='enable_jarvis_backend=true' -var='enable_jarvis_prime=true'"
+      backend_only = "terraform apply -var='enable_jarvis_backend=true'"
+      with_redis   = "terraform apply -var='enable_jarvis_backend=true' -var='enable_redis=true'"
+      destroy_all  = "terraform destroy"
+    }
   }
 }
 

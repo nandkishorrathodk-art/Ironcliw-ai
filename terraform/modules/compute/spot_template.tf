@@ -60,7 +60,7 @@ variable "disk_size_gb" {
 variable "max_runtime_seconds" {
   description = "Maximum runtime before auto-termination (Triple-Lock)"
   type        = number
-  default     = 10800  # 3 hours
+  default     = 10800 # 3 hours
 }
 
 # =============================================================================
@@ -79,7 +79,7 @@ resource "google_compute_instance_template" "spot_template" {
     automatic_restart           = false
     provisioning_model          = "SPOT"
     instance_termination_action = "DELETE"
-    
+
     # TRIPLE-LOCK #1: Platform-level auto-termination
     # GCP automatically deletes the VM after this duration
     max_run_duration {
@@ -92,7 +92,7 @@ resource "google_compute_instance_template" "spot_template" {
     auto_delete  = true
     boot         = true
     disk_size_gb = var.disk_size_gb
-    disk_type    = "pd-standard"  # Cheapest disk type
+    disk_type    = "pd-standard" # Cheapest disk type
   }
 
   network_interface {
@@ -100,7 +100,7 @@ resource "google_compute_instance_template" "spot_template" {
     subnetwork = var.subnet_id
     access_config {
       # Ephemeral public IP for external access
-      network_tier = "STANDARD"  # Cheaper than PREMIUM
+      network_tier = "STANDARD" # Cheaper than PREMIUM
     }
   }
 
@@ -136,7 +136,7 @@ resource "google_compute_instance_template" "spot_template" {
       
       echo "✅ Self-destruct monitor activated"
     EOF
-    
+
     shutdown-script = <<-EOF
       #!/bin/bash
       echo "$(date): VM shutting down" >> /var/log/jarvis/lifecycle.log
@@ -146,7 +146,7 @@ resource "google_compute_instance_template" "spot_template" {
 
   service_account {
     email  = "default"
-    scopes = ["cloud-platform"]  # Full access for flexibility
+    scopes = ["cloud-platform"] # Full access for flexibility
   }
 
   labels = {

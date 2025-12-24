@@ -14,7 +14,7 @@ variable "project_id" {
 variable "monthly_budget_usd" {
   description = "Monthly budget in USD for alerts"
   type        = number
-  default     = 10  # $10/month for solo developer
+  default     = 10 # $10/month for solo developer
 }
 
 variable "alert_email" {
@@ -180,32 +180,32 @@ resource "google_monitoring_alert_policy" "vm_running_too_long" {
   project      = var.project_id
   display_name = "JARVIS: VM Running > 3 Hours (Cost Alert)"
   combiner     = "OR"
-  
+
   conditions {
     display_name = "VM uptime exceeds 3 hours"
-    
+
     condition_threshold {
       filter          = "resource.type=\"gce_instance\" AND metric.type=\"compute.googleapis.com/instance/uptime\""
       duration        = "0s"
       comparison      = "COMPARISON_GT"
-      threshold_value = 10800  # 3 hours in seconds
-      
+      threshold_value = 10800 # 3 hours in seconds
+
       aggregations {
         alignment_period   = "60s"
         per_series_aligner = "ALIGN_MAX"
       }
     }
   }
-  
-  notification_channels = []  # Add notification channel ID if you want alerts
-  
+
+  notification_channels = [] # Add notification channel ID if you want alerts
+
   documentation {
     content   = "A JARVIS Spot VM has been running for more than 3 hours. This may indicate the Triple-Lock safety system failed. Check and terminate orphaned VMs to save costs."
     mime_type = "text/markdown"
   }
-  
+
   alert_strategy {
-    auto_close = "1800s"  # Auto-close after 30 minutes
+    auto_close = "1800s" # Auto-close after 30 minutes
   }
 }
 
