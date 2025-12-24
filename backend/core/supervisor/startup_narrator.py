@@ -80,6 +80,14 @@ class StartupPhase(str, Enum):
     HOT_RELOAD_RESTARTING = "hot_reload_restarting"
     HOT_RELOAD_REBUILDING = "hot_reload_rebuilding"
     HOT_RELOAD_COMPLETE = "hot_reload_complete"
+    # v6.0: Data Flywheel and Learning phases
+    FLYWHEEL_INIT = "flywheel_init"
+    FLYWHEEL_COLLECTING = "flywheel_collecting"
+    FLYWHEEL_TRAINING = "flywheel_training"
+    FLYWHEEL_COMPLETE = "flywheel_complete"
+    LEARNING_GOALS = "learning_goals"
+    JARVIS_PRIME = "jarvis_prime"
+    REACTOR_CORE = "reactor_core"
 
 
 class NarrationPriority(Enum):
@@ -352,6 +360,97 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
             "Changes applied successfully. Ready.",
             "Hot reload complete. Back online.",
             "Update applied. All systems operational.",
+        ],
+    },
+    # v6.0: Data Flywheel and Learning phases
+    StartupPhase.FLYWHEEL_INIT: {
+        "start": [
+            "Initializing self-improvement systems.",
+            "Data flywheel coming online.",
+            "Preparing learning infrastructure.",
+        ],
+        "complete": [
+            "Self-improvement systems ready.",
+            "Data flywheel initialized.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_COLLECTING: {
+        "start": [
+            "Collecting experiences for learning.",
+            "Gathering data for self-improvement.",
+        ],
+        "progress": [
+            "Experiences collected and stored.",
+            "Learning data accumulated.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_TRAINING: {
+        "start": [
+            "Beginning self-improvement training.",
+            "Training neural networks with collected data.",
+            "Fine-tuning my understanding.",
+        ],
+        "progress": [
+            "Training in progress.",
+            "Learning from experiences.",
+        ],
+        "complete": [
+            "Training complete. I've improved.",
+            "Self-improvement cycle finished.",
+            "Knowledge consolidated.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_COMPLETE: {
+        "complete": [
+            "Self-improvement cycle complete.",
+            "Data flywheel cycle finished successfully.",
+            "Learning iteration done. Ready to apply new knowledge.",
+        ],
+    },
+    StartupPhase.LEARNING_GOALS: {
+        "start": [
+            "Analyzing learning priorities.",
+            "Identifying areas for improvement.",
+        ],
+        "discovered": [
+            "New learning goal identified.",
+            "Discovered an area to study.",
+        ],
+        "complete": [
+            "Learning goals analyzed.",
+            "Priorities for improvement established.",
+        ],
+    },
+    StartupPhase.JARVIS_PRIME: {
+        "start": [
+            "Connecting to JARVIS Prime tier-zero brain.",
+            "Initializing intelligent core.",
+        ],
+        "local": [
+            "JARVIS Prime running locally.",
+            "Local intelligence active.",
+        ],
+        "cloud": [
+            "Connected to cloud intelligence.",
+            "Cloud-based reasoning online.",
+        ],
+        "complete": [
+            "JARVIS Prime ready. Intelligence fully online.",
+            "Tier-zero brain connected.",
+        ],
+    },
+    StartupPhase.REACTOR_CORE: {
+        "start": [
+            "Reactor Core coming online.",
+            "Initializing model training pipeline.",
+        ],
+        "watching": [
+            "Watching for model updates.",
+            "Reactor Core monitoring active.",
+        ],
+        "complete": [
+            "Reactor Core initialized. Ready for model training.",
+            "Training pipeline operational.",
         ],
     },
 }
@@ -926,18 +1025,159 @@ class IntelligentStartupNarrator:
     ) -> None:
         """
         v5.0: Announce that hot reload is complete.
-        
+
         Args:
             target: What was reloaded
             duration_seconds: How long the restart took
         """
         phase = StartupPhase.HOT_RELOAD_COMPLETE
         text = self._get_phase_message(phase, "start") or "Changes applied. Ready."
-        
+
         if duration_seconds and duration_seconds > 3:
             text += f" Took {duration_seconds:.1f} seconds."
-        
+
         await self._speak(text, NarrationPriority.HIGH)
+
+    # =========================================================================
+    # v6.0: Data Flywheel and Learning Announcements
+    # =========================================================================
+
+    async def announce_flywheel_init(self) -> None:
+        """v6.0: Announce flywheel initialization."""
+        phase = StartupPhase.FLYWHEEL_INIT
+        text = self._get_phase_message(phase, "start") or "Initializing self-improvement systems."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_flywheel_collecting(self, experience_count: int = 0) -> None:
+        """v6.0: Announce data collection phase."""
+        phase = StartupPhase.FLYWHEEL_COLLECTING
+        if experience_count > 0:
+            text = f"Collecting experiences. {experience_count} gathered so far."
+        else:
+            text = self._get_phase_message(phase, "start") or "Collecting experiences for learning."
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_flywheel_training(
+        self,
+        topic: Optional[str] = None,
+        progress: Optional[float] = None,
+    ) -> None:
+        """v6.0: Announce training phase."""
+        phase = StartupPhase.FLYWHEEL_TRAINING
+
+        if progress is not None and progress >= 100:
+            text = self._get_phase_message(phase, "complete") or "Training complete. I've improved."
+            priority = NarrationPriority.HIGH
+        elif topic:
+            text = f"Training on {topic}."
+            priority = NarrationPriority.MEDIUM
+        else:
+            text = self._get_phase_message(phase, "start") or "Beginning self-improvement training."
+            priority = NarrationPriority.MEDIUM
+
+        await self._speak(text, priority)
+
+    async def announce_flywheel_complete(
+        self,
+        experiences_used: int = 0,
+        topics_improved: int = 0,
+    ) -> None:
+        """v6.0: Announce flywheel cycle completion."""
+        phase = StartupPhase.FLYWHEEL_COMPLETE
+
+        if experiences_used > 0 and topics_improved > 0:
+            text = f"Self-improvement complete. Learned from {experiences_used} experiences across {topics_improved} topics."
+        else:
+            text = self._get_phase_message(phase, "complete") or "Self-improvement cycle complete."
+
+        await self._speak(text, NarrationPriority.HIGH)
+
+    async def announce_learning_goal(
+        self,
+        topic: str,
+        action: str = "discovered",
+    ) -> None:
+        """v6.0: Announce learning goal discovery or completion."""
+        phase = StartupPhase.LEARNING_GOALS
+
+        if action == "discovered":
+            text = f"Identified new learning goal: {topic}."
+        elif action == "completed":
+            text = f"Completed learning about {topic}."
+        else:
+            text = self._get_phase_message(phase, action) or f"Learning goal: {topic}."
+
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_jarvis_prime(
+        self,
+        mode: str = "start",
+        tier: Optional[str] = None,
+    ) -> None:
+        """v6.0: Announce JARVIS-Prime status."""
+        phase = StartupPhase.JARVIS_PRIME
+
+        if mode == "local":
+            text = self._get_phase_message(phase, "local") or "JARVIS Prime running locally."
+        elif mode == "cloud":
+            text = self._get_phase_message(phase, "cloud") or "Connected to cloud intelligence."
+        elif mode == "complete":
+            text = self._get_phase_message(phase, "complete") or "JARVIS Prime ready."
+        else:
+            text = self._get_phase_message(phase, "start") or "Connecting to JARVIS Prime."
+
+        if tier:
+            text = f"{text} Using tier {tier}."
+
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_reactor_core(
+        self,
+        action: str = "start",
+        model_name: Optional[str] = None,
+    ) -> None:
+        """v6.0: Announce Reactor Core status."""
+        phase = StartupPhase.REACTOR_CORE
+
+        if action == "watching":
+            text = self._get_phase_message(phase, "watching") or "Reactor Core monitoring for model updates."
+        elif action == "complete" and model_name:
+            text = f"Reactor Core ready. Model {model_name} available."
+        elif action == "complete":
+            text = self._get_phase_message(phase, "complete") or "Reactor Core initialized."
+        else:
+            text = self._get_phase_message(phase, "start") or "Reactor Core coming online."
+
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_intelligent(
+        self,
+        context: str,
+        event_type: str,
+        fallback_message: str,
+    ) -> None:
+        """
+        v6.0: Generate and announce an intelligent, context-aware message using JARVIS-Prime.
+
+        This delegates to the unified voice orchestrator's intelligent speech function
+        for dynamic, non-hardcoded announcements.
+
+        Args:
+            context: Rich context about the current situation
+            event_type: Type of event (flywheel, training, learning, etc.)
+            fallback_message: Message to use if JARVIS-Prime is unavailable
+        """
+        try:
+            from .unified_voice_orchestrator import speak_intelligent
+            await speak_intelligent(
+                context=context,
+                event_type=event_type,
+                fallback_message=fallback_message,
+                priority=VoicePriority.MEDIUM,
+            )
+        except Exception as e:
+            logger.debug(f"Intelligent announcement failed: {e}, using fallback")
+            await self._speak(fallback_message, NarrationPriority.MEDIUM)
 
 
 # Phase mapping from progress reporter stages to StartupPhase
@@ -963,6 +1203,19 @@ STAGE_TO_PHASE: Dict[str, StartupPhase] = {
     "hot_reload_restarting": StartupPhase.HOT_RELOAD_RESTARTING,
     "hot_reload_rebuilding": StartupPhase.HOT_RELOAD_REBUILDING,
     "hot_reload_complete": StartupPhase.HOT_RELOAD_COMPLETE,
+    # v6.0: Data Flywheel and Learning phases
+    "flywheel": StartupPhase.FLYWHEEL_INIT,
+    "flywheel_init": StartupPhase.FLYWHEEL_INIT,
+    "flywheel_collecting": StartupPhase.FLYWHEEL_COLLECTING,
+    "flywheel_training": StartupPhase.FLYWHEEL_TRAINING,
+    "flywheel_complete": StartupPhase.FLYWHEEL_COMPLETE,
+    "learning": StartupPhase.LEARNING_GOALS,
+    "learning_goals": StartupPhase.LEARNING_GOALS,
+    "jarvis_prime": StartupPhase.JARVIS_PRIME,
+    "prime": StartupPhase.JARVIS_PRIME,
+    "reactor_core": StartupPhase.REACTOR_CORE,
+    "reactor": StartupPhase.REACTOR_CORE,
+    "training": StartupPhase.FLYWHEEL_TRAINING,
 }
 
 

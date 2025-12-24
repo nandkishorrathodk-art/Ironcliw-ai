@@ -126,6 +126,11 @@ class VoiceSource(str, Enum):
     AUTONOMOUS = "autonomous"          # Zero-Touch autonomous updates
     DEAD_MAN_SWITCH = "dead_man_switch" # Post-update stability monitoring
     PRIME_DIRECTIVES = "prime_directives"  # Safety constraint violations
+    # v3.0: Data Flywheel and Learning System
+    FLYWHEEL = "flywheel"              # Self-improving data flywheel
+    TRAINING = "training"              # Model training/fine-tuning
+    LEARNING = "learning"              # Learning goals and discovery
+    JARVIS_PRIME = "jarvis_prime"      # JARVIS-Prime tier-0 brain
 
 
 class SpeechTopic(str, Enum):
@@ -141,6 +146,13 @@ class SpeechTopic(str, Enum):
     DMS = "dms"
     PROGRESS = "progress"
     GENERAL = "general"
+    # v3.0: Data Flywheel and Learning System
+    FLYWHEEL = "flywheel"              # Self-improving data collection
+    TRAINING = "training"              # Model training announcements
+    LEARNING = "learning"              # Learning goals and discovery
+    SCRAPING = "scraping"              # Web scraping progress
+    MODEL_DEPLOY = "model_deploy"      # Model deployment announcements
+    INTELLIGENCE = "intelligence"      # JARVIS-Prime intelligent responses
 
 
 @dataclass
@@ -439,6 +451,29 @@ class UnifiedVoiceOrchestrator:
             'progress': SpeechTopic.PROGRESS,
             'percent': SpeechTopic.PROGRESS,
             '%': SpeechTopic.PROGRESS,
+            # v3.0: Data Flywheel and Learning patterns
+            'flywheel': SpeechTopic.FLYWHEEL,
+            'self-improv': SpeechTopic.FLYWHEEL,
+            'data collect': SpeechTopic.FLYWHEEL,
+            'experience': SpeechTopic.FLYWHEEL,
+            'training': SpeechTopic.TRAINING,
+            'fine-tun': SpeechTopic.TRAINING,
+            'model learn': SpeechTopic.TRAINING,
+            'neural': SpeechTopic.TRAINING,
+            'learning goal': SpeechTopic.LEARNING,
+            'discover': SpeechTopic.LEARNING,
+            'study': SpeechTopic.LEARNING,
+            'knowledge': SpeechTopic.LEARNING,
+            'scraping': SpeechTopic.SCRAPING,
+            'web data': SpeechTopic.SCRAPING,
+            'scout': SpeechTopic.SCRAPING,
+            'crawl': SpeechTopic.SCRAPING,
+            'deploy model': SpeechTopic.MODEL_DEPLOY,
+            'gguf': SpeechTopic.MODEL_DEPLOY,
+            'quantiz': SpeechTopic.MODEL_DEPLOY,
+            'jarvis-prime': SpeechTopic.INTELLIGENCE,
+            'tier-0': SpeechTopic.INTELLIGENCE,
+            'intelligent': SpeechTopic.INTELLIGENCE,
         }
 
         logger.info(
@@ -960,3 +995,230 @@ async def speak_startup(
 async def speak_critical(text: str, source: VoiceSource = VoiceSource.SYSTEM) -> bool:
     """Speak critical message (interrupts current)."""
     return await speak(text, VoicePriority.CRITICAL, source, wait=True)
+
+
+# =============================================================================
+# v3.0: Data Flywheel and Learning System Voice Functions
+# =============================================================================
+
+async def speak_flywheel(
+    text: str,
+    priority: VoicePriority = VoicePriority.LOW,
+    wait: bool = False,
+) -> bool:
+    """Speak flywheel-related announcements."""
+    return await speak(text, priority, VoiceSource.FLYWHEEL, wait, topic=SpeechTopic.FLYWHEEL)
+
+
+async def speak_training(
+    text: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    wait: bool = False,
+) -> bool:
+    """Speak training-related announcements."""
+    return await speak(text, priority, VoiceSource.TRAINING, wait, topic=SpeechTopic.TRAINING)
+
+
+async def speak_learning(
+    text: str,
+    priority: VoicePriority = VoicePriority.LOW,
+    wait: bool = False,
+) -> bool:
+    """Speak learning goals announcements."""
+    return await speak(text, priority, VoiceSource.LEARNING, wait, topic=SpeechTopic.LEARNING)
+
+
+async def speak_jarvis_prime(
+    text: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    wait: bool = False,
+) -> bool:
+    """Speak JARVIS-Prime intelligent responses."""
+    return await speak(text, priority, VoiceSource.JARVIS_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
+
+
+async def speak_intelligent(
+    context: str,
+    event_type: str,
+    fallback_message: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    wait: bool = False,
+) -> bool:
+    """
+    v3.0: Generate and speak an intelligent, context-aware message using JARVIS-Prime.
+
+    Args:
+        context: Rich context about the current situation
+        event_type: Type of event (startup, flywheel, training, etc.)
+        fallback_message: Message to use if JARVIS-Prime is unavailable
+        priority: Voice priority level
+        wait: Whether to wait for speech completion
+
+    Returns:
+        True if spoken, False if skipped
+    """
+    message = fallback_message
+
+    try:
+        # Try to generate intelligent message with JARVIS-Prime
+        from core.jarvis_prime_client import get_jarvis_prime_client
+
+        prime_client = get_jarvis_prime_client()
+
+        # Build prompt for intelligent narration
+        prompt = f"""You are JARVIS, an advanced AI assistant. Generate a single, natural sentence (8-15 words) for voice narration.
+
+Event: {event_type}
+Context: {context}
+
+Guidelines:
+- Be conversational and natural
+- Sound engaged and intelligent
+- Use "Sir" occasionally (15% of time)
+- Match urgency to the event type
+- Be informative but concise
+
+Generate ONE natural sentence JARVIS would speak:"""
+
+        response = await prime_client.complete(
+            prompt=prompt,
+            max_tokens=50,
+            temperature=0.8,
+        )
+
+        if response.success and response.content:
+            # Clean up the response
+            generated = response.content.strip().strip('"\'')
+            if generated and len(generated) > 5:
+                message = generated
+                logger.debug(f"🧠 JARVIS-Prime generated: {message}")
+
+    except ImportError:
+        logger.debug("JARVIS-Prime client not available, using fallback")
+    except Exception as e:
+        logger.debug(f"JARVIS-Prime generation failed: {e}, using fallback")
+
+    return await speak(message, priority, VoiceSource.JARVIS_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
+
+
+# =============================================================================
+# v3.0: Flywheel Event Announcer
+# =============================================================================
+
+class FlywheelEventAnnouncer:
+    """
+    v3.0: Intelligent announcer for Data Flywheel events.
+
+    Provides context-aware voice announcements for:
+    - Data collection events
+    - Training progress
+    - Learning goal discoveries
+    - Model deployment
+    - Self-improvement milestones
+    """
+
+    def __init__(self):
+        self._orchestrator = get_voice_orchestrator()
+        self._last_flywheel_announce: float = 0
+        self._flywheel_cooldown: float = 60.0  # 1 minute between flywheel announcements
+        self._experience_count: int = 0
+        self._training_announced: bool = False
+
+    async def announce_experience_collected(self, count: int, total: int) -> bool:
+        """Announce when new experiences are collected."""
+        # Only announce on significant milestones
+        milestones = [10, 25, 50, 100, 250, 500, 1000]
+
+        for milestone in milestones:
+            if self._experience_count < milestone <= total:
+                self._experience_count = total
+                message = f"Collected {total} experiences for self-improvement."
+                return await speak_flywheel(message, VoicePriority.LOW)
+
+        self._experience_count = total
+        return False
+
+    async def announce_training_started(self, topic: str, experience_count: int) -> bool:
+        """Announce when training begins."""
+        if self._training_announced:
+            return False
+
+        self._training_announced = True
+        message = f"Beginning self-improvement training on {topic} with {experience_count} experiences."
+        return await speak_training(message, VoicePriority.MEDIUM)
+
+    async def announce_training_complete(self, topic: str, improvement: float) -> bool:
+        """Announce when training completes."""
+        self._training_announced = False
+
+        if improvement > 0:
+            message = f"Training complete. Improved understanding of {topic} by {improvement:.1f} percent."
+        else:
+            message = f"Training on {topic} complete. Knowledge consolidated."
+
+        return await speak_training(message, VoicePriority.HIGH)
+
+    async def announce_learning_goal_discovered(self, topic: str, reason: str) -> bool:
+        """Announce when a new learning goal is discovered."""
+        # Use intelligent generation for natural variety
+        context = f"Discovered new learning goal: {topic}. Reason: {reason}"
+        fallback = f"I've identified a new area to study: {topic}."
+
+        return await speak_intelligent(
+            context=context,
+            event_type="learning_discovery",
+            fallback_message=fallback,
+            priority=VoicePriority.LOW,
+        )
+
+    async def announce_model_deployed(self, model_name: str, version: str) -> bool:
+        """Announce when a new model is deployed."""
+        message = f"New model deployed: {model_name} version {version}. I'm now smarter."
+        return await speak_training(message, VoicePriority.HIGH, wait=True)
+
+    async def announce_scraping_progress(self, urls_scraped: int, total_urls: int) -> bool:
+        """Announce web scraping progress."""
+        # Only announce at 25%, 50%, 75%, 100%
+        if total_urls == 0:
+            return False
+
+        progress = (urls_scraped / total_urls) * 100
+
+        if progress >= 100:
+            message = f"Web research complete. Gathered data from {total_urls} sources."
+            return await speak_flywheel(message, VoicePriority.MEDIUM)
+        elif progress >= 75 and not hasattr(self, '_scraped_75'):
+            self._scraped_75 = True
+            message = "Three quarters through web research."
+            return await speak_flywheel(message, VoicePriority.LOW)
+        elif progress >= 50 and not hasattr(self, '_scraped_50'):
+            self._scraped_50 = True
+            message = "Halfway through web research."
+            return await speak_flywheel(message, VoicePriority.LOW)
+
+        return False
+
+    async def announce_flywheel_cycle_complete(self, experiences: int, topics: int) -> bool:
+        """Announce when a full flywheel cycle completes."""
+        context = f"Completed flywheel cycle: {experiences} experiences, {topics} topics improved"
+        fallback = f"Self-improvement cycle complete. Learned from {experiences} experiences across {topics} topics."
+
+        return await speak_intelligent(
+            context=context,
+            event_type="flywheel_complete",
+            fallback_message=fallback,
+            priority=VoicePriority.MEDIUM,
+            wait=True,
+        )
+
+
+# Singleton flywheel announcer
+_flywheel_announcer: Optional[FlywheelEventAnnouncer] = None
+
+
+def get_flywheel_announcer() -> FlywheelEventAnnouncer:
+    """Get the singleton flywheel event announcer."""
+    global _flywheel_announcer
+    if _flywheel_announcer is None:
+        _flywheel_announcer = FlywheelEventAnnouncer()
+    return _flywheel_announcer

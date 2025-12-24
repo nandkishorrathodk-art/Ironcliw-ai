@@ -4456,6 +4456,122 @@ async def autonomous_status():
     }
 
 
+# =============================================================================
+# DATA FLYWHEEL API - Self-Improving Learning Loop (v8.0)
+# =============================================================================
+
+@app.get("/flywheel/status")
+async def flywheel_status():
+    """Get Data Flywheel status for self-improving learning"""
+    try:
+        from autonomy.unified_data_flywheel import get_data_flywheel, get_flywheel_status
+        status = await get_flywheel_status()
+        return {
+            "enabled": True,
+            **status,
+        }
+    except ImportError:
+        return {"enabled": False, "message": "Data Flywheel not available"}
+    except Exception as e:
+        return {"enabled": False, "error": str(e)}
+
+
+@app.post("/flywheel/trigger")
+async def flywheel_trigger(
+    include_web_scraping: bool = True,
+    include_training: bool = True,
+    force: bool = False,
+):
+    """Manually trigger a Data Flywheel cycle"""
+    try:
+        from autonomy.unified_data_flywheel import get_data_flywheel
+        flywheel = get_data_flywheel()
+
+        if flywheel.is_running:
+            return {"success": False, "error": "Flywheel already running"}
+
+        # Run in background task
+        import asyncio
+        asyncio.create_task(
+            flywheel.run_full_cycle(
+                include_web_scraping=include_web_scraping,
+                include_training=include_training,
+                force=force,
+            )
+        )
+
+        return {
+            "success": True,
+            "message": "Flywheel cycle started",
+            "options": {
+                "include_web_scraping": include_web_scraping,
+                "include_training": include_training,
+                "force": force,
+            }
+        }
+    except ImportError:
+        return {"success": False, "error": "Data Flywheel not available"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/flywheel/learning-goals")
+async def flywheel_learning_goals():
+    """Get current learning goals for JARVIS"""
+    try:
+        from pathlib import Path
+        import json
+
+        goals_file = Path(__file__).parent.parent / "data" / "learning_goals.json"
+        if goals_file.exists():
+            data = json.loads(goals_file.read_text())
+            return {
+                "enabled": True,
+                "goals": data.get("topics", []),
+                "count": len(data.get("topics", [])),
+            }
+        return {"enabled": True, "goals": [], "count": 0}
+    except Exception as e:
+        return {"enabled": False, "error": str(e)}
+
+
+@app.post("/flywheel/learning-goals/add")
+async def flywheel_add_learning_goal(topic: str, priority: int = 5, urls: list = None):
+    """Add a new learning goal for JARVIS to study"""
+    try:
+        from pathlib import Path
+        import json
+
+        goals_file = Path(__file__).parent.parent / "data" / "learning_goals.json"
+        goals_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load existing goals
+        if goals_file.exists():
+            data = json.loads(goals_file.read_text())
+        else:
+            data = {"topics": []}
+
+        # Check for duplicates
+        for g in data["topics"]:
+            if g["topic"].lower() == topic.lower():
+                return {"success": False, "error": "Topic already exists"}
+
+        # Add new goal
+        data["topics"].append({
+            "topic": topic,
+            "priority": priority,
+            "source": "user",
+            "urls": urls or [],
+        })
+
+        # Save
+        goals_file.write_text(json.dumps(data, indent=2))
+
+        return {"success": True, "message": f"Added learning goal: {topic}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/components/status")
 async def component_status():
     """Get dynamic component manager status with performance metrics"""

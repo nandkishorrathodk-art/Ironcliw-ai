@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS Loading Server v4.0 - Zero-Touch Edition
-================================================
+JARVIS Loading Server v5.0 - Flywheel Edition
+==============================================
 
 Serves the loading page independently from frontend/backend during restart.
 Provides real-time progress updates via WebSocket and HTTP polling.
@@ -25,6 +25,16 @@ v4.0 Zero-Touch Features:
 - Validation progress and results display
 - Supervisor event integration
 - AGI OS status relay
+
+v5.0 Flywheel Edition Features:
+- Data Flywheel status tracking (collecting, training, complete)
+- Learning Goals progress and discovery
+- JARVIS-Prime tier-0 brain status (local/cloud/gemini)
+- Reactor-Core model training pipeline status
+- Intelligent message generation via JARVIS-Prime
+- Cross-repo integration (JARVIS-AI-Agent, JARVIS-Prime, reactor-core)
+- Memory-aware routing status display
+- Self-improvement metrics and analytics
 
 Port: 3001 (separate from frontend:3000 and backend:8010)
 """
@@ -415,6 +425,233 @@ class TwoTierSecurityState:
             self.message = "Initializing Two-Tier Security..."
 
 
+# =============================================================================
+# v5.0: Data Flywheel State
+# =============================================================================
+
+@dataclass
+class FlywheelState:
+    """
+    v5.0: Data Flywheel (self-improving learning loop) state tracking.
+
+    Tracks:
+    - Experience collection progress
+    - Training status and progress
+    - Web scraping progress
+    - Model deployment status
+    """
+    active: bool = False
+    state: str = "idle"  # idle, collecting, scraping, training, deploying, complete
+    message: str = ""
+
+    # Collection metrics
+    experiences_collected: int = 0
+    experiences_target: int = 100
+    collection_progress: float = 0.0
+
+    # Scraping metrics
+    urls_scraped: int = 0
+    total_urls: int = 0
+    scraping_progress: float = 0.0
+
+    # Training metrics
+    training_active: bool = False
+    training_progress: float = 0.0
+    training_topic: str = ""
+    training_epochs: int = 0
+    training_loss: float = 0.0
+
+    # Model deployment
+    model_deployed: bool = False
+    model_name: str = ""
+    model_version: str = ""
+
+    # Cycle tracking
+    cycles_completed: int = 0
+    last_cycle_time: Optional[datetime] = None
+    next_scheduled_time: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "state": self.state,
+            "message": self.message,
+            "experiencesCollected": self.experiences_collected,
+            "experiencesTarget": self.experiences_target,
+            "collectionProgress": self.collection_progress,
+            "urlsScraped": self.urls_scraped,
+            "totalUrls": self.total_urls,
+            "scrapingProgress": self.scraping_progress,
+            "trainingActive": self.training_active,
+            "trainingProgress": self.training_progress,
+            "trainingTopic": self.training_topic,
+            "trainingEpochs": self.training_epochs,
+            "trainingLoss": self.training_loss,
+            "modelDeployed": self.model_deployed,
+            "modelName": self.model_name,
+            "modelVersion": self.model_version,
+            "cyclesCompleted": self.cycles_completed,
+            "lastCycleTime": self.last_cycle_time.isoformat() if self.last_cycle_time else None,
+            "nextScheduledTime": self.next_scheduled_time.isoformat() if self.next_scheduled_time else None,
+        }
+
+
+@dataclass
+class LearningGoalsState:
+    """
+    v5.0: Learning Goals tracking state.
+
+    Tracks discovered learning goals and their progress.
+    """
+    active: bool = False
+    total_goals: int = 0
+    completed_goals: int = 0
+    in_progress_goals: int = 0
+
+    # Current focus
+    current_topic: str = ""
+    current_progress: float = 0.0
+
+    # Recent discoveries
+    recent_discoveries: List[str] = field(default_factory=list)
+
+    # Goal priorities
+    high_priority_count: int = 0
+    medium_priority_count: int = 0
+    low_priority_count: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "totalGoals": self.total_goals,
+            "completedGoals": self.completed_goals,
+            "inProgressGoals": self.in_progress_goals,
+            "currentTopic": self.current_topic,
+            "currentProgress": self.current_progress,
+            "recentDiscoveries": self.recent_discoveries[-5:],  # Last 5
+            "highPriorityCount": self.high_priority_count,
+            "mediumPriorityCount": self.medium_priority_count,
+            "lowPriorityCount": self.low_priority_count,
+        }
+
+
+@dataclass
+class JARVISPrimeState:
+    """
+    v5.0: JARVIS-Prime tier-0 brain state tracking.
+
+    Tracks the status of the intelligent core:
+    - Current tier (local, cloud_run, gemini_api)
+    - Memory usage and routing decisions
+    - Response latency and success rate
+    """
+    active: bool = False
+    current_tier: str = "unknown"  # local, cloud_run, gemini_api, offline
+    message: str = ""
+
+    # Memory-aware routing
+    memory_usage_gb: float = 0.0
+    memory_threshold_gb: float = 8.0
+    routing_mode: str = "auto"  # auto, force_local, force_cloud
+
+    # Health metrics
+    is_healthy: bool = False
+    last_health_check: Optional[datetime] = None
+    consecutive_failures: int = 0
+
+    # Performance metrics
+    avg_latency_ms: float = 0.0
+    success_rate: float = 0.0
+    total_requests: int = 0
+
+    # Model info
+    local_model_loaded: bool = False
+    local_model_name: str = ""
+    cloud_endpoint: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "currentTier": self.current_tier,
+            "message": self.message,
+            "memoryUsageGb": self.memory_usage_gb,
+            "memoryThresholdGb": self.memory_threshold_gb,
+            "routingMode": self.routing_mode,
+            "isHealthy": self.is_healthy,
+            "lastHealthCheck": self.last_health_check.isoformat() if self.last_health_check else None,
+            "consecutiveFailures": self.consecutive_failures,
+            "avgLatencyMs": self.avg_latency_ms,
+            "successRate": self.success_rate,
+            "totalRequests": self.total_requests,
+            "localModelLoaded": self.local_model_loaded,
+            "localModelName": self.local_model_name,
+            "cloudEndpoint": self.cloud_endpoint,
+        }
+
+
+@dataclass
+class ReactorCoreState:
+    """
+    v5.0: Reactor-Core model training pipeline state.
+
+    Tracks:
+    - File watcher status
+    - Training pipeline status
+    - GGUF export progress
+    - GCS upload status
+    """
+    active: bool = False
+    state: str = "idle"  # idle, watching, training, exporting, uploading, complete
+    message: str = ""
+
+    # File watcher
+    watcher_active: bool = False
+    watched_directory: str = ""
+    files_detected: int = 0
+
+    # Training pipeline
+    training_active: bool = False
+    training_progress: float = 0.0
+    current_epoch: int = 0
+    total_epochs: int = 0
+
+    # GGUF export
+    exporting: bool = False
+    export_progress: float = 0.0
+    export_format: str = ""  # Q4_K_M, Q5_K_M, etc.
+
+    # GCS upload
+    uploading: bool = False
+    upload_progress: float = 0.0
+    gcs_bucket: str = ""
+
+    # Completion
+    last_model_path: str = ""
+    last_completion_time: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "state": self.state,
+            "message": self.message,
+            "watcherActive": self.watcher_active,
+            "watchedDirectory": self.watched_directory,
+            "filesDetected": self.files_detected,
+            "trainingActive": self.training_active,
+            "trainingProgress": self.training_progress,
+            "currentEpoch": self.current_epoch,
+            "totalEpochs": self.total_epochs,
+            "exporting": self.exporting,
+            "exportProgress": self.export_progress,
+            "exportFormat": self.export_format,
+            "uploading": self.uploading,
+            "uploadProgress": self.upload_progress,
+            "gcsBucket": self.gcs_bucket,
+            "lastModelPath": self.last_model_path,
+            "lastCompletionTime": self.last_completion_time.isoformat() if self.last_completion_time else None,
+        }
+
+
 @dataclass
 class ProgressState:
     """
@@ -455,6 +692,12 @@ class ProgressState:
 
     # v5.0: Two-Tier Agentic Security
     two_tier: TwoTierSecurityState = field(default_factory=TwoTierSecurityState)
+
+    # v5.0: Data Flywheel and Learning
+    flywheel: FlywheelState = field(default_factory=FlywheelState)
+    learning_goals: LearningGoalsState = field(default_factory=LearningGoalsState)
+    jarvis_prime: JARVISPrimeState = field(default_factory=JARVISPrimeState)
+    reactor_core: ReactorCoreState = field(default_factory=ReactorCoreState)
 
     # v4.0: Supervisor integration
     supervisor_connected: bool = False
@@ -553,6 +796,59 @@ class ProgressState:
             if 'agi_os_enabled' in metadata:
                 self.agi_os_enabled = metadata['agi_os_enabled']
 
+            # v5.0: Flywheel state processing
+            if 'flywheel' in metadata:
+                fw = metadata['flywheel']
+                self.flywheel.active = fw.get('active', False)
+                self.flywheel.state = fw.get('state', self.flywheel.state)
+                self.flywheel.message = fw.get('message', '')
+                self.flywheel.experiences_collected = fw.get('experiences_collected', 0)
+                self.flywheel.experiences_target = fw.get('experiences_target', 100)
+                self.flywheel.collection_progress = fw.get('collection_progress', 0.0)
+                self.flywheel.urls_scraped = fw.get('urls_scraped', 0)
+                self.flywheel.total_urls = fw.get('total_urls', 0)
+                self.flywheel.scraping_progress = fw.get('scraping_progress', 0.0)
+                self.flywheel.training_active = fw.get('training_active', False)
+                self.flywheel.training_progress = fw.get('training_progress', 0.0)
+                self.flywheel.training_topic = fw.get('training_topic', '')
+                self.flywheel.cycles_completed = fw.get('cycles_completed', 0)
+
+            # v5.0: Learning Goals state processing
+            if 'learning_goals' in metadata:
+                lg = metadata['learning_goals']
+                self.learning_goals.active = lg.get('active', False)
+                self.learning_goals.total_goals = lg.get('total_goals', 0)
+                self.learning_goals.completed_goals = lg.get('completed_goals', 0)
+                self.learning_goals.in_progress_goals = lg.get('in_progress_goals', 0)
+                self.learning_goals.current_topic = lg.get('current_topic', '')
+                self.learning_goals.current_progress = lg.get('current_progress', 0.0)
+                if lg.get('recent_discoveries'):
+                    self.learning_goals.recent_discoveries = lg['recent_discoveries']
+
+            # v5.0: JARVIS-Prime state processing
+            if 'jarvis_prime' in metadata:
+                jp = metadata['jarvis_prime']
+                self.jarvis_prime.active = jp.get('active', False)
+                self.jarvis_prime.current_tier = jp.get('current_tier', 'unknown')
+                self.jarvis_prime.message = jp.get('message', '')
+                self.jarvis_prime.memory_usage_gb = jp.get('memory_usage_gb', 0.0)
+                self.jarvis_prime.is_healthy = jp.get('is_healthy', False)
+                self.jarvis_prime.avg_latency_ms = jp.get('avg_latency_ms', 0.0)
+                self.jarvis_prime.success_rate = jp.get('success_rate', 0.0)
+                self.jarvis_prime.local_model_loaded = jp.get('local_model_loaded', False)
+
+            # v5.0: Reactor-Core state processing
+            if 'reactor_core' in metadata:
+                rc = metadata['reactor_core']
+                self.reactor_core.active = rc.get('active', False)
+                self.reactor_core.state = rc.get('state', 'idle')
+                self.reactor_core.message = rc.get('message', '')
+                self.reactor_core.watcher_active = rc.get('watcher_active', False)
+                self.reactor_core.training_active = rc.get('training_active', False)
+                self.reactor_core.training_progress = rc.get('training_progress', 0.0)
+                self.reactor_core.exporting = rc.get('exporting', False)
+                self.reactor_core.uploading = rc.get('uploading', False)
+
         # Track history
         self.history.append({
             "stage": stage,
@@ -595,6 +891,11 @@ class ProgressState:
             "dms": self.dms.to_dict(),
             # v5.0: Two-Tier Agentic Security
             "two_tier": self.two_tier.to_dict(),
+            # v5.0: Data Flywheel and Learning
+            "flywheel": self.flywheel.to_dict(),
+            "learning_goals": self.learning_goals.to_dict(),
+            "jarvis_prime": self.jarvis_prime.to_dict(),
+            "reactor_core": self.reactor_core.to_dict(),
             "supervisor_connected": self.supervisor_connected,
             "agi_os_enabled": self.agi_os_enabled,
         }
@@ -938,11 +1239,11 @@ async def serve_static_file(request: web.Request) -> web.Response:
 async def health_check(request: web.Request) -> web.Response:
     """
     Lightweight health check endpoint.
-    
+
     This endpoint is called frequently by the supervisor to check if the
     loading server is running. It should return IMMEDIATELY without doing
     any heavy work like checking backend/frontend status.
-    
+
     For detailed system status, use /api/status instead.
     """
     # Fast response - just confirm the server is running
@@ -951,15 +1252,18 @@ async def health_check(request: web.Request) -> web.Response:
         "status": "ok",
         "message": "Loading server running",
         "service": "jarvis_loading_server",
-        "version": "4.0.0",
+        "version": "5.0.0",
         "uptime_seconds": round(uptime, 2),
+        # v5.0: Include flywheel status summary
+        "flywheel_active": progress_state.flywheel.active,
+        "jarvis_prime_tier": progress_state.jarvis_prime.current_tier,
     })
 
 
 async def detailed_status(request: web.Request) -> web.Response:
     """
     Detailed status endpoint with full system health check.
-    
+
     This does the heavy work of checking backend and frontend.
     Use /health for quick liveness checks.
     """
@@ -969,14 +1273,19 @@ async def detailed_status(request: web.Request) -> web.Response:
         "status": "ok" if system_ready else "degraded",
         "message": reason,
         "service": "jarvis_loading_server",
-        "version": "4.0.0",
+        "version": "5.0.0",
         "progress": progress_state.progress,
         "backend_ready": progress_state.backend_ready,
         "frontend_ready": progress_state.frontend_ready,
         "is_ready": progress_state.is_ready,
         "components_ready": progress_state.components_ready,
         "total_components": progress_state.total_components,
-        "metrics": metrics.to_dict()
+        "metrics": metrics.to_dict(),
+        # v5.0: Include flywheel and JARVIS-Prime status
+        "flywheel": progress_state.flywheel.to_dict(),
+        "learning_goals": progress_state.learning_goals.to_dict(),
+        "jarvis_prime": progress_state.jarvis_prime.to_dict(),
+        "reactor_core": progress_state.reactor_core.to_dict(),
     })
 
 
@@ -1378,6 +1687,352 @@ async def update_two_tier_status(request: web.Request) -> web.Response:
         return web.json_response({"status": "error", "message": str(e)}, status=500)
 
 
+# =============================================================================
+# v5.0: Data Flywheel Endpoints
+# =============================================================================
+
+async def get_flywheel_status(request: web.Request) -> web.Response:
+    """
+    v5.0: Get Data Flywheel status.
+
+    Returns the current state of the self-improving learning loop including:
+    - Experience collection progress
+    - Web scraping status
+    - Training progress
+    - Model deployment status
+    """
+    return web.json_response({
+        "flywheel": progress_state.flywheel.to_dict(),
+        "learning_goals": progress_state.learning_goals.to_dict(),
+    })
+
+
+async def update_flywheel_status(request: web.Request) -> web.Response:
+    """
+    v5.0: Update Data Flywheel status from supervisor.
+
+    Event types:
+    - flywheel_collecting: Collecting experiences
+    - flywheel_scraping: Web scraping in progress
+    - flywheel_training: Training in progress
+    - flywheel_deploying: Deploying new model
+    - flywheel_complete: Cycle complete
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        # Update flywheel state based on event
+        if event_type == 'flywheel_init':
+            progress_state.flywheel.active = True
+            progress_state.flywheel.state = 'collecting'
+            progress_state.flywheel.message = data.get('message', 'Initializing flywheel')
+
+        elif event_type == 'flywheel_collecting':
+            progress_state.flywheel.state = 'collecting'
+            progress_state.flywheel.experiences_collected = data.get('experiences', 0)
+            progress_state.flywheel.experiences_target = data.get('target', 100)
+            progress_state.flywheel.collection_progress = data.get('progress', 0.0)
+            progress_state.flywheel.message = data.get('message', 'Collecting experiences')
+
+        elif event_type == 'flywheel_scraping':
+            progress_state.flywheel.state = 'scraping'
+            progress_state.flywheel.urls_scraped = data.get('urls_scraped', 0)
+            progress_state.flywheel.total_urls = data.get('total_urls', 0)
+            progress_state.flywheel.scraping_progress = data.get('progress', 0.0)
+            progress_state.flywheel.message = data.get('message', 'Web scraping in progress')
+
+        elif event_type == 'flywheel_training':
+            progress_state.flywheel.state = 'training'
+            progress_state.flywheel.training_active = True
+            progress_state.flywheel.training_progress = data.get('progress', 0.0)
+            progress_state.flywheel.training_topic = data.get('topic', '')
+            progress_state.flywheel.training_epochs = data.get('epochs', 0)
+            progress_state.flywheel.training_loss = data.get('loss', 0.0)
+            progress_state.flywheel.message = data.get('message', 'Training in progress')
+
+        elif event_type == 'flywheel_deploying':
+            progress_state.flywheel.state = 'deploying'
+            progress_state.flywheel.training_active = False
+            progress_state.flywheel.model_name = data.get('model_name', '')
+            progress_state.flywheel.model_version = data.get('model_version', '')
+            progress_state.flywheel.message = data.get('message', 'Deploying model')
+
+        elif event_type == 'flywheel_complete':
+            progress_state.flywheel.state = 'complete'
+            progress_state.flywheel.active = False
+            progress_state.flywheel.training_active = False
+            progress_state.flywheel.model_deployed = True
+            progress_state.flywheel.cycles_completed += 1
+            progress_state.flywheel.last_cycle_time = datetime.now()
+            progress_state.flywheel.message = data.get('message', 'Flywheel cycle complete')
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "flywheel": progress_state.flywheel.to_dict(),
+        })
+
+        logger.info(f"[Flywheel] {event_type}: {progress_state.flywheel.message}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "flywheel": progress_state.flywheel.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Flywheel] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def get_learning_goals_status(request: web.Request) -> web.Response:
+    """v5.0: Get Learning Goals status."""
+    return web.json_response({
+        "learning_goals": progress_state.learning_goals.to_dict(),
+    })
+
+
+async def update_learning_goals_status(request: web.Request) -> web.Response:
+    """
+    v5.0: Update Learning Goals status from supervisor.
+
+    Event types:
+    - learning_goal_discovered: New goal discovered
+    - learning_goal_started: Started working on a goal
+    - learning_goal_completed: Completed a goal
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        progress_state.learning_goals.active = True
+
+        if event_type == 'learning_goal_discovered':
+            topic = data.get('topic', 'unknown')
+            if topic not in progress_state.learning_goals.recent_discoveries:
+                progress_state.learning_goals.recent_discoveries.append(topic)
+            progress_state.learning_goals.total_goals = data.get('total_goals', progress_state.learning_goals.total_goals + 1)
+
+        elif event_type == 'learning_goal_started':
+            progress_state.learning_goals.current_topic = data.get('topic', '')
+            progress_state.learning_goals.current_progress = 0.0
+            progress_state.learning_goals.in_progress_goals = data.get('in_progress', 1)
+
+        elif event_type == 'learning_goal_progress':
+            progress_state.learning_goals.current_progress = data.get('progress', 0.0)
+
+        elif event_type == 'learning_goal_completed':
+            progress_state.learning_goals.completed_goals += 1
+            progress_state.learning_goals.in_progress_goals = max(0, progress_state.learning_goals.in_progress_goals - 1)
+            progress_state.learning_goals.current_topic = ''
+            progress_state.learning_goals.current_progress = 0.0
+
+        # Update priority counts if provided
+        if 'high_priority' in data:
+            progress_state.learning_goals.high_priority_count = data['high_priority']
+        if 'medium_priority' in data:
+            progress_state.learning_goals.medium_priority_count = data['medium_priority']
+        if 'low_priority' in data:
+            progress_state.learning_goals.low_priority_count = data['low_priority']
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "learning_goals": progress_state.learning_goals.to_dict(),
+        })
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "learning_goals": progress_state.learning_goals.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Learning Goals] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def get_jarvis_prime_status(request: web.Request) -> web.Response:
+    """v5.0: Get JARVIS-Prime tier-0 brain status."""
+    return web.json_response({
+        "jarvis_prime": progress_state.jarvis_prime.to_dict(),
+    })
+
+
+async def update_jarvis_prime_status(request: web.Request) -> web.Response:
+    """
+    v5.0: Update JARVIS-Prime status from supervisor.
+
+    Event types:
+    - jarvis_prime_init: Initializing JARVIS-Prime
+    - jarvis_prime_local: Using local model
+    - jarvis_prime_cloud: Using Cloud Run
+    - jarvis_prime_gemini: Using Gemini API fallback
+    - jarvis_prime_offline: All backends offline
+    - jarvis_prime_health: Health check update
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        progress_state.jarvis_prime.active = True
+
+        if event_type == 'jarvis_prime_init':
+            progress_state.jarvis_prime.message = 'Initializing JARVIS-Prime'
+            progress_state.jarvis_prime.current_tier = 'initializing'
+
+        elif event_type == 'jarvis_prime_local':
+            progress_state.jarvis_prime.current_tier = 'local'
+            progress_state.jarvis_prime.local_model_loaded = True
+            progress_state.jarvis_prime.local_model_name = data.get('model_name', '')
+            progress_state.jarvis_prime.message = data.get('message', 'Using local model')
+            progress_state.jarvis_prime.is_healthy = True
+
+        elif event_type == 'jarvis_prime_cloud':
+            progress_state.jarvis_prime.current_tier = 'cloud_run'
+            progress_state.jarvis_prime.cloud_endpoint = data.get('endpoint', '')
+            progress_state.jarvis_prime.message = data.get('message', 'Using Cloud Run')
+            progress_state.jarvis_prime.is_healthy = True
+
+        elif event_type == 'jarvis_prime_gemini':
+            progress_state.jarvis_prime.current_tier = 'gemini_api'
+            progress_state.jarvis_prime.message = data.get('message', 'Using Gemini API fallback')
+            progress_state.jarvis_prime.is_healthy = True
+
+        elif event_type == 'jarvis_prime_offline':
+            progress_state.jarvis_prime.current_tier = 'offline'
+            progress_state.jarvis_prime.is_healthy = False
+            progress_state.jarvis_prime.message = data.get('message', 'All backends offline')
+
+        elif event_type == 'jarvis_prime_health':
+            progress_state.jarvis_prime.is_healthy = data.get('healthy', False)
+            progress_state.jarvis_prime.last_health_check = datetime.now()
+            progress_state.jarvis_prime.consecutive_failures = data.get('failures', 0)
+
+        # Update metrics if provided
+        if 'memory_usage_gb' in data:
+            progress_state.jarvis_prime.memory_usage_gb = data['memory_usage_gb']
+        if 'avg_latency_ms' in data:
+            progress_state.jarvis_prime.avg_latency_ms = data['avg_latency_ms']
+        if 'success_rate' in data:
+            progress_state.jarvis_prime.success_rate = data['success_rate']
+        if 'total_requests' in data:
+            progress_state.jarvis_prime.total_requests = data['total_requests']
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "jarvis_prime": progress_state.jarvis_prime.to_dict(),
+        })
+
+        logger.info(f"[JARVIS-Prime] {event_type}: {progress_state.jarvis_prime.message}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "jarvis_prime": progress_state.jarvis_prime.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[JARVIS-Prime] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def get_reactor_core_status(request: web.Request) -> web.Response:
+    """v5.0: Get Reactor-Core training pipeline status."""
+    return web.json_response({
+        "reactor_core": progress_state.reactor_core.to_dict(),
+    })
+
+
+async def update_reactor_core_status(request: web.Request) -> web.Response:
+    """
+    v5.0: Update Reactor-Core status from supervisor.
+
+    Event types:
+    - reactor_core_init: Initializing Reactor-Core
+    - reactor_core_watching: File watcher active
+    - reactor_core_training: Training in progress
+    - reactor_core_exporting: GGUF export in progress
+    - reactor_core_uploading: GCS upload in progress
+    - reactor_core_complete: Pipeline complete
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        progress_state.reactor_core.active = True
+
+        if event_type == 'reactor_core_init':
+            progress_state.reactor_core.state = 'idle'
+            progress_state.reactor_core.message = 'Initializing Reactor-Core'
+
+        elif event_type == 'reactor_core_watching':
+            progress_state.reactor_core.state = 'watching'
+            progress_state.reactor_core.watcher_active = True
+            progress_state.reactor_core.watched_directory = data.get('directory', '')
+            progress_state.reactor_core.files_detected = data.get('files', 0)
+            progress_state.reactor_core.message = data.get('message', 'Watching for model files')
+
+        elif event_type == 'reactor_core_training':
+            progress_state.reactor_core.state = 'training'
+            progress_state.reactor_core.training_active = True
+            progress_state.reactor_core.training_progress = data.get('progress', 0.0)
+            progress_state.reactor_core.current_epoch = data.get('epoch', 0)
+            progress_state.reactor_core.total_epochs = data.get('total_epochs', 0)
+            progress_state.reactor_core.message = data.get('message', 'Training in progress')
+
+        elif event_type == 'reactor_core_exporting':
+            progress_state.reactor_core.state = 'exporting'
+            progress_state.reactor_core.training_active = False
+            progress_state.reactor_core.exporting = True
+            progress_state.reactor_core.export_progress = data.get('progress', 0.0)
+            progress_state.reactor_core.export_format = data.get('format', 'Q4_K_M')
+            progress_state.reactor_core.message = data.get('message', 'Exporting to GGUF')
+
+        elif event_type == 'reactor_core_uploading':
+            progress_state.reactor_core.state = 'uploading'
+            progress_state.reactor_core.exporting = False
+            progress_state.reactor_core.uploading = True
+            progress_state.reactor_core.upload_progress = data.get('progress', 0.0)
+            progress_state.reactor_core.gcs_bucket = data.get('bucket', '')
+            progress_state.reactor_core.message = data.get('message', 'Uploading to GCS')
+
+        elif event_type == 'reactor_core_complete':
+            progress_state.reactor_core.state = 'complete'
+            progress_state.reactor_core.uploading = False
+            progress_state.reactor_core.last_model_path = data.get('model_path', '')
+            progress_state.reactor_core.last_completion_time = datetime.now()
+            progress_state.reactor_core.message = data.get('message', 'Pipeline complete')
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "reactor_core": progress_state.reactor_core.to_dict(),
+        })
+
+        logger.info(f"[Reactor-Core] {event_type}: {progress_state.reactor_core.message}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "reactor_core": progress_state.reactor_core.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Reactor-Core] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
 async def supervisor_event_handler(request: web.Request) -> web.Response:
     """
     v4.0: Unified supervisor event handler.
@@ -1630,6 +2285,22 @@ def create_app() -> web.Application:
     app.router.add_get('/api/two-tier/status', get_two_tier_status)
     app.router.add_post('/api/two-tier/update', update_two_tier_status)
 
+    # v5.0: Data Flywheel endpoints
+    app.router.add_get('/api/flywheel/status', get_flywheel_status)
+    app.router.add_post('/api/flywheel/update', update_flywheel_status)
+
+    # v5.0: Learning Goals endpoints
+    app.router.add_get('/api/learning-goals/status', get_learning_goals_status)
+    app.router.add_post('/api/learning-goals/update', update_learning_goals_status)
+
+    # v5.0: JARVIS-Prime endpoints
+    app.router.add_get('/api/jarvis-prime/status', get_jarvis_prime_status)
+    app.router.add_post('/api/jarvis-prime/update', update_jarvis_prime_status)
+
+    # v5.0: Reactor-Core endpoints
+    app.router.add_get('/api/reactor-core/status', get_reactor_core_status)
+    app.router.add_post('/api/reactor-core/update', update_reactor_core_status)
+
     # CORS preflight
     app.router.add_route('OPTIONS', '/{path:.*}', handle_options)
 
@@ -1663,7 +2334,7 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     resolved_manager = path_resolver.resolve("loading-manager.js")
 
     logger.info(f"{'='*60}")
-    logger.info(f" JARVIS Loading Server v4.0 - Zero-Touch Edition")
+    logger.info(f" JARVIS Loading Server v5.0 - Flywheel Edition")
     logger.info(f"{'='*60}")
     logger.info(f" Server:      http://{host}:{port}")
     logger.info(f" WebSocket:   ws://{host}:{port}/ws/startup-progress")
@@ -1674,10 +2345,15 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     logger.info(f"   loading-manager.js: {'✓' if resolved_manager else '✗'} {resolved_manager or 'NOT FOUND'}")
     logger.info(f"   Search paths:      {len(path_resolver.search_paths)}")
     logger.info(f"{'='*60}")
+    logger.info(f" v5.0 Flywheel Endpoints:")
+    logger.info(f"   GET  /api/flywheel/status")
+    logger.info(f"   POST /api/flywheel/update")
+    logger.info(f"   GET  /api/learning-goals/status")
+    logger.info(f"   GET  /api/jarvis-prime/status")
+    logger.info(f"   GET  /api/reactor-core/status")
+    logger.info(f"{'='*60}")
     logger.info(f" v4.0 Zero-Touch Endpoints:")
     logger.info(f"   GET  /api/zero-touch/status")
-    logger.info(f"   POST /api/zero-touch/update")
-    logger.info(f"   POST /api/dms/update")
     logger.info(f"   POST /api/supervisor/event")
     logger.info(f"{'='*60}")
     logger.info(f" CORS:        Enabled for all origins")
@@ -2037,19 +2713,19 @@ class StartupProgressReporter:
     ) -> bool:
         """
         v4.0: Report generic supervisor event.
-        
+
         Args:
             event_type: Event type identifier
             **kwargs: Additional event data
         """
         if not self._enabled:
             return False
-        
+
         payload = {
             "type": event_type,
             **kwargs
         }
-        
+
         try:
             session = await self._get_session()
             if session:
@@ -2058,6 +2734,183 @@ class StartupProgressReporter:
                     return resp.status == 200
         except Exception as e:
             logger.debug(f"Supervisor event failed: {e}")
+        return False
+
+    # =========================================================================
+    # v5.0: Data Flywheel Reporting
+    # =========================================================================
+
+    async def flywheel_event(
+        self,
+        event_type: str,
+        message: str = "",
+        experiences: int = 0,
+        target: int = 100,
+        progress: float = 0.0,
+        topic: str = "",
+        **kwargs
+    ) -> bool:
+        """
+        v5.0: Report Data Flywheel event.
+
+        Args:
+            event_type: One of: flywheel_init, flywheel_collecting, flywheel_scraping,
+                       flywheel_training, flywheel_deploying, flywheel_complete
+            message: Human-readable status message
+            experiences: Number of experiences collected
+            target: Target number of experiences
+            progress: Progress percentage (0-100)
+            topic: Current training topic
+        """
+        if not self._enabled:
+            return False
+
+        payload = {
+            "event": event_type,
+            "message": message,
+            "experiences": experiences,
+            "target": target,
+            "progress": progress,
+            "topic": topic,
+            **kwargs
+        }
+
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/flywheel/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"Flywheel event failed: {e}")
+        return False
+
+    async def learning_goal_event(
+        self,
+        event_type: str,
+        topic: str = "",
+        progress: float = 0.0,
+        total_goals: int = 0,
+        **kwargs
+    ) -> bool:
+        """
+        v5.0: Report Learning Goal event.
+
+        Args:
+            event_type: One of: learning_goal_discovered, learning_goal_started,
+                       learning_goal_progress, learning_goal_completed
+            topic: Learning goal topic
+            progress: Progress percentage (0-100)
+            total_goals: Total number of goals
+        """
+        if not self._enabled:
+            return False
+
+        payload = {
+            "event": event_type,
+            "topic": topic,
+            "progress": progress,
+            "total_goals": total_goals,
+            **kwargs
+        }
+
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/learning-goals/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"Learning goal event failed: {e}")
+        return False
+
+    async def jarvis_prime_event(
+        self,
+        event_type: str,
+        message: str = "",
+        model_name: str = "",
+        endpoint: str = "",
+        memory_usage_gb: float = 0.0,
+        **kwargs
+    ) -> bool:
+        """
+        v5.0: Report JARVIS-Prime event.
+
+        Args:
+            event_type: One of: jarvis_prime_init, jarvis_prime_local,
+                       jarvis_prime_cloud, jarvis_prime_gemini,
+                       jarvis_prime_offline, jarvis_prime_health
+            message: Human-readable status message
+            model_name: Local model name (for local tier)
+            endpoint: Cloud endpoint URL (for cloud tier)
+            memory_usage_gb: Current memory usage
+        """
+        if not self._enabled:
+            return False
+
+        payload = {
+            "event": event_type,
+            "message": message,
+            "model_name": model_name,
+            "endpoint": endpoint,
+            "memory_usage_gb": memory_usage_gb,
+            **kwargs
+        }
+
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/jarvis-prime/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"JARVIS-Prime event failed: {e}")
+        return False
+
+    async def reactor_core_event(
+        self,
+        event_type: str,
+        message: str = "",
+        progress: float = 0.0,
+        epoch: int = 0,
+        total_epochs: int = 0,
+        model_path: str = "",
+        **kwargs
+    ) -> bool:
+        """
+        v5.0: Report Reactor-Core event.
+
+        Args:
+            event_type: One of: reactor_core_init, reactor_core_watching,
+                       reactor_core_training, reactor_core_exporting,
+                       reactor_core_uploading, reactor_core_complete
+            message: Human-readable status message
+            progress: Progress percentage (0-100)
+            epoch: Current training epoch
+            total_epochs: Total training epochs
+            model_path: Path to completed model
+        """
+        if not self._enabled:
+            return False
+
+        payload = {
+            "event": event_type,
+            "message": message,
+            "progress": progress,
+            "epoch": epoch,
+            "total_epochs": total_epochs,
+            "model_path": model_path,
+            **kwargs
+        }
+
+        try:
+            session = await self._get_session()
+            if session:
+                url = f"http://{self.host}:{self.port}/api/reactor-core/update"
+                async with session.post(url, json=payload) as resp:
+                    return resp.status == 200
+        except Exception as e:
+            logger.debug(f"Reactor-Core event failed: {e}")
         return False
 
 

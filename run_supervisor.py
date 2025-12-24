@@ -267,6 +267,23 @@ class BootstrapConfig:
     reactor_core_watch_dir: Optional[str] = field(default_factory=lambda: os.getenv("REACTOR_CORE_OUTPUT"))
     reactor_core_auto_deploy: bool = field(default_factory=lambda: os.getenv("REACTOR_CORE_AUTO_DEPLOY", "true").lower() == "true")
 
+    # =========================================================================
+    # Data Flywheel Integration (Self-improving learning loop)
+    # =========================================================================
+    data_flywheel_enabled: bool = field(default_factory=lambda: os.getenv("DATA_FLYWHEEL_ENABLED", "true").lower() == "true")
+    data_flywheel_auto_collect: bool = field(default_factory=lambda: os.getenv("DATA_FLYWHEEL_AUTO_COLLECT", "true").lower() == "true")
+    data_flywheel_auto_train: bool = field(default_factory=lambda: os.getenv("DATA_FLYWHEEL_AUTO_TRAIN", "true").lower() == "true")
+    data_flywheel_training_schedule: str = field(default_factory=lambda: os.getenv("DATA_FLYWHEEL_TRAINING_SCHEDULE", "03:00"))  # 3 AM daily
+    data_flywheel_min_experiences: int = field(default_factory=lambda: int(os.getenv("DATA_FLYWHEEL_MIN_EXPERIENCES", "100")))
+    data_flywheel_cooldown_hours: int = field(default_factory=lambda: int(os.getenv("DATA_FLYWHEEL_COOLDOWN_HOURS", "24")))
+
+    # =========================================================================
+    # Intelligent Learning Goals (Auto-discovery from interactions)
+    # =========================================================================
+    learning_goals_enabled: bool = field(default_factory=lambda: os.getenv("LEARNING_GOALS_ENABLED", "true").lower() == "true")
+    learning_goals_auto_discover: bool = field(default_factory=lambda: os.getenv("LEARNING_GOALS_AUTO_DISCOVER", "true").lower() == "true")
+    learning_goals_max_topics: int = field(default_factory=lambda: int(os.getenv("LEARNING_GOALS_MAX_TOPICS", "20")))
+
 
 class StartupPhase(Enum):
     """Phases of supervisor startup."""
@@ -1819,6 +1836,11 @@ class SupervisorBootstrapper:
         self._jarvis_prime_client = None
         self._jarvis_prime_process: Optional[asyncio.subprocess.Process] = None
         self._reactor_core_watcher = None
+
+        # v8.0: Data Flywheel (Self-Improving Learning Loop)
+        self._data_flywheel = None
+        self._learning_goals_manager = None
+        self._training_scheduler_task = None
 
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
@@ -3591,6 +3613,10 @@ class SupervisorBootstrapper:
             if self.config.reactor_core_enabled and self.config.reactor_core_watch_dir:
                 await self._init_reactor_core_watcher()
 
+            # v8.0: Initialize Data Flywheel for self-improving learning
+            if self.config.data_flywheel_enabled:
+                await self._init_data_flywheel()
+
             # Start dynamic memory monitoring for automatic mode switching
             await self._jarvis_prime_client.start_monitoring()
 
@@ -3917,6 +3943,331 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.warning(f"⚠️ Reactor-Core watcher failed to start: {e}")
 
+    async def _init_data_flywheel(self) -> None:
+        """
+        v8.0: Initialize the Unified Data Flywheel for self-improving learning.
+
+        The Data Flywheel connects:
+        - JARVIS-AI-Agent (experience recording, observability)
+        - reactor-core (Scout web scraping, training, GGUF export)
+        - JARVIS-Prime (model deployment, inference)
+
+        Features:
+        - Automatic experience collection from JARVIS interactions
+        - Intelligent learning goals auto-discovery
+        - Scheduled training runs (default: 3 AM daily)
+        - Auto-deployment via Reactor-Core Watcher
+        """
+        if not self.config.data_flywheel_enabled:
+            self.logger.info("ℹ️ Data Flywheel disabled via configuration")
+            return
+
+        self.logger.info("🔄 Initializing Data Flywheel (self-improving learning loop)...")
+
+        try:
+            from autonomy.unified_data_flywheel import (
+                UnifiedDataFlywheel,
+                FlywheelConfig,
+                FlywheelProgress,
+                get_data_flywheel,
+            )
+
+            # Configure flywheel
+            flywheel_config = FlywheelConfig(
+                jarvis_repo=Path(__file__).parent,
+                jarvis_prime_repo=self.config.jarvis_prime_repo_path,
+                reactor_core_repo=Path.home() / "Documents" / "repos" / "reactor-core",
+                auto_train_enabled=self.config.data_flywheel_auto_train,
+                training_cooldown_hours=self.config.data_flywheel_cooldown_hours,
+                min_experiences_for_training=self.config.data_flywheel_min_experiences,
+            )
+
+            # Get or create flywheel instance
+            self._data_flywheel = UnifiedDataFlywheel(flywheel_config)
+
+            # Register progress callback for status updates
+            def on_flywheel_progress(progress: FlywheelProgress):
+                self.logger.debug(
+                    f"Flywheel: {progress.stage.value} - "
+                    f"experiences={progress.experiences_collected}, "
+                    f"web_pages={progress.web_pages_scraped}"
+                )
+
+            self._data_flywheel.register_progress_callback(on_flywheel_progress)
+
+            # Initialize learning goals manager if enabled
+            if self.config.learning_goals_enabled:
+                await self._init_learning_goals_manager()
+
+            # Schedule automatic training if enabled
+            if self.config.data_flywheel_auto_train:
+                self._training_scheduler_task = asyncio.create_task(
+                    self._run_training_scheduler()
+                )
+
+            self.logger.info("✅ Data Flywheel initialized")
+            print(f"  {TerminalUI.GREEN}✓ Data Flywheel: Self-improving learning active{TerminalUI.RESET}")
+
+            # Broadcast flywheel ready
+            await self._broadcast_startup_progress(
+                stage="data_flywheel_ready",
+                message="Data Flywheel ready for self-improving learning",
+                progress=82,
+                metadata={
+                    "data_flywheel": {
+                        "status": "ready",
+                        "auto_train": self.config.data_flywheel_auto_train,
+                        "training_schedule": self.config.data_flywheel_training_schedule,
+                        "learning_goals_enabled": self.config.learning_goals_enabled,
+                    }
+                }
+            )
+
+        except ImportError as e:
+            self.logger.warning(f"⚠️ Data Flywheel not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Data Flywheel failed to start: {e}")
+
+    async def _init_learning_goals_manager(self) -> None:
+        """
+        Initialize the intelligent learning goals manager.
+
+        This system automatically discovers topics JARVIS should learn about by:
+        - Analyzing user interactions for mentioned technologies/concepts
+        - Detecting questions JARVIS couldn't answer well
+        - Monitoring for trending topics in the user's domain
+        """
+        self.logger.info("🎯 Initializing Learning Goals Manager...")
+
+        try:
+            # Create learning goals manager
+            from dataclasses import dataclass, field
+            from typing import List, Dict, Any, Optional
+            from datetime import datetime
+            import json
+
+            @dataclass
+            class LearningGoal:
+                """A topic JARVIS should learn about."""
+                topic: str
+                priority: int = 5  # 1-10 scale
+                source: str = "auto"  # auto, user, trending
+                urls: List[str] = field(default_factory=list)
+                discovered_at: datetime = field(default_factory=datetime.now)
+                completed: bool = False
+
+                def to_dict(self) -> Dict[str, Any]:
+                    return {
+                        "topic": self.topic,
+                        "priority": self.priority,
+                        "source": self.source,
+                        "urls": self.urls,
+                        "discovered_at": self.discovered_at.isoformat(),
+                        "completed": self.completed,
+                    }
+
+            class LearningGoalsManager:
+                """Manages and auto-discovers learning goals for JARVIS."""
+
+                def __init__(self, max_topics: int = 20):
+                    self.max_topics = max_topics
+                    self.goals: List[LearningGoal] = []
+                    self.goals_file = Path(__file__).parent / "data" / "learning_goals.json"
+                    self._load_goals()
+
+                def _load_goals(self) -> None:
+                    """Load goals from file."""
+                    if self.goals_file.exists():
+                        try:
+                            data = json.loads(self.goals_file.read_text())
+                            for g in data.get("topics", []):
+                                self.goals.append(LearningGoal(
+                                    topic=g["topic"],
+                                    priority=g.get("priority", 5),
+                                    source=g.get("source", "file"),
+                                    urls=g.get("urls", []),
+                                ))
+                        except Exception:
+                            pass
+
+                def _save_goals(self) -> None:
+                    """Save goals to file."""
+                    self.goals_file.parent.mkdir(parents=True, exist_ok=True)
+                    data = {"topics": [g.to_dict() for g in self.goals if not g.completed]}
+                    self.goals_file.write_text(json.dumps(data, indent=2, default=str))
+
+                def add_goal(self, topic: str, priority: int = 5, source: str = "auto", urls: List[str] = None) -> bool:
+                    """Add a learning goal if not already present."""
+                    # Check if already exists
+                    for g in self.goals:
+                        if g.topic.lower() == topic.lower():
+                            return False
+
+                    # Enforce max topics
+                    if len([g for g in self.goals if not g.completed]) >= self.max_topics:
+                        # Remove lowest priority completed goal
+                        self.goals = sorted(self.goals, key=lambda x: (x.completed, -x.priority))
+                        if self.goals and self.goals[-1].completed:
+                            self.goals.pop()
+
+                    self.goals.append(LearningGoal(
+                        topic=topic,
+                        priority=priority,
+                        source=source,
+                        urls=urls or [],
+                    ))
+                    self._save_goals()
+                    return True
+
+                def get_pending_goals(self) -> List[LearningGoal]:
+                    """Get uncompleted goals sorted by priority."""
+                    return sorted(
+                        [g for g in self.goals if not g.completed],
+                        key=lambda x: -x.priority
+                    )
+
+                def mark_completed(self, topic: str) -> None:
+                    """Mark a goal as completed."""
+                    for g in self.goals:
+                        if g.topic.lower() == topic.lower():
+                            g.completed = True
+                    self._save_goals()
+
+                async def auto_discover_from_logs(self, log_dir: Path) -> List[str]:
+                    """Auto-discover learning topics from JARVIS logs."""
+                    discovered = []
+
+                    # Tech keywords to look for
+                    tech_patterns = [
+                        r"(?:learn|study|research|understand)\s+(\w+(?:\s+\w+)?)",
+                        r"what\s+is\s+(\w+(?:\s+\w+)?)\??",
+                        r"how\s+(?:does|do)\s+(\w+(?:\s+\w+)?)\s+work",
+                        r"(\w+(?:\.\w+)?)\s+(?:documentation|docs|tutorial)",
+                    ]
+
+                    # Scan recent logs for patterns
+                    if log_dir.exists():
+                        import re
+                        for log_file in sorted(log_dir.glob("*.log"), reverse=True)[:5]:
+                            try:
+                                content = log_file.read_text()
+                                for pattern in tech_patterns:
+                                    matches = re.findall(pattern, content, re.IGNORECASE)
+                                    for match in matches[:3]:  # Limit per pattern
+                                        topic = match.strip()
+                                        if len(topic) > 3 and self.add_goal(topic, priority=3, source="auto"):
+                                            discovered.append(topic)
+                            except Exception:
+                                continue
+
+                    return discovered
+
+            # Create and store manager
+            self._learning_goals_manager = LearningGoalsManager(
+                max_topics=self.config.learning_goals_max_topics
+            )
+
+            # Auto-discover from logs if enabled
+            if self.config.learning_goals_auto_discover:
+                log_dir = Path(__file__).parent / "logs"
+                discovered = await self._learning_goals_manager.auto_discover_from_logs(log_dir)
+                if discovered:
+                    self.logger.info(f"🎯 Auto-discovered {len(discovered)} learning topics: {discovered[:5]}")
+
+            pending = self._learning_goals_manager.get_pending_goals()
+            self.logger.info(f"✅ Learning Goals Manager ready ({len(pending)} pending topics)")
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Learning Goals Manager failed: {e}")
+
+    async def _run_training_scheduler(self) -> None:
+        """
+        Background task that schedules training runs.
+
+        Default: Runs at 3 AM daily when:
+        - Enough experiences have been collected
+        - Cooldown period has passed
+        """
+        self.logger.info(f"📅 Training scheduler started (schedule: {self.config.data_flywheel_training_schedule})")
+
+        while True:
+            try:
+                # Parse schedule time
+                schedule_hour, schedule_minute = map(int, self.config.data_flywheel_training_schedule.split(":"))
+
+                # Calculate seconds until next scheduled time
+                now = datetime.now()
+                target = now.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
+
+                if target <= now:
+                    # Already passed today, schedule for tomorrow
+                    from datetime import timedelta
+                    target += timedelta(days=1)
+
+                sleep_seconds = (target - now).total_seconds()
+                self.logger.debug(f"Training scheduled in {sleep_seconds / 3600:.1f} hours")
+
+                # Sleep until scheduled time
+                await asyncio.sleep(sleep_seconds)
+
+                # Check if flywheel is ready
+                if self._data_flywheel and not self._data_flywheel.is_running:
+                    self.logger.info("🚀 Starting scheduled training run...")
+
+                    # Announce training
+                    if hasattr(self, 'narrator') and self.narrator:
+                        await self.narrator.speak(
+                            "Starting scheduled model training. This may take a while.",
+                            wait=False
+                        )
+
+                    # Run flywheel cycle
+                    result = await self._data_flywheel.run_full_cycle(
+                        include_web_scraping=True,
+                        include_training=True,
+                    )
+
+                    if result.success:
+                        self.logger.info(
+                            f"✅ Training completed: {result.progress.dataset_examples} examples, "
+                            f"model: {result.model_path or 'not trained'}"
+                        )
+                        if hasattr(self, 'narrator') and self.narrator:
+                            await self.narrator.speak(
+                                f"Training complete. Processed {result.progress.dataset_examples} examples.",
+                                wait=False
+                            )
+                    else:
+                        self.logger.warning(f"⚠️ Training failed: {result.error}")
+
+                else:
+                    self.logger.debug("Flywheel busy or not ready, skipping scheduled run")
+
+            except asyncio.CancelledError:
+                self.logger.info("Training scheduler stopped")
+                break
+            except Exception as e:
+                self.logger.error(f"Training scheduler error: {e}")
+                await asyncio.sleep(3600)  # Wait an hour before retrying
+
+    async def _stop_data_flywheel(self) -> None:
+        """Stop the Data Flywheel and related tasks."""
+        # Cancel training scheduler
+        if self._training_scheduler_task:
+            self._training_scheduler_task.cancel()
+            try:
+                await self._training_scheduler_task
+            except asyncio.CancelledError:
+                pass
+            self._training_scheduler_task = None
+
+        # Cancel any running flywheel
+        if self._data_flywheel:
+            await self._data_flywheel.cancel()
+            self._data_flywheel = None
+
+        self._learning_goals_manager = None
+
     async def _stop_jarvis_prime(self) -> None:
         """Stop JARVIS-Prime subprocess or container."""
         # Stop subprocess
@@ -3939,6 +4290,9 @@ class SupervisorBootstrapper:
                 await asyncio.wait_for(proc.wait(), timeout=10.0)
             except Exception:
                 pass
+
+        # Stop Data Flywheel and training scheduler
+        await self._stop_data_flywheel()
 
         # Stop reactor-core watcher
         if self._reactor_core_watcher:

@@ -7272,6 +7272,21 @@ class AsyncSystemManager:
         self.cloud_sql_proxy_enabled = Path.home().joinpath(".jarvis/gcp/database_config.json").exists()
 
         # =====================================================================
+        # 🔄 DATA FLYWHEEL v8.0 - Self-Improving Learning Loop
+        # =====================================================================
+        self.data_flywheel = None
+        self.data_flywheel_enabled = os.getenv("DATA_FLYWHEEL_ENABLED", "true").lower() == "true"
+        if self.data_flywheel_enabled:
+            try:
+                from autonomy.unified_data_flywheel import get_data_flywheel
+                self.data_flywheel = get_data_flywheel()
+                logger.info("🔄 Data Flywheel ready (self-improving learning)")
+            except ImportError:
+                logger.debug("Data Flywheel not available")
+            except Exception as e:
+                logger.warning(f"Data Flywheel initialization deferred: {e}")
+
+        # =====================================================================
         # 🚀 COST OPTIMIZATION v2.5 - Scale-to-Zero, Semantic Cache, Physics Auth
         # =====================================================================
 
