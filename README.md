@@ -23093,6 +23093,478 @@ See [postman/README.md](postman/README.md) for complete documentation.
 
 ---
 
+## ⚠️ Missing Components & Integration Gaps (v5.0 Status Report)
+
+This section provides a comprehensive, in-depth analysis of all missing integrations, incomplete connections, and architectural gaps that prevent JARVIS from operating as a fully unified "Agentic OS" system. This is a living document that tracks the path from "Component Exists" to "Fully Integrated."
+
+### 🔴 Critical Gaps (Blocking Core Functionality)
+
+#### 1. UAE/SAI Not Initialized in Supervisor
+
+**Status:** Code exists but supervisor doesn't start it.
+
+**Location:**
+- `backend/intelligence/uae_integration.py` - UAE initialization code
+- `backend/intelligence/yabai_sai_integration.py` - SAI initialization code
+
+**Impact:**
+- ❌ No screen awareness (UAE cannot see your desktop)
+- ❌ No window management intelligence (SAI cannot track applications)
+- ❌ Computer Use agent cannot understand screen context
+- ❌ Multi-space awareness is disabled
+
+**Root Cause:**
+`run_supervisor.py` does not call the initialization functions during startup.
+
+**Required Fix:**
+```python
+# Add to run_supervisor.py in _initialize_jarvis_prime() or new method
+async def _initialize_intelligence_systems(self):
+    """Initialize UAE and SAI for screen awareness."""
+    try:
+        from intelligence.uae_integration import initialize_uae
+        from intelligence.yabai_sai_integration import initialize_sai
+        
+        await initialize_uae(enable_chain_of_thought=True)
+        await initialize_sai()
+        
+        self.logger.info("✅ UAE & SAI initialized - Screen awareness active")
+        
+        # Broadcast to loading server
+        await self._broadcast_startup_progress(
+            stage="intelligence_systems_ready",
+            message="UAE & SAI initialized - Screen awareness active",
+            progress=88,
+            metadata={
+                "uae": {"status": "ready", "chain_of_thought": True},
+                "sai": {"status": "ready", "yabai_bridge": "active"}
+            }
+        )
+    except Exception as e:
+        self.logger.warning(f"Intelligence systems unavailable: {e}")
+```
+
+**Priority:** 🔴 **CRITICAL** - Without this, JARVIS cannot "see" your screen.
+
+---
+
+#### 2. Data Flywheel Not Auto-Started
+
+**Status:** Code exists (`backend/autonomy/unified_data_flywheel.py`) but supervisor doesn't initialize it.
+
+**Location:**
+- `backend/autonomy/unified_data_flywheel.py` - Complete flywheel implementation
+- `backend/memory/experience_recorder.py` - Experience logging (working)
+
+**Impact:**
+- ❌ Self-improving learning loop is not active
+- ❌ Experience logs are collected but not processed
+- ❌ Web scraping (Safe Scout) is not triggered
+- ❌ Training pipeline never runs automatically
+- ❌ JARVIS-Prime never gets updated models
+
+**Root Cause:**
+`run_supervisor.py` does not call `get_unified_data_flywheel().start()` during initialization.
+
+**Required Fix:**
+```python
+# Add to run_supervisor.py
+async def _initialize_data_flywheel(self):
+    """Initialize the self-improving learning loop."""
+    try:
+        from backend.autonomy import get_unified_data_flywheel
+        
+        flywheel = get_unified_data_flywheel()
+        await flywheel.start()
+        
+        self.logger.info("✅ Data Flywheel initialized - Self-improving loop active")
+        
+        # Broadcast to loading server
+        await self._broadcast_startup_progress(
+            stage="flywheel_ready",
+            message="Data Flywheel initialized - Self-improving loop active",
+            progress=85,
+            metadata={
+                "flywheel": {
+                    "status": "ready",
+                    "experience_collection": "active",
+                    "web_scraping": "enabled",
+                    "training_schedule": "03:00"
+                }
+            }
+        )
+    except Exception as e:
+        self.logger.warning(f"Data Flywheel unavailable: {e}")
+```
+
+**Priority:** 🔴 **CRITICAL** - This is the "learning" component that makes JARVIS improve over time.
+
+---
+
+#### 3. Supervisor Doesn't Broadcast State to Loading Server
+
+**Status:** Loading Server v5.0 has all endpoints, but supervisor doesn't call them.
+
+**Location:**
+- `loading_server.py` - Has `/api/flywheel/update`, `/api/jarvis-prime/update`, etc.
+- `run_supervisor.py` - Missing broadcast calls
+
+**Impact:**
+- ❌ Loading page doesn't show real-time progress
+- ❌ User cannot see JARVIS-Prime tier (local/cloud/gemini)
+- ❌ Flywheel status is invisible
+- ❌ Reactor-Core training progress is hidden
+- ❌ Learning goals are not displayed
+
+**Root Cause:**
+Supervisor initializes components but doesn't report their status to the loading server.
+
+**Required Fix:**
+Add broadcast calls after each initialization:
+```python
+# After JARVIS-Prime starts
+await self._broadcast_to_loading_page(
+    stage="jarvis_prime_ready",
+    message=f"JARVIS-Prime online ({mode})",
+    progress=78,
+    metadata={
+        "jarvis_prime": {
+            "tier": mode,  # "local" | "cloud_run" | "gemini_api"
+            "status": "ready",
+            "memory_available_gb": available_gb,
+            "health": {"latency_ms": 45, "requests": 0}
+        }
+    }
+)
+
+# After Data Flywheel starts
+await self._broadcast_to_loading_page(
+    stage="flywheel_ready",
+    message="Data Flywheel active",
+    progress=85,
+    metadata={
+        "flywheel": {
+            "status": "ready",
+            "experiences_collected": 0,
+            "training_schedule": "03:00"
+        }
+    }
+)
+```
+
+**Priority:** 🟡 **IMPORTANT** - Affects user visibility, not core functionality.
+
+---
+
+#### 4. Reactor-Core Training Not Scheduled
+
+**Status:** Reactor-Core exists but no automatic training trigger.
+
+**Location:**
+- `reactor-core/` - Complete training pipeline
+- `run_supervisor.py` - Missing scheduler
+
+**Impact:**
+- ❌ Training never runs automatically
+- ❌ Models never get updated
+- ❌ JARVIS-Prime stays at baseline intelligence
+- ❌ Experience logs accumulate but are never used
+
+**Root Cause:**
+No cron-like scheduler in supervisor to trigger reactor-core training runs.
+
+**Required Fix:**
+```python
+# Add to run_supervisor.py
+async def _schedule_reactor_core_training(self):
+    """Schedule nightly training runs."""
+    import schedule
+    import asyncio
+    import subprocess
+    
+    def trigger_training():
+        """Trigger reactor-core training pipeline."""
+        reactor_core_path = Path(
+            os.getenv("REACTOR_CORE_PATH",
+                     str(Path.home() / "Documents" / "repos" / "reactor-core"))
+        )
+        
+        if not reactor_core_path.exists():
+            self.logger.warning(f"Reactor-Core not found at {reactor_core_path}")
+            return
+        
+        # Run training pipeline
+        subprocess.run([
+            "python", "-m", "reactor_core.scripts.run_pipeline",
+            "--sources", "jarvis", "scout"
+        ], cwd=str(reactor_core_path))
+    
+    # Schedule for 3 AM daily
+    schedule.every().day.at("03:00").do(trigger_training)
+    
+    # Run scheduler in background
+    asyncio.create_task(self._run_scheduler())
+    
+async def _run_scheduler(self):
+    """Background task to run scheduled jobs."""
+    import schedule
+    while True:
+        schedule.run_pending()
+        await asyncio.sleep(60)  # Check every minute
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables automatic model improvement.
+
+---
+
+#### 5. Learning Goals Not Auto-Discovered
+
+**Status:** Safe Scout exists but has no trigger mechanism.
+
+**Location:**
+- `reactor-core/scout/topic_discovery.py` - Topic discovery code
+- `reactor-core/scout/` - Complete scraping pipeline
+
+**Impact:**
+- ❌ Scout never knows what to scrape
+- ❌ No automatic learning goal generation
+- ❌ Web scraping only runs if manually triggered
+- ❌ JARVIS cannot learn about new technologies you mention
+
+**Root Cause:**
+No automatic discovery of learning topics from JARVIS interaction logs.
+
+**Required Fix:**
+```python
+# Add to run_supervisor.py
+async def _discover_learning_goals(self):
+    """Auto-discover learning topics from JARVIS logs."""
+    try:
+        from reactor_core.scout.topic_discovery import TopicDiscovery
+        
+        discovery = TopicDiscovery()
+        topics = await discovery.discover_from_jarvis_logs(
+            log_dir=Path("logs"),
+            min_mentions=3,  # Topic must be mentioned 3+ times
+            priority_threshold=5.0
+        )
+        
+        if topics:
+            self.logger.info(f"🎯 Auto-discovered {len(topics)} learning topics")
+            
+            # Add to learning goals queue
+            for topic in topics:
+                await self._add_learning_goal(topic)
+                
+            # Broadcast to loading server
+            await self._broadcast_startup_progress(
+                stage="learning_goals_discovered",
+                message=f"Discovered {len(topics)} learning topics",
+                progress=87,
+                metadata={
+                    "learning_goals": {
+                        "total": len(topics),
+                        "topics": [t.name for t in topics[:5]]  # Top 5
+                    }
+                }
+            )
+    except Exception as e:
+        self.logger.debug(f"Learning goal discovery failed: {e}")
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables proactive learning.
+
+---
+
+### 🟡 Important Gaps (Feature Limitations)
+
+#### 6. Base Model File Missing
+
+**Status:** JARVIS-Prime server can start but has no model to load.
+
+**Location:**
+- `jarvis-prime/models/` - Should contain GGUF model files
+- Currently empty or missing
+
+**Impact:**
+- ❌ JARVIS-Prime returns 503 "No model loaded"
+- ❌ Tier 0 (local) routing fails
+- ❌ Falls back to Cloud Run or Gemini API (costs money)
+
+**Required Fix:**
+```bash
+# Option 1: Download TinyLlama (testing, 1.1B, ~2GB RAM)
+cd jarvis-prime
+python -m jarvis_prime.docker.model_downloader tinyllama-chat
+
+# Option 2: Download Llama-2-7B (production, ~4GB RAM)
+python -m jarvis_prime.docker.model_downloader llama-2-7b-chat
+
+# Option 3: Use trained model from reactor-core
+# After training, reactor-core exports GGUF to:
+# reactor-core/output/models/jarvis-prime-7b-v1.0.gguf
+# Copy to: jarvis-prime/models/jarvis-prime-7b/
+```
+
+**Priority:** 🟡 **IMPORTANT** - Blocks local inference.
+
+---
+
+#### 7. Neural Mesh Status Unclear
+
+**Status:** Architecture documented but integration unclear.
+
+**Location:**
+- `JARVIS_NEURAL_MESH_ARCHITECTURE.md` - Complete architecture docs
+- `backend/neural_mesh/` - Code exists
+- `run_supervisor.py` - May or may not initialize it
+
+**Impact:**
+- ⚠️ 60+ agents may exist but not be active
+- ⚠️ Agent communication bus may not be running
+- ⚠️ Knowledge graph may not be populated
+
+**Required Verification:**
+Check if `run_supervisor.py` calls:
+```python
+from neural_mesh import NeuralMeshOrchestrator
+mesh = NeuralMeshOrchestrator()
+await mesh.initialize()
+```
+
+**Priority:** 🟡 **IMPORTANT** - Affects multi-agent coordination.
+
+---
+
+#### 8. Frontend Doesn't Display New States
+
+**Status:** Loading Server has endpoints, but frontend may not render them.
+
+**Location:**
+- `frontend/loading-manager.js` - May need updates
+- `frontend/loading.html` - May need UI components
+
+**Impact:**
+- ⚠️ User cannot see Flywheel progress
+- ⚠️ JARVIS-Prime tier is invisible
+- ⚠️ Learning goals are not displayed
+- ⚠️ Reactor-Core training status is hidden
+
+**Required Fix:**
+Update `loading-manager.js` to handle new stage types:
+- `flywheel_ready` - Show experience count, training schedule
+- `jarvis_prime_ready` - Show tier (local/cloud/gemini), memory usage
+- `learning_goals_discovered` - Show current topics
+- `reactor_core_training` - Show training progress
+
+**Priority:** 🟢 **NICE-TO-HAVE** - Affects visibility, not functionality.
+
+---
+
+### 🟢 Optional Enhancements (Not Blocking)
+
+#### 9. Docker Containers Missing in JARVIS-AI-Agent
+
+**Status:** Reactor-Core has Docker, JARVIS-AI-Agent doesn't.
+
+**Location:**
+- `reactor-core/docker/` - Complete Docker setup
+- `JARVIS-AI-Agent/` - No Dockerfiles
+
+**Impact:**
+- ⚠️ Training isolation handled by reactor-core (sufficient)
+- ⚠️ Cannot containerize entire JARVIS stack
+
+**Priority:** 🟢 **OPTIONAL** - Reactor-Core Docker is sufficient for training.
+
+---
+
+#### 10. SQLite Not Used for Training Data
+
+**Status:** Flywheel uses JSONL files, not SQLite.
+
+**Location:**
+- `backend/data/*.db` - 7 SQLite databases exist
+- `backend/autonomy/unified_data_flywheel.py` - Uses JSONL
+
+**Impact:**
+- ⚠️ Cannot query training data with SQL
+- ⚠️ JSONL is simpler but less queryable
+
+**Priority:** 🟢 **OPTIONAL** - JSONL works fine, SQLite would enable complex queries.
+
+---
+
+#### 11. Continuous Web Scraping Mode
+
+**Status:** Currently runs only at 3 AM daily.
+
+**Location:**
+- `backend/autonomy/unified_data_flywheel.py` - `data_flywheel_training_schedule: "03:00"`
+
+**Impact:**
+- ⚠️ New learning goals wait until 3 AM
+- ⚠️ Cannot learn about urgent topics immediately
+
+**Priority:** 🟢 **OPTIONAL** - Daily schedule is sufficient for most use cases.
+
+---
+
+### 📊 Integration Status Summary
+
+| Component | Code Status | Integration Status | Priority | Action Required |
+|-----------|-------------|-------------------|----------|-----------------|
+| UAE/SAI | ✅ Exists | ❌ Not Started | 🔴 Critical | Add initialization to supervisor |
+| Data Flywheel | ✅ Exists | ❌ Not Started | 🔴 Critical | Add initialization to supervisor |
+| State Broadcasting | ✅ Endpoints Exist | ❌ Not Called | 🟡 Important | Add broadcast calls |
+| Reactor-Core Scheduler | ✅ Code Exists | ❌ Not Scheduled | 🟡 Important | Add scheduler task |
+| Learning Goals Discovery | ✅ Code Exists | ❌ Not Triggered | 🟡 Important | Add auto-discovery |
+| Base Model File | ❌ Missing | ❌ Cannot Load | 🟡 Important | Download model |
+| Neural Mesh | ⚠️ Unclear | ⚠️ Unclear | 🟡 Important | Verify initialization |
+| Frontend Display | ⚠️ Partial | ⚠️ Partial | 🟢 Nice-to-have | Update loading-manager.js |
+| Docker in JARVIS | ❌ Missing | N/A | 🟢 Optional | Add if needed |
+| SQLite Training DB | ⚠️ Not Used | N/A | 🟢 Optional | Migrate if needed |
+| Continuous Scraping | ⚠️ Daily Only | N/A | 🟢 Optional | Add if needed |
+
+---
+
+### 🔧 Implementation Roadmap
+
+**Phase 1: Critical Fixes (Week 1)**
+1. Add UAE/SAI initialization to `run_supervisor.py`
+2. Add Data Flywheel initialization to `run_supervisor.py`
+3. Download base model file (TinyLlama or Llama-2-7B)
+4. Verify Neural Mesh initialization
+
+**Phase 2: Important Integrations (Week 2)**
+5. Add state broadcasting to loading server
+6. Add Reactor-Core training scheduler
+7. Add learning goals auto-discovery
+8. Update frontend to display new states
+
+**Phase 3: Optional Enhancements (Week 3+)**
+9. Add Docker containers to JARVIS-AI-Agent (if needed)
+10. Migrate training data to SQLite (if needed)
+11. Add continuous web scraping mode (if needed)
+
+---
+
+### 📝 Notes
+
+- **This is a living document** - Update as gaps are resolved
+- **Priority levels:**
+  - 🔴 **Critical**: Blocks core functionality
+  - 🟡 **Important**: Limits features but system works
+  - 🟢 **Optional**: Nice-to-have enhancements
+
+- **Testing:** After each fix, verify:
+  - Component starts successfully
+  - Loading server receives state updates
+  - Frontend displays the new information
+  - No errors in supervisor logs
+
+---
+
 ## 📚 Documentation
 
 **Architecture Documentation:**
