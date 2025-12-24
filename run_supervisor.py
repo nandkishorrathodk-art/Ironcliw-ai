@@ -14,6 +14,12 @@ v5.0 Living OS Features:
 - 📋 Prime Directives (immutable safety constraints)
 - 🧠 AGI OS integration for intelligent decision making
 
+v7.0 JARVIS-Prime Integration:
+- 🧠 Tier-0 Local Brain: GGUF model inference via llama-cpp-python
+- 🐳 Docker/Cloud Run: Serverless deployment to Google Cloud Run
+- 🔬 Reactor-Core: Auto-deployment of trained models from reactor-core
+- 💰 Cost-Effective: Free local inference, reduces cloud API costs
+
 Dev Mode (Hot Reload):
     When you run `python3 run_supervisor.py`, it:
     1. Starts JARVIS normally
@@ -85,8 +91,31 @@ Usage:
     # Configure startup grace period before hot reload activates (default: 120s)
     JARVIS_RELOAD_GRACE_PERIOD=60 python run_supervisor.py
 
+    # ═══════════════════════════════════════════════════════════════════
+    # JARVIS-Prime Configuration (v7.0)
+    # ═══════════════════════════════════════════════════════════════════
+
+    # Disable JARVIS-Prime (use cloud APIs only)
+    JARVIS_PRIME_ENABLED=false python run_supervisor.py
+
+    # Use Docker container for JARVIS-Prime
+    JARVIS_PRIME_USE_DOCKER=true python run_supervisor.py
+
+    # Use Cloud Run for JARVIS-Prime
+    JARVIS_PRIME_USE_CLOUD_RUN=true \
+    JARVIS_PRIME_CLOUD_RUN_URL=https://jarvis-prime-xxx.run.app \
+    python run_supervisor.py
+
+    # Custom model path
+    JARVIS_PRIME_MODELS_DIR=/path/to/models python run_supervisor.py
+
+    # Enable Reactor-Core auto-deployment
+    REACTOR_CORE_ENABLED=true \
+    REACTOR_CORE_OUTPUT=/path/to/reactor-core/output \
+    python run_supervisor.py
+
 Author: JARVIS System
-Version: 5.0.0
+Version: 7.0.0
 """
 
 from __future__ import annotations
@@ -207,6 +236,36 @@ class BootstrapConfig:
     # AGI OS integration
     agi_os_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_ENABLED", "true").lower() == "true")
     agi_os_approval_for_updates: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_APPROVAL_UPDATES", "false").lower() == "true")
+
+    # =========================================================================
+    # JARVIS-Prime Tier-0 Brain Integration
+    # =========================================================================
+    # Local brain for fast, cost-effective inference without cloud API calls.
+    # Can run locally (subprocess) or in Docker/Cloud Run.
+    # =========================================================================
+    jarvis_prime_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true")
+    jarvis_prime_auto_start: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_AUTO_START", "true").lower() == "true")
+    jarvis_prime_host: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "127.0.0.1"))
+    jarvis_prime_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8002")))
+    jarvis_prime_repo_path: Path = field(default_factory=lambda: Path(os.getenv(
+        "JARVIS_PRIME_PATH",
+        str(Path.home() / "Documents" / "repos" / "jarvis-prime")
+    )))
+    jarvis_prime_models_dir: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_MODELS_DIR", "models"))
+    jarvis_prime_startup_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "60.0")))
+
+    # Docker/Cloud Run mode
+    jarvis_prime_use_docker: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_USE_DOCKER", "false").lower() == "true")
+    jarvis_prime_docker_image: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_DOCKER_IMAGE", "jarvis-prime:latest"))
+    jarvis_prime_use_cloud_run: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true")
+    jarvis_prime_cloud_run_url: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", ""))
+
+    # =========================================================================
+    # Reactor-Core Integration (Auto-deployment of trained models)
+    # =========================================================================
+    reactor_core_enabled: bool = field(default_factory=lambda: os.getenv("REACTOR_CORE_ENABLED", "true").lower() == "true")
+    reactor_core_watch_dir: Optional[str] = field(default_factory=lambda: os.getenv("REACTOR_CORE_OUTPUT"))
+    reactor_core_auto_deploy: bool = field(default_factory=lambda: os.getenv("REACTOR_CORE_AUTO_DEPLOY", "true").lower() == "true")
 
 
 class StartupPhase(Enum):
@@ -1755,6 +1814,12 @@ class SupervisorBootstrapper:
         self._tiered_routing_enabled = os.getenv("JARVIS_TIERED_ROUTING", "true").lower() == "true"
         self._agentic_runner_enabled = os.getenv("JARVIS_AGENTIC_RUNNER", "true").lower() == "true"
 
+        # v7.0: JARVIS-Prime Tier-0 Brain Integration
+        self._jarvis_prime_orchestrator = None
+        self._jarvis_prime_client = None
+        self._jarvis_prime_process: Optional[asyncio.subprocess.Process] = None
+        self._reactor_core_watcher = None
+
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
         os.environ["CI"] = "true"
@@ -1914,6 +1979,16 @@ class SupervisorBootstrapper:
             # - Watchdog monitors heartbeats and can trigger kill switch
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_agentic_security()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v7.0: Initialize JARVIS-Prime Tier-0 Local Brain
+            # ═══════════════════════════════════════════════════════════════════
+            # This starts the local inference server for cost-effective AI:
+            # - Tier 0 (JARVIS-Prime): Local GGUF model, fast, free
+            # - Supports local subprocess, Docker, or Cloud Run deployment
+            # - Auto-integrates with Reactor-Core for model hot-swapping
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_jarvis_prime()
 
             self.perf.end("validation")
 
@@ -2998,22 +3073,30 @@ class SupervisorBootstrapper:
         
     async def cleanup_resources(self):
         """
-        Cleanup remote resources (GCP VMs) on shutdown.
-        
+        Cleanup remote resources (GCP VMs) and local services on shutdown.
+
         Uses the enhanced shutdown_hook module which provides:
         - Async-safe cleanup with timeouts
         - Multiple fallback approaches (VM Manager, gcloud CLI)
         - Idempotent execution (safe to call multiple times)
         """
+        # Cleanup JARVIS-Prime
+        try:
+            await self._stop_jarvis_prime()
+            self.logger.info("✅ JARVIS-Prime stopped")
+        except Exception as e:
+            self.logger.warning(f"⚠️ JARVIS-Prime cleanup error: {e}")
+
+        # Cleanup GCP resources
         try:
             from backend.scripts.shutdown_hook import cleanup_remote_resources
-            
+
             self.logger.info("🧹 Cleaning up remote resources...")
             result = await cleanup_remote_resources(
                 timeout=30.0,
                 reason="Supervisor shutdown"
             )
-            
+
             if result.get("success"):
                 vms = result.get("vms_cleaned", 0)
                 method = result.get("method", "unknown")
@@ -3024,7 +3107,7 @@ class SupervisorBootstrapper:
             else:
                 errors = result.get("errors", [])
                 self.logger.warning(f"⚠️ Cleanup completed with issues: {errors}")
-                
+
         except Exception as e:
             self.logger.error(f"❌ Failed to cleanup remote resources: {e}")
     
@@ -3386,6 +3469,346 @@ class SupervisorBootstrapper:
             os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
             os.environ["JARVIS_TIERED_ROUTING"] = "false"
             os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
+
+    async def _initialize_jarvis_prime(self) -> None:
+        """
+        v7.0: Initialize JARVIS-Prime Tier-0 Local Brain.
+
+        This starts the local inference server for cost-effective, fast responses:
+        - Local subprocess mode: Direct Python execution
+        - Docker mode: Container with isolated environment
+        - Cloud Run mode: Serverless deployment (GCP)
+
+        Features:
+        - OpenAI-compatible API at /v1/chat/completions
+        - Health monitoring with auto-recovery
+        - Reactor-Core integration for auto-deployment of trained models
+        - Circuit breaker for reliability
+
+        Architecture:
+        ┌────────────────────────────────────────────────────────────────┐
+        │  JARVIS-Prime Tier-0 Brain                                     │
+        │  ├── LlamaCppExecutor (llama-cpp-python)                       │
+        │  ├── HotSwapManager (zero-downtime model switching)            │
+        │  ├── TelemetryHook (performance metrics)                       │
+        │  └── ReactorCoreWatcher (auto-deployment from training)        │
+        └────────────────────────────────────────────────────────────────┘
+        """
+        if not self.config.jarvis_prime_enabled:
+            self.logger.info("ℹ️ JARVIS-Prime disabled via configuration")
+            os.environ["JARVIS_PRIME_ENABLED"] = "false"
+            return
+
+        try:
+            # Broadcast JARVIS-Prime initialization start
+            await self._broadcast_startup_progress(
+                stage="jarvis_prime_init",
+                message="Initializing JARVIS-Prime Tier-0 Brain...",
+                progress=75,
+                metadata={
+                    "jarvis_prime": {
+                        "status": "initializing",
+                        "mode": "cloud_run" if self.config.jarvis_prime_use_cloud_run else (
+                            "docker" if self.config.jarvis_prime_use_docker else "local"
+                        ),
+                    }
+                }
+            )
+
+            # Determine mode: Cloud Run > Docker > Local
+            if self.config.jarvis_prime_use_cloud_run and self.config.jarvis_prime_cloud_run_url:
+                await self._init_jarvis_prime_cloud_run()
+            elif self.config.jarvis_prime_use_docker:
+                await self._init_jarvis_prime_docker()
+            else:
+                await self._init_jarvis_prime_local()
+
+            # Initialize the client for making requests
+            try:
+                from core.jarvis_prime_client import (
+                    JarvisPrimeClient,
+                    JarvisPrimeClientConfig,
+                    get_jarvis_prime_client,
+                )
+
+                client_config = JarvisPrimeClientConfig(
+                    host=self.config.jarvis_prime_host,
+                    port=self.config.jarvis_prime_port,
+                )
+
+                # Override if using Cloud Run
+                if self.config.jarvis_prime_use_cloud_run and self.config.jarvis_prime_cloud_run_url:
+                    # Parse Cloud Run URL
+                    from urllib.parse import urlparse
+                    parsed = urlparse(self.config.jarvis_prime_cloud_run_url)
+                    client_config.host = parsed.hostname or self.config.jarvis_prime_host
+                    client_config.port = parsed.port or 443
+
+                self._jarvis_prime_client = get_jarvis_prime_client(client_config)
+                self.logger.info("✅ JARVIS-Prime client initialized")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ JARVIS-Prime client not available: {e}")
+
+            # Initialize Reactor-Core watcher for auto-deployment
+            if self.config.reactor_core_enabled and self.config.reactor_core_watch_dir:
+                await self._init_reactor_core_watcher()
+
+            # Propagate settings to environment
+            os.environ["JARVIS_PRIME_ENABLED"] = "true"
+            os.environ["JARVIS_PRIME_HOST"] = self.config.jarvis_prime_host
+            os.environ["JARVIS_PRIME_PORT"] = str(self.config.jarvis_prime_port)
+
+            # Broadcast completion
+            await self._broadcast_startup_progress(
+                stage="jarvis_prime_ready",
+                message="JARVIS-Prime Tier-0 Brain online",
+                progress=78,
+                metadata={
+                    "jarvis_prime": {
+                        "status": "ready",
+                        "url": f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}",
+                        "mode": "cloud_run" if self.config.jarvis_prime_use_cloud_run else (
+                            "docker" if self.config.jarvis_prime_use_docker else "local"
+                        ),
+                    }
+                }
+            )
+
+            self.logger.info("✅ JARVIS-Prime Tier-0 Brain ready")
+            print(f"  {TerminalUI.GREEN}✓ JARVIS-Prime: Tier-0 Brain online{TerminalUI.RESET}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize JARVIS-Prime: {e}")
+            os.environ["JARVIS_PRIME_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ JARVIS-Prime: Not available ({e}){TerminalUI.RESET}")
+
+    async def _init_jarvis_prime_local(self) -> None:
+        """Start JARVIS-Prime as a local subprocess."""
+        repo_path = self.config.jarvis_prime_repo_path
+
+        if not repo_path.exists():
+            self.logger.warning(f"⚠️ JARVIS-Prime repo not found: {repo_path}")
+            return
+
+        # Check if model exists
+        model_path = repo_path / self.config.jarvis_prime_models_dir / "current.gguf"
+        if not model_path.exists():
+            self.logger.warning(f"⚠️ JARVIS-Prime model not found: {model_path}")
+            self.logger.info("   Download with: cd jarvis-prime && python -m jarvis_prime.docker.model_downloader tinyllama-chat")
+            return
+
+        # Check for venv or use system Python
+        venv_python = repo_path / "venv" / "bin" / "python"
+        python_cmd = str(venv_python) if venv_python.exists() else sys.executable
+
+        # Build command
+        cmd = [
+            python_cmd,
+            "run_server.py",
+            "--host", self.config.jarvis_prime_host,
+            "--port", str(self.config.jarvis_prime_port),
+            "--model", str(model_path),
+        ]
+
+        self.logger.info(f"🚀 Starting JARVIS-Prime local: {' '.join(cmd)}")
+
+        # Start subprocess
+        self._jarvis_prime_process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(repo_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "PYTHONPATH": str(repo_path)},
+        )
+
+        # Wait for health check
+        await self._wait_for_jarvis_prime_health()
+
+        # Start log reader
+        asyncio.create_task(self._read_jarvis_prime_logs())
+
+    async def _init_jarvis_prime_docker(self) -> None:
+        """Start JARVIS-Prime as a Docker container."""
+        container_name = "jarvis-prime"
+
+        # Stop existing container if any
+        try:
+            stop_proc = await asyncio.create_subprocess_exec(
+                "docker", "stop", container_name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(stop_proc.wait(), timeout=10.0)
+
+            rm_proc = await asyncio.create_subprocess_exec(
+                "docker", "rm", container_name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await rm_proc.wait()
+        except Exception:
+            pass  # Container might not exist
+
+        # Build docker run command
+        models_dir = self.config.jarvis_prime_repo_path / self.config.jarvis_prime_models_dir
+
+        cmd = [
+            "docker", "run", "-d",
+            "--name", container_name,
+            "-p", f"{self.config.jarvis_prime_port}:8000",
+            "-v", f"{models_dir}:/app/models:ro",
+            "-e", f"LOG_LEVEL=INFO",
+            self.config.jarvis_prime_docker_image,
+        ]
+
+        self.logger.info(f"🐳 Starting JARVIS-Prime Docker: {' '.join(cmd)}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Docker start failed: {stderr.decode()}")
+
+        container_id = stdout.decode().strip()[:12]
+        self.logger.info(f"✅ Docker container started: {container_id}")
+
+        # Wait for health
+        await self._wait_for_jarvis_prime_health()
+
+    async def _init_jarvis_prime_cloud_run(self) -> None:
+        """Connect to JARVIS-Prime on Cloud Run."""
+        url = self.config.jarvis_prime_cloud_run_url
+
+        self.logger.info(f"☁️ Connecting to JARVIS-Prime Cloud Run: {url}")
+
+        # Just verify connectivity - no process to start
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{url}/health", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        self.logger.info("✅ Cloud Run JARVIS-Prime is healthy")
+                    else:
+                        self.logger.warning(f"⚠️ Cloud Run returned status {resp.status}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Cloud Run health check failed: {e}")
+                self.logger.info("   This is expected if the service hasn't been deployed yet")
+                self.logger.info("   Deploy with: terraform apply -var='enable_jarvis_prime=true'")
+
+    async def _wait_for_jarvis_prime_health(self) -> bool:
+        """Wait for JARVIS-Prime to become healthy."""
+        import aiohttp
+
+        url = f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}/health"
+        start_time = time.perf_counter()
+        timeout = self.config.jarvis_prime_startup_timeout
+
+        self.logger.info(f"⏳ Waiting for JARVIS-Prime at {url}...")
+
+        async with aiohttp.ClientSession() as session:
+            while (time.perf_counter() - start_time) < timeout:
+                try:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            self.logger.info(f"✅ JARVIS-Prime healthy: {data.get('status', 'ok')}")
+                            return True
+                except Exception:
+                    pass
+
+                await asyncio.sleep(1.0)
+
+        self.logger.warning(f"⚠️ JARVIS-Prime health check timed out after {timeout}s")
+        return False
+
+    async def _read_jarvis_prime_logs(self) -> None:
+        """Read and log JARVIS-Prime subprocess output."""
+        if not self._jarvis_prime_process:
+            return
+
+        try:
+            async for line in self._jarvis_prime_process.stdout:
+                text = line.decode().strip()
+                if text:
+                    self.logger.debug(f"[JarvisPrime] {text}")
+        except Exception as e:
+            self.logger.debug(f"JARVIS-Prime log reader ended: {e}")
+
+    async def _init_reactor_core_watcher(self) -> None:
+        """Initialize Reactor-Core watcher for auto-deployment of trained models."""
+        watch_dir = self.config.reactor_core_watch_dir
+
+        if not watch_dir or not Path(watch_dir).exists():
+            self.logger.info("ℹ️ Reactor-Core watch directory not configured or doesn't exist")
+            return
+
+        self.logger.info(f"🔬 Initializing Reactor-Core watcher: {watch_dir}")
+
+        # Import and start watcher (non-blocking)
+        try:
+            from jarvis_prime.docker.reactor_core_watcher import ReactorCoreWatcher
+
+            async def on_new_model(model_path: Path):
+                """Callback when a new model is deployed from reactor-core."""
+                self.logger.info(f"🔥 Reactor-Core deployed new model: {model_path}")
+                await self.narrator.speak(
+                    f"New model deployed from Reactor Core: {model_path.stem}",
+                    wait=False
+                )
+
+                # Trigger hot-swap in JARVIS-Prime
+                if self._jarvis_prime_client:
+                    try:
+                        # This would call the hot-swap endpoint
+                        pass  # TODO: Implement hot-swap trigger
+                    except Exception as e:
+                        self.logger.error(f"Hot-swap failed: {e}")
+
+            self._reactor_core_watcher = ReactorCoreWatcher(
+                watch_dir=Path(watch_dir),
+                callback=on_new_model,
+            )
+
+            # Start watching in background
+            asyncio.create_task(self._reactor_core_watcher.start())
+            self.logger.info("✅ Reactor-Core watcher started")
+
+        except ImportError as e:
+            self.logger.warning(f"⚠️ Reactor-Core watcher not available: {e}")
+
+    async def _stop_jarvis_prime(self) -> None:
+        """Stop JARVIS-Prime subprocess or container."""
+        # Stop subprocess
+        if self._jarvis_prime_process:
+            try:
+                self._jarvis_prime_process.terminate()
+                await asyncio.wait_for(self._jarvis_prime_process.wait(), timeout=5.0)
+            except Exception:
+                self._jarvis_prime_process.kill()
+            self._jarvis_prime_process = None
+
+        # Stop Docker container
+        if self.config.jarvis_prime_use_docker:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "stop", "jarvis-prime",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(proc.wait(), timeout=10.0)
+            except Exception:
+                pass
+
+        # Stop reactor-core watcher
+        if self._reactor_core_watcher:
+            await self._reactor_core_watcher.stop()
+            self._reactor_core_watcher = None
 
     def _wire_router_to_runner(self) -> None:
         """
