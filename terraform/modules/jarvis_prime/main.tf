@@ -125,6 +125,7 @@ resource "google_artifact_registry_repository" "jarvis_prime" {
     app         = "jarvis-prime"
     environment = var.environment
     managed_by  = "terraform"
+    created-by  = "jarvis" # Required for orphan detection by GCPReconciler
   }
 }
 
@@ -252,6 +253,7 @@ resource "google_cloud_run_v2_service" "jarvis_prime" {
       app         = "jarvis-prime"
       environment = var.environment
       managed_by  = "terraform"
+      created-by  = "jarvis" # Required for orphan detection by GCPReconciler
     }
   }
 
@@ -265,6 +267,7 @@ resource "google_cloud_run_v2_service" "jarvis_prime" {
     app         = "jarvis-prime"
     environment = var.environment
     managed_by  = "terraform"
+    created-by  = "jarvis" # Required for orphan detection by GCPReconciler
   }
 
   depends_on = [

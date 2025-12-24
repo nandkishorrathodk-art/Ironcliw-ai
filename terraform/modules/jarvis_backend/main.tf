@@ -164,6 +164,7 @@ resource "google_artifact_registry_repository" "jarvis_backend" {
     app         = "jarvis-backend"
     environment = var.environment
     managed_by  = "terraform"
+    created-by  = "jarvis" # Required for orphan detection by GCPReconciler
   }
 }
 
@@ -402,6 +403,7 @@ resource "google_cloud_run_v2_service" "jarvis_backend" {
       environment = var.environment
       managed_by  = "terraform"
       neural_mesh = var.neural_mesh_enabled ? "enabled" : "disabled"
+      created-by  = "jarvis" # Required for orphan detection by GCPReconciler
     }
   }
 
@@ -415,6 +417,7 @@ resource "google_cloud_run_v2_service" "jarvis_backend" {
     app         = "jarvis-backend"
     environment = var.environment
     managed_by  = "terraform"
+    created-by  = "jarvis" # Required for orphan detection by GCPReconciler
   }
 
   depends_on = [

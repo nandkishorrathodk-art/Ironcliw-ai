@@ -154,6 +154,7 @@ resource "google_compute_instance_template" "spot_template" {
     environment = "development"
     managed-by  = "terraform"
     type        = "spot-vm"
+    created-by  = "jarvis" # Required for orphan detection by GCPReconciler
   }
 
   tags = ["jarvis-node", "spot-vm"]
