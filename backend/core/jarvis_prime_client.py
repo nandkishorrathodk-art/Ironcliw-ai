@@ -863,6 +863,39 @@ class JarvisPrimeClient:
 
         self._total_cost += response.cost_estimate
 
+        # Record to observability hub (async-safe fire-and-forget)
+        asyncio.create_task(self._record_to_observability(mode, response))
+
+    async def _record_to_observability(self, mode: RoutingMode, response: CompletionResponse):
+        """Record completion to the observability hub."""
+        try:
+            from observability import record_llm_call, CostTier
+
+            # Map routing mode to cost tier
+            tier_map = {
+                RoutingMode.LOCAL: "local",
+                RoutingMode.CLOUD_RUN: "cloud_run",
+                RoutingMode.GEMINI_API: "gemini_api",
+            }
+
+            await record_llm_call(
+                input_text=response.metadata.get("input", "")[:500] if response.metadata else "",
+                output_text=response.content[:500] if response.content else "",
+                tier=tier_map.get(mode, "local"),
+                input_tokens=response.metadata.get("input_tokens", 0) if response.metadata else 0,
+                output_tokens=response.tokens_used,
+                latency_ms=response.latency_ms,
+                routing_mode=mode.value,
+                routing_reason=response.metadata.get("routing_reason", "") if response.metadata else "",
+                memory_available_gb=self._memory_monitor.get_available_gb(),
+                cached=response.metadata.get("cached", False) if response.metadata else False,
+            )
+        except ImportError:
+            # Observability not available, skip silently
+            pass
+        except Exception as e:
+            logger.debug(f"Observability recording failed: {e}")
+
     def get_stats(self) -> Dict[str, Any]:
         """Get usage statistics."""
         total = self._request_count or 1
