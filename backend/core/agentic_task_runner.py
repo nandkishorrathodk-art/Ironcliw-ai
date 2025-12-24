@@ -189,6 +189,23 @@ class AgenticRunnerConfig:
         default_factory=lambda: os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", "")
     )
 
+    # Reactor-Core Integration (v10.0 - "Ignition Key")
+    reactor_core_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
+    )
+    reactor_core_url: str = field(
+        default_factory=lambda: os.getenv("REACTOR_CORE_API_URL", "http://localhost:8003")
+    )
+    reactor_core_auto_trigger: bool = field(
+        default_factory=lambda: os.getenv("REACTOR_CORE_AUTO_TRIGGER", "true").lower() == "true"
+    )
+    reactor_core_experience_threshold: int = field(
+        default_factory=lambda: int(os.getenv("REACTOR_CORE_EXP_THRESHOLD", "100"))
+    )
+    reactor_core_min_trigger_interval_hours: float = field(
+        default_factory=lambda: float(os.getenv("REACTOR_CORE_MIN_INTERVAL_HOURS", "6.0"))
+    )
+
 
 # =============================================================================
 # Enums
@@ -398,6 +415,10 @@ class AgenticTaskRunner:
         self._uae_context = None
         self._intervention = None
         self._jarvis_prime_client = None
+
+        # Reactor-Core Client (v10.0 - "Ignition Key")
+        self._reactor_core_client = None
+        self._experience_count = 0  # Track experiences for auto-trigger
 
         # Component availability
         self._availability = _check_component_availability()
@@ -684,6 +705,36 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.debug(f"[AgenticRunner] ✗ JARVIS Prime Client: {e}")
 
+            # =================================================================
+            # Initialize Reactor-Core Client (v10.0 - "Ignition Key")
+            # =================================================================
+            if self.config.reactor_core_enabled:
+                try:
+                    from backend.clients.reactor_core_client import (
+                        ReactorCoreClient,
+                        ReactorCoreConfig,
+                    )
+                    reactor_config = ReactorCoreConfig(
+                        api_url=self.config.reactor_core_url,
+                        auto_trigger_enabled=self.config.reactor_core_auto_trigger,
+                        experience_threshold=self.config.reactor_core_experience_threshold,
+                        min_trigger_interval_hours=self.config.reactor_core_min_trigger_interval_hours,
+                    )
+                    self._reactor_core_client = ReactorCoreClient(reactor_config)
+                    await self._reactor_core_client.initialize()
+
+                    # Register event callbacks
+                    self._reactor_core_client.on_training_completed(self._on_training_completed)
+                    self._reactor_core_client.on_training_failed(self._on_training_failed)
+
+                    if self._reactor_core_client.is_online:
+                        self.logger.info("[AgenticRunner] ✓ Reactor-Core Client (ONLINE)")
+                    else:
+                        self.logger.info("[AgenticRunner] ✓ Reactor-Core Client (offline - will retry)")
+                except Exception as e:
+                    self.logger.warning(f"[AgenticRunner] ✗ Reactor-Core Client: {e}")
+                    self._reactor_core_client = None
+
             # Verify we have at least one execution capability
             if not self._computer_use_tool and not self._computer_use_connector:
                 self.logger.error("[AgenticRunner] No execution capability available!")
@@ -811,6 +862,409 @@ class AgenticTaskRunner:
         except Exception as e:
             self.logger.debug(f"[AgenticRunner] JARVIS Prime client init failed: {e}")
 
+    # =========================================================================
+    # Reactor-Core Integration (v10.0 - "Ignition Key")
+    # =========================================================================
+
+    async def _record_experience_and_check_training(
+        self,
+        goal: str,
+        result: "AgenticTaskResult",
+    ) -> None:
+        """
+        Record task experience and check if training should be triggered.
+
+        This is the "Ignition Key" - the critical connection between JARVIS
+        task execution and the Reactor-Core training pipeline.
+
+        Args:
+            goal: The task goal that was executed
+            result: The task execution result
+        """
+        if not self._reactor_core_client:
+            return
+
+        try:
+            # Increment experience count
+            self._experience_count += 1
+
+            # Create experience record
+            experience = {
+                "goal": goal,
+                "success": result.success,
+                "mode": result.mode,
+                "execution_time_ms": result.execution_time_ms,
+                "actions_count": result.actions_count,
+                "reasoning_steps": result.reasoning_steps,
+                "learning_insights": result.learning_insights,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Stream experience to Reactor-Core (if online)
+            if self._reactor_core_client.is_online:
+                streamed = await self._reactor_core_client.stream_experience(experience)
+                if streamed:
+                    self.logger.debug(f"[ReactorCore] Experience streamed (total: {self._experience_count})")
+
+            # Check if we should trigger training
+            await self._check_and_trigger_training()
+
+        except Exception as e:
+            # Never crash JARVIS for training issues
+            self.logger.debug(f"[ReactorCore] Experience record error: {e}")
+
+    async def _check_and_trigger_training(self) -> None:
+        """
+        Check if training should be triggered based on experience count.
+
+        Training is triggered when:
+        1. Experience count >= threshold
+        2. Minimum interval since last trigger has passed
+        3. Reactor-Core is online
+        4. Auto-trigger is enabled
+        """
+        if not self._reactor_core_client:
+            return
+
+        if not self.config.reactor_core_auto_trigger:
+            return
+
+        if not self._reactor_core_client.is_online:
+            return
+
+        threshold = self.config.reactor_core_experience_threshold
+
+        if self._experience_count >= threshold:
+            try:
+                from backend.clients.reactor_core_client import TrainingPriority
+
+                # Determine priority based on experience count
+                if self._experience_count >= threshold * 2:
+                    priority = TrainingPriority.HIGH
+                elif self._experience_count >= threshold * 1.5:
+                    priority = TrainingPriority.NORMAL
+                else:
+                    priority = TrainingPriority.LOW
+
+                job = await self._reactor_core_client.trigger_training(
+                    experience_count=self._experience_count,
+                    priority=priority,
+                )
+
+                if job:
+                    self.logger.info(
+                        f"[ReactorCore] Training triggered: job_id={job.job_id}, "
+                        f"experiences={self._experience_count}"
+                    )
+                    # Reset counter after successful trigger
+                    self._experience_count = 0
+
+                    # Announce training trigger
+                    if self.tts_callback and self.config.narrate_by_default:
+                        await self.tts_callback(
+                            f"Training pipeline triggered with {job.experience_count} experiences"
+                        )
+
+            except Exception as e:
+                self.logger.debug(f"[ReactorCore] Training trigger error: {e}")
+
+    async def _on_training_completed(self, data: Optional[Dict[str, Any]]) -> None:
+        """
+        Callback when training completes in Reactor-Core.
+
+        Phase 2: Automatically hot-swap JARVIS Prime to the new model.
+        """
+        if not data:
+            return
+
+        job_id = data.get('job_id', 'unknown')
+        metrics = data.get('metrics', {})
+
+        self.logger.info(
+            f"[ReactorCore] Training completed: job_id={job_id}, "
+            f"metrics={metrics}"
+        )
+
+        # Announce completion
+        if self.tts_callback and self.config.narrate_by_default:
+            await self.tts_callback("Training pipeline completed successfully")
+
+        # ===================================================================
+        # Phase 2: Hot-Swap to new model
+        # ===================================================================
+        await self._auto_swap_jarvis_prime_model(data)
+
+    async def _on_training_failed(self, data: Optional[Dict[str, Any]]) -> None:
+        """Callback when training fails in Reactor-Core."""
+        if not data:
+            return
+
+        error = data.get("error", "unknown error")
+        self.logger.warning(f"[ReactorCore] Training failed: {error}")
+
+        # Announce failure (optional - may be noisy)
+        if self.tts_callback and self.config.narrate_by_default:
+            await self.tts_callback("Training pipeline encountered an error")
+
+    async def _auto_swap_jarvis_prime_model(self, training_data: Dict[str, Any]) -> None:
+        """
+        Phase 2: Automatically hot-swap JARVIS Prime to the newly trained model.
+
+        This method:
+        1. Extracts the output model path from training results
+        2. Checks if JARVIS Prime is healthy
+        3. Triggers the hot-swap via /model/swap endpoint
+        4. Logs the result and announces via TTS
+
+        Args:
+            training_data: Training completion data from Reactor-Core
+        """
+        import os
+        from pathlib import Path
+
+        # Check if auto-swap is enabled
+        auto_swap_enabled = os.getenv("JARVIS_PRIME_AUTO_SWAP", "true").lower() == "true"
+        if not auto_swap_enabled:
+            self.logger.info("[HotSwap] Auto-swap disabled via JARVIS_PRIME_AUTO_SWAP=false")
+            return
+
+        # Check if Reactor-Core client is available
+        if not self._reactor_core_client:
+            self.logger.warning("[HotSwap] Reactor-Core client not initialized")
+            return
+
+        # Check if JARVIS Prime is healthy before attempting swap
+        prime_healthy = await self._reactor_core_client.check_jarvis_prime_health()
+        if not prime_healthy:
+            self.logger.warning(
+                "[HotSwap] JARVIS Prime is not healthy - skipping auto-swap. "
+                "Model can be swapped manually when Prime is back online."
+            )
+            return
+
+        # Get the output model path from training data
+        # The model path can come from:
+        # 1. training_data['metrics']['output_model_path'] - if Reactor-Core provides it
+        # 2. Environment variable REACTOR_CORE_OUTPUT_MODEL_DIR + job_id
+        # 3. Default path pattern
+        model_path = self._resolve_output_model_path(training_data)
+
+        if not model_path:
+            self.logger.warning(
+                "[HotSwap] Could not determine output model path from training data. "
+                "Set REACTOR_CORE_OUTPUT_MODEL_PATH or ensure Reactor-Core provides it."
+            )
+            return
+
+        if not Path(model_path).exists():
+            self.logger.warning(
+                f"[HotSwap] Output model file not found: {model_path}. "
+                "Training may still be exporting or path is incorrect."
+            )
+            return
+
+        # Generate version ID from training job
+        job_id = training_data.get('job_id', 'unknown')
+        version_id = f"v{job_id}-trained"
+
+        self.logger.info(f"[HotSwap] Initiating hot-swap to {model_path} (version: {version_id})")
+
+        # Announce swap start
+        if self.tts_callback and self.config.narrate_by_default:
+            await self.tts_callback("Deploying new brain model. Stand by for hot swap.")
+
+        try:
+            # Perform the hot-swap
+            result = await self._reactor_core_client.swap_jarvis_prime_model(
+                model_path=model_path,
+                version_id=version_id,
+                force=False,
+            )
+
+            if result.get('success', False):
+                old_version = result.get('old_version', 'unknown')
+                new_version = result.get('new_version', version_id)
+                duration = result.get('duration_seconds', 0)
+                memory_freed = result.get('memory_freed_mb', 0)
+
+                self.logger.info(
+                    f"[HotSwap] SUCCESS: {old_version} → {new_version} "
+                    f"({duration:.2f}s, freed {memory_freed:.0f}MB)"
+                )
+
+                # Announce success
+                if self.tts_callback and self.config.narrate_by_default:
+                    await self.tts_callback(
+                        f"Brain upgrade complete. New model deployed in {duration:.1f} seconds."
+                    )
+
+                # Write event to cross-repo bridge
+                await self._write_hot_swap_event("swap_completed", {
+                    "old_version": old_version,
+                    "new_version": new_version,
+                    "model_path": model_path,
+                    "duration_seconds": duration,
+                    "memory_freed_mb": memory_freed,
+                    "training_job_id": job_id,
+                })
+
+            else:
+                error_msg = result.get('error_message', 'Unknown error')
+                self.logger.error(f"[HotSwap] FAILED: {error_msg}")
+
+                # Announce failure
+                if self.tts_callback and self.config.narrate_by_default:
+                    await self.tts_callback("Brain upgrade failed. Continuing with current model.")
+
+                # Write event
+                await self._write_hot_swap_event("swap_failed", {
+                    "error": error_msg,
+                    "model_path": model_path,
+                    "training_job_id": job_id,
+                })
+
+        except Exception as e:
+            self.logger.error(f"[HotSwap] Exception during swap: {e}")
+            if self.tts_callback and self.config.narrate_by_default:
+                await self.tts_callback("Brain upgrade encountered an error.")
+
+    def _resolve_output_model_path(self, training_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Resolve the output model path from training data.
+
+        Checks multiple sources in order of priority:
+        1. Explicit path in training metrics
+        2. Environment variable
+        3. Default pattern based on job ID
+
+        Args:
+            training_data: Training completion data
+
+        Returns:
+            Absolute path to the model file, or None if not found
+        """
+        import os
+        from pathlib import Path
+
+        # Priority 1: Explicit path from training metrics
+        metrics = training_data.get('metrics', {})
+        if 'output_model_path' in metrics:
+            return metrics['output_model_path']
+
+        # Priority 2: Check environment for output directory
+        output_dir = os.getenv('REACTOR_CORE_OUTPUT_MODEL_DIR')
+        if output_dir:
+            job_id = training_data.get('job_id', 'latest')
+            # Look for most recent .gguf file in output directory
+            output_path = Path(output_dir)
+            if output_path.exists():
+                gguf_files = list(output_path.glob('*.gguf'))
+                if gguf_files:
+                    # Return most recently modified
+                    return str(max(gguf_files, key=lambda p: p.stat().st_mtime))
+
+        # Priority 3: Check default reactor-core output path
+        default_paths = [
+            Path.home() / ".jarvis" / "models" / "trained",
+            Path.home() / ".reactor-core" / "output" / "models",
+            Path("/tmp/reactor-core/output"),
+        ]
+
+        for default_path in default_paths:
+            if default_path.exists():
+                gguf_files = list(default_path.glob('*.gguf'))
+                if gguf_files:
+                    return str(max(gguf_files, key=lambda p: p.stat().st_mtime))
+
+        return None
+
+    async def _write_hot_swap_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Write hot-swap event to cross-repo bridge."""
+        import json
+        import uuid
+        from datetime import datetime
+        from pathlib import Path
+
+        try:
+            bridge_dir = Path.home() / ".jarvis" / "cross_repo" / "hot_swap_events"
+            bridge_dir.mkdir(parents=True, exist_ok=True)
+
+            event = {
+                "event_id": str(uuid.uuid4())[:8],
+                "event_type": event_type,
+                "source": "jarvis_agentic_runner",
+                "timestamp": datetime.now().isoformat(),
+                "payload": data,
+            }
+
+            filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{event['event_id']}.json"
+            filepath = bridge_dir / filename
+
+            with open(filepath, "w") as f:
+                json.dump(event, f, indent=2)
+
+        except Exception as e:
+            self.logger.debug(f"[HotSwap] Bridge event write error: {e}")
+
+    async def trigger_training_manual(
+        self,
+        priority: str = "normal",
+        force: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Manually trigger a training run.
+
+        This can be called from external code or via voice command.
+
+        Args:
+            priority: Training priority (low, normal, high, urgent)
+            force: Force trigger even if minimum interval hasn't passed
+
+        Returns:
+            Training job info or None if trigger failed
+        """
+        if not self._reactor_core_client:
+            self.logger.warning("[ReactorCore] Client not initialized")
+            return None
+
+        if not self._reactor_core_client.is_online:
+            self.logger.warning("[ReactorCore] Reactor-Core is offline")
+            return None
+
+        try:
+            from backend.clients.reactor_core_client import TrainingPriority
+
+            priority_enum = TrainingPriority(priority.lower())
+            job = await self._reactor_core_client.trigger_training(
+                experience_count=self._experience_count,
+                priority=priority_enum,
+                force=force,
+            )
+
+            if job:
+                self._experience_count = 0  # Reset after trigger
+                return job.to_dict()
+            return None
+
+        except Exception as e:
+            self.logger.error(f"[ReactorCore] Manual trigger error: {e}")
+            return None
+
+    def get_reactor_core_status(self) -> Dict[str, Any]:
+        """Get Reactor-Core client status."""
+        if not self._reactor_core_client:
+            return {"enabled": False, "initialized": False}
+
+        return {
+            "enabled": self.config.reactor_core_enabled,
+            "initialized": self._reactor_core_client.is_initialized,
+            "online": self._reactor_core_client.is_online,
+            "pending_experiences": self._experience_count,
+            "threshold": self.config.reactor_core_experience_threshold,
+            "auto_trigger": self.config.reactor_core_auto_trigger,
+            **self._reactor_core_client.get_metrics(),
+        }
+
     def _log_component_summary(self):
         """Log a summary of initialized components."""
         core_components = []
@@ -858,6 +1312,9 @@ class AgenticTaskRunner:
         # Integrations
         if self._jarvis_prime_client and self._jarvis_prime_client.get("connected"):
             integrations.append("JARVIS-Prime")
+        if self._reactor_core_client:
+            status = "online" if self._reactor_core_client.is_online else "offline"
+            integrations.append(f"Reactor-Core({status})")
 
         # Log summary
         self.logger.info(
@@ -1096,6 +1553,10 @@ class AgenticTaskRunner:
             if narrate and self.tts_callback:
                 status = "completed successfully" if result.success else "encountered an issue"
                 await self.tts_callback(f"Task {status}")
+
+            # Reactor-Core Integration: Track experience and check training trigger (v10.0)
+            if result.success and self.config.reactor_core_enabled:
+                await self._record_experience_and_check_training(goal, result)
 
             self.logger.info(f"[AgenticRunner] Complete: success={result.success}, time={execution_time:.0f}ms")
             return result

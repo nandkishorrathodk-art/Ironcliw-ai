@@ -2041,6 +2041,11 @@ class SupervisorBootstrapper:
         self._infra_orchestrator = None
         self._infra_orchestrator_enabled = self.config.infra_on_demand_enabled
 
+        # v10.0: Reactor-Core API Server (Training Pipeline)
+        self._reactor_core_process = None
+        self._reactor_core_enabled = os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
+        self._reactor_core_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
+
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
         os.environ["CI"] = "true"
@@ -2241,6 +2246,14 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             if self._infra_orchestrator_enabled:
                 await self._initialize_infrastructure_orchestrator()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v10.0: Reactor-Core API Server (Training Pipeline)
+            # This starts the training API that enables programmatic training triggers.
+            # The "Ignition Key" connects JARVIS to Reactor-Core for continuous learning.
+            # ═══════════════════════════════════════════════════════════════════
+            if self._reactor_core_enabled:
+                await self._initialize_reactor_core_api()
 
             self.perf.end("validation")
 
@@ -3577,6 +3590,12 @@ class SupervisorBootstrapper:
             self.logger.info("✅ JARVIS-Prime stopped")
         except Exception as e:
             self.logger.warning(f"⚠️ JARVIS-Prime cleanup error: {e}")
+
+        # v10.0: Cleanup Reactor-Core API Server
+        try:
+            await self._shutdown_reactor_core()
+        except Exception as e:
+            self.logger.warning(f"⚠️ Reactor-Core cleanup error: {e}")
 
         # Cleanup GCP resources
         try:
@@ -6728,6 +6747,125 @@ class SupervisorBootstrapper:
 
         except Exception as e:
             self.logger.debug(f"   Cross-repo bridge init failed (non-critical): {e}")
+
+    async def _initialize_reactor_core_api(self) -> None:
+        """
+        v10.0: Initialize Reactor-Core API Server.
+
+        This starts the training pipeline API server that enables:
+        - Programmatic training triggers from JARVIS
+        - Experience log streaming
+        - Pipeline status monitoring
+        - Scout topic management
+
+        The server is started as a subprocess and managed alongside JARVIS.
+        """
+        import subprocess
+
+        reactor_core_path = Path(os.getenv(
+            "REACTOR_CORE_PATH",
+            str(Path.home() / "Documents/repos/reactor-core")
+        ))
+
+        if not reactor_core_path.exists():
+            self.logger.warning("   ⚠️ Reactor-Core path not found, skipping API server")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core not found at {reactor_core_path}{TerminalUI.RESET}")
+            return
+
+        try:
+            # Check if already running
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://localhost:{self._reactor_core_port}/health",
+                        timeout=aiohttp.ClientTimeout(total=2)
+                    ) as response:
+                        if response.status == 200:
+                            self.logger.info(f"   ✅ Reactor-Core already running on port {self._reactor_core_port}")
+                            print(f"  {TerminalUI.GREEN}✓ Reactor-Core API already running{TerminalUI.RESET}")
+                            return
+            except Exception:
+                pass  # Not running, we'll start it
+
+            # Start Reactor-Core API server as subprocess
+            self.logger.info(f"   🚀 Starting Reactor-Core API on port {self._reactor_core_port}...")
+            print(f"  {TerminalUI.CYAN}🚀 Starting Reactor-Core API...{TerminalUI.RESET}")
+
+            # Create startup script
+            startup_code = f'''
+import sys
+sys.path.insert(0, "{reactor_core_path}")
+import uvicorn
+from reactor_core.api.server import app
+uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warning")
+'''
+
+            # Start as subprocess
+            self._reactor_core_process = subprocess.Popen(
+                [sys.executable, "-c", startup_code],
+                cwd=str(reactor_core_path),
+                env={**os.environ, "PYTHONPATH": str(reactor_core_path)},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Wait for startup
+            await asyncio.sleep(2)
+
+            # Verify it's running
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://localhost:{self._reactor_core_port}/health",
+                        timeout=aiohttp.ClientTimeout(total=5)
+                    ) as response:
+                        if response.status == 200:
+                            self.logger.info(f"   ✅ Reactor-Core API started (PID: {self._reactor_core_process.pid})")
+                            print(f"  {TerminalUI.GREEN}✓ Reactor-Core API started (port {self._reactor_core_port}){TerminalUI.RESET}")
+
+                            # Update bridge state
+                            bridge_file = Path.home() / ".jarvis" / "cross_repo" / "bridge_state.json"
+                            if bridge_file.exists():
+                                import json
+                                with open(bridge_file, "r") as f:
+                                    bridge_state = json.load(f)
+                                bridge_state["repos"]["reactor_core"]["status"] = "running"
+                                bridge_state["repos"]["reactor_core"]["pid"] = self._reactor_core_process.pid
+                                bridge_state["repos"]["reactor_core"]["port"] = self._reactor_core_port
+                                with open(bridge_file, "w") as f:
+                                    json.dump(bridge_state, f, indent=2)
+                            return
+            except Exception:
+                pass
+
+            # Failed to start
+            self.logger.warning("   ⚠️ Reactor-Core API failed to start")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core API failed to start{TerminalUI.RESET}")
+
+            if self._reactor_core_process:
+                self._reactor_core_process.terminate()
+                self._reactor_core_process = None
+
+        except Exception as e:
+            self.logger.warning(f"   ⚠️ Reactor-Core initialization failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core init failed: {e}{TerminalUI.RESET}")
+
+    async def _shutdown_reactor_core(self) -> None:
+        """Shutdown the Reactor-Core API server."""
+        if self._reactor_core_process:
+            try:
+                self.logger.info("   Stopping Reactor-Core API...")
+                self._reactor_core_process.terminate()
+                try:
+                    self._reactor_core_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._reactor_core_process.kill()
+                self._reactor_core_process = None
+                self.logger.info("   ✅ Reactor-Core API stopped")
+            except Exception as e:
+                self.logger.debug(f"   Reactor-Core shutdown error: {e}")
 
     async def _run_continuous_scraping(self) -> None:
         """
