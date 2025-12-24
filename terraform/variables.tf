@@ -160,3 +160,9 @@ variable "jarvis_prime_cpu" {
   default     = "2"
 }
 
+variable "jarvis_prime_model_gcs_path" {
+  description = "GCS path to GGUF model for JARVIS-Prime Cloud Run"
+  type        = string
+  default     = ""
+}
+

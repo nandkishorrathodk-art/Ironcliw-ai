@@ -190,11 +190,12 @@ module "jarvis_prime" {
   environment = var.developer_mode ? "dev" : "prod"
 
   # Cloud Run configuration
-  image_tag     = var.jarvis_prime_image_tag
-  min_instances = var.jarvis_prime_min_instances
-  max_instances = var.jarvis_prime_max_instances
-  memory        = var.jarvis_prime_memory
-  cpu           = var.jarvis_prime_cpu
+  image_tag      = var.jarvis_prime_image_tag
+  min_instances  = var.jarvis_prime_min_instances
+  max_instances  = var.jarvis_prime_max_instances
+  memory         = var.jarvis_prime_memory
+  cpu            = var.jarvis_prime_cpu
+  model_gcs_path = var.jarvis_prime_model_gcs_path
 
   # Optional: Connect to Redis (if enabled)
   redis_host = var.enable_redis && length(module.storage) > 0 ? module.storage[0].redis_host : ""

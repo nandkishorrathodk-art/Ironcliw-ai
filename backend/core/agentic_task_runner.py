@@ -138,6 +138,40 @@ class AgenticRunnerConfig:
         default_factory=lambda: os.getenv("JARVIS_NM_AGI_EVENTS", "true").lower() == "true"
     )
 
+    # Autonomy Components Integration (v6.0)
+    phase_manager_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_PHASE_MANAGER_ENABLED", "true").lower() == "true"
+    )
+    tool_registry_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_TOOL_REGISTRY_ENABLED", "true").lower() == "true"
+    )
+    memory_manager_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_MEMORY_MANAGER_ENABLED", "true").lower() == "true"
+    )
+    error_recovery_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_ERROR_RECOVERY_ENABLED", "true").lower() == "true"
+    )
+    uae_context_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_UAE_CONTEXT_ENABLED", "true").lower() == "true"
+    )
+    intervention_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_INTERVENTION_ENABLED", "true").lower() == "true"
+    )
+
+    # JARVIS Prime Integration (Tier-0 Brain)
+    jarvis_prime_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+    )
+    jarvis_prime_url: str = field(
+        default_factory=lambda: os.getenv("JARVIS_PRIME_URL", "http://localhost:8002")
+    )
+    jarvis_prime_use_cloud_run: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true"
+    )
+    jarvis_prime_cloud_run_url: str = field(
+        default_factory=lambda: os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", "")
+    )
+
 
 # =============================================================================
 # Enums
@@ -235,6 +269,52 @@ def _check_component_availability() -> Dict[str, bool]:
     except ImportError:
         availability["voice_auth_layer"] = False
 
+    # =========================================================================
+    # Autonomy Components (v6.0)
+    # =========================================================================
+
+    # Phase Manager
+    try:
+        from autonomy.langgraph_phase_manager import LangGraphPhaseManager
+        availability["phase_manager"] = True
+    except ImportError:
+        availability["phase_manager"] = False
+
+    # Tool Registry
+    try:
+        from autonomy.unified_tool_registry import UnifiedToolRegistry
+        availability["tool_registry"] = True
+    except ImportError:
+        availability["tool_registry"] = False
+
+    # Memory Manager
+    try:
+        from autonomy.unified_memory_manager import UnifiedMemoryManager
+        availability["memory_manager"] = True
+    except ImportError:
+        availability["memory_manager"] = False
+
+    # Error Recovery Orchestrator
+    try:
+        from autonomy.error_recovery_orchestrator import ErrorRecoveryOrchestrator
+        availability["error_recovery"] = True
+    except ImportError:
+        availability["error_recovery"] = False
+
+    # UAE Context Manager
+    try:
+        from autonomy.uae_context_manager import UAEContextManager
+        availability["uae_context"] = True
+    except ImportError:
+        availability["uae_context"] = False
+
+    # Intervention Orchestrator
+    try:
+        from autonomy.intervention_orchestrator import InterventionOrchestrator
+        availability["intervention"] = True
+    except ImportError:
+        availability["intervention"] = False
+
     return availability
 
 
@@ -286,6 +366,15 @@ class AgenticTaskRunner:
         self._watchdog = watchdog  # Use external watchdog if provided
         self._voice_auth_layer = None  # v5.0: Voice Authentication Layer
 
+        # Autonomy Components (v6.0)
+        self._phase_manager = None
+        self._tool_registry = None
+        self._memory_manager = None
+        self._error_recovery = None
+        self._uae_context = None
+        self._intervention = None
+        self._jarvis_prime_client = None
+
         # Component availability
         self._availability = _check_component_availability()
 
@@ -302,6 +391,13 @@ class AgenticTaskRunner:
         self._nm_knowledge_contributions: int = 0
         self._nm_pattern_subscription_active: bool = False
         self._nm_agi_subscription_active: bool = False
+
+        # Autonomy Components Integration state (v6.0)
+        self._phase_execution_active: bool = False
+        self._current_phase: Optional[str] = None
+        self._phase_checkpoints: List[Dict[str, Any]] = []
+        self._experience_replay_cache: List[Dict[str, Any]] = []
+        self._active_interventions: int = 0
 
         self.logger.info("[AgenticRunner] Created")
         self._log_availability()
@@ -415,6 +511,77 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.debug(f"[AgenticRunner] ✗ Voice Auth Layer: {e}")
 
+            # =================================================================
+            # Initialize Autonomy Components (v6.0)
+            # =================================================================
+
+            # Initialize Tool Registry (before phase manager - tools needed for phases)
+            if self._availability.get("tool_registry") and self.config.tool_registry_enabled:
+                try:
+                    from autonomy.unified_tool_registry import start_tool_registry
+                    self._tool_registry = await start_tool_registry()
+                    self.logger.info("[AgenticRunner] ✓ Tool Registry")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Tool Registry: {e}")
+
+            # Initialize Memory Manager (before phase manager - memory for context)
+            if self._availability.get("memory_manager") and self.config.memory_manager_enabled:
+                try:
+                    from autonomy.unified_memory_manager import start_memory_manager
+                    self._memory_manager = await start_memory_manager()
+                    self.logger.info("[AgenticRunner] ✓ Memory Manager")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Memory Manager: {e}")
+
+            # Initialize Phase Manager (core execution orchestration)
+            if self._availability.get("phase_manager") and self.config.phase_manager_enabled:
+                try:
+                    from autonomy.langgraph_phase_manager import start_phase_manager
+                    self._phase_manager = await start_phase_manager()
+                    self.logger.info("[AgenticRunner] ✓ Phase Manager")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Phase Manager: {e}")
+
+            # Initialize Error Recovery Orchestrator (wraps execution)
+            if self._availability.get("error_recovery") and self.config.error_recovery_enabled:
+                try:
+                    from autonomy.error_recovery_orchestrator import start_error_recovery
+                    self._error_recovery = await start_error_recovery()
+                    # Register component reset handlers
+                    if self._error_recovery:
+                        self._register_error_recovery_handlers()
+                    self.logger.info("[AgenticRunner] ✓ Error Recovery")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Error Recovery: {e}")
+
+            # Initialize UAE Context Manager (continuous screen monitoring)
+            if self._availability.get("uae_context") and self.config.uae_context_enabled:
+                try:
+                    from autonomy.uae_context_manager import start_uae_context
+                    self._uae_context = await start_uae_context()
+                    self.logger.info("[AgenticRunner] ✓ UAE Context Manager")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ UAE Context Manager: {e}")
+
+            # Initialize Intervention Orchestrator (proactive assistance)
+            if self._availability.get("intervention") and self.config.intervention_enabled:
+                try:
+                    from autonomy.intervention_orchestrator import start_intervention_orchestrator
+                    self._intervention = await start_intervention_orchestrator(
+                        tts_callback=self.tts_callback
+                    )
+                    self.logger.info("[AgenticRunner] ✓ Intervention Orchestrator")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Intervention Orchestrator: {e}")
+
+            # Initialize JARVIS Prime Client (Tier-0 Brain)
+            if self.config.jarvis_prime_enabled:
+                try:
+                    await self._initialize_jarvis_prime_client()
+                    self.logger.info("[AgenticRunner] ✓ JARVIS Prime Client")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ JARVIS Prime Client: {e}")
+
             # Verify we have at least one execution capability
             if not self._computer_use_tool and not self._computer_use_connector:
                 self.logger.error("[AgenticRunner] No execution capability available!")
@@ -422,11 +589,181 @@ class AgenticTaskRunner:
 
             self._initialized = True
             self.logger.info("[AgenticRunner] Initialization complete")
+            self._log_component_summary()
             return True
 
         except Exception as e:
             self.logger.error(f"[AgenticRunner] Initialization failed: {e}")
             return False
+
+    def _register_error_recovery_handlers(self):
+        """Register component reset handlers for error recovery."""
+        if not self._error_recovery:
+            return
+
+        try:
+            # Computer Use Tool reset handler
+            async def reset_computer_use():
+                if self._computer_use_tool:
+                    self.logger.info("[ErrorRecovery] Resetting Computer Use Tool")
+                    if hasattr(self._computer_use_tool, 'reset'):
+                        await self._computer_use_tool.reset()
+                    return True
+                return False
+
+            # UAE reset handler
+            async def reset_uae():
+                if self._uae:
+                    self.logger.info("[ErrorRecovery] Resetting UAE")
+                    if hasattr(self._uae, 'reset') or hasattr(self._uae, 'restart'):
+                        reset_fn = getattr(self._uae, 'reset', None) or getattr(self._uae, 'restart', None)
+                        await reset_fn()
+                    return True
+                return False
+
+            # Neural Mesh connection reset handler
+            async def reset_neural_mesh_connection():
+                if self._neural_mesh:
+                    self.logger.info("[ErrorRecovery] Resetting Neural Mesh connection")
+                    if hasattr(self._neural_mesh, 'bus') and hasattr(self._neural_mesh.bus, 'reconnect'):
+                        await self._neural_mesh.bus.reconnect()
+                    return True
+                return False
+
+            # Phase Manager state reset handler
+            async def reset_phase_manager():
+                if self._phase_manager:
+                    self.logger.info("[ErrorRecovery] Resetting Phase Manager state")
+                    if hasattr(self._phase_manager, 'reset_state'):
+                        await self._phase_manager.reset_state()
+                    self._phase_execution_active = False
+                    self._current_phase = None
+                    self._phase_checkpoints.clear()
+                    return True
+                return False
+
+            # Memory Manager cache flush handler
+            async def flush_memory_cache():
+                if self._memory_manager:
+                    self.logger.info("[ErrorRecovery] Flushing Memory Manager cache")
+                    if hasattr(self._memory_manager, 'flush_working_memory'):
+                        await self._memory_manager.flush_working_memory()
+                    return True
+                return False
+
+            # Register all handlers
+            self._error_recovery.register_reset_handler("computer_use", reset_computer_use)
+            self._error_recovery.register_reset_handler("uae", reset_uae)
+            self._error_recovery.register_reset_handler("neural_mesh", reset_neural_mesh_connection)
+            self._error_recovery.register_reset_handler("phase_manager", reset_phase_manager)
+            self._error_recovery.register_reset_handler("memory_cache", flush_memory_cache)
+
+            self.logger.debug("[AgenticRunner] Error recovery handlers registered")
+
+        except Exception as e:
+            self.logger.debug(f"[AgenticRunner] Error recovery handler registration failed: {e}")
+
+    async def _initialize_jarvis_prime_client(self):
+        """Initialize the JARVIS Prime Tier-0 Brain client."""
+        try:
+            import aiohttp
+
+            # Determine the URL based on configuration
+            if self.config.jarvis_prime_use_cloud_run and self.config.jarvis_prime_cloud_run_url:
+                prime_url = self.config.jarvis_prime_cloud_run_url
+            else:
+                prime_url = self.config.jarvis_prime_url
+
+            # Create an aiohttp session for JARVIS Prime communication
+            self._jarvis_prime_client = {
+                "url": prime_url,
+                "session": aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=30),
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "JARVIS-AgenticRunner/6.0",
+                    }
+                ),
+                "connected": False,
+                "last_health_check": None,
+            }
+
+            # Test connection with health check
+            try:
+                async with self._jarvis_prime_client["session"].get(
+                    f"{prime_url}/health",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        self._jarvis_prime_client["connected"] = True
+                        self._jarvis_prime_client["last_health_check"] = time.time()
+                        self.logger.info(f"[AgenticRunner] JARVIS Prime connected at {prime_url}")
+                    else:
+                        self.logger.debug(f"[AgenticRunner] JARVIS Prime health check returned {response.status}")
+            except Exception as health_error:
+                self.logger.debug(f"[AgenticRunner] JARVIS Prime not available: {health_error}")
+                # Keep client for lazy connection attempts
+
+        except ImportError:
+            self.logger.debug("[AgenticRunner] aiohttp not available for JARVIS Prime client")
+        except Exception as e:
+            self.logger.debug(f"[AgenticRunner] JARVIS Prime client init failed: {e}")
+
+    def _log_component_summary(self):
+        """Log a summary of initialized components."""
+        core_components = []
+        autonomy_components = []
+        integrations = []
+
+        # Core components
+        if self._computer_use_tool:
+            core_components.append("ComputerUseTool")
+        if self._computer_use_connector:
+            core_components.append("DirectConnector")
+        if self._autonomous_agent:
+            core_components.append("AutonomousAgent")
+        if self._watchdog:
+            core_components.append("Watchdog")
+
+        # UAE and Neural Mesh
+        if self._uae:
+            core_components.append("UAE")
+        if self._neural_mesh:
+            core_components.append("NeuralMesh")
+            if self._nm_pattern_subscription_active:
+                core_components.append("NM-Patterns")
+            if self._nm_agi_subscription_active:
+                core_components.append("NM-AGI")
+
+        # Voice Auth
+        if self._voice_auth_layer:
+            core_components.append("VoiceAuth")
+
+        # Autonomy Components (v6.0)
+        if self._phase_manager:
+            autonomy_components.append("PhaseManager")
+        if self._tool_registry:
+            autonomy_components.append("ToolRegistry")
+        if self._memory_manager:
+            autonomy_components.append("MemoryManager")
+        if self._error_recovery:
+            autonomy_components.append("ErrorRecovery")
+        if self._uae_context:
+            autonomy_components.append("UAEContext")
+        if self._intervention:
+            autonomy_components.append("Intervention")
+
+        # Integrations
+        if self._jarvis_prime_client and self._jarvis_prime_client.get("connected"):
+            integrations.append("JARVIS-Prime")
+
+        # Log summary
+        self.logger.info(
+            f"[AgenticRunner] Components initialized:\n"
+            f"  Core: {', '.join(core_components) or 'None'}\n"
+            f"  Autonomy: {', '.join(autonomy_components) or 'None'}\n"
+            f"  Integrations: {', '.join(integrations) or 'None'}"
+        )
 
     # =========================================================================
     # Watchdog Integration
@@ -770,46 +1107,658 @@ class AgenticTaskRunner:
         context: Optional[Dict[str, Any]],
         narrate: bool,
     ) -> AgenticTaskResult:
-        """Execute goal with full autonomous reasoning + execution."""
-        self.logger.debug("[AgenticRunner] AUTONOMOUS mode")
+        """
+        Execute goal with full autonomous reasoning + phase-managed execution.
+
+        Phase Flow (LangGraph-style):
+        ANALYZING → PLANNING → EXECUTING → REFLECTING → LEARNING
+
+        Each phase can:
+        - Checkpoint state to memory
+        - Query JARVIS Prime for muscle-memory patterns
+        - Report progress to intervention orchestrator
+        - Be recovered by error recovery orchestrator
+        """
+        self.logger.debug("[AgenticRunner] AUTONOMOUS mode (Phase-Managed)")
 
         context = context or {}
         reasoning_steps = 0
+        phase_results: Dict[str, Any] = {}
+        self._phase_execution_active = True
+        self._phase_checkpoints.clear()
 
-        # Phase 1: Autonomous planning (if agent available)
+        try:
+            # =================================================================
+            # Phase 0: Context Enrichment
+            # =================================================================
+            self._current_phase = "CONTEXT_ENRICHMENT"
+            context = await self._enrich_context(goal, context)
+
+            # Query JARVIS Prime for muscle-memory patterns
+            prime_patterns = await self._query_jarvis_prime(goal)
+            if prime_patterns:
+                context["jarvis_prime_patterns"] = prime_patterns
+                self.logger.debug(f"[Phase-0] JARVIS Prime patterns: {len(prime_patterns)}")
+
+            # =================================================================
+            # Phase 1: ANALYZING
+            # =================================================================
+            self._current_phase = "ANALYZING"
+            await self._checkpoint_phase("analyzing_start", {"goal": goal, "context_keys": list(context.keys())})
+
+            analyze_result = await self._execute_with_error_recovery(
+                self._phase_analyze,
+                goal, context, narrate,
+                phase_name="ANALYZING"
+            )
+            if analyze_result:
+                phase_results["analyze"] = analyze_result
+                reasoning_steps += analyze_result.get("reasoning_steps", 0)
+                context.update(analyze_result.get("enriched_context", {}))
+
+            await self._checkpoint_phase("analyzing_complete", analyze_result)
+
+            # =================================================================
+            # Phase 2: PLANNING
+            # =================================================================
+            self._current_phase = "PLANNING"
+            await self._checkpoint_phase("planning_start", {"analyze_result": bool(analyze_result)})
+
+            plan_result = await self._execute_with_error_recovery(
+                self._phase_plan,
+                goal, context, narrate,
+                phase_name="PLANNING"
+            )
+            if plan_result:
+                phase_results["plan"] = plan_result
+                reasoning_steps += plan_result.get("reasoning_steps", 0)
+                context["execution_plan"] = plan_result.get("plan", [])
+                context["plan_confidence"] = plan_result.get("confidence", 0.5)
+
+            await self._checkpoint_phase("planning_complete", plan_result)
+
+            # Check for intervention opportunity
+            await self._check_intervention_opportunity("pre_execution", goal, context)
+
+            # =================================================================
+            # Phase 3: EXECUTING
+            # =================================================================
+            self._current_phase = "EXECUTING"
+            await self._checkpoint_phase("executing_start", {"plan_steps": len(context.get("execution_plan", []))})
+
+            # Main execution with UAE context monitoring
+            context["execution_mode"] = "autonomous"
+            context["full_reasoning"] = True
+            context["phase_managed"] = True
+
+            # Start UAE context monitoring if available
+            uae_context_task = None
+            if self._uae_context:
+                uae_context_task = asyncio.create_task(
+                    self._monitor_uae_context_during_execution(goal)
+                )
+
+            execute_result = await self._execute_with_error_recovery(
+                self._phase_execute,
+                goal, context, narrate,
+                phase_name="EXECUTING"
+            )
+
+            # Stop UAE monitoring
+            if uae_context_task:
+                uae_context_task.cancel()
+                try:
+                    await uae_context_task
+                except asyncio.CancelledError:
+                    pass
+
+            if execute_result:
+                phase_results["execute"] = execute_result
+
+            await self._checkpoint_phase("executing_complete", {"success": execute_result is not None})
+
+            # =================================================================
+            # Phase 4: REFLECTING
+            # =================================================================
+            self._current_phase = "REFLECTING"
+            await self._checkpoint_phase("reflecting_start", {})
+
+            reflect_result = await self._execute_with_error_recovery(
+                self._phase_reflect,
+                goal, context, phase_results, execute_result,
+                phase_name="REFLECTING"
+            )
+            if reflect_result:
+                phase_results["reflect"] = reflect_result
+                reasoning_steps += reflect_result.get("reasoning_steps", 0)
+
+            await self._checkpoint_phase("reflecting_complete", reflect_result)
+
+            # =================================================================
+            # Phase 5: LEARNING
+            # =================================================================
+            self._current_phase = "LEARNING"
+            if self.config.learning_enabled and execute_result and execute_result.success:
+                await self._checkpoint_phase("learning_start", {})
+
+                learn_result = await self._execute_with_error_recovery(
+                    self._phase_learn,
+                    goal, context, phase_results, execute_result,
+                    phase_name="LEARNING"
+                )
+                if learn_result:
+                    phase_results["learn"] = learn_result
+
+                await self._checkpoint_phase("learning_complete", learn_result)
+
+            # =================================================================
+            # Build Final Result
+            # =================================================================
+            self._phase_execution_active = False
+            self._current_phase = None
+
+            if execute_result:
+                execute_result.mode = "autonomous"
+                execute_result.reasoning_steps = reasoning_steps
+                execute_result.neural_mesh_used = self._neural_mesh is not None
+
+                # Add phase metadata to learning insights
+                if phase_results.get("reflect", {}).get("insights"):
+                    execute_result.learning_insights.extend(
+                        phase_results["reflect"]["insights"]
+                    )
+
+                return execute_result
+
+            # Fallback if no execute_result
+            return AgenticTaskResult(
+                success=False,
+                goal=goal,
+                mode="autonomous",
+                execution_time_ms=0,
+                actions_count=0,
+                reasoning_steps=reasoning_steps,
+                final_message="Phase execution did not produce a result",
+                error="No execution result from phase pipeline",
+            )
+
+        except Exception as e:
+            self.logger.error(f"[AgenticRunner] Phase execution failed: {e}", exc_info=True)
+            self._phase_execution_active = False
+            self._current_phase = None
+
+            # Record failure to memory for future learning
+            if self._memory_manager:
+                try:
+                    await self._memory_manager.record_episode(
+                        goal=goal,
+                        success=False,
+                        error=str(e),
+                        phases_completed=list(phase_results.keys()),
+                        timestamp=time.time(),
+                    )
+                except Exception:
+                    pass
+
+            return AgenticTaskResult(
+                success=False,
+                goal=goal,
+                mode="autonomous",
+                execution_time_ms=0,
+                actions_count=0,
+                reasoning_steps=reasoning_steps,
+                final_message=f"Phase execution failed: {str(e)}",
+                error=str(e),
+            )
+
+    # =========================================================================
+    # Phase Handlers (v6.0)
+    # =========================================================================
+
+    async def _phase_analyze(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        narrate: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        ANALYZING phase: Understand the goal and gather context.
+
+        - Query memory for similar past executions
+        - Analyze goal complexity and requirements
+        - Identify required tools and capabilities
+        """
+        self.logger.debug("[Phase-ANALYZE] Starting goal analysis")
+        result = {
+            "reasoning_steps": 0,
+            "enriched_context": {},
+            "complexity": "medium",
+            "required_tools": [],
+        }
+
+        # Query episodic memory for similar goals
+        if self._memory_manager:
+            try:
+                similar = await self._memory_manager.find_similar_goals(goal, limit=3)
+                if similar:
+                    result["enriched_context"]["similar_executions"] = similar
+                    # Extract successful patterns
+                    successful = [s for s in similar if s.get("success")]
+                    if successful:
+                        result["enriched_context"]["successful_patterns"] = [
+                            s.get("execution_pattern", {}) for s in successful
+                        ]
+                    result["reasoning_steps"] += 1
+            except Exception as e:
+                self.logger.debug(f"[Phase-ANALYZE] Memory query failed: {e}")
+
+        # Use autonomous agent for deeper analysis if available
         if self._autonomous_agent:
             try:
-                self.logger.debug("[AgenticRunner] Phase 1: Planning...")
-
                 if hasattr(self._autonomous_agent, 'analyze_goal'):
-                    plan_result = await self._autonomous_agent.analyze_goal(goal, context)
-                    if plan_result:
-                        reasoning_steps = plan_result.get("reasoning_steps", 0)
-                        context["autonomous_plan"] = plan_result.get("plan", [])
-                        context["goal_analysis"] = plan_result.get("analysis", "")
+                    analysis = await self._autonomous_agent.analyze_goal(goal, context)
+                    if analysis:
+                        result["reasoning_steps"] += analysis.get("reasoning_steps", 0)
+                        result["complexity"] = analysis.get("complexity", "medium")
+                        result["enriched_context"]["goal_analysis"] = analysis.get("analysis", "")
+                        result["required_tools"] = analysis.get("required_tools", [])
             except Exception as e:
-                self.logger.debug(f"[AgenticRunner] Planning failed: {e}")
+                self.logger.debug(f"[Phase-ANALYZE] Agent analysis failed: {e}")
 
-        # Phase 2: Execute via Computer Use
-        self.logger.debug("[AgenticRunner] Phase 2: Execution...")
-        context["execution_mode"] = "autonomous"
-        context["full_reasoning"] = True
-
-        direct_result = await self._execute_direct(goal, context, narrate)
-
-        # Update result with autonomous metadata
-        direct_result.mode = "autonomous"
-        direct_result.reasoning_steps = reasoning_steps
-        direct_result.neural_mesh_used = self._neural_mesh is not None
-
-        # Phase 3: Record learning (if enabled)
-        if self.config.learning_enabled and self._neural_mesh and direct_result.success:
+        # Query tool registry for available tools
+        if self._tool_registry:
             try:
-                await self._record_learning(goal, direct_result)
+                available_tools = await self._tool_registry.get_tools_for_goal(goal)
+                result["enriched_context"]["available_tools"] = [
+                    t.name for t in available_tools[:10]
+                ]
             except Exception as e:
-                self.logger.debug(f"[AgenticRunner] Learning failed: {e}")
+                self.logger.debug(f"[Phase-ANALYZE] Tool query failed: {e}")
 
-        return direct_result
+        self.logger.debug(f"[Phase-ANALYZE] Complete: {result['reasoning_steps']} reasoning steps")
+        return result
+
+    async def _phase_plan(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        narrate: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        PLANNING phase: Create execution plan based on analysis.
+
+        - Generate step-by-step plan
+        - Assign confidence scores
+        - Identify potential failure points
+        """
+        self.logger.debug("[Phase-PLAN] Starting execution planning")
+        result = {
+            "reasoning_steps": 0,
+            "plan": [],
+            "confidence": 0.5,
+            "risk_points": [],
+        }
+
+        # Use phase manager for LangGraph-style planning
+        if self._phase_manager:
+            try:
+                plan_output = await self._phase_manager.create_plan(
+                    goal=goal,
+                    context=context,
+                    available_tools=context.get("available_tools", []),
+                )
+                if plan_output:
+                    result["plan"] = plan_output.get("steps", [])
+                    result["confidence"] = plan_output.get("confidence", 0.5)
+                    result["reasoning_steps"] += plan_output.get("reasoning_steps", 1)
+                    result["risk_points"] = plan_output.get("risks", [])
+            except Exception as e:
+                self.logger.debug(f"[Phase-PLAN] Phase manager planning failed: {e}")
+
+        # Fallback: Use autonomous agent for planning
+        if not result["plan"] and self._autonomous_agent:
+            try:
+                if hasattr(self._autonomous_agent, 'create_plan'):
+                    agent_plan = await self._autonomous_agent.create_plan(goal, context)
+                    if agent_plan:
+                        result["plan"] = agent_plan.get("plan", [])
+                        result["confidence"] = agent_plan.get("confidence", 0.5)
+                        result["reasoning_steps"] += 1
+            except Exception as e:
+                self.logger.debug(f"[Phase-PLAN] Agent planning failed: {e}")
+
+        # Apply successful patterns from memory
+        successful_patterns = context.get("successful_patterns", [])
+        if successful_patterns and not result["plan"]:
+            # Use patterns to bootstrap plan
+            result["plan"] = successful_patterns[0].get("steps", [])
+            result["confidence"] = 0.7  # Higher confidence from proven patterns
+            result["reasoning_steps"] += 1
+
+        self.logger.debug(f"[Phase-PLAN] Complete: {len(result['plan'])} steps, confidence={result['confidence']:.2f}")
+        return result
+
+    async def _phase_execute(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        narrate: bool,
+    ) -> Optional[AgenticTaskResult]:
+        """
+        EXECUTING phase: Carry out the plan using Computer Use.
+
+        - Execute actions via Computer Use Tool
+        - Monitor progress
+        - Handle interruptions
+        """
+        self.logger.debug("[Phase-EXECUTE] Starting execution")
+
+        # Execute via the direct execution method
+        return await self._execute_direct(goal, context, narrate)
+
+    async def _phase_reflect(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        phase_results: Dict[str, Any],
+        execute_result: Optional[AgenticTaskResult],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        REFLECTING phase: Analyze what happened and extract insights.
+
+        - Compare outcome to expectations
+        - Identify what worked and what didn't
+        - Generate improvement suggestions
+        """
+        self.logger.debug("[Phase-REFLECT] Starting reflection")
+        result = {
+            "reasoning_steps": 0,
+            "insights": [],
+            "improvements": [],
+            "success_factors": [],
+        }
+
+        if not execute_result:
+            return result
+
+        # Basic success/failure analysis
+        if execute_result.success:
+            result["insights"].append(f"Goal achieved in {execute_result.actions_count} actions")
+            result["success_factors"].append("execution_complete")
+        else:
+            result["insights"].append(f"Execution failed: {execute_result.error or 'Unknown error'}")
+            result["improvements"].append("Consider alternative approaches")
+
+        # Analyze execution time
+        plan = phase_results.get("plan", {})
+        expected_steps = len(plan.get("plan", []))
+        actual_actions = execute_result.actions_count
+
+        if expected_steps > 0 and actual_actions > expected_steps * 2:
+            result["insights"].append(f"Execution took {actual_actions} actions vs {expected_steps} planned")
+            result["improvements"].append("Plan may need refinement for efficiency")
+
+        # Use autonomous agent for deeper reflection
+        if self._autonomous_agent and hasattr(self._autonomous_agent, 'reflect'):
+            try:
+                agent_reflection = await self._autonomous_agent.reflect(
+                    goal=goal,
+                    result=execute_result,
+                    context=context,
+                )
+                if agent_reflection:
+                    result["insights"].extend(agent_reflection.get("insights", []))
+                    result["improvements"].extend(agent_reflection.get("improvements", []))
+                    result["reasoning_steps"] += 1
+            except Exception as e:
+                self.logger.debug(f"[Phase-REFLECT] Agent reflection failed: {e}")
+
+        result["reasoning_steps"] += 1
+        self.logger.debug(f"[Phase-REFLECT] Complete: {len(result['insights'])} insights")
+        return result
+
+    async def _phase_learn(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        phase_results: Dict[str, Any],
+        execute_result: Optional[AgenticTaskResult],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        LEARNING phase: Consolidate experience for future use.
+
+        - Record to episodic memory
+        - Update semantic patterns
+        - Contribute to Neural Mesh knowledge graph
+        """
+        self.logger.debug("[Phase-LEARN] Starting learning consolidation")
+        result = {
+            "memory_recorded": False,
+            "neural_mesh_contributed": False,
+            "patterns_updated": 0,
+        }
+
+        if not execute_result:
+            return result
+
+        # Record to episodic memory
+        if self._memory_manager:
+            try:
+                episode = {
+                    "goal": goal,
+                    "success": execute_result.success,
+                    "actions_count": execute_result.actions_count,
+                    "execution_time_ms": execute_result.execution_time_ms,
+                    "error": execute_result.error,
+                    "insights": phase_results.get("reflect", {}).get("insights", []),
+                    "plan_used": context.get("execution_plan", []),
+                    "timestamp": time.time(),
+                }
+                await self._memory_manager.record_episode(
+                    category="task_execution",
+                    data=episode,
+                )
+                result["memory_recorded"] = True
+            except Exception as e:
+                self.logger.debug(f"[Phase-LEARN] Memory recording failed: {e}")
+
+        # Contribute to Neural Mesh knowledge graph
+        if self._neural_mesh:
+            try:
+                await self._record_learning(goal, execute_result)
+                result["neural_mesh_contributed"] = True
+            except Exception as e:
+                self.logger.debug(f"[Phase-LEARN] Neural Mesh contribution failed: {e}")
+
+        # Update tool usage patterns
+        if self._tool_registry and execute_result.success:
+            try:
+                tools_used = context.get("tools_executed", [])
+                for tool in tools_used:
+                    await self._tool_registry.record_tool_usage(
+                        tool_name=tool,
+                        goal=goal,
+                        success=True,
+                    )
+                result["patterns_updated"] = len(tools_used)
+            except Exception as e:
+                self.logger.debug(f"[Phase-LEARN] Tool pattern update failed: {e}")
+
+        self.logger.debug(f"[Phase-LEARN] Complete: memory={result['memory_recorded']}, nm={result['neural_mesh_contributed']}")
+        return result
+
+    # =========================================================================
+    # Phase Support Methods (v6.0)
+    # =========================================================================
+
+    async def _enrich_context(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Enrich execution context with available information."""
+        enriched = dict(context)
+
+        # UAE Context enrichment
+        if self._uae_context:
+            try:
+                uae_snapshot = await self._uae_context.get_current_context()
+                if uae_snapshot:
+                    enriched["uae_context"] = uae_snapshot
+                    enriched["screen_state"] = uae_snapshot.get("screen_state", {})
+                    enriched["active_application"] = uae_snapshot.get("active_app", "unknown")
+            except Exception as e:
+                self.logger.debug(f"[Context] UAE enrichment failed: {e}")
+
+        # Add pattern insights from Neural Mesh
+        if self._nm_pattern_insights:
+            enriched["pattern_insights"] = self._nm_pattern_insights[-5:]
+
+        # Add experience replay context
+        if self._experience_replay_cache:
+            relevant = [
+                exp for exp in self._experience_replay_cache
+                if exp.get("goal_similarity", 0) > 0.7
+            ][:3]
+            if relevant:
+                enriched["similar_experiences"] = relevant
+
+        return enriched
+
+    async def _query_jarvis_prime(self, goal: str) -> Optional[List[Dict[str, Any]]]:
+        """Query JARVIS Prime for muscle-memory patterns."""
+        if not self._jarvis_prime_client or not self._jarvis_prime_client.get("session"):
+            return None
+
+        try:
+            session = self._jarvis_prime_client["session"]
+            url = self._jarvis_prime_client["url"]
+
+            async with session.post(
+                f"{url}/v1/chat/completions",
+                json={
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are JARVIS Prime, providing muscle-memory patterns for efficient task execution.",
+                        },
+                        {
+                            "role": "user",
+                            "content": f"What are the fastest action patterns for: {goal[:200]}",
+                        },
+                    ],
+                    "max_tokens": 200,
+                    "temperature": 0.3,
+                },
+                timeout=aiohttp.ClientTimeout(total=5) if 'aiohttp' in dir() else None,
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if content:
+                        return [{"pattern": content, "source": "jarvis_prime"}]
+        except Exception as e:
+            self.logger.debug(f"[JARVIS-Prime] Query failed: {e}")
+
+        return None
+
+    async def _checkpoint_phase(self, checkpoint_name: str, data: Any):
+        """Save a phase checkpoint to memory."""
+        checkpoint = {
+            "name": checkpoint_name,
+            "phase": self._current_phase,
+            "timestamp": time.time(),
+            "data": data,
+        }
+        self._phase_checkpoints.append(checkpoint)
+
+        # Also persist to memory manager if available
+        if self._memory_manager:
+            try:
+                await self._memory_manager.save_checkpoint(
+                    task_id=self._current_task_id or "unknown",
+                    checkpoint=checkpoint,
+                )
+            except Exception:
+                pass
+
+    async def _execute_with_error_recovery(
+        self,
+        phase_fn: Callable,
+        *args,
+        phase_name: str = "unknown",
+        max_retries: int = 3,
+        **kwargs,
+    ) -> Any:
+        """Execute a phase function with error recovery."""
+        if self._error_recovery:
+            try:
+                return await self._error_recovery.execute_with_recovery(
+                    operation=lambda: phase_fn(*args, **kwargs),
+                    operation_name=f"phase_{phase_name}",
+                    max_retries=max_retries,
+                )
+            except Exception as e:
+                self.logger.debug(f"[ErrorRecovery] {phase_name} failed after retries: {e}")
+                return None
+
+        # Fallback: Direct execution without recovery
+        try:
+            return await phase_fn(*args, **kwargs)
+        except Exception as e:
+            self.logger.debug(f"[Phase-{phase_name}] Failed: {e}")
+            return None
+
+    async def _check_intervention_opportunity(
+        self,
+        stage: str,
+        goal: str,
+        context: Dict[str, Any],
+    ):
+        """Check if intervention orchestrator should assist."""
+        if not self._intervention:
+            return
+
+        try:
+            should_intervene = await self._intervention.should_intervene(
+                stage=stage,
+                goal=goal,
+                context=context,
+            )
+            if should_intervene:
+                self._active_interventions += 1
+                intervention = await self._intervention.provide_assistance(
+                    stage=stage,
+                    goal=goal,
+                    context=context,
+                )
+                if intervention:
+                    self.logger.info(f"[Intervention] {stage}: {intervention.get('message', 'Assistance provided')}")
+        except Exception as e:
+            self.logger.debug(f"[Intervention] Check failed: {e}")
+
+    async def _monitor_uae_context_during_execution(self, goal: str):
+        """Monitor UAE context changes during execution."""
+        if not self._uae_context:
+            return
+
+        try:
+            while True:
+                await asyncio.sleep(2.0)  # Check every 2 seconds
+
+                # Get current context
+                current = await self._uae_context.get_current_context()
+                if current:
+                    # Check for significant changes
+                    change_detected = current.get("significant_change", False)
+                    if change_detected:
+                        self.logger.debug(f"[UAE-Monitor] Significant context change detected")
+                        # Could trigger adaptive behavior here
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"[UAE-Monitor] Error: {e}")
 
     async def _execute_supervised(
         self,
@@ -1152,10 +2101,73 @@ class AgenticTaskRunner:
             except Exception:
                 pass
 
+        # Stop Autonomy Components (v6.0)
+        await self._shutdown_autonomy_components()
+
+        # Close JARVIS Prime client session
+        if self._jarvis_prime_client and self._jarvis_prime_client.get("session"):
+            try:
+                await self._jarvis_prime_client["session"].close()
+            except Exception:
+                pass
+
         self.logger.info("[AgenticRunner] Shutdown complete")
 
+    async def _shutdown_autonomy_components(self):
+        """Shutdown all autonomy components gracefully."""
+        # Stop Phase Manager
+        if self._phase_manager:
+            try:
+                if hasattr(self._phase_manager, 'stop'):
+                    await self._phase_manager.stop()
+            except Exception as e:
+                self.logger.debug(f"Phase Manager shutdown error: {e}")
+
+        # Stop Tool Registry
+        if self._tool_registry:
+            try:
+                if hasattr(self._tool_registry, 'stop'):
+                    await self._tool_registry.stop()
+            except Exception as e:
+                self.logger.debug(f"Tool Registry shutdown error: {e}")
+
+        # Persist and stop Memory Manager
+        if self._memory_manager:
+            try:
+                if hasattr(self._memory_manager, 'persist'):
+                    await self._memory_manager.persist()
+                if hasattr(self._memory_manager, 'stop'):
+                    await self._memory_manager.stop()
+            except Exception as e:
+                self.logger.debug(f"Memory Manager shutdown error: {e}")
+
+        # Stop Error Recovery Orchestrator
+        if self._error_recovery:
+            try:
+                if hasattr(self._error_recovery, 'stop'):
+                    await self._error_recovery.stop()
+            except Exception as e:
+                self.logger.debug(f"Error Recovery shutdown error: {e}")
+
+        # Stop UAE Context Manager
+        if self._uae_context:
+            try:
+                if hasattr(self._uae_context, 'stop'):
+                    await self._uae_context.stop()
+            except Exception as e:
+                self.logger.debug(f"UAE Context shutdown error: {e}")
+
+        # Stop Intervention Orchestrator
+        if self._intervention:
+            try:
+                if hasattr(self._intervention, 'stop'):
+                    await self._intervention.stop()
+            except Exception as e:
+                self.logger.debug(f"Intervention Orchestrator shutdown error: {e}")
+
     def get_stats(self) -> Dict[str, Any]:
-        """Get runner statistics."""
+        """Get comprehensive runner statistics including all components."""
+        # Watchdog status
         watchdog_status = None
         if self._watchdog:
             try:
@@ -1181,7 +2193,101 @@ class AgenticTaskRunner:
                 "pattern_insights_cached": len(self._nm_pattern_insights),
             }
 
+        # Phase Manager stats
+        phase_manager_stats = None
+        if self._phase_manager:
+            try:
+                phase_manager_stats = {
+                    "enabled": True,
+                    "current_phase": self._current_phase,
+                    "phase_execution_active": self._phase_execution_active,
+                    "checkpoints_saved": len(self._phase_checkpoints),
+                }
+                if hasattr(self._phase_manager, 'get_metrics'):
+                    phase_manager_stats.update(self._phase_manager.get_metrics())
+            except Exception:
+                phase_manager_stats = {"enabled": True, "status": "available"}
+
+        # Tool Registry stats
+        tool_registry_stats = None
+        if self._tool_registry:
+            try:
+                tool_registry_stats = {"enabled": True}
+                if hasattr(self._tool_registry, 'get_metrics'):
+                    tool_registry_stats.update(self._tool_registry.get_metrics())
+                elif hasattr(self._tool_registry, 'tool_count'):
+                    tool_registry_stats["tool_count"] = self._tool_registry.tool_count
+            except Exception:
+                tool_registry_stats = {"enabled": True, "status": "available"}
+
+        # Memory Manager stats
+        memory_manager_stats = None
+        if self._memory_manager:
+            try:
+                memory_manager_stats = {
+                    "enabled": True,
+                    "experience_cache_size": len(self._experience_replay_cache),
+                }
+                if hasattr(self._memory_manager, 'get_metrics'):
+                    memory_manager_stats.update(self._memory_manager.get_metrics())
+            except Exception:
+                memory_manager_stats = {"enabled": True, "status": "available"}
+
+        # Error Recovery stats
+        error_recovery_stats = None
+        if self._error_recovery:
+            try:
+                error_recovery_stats = {"enabled": True}
+                if hasattr(self._error_recovery, 'get_metrics'):
+                    error_recovery_stats.update(self._error_recovery.get_metrics())
+            except Exception:
+                error_recovery_stats = {"enabled": True, "status": "available"}
+
+        # UAE Context stats
+        uae_context_stats = None
+        if self._uae_context:
+            try:
+                uae_context_stats = {"enabled": True}
+                if hasattr(self._uae_context, 'get_metrics'):
+                    uae_context_stats.update(self._uae_context.get_metrics())
+            except Exception:
+                uae_context_stats = {"enabled": True, "status": "available"}
+
+        # Intervention Orchestrator stats
+        intervention_stats = None
+        if self._intervention:
+            try:
+                intervention_stats = {
+                    "enabled": True,
+                    "active_interventions": self._active_interventions,
+                }
+                if hasattr(self._intervention, 'get_metrics'):
+                    intervention_stats.update(self._intervention.get_metrics())
+            except Exception:
+                intervention_stats = {"enabled": True, "status": "available"}
+
+        # JARVIS Prime stats
+        jarvis_prime_stats = None
+        if self._jarvis_prime_client:
+            jarvis_prime_stats = {
+                "enabled": True,
+                "connected": self._jarvis_prime_client.get("connected", False),
+                "url": self._jarvis_prime_client.get("url", "unknown"),
+                "last_health_check": self._jarvis_prime_client.get("last_health_check"),
+            }
+
+        # Voice Auth stats
+        voice_auth_stats = None
+        if self._voice_auth_layer:
+            try:
+                voice_auth_stats = {"enabled": True}
+                if hasattr(self._voice_auth_layer, 'get_metrics'):
+                    voice_auth_stats.update(self._voice_auth_layer.get_metrics())
+            except Exception:
+                voice_auth_stats = {"enabled": True, "status": "available"}
+
         return {
+            "version": "6.0.0",
             "initialized": self._initialized,
             "tasks_executed": self._tasks_executed,
             "tasks_succeeded": self._tasks_succeeded,
@@ -1192,6 +2298,16 @@ class AgenticTaskRunner:
             "current_task": self._current_task_id,
             "watchdog": watchdog_status,
             "neural_mesh_deep": neural_mesh_stats,
+            # Autonomy Components (v6.0)
+            "phase_manager": phase_manager_stats,
+            "tool_registry": tool_registry_stats,
+            "memory_manager": memory_manager_stats,
+            "error_recovery": error_recovery_stats,
+            "uae_context": uae_context_stats,
+            "intervention": intervention_stats,
+            "jarvis_prime": jarvis_prime_stats,
+            "voice_auth": voice_auth_stats,
+            # Component availability summary
             "components": {
                 "uae": self._uae is not None,
                 "neural_mesh": self._neural_mesh is not None,
@@ -1199,6 +2315,15 @@ class AgenticTaskRunner:
                 "autonomous_agent": self._autonomous_agent is not None,
                 "computer_use_tool": self._computer_use_tool is not None,
                 "direct_connector": self._computer_use_connector is not None,
+                "voice_auth_layer": self._voice_auth_layer is not None,
+                # Autonomy Components
+                "phase_manager": self._phase_manager is not None,
+                "tool_registry": self._tool_registry is not None,
+                "memory_manager": self._memory_manager is not None,
+                "error_recovery": self._error_recovery is not None,
+                "uae_context": self._uae_context is not None,
+                "intervention": self._intervention is not None,
+                "jarvis_prime": self._jarvis_prime_client is not None and self._jarvis_prime_client.get("connected", False),
             },
             "availability": self._availability,
         }

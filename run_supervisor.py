@@ -3836,43 +3836,86 @@ class SupervisorBootstrapper:
         """Initialize Reactor-Core watcher for auto-deployment of trained models."""
         watch_dir = self.config.reactor_core_watch_dir
 
-        if not watch_dir or not Path(watch_dir).exists():
-            self.logger.info("ℹ️ Reactor-Core watch directory not configured or doesn't exist")
-            return
+        if not watch_dir:
+            # Use default reactor-core output path
+            watch_dir = str(Path.home() / "Documents" / "repos" / "reactor-core" / "output")
 
         self.logger.info(f"🔬 Initializing Reactor-Core watcher: {watch_dir}")
 
         # Import and start watcher (non-blocking)
         try:
-            from jarvis_prime.docker.reactor_core_watcher import ReactorCoreWatcher
-
-            async def on_new_model(model_path: Path):
-                """Callback when a new model is deployed from reactor-core."""
-                self.logger.info(f"🔥 Reactor-Core deployed new model: {model_path}")
-                await self.narrator.speak(
-                    f"New model deployed from Reactor Core: {model_path.stem}",
-                    wait=False
-                )
-
-                # Trigger hot-swap in JARVIS-Prime
-                if self._jarvis_prime_client:
-                    try:
-                        # This would call the hot-swap endpoint
-                        pass  # TODO: Implement hot-swap trigger
-                    except Exception as e:
-                        self.logger.error(f"Hot-swap failed: {e}")
-
-            self._reactor_core_watcher = ReactorCoreWatcher(
-                watch_dir=Path(watch_dir),
-                callback=on_new_model,
+            from autonomy.reactor_core_watcher import (
+                ReactorCoreWatcher,
+                ReactorCoreConfig,
+                DeploymentResult,
             )
 
+            # Configure watcher
+            config = ReactorCoreConfig(
+                watch_dir=Path(watch_dir),
+                local_models_dir=self.config.jarvis_prime_repo_path / self.config.jarvis_prime_models_dir,
+                upload_to_gcs=True,
+                deploy_local=True,
+                auto_activate=self.config.reactor_core_auto_deploy,
+            )
+
+            # Create watcher
+            self._reactor_core_watcher = ReactorCoreWatcher(config)
+
+            # Register deployment callback
+            async def on_model_deployed(result: DeploymentResult):
+                """Callback when a new model is deployed from reactor-core."""
+                if result.success:
+                    self.logger.info(
+                        f"🔥 Reactor-Core deployed: {result.model_name} "
+                        f"({result.model_size_mb:.1f}MB, checksum: {result.checksum})"
+                    )
+
+                    # Announce deployment
+                    if hasattr(self, 'narrator') and self.narrator:
+                        await self.narrator.speak(
+                            f"New model deployed from Reactor Core: {result.model_name}",
+                            wait=False
+                        )
+
+                    # Broadcast progress update
+                    await self._broadcast_startup_progress(
+                        stage="reactor_core_deploy",
+                        message=f"New model deployed: {result.model_name}",
+                        progress=100,
+                        metadata={
+                            "reactor_core": {
+                                "model_name": result.model_name,
+                                "model_size_mb": result.model_size_mb,
+                                "checksum": result.checksum,
+                                "local_deployed": result.local_deployed,
+                                "gcs_uploaded": result.gcs_uploaded,
+                                "gcs_path": result.gcs_path,
+                                "hot_swap_notified": result.hot_swap_notified,
+                            }
+                        }
+                    )
+
+                    # Force a mode check in case we should switch to local
+                    if self._jarvis_prime_client:
+                        await self._jarvis_prime_client.force_mode_check()
+
+                else:
+                    self.logger.warning(
+                        f"⚠️ Reactor-Core deployment failed: {result.model_name} - {result.error}"
+                    )
+
+            self._reactor_core_watcher.register_callback(on_model_deployed)
+
             # Start watching in background
-            asyncio.create_task(self._reactor_core_watcher.start())
+            await self._reactor_core_watcher.start()
             self.logger.info("✅ Reactor-Core watcher started")
+            print(f"  {TerminalUI.GREEN}✓ Reactor-Core: Watching for new models{TerminalUI.RESET}")
 
         except ImportError as e:
             self.logger.warning(f"⚠️ Reactor-Core watcher not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Reactor-Core watcher failed to start: {e}")
 
     async def _stop_jarvis_prime(self) -> None:
         """Stop JARVIS-Prime subprocess or container."""

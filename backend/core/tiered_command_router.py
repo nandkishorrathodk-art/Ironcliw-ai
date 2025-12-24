@@ -654,10 +654,14 @@ class TieredCommandRouter:
         timeout_ms: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        Execute a Tier 0 command via JARVIS-Prime (local brain).
+        Execute a Tier 0 command via JARVIS-Prime (Memory-Aware Hybrid Routing).
 
-        This is the fastest path - uses local LLM for instant responses.
-        Automatically falls back to Tier 1 if execution fails.
+        v2.0: Uses memory-aware routing to automatically select:
+        - LOCAL mode (RAM ≥ 8GB) - Free, fastest
+        - CLOUD_RUN mode (RAM < 8GB) - Pay-per-use, ~$0.02/request
+        - GEMINI_API mode (fallback) - Cheapest option
+
+        Automatically falls back through the chain if any backend fails.
 
         Args:
             command: The command to execute
@@ -665,16 +669,25 @@ class TieredCommandRouter:
             timeout_ms: Optional timeout (uses config default if not specified)
 
         Returns:
-            Result dictionary with success status and response
+            Result dictionary with success status, response, and routing info
         """
-        logger.info(f"[TieredRouter] Executing Tier 0 (Local): {command[:50]}...")
-
         timeout = timeout_ms or self.config.tier0_timeout_ms
 
         try:
             client = await self._get_jarvis_prime_client()
             if client is None:
                 raise ImportError("JARVIS-Prime client not available")
+
+            # Get current routing mode and stats
+            from core.jarvis_prime_client import RoutingMode
+            mode, reason = client.decide_mode()
+            stats = client.get_stats()
+            available_ram = stats.get("memory_available_gb", 0)
+
+            logger.info(
+                f"[TieredRouter] Tier 0 routing: {mode.value} "
+                f"(RAM: {available_ram:.1f}GB) - {command[:50]}..."
+            )
 
             # Build system prompt with context
             system_prompt = (
@@ -689,9 +702,7 @@ class TieredCommandRouter:
                 if context.get("active_app"):
                     system_prompt += f" The user is currently in {context['active_app']}."
 
-            # Execute via JARVIS-Prime with timeout
-            from core.jarvis_prime_client import ChatMessage
-
+            # Execute via JARVIS-Prime with timeout (memory-aware routing handled internally)
             response = await asyncio.wait_for(
                 client.complete(
                     prompt=command,
@@ -704,22 +715,31 @@ class TieredCommandRouter:
                 return {
                     "success": True,
                     "response": response.content,
-                    "backend": "jarvis-prime",
+                    "backend": f"jarvis-prime-{response.backend}",
                     "latency_ms": response.latency_ms,
                     "tier": "tier0",
+                    "routing_mode": mode.value,
+                    "routing_reason": reason,
+                    "memory_available_gb": available_ram,
+                    "cost_estimate": response.cost_estimate,
+                    "tokens_used": response.tokens_used,
                 }
             else:
-                # Try fallback to Tier 1
+                # Client already tried fallback chain - now fall back to Tier 1
                 if self.config.tier0_fallback_to_tier1:
-                    logger.warning(f"[TieredRouter] Tier 0 failed, falling back to Tier 1: {response.error}")
+                    logger.warning(
+                        f"[TieredRouter] Tier 0 ({mode.value}) failed, "
+                        f"falling back to Tier 1: {response.error}"
+                    )
                     self._tier0_fallback_count += 1
                     return await self.execute_tier1(command, context)
                 else:
                     return {
                         "success": False,
                         "error": response.error or "Tier 0 execution failed",
-                        "backend": "jarvis-prime",
+                        "backend": f"jarvis-prime-{response.backend}",
                         "tier": "tier0",
+                        "routing_mode": mode.value,
                     }
 
         except asyncio.TimeoutError:

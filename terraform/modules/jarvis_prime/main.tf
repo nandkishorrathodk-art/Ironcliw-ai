@@ -199,11 +199,11 @@ resource "google_cloud_run_v2_service" "jarvis_prime" {
         }
       }
 
-      # Model from GCS (if provided)
+      # Model from GCS (if provided) - Downloads on startup
       dynamic "env" {
         for_each = var.model_gcs_path != "" ? [1] : []
         content {
-          name  = "MODEL_GCS_PATH"
+          name  = "MODEL_GCS_URI"
           value = var.model_gcs_path
         }
       }
