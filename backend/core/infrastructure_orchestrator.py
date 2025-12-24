@@ -1279,6 +1279,322 @@ class GCPReconciler:
             logger.error(f"[GCPReconciler] Cloud Run deletion error: {e}")
             return False
 
+    # =========================================================================
+    # v2.1: Artifact Registry Cleanup (Storage Cost Optimization)
+    # =========================================================================
+
+    async def cleanup_artifact_registry(
+        self,
+        keep_tagged: bool = True,
+        keep_latest_n: int = 3,
+        older_than_days: int = 7,
+    ) -> Dict[str, Any]:
+        """
+        Clean up old Docker images from Artifact Registry.
+
+        This is a major cost driver - old untagged images can accumulate to 50+ GB.
+
+        Args:
+            keep_tagged: Keep images with semantic version tags (v1.0.0, latest, etc.)
+            keep_latest_n: Keep the N most recent images even if untagged
+            older_than_days: Only delete images older than this many days
+
+        Returns:
+            Cleanup results with storage freed
+        """
+        results = {
+            "repositories_scanned": 0,
+            "images_deleted": 0,
+            "storage_freed_mb": 0.0,
+            "errors": [],
+        }
+
+        if not self._project_id:
+            results["errors"].append("No GCP project configured")
+            return results
+
+        logger.info("[GCPReconciler] Starting Artifact Registry cleanup...")
+
+        try:
+            # List all repositories in the project
+            repos = await self._list_artifact_repositories()
+            results["repositories_scanned"] = len(repos)
+
+            for repo in repos:
+                try:
+                    repo_result = await self._cleanup_repository(
+                        repo,
+                        keep_tagged=keep_tagged,
+                        keep_latest_n=keep_latest_n,
+                        older_than_days=older_than_days,
+                    )
+                    results["images_deleted"] += repo_result.get("deleted", 0)
+                    results["storage_freed_mb"] += repo_result.get("freed_mb", 0)
+                except Exception as e:
+                    results["errors"].append(f"{repo}: {str(e)}")
+
+            logger.info(
+                f"[GCPReconciler] Artifact cleanup complete: {results['images_deleted']} images, "
+                f"{results['storage_freed_mb']:.1f} MB freed"
+            )
+
+        except Exception as e:
+            results["errors"].append(str(e))
+            logger.error(f"[GCPReconciler] Artifact cleanup failed: {e}")
+
+        return results
+
+    async def _list_artifact_repositories(self) -> List[str]:
+        """List Artifact Registry repositories."""
+        try:
+            cmd = [
+                "gcloud", "artifacts", "repositories", "list",
+                f"--project={self._project_id}",
+                "--format=value(name)",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+
+            if proc.returncode != 0:
+                return []
+
+            repos = [r.strip() for r in stdout.decode().strip().split("\n") if r.strip()]
+            return repos
+
+        except Exception as e:
+            logger.debug(f"[GCPReconciler] Error listing repositories: {e}")
+            return []
+
+    async def _cleanup_repository(
+        self,
+        repo_path: str,
+        keep_tagged: bool,
+        keep_latest_n: int,
+        older_than_days: int,
+    ) -> Dict[str, Any]:
+        """Clean up old images from a specific repository."""
+        import re
+        from datetime import datetime, timezone
+
+        result = {"deleted": 0, "freed_mb": 0.0}
+
+        # Parse repository path
+        # Format: projects/PROJECT/locations/REGION/repositories/REPO
+        parts = repo_path.split("/")
+        if len(parts) >= 6:
+            location = parts[3]
+            repo_name = parts[5]
+        else:
+            return result
+
+        # List all images with details
+        try:
+            cmd = [
+                "gcloud", "artifacts", "docker", "images", "list",
+                f"{location}-docker.pkg.dev/{self._project_id}/{repo_name}",
+                "--format=json(package,tags,createTime,updateTime)",
+                "--include-tags",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+
+            if proc.returncode != 0:
+                return result
+
+            images = json.loads(stdout.decode()) if stdout.strip() else []
+
+            # Sort by create time (newest first)
+            images.sort(key=lambda x: x.get("createTime", ""), reverse=True)
+
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+            version_pattern = re.compile(r'^v?\d+\.\d+\.\d+$|^latest$|^main$|^master$')
+
+            deleted_count = 0
+            kept_count = 0
+
+            for img in images:
+                tags = img.get("tags", [])
+                create_time_str = img.get("createTime", "")
+                package = img.get("package", "")
+
+                # Parse create time
+                try:
+                    # Format: 2025-12-07T15:11:23Z
+                    create_time = datetime.fromisoformat(create_time_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+
+                # Determine if we should keep this image
+                should_keep = False
+
+                # Keep if it has important tags
+                if keep_tagged and tags:
+                    for tag in tags:
+                        if version_pattern.match(tag):
+                            should_keep = True
+                            break
+
+                # Keep the latest N images
+                if kept_count < keep_latest_n:
+                    should_keep = True
+
+                # Keep if newer than cutoff
+                if create_time > cutoff_date:
+                    should_keep = True
+
+                if should_keep:
+                    kept_count += 1
+                    continue
+
+                # Delete this image
+                try:
+                    # Get the digest from the package path
+                    digest = package.split("@")[-1] if "@" in package else None
+                    if not digest:
+                        # Try to extract from package path
+                        digest = package.split("/")[-1]
+
+                    delete_cmd = [
+                        "gcloud", "artifacts", "docker", "images", "delete",
+                        package,
+                        "--quiet",
+                        "--delete-tags",
+                    ]
+
+                    delete_proc = await asyncio.create_subprocess_exec(
+                        *delete_cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+
+                    _, stderr = await asyncio.wait_for(delete_proc.communicate(), timeout=30)
+
+                    if delete_proc.returncode == 0:
+                        deleted_count += 1
+                        # Estimate ~2 GB per image
+                        result["freed_mb"] += 2000
+                        logger.debug(f"[GCPReconciler] Deleted old image: {package}")
+                    else:
+                        logger.debug(f"[GCPReconciler] Failed to delete {package}: {stderr.decode()[:100]}")
+
+                except Exception as e:
+                    logger.debug(f"[GCPReconciler] Error deleting image: {e}")
+
+            result["deleted"] = deleted_count
+
+        except Exception as e:
+            logger.debug(f"[GCPReconciler] Repository cleanup error: {e}")
+
+        return result
+
+    # =========================================================================
+    # v2.2: Cloud SQL Management (Cost Optimization)
+    # =========================================================================
+
+    async def stop_cloud_sql(self, instance_name: str = "jarvis-learning-db") -> bool:
+        """
+        Stop Cloud SQL instance to save costs when JARVIS is not running.
+
+        Note: Cloud SQL doesn't have a "stop" command, but you can patch
+        the activation policy to ON_DEMAND, which stops billing when no connections.
+        """
+        logger.info(f"[GCPReconciler] Stopping Cloud SQL: {instance_name}")
+
+        try:
+            cmd = [
+                "gcloud", "sql", "instances", "patch", instance_name,
+                f"--project={self._project_id}",
+                "--activation-policy=NEVER",
+                "--quiet",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+            if proc.returncode == 0:
+                logger.info(f"[GCPReconciler] Cloud SQL {instance_name} stopped")
+                return True
+            else:
+                logger.warning(f"[GCPReconciler] Failed to stop Cloud SQL: {stderr.decode()}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[GCPReconciler] Cloud SQL stop error: {e}")
+            return False
+
+    async def start_cloud_sql(self, instance_name: str = "jarvis-learning-db") -> bool:
+        """Start Cloud SQL instance."""
+        logger.info(f"[GCPReconciler] Starting Cloud SQL: {instance_name}")
+
+        try:
+            cmd = [
+                "gcloud", "sql", "instances", "patch", instance_name,
+                f"--project={self._project_id}",
+                "--activation-policy=ALWAYS",
+                "--quiet",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+            if proc.returncode == 0:
+                logger.info(f"[GCPReconciler] Cloud SQL {instance_name} started")
+                return True
+            else:
+                logger.warning(f"[GCPReconciler] Failed to start Cloud SQL: {stderr.decode()}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[GCPReconciler] Cloud SQL start error: {e}")
+            return False
+
+    async def get_cloud_sql_status(self, instance_name: str = "jarvis-learning-db") -> Dict[str, Any]:
+        """Get Cloud SQL instance status and cost info."""
+        try:
+            cmd = [
+                "gcloud", "sql", "instances", "describe", instance_name,
+                f"--project={self._project_id}",
+                "--format=json(name,state,settings.tier,settings.activationPolicy)",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+
+            if proc.returncode != 0:
+                return {"error": stderr.decode()}
+
+            return json.loads(stdout.decode())
+
+        except Exception as e:
+            return {"error": str(e)}
+
     @property
     def session_id(self) -> str:
         return self._session_id
@@ -1291,7 +1607,10 @@ class OrphanDetectionLoop:
     Runs every N minutes to:
     - Reconcile local state with GCP
     - Detect and cleanup orphaned resources
+    - Clean up old Docker images from Artifact Registry (v2.1)
     - Report cost savings from early cleanup
+
+    v2.1: Added periodic artifact cleanup for storage cost optimization.
     """
 
     def __init__(
@@ -1300,17 +1619,24 @@ class OrphanDetectionLoop:
         orchestrator: 'InfrastructureOrchestrator',
         check_interval_minutes: float = 5.0,
         auto_cleanup: bool = True,
+        artifact_cleanup_enabled: bool = True,
+        artifact_cleanup_interval_hours: float = 6.0,
     ):
         self.reconciler = reconciler
         self.orchestrator = orchestrator
         self.check_interval = check_interval_minutes * 60
         self.auto_cleanup = auto_cleanup
+        self.artifact_cleanup_enabled = artifact_cleanup_enabled
+        self.artifact_cleanup_interval = artifact_cleanup_interval_hours * 3600
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        self._last_artifact_cleanup: float = 0.0
         self._stats = {
             "checks": 0,
             "orphans_found": 0,
             "orphans_cleaned": 0,
+            "artifact_images_deleted": 0,
+            "artifact_storage_freed_mb": 0.0,
             "estimated_cost_saved_usd": 0.0,
         }
 
@@ -1358,40 +1684,86 @@ class OrphanDetectionLoop:
 
         if reconcile_result.get("error"):
             logger.debug(f"[OrphanDetection] Reconciliation error: {reconcile_result['error']}")
-            return
-
-        orphan_count = (
-            len(reconcile_result.get("orphaned_vms", [])) +
-            len(reconcile_result.get("orphaned_cloud_run", []))
-        )
-
-        if orphan_count == 0:
-            return
-
-        self._stats["orphans_found"] += orphan_count
-
-        logger.warning(f"[OrphanDetection] Found {orphan_count} orphaned resources")
-
-        if self.auto_cleanup:
-            cleanup_result = await self.reconciler.cleanup_orphans(reconcile_result)
-
-            cleaned_count = (
-                len(cleanup_result.get("vms_deleted", [])) +
-                len(cleanup_result.get("cloud_run_deleted", []))
+        else:
+            orphan_count = (
+                len(reconcile_result.get("orphaned_vms", [])) +
+                len(reconcile_result.get("orphaned_cloud_run", []))
             )
 
-            self._stats["orphans_cleaned"] += cleaned_count
+            if orphan_count > 0:
+                self._stats["orphans_found"] += orphan_count
+                logger.warning(f"[OrphanDetection] Found {orphan_count} orphaned resources")
 
-            # Estimate cost savings (VMs cost ~$0.029/hour for n1-standard-1)
-            # Assume average orphan would have run for 2 more hours
-            estimated_savings = cleaned_count * 0.029 * 2
+                if self.auto_cleanup:
+                    cleanup_result = await self.reconciler.cleanup_orphans(reconcile_result)
+
+                    cleaned_count = (
+                        len(cleanup_result.get("vms_deleted", [])) +
+                        len(cleanup_result.get("cloud_run_deleted", []))
+                    )
+
+                    self._stats["orphans_cleaned"] += cleaned_count
+
+                    # Estimate cost savings (VMs cost ~$0.029/hour for n1-standard-1)
+                    # Assume average orphan would have run for 2 more hours
+                    estimated_savings = cleaned_count * 0.029 * 2
+                    self._stats["estimated_cost_saved_usd"] += estimated_savings
+
+                    if cleaned_count > 0:
+                        logger.info(
+                            f"[OrphanDetection] Cleaned {cleaned_count} orphans, "
+                            f"estimated savings: ${estimated_savings:.3f}"
+                        )
+
+        # v2.1: Periodic Artifact Registry cleanup for storage cost optimization
+        if self.artifact_cleanup_enabled:
+            await self._maybe_cleanup_artifacts()
+
+    async def _maybe_cleanup_artifacts(self):
+        """
+        Clean up old Docker images from Artifact Registry if enough time has passed.
+
+        This runs less frequently than orphan detection (default: every 6 hours)
+        because artifact cleanup is slower and less urgent.
+        """
+        now = time.time()
+
+        # Check if enough time has passed since last cleanup
+        if now - self._last_artifact_cleanup < self.artifact_cleanup_interval:
+            return
+
+        logger.info("[OrphanDetection] Running periodic Artifact Registry cleanup...")
+
+        try:
+            # Run artifact cleanup with conservative settings
+            result = await self.reconciler.cleanup_artifact_registry(
+                keep_tagged=True,
+                keep_latest_n=5,  # Keep more images for safety
+                older_than_days=14,  # Only delete images older than 2 weeks
+            )
+
+            self._last_artifact_cleanup = now
+
+            images_deleted = result.get("images_deleted", 0)
+            storage_freed = result.get("storage_freed_mb", 0)
+
+            self._stats["artifact_images_deleted"] += images_deleted
+            self._stats["artifact_storage_freed_mb"] += storage_freed
+
+            # Artifact Registry costs $0.10/GB/month
+            # Convert MB freed to monthly savings
+            storage_freed_gb = storage_freed / 1000
+            estimated_savings = storage_freed_gb * 0.10
             self._stats["estimated_cost_saved_usd"] += estimated_savings
 
-            if cleaned_count > 0:
+            if images_deleted > 0:
                 logger.info(
-                    f"[OrphanDetection] Cleaned {cleaned_count} orphans, "
-                    f"estimated savings: ${estimated_savings:.3f}"
+                    f"[OrphanDetection] Artifact cleanup: {images_deleted} images deleted, "
+                    f"~{storage_freed_gb:.1f} GB freed, ~${estimated_savings:.2f}/month saved"
                 )
+
+        except Exception as e:
+            logger.debug(f"[OrphanDetection] Artifact cleanup error: {e}")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get detection loop statistics."""
@@ -1435,8 +1807,22 @@ def get_reconciler() -> Optional[GCPReconciler]:
     return _reconciler_instance
 
 
-async def start_orphan_detection(auto_cleanup: bool = True) -> OrphanDetectionLoop:
-    """Start the background orphan detection loop."""
+async def start_orphan_detection(
+    auto_cleanup: bool = True,
+    artifact_cleanup_enabled: bool = True,
+) -> OrphanDetectionLoop:
+    """
+    Start the background orphan detection and cost optimization loop.
+
+    v2.1: Added artifact cleanup integration for automatic storage cost savings.
+
+    Args:
+        auto_cleanup: Automatically clean up orphaned resources
+        artifact_cleanup_enabled: Periodically clean old Docker images (default: True)
+
+    Returns:
+        The OrphanDetectionLoop instance
+    """
     global _orphan_loop_instance, _orchestrator_instance, _reconciler_instance
 
     if _orphan_loop_instance is not None:
@@ -1450,6 +1836,8 @@ async def start_orphan_detection(auto_cleanup: bool = True) -> OrphanDetectionLo
         orchestrator=_orchestrator_instance,
         check_interval_minutes=float(os.getenv("ORPHAN_CHECK_INTERVAL_MINUTES", "5")),
         auto_cleanup=auto_cleanup,
+        artifact_cleanup_enabled=artifact_cleanup_enabled,
+        artifact_cleanup_interval_hours=float(os.getenv("ARTIFACT_CLEANUP_INTERVAL_HOURS", "6")),
     )
 
     await _orphan_loop_instance.start()
