@@ -81,11 +81,21 @@ class AdvancedIntelligentCommandHandler:
             # Track performance
             elapsed = (datetime.now() - start_time).total_seconds()
             self._track_command(command, classification, handler_type, elapsed)
-            
+
             # Learn from successful execution
             if self.learning_enabled:
                 self._learn_from_execution(command, classification, True)
-            
+
+            # v9.0: Record to training database for model fine-tuning
+            await self._record_to_training_database(
+                command=command,
+                response=response,
+                handler_type=handler_type,
+                classification=classification,
+                elapsed=elapsed,
+                success=True
+            )
+
             return response, handler_type
             
         except Exception as e:
@@ -321,13 +331,108 @@ class AdvancedIntelligentCommandHandler:
     
     def _learn_from_error(self, command: str, error: str):
         """Learn from execution errors"""
-        
+
         # Log error patterns for learning
         logger.info(f"Learning from error - Command: {command}, Error: {error}")
-        
+
         # This could be enhanced to detect patterns in errors
         # and adjust classifications accordingly
-    
+
+    async def _record_to_training_database(
+        self,
+        command: str,
+        response: str,
+        handler_type: str,
+        classification: Any,
+        elapsed: float,
+        success: bool
+    ) -> Optional[int]:
+        """
+        v9.0: Record voice command experience to SQLite training database.
+
+        This connects to the unified_data_flywheel's training database,
+        which feeds into the reactor-core training pipeline for model fine-tuning.
+
+        Args:
+            command: User's voice command
+            response: JARVIS's response
+            handler_type: Type of handler used (system, vision, conversation, automation)
+            classification: Classification result from router
+            elapsed: Execution time in seconds
+            success: Whether execution was successful
+
+        Returns:
+            Experience ID if recorded, None otherwise
+        """
+        try:
+            # Import the unified_data_flywheel
+            import sys
+            from pathlib import Path
+            backend_path = Path(__file__).parent.parent
+            if str(backend_path) not in sys.path:
+                sys.path.insert(0, str(backend_path))
+
+            from autonomy.unified_data_flywheel import get_data_flywheel
+
+            flywheel = get_data_flywheel()
+            if not flywheel:
+                logger.debug("Data Flywheel not available for voice command logging")
+                return None
+
+            # Prepare context
+            experience_context = {
+                "handler_type": handler_type,
+                "classification_type": getattr(classification, 'type', 'unknown'),
+                "intent": getattr(classification, 'intent', None),
+                "confidence": getattr(classification, 'confidence', 0.0),
+                "execution_time_seconds": elapsed,
+                "success": success,
+                "source": "voice_command",
+                "user": self.user_name,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Extract entities if available
+            if hasattr(classification, 'entities') and classification.entities:
+                experience_context["entities"] = [
+                    e.get("text", str(e)) if isinstance(e, dict) else str(e)
+                    for e in classification.entities[:5]  # Limit entities
+                ]
+
+            # Calculate quality score
+            quality_score = 0.5
+            if success:
+                quality_score = 0.7
+                # Bonus for high confidence
+                if getattr(classification, 'confidence', 0) > 0.8:
+                    quality_score += 0.15
+                # Bonus for fast response
+                if elapsed < 2.0:
+                    quality_score += 0.1
+            else:
+                quality_score = 0.25
+
+            # Add experience to training database
+            experience_id = flywheel.add_experience(
+                source="voice_handler",
+                input_text=command,
+                output_text=response[:500],  # Limit response length
+                context=experience_context,
+                quality_score=min(quality_score, 1.0),
+            )
+
+            if experience_id:
+                logger.debug(f"Recorded voice command experience {experience_id}")
+
+            return experience_id
+
+        except ImportError:
+            logger.debug("unified_data_flywheel not available")
+            return None
+        except Exception as e:
+            logger.debug(f"Training DB recording error: {e}")
+            return None
+
     async def analyze_command_patterns(self) -> Dict[str, Any]:
         """Analyze patterns in command history"""
         

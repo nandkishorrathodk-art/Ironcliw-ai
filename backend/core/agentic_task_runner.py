@@ -241,12 +241,18 @@ def _check_component_availability() -> Dict[str, bool]:
     except ImportError:
         availability["autonomous_agent"] = False
 
-    # UAE
+    # UAE (Unified Awareness Engine)
     try:
-        from unified_awareness.uae_core import UnifiedAwarenessEngine
+        from intelligence.uae_integration import get_uae, get_enhanced_uae, initialize_uae
+        from intelligence.unified_awareness_engine import UnifiedAwarenessEngine
         availability["uae"] = True
     except ImportError:
-        availability["uae"] = False
+        try:
+            # Fallback to legacy path
+            from unified_awareness.uae_core import UnifiedAwarenessEngine
+            availability["uae"] = True
+        except ImportError:
+            availability["uae"] = False
 
     # Neural Mesh
     try:
@@ -359,6 +365,7 @@ class AgenticTaskRunner:
 
         # Components (lazy initialized)
         self._uae = None
+        self._enhanced_uae = None  # Enhanced UAE with chain-of-thought reasoning
         self._neural_mesh = None
         self._autonomous_agent = None
         self._computer_use_tool = None
@@ -448,14 +455,34 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.warning(f"[AgenticRunner] ✗ Direct Connector: {e}")
 
-            # Initialize UAE (optional)
+            # Initialize UAE (optional) - connects to intelligence.uae_integration
             if self._availability.get("uae") and self.config.uae_enabled:
                 try:
-                    from unified_awareness.uae_core import get_uae_engine
-                    self._uae = get_uae_engine()
-                    if not self._uae.is_active:
+                    # Try the new intelligence module path first
+                    from intelligence.uae_integration import get_uae, get_enhanced_uae
+                    self._uae = get_uae()
+                    if self._uae and not self._uae.is_active:
                         await self._uae.start()
-                    self.logger.info("[AgenticRunner] ✓ UAE")
+
+                    # Also get enhanced UAE for chain-of-thought reasoning
+                    self._enhanced_uae = get_enhanced_uae()
+
+                    if self._uae:
+                        self.logger.info("[AgenticRunner] ✓ UAE (screen awareness)")
+                        if self._enhanced_uae:
+                            self.logger.info("[AgenticRunner] ✓ Enhanced UAE (chain-of-thought)")
+                    else:
+                        self.logger.warning("[AgenticRunner] UAE not initialized by supervisor")
+                except ImportError:
+                    # Fallback to legacy path
+                    try:
+                        from unified_awareness.uae_core import get_uae_engine
+                        self._uae = get_uae_engine()
+                        if not self._uae.is_active:
+                            await self._uae.start()
+                        self.logger.info("[AgenticRunner] ✓ UAE (legacy)")
+                    except Exception as e:
+                        self.logger.debug(f"[AgenticRunner] ✗ UAE legacy: {e}")
                 except Exception as e:
                     self.logger.debug(f"[AgenticRunner] ✗ UAE: {e}")
 
@@ -1996,6 +2023,91 @@ class AgenticTaskRunner:
 
         return context
 
+    async def _record_to_training_database(
+        self,
+        goal: str,
+        result: AgenticTaskResult,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[int]:
+        """
+        v9.0: Record experience to SQLite training database for model training.
+
+        This connects to the unified_data_flywheel's training database,
+        which feeds into the reactor-core training pipeline.
+
+        Args:
+            goal: The user's input/goal
+            result: Execution result
+            context: Additional context
+
+        Returns:
+            Experience ID if recorded, None otherwise
+        """
+        try:
+            # Try to import the unified_data_flywheel
+            from autonomy.unified_data_flywheel import get_data_flywheel
+
+            flywheel = get_data_flywheel()
+            if not flywheel:
+                self.logger.debug("[AgenticRunner] Data Flywheel not available")
+                return None
+
+            # Prepare context for storage
+            experience_context = {
+                "mode": result.mode,
+                "execution_time_ms": result.execution_time_ms,
+                "actions_count": result.actions_count,
+                "reasoning_steps": result.reasoning_steps,
+                "success": result.success,
+                "uae_used": result.uae_used,
+                "neural_mesh_used": result.neural_mesh_used,
+                "task_id": self._current_task_id,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Add neural mesh insights if available
+            if result.neural_mesh_context:
+                experience_context["pattern_insights"] = result.pattern_insights_applied
+                experience_context["context_score"] = result.neural_mesh_context.context_score
+
+            # Merge with provided context
+            if context:
+                experience_context.update(context)
+
+            # Calculate quality score based on result
+            quality_score = 0.5
+            if result.success:
+                quality_score = 0.8  # Base score for success
+                # Bonus for efficient execution
+                if result.actions_count < 10:
+                    quality_score += 0.1
+                # Bonus for using intelligence systems
+                if result.neural_mesh_used or result.uae_used:
+                    quality_score += 0.05
+            else:
+                quality_score = 0.3  # Lower score for failures (still useful for learning)
+
+            # Add experience to training database
+            experience_id = flywheel.add_experience(
+                source="agentic_runner",
+                input_text=goal,
+                output_text=result.final_message,
+                context=experience_context,
+                quality_score=min(quality_score, 1.0),
+            )
+
+            if experience_id:
+                self.logger.debug(f"[AgenticRunner] Recorded experience {experience_id} to training DB")
+
+            return experience_id
+
+        except ImportError:
+            self.logger.debug("[AgenticRunner] unified_data_flywheel not available")
+            return None
+        except Exception as e:
+            self.logger.debug(f"[AgenticRunner] Training DB recording error: {e}")
+            return None
+
     async def _record_comprehensive_learning(
         self,
         goal: str,
@@ -2003,6 +2115,9 @@ class AgenticTaskRunner:
         context: Optional[NeuralMeshContext] = None,
     ):
         """Record comprehensive execution data to Neural Mesh knowledge graph."""
+        # v9.0: Also record to training database for model fine-tuning
+        await self._record_to_training_database(goal, result)
+
         if not self._neural_mesh:
             return 0
 

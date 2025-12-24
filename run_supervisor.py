@@ -311,6 +311,12 @@ class BootstrapConfig:
     continuous_scraping_max_pages: int = field(default_factory=lambda: int(os.getenv("CONTINUOUS_SCRAPING_MAX_PAGES", "50")))
     continuous_scraping_topics: str = field(default_factory=lambda: os.getenv("CONTINUOUS_SCRAPING_TOPICS", ""))
 
+    # =========================================================================
+    # v9.0: Reactor-Core Integration (Training Pipeline)
+    # =========================================================================
+    reactor_core_integration_enabled: bool = field(default_factory=lambda: os.getenv("REACTOR_CORE_ENABLED", "true").lower() == "true")
+    reactor_core_repo_path: str = field(default_factory=lambda: os.getenv("REACTOR_CORE_PATH", str(Path.home() / "Documents" / "repos" / "reactor-core")))
+
 
 class StartupPhase(Enum):
     """Phases of supervisor startup."""
@@ -4297,6 +4303,7 @@ class SupervisorBootstrapper:
             "mas": False,
             "cai": False,
             "continuous_scraping": False,
+            "reactor_core": False,
         }
 
         # ═══════════════════════════════════════════════════════════════════
@@ -4336,6 +4343,46 @@ class SupervisorBootstrapper:
                 initialized_systems["uae"] = True
                 os.environ["UAE_ENABLED"] = "true"
                 os.environ["UAE_CHAIN_OF_THOUGHT"] = str(self.config.uae_chain_of_thought).lower()
+
+                # Connect UAE to training data flywheel for experience logging
+                try:
+                    from autonomy.unified_data_flywheel import get_data_flywheel
+
+                    flywheel = get_data_flywheel()
+                    if flywheel:
+                        # Store flywheel reference for UAE experience logging
+                        self._uae_data_flywheel = flywheel
+
+                        # Create callback for logging UAE decisions to training DB
+                        async def log_uae_decision(decision_data: Dict[str, Any]) -> None:
+                            """Log UAE decisions to training database."""
+                            try:
+                                experience_context = {
+                                    "source": "uae_decision",
+                                    "element_id": decision_data.get("element_id"),
+                                    "confidence": decision_data.get("confidence", 0.0),
+                                    "decision_source": decision_data.get("source", "unknown"),
+                                    "chain_of_thought": decision_data.get("reasoning"),
+                                    "timestamp": time.time(),
+                                }
+
+                                quality_score = min(0.9, decision_data.get("confidence", 0.5) + 0.2)
+
+                                flywheel.add_experience(
+                                    source="uae",
+                                    input_text=decision_data.get("query", "screen_analysis"),
+                                    output_text=str(decision_data.get("result", {})),
+                                    context=experience_context,
+                                    quality_score=quality_score,
+                                )
+                            except Exception as flywheel_error:
+                                self.logger.debug(f"UAE flywheel logging error: {flywheel_error}")
+
+                        self._uae_decision_callback = log_uae_decision
+                        self.logger.info("✅ UAE connected to training data flywheel")
+                except Exception as flywheel_error:
+                    self.logger.debug(f"UAE flywheel connection skipped: {flywheel_error}")
+
                 print(f"  {TerminalUI.GREEN}✓ UAE: Unified Awareness Engine active{TerminalUI.RESET}")
 
             except ImportError as e:
@@ -4382,7 +4429,46 @@ class SupervisorBootstrapper:
                 else:
                     self.logger.info("ℹ️ SAI: Running without Yabai bridge")
 
+                initialized_systems["sai"] = True
                 os.environ["SAI_ENABLED"] = "true"
+
+                # Connect SAI to training data flywheel for workspace experience logging
+                try:
+                    from autonomy.unified_data_flywheel import get_data_flywheel
+
+                    flywheel = get_data_flywheel()
+                    if flywheel and self._yabai_intelligence:
+                        # Store flywheel reference for SAI experience logging
+                        self._sai_data_flywheel = flywheel
+
+                        # Create callback for logging SAI workspace events to training DB
+                        async def log_sai_workspace_event(event_data: Dict[str, Any]) -> None:
+                            """Log SAI workspace events to training database."""
+                            try:
+                                experience_context = {
+                                    "source": "sai_workspace",
+                                    "event_type": event_data.get("event_type"),
+                                    "space_id": event_data.get("space_id"),
+                                    "app_name": event_data.get("app_name"),
+                                    "window_count": event_data.get("window_count", 0),
+                                    "timestamp": time.time(),
+                                }
+
+                                flywheel.add_experience(
+                                    source="sai",
+                                    input_text=f"workspace_{event_data.get('event_type', 'unknown')}",
+                                    output_text=str(event_data.get("result", {})),
+                                    context=experience_context,
+                                    quality_score=0.7,
+                                )
+                            except Exception as flywheel_error:
+                                self.logger.debug(f"SAI flywheel logging error: {flywheel_error}")
+
+                        self._sai_event_callback = log_sai_workspace_event
+                        self.logger.info("✅ SAI connected to training data flywheel")
+                except Exception as flywheel_error:
+                    self.logger.debug(f"SAI flywheel connection skipped: {flywheel_error}")
+
                 print(f"  {TerminalUI.GREEN}✓ SAI: Situational Awareness active{TerminalUI.RESET}")
 
             except ImportError as e:
@@ -5050,6 +5136,126 @@ class SupervisorBootstrapper:
                 print(f"  {TerminalUI.YELLOW}⚠️ Web Scraping: Failed ({e}){TerminalUI.RESET}")
 
         # ═══════════════════════════════════════════════════════════════════
+        # Step 7: Initialize Reactor-Core Integration
+        # ═══════════════════════════════════════════════════════════════════
+        if self.config.reactor_core_integration_enabled:
+            try:
+                self.logger.info("⚛️ Step 7/7: Initializing Reactor-Core Integration...")
+
+                from autonomy.reactor_core_integration import (
+                    get_reactor_core_integration,
+                    initialize_reactor_core,
+                    initialize_prime_neural_mesh,
+                    get_prime_neural_mesh_bridge,
+                    ReactorCoreConfig,
+                )
+
+                # Get reactor-core integration singleton
+                self._reactor_core_integration = get_reactor_core_integration()
+
+                # Configure with paths from supervisor config
+                if hasattr(self.config, 'reactor_core_repo_path'):
+                    self._reactor_core_integration.config.reactor_core_path = Path(
+                        self.config.reactor_core_repo_path
+                    )
+                if hasattr(self.config, 'jarvis_prime_repo_path'):
+                    self._reactor_core_integration.config.jarvis_prime_path = Path(
+                        self.config.jarvis_prime_repo_path
+                    )
+
+                # Initialize all reactor-core components
+                reactor_init_success = await initialize_reactor_core()
+
+                if reactor_init_success:
+                    # Connect to Neural Mesh if available
+                    if hasattr(self, '_neural_mesh') and self._neural_mesh:
+                        # Register reactor-core as a Neural Mesh node
+                        self._neural_mesh.register_node(NeuralMeshNode(
+                            node_id="reactor_core",
+                            node_type="reactor_core",
+                            capabilities=["training", "scraping", "model_deployment", "experience_collection"],
+                            status="active",
+                        ))
+                        self.logger.info("✅ Reactor-Core connected to Neural Mesh")
+
+                    # Connect to CAI if available for insight aggregation
+                    if hasattr(self, '_cai') and self._cai:
+                        async def on_reactor_event(event: Dict[str, Any]) -> None:
+                            """Feed reactor-core events into CAI for analysis."""
+                            self._cai.add_insight_source(
+                                topic=event.get("event_type", "reactor_core"),
+                                source=InsightSource(
+                                    system="reactor_core",
+                                    confidence=0.85,
+                                    timestamp=time.time(),
+                                    data=event,
+                                )
+                            )
+
+                        self._reactor_core_integration.register_prime_callback(on_reactor_event)
+                        self.logger.info("✅ Reactor-Core connected to CAI for intelligence aggregation")
+
+                    # Connect to Data Flywheel for experience syncing
+                    if hasattr(self, '_data_flywheel') and self._data_flywheel:
+                        self.logger.info("✅ Reactor-Core connected to Data Flywheel")
+
+                    # Initialize Prime Neural Mesh bridge
+                    try:
+                        prime_mesh_success = await initialize_prime_neural_mesh()
+                        if prime_mesh_success:
+                            self._prime_neural_mesh_bridge = get_prime_neural_mesh_bridge()
+                            self.logger.info("✅ Prime Neural Mesh bridge initialized")
+
+                            # Connect bridge to CAI if available
+                            if hasattr(self, '_cai') and self._cai:
+                                async def on_prime_mesh_event(event: Dict[str, Any]) -> None:
+                                    """Feed Prime mesh events into CAI for analysis."""
+                                    self._cai.add_insight_source(
+                                        topic=f"prime_{event.get('event_type', 'unknown')}",
+                                        source=InsightSource(
+                                            system="prime_neural_mesh",
+                                            confidence=0.9,
+                                            timestamp=time.time(),
+                                            data=event,
+                                        )
+                                    )
+
+                                self._prime_neural_mesh_bridge.register_callback(on_prime_mesh_event)
+                                self.logger.info("✅ Prime Neural Mesh connected to CAI")
+
+                            print(f"  {TerminalUI.GREEN}✓ Prime Neural Mesh: JARVIS-Prime bridge active{TerminalUI.RESET}")
+                        else:
+                            self.logger.warning("⚠️ Prime Neural Mesh bridge initialization incomplete")
+                    except Exception as prime_mesh_error:
+                        self.logger.warning(f"⚠️ Prime Neural Mesh initialization skipped: {prime_mesh_error}")
+
+                    initialized_systems["reactor_core"] = True
+                    os.environ["REACTOR_CORE_ENABLED"] = "true"
+
+                    # Get status for logging
+                    reactor_status = self._reactor_core_integration.get_status()
+                    active_components = [k for k, v in reactor_status["components"].items() if v]
+
+                    self.logger.info(
+                        f"✅ Reactor-Core Integration initialized "
+                        f"(components: {', '.join(active_components)})"
+                    )
+                    print(f"  {TerminalUI.GREEN}✓ Reactor-Core: Training pipeline integration active{TerminalUI.RESET}")
+                else:
+                    self.logger.warning("⚠️ Reactor-Core initialization returned false")
+                    os.environ["REACTOR_CORE_ENABLED"] = "false"
+                    print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Partial initialization{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ Reactor-Core not available: {e}")
+                os.environ["REACTOR_CORE_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.error(f"❌ Reactor-Core initialization failed: {e}")
+                os.environ["REACTOR_CORE_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
         # Broadcast Intelligence Systems Status
         # ═══════════════════════════════════════════════════════════════════
         active_systems = [k for k, v in initialized_systems.items() if v]
@@ -5066,13 +5272,14 @@ class SupervisorBootstrapper:
                     "mas": initialized_systems["mas"],
                     "cai": initialized_systems["cai"],
                     "continuous_scraping": initialized_systems["continuous_scraping"],
+                    "reactor_core": initialized_systems["reactor_core"],
                     "active_count": len(active_systems),
                 }
             }
         )
 
         self.logger.info("═" * 60)
-        self.logger.info(f"✅ Intelligence Stack: {len(active_systems)}/6 systems active")
+        self.logger.info(f"✅ Intelligence Stack: {len(active_systems)}/7 systems active")
         self.logger.info("═" * 60)
 
     async def _run_continuous_scraping(self) -> None:
@@ -5207,6 +5414,23 @@ class SupervisorBootstrapper:
 
         # Clear CAI
         self._cai = None
+
+        # Shutdown Prime Neural Mesh Bridge
+        if hasattr(self, '_prime_neural_mesh_bridge') and self._prime_neural_mesh_bridge:
+            try:
+                await self._prime_neural_mesh_bridge.shutdown()
+            except Exception as e:
+                self.logger.warning(f"Prime Neural Mesh shutdown error: {e}")
+            self._prime_neural_mesh_bridge = None
+
+        # Shutdown Reactor-Core Integration
+        if hasattr(self, '_reactor_core_integration') and self._reactor_core_integration:
+            try:
+                from autonomy.reactor_core_integration import shutdown_reactor_core
+                await shutdown_reactor_core()
+            except Exception as e:
+                self.logger.warning(f"Reactor-Core shutdown error: {e}")
+            self._reactor_core_integration = None
 
         self.logger.info("✅ Intelligence Systems stopped")
 
