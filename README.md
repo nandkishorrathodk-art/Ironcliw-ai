@@ -23865,6 +23865,1068 @@ async def _query_training_effectiveness(self, experience_ids: List[int]):
 
 ---
 
+## 🔗 Complete Ecosystem Integration Gaps: JARVIS, JARVIS-Prime & Reactor-Core
+
+This section provides a **comprehensive, in-depth analysis** of all missing connections, unimplemented features, and architectural gaps across the **entire JARVIS ecosystem** (JARVIS-AI-Agent, JARVIS-Prime, and Reactor-Core). This is the definitive guide to achieving full bidirectional communication and true "Agentic OS" capabilities.
+
+### 📊 Ecosystem Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    JARVIS Ecosystem (Current State)                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────┐         ┌─────────────────┐                     │
+│  │   JARVIS       │────────▶│  JARVIS-Prime   │                     │
+│  │  (Runtime OS)  │  HTTP   │   (Local Brain) │                     │
+│  └────────┬───────┘         └────────┬────────┘                     │
+│           │                          │                              │
+│           │ Records                  │ Loads                        │
+│           │ Experiences              │ Models                       │
+│           ▼                          ▼                              │
+│  ┌─────────────────┐         ┌─────────────────┐                     │
+│  │  Data Flywheel  │────────▶│  Reactor-Core   │                     │
+│  │  (Experience)   │  JSONL  │  (Training Gym) │                     │
+│  └─────────────────┘         └─────────────────┘                     │
+│                                                                      │
+│  ⚠️  MISSING: Bidirectional APIs, Event Subscriptions, Auto-Triggers │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 🔴 Critical Missing Connections (Blocking Full Integration)
+
+---
+
+## 1. JARVIS (JARVIS-AI-Agent Repository) - Missing Components
+
+### 1.1 Reactor-Core API Client (Direct Training Communication)
+
+**Status:** ❌ **MISSING** - No HTTP client to Reactor-Core training endpoints
+
+**Current State:**
+- JARVIS records experiences to Data Flywheel (SQLite/JSONL)
+- Reactor-Core reads from Data Flywheel files
+- **No direct API communication** - One-way only
+
+**Impact:**
+- ❌ Cannot trigger training runs on-demand (e.g., when 100+ experiences accumulate)
+- ❌ Cannot check training status in real-time
+- ❌ Cannot cancel running training jobs
+- ❌ Cannot query training history or metrics
+- ❌ No awareness of training progress (0%, 50%, 100%)
+- ❌ Cannot prioritize training based on experience quality
+
+**Required Implementation:**
+
+```python
+# File: backend/core/reactor_core_client.py (NEW FILE)
+
+import aiohttp
+import os
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class TrainingJob:
+    """Training job metadata."""
+    job_id: str
+    status: str  # "queued", "running", "completed", "failed"
+    progress: float  # 0.0 to 1.0
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    model_name: Optional[str] = None
+    metrics: Dict[str, Any] = None
+
+class ReactorCoreClient:
+    """HTTP client for Reactor-Core training API."""
+    
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or os.getenv(
+            "REACTOR_CORE_API_URL",
+            "http://localhost:8003"  # Reactor-Core API port
+        )
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.connected = False
+    
+    async def connect(self):
+        """Initialize HTTP session and verify connection."""
+        try:
+            self.session = aiohttp.ClientSession()
+            
+            async with self.session.get(f"{self.base_url}/health") as resp:
+                if resp.status == 200:
+                    self.connected = True
+                    return True
+        except Exception as e:
+            logger.error(f"Reactor-Core connection failed: {e}")
+        return False
+    
+    async def trigger_training(
+        self,
+        experience_count: int,
+        priority: str = "normal",
+        base_model: str = "llama-2-7b",
+        force: bool = False
+    ) -> Optional[TrainingJob]:
+        """Trigger a training run in Reactor-Core."""
+        if not self.connected:
+            return None
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/training/trigger",
+                json={
+                    "experience_count": experience_count,
+                    "priority": priority,  # "low", "normal", "high", "critical"
+                    "base_model": base_model,
+                    "force": force,
+                    "source": "jarvis_agentic_runner"
+                }
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return TrainingJob(
+                        job_id=data["job_id"],
+                        status=data["status"],
+                        progress=0.0,
+                        started_at=datetime.now()
+                    )
+        except Exception as e:
+            logger.error(f"Training trigger failed: {e}")
+        return None
+    
+    async def get_training_status(self, job_id: str) -> Optional[TrainingJob]:
+        """Get current status of a training job."""
+        if not self.connected:
+            return None
+        
+        try:
+            async with self.session.get(
+                f"{self.base_url}/api/training/status/{job_id}"
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return TrainingJob(**data)
+        except Exception as e:
+            logger.error(f"Status check failed: {e}")
+        return None
+    
+    async def cancel_training(self, job_id: str) -> bool:
+        """Cancel a running training job."""
+        if not self.connected:
+            return False
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/training/cancel/{job_id}"
+            ) as resp:
+                return resp.status == 200
+        except Exception as e:
+            logger.error(f"Cancel failed: {e}")
+        return False
+    
+    async def get_training_history(self, limit: int = 10) -> List[TrainingJob]:
+        """Get recent training job history."""
+        if not self.connected:
+            return []
+        
+        try:
+            async with self.session.get(
+                f"{self.base_url}/api/training/history",
+                params={"limit": limit}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return [TrainingJob(**job) for job in data.get("jobs", [])]
+        except Exception as e:
+            logger.error(f"History query failed: {e}")
+        return []
+    
+    async def close(self):
+        """Close HTTP session."""
+        if self.session:
+            await self.session.close()
+```
+
+**Integration Points:**
+- Add to `backend/core/agentic_task_runner.py`: `_initialize_reactor_core_client()`
+- Call `trigger_training()` when experience count > threshold
+- Poll `get_training_status()` during training runs
+- Display training progress in loading server UI
+
+**Priority:** 🔴 **CRITICAL** - Enables on-demand training and real-time status
+
+---
+
+### 1.2 Reactor-Core Status Receiver (Bidirectional Communication)
+
+**Status:** ❌ **MISSING** - No endpoint to receive training status updates from Reactor-Core
+
+**Current State:**
+- Reactor-Core trains models independently
+- JARVIS has no way to know when training completes
+- No WebSocket or HTTP callback mechanism
+
+**Impact:**
+- ❌ Cannot receive real-time training progress updates
+- ❌ Cannot be notified when new models are deployed
+- ❌ Cannot update UI with training status
+- ❌ No automatic model hot-swap awareness
+
+**Required Implementation:**
+
+```python
+# File: backend/api/reactor_core_api.py (NEW FILE)
+
+from fastapi import APIRouter, Request
+from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/reactor-core", tags=["reactor-core"])
+
+@router.post("/training/status")
+async def receive_training_status(request: Request):
+    """Receive training status updates from Reactor-Core."""
+    data = await request.json()
+    
+    job_id = data.get("job_id")
+    status = data.get("status")  # "started", "progress", "completed", "failed"
+    progress = data.get("progress", 0.0)
+    message = data.get("message", "")
+    
+    logger.info(f"Reactor-Core training update: {job_id} - {status} ({progress*100:.1f}%)")
+    
+    # Update Agentic Task Runner
+    from backend.core.agentic_task_runner import get_agentic_runner
+    runner = get_agentic_runner()
+    if runner:
+        await runner._on_training_status_update(job_id, status, progress, message)
+    
+    # Broadcast to loading server
+    from backend.core.startup_progress_broadcaster import get_startup_broadcaster
+    broadcaster = get_startup_broadcaster()
+    if broadcaster:
+        await broadcaster.broadcast(
+            stage="reactor_core_training",
+            message=message or f"Training {status}: {progress*100:.1f}%",
+            progress=int(progress * 100),
+            metadata={
+                "job_id": job_id,
+                "status": status,
+                "progress": progress
+            }
+        )
+    
+    return {"success": True, "received": True}
+
+@router.post("/model/deployed")
+async def receive_model_deployment(request: Request):
+    """Receive model deployment notifications from Reactor-Core."""
+    data = await request.json()
+    
+    model_name = data.get("model_name")
+    model_path = data.get("model_path")
+    model_version = data.get("version", "1.0.0")
+    checksum = data.get("checksum")
+    
+    logger.info(f"Reactor-Core deployed model: {model_name} v{model_version}")
+    
+    # Notify JARVIS-Prime client to hot-swap
+    from backend.core.jarvis_prime_client import get_jarvis_prime_client
+    prime_client = get_jarvis_prime_client()
+    if prime_client:
+        await prime_client.force_mode_check()
+        await prime_client.hot_swap_model(model_name, model_path)
+    
+    # Notify Agentic Task Runner
+    from backend.core.agentic_task_runner import get_agentic_runner
+    runner = get_agentic_runner()
+    if runner:
+        await runner._on_model_deployed(model_name, model_path, model_version)
+    
+    return {"success": True, "notified": True}
+```
+
+**Integration Points:**
+- Add router to `backend/main.py`: `app.include_router(reactor_core_api.router)`
+- Reactor-Core calls these endpoints after training completes
+- JARVIS-Prime automatically hot-swaps to new model
+
+**Priority:** 🔴 **CRITICAL** - Enables bidirectional communication
+
+---
+
+### 1.3 JARVIS-Prime Hot-Swap Awareness
+
+**Status:** ⚠️ **PARTIAL** - Client exists but no model deployment subscription
+
+**Current State:**
+- JARVIS-Prime client initialized in Agentic Task Runner
+- Can query JARVIS-Prime for responses
+- **No awareness** when new models are deployed
+
+**Impact:**
+- ❌ ATR doesn't know when model upgrades happen
+- ❌ Cannot invalidate cached patterns
+- ❌ Cannot log "intelligence upgrade" events
+
+**Required Implementation:**
+
+```python
+# Add to backend/core/agentic_task_runner.py
+
+async def _subscribe_to_model_deployment_events(self):
+    """Subscribe to model deployment notifications."""
+    try:
+        from autonomy.reactor_core_watcher import get_reactor_core_watcher
+        
+        watcher = get_reactor_core_watcher()
+        if not watcher:
+            return
+        
+        async def on_model_deployed(deployment_result):
+            """Handle new model deployment."""
+            self.logger.info(
+                f"[AgenticRunner] 🧠 Model upgraded: {deployment_result.model_name} "
+                f"v{deployment_result.version}"
+            )
+            
+            # Invalidate pattern cache
+            if self._jarvis_prime_client:
+                self._jarvis_prime_client.get("pattern_cache", {}).clear()
+                # Force mode check to reload model
+                await self._jarvis_prime_client.get("force_mode_check")()
+            
+            # Publish to Neural Mesh
+            if self._neural_mesh:
+                await self._publish_task_event(
+                    event_type="model_deployed",
+                    goal="system_upgrade",
+                    mode="system",
+                    metadata={
+                        "model_name": deployment_result.model_name,
+                        "version": deployment_result.version,
+                        "model_size_mb": deployment_result.model_size_mb
+                    }
+                )
+        
+        watcher.register_callback(on_model_deployed)
+        self.logger.info("[AgenticRunner] ✓ Model deployment subscription active")
+        
+    except Exception as e:
+        self.logger.debug(f"[AgenticRunner] Model subscription failed: {e}")
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables model upgrade awareness
+
+---
+
+### 1.4 UAE/SAI Auto-Start Verification
+
+**Status:** ⚠️ **PARTIAL** - Initialized but not verified to be running
+
+**Current State:**
+- `_initialize_intelligence_systems()` calls `initialize_uae()` and `initialize_sai()`
+- No explicit `start()` calls after initialization
+- No verification that monitoring loops are active
+
+**Impact:**
+- ⚠️ UAE/SAI may be initialized but not actively monitoring
+- ⚠️ Screen awareness may be disabled
+- ⚠️ Window tracking may not be running
+
+**Required Fix:**
+
+```python
+# Add to run_supervisor.py _initialize_intelligence_systems()
+
+# After UAE initialization
+if self._uae_engine:
+    # Explicit start
+    if hasattr(self._uae_engine, 'start'):
+        await self._uae_engine.start()
+    
+    # Verify it's running
+    if hasattr(self._uae_engine, 'is_running'):
+        if not self._uae_engine.is_running():
+            self.logger.warning("⚠️ UAE initialized but not running!")
+        else:
+            self.logger.info("✅ UAE monitoring active")
+
+# After SAI initialization
+if self._yabai_intelligence:
+    # Explicit start
+    if hasattr(self._yabai_intelligence, 'start_monitoring'):
+        await self._yabai_intelligence.start_monitoring()
+    
+    # Verify it's running
+    if hasattr(self._yabai_intelligence, 'is_monitoring'):
+        if not self._yabai_intelligence.is_monitoring():
+            self.logger.warning("⚠️ SAI initialized but not monitoring!")
+        else:
+            self.logger.info("✅ SAI monitoring active")
+```
+
+**Priority:** 🟡 **IMPORTANT** - Ensures intelligence systems are active
+
+---
+
+### 1.5 MAS Workflow Execution in ATR
+
+**Status:** ❌ **MISSING** - ATR uses Phase Manager, not MAS orchestrator
+
+**Current State:**
+- Neural Mesh initialized and connected
+- ATR uses LangGraph Phase Manager for task decomposition
+- **No MAS workflow execution** for complex multi-agent tasks
+
+**Impact:**
+- ❌ Cannot leverage 60+ agents for task decomposition
+- ❌ No multi-agent collaboration for complex tasks
+- ❌ Limited to single-agent execution
+
+**Required Implementation:**
+
+```python
+# Add to backend/core/agentic_task_runner.py
+
+async def _decompose_via_mas(self, goal: str) -> List[Dict[str, Any]]:
+    """Use MAS orchestrator to decompose complex tasks into agent workflows."""
+    if not self._neural_mesh_coordinator:
+        return []  # Fallback to Phase Manager
+    
+    try:
+        # Create workflow from goal
+        workflow = await self._neural_mesh_coordinator.create_workflow(
+            goal=goal,
+            process_type="dynamic",  # or "hierarchical", "parallel"
+            delegation_strategy="capability_based"
+        )
+        
+        # Execute workflow and get sub-tasks
+        result = await workflow.execute()
+        
+        # Convert to ATR task format
+        sub_tasks = []
+        for step in result.steps:
+            sub_tasks.append({
+                "goal": step.description,
+                "agent": step.assigned_agent,
+                "tools": step.required_tools,
+                "dependencies": step.dependencies
+            })
+        
+        return sub_tasks
+        
+    except Exception as e:
+        self.logger.debug(f"MAS decomposition failed: {e}, using Phase Manager")
+        return []  # Fallback to existing Phase Manager
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables multi-agent task execution
+
+---
+
+### 1.6 Learning Goal Discovery Auto-Trigger
+
+**Status:** ❌ **MISSING** - Learning goals manager exists but not auto-triggered
+
+**Current State:**
+- Learning goals manager initialized
+- Safe Scout can scrape topics
+- **No automatic trigger** from ATR task failures
+
+**Impact:**
+- ❌ Cannot auto-discover learning topics from failures
+- ❌ Learning goals must be manually added
+- ❌ No proactive learning from errors
+
+**Required Implementation:**
+
+```python
+# Add to backend/core/agentic_task_runner.py _execute_task()
+
+# After task execution
+if not result.success and result.error:
+    # Auto-trigger learning goal discovery
+    if hasattr(self, '_learning_goals_manager') and self._learning_goals_manager:
+        await self._learning_goals_manager.auto_discover_from_failure(
+            goal=goal,
+            error=result.error,
+            context=result.context
+        )
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables proactive learning
+
+---
+
+## 2. JARVIS-Prime Repository - Missing Components
+
+### 2.1 Model Hot-Swap API Endpoint
+
+**Status:** ❌ **MISSING** - No endpoint to swap models at runtime
+
+**Current State:**
+- JARVIS-Prime loads models on startup
+- No API to swap models without restart
+- Reactor-Core deploys new models but Prime doesn't auto-reload
+
+**Impact:**
+- ❌ Cannot hot-swap to new trained models
+- ❌ Requires restart to load new model
+- ❌ No seamless model upgrades
+
+**Required Implementation:**
+
+```python
+# File: jarvis-prime/api/model_management.py (NEW FILE)
+
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any
+import logging
+
+router = APIRouter(prefix="/model", tags=["model"])
+
+@router.post("/swap")
+async def swap_model(request: Dict[str, Any]):
+    """Hot-swap to a new model without restart."""
+    model_name = request.get("model_name")
+    model_path = request.get("model_path")
+    
+    if not model_name or not model_path:
+        raise HTTPException(400, "model_name and model_path required")
+    
+    try:
+        # Unload current model
+        if current_model := get_current_model():
+            current_model.unload()
+        
+        # Load new model
+        new_model = load_model(model_path, model_name)
+        
+        # Update global model reference
+        set_current_model(new_model)
+        
+        return {
+            "success": True,
+            "model_name": model_name,
+            "model_path": model_path,
+            "memory_usage_mb": new_model.get_memory_usage(),
+            "loaded_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Model swap failed: {e}")
+
+@router.post("/deployed")
+async def notify_model_deployment(request: Dict[str, Any]):
+    """Receive model deployment notification from Reactor-Core."""
+    model_name = request.get("model_name")
+    model_path = request.get("model_path")
+    
+    # Auto-swap to new model
+    return await swap_model({
+        "model_name": model_name,
+        "model_path": model_path
+    })
+```
+
+**Priority:** 🔴 **CRITICAL** - Enables seamless model upgrades
+
+---
+
+### 2.2 Model Deployment Event System
+
+**Status:** ❌ **MISSING** - No event bus for deployment notifications
+
+**Required Implementation:**
+
+```python
+# File: jarvis-prime/core/event_bus.py (NEW FILE)
+
+from typing import Callable, List
+import asyncio
+
+class ModelDeploymentEventBus:
+    """Event bus for model deployment notifications."""
+    
+    def __init__(self):
+        self._subscribers: List[Callable] = []
+    
+    def subscribe(self, callback: Callable):
+        """Subscribe to model deployment events."""
+        self._subscribers.append(callback)
+    
+    async def publish(self, event: Dict[str, Any]):
+        """Publish model deployment event."""
+        for callback in self._subscribers:
+            await callback(event)
+
+# Global event bus
+_event_bus = ModelDeploymentEventBus()
+
+def get_event_bus() -> ModelDeploymentEventBus:
+    return _event_bus
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables event-driven model updates
+
+---
+
+### 2.3 Model Evaluation Endpoint
+
+**Status:** ❌ **MISSING** - No API to evaluate model quality
+
+**Required Implementation:**
+
+```python
+# File: jarvis-prime/api/evaluation.py (NEW FILE)
+
+@router.post("/evaluate")
+async def evaluate_model(request: Dict[str, Any]):
+    """Evaluate model quality on test set."""
+    test_set = request.get("test_set", [])
+    
+    if not test_set:
+        # Use default test set
+        test_set = load_default_test_set()
+    
+    results = []
+    for item in test_set:
+        response = model.generate(item["input"])
+        results.append({
+            "input": item["input"],
+            "expected": item.get("expected"),
+            "actual": response,
+            "score": calculate_score(response, item.get("expected"))
+        })
+    
+    avg_score = sum(r["score"] for r in results) / len(results)
+    
+    return {
+        "average_score": avg_score,
+        "total_tests": len(results),
+        "results": results
+    }
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables quality-based training triggers
+
+---
+
+### 2.4 Model Metadata API
+
+**Status:** ❌ **MISSING** - No endpoint to query model information
+
+**Required Implementation:**
+
+```python
+# File: jarvis-prime/api/model_metadata.py (NEW FILE)
+
+@router.get("/metadata")
+async def get_model_metadata():
+    """Get current model metadata."""
+    model = get_current_model()
+    
+    return {
+        "model_name": model.name,
+        "model_version": model.version,
+        "model_size_mb": model.size_mb,
+        "quantization": model.quantization,
+        "training_date": model.training_date,
+        "base_model": model.base_model,
+        "memory_usage_mb": model.get_memory_usage(),
+        "inference_latency_ms": model.get_avg_latency(),
+        "total_requests": model.get_total_requests()
+    }
+```
+
+**Priority:** 🟢 **NICE-TO-HAVE** - Provides visibility into model state
+
+---
+
+## 3. Reactor-Core Repository - Missing Components
+
+### 3.1 Training Trigger API Endpoint
+
+**Status:** ❌ **MISSING** - No REST API to trigger training runs
+
+**Current State:**
+- Training pipeline exists (`reactor-core/orchestration/pipeline.py`)
+- Can be run via CLI: `python -m reactor_core.scripts.run_pipeline`
+- **No HTTP API** for JARVIS to trigger training
+
+**Impact:**
+- ❌ JARVIS cannot trigger training on-demand
+- ❌ Training only runs via scheduled cron or manual CLI
+- ❌ No programmatic training control
+
+**Required Implementation:**
+
+```python
+# File: reactor-core/api/training_api.py (NEW FILE)
+
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any, Optional
+import asyncio
+import uuid
+from datetime import datetime
+
+router = APIRouter(prefix="/api/training", tags=["training"])
+
+# In-memory job tracker (use Redis in production)
+_training_jobs: Dict[str, Dict[str, Any]] = {}
+
+@router.post("/trigger")
+async def trigger_training(request: Dict[str, Any]):
+    """Trigger a training run."""
+    experience_count = request.get("experience_count", 0)
+    priority = request.get("priority", "normal")
+    base_model = request.get("base_model", "llama-2-7b")
+    force = request.get("force", False)
+    
+    # Create job
+    job_id = f"train-{uuid.uuid4().hex[:8]}"
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0.0,
+        "started_at": datetime.now().isoformat(),
+        "experience_count": experience_count,
+        "priority": priority,
+        "base_model": base_model
+    }
+    _training_jobs[job_id] = job
+    
+    # Start training in background
+    asyncio.create_task(_run_training_pipeline(job_id, base_model, experience_count))
+    
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "estimated_time_hours": estimate_training_time(experience_count)
+    }
+
+@router.get("/status/{job_id}")
+async def get_training_status(job_id: str):
+    """Get training job status."""
+    if job_id not in _training_jobs:
+        raise HTTPException(404, "Job not found")
+    
+    return _training_jobs[job_id]
+
+@router.post("/cancel/{job_id}")
+async def cancel_training(job_id: str):
+    """Cancel a training job."""
+    if job_id not in _training_jobs:
+        raise HTTPException(404, "Job not found")
+    
+    job = _training_jobs[job_id]
+    if job["status"] not in ["queued", "running"]:
+        raise HTTPException(400, "Job cannot be cancelled")
+    
+    # Set cancellation flag
+    job["status"] = "cancelling"
+    # Actual cancellation logic here
+    
+    return {"success": True, "job_id": job_id, "status": "cancelling"}
+
+async def _run_training_pipeline(job_id: str, base_model: str, experience_count: int):
+    """Run training pipeline in background."""
+    try:
+        _training_jobs[job_id]["status"] = "running"
+        _training_jobs[job_id]["progress"] = 0.1
+        
+        # Import and run pipeline
+        from reactor_core.orchestration.pipeline import NightShiftPipeline
+        
+        pipeline = NightShiftPipeline(config)
+        
+        # Register progress callback
+        def on_progress(stage: str, progress: float, message: str):
+            _training_jobs[job_id]["progress"] = progress
+            _training_jobs[job_id]["current_stage"] = stage
+            _training_jobs[job_id]["message"] = message
+            
+            # Notify JARVIS
+            notify_jarvis(job_id, "progress", progress, message)
+        
+        pipeline.add_progress_callback(on_progress)
+        
+        # Run pipeline
+        result = await pipeline.run()
+        
+        if result.success:
+            _training_jobs[job_id]["status"] = "completed"
+            _training_jobs[job_id]["progress"] = 1.0
+            _training_jobs[job_id]["model_path"] = result.artifacts.get("model_path")
+            
+            # Notify JARVIS
+            notify_jarvis(job_id, "completed", 1.0, "Training completed")
+            
+            # Notify JARVIS-Prime
+            notify_jarvis_prime(result.artifacts.get("model_path"))
+        else:
+            _training_jobs[job_id]["status"] = "failed"
+            _training_jobs[job_id]["error"] = result.error
+            
+            # Notify JARVIS
+            notify_jarvis(job_id, "failed", 0.0, f"Training failed: {result.error}")
+            
+    except Exception as e:
+        _training_jobs[job_id]["status"] = "failed"
+        _training_jobs[job_id]["error"] = str(e)
+
+def notify_jarvis(job_id: str, status: str, progress: float, message: str):
+    """Notify JARVIS of training status update."""
+    jarvis_url = os.getenv("JARVIS_API_URL", "http://localhost:8010")
+    
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"{jarvis_url}/reactor-core/training/status",
+                json={
+                    "job_id": job_id,
+                    "status": status,
+                    "progress": progress,
+                    "message": message
+                }
+            )
+    except Exception as e:
+        logger.error(f"Failed to notify JARVIS: {e}")
+
+def notify_jarvis_prime(model_path: str):
+    """Notify JARVIS-Prime of new model deployment."""
+    prime_url = os.getenv("JARVIS_PRIME_API_URL", "http://localhost:8002")
+    
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"{prime_url}/model/deployed",
+                json={
+                    "model_name": os.path.basename(model_path),
+                    "model_path": model_path,
+                    "version": extract_version(model_path)
+                }
+            )
+    except Exception as e:
+        logger.error(f"Failed to notify JARVIS-Prime: {e}")
+```
+
+**Priority:** 🔴 **CRITICAL** - Enables programmatic training control
+
+---
+
+### 3.2 JARVIS Experience Sync API
+
+**Status:** ❌ **MISSING** - No endpoint to receive experiences from JARVIS
+
+**Current State:**
+- Reactor-Core reads from Data Flywheel JSONL files
+- **No direct API** to receive experiences from JARVIS
+
+**Impact:**
+- ❌ Experiences must be written to files first
+- ❌ No real-time experience streaming
+- ❌ File-based sync is slower and less reliable
+
+**Required Implementation:**
+
+```python
+# File: reactor-core/api/experience_api.py (NEW FILE)
+
+@router.post("/experiences/sync")
+async def sync_experiences(request: Dict[str, Any]):
+    """Receive experiences from JARVIS Data Flywheel."""
+    experiences = request.get("experiences", [])
+    
+    if not experiences:
+        return {"success": False, "error": "No experiences provided"}
+    
+    # Validate and store experiences
+    stored_count = 0
+    for exp in experiences:
+        if validate_experience(exp):
+            store_experience(exp)
+            stored_count += 1
+    
+    return {
+        "success": True,
+        "received": len(experiences),
+        "stored": stored_count,
+        "rejected": len(experiences) - stored_count
+    }
+
+@router.post("/experiences/stream")
+async def stream_experiences(request: Dict[str, Any]):
+    """Stream experiences in real-time (WebSocket alternative)."""
+    # Implementation for streaming experiences
+    pass
+```
+
+**Priority:** 🟡 **IMPORTANT** - Enables real-time experience sync
+
+---
+
+### 3.3 WebSocket Server for Real-Time Updates
+
+**Status:** ❌ **MISSING** - No WebSocket server for training progress
+
+**Required Implementation:**
+
+```python
+# File: reactor-core/api/websocket_server.py (NEW FILE)
+
+from fastapi import WebSocket
+import json
+
+@router.websocket("/ws/training")
+async def training_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time training updates."""
+    await websocket.accept()
+    
+    try:
+        while True:
+            # Send training progress updates
+            for job_id, job in _training_jobs.items():
+                if job["status"] == "running":
+                    await websocket.send_json({
+                        "type": "training_progress",
+                        "job_id": job_id,
+                        "progress": job["progress"],
+                        "stage": job.get("current_stage"),
+                        "message": job.get("message")
+                    })
+            
+            await asyncio.sleep(1)  # Update every second
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+    finally:
+        await websocket.close()
+```
+
+**Priority:** 🟢 **NICE-TO-HAVE** - Real-time progress updates
+
+---
+
+### 3.4 Training History API
+
+**Status:** ❌ **MISSING** - No endpoint to query training history
+
+**Required Implementation:**
+
+```python
+# File: reactor-core/api/training_history.py (NEW FILE)
+
+@router.get("/history")
+async def get_training_history(limit: int = 10, offset: int = 0):
+    """Get training job history."""
+    jobs = list(_training_jobs.values())
+    jobs.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+    
+    return {
+        "total": len(jobs),
+        "limit": limit,
+        "offset": offset,
+        "jobs": jobs[offset:offset+limit]
+    }
+```
+
+**Priority:** 🟢 **NICE-TO-HAVE** - Provides training audit trail
+
+---
+
+## 📊 Complete Integration Status Matrix
+
+| Component | JARVIS Missing | JARVIS-Prime Missing | Reactor-Core Missing | Priority |
+|-----------|----------------|---------------------|---------------------|----------|
+| **Training Trigger API** | ✅ Client needed | N/A | ❌ Endpoint missing | 🔴 Critical |
+| **Training Status API** | ✅ Client needed | N/A | ❌ Endpoint missing | 🔴 Critical |
+| **Model Hot-Swap** | ✅ Subscription needed | ❌ Endpoint missing | ✅ Notification needed | 🔴 Critical |
+| **Bidirectional Comm** | ❌ Status receiver missing | N/A | ❌ JARVIS notifier missing | 🔴 Critical |
+| **Experience Sync** | ✅ API client needed | N/A | ❌ Endpoint missing | 🟡 Important |
+| **Model Deployment Events** | ✅ Subscription needed | ❌ Event bus missing | ✅ Notifier needed | 🟡 Important |
+| **MAS Workflow Execution** | ❌ Implementation missing | N/A | N/A | 🟡 Important |
+| **Learning Goal Auto-Trigger** | ❌ Implementation missing | N/A | N/A | 🟡 Important |
+| **UAE/SAI Auto-Start** | ⚠️ Verification needed | N/A | N/A | 🟡 Important |
+| **Model Evaluation** | N/A | ❌ Endpoint missing | N/A | 🟡 Important |
+| **Model Metadata** | N/A | ❌ Endpoint missing | N/A | 🟢 Nice-to-have |
+| **WebSocket Server** | N/A | N/A | ❌ Server missing | 🟢 Nice-to-have |
+| **Training History** | ✅ Client needed | N/A | ❌ Endpoint missing | 🟢 Nice-to-have |
+
+---
+
+## 🔧 Implementation Roadmap
+
+### Phase 1: Critical Bidirectional Communication (Week 1)
+
+**JARVIS:**
+1. ✅ Create `backend/core/reactor_core_client.py` - HTTP client for Reactor-Core
+2. ✅ Create `backend/api/reactor_core_api.py` - Status receiver endpoints
+3. ✅ Integrate client into `agentic_task_runner.py`
+4. ✅ Add model deployment subscription
+
+**Reactor-Core:**
+5. ✅ Create `reactor-core/api/training_api.py` - Training trigger/status endpoints
+6. ✅ Create `reactor-core/api/experience_api.py` - Experience sync endpoint
+7. ✅ Add JARVIS notification calls after training completes
+
+**JARVIS-Prime:**
+8. ✅ Create `jarvis-prime/api/model_management.py` - Hot-swap endpoint
+9. ✅ Create `jarvis-prime/core/event_bus.py` - Event system
+
+### Phase 2: Important Features (Week 2)
+
+**JARVIS:**
+10. ✅ Add MAS workflow execution to ATR
+11. ✅ Add learning goal auto-trigger from failures
+12. ✅ Verify UAE/SAI auto-start
+
+**JARVIS-Prime:**
+13. ✅ Add model evaluation endpoint
+14. ✅ Add model metadata endpoint
+
+**Reactor-Core:**
+15. ✅ Add training history API
+16. ✅ Add WebSocket server (optional)
+
+### Phase 3: Testing & Validation (Week 3)
+
+17. ✅ End-to-end test: JARVIS → Reactor-Core → JARVIS-Prime flow
+18. ✅ Test training trigger from ATR
+19. ✅ Test model hot-swap after training
+20. ✅ Test experience sync
+21. ✅ Test bidirectional status updates
+
+---
+
+## 📝 Notes
+
+- **This is a living document** - Update as implementations are completed
+- **Priority levels:**
+  - 🔴 **Critical**: Blocks core functionality, must be implemented first
+  - 🟡 **Important**: Enables key features, should be implemented soon
+  - 🟢 **Nice-to-have**: Enhances functionality, can be deferred
+
+- **Testing Strategy:**
+  - Start with Phase 1 (Critical) implementations
+  - Test each component in isolation first
+  - Then test end-to-end integration
+  - Verify bidirectional communication works
+
+- **Architecture Principles:**
+  - **Separation of Concerns**: Each repo handles its own domain
+  - **Bidirectional Communication**: All systems can talk to each other
+  - **Event-Driven**: Use events for loose coupling
+  - **API-First**: All integrations via REST/WebSocket APIs
+
+---
+
 #### 5. No JARVIS-Prime Model Version Awareness
 
 **Status:** Runner queries JARVIS-Prime but doesn't know which model version is loaded.

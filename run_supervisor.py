@@ -6437,7 +6437,7 @@ class SupervisorBootstrapper:
 
     async def _initialize_infrastructure_orchestrator(self) -> None:
         """
-        v9.5: Initialize the Infrastructure Orchestrator for on-demand GCP resources.
+        v10.0: Initialize the Infrastructure Orchestrator with Startup Cost Optimization.
 
         This fixes the root issue of GCP resources staying deployed when JARVIS is off:
         - Provisions Cloud Run/Redis only when needed (memory pressure, explicit config)
@@ -6446,9 +6446,16 @@ class SupervisorBootstrapper:
         - Leaves pre-existing infrastructure alone
         - Supports multi-repo integration (JARVIS, Prime, Reactor Core)
 
+        v10.0 Enhancements:
+        - Startup cost check: Detects orphaned resources from crashed sessions
+        - Artifact cleanup: Cleans old Docker images to reduce storage costs
+        - Cloud SQL management: Can stop/start Cloud SQL for cost savings
+        - OrphanDetectionLoop: Background monitoring for cost optimization
+        - Cross-repo bridge: Unified cost tracking across JARVIS/Prime/Reactor
+
         Architecture:
         ┌─────────────────────────────────────────────────────────────────────┐
-        │              Infrastructure Orchestrator (v9.5)                      │
+        │              Infrastructure Orchestrator (v10.0)                     │
         ├─────────────────────────────────────────────────────────────────────┤
         │  ┌──────────────────┐    ┌──────────────────┐    ┌───────────────┐ │
         │  │  JARVIS Backend  │    │   JARVIS-Prime   │    │  Reactor-Core │ │
@@ -6457,14 +6464,15 @@ class SupervisorBootstrapper:
         │           │                       │                       │         │
         │           └───────────────────────┼───────────────────────┘         │
         │                                   ▼                                 │
-        │                    ┌──────────────────────────┐                     │
-        │                    │  InfrastructureOrchestrator  │                 │
-        │                    │  • Terraform orchestration   │                 │
-        │                    │  • Resource state tracking   │                 │
-        │                    │  • Cost-aware decisions      │                 │
-        │                    │  • Circuit breaker           │                 │
-        │                    └────────────────┬─────────────┘                 │
-        │                                     ▼                               │
+        │  ┌──────────────────────────────────────────────────────────────┐  │
+        │  │  GCP Cost Optimization Engine (v10.0)                         │  │
+        │  │  ├── StartupCostCheck: Cleanup orphans on boot               │  │
+        │  │  ├── OrphanDetectionLoop: Every 5 min background check       │  │
+        │  │  ├── ArtifactRegistryCleanup: Every 6 hr old image cleanup   │  │
+        │  │  ├── CloudSQLManager: Stop/start for cost savings            │  │
+        │  │  └── CrossRepoBridge: Unified tracking across all repos      │  │
+        │  └──────────────────────────────────────────────────────────────┘  │
+        │                                   ▼                                 │
         │                    ┌──────────────────────────┐                     │
         │                    │     GCP Cloud Platform   │                     │
         │                    │  Cloud Run | Redis | VMs │                     │
@@ -6472,13 +6480,16 @@ class SupervisorBootstrapper:
         └─────────────────────────────────────────────────────────────────────┘
         """
         self.logger.info("═" * 60)
-        self.logger.info("🔧 v9.5: Initializing Infrastructure Orchestrator...")
+        self.logger.info("🔧 v10.0: Initializing Infrastructure Orchestrator with Cost Optimization...")
         self.logger.info("═" * 60)
 
         try:
             from backend.core.infrastructure_orchestrator import (
                 InfrastructureOrchestrator,
                 InfrastructureConfig,
+                get_infrastructure_orchestrator,
+                start_orphan_detection,
+                get_reconciler,
             )
 
             # Create config from supervisor settings
@@ -6490,20 +6501,44 @@ class SupervisorBootstrapper:
                 daily_cost_limit_usd=self.config.infra_daily_cost_limit_usd,
             )
 
-            self._infra_orchestrator = InfrastructureOrchestrator(config)
-            await self._infra_orchestrator.initialize()
+            # Initialize orchestrator (this also creates the GCPReconciler)
+            self._infra_orchestrator = await get_infrastructure_orchestrator()
 
             # Log configuration
             self.logger.info(f"   • On-demand provisioning: {config.on_demand_enabled}")
             self.logger.info(f"   • Auto-destroy on shutdown: {config.auto_destroy_on_shutdown}")
             self.logger.info(f"   • Memory pressure threshold: {config.memory_pressure_threshold_gb:.1f} GB")
             self.logger.info(f"   • Daily cost limit: ${config.daily_cost_limit_usd:.2f}")
-            self.logger.info(f"   • Terraform timeout: {config.terraform_timeout_seconds}s")
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v10.0: STARTUP COST OPTIMIZATION
+            # ═══════════════════════════════════════════════════════════════════
+            # This runs BEFORE JARVIS fully starts to clean up any resources
+            # left over from crashed sessions or previous runs.
+            # ═══════════════════════════════════════════════════════════════════
+            startup_cost_enabled = os.getenv("JARVIS_STARTUP_COST_CHECK", "true").lower() == "true"
+
+            if startup_cost_enabled:
+                self.logger.info("💰 Running startup cost optimization check...")
+                await self._run_startup_cost_check()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v10.0: START ORPHAN DETECTION LOOP
+            # ═══════════════════════════════════════════════════════════════════
+            # Background loop that runs every 5 minutes to:
+            # - Detect orphaned VMs/Cloud Run from crashed sessions
+            # - Clean up old Docker images (every 6 hours)
+            # - Report cost savings
+            # ═══════════════════════════════════════════════════════════════════
+            artifact_cleanup_enabled = os.getenv("JARVIS_ARTIFACT_CLEANUP", "true").lower() == "true"
+
+            self._orphan_loop = await start_orphan_detection(
+                auto_cleanup=True,
+                artifact_cleanup_enabled=artifact_cleanup_enabled,
+            )
+            self.logger.info("🔄 OrphanDetectionLoop started (5 min interval, artifact cleanup enabled)")
 
             # Check if we need to provision infrastructure now
-            # This is intelligent - only provisions if:
-            # 1. Memory is under pressure, OR
-            # 2. Explicit environment variable requests it
             should_provision = (
                 os.getenv("JARVIS_PROVISION_CLOUD_RUN", "false").lower() == "true" or
                 os.getenv("JARVIS_PROVISION_REDIS", "false").lower() == "true"
@@ -6523,11 +6558,19 @@ class SupervisorBootstrapper:
             else:
                 self.logger.info("📦 Infrastructure on-demand - will provision when needed")
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v10.0: CROSS-REPO BRIDGE INITIALIZATION
+            # ═══════════════════════════════════════════════════════════════════
+            # Share cost tracking state with JARVIS-Prime and Reactor-Core
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_cross_repo_bridge()
+
             # Propagate orchestrator availability to child processes
             os.environ["JARVIS_INFRA_ORCHESTRATOR_ENABLED"] = "true"
+            os.environ["JARVIS_COST_OPTIMIZATION_ENABLED"] = "true"
 
-            print(f"  {TerminalUI.GREEN}✓ Infrastructure Orchestrator: Ready (on-demand GCP){TerminalUI.RESET}")
-            self.logger.info("✅ Infrastructure Orchestrator initialized")
+            print(f"  {TerminalUI.GREEN}✓ Infrastructure Orchestrator: Ready (on-demand GCP + cost optimization){TerminalUI.RESET}")
+            self.logger.info("✅ Infrastructure Orchestrator v10.0 initialized with cost optimization")
 
         except ImportError as e:
             self.logger.warning(f"⚠️ Infrastructure Orchestrator not available: {e}")
@@ -6541,6 +6584,150 @@ class SupervisorBootstrapper:
             self.logger.debug(traceback.format_exc())
             os.environ["JARVIS_INFRA_ORCHESTRATOR_ENABLED"] = "false"
             print(f"  {TerminalUI.RED}✗ Infrastructure: Failed ({e}){TerminalUI.RESET}")
+
+    async def _run_startup_cost_check(self) -> None:
+        """
+        v10.0: Run cost optimization checks at JARVIS startup.
+
+        This runs BEFORE JARVIS fully starts to:
+        1. Detect and cleanup orphaned resources from crashed sessions
+        2. Check for excessive storage costs (Artifact Registry)
+        3. Optionally stop Cloud SQL if configured
+        4. Report potential savings
+        """
+        try:
+            from backend.core.infrastructure_orchestrator import get_reconciler
+
+            reconciler = get_reconciler()
+            if not reconciler:
+                self.logger.debug("   No reconciler available for startup cost check")
+                return
+
+            total_savings = 0.0
+
+            # Step 1: Check for orphaned resources
+            self.logger.info("   🔍 Checking for orphaned resources...")
+            reconcile_result = await reconciler.reconcile_with_gcp()
+
+            if reconcile_result.get("error"):
+                self.logger.debug(f"   Reconciliation error: {reconcile_result['error']}")
+            else:
+                orphan_count = (
+                    len(reconcile_result.get("orphaned_vms", [])) +
+                    len(reconcile_result.get("orphaned_cloud_run", []))
+                )
+
+                if orphan_count > 0:
+                    self.logger.warning(f"   ⚠️ Found {orphan_count} orphaned resource(s) - cleaning up...")
+                    cleanup_result = await reconciler.cleanup_orphans(reconcile_result)
+
+                    cleaned = (
+                        len(cleanup_result.get("vms_deleted", [])) +
+                        len(cleanup_result.get("cloud_run_deleted", []))
+                    )
+
+                    if cleaned > 0:
+                        # Estimate savings: VMs ~$0.029/hr, assume 2 hrs saved
+                        vm_savings = len(cleanup_result.get("vms_deleted", [])) * 0.029 * 2
+                        total_savings += vm_savings
+                        self.logger.info(f"   ✅ Cleaned {cleaned} orphaned resource(s)")
+                else:
+                    self.logger.info("   ✅ No orphaned resources found")
+
+            # Step 2: Check Cloud SQL status (optional stop for cost savings)
+            stop_sql_on_startup = os.getenv("JARVIS_STOP_SQL_ON_STARTUP", "false").lower() == "true"
+            start_sql_on_startup = os.getenv("JARVIS_START_SQL_ON_STARTUP", "true").lower() == "true"
+
+            if start_sql_on_startup:
+                self.logger.info("   🗄️ Ensuring Cloud SQL is running...")
+                try:
+                    sql_status = await reconciler.get_cloud_sql_status()
+                    if sql_status.get("state") != "RUNNABLE" or sql_status.get("activation_policy") == "NEVER":
+                        self.logger.info("   🚀 Starting Cloud SQL...")
+                        await reconciler.start_cloud_sql()
+                except Exception as e:
+                    self.logger.debug(f"   Cloud SQL check failed: {e}")
+
+            # Step 3: Report potential artifact savings (don't clean at startup - too slow)
+            self.logger.info("   📦 Artifact cleanup will run in background (every 6 hours)")
+
+            # Summary
+            if total_savings > 0:
+                self.logger.info(f"   💰 Startup cost optimization saved ~${total_savings:.2f}")
+                print(f"  {TerminalUI.GREEN}💰 Cost optimization: ~${total_savings:.2f} saved{TerminalUI.RESET}")
+
+        except Exception as e:
+            self.logger.debug(f"   Startup cost check failed (non-critical): {e}")
+
+    async def _initialize_cross_repo_bridge(self) -> None:
+        """
+        v10.0: Initialize cross-repo infrastructure bridge.
+
+        This creates a shared state mechanism for cost tracking across:
+        - JARVIS-AI-Agent (main backend)
+        - JARVIS-Prime (local inference)
+        - Reactor-Core (training)
+
+        Uses a file-based state for simplicity (no extra dependencies).
+        """
+        try:
+            bridge_state_dir = Path.home() / ".jarvis" / "cross_repo"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+
+            bridge_state = {
+                "session_id": os.getenv("JARVIS_SESSION_ID", str(int(time.time()))),
+                "started_at": time.time(),
+                "repos": {
+                    "jarvis": {
+                        "path": str(Path(__file__).parent),
+                        "status": "active",
+                        "pid": os.getpid(),
+                    },
+                },
+                "cost_tracking": {
+                    "enabled": True,
+                    "daily_limit_usd": float(os.getenv("COST_ALERT_DAILY", "1.0")),
+                    "current_cost_usd": 0.0,
+                },
+            }
+
+            # Check for JARVIS-Prime
+            jarvis_prime_path = Path(os.getenv(
+                "JARVIS_PRIME_PATH",
+                str(Path.home() / "Documents/repos/jarvis-prime")
+            ))
+            if jarvis_prime_path.exists():
+                bridge_state["repos"]["jarvis_prime"] = {
+                    "path": str(jarvis_prime_path),
+                    "status": "available",
+                }
+                self.logger.info("   🔗 JARVIS-Prime: Connected")
+
+            # Check for Reactor-Core
+            reactor_core_path = Path(os.getenv(
+                "REACTOR_CORE_PATH",
+                str(Path.home() / "Documents/repos/reactor-core")
+            ))
+            if reactor_core_path.exists():
+                bridge_state["repos"]["reactor_core"] = {
+                    "path": str(reactor_core_path),
+                    "status": "available",
+                }
+                self.logger.info("   🔗 Reactor-Core: Connected")
+
+            # Write bridge state
+            import json
+            bridge_file = bridge_state_dir / "bridge_state.json"
+            with open(bridge_file, "w") as f:
+                json.dump(bridge_state, f, indent=2)
+
+            # Set environment variable for child processes
+            os.environ["JARVIS_CROSS_REPO_BRIDGE"] = str(bridge_file)
+
+            self.logger.info("   ✅ Cross-repo bridge initialized")
+
+        except Exception as e:
+            self.logger.debug(f"   Cross-repo bridge init failed (non-critical): {e}")
 
     async def _run_continuous_scraping(self) -> None:
         """

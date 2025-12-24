@@ -3002,16 +3002,55 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     except Exception as e:
         logger.error(f"Failed to cleanup GCP VM Manager: {e}")
 
-    # Shutdown Cost Tracking System
+    # Shutdown Cost Tracking System & Infrastructure Orchestrator (v10.0)
     try:
         from core.cost_tracker import get_cost_tracker
 
         tracker = get_cost_tracker()
         if tracker:
+            # Generate final cost report before shutdown
+            try:
+                stats = tracker.get_stats()
+                if stats.get("total_cost_usd", 0) > 0:
+                    logger.info(f"💰 Session Cost Summary:")
+                    logger.info(f"   Total: ${stats.get('total_cost_usd', 0):.4f}")
+                    logger.info(f"   VMs: {stats.get('vm_sessions', 0)} sessions")
+                    logger.info(f"   Cloud Run: {stats.get('cloud_run_requests', 0)} requests")
+            except Exception:
+                pass
+
             await tracker.shutdown()
             logger.info("✅ Cost Tracking System shutdown complete")
     except Exception as e:
         logger.error(f"Failed to shutdown cost tracker: {e}")
+
+    # Shutdown Infrastructure Orchestrator & OrphanDetectionLoop (v10.0)
+    try:
+        from core.infrastructure_orchestrator import (
+            cleanup_infrastructure_on_shutdown,
+            get_reconciler,
+        )
+
+        reconciler = get_reconciler()
+
+        # Stop Cloud SQL if configured (saves ~$10/month when JARVIS not running)
+        stop_sql_on_shutdown = os.getenv("JARVIS_STOP_SQL_ON_SHUTDOWN", "false").lower() == "true"
+        if stop_sql_on_shutdown and reconciler:
+            logger.info("🗄️ Stopping Cloud SQL (cost optimization)...")
+            try:
+                await reconciler.stop_cloud_sql()
+                logger.info("✅ Cloud SQL stopped (saves ~$10/month)")
+            except Exception as sql_e:
+                logger.debug(f"Cloud SQL stop failed: {sql_e}")
+
+        # Run full infrastructure cleanup (stops orphan loop, releases locks, destroys resources we created)
+        await cleanup_infrastructure_on_shutdown()
+        logger.info("✅ Infrastructure Orchestrator shutdown complete")
+
+    except ImportError:
+        logger.debug("Infrastructure Orchestrator not available for shutdown")
+    except Exception as e:
+        logger.error(f"Failed to shutdown Infrastructure Orchestrator: {e}")
 
     # Stop autonomous systems
     if hasattr(app.state, "orchestrator"):
