@@ -3472,27 +3472,38 @@ class SupervisorBootstrapper:
 
     async def _initialize_jarvis_prime(self) -> None:
         """
-        v7.0: Initialize JARVIS-Prime Tier-0 Local Brain.
+        v8.0: Initialize JARVIS-Prime Tier-0 Brain with Memory-Aware Hybrid Routing.
 
-        This starts the local inference server for cost-effective, fast responses:
-        - Local subprocess mode: Direct Python execution
-        - Docker mode: Container with isolated environment
-        - Cloud Run mode: Serverless deployment (GCP)
+        This dynamically decides the optimal mode based on available system memory:
+        - RAM ≥ 8GB → Local subprocess mode (FREE, fastest)
+        - RAM 4-8GB → Cloud Run mode (pay-per-use, ~$0.02/request)
+        - RAM < 4GB → Gemini API fallback (cheapest, ~$0.0001/1K tokens)
 
         Features:
+        - Memory-aware automatic routing (no hardcoding!)
+        - Multi-tier fallback chain: Local → Cloud Run → Gemini API
+        - Circuit breaker pattern for resilience
+        - Real-time memory monitoring with dynamic switching
         - OpenAI-compatible API at /v1/chat/completions
-        - Health monitoring with auto-recovery
         - Reactor-Core integration for auto-deployment of trained models
-        - Circuit breaker for reliability
 
         Architecture:
-        ┌────────────────────────────────────────────────────────────────┐
-        │  JARVIS-Prime Tier-0 Brain                                     │
-        │  ├── LlamaCppExecutor (llama-cpp-python)                       │
-        │  ├── HotSwapManager (zero-downtime model switching)            │
-        │  ├── TelemetryHook (performance metrics)                       │
-        │  └── ReactorCoreWatcher (auto-deployment from training)        │
-        └────────────────────────────────────────────────────────────────┘
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  JARVIS-Prime Memory-Aware Hybrid Router (v8.0)                 │
+        │  ┌───────────────────────────────────────────────────────────┐  │
+        │  │              Memory Pressure Monitor                       │  │
+        │  │  RAM ≥ 8GB → LOCAL    RAM 4-8GB → CLOUD    < 4GB → API   │  │
+        │  └──────────────────────────┬────────────────────────────────┘  │
+        │                             │                                   │
+        │  ┌─────────────┐   ┌───────┴──────┐   ┌────────────────────┐   │
+        │  │   Local     │   │   Cloud Run  │   │    Gemini API      │   │
+        │  │ (Port 8002) │→→→│  (GCR URL)   │→→→│    (Fallback)      │   │
+        │  └─────────────┘   └──────────────┘   └────────────────────┘   │
+        │         ↓                 ↓                    ↓               │
+        │  ┌──────────────────────────────────────────────────────────┐  │
+        │  │              CircuitBreaker + Retry Logic                 │  │
+        │  └──────────────────────────────────────────────────────────┘  │
+        └─────────────────────────────────────────────────────────────────┘
         """
         if not self.config.jarvis_prime_enabled:
             self.logger.info("ℹ️ JARVIS-Prime disabled via configuration")
@@ -3500,88 +3511,169 @@ class SupervisorBootstrapper:
             return
 
         try:
+            # Import memory-aware client
+            from core.jarvis_prime_client import (
+                JarvisPrimeClient,
+                JarvisPrimeConfig,
+                get_jarvis_prime_client,
+                get_system_memory_status,
+                RoutingMode,
+            )
+
+            # Get current memory status for decision
+            memory_status = await get_system_memory_status()
+            available_gb = memory_status["available_gb"]
+            recommended_mode = memory_status["recommended_mode"]
+
+            self.logger.info(
+                f"🧠 Memory Status: {available_gb:.1f}GB available, "
+                f"recommended mode: {recommended_mode}"
+            )
+
             # Broadcast JARVIS-Prime initialization start
             await self._broadcast_startup_progress(
                 stage="jarvis_prime_init",
-                message="Initializing JARVIS-Prime Tier-0 Brain...",
+                message=f"Initializing JARVIS-Prime (Mode: {recommended_mode}, RAM: {available_gb:.1f}GB)...",
                 progress=75,
                 metadata={
                     "jarvis_prime": {
                         "status": "initializing",
-                        "mode": "cloud_run" if self.config.jarvis_prime_use_cloud_run else (
-                            "docker" if self.config.jarvis_prime_use_docker else "local"
-                        ),
+                        "mode": recommended_mode,
+                        "memory_available_gb": available_gb,
+                        "memory_status": memory_status,
                     }
                 }
             )
 
-            # Determine mode: Cloud Run > Docker > Local
-            if self.config.jarvis_prime_use_cloud_run and self.config.jarvis_prime_cloud_run_url:
+            # Build configuration from environment and current state
+            client_config = JarvisPrimeConfig(
+                # Local settings
+                local_host=self.config.jarvis_prime_host,
+                local_port=self.config.jarvis_prime_port,
+                # Cloud Run settings
+                cloud_run_url=self.config.jarvis_prime_cloud_run_url or os.getenv(
+                    "JARVIS_PRIME_CLOUD_RUN_URL",
+                    "https://jarvis-prime-dev-888774109345.us-central1.run.app"
+                ),
+                use_cloud_run=self.config.jarvis_prime_use_cloud_run or bool(
+                    self.config.jarvis_prime_cloud_run_url
+                ),
+            )
+
+            # Create the memory-aware client
+            self._jarvis_prime_client = JarvisPrimeClient(client_config)
+
+            # Log the decision
+            mode, reason = self._jarvis_prime_client.decide_mode()
+            self.logger.info(f"🎯 JARVIS-Prime routing decision: {mode.value} ({reason})")
+
+            # Initialize based on recommended mode
+            if mode == RoutingMode.LOCAL:
+                # Start local subprocess if not already running
+                await self._init_jarvis_prime_local_if_needed()
+            elif mode == RoutingMode.CLOUD_RUN:
+                # Verify Cloud Run is accessible
                 await self._init_jarvis_prime_cloud_run()
-            elif self.config.jarvis_prime_use_docker:
-                await self._init_jarvis_prime_docker()
+            elif mode == RoutingMode.GEMINI_API:
+                self.logger.info("📡 Using Gemini API fallback due to low memory")
             else:
-                await self._init_jarvis_prime_local()
+                self.logger.warning("⚠️ No JARVIS-Prime backends available")
 
-            # Initialize the client for making requests
-            try:
-                from core.jarvis_prime_client import (
-                    JarvisPrimeClient,
-                    JarvisPrimeClientConfig,
-                    get_jarvis_prime_client,
-                )
-
-                client_config = JarvisPrimeClientConfig(
-                    host=self.config.jarvis_prime_host,
-                    port=self.config.jarvis_prime_port,
-                )
-
-                # Override if using Cloud Run
-                if self.config.jarvis_prime_use_cloud_run and self.config.jarvis_prime_cloud_run_url:
-                    # Parse Cloud Run URL
-                    from urllib.parse import urlparse
-                    parsed = urlparse(self.config.jarvis_prime_cloud_run_url)
-                    client_config.host = parsed.hostname or self.config.jarvis_prime_host
-                    client_config.port = parsed.port or 443
-
-                self._jarvis_prime_client = get_jarvis_prime_client(client_config)
-                self.logger.info("✅ JARVIS-Prime client initialized")
-
-            except ImportError as e:
-                self.logger.warning(f"⚠️ JARVIS-Prime client not available: {e}")
+            # Run health check on the selected mode
+            if mode != RoutingMode.DISABLED:
+                health = await self._jarvis_prime_client.check_health(mode)
+                if health.available:
+                    self.logger.info(f"✅ {mode.value} backend healthy (latency: {health.latency_ms:.0f}ms)")
+                else:
+                    self.logger.warning(f"⚠️ {mode.value} backend not healthy: {health.error}")
 
             # Initialize Reactor-Core watcher for auto-deployment
             if self.config.reactor_core_enabled and self.config.reactor_core_watch_dir:
                 await self._init_reactor_core_watcher()
 
+            # Start dynamic memory monitoring for automatic mode switching
+            await self._jarvis_prime_client.start_monitoring()
+
+            # Register mode change callback
+            async def on_mode_change(old_mode, new_mode, reason):
+                self.logger.info(
+                    f"🔄 JARVIS-Prime mode changed: {old_mode.value} → {new_mode.value} ({reason})"
+                )
+                os.environ["JARVIS_PRIME_ROUTING_MODE"] = new_mode.value
+
+                # Broadcast the change
+                await self._broadcast_startup_progress(
+                    stage="jarvis_prime_mode_change",
+                    message=f"JARVIS-Prime switched to {new_mode.value}",
+                    progress=100,
+                    metadata={
+                        "jarvis_prime": {
+                            "old_mode": old_mode.value,
+                            "new_mode": new_mode.value,
+                            "reason": reason,
+                        }
+                    }
+                )
+
+            self._jarvis_prime_client.register_mode_change_callback(on_mode_change)
+
             # Propagate settings to environment
             os.environ["JARVIS_PRIME_ENABLED"] = "true"
             os.environ["JARVIS_PRIME_HOST"] = self.config.jarvis_prime_host
             os.environ["JARVIS_PRIME_PORT"] = str(self.config.jarvis_prime_port)
+            os.environ["JARVIS_PRIME_ROUTING_MODE"] = mode.value
 
             # Broadcast completion
+            client_stats = self._jarvis_prime_client.get_stats()
             await self._broadcast_startup_progress(
                 stage="jarvis_prime_ready",
-                message="JARVIS-Prime Tier-0 Brain online",
+                message=f"JARVIS-Prime Tier-0 Brain online ({mode.value})",
                 progress=78,
                 metadata={
                     "jarvis_prime": {
                         "status": "ready",
+                        "mode": mode.value,
+                        "reason": reason,
                         "url": f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}",
-                        "mode": "cloud_run" if self.config.jarvis_prime_use_cloud_run else (
-                            "docker" if self.config.jarvis_prime_use_docker else "local"
-                        ),
+                        "cloud_run_url": client_config.cloud_run_url if mode == RoutingMode.CLOUD_RUN else None,
+                        "memory_available_gb": available_gb,
+                        "monitoring_active": True,
+                        "circuit_breakers": client_stats.get("circuit_breakers", {}),
                     }
                 }
             )
 
-            self.logger.info("✅ JARVIS-Prime Tier-0 Brain ready")
-            print(f"  {TerminalUI.GREEN}✓ JARVIS-Prime: Tier-0 Brain online{TerminalUI.RESET}")
+            self.logger.info(f"✅ JARVIS-Prime Tier-0 Brain ready (mode: {mode.value})")
+            self.logger.info(f"🔄 Dynamic memory monitoring active (interval: 30s)")
+            print(f"  {TerminalUI.GREEN}✓ JARVIS-Prime: {mode.value} mode ({available_gb:.1f}GB RAM){TerminalUI.RESET}")
+
+        except ImportError as e:
+            self.logger.warning(f"⚠️ JARVIS-Prime client not available: {e}")
+            os.environ["JARVIS_PRIME_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ JARVIS-Prime: Client not available{TerminalUI.RESET}")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize JARVIS-Prime: {e}")
             os.environ["JARVIS_PRIME_ENABLED"] = "false"
             print(f"  {TerminalUI.YELLOW}⚠️ JARVIS-Prime: Not available ({e}){TerminalUI.RESET}")
+
+    async def _init_jarvis_prime_local_if_needed(self) -> None:
+        """Start JARVIS-Prime local subprocess if not already running."""
+        # Check if already running
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.get(
+                    f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}/health"
+                )
+                if resp.status_code == 200:
+                    self.logger.info("✅ JARVIS-Prime local already running")
+                    return
+        except Exception:
+            pass  # Not running, need to start
+
+        # Start local subprocess
+        await self._init_jarvis_prime_local()
 
     async def _init_jarvis_prime_local(self) -> None:
         """Start JARVIS-Prime as a local subprocess."""
