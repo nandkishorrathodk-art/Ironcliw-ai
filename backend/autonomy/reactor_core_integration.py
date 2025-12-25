@@ -737,14 +737,24 @@ class PrimeNeuralMeshBridge:
 
     async def _stream_prime_events(self) -> None:
         """Background task that streams Prime events to Neural Mesh."""
+        retry_count = 0
+        max_retries = 5
+        base_delay = 10
+
         while True:
             try:
                 # Connect to Prime WebSocket for real-time events
                 prime_url = f"ws://{self.config.prime_host}:{self.config.prime_port}/ws/events"
 
                 import websockets
-                async with websockets.connect(prime_url) as ws:
+                async with websockets.connect(
+                    prime_url,
+                    ping_interval=20,
+                    ping_timeout=10,
+                    close_timeout=5,
+                ) as ws:
                     logger.info(f"[PrimeNeuralMesh] Connected to Prime WebSocket: {prime_url}")
+                    retry_count = 0  # Reset on successful connection
 
                     async for message in ws:
                         try:
@@ -755,17 +765,56 @@ class PrimeNeuralMeshBridge:
                             continue
 
             except ImportError:
-                logger.warning("[PrimeNeuralMesh] websockets library not available")
+                logger.warning("[PrimeNeuralMesh] websockets library not available - install with: pip install websockets")
                 break
+
             except ConnectionRefusedError:
-                logger.debug("[PrimeNeuralMesh] Prime WebSocket not available, retrying...")
-                await asyncio.sleep(30)
+                retry_count += 1
+                delay = min(base_delay * (2 ** min(retry_count, 5)), 300)  # Max 5 min delay
+                logger.debug(f"[PrimeNeuralMesh] Prime not ready (attempt {retry_count}), retrying in {delay}s...")
+                await asyncio.sleep(delay)
+
             except asyncio.CancelledError:
                 logger.info("[PrimeNeuralMesh] Event stream cancelled")
                 break
+
             except Exception as e:
-                logger.warning(f"[PrimeNeuralMesh] Event stream error: {e}")
-                await asyncio.sleep(10)
+                error_msg = str(e)
+                if "404" in error_msg:
+                    # WebSocket endpoint not available - JARVIS Prime may need restart
+                    retry_count += 1
+                    if retry_count <= max_retries:
+                        delay = min(base_delay * retry_count, 60)
+                        logger.info(f"[PrimeNeuralMesh] WebSocket endpoint initializing (attempt {retry_count}/{max_retries}), retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.info("[PrimeNeuralMesh] WebSocket not available yet - switching to REST polling")
+                        await self._poll_prime_status()
+                        retry_count = 0  # Reset for next WebSocket attempt
+                        await asyncio.sleep(60)  # Wait before trying WebSocket again
+                else:
+                    logger.warning(f"[PrimeNeuralMesh] Event stream error: {e}")
+                    await asyncio.sleep(10)
+
+    async def _poll_prime_status(self) -> None:
+        """Fallback: Poll Prime status via REST when WebSocket unavailable."""
+        try:
+            import aiohttp
+
+            prime_health_url = f"http://{self.config.prime_host}:{self.config.prime_port}/health"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(prime_health_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        # Emit as event
+                        await self._handle_prime_event({
+                            "event_type": "status_poll",
+                            "data": data,
+                        })
+                        logger.debug("[PrimeNeuralMesh] REST poll successful")
+        except Exception as e:
+            logger.debug(f"[PrimeNeuralMesh] REST poll failed: {e}")
 
     async def _handle_prime_event(self, event: Dict[str, Any]) -> None:
         """Handle an event from JARVIS-Prime."""

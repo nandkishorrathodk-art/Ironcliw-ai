@@ -301,6 +301,9 @@ class JarvisPrimeOrchestrator:
                     timeout=aiohttp.ClientTimeout(total=self.config.health_check_timeout_seconds)
                 )
 
+            # Clean up any existing process on our port (v10.3)
+            await self._ensure_port_available()
+
             # Start the subprocess
             success = await self._spawn_process()
 
@@ -537,6 +540,130 @@ class JarvisPrimeOrchestrator:
             return False
 
         return True
+
+    # =========================================================================
+    # Port Management (v10.3)
+    # =========================================================================
+
+    async def _ensure_port_available(self) -> None:
+        """
+        Ensure the configured port is available before starting.
+
+        Checks if port is in use and attempts to gracefully terminate
+        any existing process using it.
+        """
+        port = self.config.port
+
+        # Check if port is in use
+        pid = await self._get_pid_on_port(port)
+        if pid is None:
+            logger.debug(f"[JarvisPrime] Port {port} is available")
+            return
+
+        logger.warning(f"[JarvisPrime] Port {port} is in use by PID {pid}, attempting cleanup...")
+
+        # Try graceful shutdown first via HTTP
+        try:
+            async with aiohttp.ClientSession() as session:
+                shutdown_url = f"http://{self.config.host}:{port}/admin/shutdown"
+                async with session.post(shutdown_url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    if resp.status == 200:
+                        logger.info(f"[JarvisPrime] Sent graceful shutdown to existing instance")
+                        await asyncio.sleep(2)  # Wait for graceful shutdown
+        except Exception:
+            pass  # Graceful shutdown failed, will try kill
+
+        # Check again
+        pid = await self._get_pid_on_port(port)
+        if pid is None:
+            logger.info(f"[JarvisPrime] Port {port} now available after graceful shutdown")
+            return
+
+        # Force kill the process
+        try:
+            logger.warning(f"[JarvisPrime] Force killing PID {pid} on port {port}")
+            os.kill(pid, signal.SIGTERM)
+            await asyncio.sleep(1)
+
+            # Check if still running
+            try:
+                os.kill(pid, 0)  # Check if process exists
+                # Still running, use SIGKILL
+                logger.warning(f"[JarvisPrime] SIGTERM failed, using SIGKILL on PID {pid}")
+                os.kill(pid, signal.SIGKILL)
+                await asyncio.sleep(0.5)
+            except OSError:
+                pass  # Process is gone
+
+            logger.info(f"[JarvisPrime] Port {port} freed successfully")
+        except Exception as e:
+            logger.warning(f"[JarvisPrime] Failed to kill process on port {port}: {e}")
+
+        # Final check
+        pid = await self._get_pid_on_port(port)
+        if pid:
+            logger.error(f"[JarvisPrime] Port {port} still in use by PID {pid} - startup may fail")
+
+    async def _get_pid_on_port(self, port: int) -> Optional[int]:
+        """
+        Get the PID of the process using a specific port.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            PID if port is in use, None otherwise
+        """
+        try:
+            # Use lsof to find process on port (macOS/Linux)
+            proc = await asyncio.create_subprocess_exec(
+                "lsof", "-t", "-i", f":{port}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if stdout:
+                # May return multiple PIDs, get the first one
+                pids = stdout.decode().strip().split("\n")
+                if pids and pids[0]:
+                    return int(pids[0])
+            return None
+
+        except asyncio.TimeoutError:
+            logger.debug(f"[JarvisPrime] lsof timed out checking port {port}")
+            return None
+        except FileNotFoundError:
+            # lsof not available, try netstat or ss
+            return await self._get_pid_on_port_fallback(port)
+        except Exception as e:
+            logger.debug(f"[JarvisPrime] Error checking port {port}: {e}")
+            return None
+
+    async def _get_pid_on_port_fallback(self, port: int) -> Optional[int]:
+        """Fallback method to check port using netstat."""
+        try:
+            # Try netstat for Linux
+            proc = await asyncio.create_subprocess_exec(
+                "netstat", "-tlnp",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            for line in stdout.decode().split("\n"):
+                if f":{port}" in line and "LISTEN" in line:
+                    # Extract PID from netstat output
+                    parts = line.split()
+                    if len(parts) >= 7:
+                        pid_prog = parts[6]
+                        if "/" in pid_prog:
+                            return int(pid_prog.split("/")[0])
+            return None
+
+        except Exception:
+            # Can't determine - assume port is available
+            return None
 
     async def _spawn_process(self) -> bool:
         """Spawn the JARVIS-Prime subprocess (or Docker container)."""
