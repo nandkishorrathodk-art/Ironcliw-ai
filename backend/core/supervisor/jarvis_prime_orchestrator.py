@@ -542,7 +542,7 @@ class JarvisPrimeOrchestrator:
         return True
 
     # =========================================================================
-    # Port Management (v10.3)
+    # Port Management (v10.4) - Process-hierarchy aware
     # =========================================================================
 
     async def _ensure_port_available(self) -> None:
@@ -550,7 +550,9 @@ class JarvisPrimeOrchestrator:
         Ensure the configured port is available before starting.
 
         Checks if port is in use and attempts to gracefully terminate
-        any existing process using it.
+        any existing process using it. Uses process-hierarchy awareness
+        to avoid killing parent/sibling processes that would cause signal
+        propagation back to the supervisor.
         """
         port = self.config.port
 
@@ -558,6 +560,28 @@ class JarvisPrimeOrchestrator:
         pid = await self._get_pid_on_port(port)
         if pid is None:
             logger.debug(f"[JarvisPrime] Port {port} is available")
+            return
+
+        # CRITICAL: Check if this is our own stored process
+        if self._process and self._process.pid == pid:
+            logger.debug(f"[JarvisPrime] Port {port} is used by our own process (PID {pid})")
+            return
+
+        # CRITICAL: Check if this PID is in our process ancestry (parent/grandparent)
+        # Killing an ancestor would propagate signals back and kill us
+        if await self._is_ancestor_process(pid):
+            logger.warning(
+                f"[JarvisPrime] Port {port} is used by ancestor process (PID {pid}). "
+                f"Cannot kill - would propagate signals. Waiting for port to free..."
+            )
+            # Wait a bit and check if it frees up
+            for _ in range(3):
+                await asyncio.sleep(1)
+                check_pid = await self._get_pid_on_port(port)
+                if check_pid is None:
+                    logger.info(f"[JarvisPrime] Port {port} is now available")
+                    return
+            logger.warning(f"[JarvisPrime] Port {port} still occupied by ancestor - may fail startup")
             return
 
         logger.warning(f"[JarvisPrime] Port {port} is in use by PID {pid}, attempting cleanup...")
@@ -579,7 +603,12 @@ class JarvisPrimeOrchestrator:
             logger.info(f"[JarvisPrime] Port {port} now available after graceful shutdown")
             return
 
-        # Force kill the process
+        # Recheck ancestry after waiting
+        if await self._is_ancestor_process(pid):
+            logger.warning(f"[JarvisPrime] Cannot kill ancestor PID {pid}")
+            return
+
+        # Force kill the process - but only if it's safe
         try:
             logger.warning(f"[JarvisPrime] Force killing PID {pid} on port {port}")
             os.kill(pid, signal.SIGTERM)
@@ -596,6 +625,10 @@ class JarvisPrimeOrchestrator:
                 pass  # Process is gone
 
             logger.info(f"[JarvisPrime] Port {port} freed successfully")
+        except ProcessLookupError:
+            logger.debug(f"[JarvisPrime] Process {pid} already terminated")
+        except PermissionError:
+            logger.warning(f"[JarvisPrime] No permission to kill PID {pid} - may be system process")
         except Exception as e:
             logger.warning(f"[JarvisPrime] Failed to kill process on port {port}: {e}")
 
@@ -603,6 +636,68 @@ class JarvisPrimeOrchestrator:
         pid = await self._get_pid_on_port(port)
         if pid:
             logger.error(f"[JarvisPrime] Port {port} still in use by PID {pid} - startup may fail")
+
+    async def _is_ancestor_process(self, pid: int) -> bool:
+        """
+        Check if the given PID is an ancestor of the current process.
+
+        This prevents killing parent/grandparent processes which would
+        propagate SIGTERM/SIGKILL back to the current process.
+
+        Args:
+            pid: Process ID to check
+
+        Returns:
+            True if pid is an ancestor (parent, grandparent, etc.)
+        """
+        current_pid = os.getpid()
+
+        # Can't be our own ancestor if it's our own PID
+        if pid == current_pid:
+            return False
+
+        try:
+            # Walk up the process tree
+            proc = await asyncio.create_subprocess_exec(
+                "ps", "-o", "ppid=", "-p", str(current_pid),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            parent_pid = int(stdout.decode().strip())
+
+            # Check up to 10 levels of ancestry
+            checked_pids = set()
+            while parent_pid > 1 and parent_pid not in checked_pids:
+                if parent_pid == pid:
+                    return True
+
+                checked_pids.add(parent_pid)
+
+                # Get next parent
+                proc = await asyncio.create_subprocess_exec(
+                    "ps", "-o", "ppid=", "-p", str(parent_pid),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+
+                try:
+                    parent_pid = int(stdout.decode().strip())
+                except (ValueError, AttributeError):
+                    break
+
+                if len(checked_pids) > 10:
+                    break  # Prevent infinite loops
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"[JarvisPrime] Error checking process ancestry: {e}")
+            # If we can't determine ancestry, be safe and return True
+            # This prevents accidentally killing potential ancestors
+            return True
 
     async def _get_pid_on_port(self, port: int) -> Optional[int]:
         """

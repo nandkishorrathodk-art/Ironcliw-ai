@@ -792,6 +792,9 @@ class ChainOfThoughtEngine:
         learning_callback: Optional[Callable] = None,
         enable_checkpointing: bool = True
     ):
+        # Initialize logger FIRST - before any methods that might use it
+        self.logger = logging.getLogger(__name__)
+
         self.strategy = strategy
         self.max_depth = max_depth
         self.min_confidence = min_confidence
@@ -807,8 +810,6 @@ class ChainOfThoughtEngine:
 
         # History
         self._reasoning_history: Deque[ReasoningChain] = deque(maxlen=100)
-
-        self.logger = logging.getLogger(__name__)
 
     def _init_nodes(self) -> None:
         """Initialize reasoning nodes."""

@@ -6263,7 +6263,8 @@ class SupervisorBootstrapper:
                                 )
                             )
 
-                    self._neural_mesh.subscribe("context_sync", on_context_sync)
+                    # Properly await the async subscribe method
+                    await self._neural_mesh.subscribe("context_sync", on_context_sync)
 
                 initialized_systems["cai"] = True
                 os.environ["CAI_ENABLED"] = "true"

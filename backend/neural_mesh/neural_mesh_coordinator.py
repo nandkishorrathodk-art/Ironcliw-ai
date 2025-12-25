@@ -488,7 +488,7 @@ class NeuralMeshCoordinator:
 
         Args:
             node_name: Unique identifier for the node
-            node_type: Type of node (system, agent, service)
+            node_type: Type of node (system, agent, service, coordinator)
             capabilities: List of capabilities this node provides
             metadata: Additional metadata about the node
 
@@ -500,31 +500,34 @@ class NeuralMeshCoordinator:
             return False
 
         try:
-            # Create an agent info for the external node
-            from .data_models import AgentInfo, AgentType, AgentCapability
+            # Map node_type to agent_type string
+            # AgentInfo uses strings for both agent_type and capabilities
+            type_mapping = {
+                "coordinator": "coordinator",
+                "system": "system",
+                "agent": "specialized",
+                "service": "service",
+                "external": "external",
+            }
+            agent_type_str = type_mapping.get(node_type, node_type)
 
-            # Map capabilities to AgentCapability enum
-            agent_capabilities = []
-            for cap in (capabilities or []):
-                try:
-                    agent_capabilities.append(AgentCapability(cap))
-                except ValueError:
-                    # Unknown capability, add as metadata
-                    pass
+            # Use provided capabilities or default to analysis
+            node_capabilities = set(capabilities or ["analysis", "messaging"])
 
+            # Create agent info with string-based fields
             agent_info = AgentInfo(
-                agent_id=node_name,
                 agent_name=node_name,
-                agent_type=AgentType.COORDINATOR if node_type == "coordinator" else AgentType.SPECIALIZED,
-                capabilities=agent_capabilities or [AgentCapability.ANALYSIS],
+                agent_type=agent_type_str,
+                capabilities=node_capabilities,
                 version="1.0.0",
                 metadata=metadata or {},
+                backend="external",  # Mark as external system
             )
 
             # Register with the registry
             await self._registry.register(agent_info)
 
-            logger.info(f"[NEURAL-MESH] Registered external node: {node_name} (type={node_type})")
+            logger.info(f"[NEURAL-MESH] Registered external node: {node_name} (type={agent_type_str})")
             return True
 
         except Exception as e:
