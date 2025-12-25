@@ -13,18 +13,32 @@ Safety Tiers:
 - GREEN (Safe): Read-only, no side effects, auto-executable
 - YELLOW (Caution): Modifies state, requires confirmation once
 - RED (Dangerous): Irreversible/destructive, always confirm
+
+Cross-Repo Integration (v10.3):
+- Emits safety events to Reactor Core for training
+- Writes classification state to shared file for JARVIS Prime
+- Supports async classification with event emission
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import TYPE_CHECKING, Callable, Awaitable, Dict, List, Optional, Set, Tuple, Any
 from pathlib import Path
 import shlex
 
+if TYPE_CHECKING:
+    from clients.reactor_core_client import ReactorCoreClient
+
 logger = logging.getLogger(__name__)
+
+# Cross-repo state directory (v10.3)
+COMMAND_SAFETY_STATE_DIR = Path.home() / ".jarvis" / "cross_repo" / "command_safety"
 
 
 class SafetyTier(str, Enum):
@@ -61,6 +75,10 @@ class CommandClassification:
     reasoning: str
     suggested_alternative: Optional[str] = None
     dry_run_available: bool = False
+    # Cross-repo metadata (v10.3)
+    classification_id: str = field(default_factory=lambda: f"cmd-{int(datetime.now().timestamp() * 1000)}")
+    timestamp: datetime = field(default_factory=datetime.now)
+    session_id: Optional[str] = None
 
     @property
     def is_safe(self) -> bool:
@@ -75,6 +93,41 @@ class CommandClassification:
             or RiskCategory.DATA_LOSS in self.risk_categories
         )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization (v10.3)."""
+        return {
+            "classification_id": self.classification_id,
+            "command": self.command,
+            "tier": self.tier.value,
+            "risk_categories": [r.value for r in self.risk_categories],
+            "requires_confirmation": self.requires_confirmation,
+            "is_reversible": self.is_reversible,
+            "confidence": self.confidence,
+            "reasoning": self.reasoning,
+            "suggested_alternative": self.suggested_alternative,
+            "dry_run_available": self.dry_run_available,
+            "is_safe": self.is_safe,
+            "is_destructive": self.is_destructive,
+            "timestamp": self.timestamp.isoformat(),
+            "session_id": self.session_id,
+        }
+
+    def to_prime_context(self) -> str:
+        """Generate context for JARVIS Prime routing (v10.3)."""
+        if self.tier == SafetyTier.GREEN:
+            return ""  # No context needed for safe commands
+
+        lines = ["[COMMAND SAFETY]"]
+        lines.append(f"- Command: {self.command[:50]}{'...' if len(self.command) > 50 else ''}")
+        lines.append(f"- Tier: {self.tier.value.upper()}")
+        lines.append(f"- Risks: {', '.join(r.value for r in self.risk_categories)}")
+
+        if self.suggested_alternative:
+            lines.append(f"- Safer alternative: {self.suggested_alternative}")
+
+        lines.append("[/COMMAND SAFETY]")
+        return "\n".join(lines)
+
 
 class CommandSafetyClassifier:
     """
@@ -82,15 +135,47 @@ class CommandSafetyClassifier:
 
     Uses pattern matching, command parsing, and heuristics to determine
     if a command is safe to execute automatically or requires user confirmation.
+
+    Cross-Repo Integration (v10.3):
+    - Emits classification events to Reactor Core for training
+    - Writes state to shared files for JARVIS Prime
+    - Tracks classification statistics per session
     """
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(
+        self,
+        config_path: Optional[Path] = None,
+        enable_cross_repo: bool = True,
+        session_id: Optional[str] = None,
+    ):
         """
         Initialize command safety classifier.
 
         Args:
             config_path: Optional path to custom safety rules JSON
+            enable_cross_repo: Enable cross-repo event emission (v10.3)
+            session_id: Session ID for cross-repo tracking
         """
+        # Cross-repo integration (v10.3)
+        self.enable_cross_repo = enable_cross_repo
+        self.session_id = session_id or f"cmd-{int(datetime.now().timestamp())}"
+        self._reactor_client: Optional["ReactorCoreClient"] = None
+        self._event_callbacks: List[Callable[[Dict[str, Any]], Awaitable[None]]] = []
+
+        # Classification statistics (v10.3)
+        self._stats = {
+            "total_classifications": 0,
+            "green_count": 0,
+            "yellow_count": 0,
+            "red_count": 0,
+            "blocked_count": 0,
+            "session_start": datetime.now().isoformat(),
+        }
+
+        # Initialize cross-repo state directory
+        if self.enable_cross_repo:
+            self._init_cross_repo_state()
+
         # GREEN tier: Safe, read-only commands
         self.green_commands: Set[str] = {
             # File viewing
@@ -501,6 +586,206 @@ class CommandSafetyClassifier:
             self.reversible_commands.add(command_pattern)
 
         logger.info(f"[COMMAND-SAFETY] Added custom rule: '{command_pattern}' -> {tier.value}")
+
+    # ========================================================================
+    # CROSS-REPO INTEGRATION (v10.3)
+    # ========================================================================
+
+    def _init_cross_repo_state(self) -> None:
+        """Initialize cross-repo state directory."""
+        try:
+            COMMAND_SAFETY_STATE_DIR.mkdir(parents=True, exist_ok=True)
+            self._write_classification_state()
+        except Exception as e:
+            logger.warning(f"[COMMAND-SAFETY] Failed to init cross-repo state: {e}")
+
+    def _write_classification_state(self) -> None:
+        """Write classification state to disk for JARVIS Prime."""
+        if not self.enable_cross_repo:
+            return
+
+        try:
+            state_file = COMMAND_SAFETY_STATE_DIR / "classifier_state.json"
+            state = {
+                "session_id": self.session_id,
+                "stats": self._stats,
+                "last_update": datetime.now().isoformat(),
+            }
+            state_file.write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            logger.warning(f"[COMMAND-SAFETY] Failed to write state: {e}")
+
+    async def _emit_classification_event(
+        self,
+        event_type: str,
+        classification: CommandClassification,
+    ) -> None:
+        """Emit classification event to Reactor Core and callbacks (v10.3)."""
+        if not self.enable_cross_repo:
+            return
+
+        event = {
+            "event_type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self.session_id,
+            "classification": classification.to_dict(),
+        }
+
+        # Write event to file for Reactor Core
+        try:
+            events_dir = COMMAND_SAFETY_STATE_DIR / "events"
+            events_dir.mkdir(parents=True, exist_ok=True)
+            event_file = events_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{event_type}.json"
+            event_file.write_text(json.dumps(event, indent=2))
+        except Exception as e:
+            logger.warning(f"[COMMAND-SAFETY] Failed to write event: {e}")
+
+        # Call registered callbacks
+        for callback in self._event_callbacks:
+            try:
+                await callback(event)
+            except Exception as e:
+                logger.warning(f"[COMMAND-SAFETY] Event callback error: {e}")
+
+        # Send to Reactor Core client if connected
+        if self._reactor_client:
+            try:
+                await self._reactor_client.emit_safety_event(event_type, event)
+            except Exception as e:
+                logger.warning(f"[COMMAND-SAFETY] Failed to send to Reactor Core: {e}")
+
+    async def classify_async(
+        self,
+        command: str,
+        emit_events: bool = True,
+    ) -> CommandClassification:
+        """
+        Classify command asynchronously with event emission (v10.3).
+
+        Args:
+            command: Shell command to classify
+            emit_events: Whether to emit classification events
+
+        Returns:
+            CommandClassification with tier, risks, and recommendations
+        """
+        # Use sync classify first
+        classification = self.classify(command)
+        classification.session_id = self.session_id
+
+        # Update statistics
+        self._stats["total_classifications"] += 1
+        if classification.tier == SafetyTier.GREEN:
+            self._stats["green_count"] += 1
+        elif classification.tier == SafetyTier.YELLOW:
+            self._stats["yellow_count"] += 1
+        elif classification.tier == SafetyTier.RED:
+            self._stats["red_count"] += 1
+            if classification.is_destructive:
+                self._stats["blocked_count"] += 1
+
+        # Write updated state
+        self._write_classification_state()
+
+        # Emit events for non-GREEN classifications
+        if emit_events and classification.tier != SafetyTier.GREEN:
+            await self._emit_classification_event(
+                "command_classified",
+                classification,
+            )
+
+            # Emit special event for RED tier
+            if classification.tier == SafetyTier.RED:
+                await self._emit_classification_event(
+                    "dangerous_command_detected",
+                    classification,
+                )
+
+        return classification
+
+    async def classify_batch_async(
+        self,
+        commands: List[str],
+        emit_events: bool = True,
+    ) -> List[CommandClassification]:
+        """
+        Classify multiple commands asynchronously (v10.3).
+
+        Args:
+            commands: List of commands to classify
+            emit_events: Whether to emit classification events
+
+        Returns:
+            List of classifications
+        """
+        tasks = [self.classify_async(cmd, emit_events) for cmd in commands]
+        return await asyncio.gather(*tasks)
+
+    def set_reactor_client(self, client: "ReactorCoreClient") -> None:
+        """
+        Set the Reactor Core client for cross-repo event emission.
+
+        Args:
+            client: ReactorCoreClient instance
+        """
+        self._reactor_client = client
+        logger.info("[COMMAND-SAFETY] Reactor Core client connected")
+
+    def register_event_callback(
+        self,
+        callback: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """
+        Register a callback for classification events.
+
+        Args:
+            callback: Async function(event_dict) to call on events
+        """
+        self._event_callbacks.append(callback)
+        logger.info(f"[COMMAND-SAFETY] Event callback registered (total: {len(self._event_callbacks)})")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get classification statistics."""
+        return {
+            **self._stats,
+            "session_id": self.session_id,
+            "last_update": datetime.now().isoformat(),
+        }
+
+    def get_classification_summary_for_prime(self) -> str:
+        """
+        Get classification summary for JARVIS Prime context (v10.3).
+
+        Returns:
+            Formatted string for prompt injection
+        """
+        if self._stats["total_classifications"] == 0:
+            return ""
+
+        lines = ["[COMMAND SAFETY SUMMARY]"]
+        lines.append(f"- Total commands: {self._stats['total_classifications']}")
+
+        if self._stats["red_count"] > 0:
+            lines.append(f"- Dangerous commands blocked: {self._stats['red_count']}")
+
+        if self._stats["yellow_count"] > 0:
+            lines.append(f"- Commands requiring confirmation: {self._stats['yellow_count']}")
+
+        lines.append("[/COMMAND SAFETY SUMMARY]")
+        return "\n".join(lines)
+
+    def reset_stats(self) -> None:
+        """Reset classification statistics (call at session start)."""
+        self._stats = {
+            "total_classifications": 0,
+            "green_count": 0,
+            "yellow_count": 0,
+            "red_count": 0,
+            "blocked_count": 0,
+            "session_start": datetime.now().isoformat(),
+        }
+        self._write_classification_state()
+        logger.info("[COMMAND-SAFETY] Statistics reset")
 
 
 # Global instance
