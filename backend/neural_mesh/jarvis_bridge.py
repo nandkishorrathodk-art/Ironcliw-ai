@@ -88,6 +88,12 @@ from .adapters.voice_adapter import (
     create_speaker_verification_adapter,
     create_voice_unlock_adapter,
 )
+from .adapters.vision_adapter import (
+    VisionCognitiveAdapter,
+    VisionComponentType,
+    create_vision_cognitive_adapter,
+    create_yabai_adapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +103,7 @@ class SystemCategory(str, Enum):
     INTELLIGENCE = "intelligence"
     AUTONOMY = "autonomy"
     VOICE = "voice"
+    VISION = "vision"  # v10.2: Vision Cognitive Loop
     DISPLAY = "display"
     CORE = "core"
     TOOLS = "tools"
@@ -111,6 +118,7 @@ class AgentDiscoveryConfig:
             SystemCategory.INTELLIGENCE,
             SystemCategory.AUTONOMY,
             SystemCategory.VOICE,
+            SystemCategory.VISION,  # v10.2: Vision Cognitive Loop
         }
     )
 
@@ -334,6 +342,12 @@ class JARVISNeuralMeshBridge:
                 self._discover_voice_agents(),
             ])
 
+        # Vision agents (v10.2)
+        if SystemCategory.VISION in self._config.enabled_categories:
+            discovery_tasks.extend([
+                self._discover_vision_agents(),
+            ])
+
         # Run discovery in parallel
         if discovery_tasks:
             await asyncio.gather(*discovery_tasks, return_exceptions=True)
@@ -401,6 +415,24 @@ class JARVISNeuralMeshBridge:
                 factory,
                 {"agent_name": name},
                 "voice",
+            )
+
+    async def _discover_vision_agents(self) -> None:
+        """Discover and register vision agents (v10.2)."""
+        vision_agents = [
+            ("vision_cognitive_loop", create_vision_cognitive_adapter),
+            ("vision_yabai_multispace", create_yabai_adapter),
+        ]
+
+        for name, factory in vision_agents:
+            if name in self._config.skip_agents:
+                continue
+
+            await self._try_register_agent(
+                name,
+                factory,
+                {"agent_name": name},
+                "vision",
             )
 
     async def _try_register_agent(

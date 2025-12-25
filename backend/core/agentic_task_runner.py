@@ -199,6 +199,26 @@ class AgenticRunnerConfig:
     reactor_core_auto_trigger: bool = field(
         default_factory=lambda: os.getenv("REACTOR_CORE_AUTO_TRIGGER", "true").lower() == "true"
     )
+
+    # Vision Cognitive Loop Integration (v10.2 - "Eyes of JARVIS")
+    vision_cognitive_loop_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VISION_LOOP_ENABLED", "true").lower() == "true"
+    )
+    vision_pre_analysis: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VISION_PRE_ANALYSIS", "true").lower() == "true"
+    )
+    vision_act_verify: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VISION_ACT_VERIFY", "true").lower() == "true"
+    )
+    vision_learning: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VISION_LEARNING", "true").lower() == "true"
+    )
+    vision_verification_timeout_ms: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_VISION_VERIFY_TIMEOUT", "5000"))
+    )
+    vision_max_retries: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_VISION_MAX_RETRIES", "3"))
+    )
     reactor_core_experience_threshold: int = field(
         default_factory=lambda: int(os.getenv("REACTOR_CORE_EXP_THRESHOLD", "100"))
     )
@@ -244,6 +264,15 @@ class AgenticTaskResult:
     neural_mesh_events_sent: int = 0
     pattern_insights_applied: List[str] = field(default_factory=list)
     knowledge_contributions: int = 0
+    # Vision Cognitive Loop Integration (v10.2)
+    vision_loop_used: bool = False
+    visual_context_provided: bool = False
+    visual_verifications: int = 0
+    visual_verification_success_rate: float = 0.0
+    visual_state_before: Optional[Dict[str, Any]] = None
+    visual_state_after: Optional[Dict[str, Any]] = None
+    space_context: Optional[Dict[str, Any]] = None
+    visual_learning_captured: bool = False
 
 
 # =============================================================================
@@ -355,6 +384,31 @@ def _check_component_availability() -> Dict[str, bool]:
     except ImportError:
         availability["intervention"] = False
 
+    # =========================================================================
+    # Vision Cognitive Loop (v10.2)
+    # =========================================================================
+
+    # Vision Cognitive Loop
+    try:
+        from core.vision_cognitive_loop import VisionCognitiveLoop
+        availability["vision_cognitive_loop"] = True
+    except ImportError:
+        availability["vision_cognitive_loop"] = False
+
+    # Vision Intelligence Bridge
+    try:
+        from vision.intelligence.vision_intelligence_bridge import VisionIntelligenceBridge
+        availability["vision_bridge"] = True
+    except ImportError:
+        availability["vision_bridge"] = False
+
+    # Yabai Space Detector
+    try:
+        from vision.yabai_space_detector import YabaiSpaceDetector
+        availability["yabai_detector"] = True
+    except ImportError:
+        availability["yabai_detector"] = False
+
     return availability
 
 
@@ -419,6 +473,14 @@ class AgenticTaskRunner:
         # Reactor-Core Client (v10.0 - "Ignition Key")
         self._reactor_core_client = None
         self._experience_count = 0  # Track experiences for auto-trigger
+
+        # Vision Cognitive Loop (v10.2 - "Eyes of JARVIS")
+        self._vision_cognitive_loop = None
+        self._vision_loop_initialized = False
+        self._last_visual_state = None
+        self._last_space_context = None
+        self._vision_verifications = 0
+        self._vision_verification_successes = 0
 
         # Component availability
         self._availability = _check_component_availability()
@@ -734,6 +796,41 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.warning(f"[AgenticRunner] ✗ Reactor-Core Client: {e}")
                     self._reactor_core_client = None
+
+            # =================================================================
+            # Initialize Vision Cognitive Loop (v10.2 - "Eyes of JARVIS")
+            # =================================================================
+            if self._availability.get("vision_cognitive_loop") and self.config.vision_cognitive_loop_enabled:
+                try:
+                    from core.vision_cognitive_loop import (
+                        VisionCognitiveLoop,
+                        get_vision_cognitive_loop,
+                        initialize_vision_cognitive_loop,
+                    )
+                    self._vision_cognitive_loop = get_vision_cognitive_loop()
+
+                    # Configure based on settings
+                    self._vision_cognitive_loop.verification_timeout_ms = (
+                        self.config.vision_verification_timeout_ms
+                    )
+                    self._vision_cognitive_loop.max_retries = self.config.vision_max_retries
+
+                    # Initialize (loads vision components)
+                    self._vision_loop_initialized = await self._vision_cognitive_loop.initialize()
+
+                    if self._vision_loop_initialized:
+                        metrics = self._vision_cognitive_loop.get_metrics()
+                        components = metrics.get("components", {})
+                        active = sum(1 for v in components.values() if v)
+                        self.logger.info(
+                            f"[AgenticRunner] ✓ Vision Cognitive Loop ({active}/{len(components)} components)"
+                        )
+                    else:
+                        self.logger.warning("[AgenticRunner] ⚠ Vision Cognitive Loop (partial init)")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Vision Cognitive Loop: {e}")
+                    self._vision_cognitive_loop = None
+                    self._vision_loop_initialized = False
 
             # Verify we have at least one execution capability
             if not self._computer_use_tool and not self._computer_use_connector:
@@ -1985,22 +2082,32 @@ class AgenticTaskRunner:
         """
         Execute goal with full autonomous reasoning + phase-managed execution.
 
-        Phase Flow (LangGraph-style):
-        ANALYZING → PLANNING → EXECUTING → REFLECTING → LEARNING
+        Phase Flow (LangGraph-style with Vision-First):
+        VISION → ANALYZING → PLANNING → EXECUTING → VERIFYING → REFLECTING → LEARNING
 
         Each phase can:
         - Checkpoint state to memory
         - Query JARVIS Prime for muscle-memory patterns
         - Report progress to intervention orchestrator
         - Be recovered by error recovery orchestrator
+
+        Vision Cognitive Loop (v10.2):
+        - VISION phase captures OS state before planning
+        - VERIFYING phase validates actions through visual comparison
+        - Visual context enriches JARVIS Prime reasoning
         """
-        self.logger.debug("[AgenticRunner] AUTONOMOUS mode (Phase-Managed)")
+        self.logger.debug("[AgenticRunner] AUTONOMOUS mode (Phase-Managed, Vision-First)")
 
         context = context or {}
         reasoning_steps = 0
         phase_results: Dict[str, Any] = {}
         self._phase_execution_active = True
         self._phase_checkpoints.clear()
+
+        # Vision Cognitive Loop tracking
+        visual_state_before = None
+        space_context = None
+        vision_loop_used = False
 
         try:
             # =================================================================
@@ -2014,6 +2121,42 @@ class AgenticTaskRunner:
             if prime_patterns:
                 context["jarvis_prime_patterns"] = prime_patterns
                 self.logger.debug(f"[Phase-0] JARVIS Prime patterns: {len(prime_patterns)}")
+
+            # =================================================================
+            # Phase 0.5: VISION (See Before You Think) - v10.2
+            # =================================================================
+            if self._vision_cognitive_loop and self.config.vision_pre_analysis:
+                self._current_phase = "VISION"
+                await self._checkpoint_phase("vision_start", {"goal": goal})
+
+                try:
+                    vision_result = await self._phase_vision(goal, context, narrate)
+                    if vision_result:
+                        phase_results["vision"] = vision_result
+                        visual_state_before = vision_result.get("visual_state")
+                        space_context = vision_result.get("space_context")
+                        vision_loop_used = True
+
+                        # Inject visual context into planning context
+                        visual_context_str = vision_result.get("visual_context_for_prompt", "")
+                        if visual_context_str:
+                            context["visual_context"] = visual_context_str
+                            context["current_app"] = vision_result.get("current_app", "")
+                            context["current_space_id"] = vision_result.get("current_space_id", 0)
+                            context["visible_windows"] = vision_result.get("visible_windows", [])
+
+                        self.logger.info(
+                            f"[Phase-VISION] Complete: "
+                            f"app={vision_result.get('current_app', 'unknown')}, "
+                            f"space={vision_result.get('current_space_id', 0)}, "
+                            f"windows={len(vision_result.get('visible_windows', []))}"
+                        )
+
+                except Exception as e:
+                    self.logger.debug(f"[Phase-VISION] Failed (non-fatal): {e}")
+                    # Vision failure is non-fatal - continue without visual context
+
+                await self._checkpoint_phase("vision_complete", phase_results.get("vision", {}))
 
             # =================================================================
             # Phase 1: ANALYZING
@@ -2093,6 +2236,58 @@ class AgenticTaskRunner:
             await self._checkpoint_phase("executing_complete", {"success": execute_result is not None})
 
             # =================================================================
+            # Phase 3.5: VERIFYING (Visual Validation) - v10.2
+            # =================================================================
+            visual_state_after = None
+            verification_result = None
+
+            if (
+                vision_loop_used
+                and self._vision_cognitive_loop
+                and self.config.vision_act_verify
+                and execute_result
+            ):
+                self._current_phase = "VERIFYING"
+                await self._checkpoint_phase("verifying_start", {"goal": goal})
+
+                try:
+                    verify_result = await self._phase_verify(
+                        goal=goal,
+                        context=context,
+                        execute_result=execute_result,
+                        visual_state_before=visual_state_before,
+                        narrate=narrate,
+                    )
+
+                    if verify_result:
+                        phase_results["verify"] = verify_result
+                        visual_state_after = verify_result.get("visual_state_after")
+                        verification_result = verify_result.get("verification")
+
+                        # Track verification metrics
+                        self._vision_verifications += 1
+                        if verify_result.get("verified", False):
+                            self._vision_verification_successes += 1
+
+                        # Update execute_result with verification data
+                        execute_result.visual_verifications = 1
+                        execute_result.visual_verification_success_rate = (
+                            1.0 if verify_result.get("verified") else 0.0
+                        )
+                        execute_result.visual_state_after = visual_state_after
+
+                        self.logger.info(
+                            f"[Phase-VERIFY] Complete: "
+                            f"verified={verify_result.get('verified', False)}, "
+                            f"changes={len(verify_result.get('changes', []))}"
+                        )
+
+                except Exception as e:
+                    self.logger.debug(f"[Phase-VERIFY] Failed (non-fatal): {e}")
+
+                await self._checkpoint_phase("verifying_complete", phase_results.get("verify", {}))
+
+            # =================================================================
             # Phase 4: REFLECTING
             # =================================================================
             self._current_phase = "REFLECTING"
@@ -2137,6 +2332,14 @@ class AgenticTaskRunner:
                 execute_result.reasoning_steps = reasoning_steps
                 execute_result.neural_mesh_used = self._neural_mesh is not None
 
+                # Vision Cognitive Loop metadata (v10.2)
+                execute_result.vision_loop_used = vision_loop_used
+                execute_result.visual_context_provided = bool(context.get("visual_context"))
+                if visual_state_before:
+                    execute_result.visual_state_before = visual_state_before
+                if space_context:
+                    execute_result.space_context = space_context
+
                 # Add phase metadata to learning insights
                 if phase_results.get("reflect", {}).get("insights"):
                     execute_result.learning_insights.extend(
@@ -2155,6 +2358,9 @@ class AgenticTaskRunner:
                 reasoning_steps=reasoning_steps,
                 final_message="Phase execution did not produce a result",
                 error="No execution result from phase pipeline",
+                vision_loop_used=vision_loop_used,
+                visual_state_before=visual_state_before,
+                space_context=space_context,
             )
 
         except Exception as e:
@@ -2184,11 +2390,257 @@ class AgenticTaskRunner:
                 reasoning_steps=reasoning_steps,
                 final_message=f"Phase execution failed: {str(e)}",
                 error=str(e),
+                vision_loop_used=vision_loop_used,
+                visual_state_before=visual_state_before,
+                space_context=space_context,
             )
 
     # =========================================================================
-    # Phase Handlers (v6.0)
+    # Phase Handlers (v6.0 + Vision-First v10.2)
     # =========================================================================
+
+    async def _phase_vision(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        narrate: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        VISION phase: See before you think (v10.2).
+
+        This phase captures the current OS visual state before any planning:
+        - Screenshot capture and analysis
+        - Multi-space context via Yabai
+        - UI element detection
+        - OCR text extraction
+
+        The visual context is then injected into subsequent phases to enable
+        context-aware planning and visual verification.
+        """
+        self.logger.debug("[Phase-VISION] Starting visual pre-analysis")
+
+        result = {
+            "visual_state": None,
+            "space_context": None,
+            "visual_context_for_prompt": "",
+            "current_app": "",
+            "current_space_id": 0,
+            "visible_windows": [],
+            "screen_text": [],
+            "capture_time_ms": 0.0,
+        }
+
+        if not self._vision_cognitive_loop:
+            self.logger.debug("[Phase-VISION] No vision loop available")
+            return result
+
+        import time
+        start_time = time.time()
+
+        try:
+            # Capture visual state and space context
+            visual_state, space_context = await self._vision_cognitive_loop.look(
+                include_ocr=True,
+                include_ui_elements=True,
+            )
+
+            # Store for later verification
+            self._last_visual_state = visual_state
+            self._last_space_context = space_context
+
+            # Build result
+            result["visual_state"] = {
+                "timestamp": visual_state.timestamp,
+                "space_id": visual_state.space_id,
+                "current_app": visual_state.current_app,
+                "applications": visual_state.applications,
+                "is_locked": visual_state.is_locked,
+                "is_fullscreen": visual_state.is_fullscreen,
+                "window_count": len(visual_state.visible_windows),
+                "screenshot_hash": visual_state.screenshot_hash,
+            }
+
+            result["space_context"] = {
+                "current_space_id": space_context.current_space_id,
+                "total_spaces": space_context.total_spaces,
+                "app_locations": space_context.app_locations,
+            }
+
+            result["current_app"] = visual_state.current_app
+            result["current_space_id"] = space_context.current_space_id
+            result["visible_windows"] = [
+                {"app": w.get("app", ""), "title": w.get("title", "")[:50]}
+                for w in visual_state.visible_windows[:10]
+            ]
+            result["screen_text"] = visual_state.screen_text[:5]
+
+            # Get formatted context for LLM prompt
+            result["visual_context_for_prompt"] = (
+                self._vision_cognitive_loop.get_visual_context_for_prompt()
+            )
+
+            # Narrate if requested
+            if narrate and self.tts_callback:
+                app_name = visual_state.current_app or "desktop"
+                await self.tts_callback(
+                    f"I see {app_name} is active with {len(visual_state.visible_windows)} windows."
+                )
+
+            result["capture_time_ms"] = (time.time() - start_time) * 1000
+            self.logger.debug(
+                f"[Phase-VISION] Captured in {result['capture_time_ms']:.0f}ms: "
+                f"app={result['current_app']}, windows={len(result['visible_windows'])}"
+            )
+
+        except Exception as e:
+            self.logger.debug(f"[Phase-VISION] Capture failed: {e}")
+            result["error"] = str(e)
+
+        return result
+
+    async def _phase_verify(
+        self,
+        goal: str,
+        context: Dict[str, Any],
+        execute_result: "AgenticTaskResult",
+        visual_state_before: Optional[Dict[str, Any]],
+        narrate: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        VERIFY phase: Visual validation after action execution (v10.2).
+
+        This phase captures the after-state and compares it to the before-state
+        to verify that the action achieved its intended effect.
+
+        The Act-Verify cycle enables:
+        - Self-correcting behavior through visual feedback
+        - Confidence scoring based on visual changes
+        - Retry logic for failed verifications
+        """
+        self.logger.debug("[Phase-VERIFY] Starting visual verification")
+
+        result = {
+            "verified": False,
+            "visual_state_after": None,
+            "verification": None,
+            "changes": [],
+            "confidence": 0.0,
+            "retry_suggested": False,
+            "verification_time_ms": 0.0,
+        }
+
+        if not self._vision_cognitive_loop:
+            self.logger.debug("[Phase-VERIFY] No vision loop available")
+            return result
+
+        import time
+        start_time = time.time()
+
+        try:
+            # Determine expected outcome from goal or execute_result
+            expected_outcome = self._infer_expected_outcome(goal, execute_result)
+
+            # Perform visual verification
+            verification = await self._vision_cognitive_loop.verify(
+                expected_outcome=expected_outcome,
+                before_state=self._last_visual_state,  # Stored during VISION phase
+                timeout_ms=self.config.vision_verification_timeout_ms,
+            )
+
+            # Capture after state
+            after_state, _ = await self._vision_cognitive_loop.look(
+                include_ocr=True,
+                include_ui_elements=True,
+            )
+
+            # Build result
+            result["visual_state_after"] = {
+                "timestamp": after_state.timestamp,
+                "space_id": after_state.space_id,
+                "current_app": after_state.current_app,
+                "applications": after_state.applications,
+                "is_locked": after_state.is_locked,
+                "is_fullscreen": after_state.is_fullscreen,
+                "window_count": len(after_state.visible_windows),
+                "screenshot_hash": after_state.screenshot_hash,
+            }
+
+            result["verification"] = {
+                "result": verification.result.value,
+                "confidence": verification.confidence,
+                "changes_detected": verification.changes_detected,
+                "verification_time_ms": verification.verification_time_ms,
+            }
+
+            result["changes"] = verification.changes_detected
+            result["confidence"] = verification.confidence
+            result["retry_suggested"] = verification.retry_suggested
+            result["verified"] = verification.result.value in ("success", "partial")
+
+            # Narrate verification result if requested
+            if narrate and self.tts_callback:
+                if result["verified"]:
+                    change_summary = f"{len(result['changes'])} visual changes detected"
+                    await self.tts_callback(f"Action verified: {change_summary}.")
+                elif result["retry_suggested"]:
+                    await self.tts_callback("Verification uncertain. May need to retry.")
+                else:
+                    await self.tts_callback("Could not verify action success visually.")
+
+            result["verification_time_ms"] = (time.time() - start_time) * 1000
+            self.logger.debug(
+                f"[Phase-VERIFY] Complete in {result['verification_time_ms']:.0f}ms: "
+                f"verified={result['verified']}, confidence={result['confidence']:.2f}"
+            )
+
+        except Exception as e:
+            self.logger.debug(f"[Phase-VERIFY] Verification failed: {e}")
+            result["error"] = str(e)
+
+        return result
+
+    def _infer_expected_outcome(
+        self,
+        goal: str,
+        execute_result: "AgenticTaskResult",
+    ) -> str:
+        """
+        Infer the expected visual outcome from the goal and execution result.
+
+        This heuristic extracts key verbs and nouns from the goal to create
+        an expected outcome description for visual verification.
+        """
+        # Use final_message if available and successful
+        if execute_result and execute_result.success and execute_result.final_message:
+            return execute_result.final_message
+
+        # Otherwise, transform goal into expected outcome
+        # Simple heuristic: convert imperative to past tense
+        goal_lower = goal.lower().strip()
+
+        # Common transformations
+        transformations = [
+            ("open ", "opened "),
+            ("close ", "closed "),
+            ("click ", "clicked "),
+            ("type ", "typed "),
+            ("launch ", "launched "),
+            ("search for ", "search results for "),
+            ("navigate to ", "navigated to "),
+            ("scroll ", "scrolled "),
+            ("select ", "selected "),
+            ("create ", "created "),
+            ("delete ", "deleted "),
+            ("copy ", "copied "),
+            ("paste ", "pasted "),
+        ]
+
+        for imperative, past in transformations:
+            if goal_lower.startswith(imperative):
+                return goal_lower.replace(imperative, past, 1)
+
+        # Default: just return the goal
+        return goal
 
     async def _phase_analyze(
         self,
@@ -2459,7 +2911,48 @@ class AgenticTaskRunner:
             except Exception as e:
                 self.logger.debug(f"[Phase-LEARN] Tool pattern update failed: {e}")
 
-        self.logger.debug(f"[Phase-LEARN] Complete: memory={result['memory_recorded']}, nm={result['neural_mesh_contributed']}")
+        # Visual Learning (v10.2) - Enrich training data with visual context
+        result["visual_learning_captured"] = False
+        if (
+            self._vision_cognitive_loop
+            and self.config.vision_learning
+            and execute_result
+        ):
+            try:
+                # Build cognitive loop result for visual learning
+                from core.vision_cognitive_loop import CognitiveLoopResult, CognitivePhase
+
+                loop_result = CognitiveLoopResult(
+                    success=execute_result.success,
+                    phase=CognitivePhase.LEARN,
+                    visual_state_before=self._last_visual_state,
+                    visual_state_after=execute_result.visual_state_after if hasattr(execute_result, 'visual_state_after') else None,
+                    space_context=self._last_space_context,
+                    action_taken=goal,
+                    total_time_ms=execute_result.execution_time_ms,
+                )
+
+                # Store visual context for training
+                await self._vision_cognitive_loop.learn(
+                    goal=goal,
+                    action=execute_result.final_message or goal,
+                    result=loop_result,
+                    success=execute_result.success,
+                )
+
+                result["visual_learning_captured"] = True
+                execute_result.visual_learning_captured = True
+
+                self.logger.debug("[Phase-LEARN] Visual context captured for training")
+
+            except Exception as e:
+                self.logger.debug(f"[Phase-LEARN] Visual learning capture failed: {e}")
+
+        self.logger.debug(
+            f"[Phase-LEARN] Complete: memory={result['memory_recorded']}, "
+            f"nm={result['neural_mesh_contributed']}, "
+            f"visual={result.get('visual_learning_captured', False)}"
+        )
         return result
 
     # =========================================================================
