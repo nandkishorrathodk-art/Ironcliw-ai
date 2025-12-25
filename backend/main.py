@@ -4841,6 +4841,15 @@ def mount_routers():
     except ImportError as e:
         logger.debug(f"Agentic API not available: {e}")
 
+    # Reactor-Core Feedback API - Real-time Training Status Receiver
+    try:
+        from api.reactor_core_api import router as reactor_core_router
+
+        app.include_router(reactor_core_router, tags=["reactor-core"])
+        logger.info("✅ Reactor-Core API mounted at /reactor-core")
+    except ImportError as e:
+        logger.debug(f"Reactor-Core API not available: {e}")
+
     # Context Intelligence API (Priority 1-3 features)
     if hasattr(app.state, "context_bridge") and app.state.context_bridge:
         from pydantic import BaseModel

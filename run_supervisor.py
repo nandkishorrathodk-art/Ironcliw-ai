@@ -3963,6 +3963,10 @@ class SupervisorBootstrapper:
                     os.environ["JARVIS_AGENTIC_RUNNER"] = "true"
                     print(f"  {TerminalUI.GREEN}✓ Agentic Runner: Computer Use ready{TerminalUI.RESET}")
 
+                    # v10.0: Connect Training Status Hub for Feedback Loop
+                    # This enables voice announcements during training
+                    await self._connect_training_status_hub()
+
                 except ImportError as e:
                     self.logger.warning(f"⚠️ Agentic Runner not available: {e}")
                     os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
@@ -6866,6 +6870,41 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self.logger.info("   ✅ Reactor-Core API stopped")
             except Exception as e:
                 self.logger.debug(f"   Reactor-Core shutdown error: {e}")
+
+    async def _connect_training_status_hub(self) -> None:
+        """
+        v10.0: Connect Training Status Hub to Agentic Runner.
+
+        This enables the Feedback Loop by:
+        1. Setting the TTS callback on the training hub
+        2. Registering training completion callbacks
+        3. Enabling voice announcements during training
+
+        Called after the AgenticTaskRunner is initialized.
+        """
+        try:
+            from backend.api.reactor_core_api import get_training_hub
+
+            hub = get_training_hub()
+
+            # Connect TTS callback from agentic runner
+            if self._agentic_runner and self._agentic_runner.tts_callback:
+                hub.set_tts_callback(self._agentic_runner.tts_callback)
+                self.logger.info("   ✅ Training Hub: TTS callback connected")
+
+            # Register for training completion events
+            # This triggers hot-swap when training completes
+            if self._agentic_runner:
+                hub.on_training_completed(self._agentic_runner._on_training_completed)
+                hub.on_training_failed(self._agentic_runner._on_training_failed)
+                self.logger.info("   ✅ Training Hub: Callbacks registered for hot-swap")
+
+            self.logger.info("🔗 Feedback Loop: Training Status Hub connected")
+
+        except ImportError as e:
+            self.logger.debug(f"   Training Hub not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"   ⚠️ Training Hub connection failed: {e}")
 
     async def _run_continuous_scraping(self) -> None:
         """
