@@ -219,6 +219,27 @@ class AgenticRunnerConfig:
     vision_max_retries: int = field(
         default_factory=lambda: int(os.getenv("JARVIS_VISION_MAX_RETRIES", "3"))
     )
+
+    # Vision-Safety Integration (v10.3 - "Safety Certificate")
+    safety_integration_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_SAFETY_INTEGRATION", "true").lower() == "true"
+    )
+    safety_audit_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_SAFETY_AUDIT", "true").lower() == "true"
+    )
+    dead_man_switch_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_DEAD_MAN_SWITCH", "true").lower() == "true"
+    )
+    visual_click_overlay_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_VISUAL_OVERLAY", "true").lower() == "true"
+    )
+    auto_confirm_safe_actions: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_AUTO_CONFIRM_GREEN", "true").lower() == "true"
+    )
+    confirmation_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_CONFIRM_TIMEOUT", "30.0"))
+    )
+
     reactor_core_experience_threshold: int = field(
         default_factory=lambda: int(os.getenv("REACTOR_CORE_EXP_THRESHOLD", "100"))
     )
@@ -409,6 +430,13 @@ def _check_component_availability() -> Dict[str, bool]:
     except ImportError:
         availability["yabai_detector"] = False
 
+    # Vision-Safety Integration
+    try:
+        from core.vision_safety_integration import VisionSafetyIntegration
+        availability["vision_safety"] = True
+    except ImportError:
+        availability["vision_safety"] = False
+
     return availability
 
 
@@ -481,6 +509,14 @@ class AgenticTaskRunner:
         self._last_space_context = None
         self._vision_verifications = 0
         self._vision_verification_successes = 0
+
+        # Vision-Safety Integration (v10.3 - "Safety Certificate")
+        self._vision_safety = None
+        self._safety_initialized = False
+        self._safety_audits_performed = 0
+        self._confirmations_requested = 0
+        self._confirmations_denied = 0
+        self._kill_switch_triggers = 0
 
         # Component availability
         self._availability = _check_component_availability()
@@ -831,6 +867,45 @@ class AgenticTaskRunner:
                     self.logger.debug(f"[AgenticRunner] ✗ Vision Cognitive Loop: {e}")
                     self._vision_cognitive_loop = None
                     self._vision_loop_initialized = False
+
+            # =================================================================
+            # Initialize Vision-Safety Integration (v10.3 - "Safety Certificate")
+            # =================================================================
+            if self._availability.get("vision_safety") and self.config.safety_integration_enabled:
+                try:
+                    from core.vision_safety_integration import (
+                        VisionSafetyIntegration,
+                        VisionSafetyConfig,
+                        initialize_vision_safety,
+                    )
+
+                    # Build safety config from runner config
+                    safety_config = VisionSafetyConfig()
+                    safety_config.dead_man_switch_enabled = self.config.dead_man_switch_enabled
+                    safety_config.safety_audit_enabled = self.config.safety_audit_enabled
+                    safety_config.visual_overlay_enabled = self.config.visual_click_overlay_enabled
+                    safety_config.auto_confirm_green = self.config.auto_confirm_safe_actions
+                    safety_config.confirmation_timeout_seconds = self.config.confirmation_timeout_seconds
+
+                    # Initialize with TTS and watchdog
+                    self._vision_safety = await initialize_vision_safety(
+                        config=safety_config,
+                        tts_callback=self.tts_callback,
+                        watchdog=self._watchdog,
+                    )
+                    self._safety_initialized = True
+
+                    status = self._vision_safety.get_status()
+                    dms_enabled = status.get("dead_man_switch", {}).get("enabled", False)
+                    self.logger.info(
+                        f"[AgenticRunner] ✓ Vision-Safety Integration "
+                        f"(DeadMan={dms_enabled}, Audit={self.config.safety_audit_enabled})"
+                    )
+
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Vision-Safety Integration: {e}")
+                    self._vision_safety = None
+                    self._safety_initialized = False
 
             # Verify we have at least one execution capability
             if not self._computer_use_tool and not self._computer_use_connector:
@@ -2197,6 +2272,118 @@ class AgenticTaskRunner:
 
             # Check for intervention opportunity
             await self._check_intervention_opportunity("pre_execution", goal, context)
+
+            # =================================================================
+            # Phase 2.5: SAFETY AUDIT (v10.3 - "Safety Certificate")
+            # =================================================================
+            safety_approved = True
+            safety_audit_result = None
+
+            if self._vision_safety and self.config.safety_audit_enabled:
+                self._current_phase = "SAFETY_AUDIT"
+                await self._checkpoint_phase("safety_audit_start", {"plan_steps": len(context.get("execution_plan", []))})
+
+                try:
+                    # Audit the plan for safety
+                    execution_plan = context.get("execution_plan", [])
+                    safety_audit_result = await self._vision_safety.audit_plan(
+                        plan=execution_plan,
+                        goal=goal,
+                    )
+
+                    phase_results["safety_audit"] = {
+                        "verdict": safety_audit_result.verdict.value,
+                        "risky_steps": len(safety_audit_result.risky_steps),
+                        "confirmation_required": safety_audit_result.confirmation_required,
+                        "blocked": safety_audit_result.is_blocked,
+                    }
+                    self._safety_audits_performed += 1
+
+                    # Log audit result
+                    self.logger.info(
+                        f"[Phase-SAFETY] Audit complete: verdict={safety_audit_result.verdict.value}, "
+                        f"risky={len(safety_audit_result.risky_steps)}, "
+                        f"confirmation_required={safety_audit_result.confirmation_required}"
+                    )
+
+                    # Request confirmation if needed
+                    if safety_audit_result.confirmation_required:
+                        self._confirmations_requested += 1
+
+                        # Narrate the risks
+                        if narrate and self.tts_callback and safety_audit_result.risky_steps:
+                            risk_summary = f"This plan involves {len(safety_audit_result.risky_steps)} risky actions."
+                            await self.tts_callback(risk_summary)
+
+                        # Request confirmation
+                        safety_approved = await self._vision_safety.request_confirmation_if_needed(
+                            audit_result=safety_audit_result,
+                            goal=goal,
+                        )
+
+                        if not safety_approved:
+                            self._confirmations_denied += 1
+                            self.logger.warning("[Phase-SAFETY] User denied execution - aborting")
+
+                            if narrate and self.tts_callback:
+                                await self.tts_callback("Understood. Aborting execution.")
+
+                            # Return early with denied result
+                            return AgenticTaskResult(
+                                success=False,
+                                goal=goal,
+                                mode="autonomous",
+                                execution_time_ms=0,
+                                actions_count=0,
+                                reasoning_steps=reasoning_steps,
+                                final_message="Execution cancelled by user (safety confirmation denied)",
+                                error="User denied safety confirmation",
+                                vision_loop_used=vision_loop_used,
+                                visual_state_before=visual_state_before,
+                                space_context=space_context,
+                            )
+
+                    elif safety_audit_result.is_blocked:
+                        self.logger.error(
+                            f"[Phase-SAFETY] Plan BLOCKED: {safety_audit_result.blocking_reasons}"
+                        )
+                        return AgenticTaskResult(
+                            success=False,
+                            goal=goal,
+                            mode="autonomous",
+                            execution_time_ms=0,
+                            actions_count=0,
+                            reasoning_steps=reasoning_steps,
+                            final_message=f"Plan blocked by safety policy: {safety_audit_result.blocking_reasons[0]}",
+                            error="Safety policy violation",
+                            vision_loop_used=vision_loop_used,
+                            visual_state_before=visual_state_before,
+                            space_context=space_context,
+                        )
+
+                except Exception as e:
+                    self.logger.warning(f"[Phase-SAFETY] Audit failed (non-fatal): {e}")
+                    # Safety audit failure is non-fatal - continue with caution
+
+                await self._checkpoint_phase("safety_audit_complete", phase_results.get("safety_audit", {}))
+
+            # Check if Dead Man's Switch was triggered during safety check
+            if self._vision_safety and self._vision_safety.is_kill_switch_triggered():
+                self._kill_switch_triggers += 1
+                self.logger.warning("[Phase-SAFETY] Kill switch triggered during safety audit!")
+                return AgenticTaskResult(
+                    success=False,
+                    goal=goal,
+                    mode="autonomous",
+                    execution_time_ms=0,
+                    actions_count=0,
+                    reasoning_steps=reasoning_steps,
+                    final_message="Emergency stop activated by Dead Man's Switch",
+                    error="Kill switch triggered",
+                    vision_loop_used=vision_loop_used,
+                    visual_state_before=visual_state_before,
+                    space_context=space_context,
+                )
 
             # =================================================================
             # Phase 3: EXECUTING
