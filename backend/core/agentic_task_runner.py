@@ -247,6 +247,20 @@ class AgenticRunnerConfig:
         default_factory=lambda: float(os.getenv("REACTOR_CORE_MIN_INTERVAL_HOURS", "6.0"))
     )
 
+    # Repository Intelligence (v11.0 - "Codebase Brain")
+    repo_intelligence_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_ENABLED", "true").lower() == "true"
+    )
+    repo_intelligence_auto_context: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_AUTO_CONTEXT", "true").lower() == "true"
+    )
+    repo_intelligence_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_REPO_INTEL_MAX_TOKENS", "2048"))
+    )
+    repo_intelligence_cross_repo: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_CROSS_REPO", "true").lower() == "true"
+    )
+
 
 # =============================================================================
 # Enums
@@ -3177,6 +3191,42 @@ class AgenticTaskRunner:
             ][:3]
             if relevant:
                 enriched["similar_experiences"] = relevant
+
+        # Repository Intelligence enrichment (v11.0)
+        if self.config.repo_intelligence_enabled and self.config.repo_intelligence_auto_context:
+            try:
+                # Extract potential symbols from the goal
+                import re
+                mentioned_symbols = set(re.findall(r'\b([A-Z][a-zA-Z0-9_]*(?:[A-Z][a-zA-Z0-9_]*)*)\b', goal))
+                mentioned_files = set(re.findall(r'(\S+\.(?:py|ts|js|tsx|jsx))\b', goal))
+
+                # Lazy import to avoid circular dependencies
+                from backend.intelligence.repository_intelligence import get_repo_map
+
+                if self.config.repo_intelligence_cross_repo:
+                    # Get cross-repo context
+                    from backend.intelligence.repository_intelligence import get_repository_mapper
+                    mapper = await get_repository_mapper()
+                    repo_map = await mapper.get_cross_repo_map(
+                        max_tokens=self.config.repo_intelligence_max_tokens,
+                        focus_area=goal[:100] if len(goal) > 100 else goal,
+                    )
+                else:
+                    # Get single repo context (JARVIS)
+                    repo_map = await get_repo_map(
+                        repository="jarvis",
+                        max_tokens=self.config.repo_intelligence_max_tokens,
+                        mentioned_files=mentioned_files if mentioned_files else None,
+                        mentioned_symbols=mentioned_symbols if mentioned_symbols else None,
+                    )
+
+                if repo_map:
+                    enriched["repository_context"] = repo_map
+                    enriched["repository_context_tokens"] = len(repo_map) // 4
+                    self.logger.debug(f"[Context] Added repository context: {len(repo_map)} chars")
+
+            except Exception as e:
+                self.logger.debug(f"[Context] Repository Intelligence enrichment failed: {e}")
 
         return enriched
 

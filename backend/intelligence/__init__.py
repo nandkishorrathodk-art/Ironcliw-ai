@@ -84,6 +84,19 @@ _LAZY_MODULES = {
             'get_learning_database_sync'
         ]
     ),
+    'repository_intelligence': (
+        '.repository_intelligence',
+        [
+            'RepositoryMapper', 'RepositoryGraph', 'CodeParser',
+            'RepositoryIntelligenceConfig', 'RepositoryConfig',
+            'RepositoryReasoningGraph', 'RepositoryReasoningState',
+            'get_repository_mapper', 'get_repository_reasoning',
+            'get_repo_map', 'query_codebase',
+            'SymbolKind', 'RelationshipType', 'MapRefreshMode',
+            'CodeSymbol', 'CodeRelationship', 'FileInfo', 'Tag',
+            'IntelligenceResult', 'RepoMapResult', 'CrossRepoAnalysis',
+        ]
+    ),
 }
 
 # Build reverse lookup: export name -> module info
@@ -203,6 +216,31 @@ if TYPE_CHECKING:
         get_learning_database_sync
     )
 
+    # Repository Intelligence
+    from .repository_intelligence import (
+        RepositoryMapper,
+        RepositoryGraph,
+        CodeParser,
+        RepositoryIntelligenceConfig,
+        RepositoryConfig,
+        RepositoryReasoningGraph,
+        RepositoryReasoningState,
+        get_repository_mapper,
+        get_repository_reasoning,
+        get_repo_map,
+        query_codebase,
+        SymbolKind,
+        RelationshipType,
+        MapRefreshMode,
+        CodeSymbol,
+        CodeRelationship,
+        FileInfo,
+        Tag,
+        IntelligenceResult,
+        RepoMapResult,
+        CrossRepoAnalysis,
+    )
+
 
 # =============================================================================
 # PUBLIC API
@@ -267,6 +305,29 @@ __all__ = [
     'JARVISLearningDatabase',
     'get_learning_database',
     'get_learning_database_sync',
+
+    # Repository Intelligence
+    'RepositoryMapper',
+    'RepositoryGraph',
+    'CodeParser',
+    'RepositoryIntelligenceConfig',
+    'RepositoryConfig',
+    'RepositoryReasoningGraph',
+    'RepositoryReasoningState',
+    'get_repository_mapper',
+    'get_repository_reasoning',
+    'get_repo_map',
+    'query_codebase',
+    'SymbolKind',
+    'RelationshipType',
+    'MapRefreshMode',
+    'CodeSymbol',
+    'CodeRelationship',
+    'FileInfo',
+    'Tag',
+    'IntelligenceResult',
+    'RepoMapResult',
+    'CrossRepoAnalysis',
 ]
 
 
