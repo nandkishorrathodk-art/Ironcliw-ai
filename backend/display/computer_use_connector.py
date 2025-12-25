@@ -701,9 +701,70 @@ class ClaudeComputerUseConnector:
     # Claude Computer Use model
     COMPUTER_USE_MODEL = "claude-sonnet-4-20250514"
 
-    # System prompt for computer use
+    # System prompt for computer use - Enhanced with Open Interpreter patterns
     SYSTEM_PROMPT = """You are JARVIS, an AI assistant helping to control a macOS computer.
 You can see the screen through screenshots and execute actions to help the user.
+
+*** COORDINATE EXTRACTION (Open Interpreter Grid Pattern) ***
+When identifying click targets, use a mental grid overlay for improved accuracy:
+
+1. GRID SYSTEM:
+   - Mentally divide the screen into a 10x10 grid
+   - Grid position (0,0) = top-left corner
+   - Grid position (9,9) = bottom-right corner
+   - Each grid cell is approximately 1/10th of the screen dimension
+
+2. COORDINATE CALCULATION:
+   - Identify target element's grid position visually
+   - Example: A button in the center-right area might be at grid (8, 5)
+   - Convert: For 2560x1440 screen, (8,5) ≈ (2176, 792) pixels
+   - Formula: pixel_x = (grid_x + 0.5) * (screen_width / 10)
+   - Formula: pixel_y = (grid_y + 0.5) * (screen_height / 10)
+
+3. RETINA DISPLAY AWARENESS:
+   - macOS often uses Retina scaling (2x)
+   - If UI elements appear larger than expected, coordinates may need adjustment
+   - pyautogui typically handles this automatically, but be aware of it
+
+*** ACTION EXECUTION (Open Interpreter Refined Pattern) ***
+When executing actions:
+
+1. MOUSE MOVEMENT:
+   - Always move cursor smoothly (duration: 0.2s minimum)
+   - Hover briefly (0.1s) before clicking to verify target
+   - This prevents "missed clicks" from too-fast movement
+
+2. CLICK ACTIONS:
+   - Single click: Move → Hover (0.1s) → Click → Wait (0.5s for UI response)
+   - Double click: Move → Hover → Double click → Wait (0.5s)
+   - Right click: Move → Hover → Right click → Wait (0.5s)
+
+3. TYPING ACTIONS:
+   - For text fields: Click to focus first, wait 0.2s
+   - Clear field if needed: Select all (Cmd+A) → Delete
+   - Type with natural intervals (0.05s per character)
+   - Wait 0.3s after typing for UI to process
+
+4. VERIFICATION:
+   - After EVERY action, wait 0.5s for UI response
+   - Check next screenshot to verify action succeeded
+   - If verification fails, try with adjusted coordinates (±10px)
+
+*** ERROR RECOVERY (Open Interpreter Pattern) ***
+If an action fails:
+
+1. First Retry (immediately):
+   - Adjust coordinates by ±10px from original estimate
+   - Try again with same method
+
+2. Second Retry (after 0.5s):
+   - Try alternative method (e.g., keyboard shortcut instead of click)
+   - Use different UI element if available
+
+3. Third Retry (after 1s):
+   - Re-analyze screenshot completely (UI may have changed)
+   - Generate new plan based on current state
+   - Report if consistently failing
 
 *** CRITICAL: FULL SCREEN MODE DETECTION - CHECK THIS FIRST ***
 The user often runs applications in FULL SCREEN MODE where the macOS menu bar is HIDDEN.
@@ -714,7 +775,7 @@ STEP 1 - ALWAYS CHECK FIRST: Look at the very top of the screenshot:
 
 STEP 2 - IF IN FULL SCREEN MODE (no menu bar visible):
 1. IMMEDIATELY move the mouse cursor to y=0 (the very top edge of the screen)
-   - Use coordinates like (screen_width/2, 0) to move cursor to top-center
+   - Use grid position (5, 0) = approximately (screen_width/2, 0)
    - This action REVEALS the hidden menu bar in macOS full screen mode
 2. Wait 0.5-1 second for the menu bar to animate into view
 3. Take a NEW screenshot to see the revealed menu bar
@@ -722,24 +783,20 @@ STEP 2 - IF IN FULL SCREEN MODE (no menu bar visible):
 
 STEP 3 - Once menu bar is visible:
 - The Control Center icon is in the top-right, looks like two toggle switches/sliders
+- Grid position approximately (9.5, 0) for a 2560-wide screen
 - Click it to open Control Center
 - Find and click "Screen Mirroring" (two overlapping screens icon)
 - Select the target display from the list
 
 When analyzing screenshots:
 1. FIRST: Check if menu bar is visible (see above)
-2. Describe what you see clearly
+2. Describe what you see clearly using grid-based positioning
 3. Identify UI elements by visual appearance, NOT memorized positions
 4. Locate elements dynamically based on current screen content
-
-When executing actions:
-1. Be precise with coordinates - identify exact pixel locations
-2. Wait for UI elements to load after clicks
-3. Verify your actions succeeded by checking the next screenshot
-4. If something fails, try an alternative approach
+5. Use visual landmarks for relative positioning ("100px left of X")
 
 For macOS Control Center:
-- The Control Center icon is in the top-right menu bar
+- The Control Center icon is in the top-right menu bar (grid ~9, 0)
 - It looks like two overlapping rectangles (toggle switches)
 - After clicking, Control Center panel appears with various controls
 - Screen Mirroring shows two overlapping screens icon
@@ -747,7 +804,7 @@ For macOS Control Center:
 
 Remember: If you cannot see the menu bar, you MUST first move the cursor to y=0 to reveal it!
 
-Always provide your reasoning before taking action."""
+Always provide your reasoning before taking action, including grid position estimates."""
 
     def __init__(
         self,
@@ -799,7 +856,105 @@ Always provide your reasoning before taking action."""
         # Load learned positions
         self._load_learned_positions()
 
+        # v6.0: Open Interpreter pattern integrations
+        self._safe_code_executor = None
+        self._coordinate_extractor = None
+        self._safety_monitor = None
+        self._refinements_initialized = False
+
         logger.info("[COMPUTER USE] Claude Computer Use Connector initialized with async support")
+
+    async def _ensure_refinements_initialized(self) -> bool:
+        """Lazily initialize Open Interpreter refinement components."""
+        if self._refinements_initialized:
+            return self._safe_code_executor is not None
+
+        try:
+            from backend.intelligence.computer_use_refinements import (
+                SafeCodeExecutor,
+                CoordinateExtractor,
+                SafetyMonitor,
+                ComputerUseConfig,
+            )
+
+            config = ComputerUseConfig()
+            self._safe_code_executor = SafeCodeExecutor(config)
+            self._coordinate_extractor = CoordinateExtractor(config)
+            self._safety_monitor = SafetyMonitor(config, strict_mode=True)
+
+            # Calibrate coordinate extractor
+            await self._coordinate_extractor.calibrate()
+
+            self._refinements_initialized = True
+            logger.info("[COMPUTER USE] Open Interpreter refinements initialized")
+            return True
+
+        except ImportError:
+            logger.debug("[COMPUTER USE] computer_use_refinements not available")
+            self._refinements_initialized = True
+            return False
+        except Exception as e:
+            logger.debug(f"[COMPUTER USE] Refinements initialization failed: {e}")
+            self._refinements_initialized = True
+            return False
+
+    async def execute_code_safely(
+        self,
+        code: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute Python code safely using the SafeCodeExecutor.
+
+        This is the Open Interpreter "Safe Execute" pattern that prevents
+        JARVIS from accidentally running `rm -rf /`.
+
+        Args:
+            code: Python code to execute
+            context: Optional context variables
+
+        Returns:
+            Dict with execution result
+        """
+        if not await self._ensure_refinements_initialized():
+            return {
+                "success": False,
+                "error": "Safe code executor not available",
+            }
+
+        if not self._safe_code_executor:
+            return {
+                "success": False,
+                "error": "Safe code executor not initialized",
+            }
+
+        result = await self._safe_code_executor.execute(code, context)
+
+        return {
+            "success": result.success,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode,
+            "execution_time_ms": result.execution_time_ms,
+            "blocked_reason": result.blocked_reason,
+        }
+
+    def get_enhanced_system_prompt(self) -> str:
+        """
+        Get system prompt enhanced with dynamic grid information.
+
+        This provides the LLM with accurate screen-specific grid calculations
+        for improved coordinate extraction.
+        """
+        base_prompt = self.SYSTEM_PROMPT
+
+        # Add dynamic grid information if coordinate extractor is available
+        if self._coordinate_extractor and self._coordinate_extractor._calibrated:
+            grid_section = self._coordinate_extractor.get_grid_prompt_section()
+            # Insert after the static grid section for reinforcement
+            return f"{base_prompt}\n\n*** DYNAMIC SCREEN CALIBRATION ***\n{grid_section}"
+
+        return base_prompt
 
     def _load_learned_positions(self) -> None:
         """Load previously learned UI element positions."""

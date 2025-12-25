@@ -440,6 +440,280 @@ class WisdomAdapter:
         return self._initialized and self._agent is not None
 
 
+class SafeCodeAdapter:
+    """Adapter for safe code execution (Open Interpreter pattern)."""
+
+    def __init__(self):
+        self._executor = None
+        self._initialized = False
+
+    async def initialize(self) -> None:
+        if self._initialized:
+            return
+        try:
+            from backend.intelligence.computer_use_refinements import (
+                SafeCodeExecutor,
+                ComputerUseConfig,
+            )
+            config = ComputerUseConfig()
+            self._executor = SafeCodeExecutor(config)
+            self._initialized = True
+            logger.info("SafeCodeAdapter initialized")
+        except ImportError as e:
+            logger.warning(f"Safe code executor not available: {e}")
+
+    async def execute(
+        self,
+        code: str,
+        context: Optional[Dict[str, Any]] = None,
+        timeout_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Execute Python code safely."""
+        if not self._initialized:
+            await self.initialize()
+        if not self._executor:
+            return {"success": False, "error": "Safe code executor not available"}
+
+        result = await self._executor.execute(code, context, timeout_sec)
+        return {
+            "success": result.success,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode,
+            "execution_time_ms": result.execution_time_ms,
+            "blocked_reason": result.blocked_reason,
+        }
+
+    def validate_code(self, code: str) -> Tuple[bool, Optional[str]]:
+        """Validate code without executing."""
+        if not self._executor:
+            return False, "Executor not initialized"
+        return self._executor.validate_code(code)
+
+    @property
+    def is_available(self) -> bool:
+        return self._initialized and self._executor is not None
+
+
+class ReactorCoreAdapter:
+    """
+    Adapter for Reactor Core integration.
+
+    Reactor Core is JARVIS's training and learning pipeline:
+    - Collects experiences from task execution
+    - Triggers training runs based on experience thresholds
+    - Manages learning goals and Safe Scout scraping
+    """
+
+    def __init__(self, config: Optional["CrossRepoHubConfig"] = None):
+        self.config = config or CrossRepoHubConfig()
+        self._client = None
+        self._initialized = False
+        self._is_online = False
+
+    async def initialize(self) -> None:
+        if self._initialized:
+            return
+        try:
+            from backend.clients.reactor_core_client import ReactorCoreClient
+            self._client = ReactorCoreClient()
+            await self._client.connect()
+            self._is_online = self._client.is_online
+            self._initialized = True
+            logger.info(f"ReactorCoreAdapter initialized (online={self._is_online})")
+        except ImportError:
+            logger.debug("Reactor Core client not available")
+        except Exception as e:
+            logger.warning(f"Reactor Core connection failed: {e}")
+            self._initialized = True  # Mark as initialized but offline
+
+    async def stream_experience(
+        self,
+        experience: Dict[str, Any],
+    ) -> bool:
+        """Stream a task experience to Reactor Core for learning."""
+        if not self._initialized:
+            await self.initialize()
+        if not self._client or not self._is_online:
+            return False
+
+        try:
+            return await self._client.stream_experience(experience)
+        except Exception as e:
+            logger.debug(f"Experience streaming failed: {e}")
+            return False
+
+    async def trigger_training(
+        self,
+        experience_count: int,
+        priority: str = "normal",
+        force: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Trigger a training run in Reactor Core."""
+        if not self._client or not self._is_online:
+            return None
+
+        try:
+            from backend.clients.reactor_core_client import TrainingPriority
+            priority_enum = TrainingPriority(priority.lower())
+            return await self._client.trigger_training(
+                experience_count=experience_count,
+                priority=priority_enum,
+                force=force,
+            )
+        except Exception as e:
+            logger.debug(f"Training trigger failed: {e}")
+            return None
+
+    async def add_learning_topic(
+        self,
+        topic: str,
+        category: str = "general",
+        priority: int = 5,
+    ) -> bool:
+        """Add a learning topic for Safe Scout to research."""
+        if not self._client or not self._is_online:
+            return False
+
+        try:
+            return await self._client.add_learning_topic(
+                topic=topic,
+                category=category,
+                priority=priority,
+                added_by="cross_repo_hub",
+            )
+        except Exception as e:
+            logger.debug(f"Learning topic submission failed: {e}")
+            return False
+
+    @property
+    def is_online(self) -> bool:
+        return self._is_online
+
+    @property
+    def is_available(self) -> bool:
+        return self._initialized
+
+
+class JARVISPrimeAdapter:
+    """
+    Adapter for JARVIS Prime integration.
+
+    JARVIS Prime is the orchestration layer for complex multi-step tasks:
+    - Hierarchical task decomposition
+    - Parallel agent coordination
+    - Cross-system workflow management
+    """
+
+    def __init__(self, config: Optional["CrossRepoHubConfig"] = None):
+        self.config = config or CrossRepoHubConfig()
+        self._orchestrator = None
+        self._client = None
+        self._initialized = False
+        self._is_online = False
+
+    async def initialize(self) -> None:
+        if self._initialized:
+            return
+
+        # Try orchestrator first (local integration)
+        try:
+            from backend.prime.jarvis_prime_orchestrator import JARVISPrimeOrchestrator
+            self._orchestrator = JARVISPrimeOrchestrator()
+            await self._orchestrator.initialize()
+            self._is_online = True
+            self._initialized = True
+            logger.info("JARVISPrimeAdapter initialized (orchestrator mode)")
+            return
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"JARVIS Prime orchestrator init failed: {e}")
+
+        # Try HTTP client (remote integration)
+        try:
+            import aiohttp
+            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8002")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{prime_url}/health", timeout=aiohttp.ClientTimeout(total=2.0)) as resp:
+                    if resp.status == 200:
+                        self._client = {"url": prime_url}
+                        self._is_online = True
+                        logger.info(f"JARVISPrimeAdapter initialized (client mode: {prime_url})")
+        except Exception as e:
+            logger.debug(f"JARVIS Prime client connection failed: {e}")
+
+        self._initialized = True
+
+    async def execute_workflow(
+        self,
+        workflow_name: str,
+        context: Dict[str, Any],
+        timeout_sec: float = 300.0,
+    ) -> Dict[str, Any]:
+        """Execute a workflow via JARVIS Prime."""
+        if not self._initialized:
+            await self.initialize()
+
+        if self._orchestrator:
+            # Direct orchestrator call
+            try:
+                result = await self._orchestrator.execute_workflow(
+                    workflow_name=workflow_name,
+                    context=context,
+                )
+                return result
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        if self._client:
+            # HTTP client call
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{self._client['url']}/api/workflow/execute",
+                        json={"workflow": workflow_name, "context": context},
+                        timeout=aiohttp.ClientTimeout(total=timeout_sec),
+                    ) as resp:
+                        if resp.status == 200:
+                            return await resp.json()
+                        return {"success": False, "error": f"HTTP {resp.status}"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        return {"success": False, "error": "JARVIS Prime not available"}
+
+    async def decompose_task(
+        self,
+        task: str,
+        complexity_threshold: float = 0.5,
+    ) -> List[Dict[str, Any]]:
+        """Decompose a complex task into subtasks."""
+        if not self._initialized:
+            await self.initialize()
+
+        if self._orchestrator and hasattr(self._orchestrator, "decompose_task"):
+            try:
+                return await self._orchestrator.decompose_task(
+                    task=task,
+                    complexity_threshold=complexity_threshold,
+                )
+            except Exception as e:
+                logger.debug(f"Task decomposition failed: {e}")
+
+        # Fallback: return single task
+        return [{"task": task, "priority": 1, "dependencies": []}]
+
+    @property
+    def is_online(self) -> bool:
+        return self._is_online
+
+    @property
+    def is_available(self) -> bool:
+        return self._initialized
+
+
 # ============================================================================
 # Cross-Repo Intelligence Hub
 # ============================================================================
@@ -465,6 +739,11 @@ class CrossRepoIntelligenceHub:
         self._sop_adapter = SOPAdapter()
         self._memory_adapter = MemoryAdapter()
         self._wisdom_adapter = WisdomAdapter()
+
+        # v6.0: New adapters for enhanced integration
+        self._safe_code_adapter = SafeCodeAdapter()
+        self._reactor_core_adapter = ReactorCoreAdapter(config)
+        self._jarvis_prime_adapter = JARVISPrimeAdapter(config)
 
         # Event handling
         self._event_handlers: Dict[EventType, List[Callable]] = {}
@@ -885,6 +1164,10 @@ __all__ = [
     "SOPAdapter",
     "MemoryAdapter",
     "WisdomAdapter",
+    # v6.0: New adapters
+    "SafeCodeAdapter",
+    "ReactorCoreAdapter",
+    "JARVISPrimeAdapter",
 
     # Convenience Functions
     "get_intelligence_hub",

@@ -275,6 +275,17 @@ class AgenticRunnerConfig:
         default_factory=lambda: os.getenv("JARVIS_MEMORY_STORE_OUTCOMES", "true").lower() == "true"
     )
 
+    # Safe Code Execution (v6.0 - "Open Interpreter-Inspired Sandbox")
+    safe_code_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_SAFE_CODE_ENABLED", "true").lower() == "true"
+    )
+    safe_code_timeout_sec: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_SAFE_CODE_TIMEOUT_SEC", "30"))
+    )
+    safe_code_max_memory_mb: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_SAFE_CODE_MAX_MEMORY_MB", "512"))
+    )
+
 
 # =============================================================================
 # Enums
@@ -577,6 +588,10 @@ class AgenticTaskRunner:
         self._phase_checkpoints: List[Dict[str, Any]] = []
         self._experience_replay_cache: List[Dict[str, Any]] = []
         self._active_interventions: int = 0
+
+        # Safe Code Execution (v6.0 - "Open Interpreter-Inspired Sandbox")
+        self._safe_code_executor = None
+        self._safe_code_initialized = False
 
         self.logger.info("[AgenticRunner] Created")
         self._log_availability()
@@ -934,6 +949,31 @@ class AgenticTaskRunner:
                     self.logger.debug(f"[AgenticRunner] ✗ Vision-Safety Integration: {e}")
                     self._vision_safety = None
                     self._safety_initialized = False
+
+            # Initialize Safe Code Executor (v6.0 - Open Interpreter pattern)
+            if self.config.safe_code_enabled:
+                try:
+                    from backend.intelligence.computer_use_refinements import (
+                        SafeCodeExecutor,
+                        ComputerUseConfig,
+                    )
+
+                    cu_config = ComputerUseConfig()
+                    # Override with agentic runner config values
+                    cu_config.sandbox_max_cpu_time_sec = self.config.safe_code_timeout_sec
+                    cu_config.sandbox_max_memory_mb = self.config.safe_code_max_memory_mb
+
+                    self._safe_code_executor = SafeCodeExecutor(cu_config)
+                    self._safe_code_initialized = True
+                    self.logger.info(
+                        f"[AgenticRunner] ✓ Safe Code Executor "
+                        f"(timeout={self.config.safe_code_timeout_sec}s, "
+                        f"memory={self.config.safe_code_max_memory_mb}MB)"
+                    )
+                except ImportError:
+                    self.logger.debug("[AgenticRunner] ✗ Safe Code Executor: module not available")
+                except Exception as e:
+                    self.logger.debug(f"[AgenticRunner] ✗ Safe Code Executor: {e}")
 
             # Verify we have at least one execution capability
             if not self._computer_use_tool and not self._computer_use_connector:
@@ -1806,6 +1846,120 @@ class AgenticTaskRunner:
         except Exception as e:
             # Never crash JARVIS for memory storage issues
             self.logger.debug(f"[Memory] Failed to store task outcome: {e}")
+
+    # =========================================================================
+    # Safe Code Execution (v6.0 - "Open Interpreter-Inspired Sandbox")
+    # =========================================================================
+
+    async def execute_code_safely(
+        self,
+        code: str,
+        context: Optional[Dict[str, Any]] = None,
+        timeout_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute Python code safely using the SafeCodeExecutor.
+
+        This is the Open Interpreter "Safe Execute" pattern that prevents
+        JARVIS from accidentally running `rm -rf /` or other dangerous operations.
+
+        The code is:
+        1. Validated via AST analysis to block dangerous imports/calls
+        2. Wrapped with sandbox restrictions (file access limited to sandbox dir)
+        3. Executed with timeout and resource limits
+
+        Args:
+            code: Python code to execute
+            context: Optional context variables to inject into the code
+            timeout_sec: Optional timeout override (default from config)
+
+        Returns:
+            Dict with execution result:
+            - success: bool
+            - stdout: str (output from the code)
+            - stderr: str (error output)
+            - returncode: int
+            - execution_time_ms: float
+            - blocked_reason: Optional[str] (if code was blocked)
+
+        Example:
+            result = await runner.execute_code_safely(
+                code="print('Hello, JARVIS!')",
+                context={"name": "Derek"},
+            )
+        """
+        if not self.config.safe_code_enabled:
+            return {
+                "success": False,
+                "error": "Safe code execution is disabled",
+                "blocked_reason": "Feature disabled via JARVIS_SAFE_CODE_ENABLED=false",
+            }
+
+        if not self._safe_code_executor:
+            # Try lazy initialization
+            if not self._safe_code_initialized:
+                try:
+                    from backend.intelligence.computer_use_refinements import (
+                        SafeCodeExecutor,
+                        ComputerUseConfig,
+                    )
+
+                    cu_config = ComputerUseConfig()
+                    cu_config.sandbox_max_cpu_time_sec = self.config.safe_code_timeout_sec
+                    cu_config.sandbox_max_memory_mb = self.config.safe_code_max_memory_mb
+
+                    self._safe_code_executor = SafeCodeExecutor(cu_config)
+                    self._safe_code_initialized = True
+                except Exception as e:
+                    self.logger.debug(f"[SafeCode] Failed to initialize: {e}")
+                    return {
+                        "success": False,
+                        "error": f"Safe code executor initialization failed: {e}",
+                    }
+
+            if not self._safe_code_executor:
+                return {
+                    "success": False,
+                    "error": "Safe code executor not available",
+                }
+
+        try:
+            result = await self._safe_code_executor.execute(
+                code=code,
+                context=context,
+                timeout_sec=timeout_sec or self.config.safe_code_timeout_sec,
+            )
+
+            return {
+                "success": result.success,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "returncode": result.returncode,
+                "execution_time_ms": result.execution_time_ms,
+                "blocked_reason": result.blocked_reason,
+                "error_type": result.error_type,
+            }
+
+        except Exception as e:
+            self.logger.error(f"[SafeCode] Execution error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def get_safe_code_stats(self) -> Dict[str, Any]:
+        """Get statistics from the safe code executor."""
+        if not self._safe_code_executor:
+            return {
+                "available": False,
+                "reason": "Safe code executor not initialized",
+            }
+
+        stats = self._safe_code_executor.get_stats()
+        return {
+            "available": True,
+            **stats,
+        }
 
     async def trigger_training_manual(
         self,
