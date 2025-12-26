@@ -1080,6 +1080,9 @@ Always provide your reasoning before taking action, including grid position esti
                 if analysis.suggested_action:
                     action = analysis.suggested_action
 
+                    # Reset no-action counter since we have an action
+                    self._no_action_count = 0
+
                     # Narrate the action
                     await self._narrate_action(action)
 
@@ -1106,9 +1109,18 @@ Always provide your reasoning before taking action, including grid position esti
                             {"reason": result.error or "Unknown error"}
                         )
                 else:
-                    # No action suggested - Claude might be stuck
+                    # No action suggested - task might be complete or Claude is stuck
                     logger.warning("[COMPUTER USE] No action suggested by Claude")
-                    await asyncio.sleep(1.0)
+                    # If no action for 2 consecutive turns, assume task is complete
+                    if not hasattr(self, '_no_action_count'):
+                        self._no_action_count = 0
+                    self._no_action_count += 1
+
+                    if self._no_action_count >= 2:
+                        logger.info("[COMPUTER USE] No actions for 2 turns - assuming task complete")
+                        goal_achieved = True
+                        break
+                    await asyncio.sleep(0.5)
 
             # Determine final status
             if goal_achieved:
