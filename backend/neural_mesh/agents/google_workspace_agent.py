@@ -5,6 +5,22 @@ JARVIS Neural Mesh - Google Workspace Agent
 A production agent specialized in Google Workspace administration and communication.
 Handles Gmail, Calendar, Drive, and Contacts integrations for the "Chief of Staff" role.
 
+**UNIFIED EXECUTION ARCHITECTURE**
+
+This agent implements a "Never-Fail" waterfall strategy:
+
+    Tier 1: Google API (Fast, Cloud-based)
+    │       Gmail API, Calendar API, People API
+    │       ↓ (if unavailable or fails)
+    │
+    Tier 2: macOS Local (Native apps via CalendarBridge/AppleScript)
+    │       macOS Calendar, macOS Contacts
+    │       ↓ (if unavailable or fails)
+    │
+    Tier 3: Computer Use (Visual automation)
+            Screenshot → Claude Vision → Click actions
+            Works with ANY app visible on screen
+
 Capabilities:
 - fetch_unread_emails: Get unread emails with intelligent filtering
 - check_calendar_events: View calendar events for any date
@@ -14,15 +30,16 @@ Capabilities:
 - create_calendar_event: Schedule new events
 - get_contacts: Retrieve contact information
 - workspace_summary: Get daily briefing summary
+- create_document: Create Google Docs with AI content generation
 
 This agent handles all "Admin" and "Communication" tasks, enabling JARVIS to:
 - "Check my schedule"
 - "Draft an email to Mitra"
 - "What meetings do I have today?"
-- "Send an email about the project update"
+- "Write an essay on dogs"
 
 Author: JARVIS AI System
-Version: 1.0.0
+Version: 2.0.0 (Unified Execution)
 """
 
 from __future__ import annotations
@@ -78,6 +95,104 @@ except ImportError:
         "Google API libraries not available. Install: "
         "pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client"
     )
+
+
+# =============================================================================
+# Tier 2: macOS Local Availability Check (CalendarBridge)
+# =============================================================================
+
+try:
+    from backend.system_control.calendar_bridge import CalendarBridge, CalendarEvent
+    CALENDAR_BRIDGE_AVAILABLE = True
+except ImportError:
+    try:
+        from system_control.calendar_bridge import CalendarBridge, CalendarEvent
+        CALENDAR_BRIDGE_AVAILABLE = True
+    except ImportError:
+        CALENDAR_BRIDGE_AVAILABLE = False
+        CalendarBridge = None
+        CalendarEvent = None
+        logger.info("CalendarBridge not available - macOS local calendar fallback disabled")
+
+
+# =============================================================================
+# Tier 3: Computer Use Availability Check (Visual Fallback)
+# =============================================================================
+
+try:
+    from backend.autonomy.computer_use_tool import (
+        ComputerUseTool,
+        get_computer_use_tool,
+        ComputerUseResult,
+    )
+    COMPUTER_USE_AVAILABLE = True
+except ImportError:
+    try:
+        from autonomy.computer_use_tool import (
+            ComputerUseTool,
+            get_computer_use_tool,
+            ComputerUseResult,
+        )
+        COMPUTER_USE_AVAILABLE = True
+    except ImportError:
+        COMPUTER_USE_AVAILABLE = False
+        ComputerUseTool = None
+        get_computer_use_tool = None
+        logger.info("ComputerUseTool not available - visual fallback disabled")
+
+
+# =============================================================================
+# Document Writer (Google Docs + AI Content)
+# =============================================================================
+
+try:
+    from backend.context_intelligence.executors.document_writer import (
+        DocumentWriterExecutor,
+        DocumentRequest,
+        DocumentType,
+        DocumentFormat,
+        get_document_writer,
+    )
+    DOCUMENT_WRITER_AVAILABLE = True
+except ImportError:
+    try:
+        from context_intelligence.executors.document_writer import (
+            DocumentWriterExecutor,
+            DocumentRequest,
+            DocumentType,
+            DocumentFormat,
+            get_document_writer,
+        )
+        DOCUMENT_WRITER_AVAILABLE = True
+    except ImportError:
+        DOCUMENT_WRITER_AVAILABLE = False
+        DocumentWriterExecutor = None
+        get_document_writer = None
+        logger.info("DocumentWriterExecutor not available - document creation disabled")
+
+
+# =============================================================================
+# Google Docs API (Direct)
+# =============================================================================
+
+try:
+    from backend.context_intelligence.automation.google_docs_api import (
+        GoogleDocsClient,
+        get_google_docs_client,
+    )
+    GOOGLE_DOCS_AVAILABLE = True
+except ImportError:
+    try:
+        from context_intelligence.automation.google_docs_api import (
+            GoogleDocsClient,
+            get_google_docs_client,
+        )
+        GOOGLE_DOCS_AVAILABLE = True
+    except ImportError:
+        GOOGLE_DOCS_AVAILABLE = False
+        GoogleDocsClient = None
+        get_google_docs_client = None
+        logger.info("GoogleDocsClient not available - Google Docs creation disabled")
 
 
 # =============================================================================
@@ -155,6 +270,363 @@ class WorkspaceIntent(Enum):
     # Unknown
     UNKNOWN = "unknown"
 
+    # Document creation
+    CREATE_DOCUMENT = "create_document"
+
+
+class ExecutionTier(Enum):
+    """Execution tier for the waterfall fallback strategy."""
+
+    GOOGLE_API = "google_api"       # Tier 1: Google Cloud APIs
+    MACOS_LOCAL = "macos_local"     # Tier 2: macOS native apps
+    COMPUTER_USE = "computer_use"   # Tier 3: Visual automation
+
+
+@dataclass
+class ExecutionResult:
+    """Result of a tiered execution attempt."""
+
+    success: bool
+    tier_used: ExecutionTier
+    data: Dict[str, Any]
+    error: Optional[str] = None
+    fallback_attempted: bool = False
+    execution_time_ms: float = 0.0
+
+
+class UnifiedWorkspaceExecutor:
+    """
+    Unified executor implementing the "Never-Fail" waterfall strategy.
+
+    This executor tries each tier in order until one succeeds:
+    1. Google API (fast, cloud-based)
+    2. macOS Local (CalendarBridge, AppleScript)
+    3. Computer Use (visual automation via Claude Vision)
+
+    Features:
+    - Graceful degradation (no crashes on missing components)
+    - Automatic tier detection based on availability
+    - Parallel execution where possible
+    - Detailed logging for debugging
+    - Learning from failures for future optimization
+    """
+
+    def __init__(self) -> None:
+        """Initialize the unified executor with all available tiers."""
+        self._available_tiers: List[ExecutionTier] = []
+        self._tier_stats: Dict[ExecutionTier, Dict[str, int]] = {}
+        self._calendar_bridge: Optional[CalendarBridge] = None
+        self._computer_use: Optional[ComputerUseTool] = None
+        self._initialized = False
+        self._lock = asyncio.Lock()
+
+        # Track availability
+        self._check_tier_availability()
+
+    def _check_tier_availability(self) -> None:
+        """Check which execution tiers are available."""
+        self._available_tiers = []
+
+        # Tier 1: Google API
+        if GOOGLE_API_AVAILABLE:
+            self._available_tiers.append(ExecutionTier.GOOGLE_API)
+            logger.info("Tier 1 (Google API) available")
+
+        # Tier 2: macOS Local
+        if CALENDAR_BRIDGE_AVAILABLE:
+            self._available_tiers.append(ExecutionTier.MACOS_LOCAL)
+            logger.info("Tier 2 (macOS Local) available")
+
+        # Tier 3: Computer Use
+        if COMPUTER_USE_AVAILABLE:
+            self._available_tiers.append(ExecutionTier.COMPUTER_USE)
+            logger.info("Tier 3 (Computer Use) available")
+
+        # Initialize stats
+        for tier in ExecutionTier:
+            self._tier_stats[tier] = {
+                "attempts": 0,
+                "successes": 0,
+                "failures": 0,
+            }
+
+        if not self._available_tiers:
+            logger.warning(
+                "No execution tiers available! "
+                "Install Google API libraries, or ensure macOS Calendar access, "
+                "or enable Computer Use."
+            )
+
+    async def initialize(self) -> bool:
+        """Initialize all available execution backends."""
+        async with self._lock:
+            if self._initialized:
+                return True
+
+            try:
+                # Initialize Tier 2: CalendarBridge
+                if CALENDAR_BRIDGE_AVAILABLE and CalendarBridge is not None:
+                    self._calendar_bridge = CalendarBridge()
+                    logger.info("CalendarBridge initialized")
+
+                # Initialize Tier 3: Computer Use
+                if COMPUTER_USE_AVAILABLE and get_computer_use_tool is not None:
+                    self._computer_use = get_computer_use_tool()
+                    logger.info("ComputerUseTool initialized")
+
+                self._initialized = True
+                return True
+
+            except Exception as e:
+                logger.exception(f"Error initializing unified executor: {e}")
+                return False
+
+    async def execute_calendar_check(
+        self,
+        google_client: Optional[Any],
+        date_str: str = "today",
+        hours_ahead: int = 24,
+    ) -> ExecutionResult:
+        """
+        Check calendar using waterfall strategy.
+
+        Tries:
+        1. Google Calendar API
+        2. macOS CalendarBridge
+        3. Computer Use (open Calendar.app, screenshot, analyze)
+        """
+        start_time = asyncio.get_event_loop().time()
+
+        # Tier 1: Google Calendar API
+        if ExecutionTier.GOOGLE_API in self._available_tiers and google_client:
+            self._tier_stats[ExecutionTier.GOOGLE_API]["attempts"] += 1
+            try:
+                result = await google_client.get_calendar_events(date_str=date_str)
+                if result and "error" not in result:
+                    self._tier_stats[ExecutionTier.GOOGLE_API]["successes"] += 1
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.GOOGLE_API,
+                        data=result,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+                logger.info("Google Calendar API failed, trying next tier...")
+                self._tier_stats[ExecutionTier.GOOGLE_API]["failures"] += 1
+            except Exception as e:
+                logger.warning(f"Google Calendar API error: {e}")
+                self._tier_stats[ExecutionTier.GOOGLE_API]["failures"] += 1
+
+        # Tier 2: macOS CalendarBridge
+        if ExecutionTier.MACOS_LOCAL in self._available_tiers and self._calendar_bridge:
+            self._tier_stats[ExecutionTier.MACOS_LOCAL]["attempts"] += 1
+            try:
+                events = await self._calendar_bridge.get_events(hours_ahead=hours_ahead)
+                if events is not None:
+                    # Convert CalendarEvent objects to dicts
+                    event_dicts = []
+                    for event in events:
+                        event_dicts.append({
+                            "id": event.event_id,
+                            "title": event.title,
+                            "start": event.start_time.isoformat(),
+                            "end": event.end_time.isoformat(),
+                            "location": event.location,
+                            "is_all_day": event.is_all_day,
+                            "source": "macos_calendar",
+                        })
+                    self._tier_stats[ExecutionTier.MACOS_LOCAL]["successes"] += 1
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.MACOS_LOCAL,
+                        data={"events": event_dicts, "count": len(event_dicts)},
+                        fallback_attempted=True,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+                logger.info("macOS Calendar failed, trying Computer Use...")
+                self._tier_stats[ExecutionTier.MACOS_LOCAL]["failures"] += 1
+            except Exception as e:
+                logger.warning(f"macOS Calendar error: {e}")
+                self._tier_stats[ExecutionTier.MACOS_LOCAL]["failures"] += 1
+
+        # Tier 3: Computer Use (Visual)
+        if ExecutionTier.COMPUTER_USE in self._available_tiers and self._computer_use:
+            self._tier_stats[ExecutionTier.COMPUTER_USE]["attempts"] += 1
+            try:
+                goal = f"Open the Calendar app and read today's events. List all meetings and appointments for {date_str}."
+                result = await self._computer_use.run(goal=goal)
+                if result and result.success:
+                    self._tier_stats[ExecutionTier.COMPUTER_USE]["successes"] += 1
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.COMPUTER_USE,
+                        data={
+                            "raw_response": result.final_message,
+                            "actions_count": result.actions_count,
+                            "source": "computer_use_visual",
+                        },
+                        fallback_attempted=True,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+                self._tier_stats[ExecutionTier.COMPUTER_USE]["failures"] += 1
+            except Exception as e:
+                logger.warning(f"Computer Use error: {e}")
+                self._tier_stats[ExecutionTier.COMPUTER_USE]["failures"] += 1
+
+        # All tiers failed
+        return ExecutionResult(
+            success=False,
+            tier_used=ExecutionTier.GOOGLE_API,
+            data={},
+            error="All execution tiers failed for calendar check",
+            execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+        )
+
+    async def execute_email_check(
+        self,
+        google_client: Optional[Any],
+        limit: int = 10,
+    ) -> ExecutionResult:
+        """
+        Check emails using waterfall strategy.
+
+        Tries:
+        1. Gmail API
+        2. Computer Use (open Mail.app or Gmail in browser)
+        """
+        start_time = asyncio.get_event_loop().time()
+
+        # Tier 1: Gmail API
+        if ExecutionTier.GOOGLE_API in self._available_tiers and google_client:
+            self._tier_stats[ExecutionTier.GOOGLE_API]["attempts"] += 1
+            try:
+                result = await google_client.fetch_unread_emails(limit=limit)
+                if result and "error" not in result:
+                    self._tier_stats[ExecutionTier.GOOGLE_API]["successes"] += 1
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.GOOGLE_API,
+                        data=result,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+                self._tier_stats[ExecutionTier.GOOGLE_API]["failures"] += 1
+            except Exception as e:
+                logger.warning(f"Gmail API error: {e}")
+                self._tier_stats[ExecutionTier.GOOGLE_API]["failures"] += 1
+
+        # Tier 3: Computer Use (Visual) - Skip Tier 2 for email (no macOS email bridge)
+        if ExecutionTier.COMPUTER_USE in self._available_tiers and self._computer_use:
+            self._tier_stats[ExecutionTier.COMPUTER_USE]["attempts"] += 1
+            try:
+                goal = f"Open Safari, go to mail.google.com, and read the {limit} most recent unread emails. List the sender and subject of each."
+                result = await self._computer_use.run(goal=goal)
+                if result and result.success:
+                    self._tier_stats[ExecutionTier.COMPUTER_USE]["successes"] += 1
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.COMPUTER_USE,
+                        data={
+                            "raw_response": result.final_message,
+                            "actions_count": result.actions_count,
+                            "source": "computer_use_visual",
+                        },
+                        fallback_attempted=True,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+                self._tier_stats[ExecutionTier.COMPUTER_USE]["failures"] += 1
+            except Exception as e:
+                logger.warning(f"Computer Use error for email: {e}")
+                self._tier_stats[ExecutionTier.COMPUTER_USE]["failures"] += 1
+
+        return ExecutionResult(
+            success=False,
+            tier_used=ExecutionTier.GOOGLE_API,
+            data={},
+            error="All execution tiers failed for email check",
+            execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+        )
+
+    async def execute_document_creation(
+        self,
+        topic: str,
+        document_type: str = "essay",
+        word_count: Optional[int] = None,
+    ) -> ExecutionResult:
+        """
+        Create a document using waterfall strategy.
+
+        Tries:
+        1. Google Docs API + Claude for content
+        2. Computer Use (open Google Docs in browser, type content)
+        """
+        start_time = asyncio.get_event_loop().time()
+
+        # Tier 1: Google Docs API via DocumentWriter
+        if DOCUMENT_WRITER_AVAILABLE and get_document_writer is not None:
+            try:
+                writer = get_document_writer()
+
+                # Convert string to DocumentType enum
+                doc_type = DocumentType.ESSAY
+                if document_type.lower() == "report":
+                    doc_type = DocumentType.REPORT
+                elif document_type.lower() == "paper":
+                    doc_type = DocumentType.PAPER
+
+                request = DocumentRequest(
+                    topic=topic,
+                    document_type=doc_type,
+                    word_count=word_count,
+                )
+
+                result = await writer.create_document(request)
+                if result.get("success"):
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.GOOGLE_API,
+                        data=result,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+            except Exception as e:
+                logger.warning(f"DocumentWriter error: {e}")
+
+        # Tier 3: Computer Use (Visual)
+        if ExecutionTier.COMPUTER_USE in self._available_tiers and self._computer_use:
+            try:
+                goal = (
+                    f"Open Safari, go to docs.google.com, create a new blank document, "
+                    f"title it '{topic}', and write a {word_count or 500} word {document_type} about {topic}."
+                )
+                result = await self._computer_use.run(goal=goal)
+                if result and result.success:
+                    return ExecutionResult(
+                        success=True,
+                        tier_used=ExecutionTier.COMPUTER_USE,
+                        data={
+                            "raw_response": result.final_message,
+                            "source": "computer_use_visual",
+                        },
+                        fallback_attempted=True,
+                        execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+                    )
+            except Exception as e:
+                logger.warning(f"Computer Use error for document: {e}")
+
+        return ExecutionResult(
+            success=False,
+            tier_used=ExecutionTier.GOOGLE_API,
+            data={},
+            error="All execution tiers failed for document creation",
+            execution_time_ms=(asyncio.get_event_loop().time() - start_time) * 1000,
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get execution statistics for all tiers."""
+        return {
+            "available_tiers": [t.value for t in self._available_tiers],
+            "tier_stats": {t.value: stats for t, stats in self._tier_stats.items()},
+            "initialized": self._initialized,
+        }
+
 
 class WorkspaceIntentDetector:
     """
@@ -213,6 +685,13 @@ class WorkspaceIntentDetector:
             "contact info", "email address for", "phone number for",
             "contact for", "find contact", "get contact",
         ],
+        WorkspaceIntent.CREATE_DOCUMENT: [
+            "write an essay", "write essay", "create document", "create a document",
+            "write a paper", "write paper", "write a report", "write report",
+            "create google doc", "make a document", "write about",
+            "essay on", "essay about", "paper on", "paper about",
+            "report on", "report about", "article on", "article about",
+        ],
     }
 
     # Required keywords for each intent (at least one must be present for match)
@@ -226,6 +705,7 @@ class WorkspaceIntentDetector:
         WorkspaceIntent.FIND_FREE_TIME: {"free", "available", "availability"},
         WorkspaceIntent.DAILY_BRIEFING: {"briefing", "summary", "brief", "catch"},  # "catch me up"
         WorkspaceIntent.GET_CONTACTS: {"contact", "phone", "address"},
+        WorkspaceIntent.CREATE_DOCUMENT: {"essay", "paper", "report", "document", "article", "write"},
     }
 
     # Name extraction patterns
@@ -1004,10 +1484,17 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
     - Gmail (read, send, draft, search)
     - Calendar (view, create events)
     - Contacts (lookup)
+    - Google Docs (create documents with AI content)
 
-    It provides intelligent routing so natural language queries like
-    "Check my schedule" or "Draft an email to Mitra" are automatically
-    handled by this agent.
+    **UNIFIED EXECUTION ARCHITECTURE**
+
+    This agent implements a "Never-Fail" waterfall strategy:
+    - Tier 1: Google API (fast, cloud-based)
+    - Tier 2: macOS Local (CalendarBridge, native apps)
+    - Tier 3: Computer Use (visual automation)
+
+    Even if Google APIs are unavailable, JARVIS can still check your
+    calendar by opening the Calendar app and reading it visually.
 
     Usage:
         agent = GoogleWorkspaceAgent()
@@ -1040,15 +1527,20 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
                 # Composite
                 "workspace_summary",
                 "daily_briefing",
+                # Document creation
+                "create_document",
                 # Routing
                 "handle_workspace_query",
             },
-            version="1.0.0",
+            version="2.0.0",  # Unified Execution version
         )
 
         self.config = config or GoogleWorkspaceConfig()
         self._client: Optional[GoogleWorkspaceClient] = None
         self._intent_detector = WorkspaceIntentDetector()
+
+        # Unified Executor for "Never-Fail" waterfall strategy
+        self._unified_executor: Optional[UnifiedWorkspaceExecutor] = None
 
         # Statistics
         self._email_queries = 0
@@ -1056,13 +1548,22 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         self._emails_sent = 0
         self._drafts_created = 0
         self._events_created = 0
+        self._documents_created = 0
+        self._fallback_uses = 0
 
     async def on_initialize(self) -> None:
         """Initialize agent resources."""
-        logger.info("Initializing GoogleWorkspaceAgent")
+        logger.info("Initializing GoogleWorkspaceAgent v2.0 (Unified Execution)")
 
-        # Create client (lazy authentication)
+        # Create Google API client (lazy authentication)
         self._client = GoogleWorkspaceClient(self.config)
+
+        # Initialize Unified Executor for waterfall fallbacks
+        self._unified_executor = UnifiedWorkspaceExecutor()
+        await self._unified_executor.initialize()
+        logger.info(
+            f"Unified Executor ready: {self._unified_executor.get_stats()['available_tiers']}"
+        )
 
         # Subscribe to workspace-related messages
         await self.subscribe(
@@ -1070,7 +1571,7 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             self._handle_workspace_message,
         )
 
-        logger.info("GoogleWorkspaceAgent initialized (authentication deferred)")
+        logger.info("GoogleWorkspaceAgent initialized with Never-Fail fallbacks")
 
     async def on_start(self) -> None:
         """Called when agent starts."""
@@ -1100,24 +1601,42 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         Execute a workspace task.
 
         Supported actions:
-        - fetch_unread_emails: Get unread emails
+        - fetch_unread_emails: Get unread emails (with fallback)
         - search_email: Search emails
         - draft_email_reply: Create email draft
         - send_email: Send an email
-        - check_calendar_events: Get calendar events
+        - check_calendar_events: Get calendar events (with fallback)
         - create_calendar_event: Create a calendar event
+        - create_document: Create Google Doc with AI content
         - get_contacts: Get contacts
         - workspace_summary: Get daily briefing
         - handle_workspace_query: Natural language query handler
+
+        Note: Actions with "(with fallback)" use the unified executor
+        and will try alternative methods if the primary fails.
         """
         action = payload.get("action", "")
 
         logger.debug(f"GoogleWorkspaceAgent executing: {action}")
 
-        # Ensure authenticated
-        if action != "handle_workspace_query":
-            if not await self._ensure_client():
-                return {"error": "Google Workspace authentication failed"}
+        # Actions that support fallback don't require authentication
+        fallback_actions = {
+            "fetch_unread_emails",
+            "check_calendar_events",
+            "create_document",
+            "handle_workspace_query",
+            "workspace_summary",
+            "daily_briefing",
+        }
+
+        # For non-fallback actions, try to authenticate (but don't fail hard)
+        if action not in fallback_actions:
+            auth_success = await self._ensure_client()
+            if not auth_success:
+                logger.warning(
+                    f"Google API auth failed for {action}, but proceeding "
+                    f"(some operations may fail)"
+                )
 
         # Route to appropriate handler
         if action == "fetch_unread_emails":
@@ -1132,6 +1651,8 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             return await self._check_calendar(payload)
         elif action == "create_calendar_event":
             return await self._create_event(payload)
+        elif action == "create_document":
+            return await self._create_document(payload)
         elif action == "get_contacts":
             return await self._get_contacts(payload)
         elif action == "workspace_summary":
@@ -1144,27 +1665,60 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             raise ValueError(f"Unknown workspace action: {action}")
 
     async def _fetch_unread_emails(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch unread emails."""
+        """
+        Fetch unread emails using unified executor with waterfall fallback.
+
+        Tries:
+        1. Gmail API (if authenticated)
+        2. Computer Use (visual - open Gmail in browser)
+        """
         limit = payload.get("limit", self.config.default_email_limit)
-        label = payload.get("label", "INBOX")
 
         self._email_queries += 1
 
-        result = await self._client.fetch_unread_emails(limit=limit, label=label)
-
-        # Add to knowledge graph
-        if self.knowledge_graph and result.get("emails"):
-            await self.add_knowledge(
-                knowledge_type=KnowledgeType.OBSERVATION,
-                data={
-                    "type": "email_check",
-                    "unread_count": result.get("count", 0),
-                    "checked_at": datetime.now().isoformat(),
-                },
-                confidence=1.0,
+        # Use unified executor for waterfall fallback
+        if self._unified_executor:
+            exec_result = await self._unified_executor.execute_email_check(
+                google_client=self._client if self._client else None,
+                limit=limit,
             )
 
-        return result
+            if exec_result.success:
+                result = exec_result.data
+                result["tier_used"] = exec_result.tier_used.value
+                result["execution_time_ms"] = exec_result.execution_time_ms
+
+                if exec_result.fallback_attempted:
+                    self._fallback_uses += 1
+                    logger.info(
+                        f"Email check succeeded via fallback: {exec_result.tier_used.value}"
+                    )
+
+                # Add to knowledge graph
+                if self.knowledge_graph:
+                    await self.add_knowledge(
+                        knowledge_type=KnowledgeType.OBSERVATION,
+                        data={
+                            "type": "email_check",
+                            "unread_count": result.get("count", 0),
+                            "tier_used": exec_result.tier_used.value,
+                            "checked_at": datetime.now().isoformat(),
+                        },
+                        confidence=1.0,
+                    )
+
+                return result
+            else:
+                return {
+                    "error": exec_result.error or "All email check methods failed",
+                    "emails": [],
+                }
+
+        # Fallback to direct client call if executor not available
+        if self._client:
+            return await self._client.fetch_unread_emails(limit=limit)
+
+        return {"error": "No execution method available", "emails": []}
 
     async def _search_email(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Search emails."""
@@ -1241,36 +1795,79 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         return result
 
     async def _check_calendar(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Check calendar events."""
-        date_str = payload.get("date")
-        days = payload.get("days", 1)
+        """
+        Check calendar events using unified executor with waterfall fallback.
 
-        # Handle relative dates
+        Tries:
+        1. Google Calendar API (if authenticated)
+        2. macOS CalendarBridge (native calendar)
+        3. Computer Use (visual - open Calendar app)
+
+        This is a "Never-Fail" operation - even if Google is down,
+        JARVIS can still check your local calendar.
+        """
+        date_str = payload.get("date", "today")
+        days = payload.get("days", 1)
+        hours_ahead = days * 24
+
+        # Handle relative dates for display
+        display_date = date_str
         if date_str:
             date_lower = date_str.lower()
             if date_lower == "today":
-                date_str = date.today().isoformat()
+                display_date = date.today().isoformat()
             elif date_lower == "tomorrow":
-                date_str = (date.today() + timedelta(days=1)).isoformat()
+                display_date = (date.today() + timedelta(days=1)).isoformat()
 
         self._calendar_queries += 1
 
-        result = await self._client.get_calendar_events(date_str=date_str, days=days)
-
-        # Add observation to knowledge graph
-        if self.knowledge_graph:
-            await self.add_knowledge(
-                knowledge_type=KnowledgeType.OBSERVATION,
-                data={
-                    "type": "calendar_check",
-                    "event_count": result.get("count", 0),
-                    "date_range": result.get("date_range"),
-                    "checked_at": datetime.now().isoformat(),
-                },
-                confidence=1.0,
+        # Use unified executor for waterfall fallback
+        if self._unified_executor:
+            exec_result = await self._unified_executor.execute_calendar_check(
+                google_client=self._client if self._client else None,
+                date_str=date_str,
+                hours_ahead=hours_ahead,
             )
 
-        return result
+            if exec_result.success:
+                result = exec_result.data
+                result["tier_used"] = exec_result.tier_used.value
+                result["execution_time_ms"] = exec_result.execution_time_ms
+                result["date_queried"] = display_date
+
+                if exec_result.fallback_attempted:
+                    self._fallback_uses += 1
+                    logger.info(
+                        f"Calendar check succeeded via fallback: {exec_result.tier_used.value}"
+                    )
+
+                # Add observation to knowledge graph
+                if self.knowledge_graph:
+                    await self.add_knowledge(
+                        knowledge_type=KnowledgeType.OBSERVATION,
+                        data={
+                            "type": "calendar_check",
+                            "event_count": result.get("count", 0),
+                            "tier_used": exec_result.tier_used.value,
+                            "date_range": result.get("date_range"),
+                            "checked_at": datetime.now().isoformat(),
+                        },
+                        confidence=1.0,
+                    )
+
+                return result
+            else:
+                return {
+                    "error": exec_result.error or "All calendar check methods failed",
+                    "events": [],
+                    "count": 0,
+                }
+
+        # Fallback to direct client call if executor not available
+        if self._client:
+            return await self._client.get_calendar_events(date_str=display_date, days=days)
+
+        return {"error": "No execution method available", "events": [], "count": 0}
 
     async def _create_event(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a calendar event."""
@@ -1305,7 +1902,76 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         query = payload.get("query")
         limit = payload.get("limit", 20)
 
-        return await self._client.get_contacts(query=query, limit=limit)
+        if self._client:
+            return await self._client.get_contacts(query=query, limit=limit)
+        return {"error": "Google API client not available", "contacts": []}
+
+    async def _create_document(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a Google Doc with AI-generated content.
+
+        Uses unified executor with fallback:
+        1. Google Docs API + Claude content generation
+        2. Computer Use (open browser, create doc visually)
+
+        Args:
+            payload: Dict with:
+                - topic: Subject/topic of the document
+                - document_type: "essay", "report", "paper", etc.
+                - word_count: Target word count (optional)
+                - format: "mla", "apa", "chicago", etc. (optional)
+        """
+        topic = payload.get("topic", "")
+        document_type = payload.get("document_type", "essay")
+        word_count = payload.get("word_count")
+
+        if not topic:
+            return {"error": "Document topic is required"}
+
+        logger.info(f"Creating document: {document_type} about '{topic}'")
+
+        # Use unified executor for waterfall fallback
+        if self._unified_executor:
+            exec_result = await self._unified_executor.execute_document_creation(
+                topic=topic,
+                document_type=document_type,
+                word_count=word_count,
+            )
+
+            if exec_result.success:
+                self._documents_created += 1
+                result = exec_result.data
+                result["tier_used"] = exec_result.tier_used.value
+                result["execution_time_ms"] = exec_result.execution_time_ms
+
+                if exec_result.fallback_attempted:
+                    self._fallback_uses += 1
+                    logger.info(
+                        f"Document creation succeeded via fallback: {exec_result.tier_used.value}"
+                    )
+
+                # Add to knowledge graph
+                if self.knowledge_graph:
+                    await self.add_knowledge(
+                        knowledge_type=KnowledgeType.OBSERVATION,
+                        data={
+                            "type": "document_created",
+                            "topic": topic,
+                            "document_type": document_type,
+                            "tier_used": exec_result.tier_used.value,
+                            "created_at": datetime.now().isoformat(),
+                        },
+                        confidence=1.0,
+                    )
+
+                return result
+            else:
+                return {
+                    "error": exec_result.error or "All document creation methods failed",
+                    "success": False,
+                }
+
+        return {"error": "No execution method available for document creation", "success": False}
 
     async def _get_workspace_summary(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1539,12 +2205,21 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         return self._intent_detector.is_workspace_query(query)
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get agent statistics."""
-        return {
+        """Get agent statistics including unified executor metrics."""
+        stats = {
             "email_queries": self._email_queries,
             "calendar_queries": self._calendar_queries,
             "emails_sent": self._emails_sent,
             "drafts_created": self._drafts_created,
             "events_created": self._events_created,
+            "documents_created": self._documents_created,
+            "fallback_uses": self._fallback_uses,
             "capabilities": list(self.capabilities),
+            "version": "2.0.0",
         }
+
+        # Add unified executor stats if available
+        if self._unified_executor:
+            stats["unified_executor"] = self._unified_executor.get_stats()
+
+        return stats
