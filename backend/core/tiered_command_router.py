@@ -791,10 +791,115 @@ class TieredCommandRouter:
         """
         Execute a Tier 2 command (agentic, full control).
 
+        v6.3 Enhancement: Intelligent routing between:
+        - Proactive Parallelism (expand_and_execute) for multi-task workflows
+        - Standard Computer Use (sequential) for single-task commands
+
         This uses the AgenticTaskRunner with Computer Use.
         """
         logger.info(f"[TieredRouter] Executing Tier 2 (Agentic): {command[:50]}...")
 
+        try:
+            # v6.3: Detect if this should use Proactive Parallelism
+            from core.proactive_command_detector import get_proactive_detector
+
+            detector = get_proactive_detector()
+            detection = await detector.detect(command)
+
+            if detection.should_use_expand_and_execute:
+                logger.info(
+                    f"[TieredRouter] ✨ Proactive mode detected "
+                    f"(confidence: {detection.confidence:.1%}, intent: {detection.suggested_intent})"
+                )
+                return await self._execute_proactive_workflow(command, context, detection)
+            else:
+                logger.info(f"[TieredRouter] Standard mode (confidence: {detection.confidence:.1%})")
+                return await self._execute_standard_computer_use(command, context)
+
+        except ImportError as e:
+            logger.warning(f"[TieredRouter] Proactive detector not available, falling back to standard: {e}")
+            return await self._execute_standard_computer_use(command, context)
+        except Exception as e:
+            logger.error(f"[TieredRouter] Tier 2 execution failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _execute_proactive_workflow(
+        self,
+        command: str,
+        context: Dict[str, Any],
+        detection
+    ) -> Dict[str, Any]:
+        """
+        Execute command using Proactive Parallelism (expand_and_execute).
+
+        This expands vague commands into concrete parallel tasks.
+        """
+        try:
+            # Import AgenticTaskRunner
+            from core.agentic_task_runner import get_agentic_runner
+
+            runner = get_agentic_runner()
+            if not runner:
+                logger.warning("[TieredRouter] AgenticTaskRunner not available, falling back")
+                return await self._execute_standard_computer_use(command, context)
+
+            # Arm watchdog
+            watchdog = await self._get_watchdog()
+            task_id = f"proactive_{int(time.time())}"
+
+            if watchdog:
+                from core.agentic_watchdog import AgenticMode
+                await watchdog.task_started(
+                    task_id=task_id,
+                    goal=command,
+                    mode=AgenticMode.AUTONOMOUS
+                )
+
+            try:
+                # 🚀 Use expand_and_execute for proactive parallelism
+                result = await runner.expand_and_execute(
+                    query=command,
+                    narrate=True
+                )
+
+                success = result.get("success", False)
+
+                if watchdog:
+                    await watchdog.task_completed(
+                        task_id=task_id,
+                        success=success
+                    )
+
+                return {
+                    "success": success,
+                    "response": result.get("reasoning", "Proactive workflow completed"),
+                    "detected_intent": detection.suggested_intent,
+                    "confidence": detection.confidence,
+                    "expanded_tasks": len(result.get("expanded_tasks", [])),
+                    "execution": result.get("execution", {}),
+                    "duration_ms": result.get("total_time_seconds", 0) * 1000,
+                    "mode": "proactive_parallel"
+                }
+
+            except Exception as e:
+                if watchdog:
+                    await watchdog.task_completed(task_id=task_id, success=False)
+                raise
+
+        except Exception as e:
+            logger.error(f"[TieredRouter] Proactive workflow failed: {e}, falling back to standard")
+            return await self._execute_standard_computer_use(command, context)
+
+    async def _execute_standard_computer_use(
+        self,
+        command: str,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute command using standard Computer Use (sequential).
+
+        This is the original Tier 2 behavior.
+        """
         try:
             # Import agentic task runner
             from autonomy.computer_use_tool import get_computer_use_tool
@@ -803,10 +908,12 @@ class TieredCommandRouter:
 
             # Arm watchdog
             watchdog = await self._get_watchdog()
+            task_id = f"tier2_{int(time.time())}"
+
             if watchdog:
                 from core.agentic_watchdog import AgenticMode
                 await watchdog.task_started(
-                    task_id=f"tier2_{int(time.time())}",
+                    task_id=task_id,
                     goal=command,
                     mode=AgenticMode.AUTONOMOUS
                 )
@@ -822,7 +929,7 @@ class TieredCommandRouter:
 
                 if watchdog:
                     await watchdog.task_completed(
-                        task_id=f"tier2_{int(time.time())}",
+                        task_id=task_id,
                         success=success
                     )
 
@@ -831,12 +938,13 @@ class TieredCommandRouter:
                     "response": result.final_message,
                     "actions_count": result.actions_count,
                     "duration_ms": result.total_duration_ms,
+                    "mode": "standard_sequential"
                 }
 
             except Exception as e:
                 if watchdog:
                     await watchdog.task_completed(
-                        task_id=f"tier2_{int(time.time())}",
+                        task_id=task_id,
                         success=False
                     )
                 raise
@@ -844,7 +952,7 @@ class TieredCommandRouter:
         except ImportError as e:
             return {"success": False, "error": f"Tier 2 handler not available: {e}"}
         except Exception as e:
-            logger.error(f"[TieredRouter] Tier 2 execution failed: {e}")
+            logger.error(f"[TieredRouter] Standard execution failed: {e}")
             return {"success": False, "error": str(e)}
 
     # =========================================================================
