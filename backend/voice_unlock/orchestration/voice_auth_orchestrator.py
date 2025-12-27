@@ -44,6 +44,32 @@ from .voice_auth_tools import (
     BayesianFusionOutput,
 )
 
+# v2.0: Enhanced voice authentication with ChromaDB, Langfuse, cost optimization
+try:
+    from .voice_auth_enhancements import (
+        get_voice_auth_enhancements,
+        VoiceAuthEnhancementManager,
+    )
+    ENHANCEMENTS_AVAILABLE = True
+except ImportError:
+    logger.warning("Voice auth enhancements not available - install chromadb and langfuse")
+    ENHANCEMENTS_AVAILABLE = False
+    get_voice_auth_enhancements = None
+    VoiceAuthEnhancementManager = None
+
+# v2.1: Advanced features - deepfake detection, voice evolution, multi-speaker, quality analysis
+try:
+    from .voice_auth_advanced_features import (
+        get_advanced_features,
+        AdvancedFeaturesManager,
+    )
+    ADVANCED_FEATURES_AVAILABLE = True
+except ImportError:
+    logger.info("Advanced voice auth features not available - using core features only")
+    ADVANCED_FEATURES_AVAILABLE = False
+    get_advanced_features = None
+    AdvancedFeaturesManager = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,6 +271,14 @@ class VoiceAuthOrchestrator:
         self._tools = tool_registry or get_voice_auth_tools()
         self._lock = asyncio.Lock()
 
+        # v2.0: Enhancement manager for pattern recognition, audit, cost optimization
+        self._enhancements: Optional[VoiceAuthEnhancementManager] = None
+        self._enhancements_initialized = False
+
+        # v2.1: Advanced features manager for deepfake detection, evolution tracking, etc.
+        self._advanced_features: Optional[AdvancedFeaturesManager] = None
+        self._advanced_features_initialized = False
+
         # Statistics
         self._stats = {
             "total_authentications": 0,
@@ -254,6 +288,15 @@ class VoiceAuthOrchestrator:
             "spoofing_attempts_blocked": 0,
             "level_success_counts": {level.name: 0 for level in FallbackLevel},
             "avg_duration_ms": 0.0,
+            # v2.0 stats
+            "cache_hits": 0,
+            "replay_attacks_blocked": 0,
+            "pattern_learnings": 0,
+            # v2.1 advanced stats
+            "deepfakes_blocked": 0,
+            "voice_quality_adjustments": 0,
+            "multi_speaker_identifications": 0,
+            "voice_evolution_adaptations": 0,
         }
 
         # Observability hooks
@@ -269,6 +312,54 @@ class VoiceAuthOrchestrator:
     def set_authentication_complete_hook(self, hook: Callable) -> None:
         """Set callback for authentication completion events."""
         self._on_authentication_complete = hook
+
+    async def _ensure_enhancements(self) -> bool:
+        """
+        Lazy-load enhancement manager (v2.0).
+
+        Returns:
+            True if enhancements are available, False otherwise
+        """
+        if self._enhancements_initialized:
+            return self._enhancements is not None
+
+        if not ENHANCEMENTS_AVAILABLE:
+            self._enhancements_initialized = True
+            return False
+
+        try:
+            self._enhancements = await get_voice_auth_enhancements()
+            self._enhancements_initialized = True
+            logger.info("[Orchestrator] ✓ v2.0 Enhancements loaded")
+            return True
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Could not load enhancements: {e}")
+            self._enhancements_initialized = True
+            return False
+
+    async def _ensure_advanced_features(self) -> bool:
+        """
+        Lazy-load advanced features manager (v2.1).
+
+        Returns:
+            True if advanced features are available, False otherwise
+        """
+        if self._advanced_features_initialized:
+            return self._advanced_features is not None
+
+        if not ADVANCED_FEATURES_AVAILABLE:
+            self._advanced_features_initialized = True
+            return False
+
+        try:
+            self._advanced_features = await get_advanced_features()
+            self._advanced_features_initialized = True
+            logger.info("[Orchestrator] ✓ v2.1 Advanced Features loaded (deepfake, evolution, multi-speaker, quality)")
+            return True
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Could not load advanced features: {e}")
+            self._advanced_features_initialized = True
+            return False
 
     async def authenticate(
         self,
@@ -306,7 +397,111 @@ class VoiceAuthOrchestrator:
         # Get max fallbacks
         max_fallbacks = OrchestratorConfig.get_max_fallback_levels()
 
+        # v2.0: Initialize enhancements
+        enhancements_loaded = await self._ensure_enhancements()
+        voice_embedding = None  # Will be extracted during primary verification
+
         try:
+            # v2.0 STEP 0a: Pre-authentication hook (pattern recognition, caching)
+            enrichment = {}
+            if enhancements_loaded and self._enhancements:
+                enrichment = await self._enhancements.pre_authentication_hook(
+                    audio_data=audio_data,
+                    user_id=user_id,
+                    embedding=None,  # Will check after extraction
+                    environmental_context=context or {},
+                )
+
+                # Check for replay attack BEFORE processing
+                replay_risk = enrichment.get("replay_risk", 0.0)
+                if replay_risk > 0.95:
+                    result.decision = AuthenticationDecision.DENIED
+                    result.spoofing_suspected = True
+                    result.response_text = self._enhancements.generate_feedback(
+                        user_id=user_id,
+                        confidence=0.0,
+                        decision="DENIED",
+                        failure_reason="replay_attack",
+                    )
+                    self._stats["replay_attacks_blocked"] += 1
+                    self._stats["spoofing_attempts_blocked"] += 1
+                    logger.warning(
+                        f"[Orchestrator] Replay attack blocked (risk: {replay_risk:.2%})"
+                    )
+                    return await self._finalize_result(result, start_time)
+
+            # v2.1 STEP 0b: Advanced features analysis (deepfake, quality, multi-speaker)
+            advanced_features_loaded = await self._ensure_advanced_features()
+            advanced_analysis = {}
+
+            if advanced_features_loaded and self._advanced_features:
+                advanced_analysis = await self._advanced_features.comprehensive_analysis(
+                    audio_data=audio_data,
+                    user_id=user_id,
+                    voice_embedding=None,  # Will be extracted during primary verification
+                    sample_rate=sample_rate,
+                )
+
+                # CRITICAL: Deepfake detection (blocks before any processing)
+                deepfake_result = advanced_analysis.get("deepfake", {})
+                if deepfake_result.get("result") == "FAKE":
+                    genuine_prob = deepfake_result.get("genuine_probability", 0.0)
+                    anomaly_flags = deepfake_result.get("anomaly_flags", [])
+
+                    result.decision = AuthenticationDecision.DENIED
+                    result.spoofing_suspected = True
+                    result.anomalies_detected.extend(anomaly_flags)
+                    result.response_text = (
+                        f"Advanced security alert: Multi-modal deepfake detection identified "
+                        f"synthetic voice characteristics (genuine probability: {genuine_prob:.1%}). "
+                        f"Anomalies detected: {', '.join(anomaly_flags[:3])}. Access denied."
+                    )
+                    self._stats["deepfakes_blocked"] += 1
+                    self._stats["spoofing_attempts_blocked"] += 1
+                    logger.warning(
+                        f"[Orchestrator] 🛡️ Deepfake blocked (genuine: {genuine_prob:.2%}, flags: {anomaly_flags})"
+                    )
+                    return await self._finalize_result(result, start_time)
+
+                # Voice quality analysis (for confidence adjustments)
+                quality_metrics = advanced_analysis.get("quality", {})
+                if quality_metrics:
+                    quality_category = quality_metrics.get("quality_category", "unknown")
+                    overall_score = quality_metrics.get("overall_score", 0.0)
+
+                    logger.info(
+                        f"[Orchestrator] Voice quality: {quality_category} "
+                        f"(score: {overall_score:.2f}, SNR: {quality_metrics.get('snr_db', 0):.1f}dB)"
+                    )
+
+                    # Track quality adjustments for stats
+                    if quality_category in ["fair", "poor"]:
+                        self._stats["voice_quality_adjustments"] += 1
+
+                # Multi-speaker identification (if enabled)
+                speaker_match = advanced_analysis.get("speaker_match", {})
+                if speaker_match.get("matched_speaker_id"):
+                    matched_id = speaker_match["matched_speaker_id"]
+                    confidence = speaker_match.get("confidence", 0.0)
+
+                    logger.info(
+                        f"[Orchestrator] Multi-speaker identified: {matched_id} "
+                        f"(confidence: {confidence:.2%})"
+                    )
+
+                    self._stats["multi_speaker_identifications"] += 1
+
+                # Voice evolution tracking
+                evolution = advanced_analysis.get("evolution", {})
+                if evolution.get("significant_drift"):
+                    drift_info = evolution.get("drift_info", {})
+                    logger.info(
+                        f"[Orchestrator] Voice evolution detected: "
+                        f"drift={drift_info.get('embedding_drift', 0):.4f}, "
+                        f"natural={evolution.get('natural_drift', False)}"
+                    )
+                    self._stats["voice_evolution_adaptations"] += 1
+
             # Step 0: Anti-spoofing check
             if OrchestratorConfig.get_enable_anti_spoofing():
                 spoofing_result = await self._check_anti_spoofing(
@@ -335,10 +530,22 @@ class VoiceAuthOrchestrator:
                 result.decision = AuthenticationDecision.AUTHENTICATED
                 result.authenticated_user = user_id
                 result.final_confidence = primary_result.confidence
-                result.response_text = self._generate_success_response(
-                    user_id, primary_result.confidence, FallbackLevel.PRIMARY
-                )
-                return await self._finalize_result(result, start_time)
+
+                # v2.0: Use enhanced feedback if available
+                if enhancements_loaded and self._enhancements:
+                    result.response_text = self._enhancements.generate_feedback(
+                        user_id=user_id,
+                        confidence=primary_result.confidence,
+                        decision="AUTHENTICATED",
+                        level_name=FallbackLevel.PRIMARY.name,
+                        environmental_context=context or {},
+                    )
+                else:
+                    result.response_text = self._generate_success_response(
+                        user_id, primary_result.confidence, FallbackLevel.PRIMARY
+                    )
+
+                return await self._finalize_result(result, start_time, voice_embedding)
 
             # Check if we should continue
             if max_level == FallbackLevel.PRIMARY or result.levels_attempted >= max_fallbacks:
@@ -358,11 +565,23 @@ class VoiceAuthOrchestrator:
                     result.decision = AuthenticationDecision.AUTHENTICATED
                     result.authenticated_user = user_id
                     result.final_confidence = fusion_result.confidence
-                    result.response_text = self._generate_success_response(
-                        user_id, fusion_result.confidence, FallbackLevel.BEHAVIORAL_FUSION
-                    )
+
+                    # v2.0: Use enhanced feedback if available
+                    if enhancements_loaded and self._enhancements:
+                        result.response_text = self._enhancements.generate_feedback(
+                            user_id=user_id,
+                            confidence=fusion_result.confidence,
+                            decision="AUTHENTICATED",
+                            level_name=FallbackLevel.BEHAVIORAL_FUSION.name,
+                            environmental_context=context or {},
+                        )
+                    else:
+                        result.response_text = self._generate_success_response(
+                            user_id, fusion_result.confidence, FallbackLevel.BEHAVIORAL_FUSION
+                        )
+
                     self._stats["fallback_authentications"] += 1
-                    return await self._finalize_result(result, start_time)
+                    return await self._finalize_result(result, start_time, voice_embedding)
 
             if max_level == FallbackLevel.BEHAVIORAL_FUSION or result.levels_attempted >= max_fallbacks:
                 result.decision = AuthenticationDecision.DENIED
@@ -791,8 +1010,9 @@ class VoiceAuthOrchestrator:
         self,
         result: AuthenticationChainResult,
         start_time: float,
+        voice_embedding: Optional[Any] = None,
     ) -> AuthenticationChainResult:
-        """Finalize and record the authentication result."""
+        """Finalize and record the authentication result (v2.0 enhanced)."""
         result.total_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Calculate level durations
@@ -812,6 +1032,28 @@ class VoiceAuthOrchestrator:
         self._stats["avg_duration_ms"] = (
             self._stats["avg_duration_ms"] * (n - 1) + result.total_duration_ms
         ) / n
+
+        # v2.0: Post-authentication hook (pattern learning, auditing, caching)
+        if self._enhancements and voice_embedding is not None:
+            try:
+                await self._enhancements.post_authentication_hook(
+                    session_id=result.session_id,
+                    user_id=result.authenticated_user or "unknown",
+                    embedding=voice_embedding,
+                    confidence=result.final_confidence,
+                    decision=result.decision.value,
+                    success=(result.decision == AuthenticationDecision.AUTHENTICATED),
+                    duration_ms=result.total_duration_ms,
+                    environmental_context={},  # Populate from context if needed
+                    details={
+                        "fallback_level": result.final_level.name,
+                        "levels_attempted": result.levels_attempted,
+                        "spoofing_suspected": result.spoofing_suspected,
+                    },
+                )
+                self._stats["pattern_learnings"] += 1
+            except Exception as e:
+                logger.debug(f"[Orchestrator] Post-auth hook error: {e}")
 
         # Call completion hook
         if self._on_authentication_complete:

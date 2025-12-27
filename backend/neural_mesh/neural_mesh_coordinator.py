@@ -514,18 +514,17 @@ class NeuralMeshCoordinator:
             # Use provided capabilities or default to analysis
             node_capabilities = set(capabilities or ["analysis", "messaging"])
 
-            # Create agent info with string-based fields
-            agent_info = AgentInfo(
+            # Register with the registry using individual parameters
+            # The AgentRegistry.register() method expects individual parameters, not an AgentInfo object
+            await self._registry.register(
                 agent_name=node_name,
                 agent_type=agent_type_str,
                 capabilities=node_capabilities,
-                version="1.0.0",
-                metadata=metadata or {},
                 backend="external",  # Mark as external system
+                version="1.0.0",
+                dependencies=None,
+                metadata=metadata or {},
             )
-
-            # Register with the registry
-            await self._registry.register(agent_info)
 
             logger.info(f"[NEURAL-MESH] Registered external node: {node_name} (type={agent_type_str})")
             return True

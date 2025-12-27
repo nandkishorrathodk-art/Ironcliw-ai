@@ -81,6 +81,39 @@ from .voice_auth_nodes import (
     create_voice_auth_nodes,
 )
 
+# v2.0: Enhanced voice authentication with advanced pattern recognition
+try:
+    import sys
+    from pathlib import Path
+    # Add orchestration to path for enhancements import
+    orchestration_path = Path(__file__).parent.parent / "orchestration"
+    if str(orchestration_path) not in sys.path:
+        sys.path.insert(0, str(orchestration_path))
+
+    from voice_auth_enhancements import (
+        get_voice_auth_enhancements,
+        VoiceAuthEnhancementManager,
+    )
+    ENHANCEMENTS_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Voice auth enhancements not available: {e}")
+    ENHANCEMENTS_AVAILABLE = False
+    get_voice_auth_enhancements = None
+    VoiceAuthEnhancementManager = None
+
+# v2.1: Advanced features - deepfake detection, voice evolution, multi-speaker, quality analysis
+try:
+    from voice_auth_advanced_features import (
+        get_advanced_features,
+        AdvancedFeaturesManager,
+    )
+    ADVANCED_FEATURES_AVAILABLE = True
+except ImportError as e:
+    logger.info(f"Advanced voice auth features not available: {e}")
+    ADVANCED_FEATURES_AVAILABLE = False
+    get_advanced_features = None
+    AdvancedFeaturesManager = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -603,6 +636,14 @@ class VoiceAuthenticationReasoningGraph:
         self._nodes = custom_nodes or create_voice_auth_nodes()
         self._wrapped_nodes: Dict[str, NodeWrapper] = {}
 
+        # v2.0: Enhancement manager for advanced pattern recognition
+        self._enhancements: Optional[VoiceAuthEnhancementManager] = None
+        self._enhancements_initialized = False
+
+        # v2.1: Advanced features manager for deepfake detection, evolution tracking, etc.
+        self._advanced_features: Optional[AdvancedFeaturesManager] = None
+        self._advanced_features_initialized = False
+
         # Wrap nodes with metrics and error handling
         for name, node in self._nodes.items():
             self._wrapped_nodes[name] = NodeWrapper(node, self.enable_metrics)
@@ -618,7 +659,7 @@ class VoiceAuthenticationReasoningGraph:
         self._execution_count = 0
         self._last_execution_metrics: Optional[GraphExecutionMetrics] = None
 
-        logger.info("VoiceAuthenticationReasoningGraph initialized")
+        logger.info("VoiceAuthenticationReasoningGraph initialized (v2.0)")
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph state machine."""
@@ -775,6 +816,54 @@ class VoiceAuthenticationReasoningGraph:
 
         return self._compiled_graph
 
+    async def _ensure_enhancements(self) -> bool:
+        """
+        Lazy-load enhancement manager (v2.0).
+
+        Returns:
+            True if enhancements are available, False otherwise
+        """
+        if self._enhancements_initialized:
+            return self._enhancements is not None
+
+        if not ENHANCEMENTS_AVAILABLE:
+            self._enhancements_initialized = True
+            return False
+
+        try:
+            self._enhancements = await get_voice_auth_enhancements()
+            self._enhancements_initialized = True
+            logger.info("[Graph] ✓ v2.0 Enhancements loaded (ChromaDB + Langfuse + Caching)")
+            return True
+        except Exception as e:
+            logger.warning(f"[Graph] Could not load enhancements: {e}")
+            self._enhancements_initialized = True
+            return False
+
+    async def _ensure_advanced_features(self) -> bool:
+        """
+        Lazy-load advanced features manager (v2.1).
+
+        Returns:
+            True if advanced features are available, False otherwise
+        """
+        if self._advanced_features_initialized:
+            return self._advanced_features is not None
+
+        if not ADVANCED_FEATURES_AVAILABLE:
+            self._advanced_features_initialized = True
+            return False
+
+        try:
+            self._advanced_features = await get_advanced_features()
+            self._advanced_features_initialized = True
+            logger.info("[Graph] ✓ v2.1 Advanced Features loaded (Deepfake + Evolution + MultiSpeaker + Quality)")
+            return True
+        except Exception as e:
+            logger.warning(f"[Graph] Could not load advanced features: {e}")
+            self._advanced_features_initialized = True
+            return False
+
     async def authenticate(
         self,
         audio_data: bytes,
@@ -813,6 +902,126 @@ class VoiceAuthenticationReasoningGraph:
             start_time=start_time,
         )
 
+        # v2.0: Initialize enhancements for advanced pattern recognition
+        enhancements_loaded = await self._ensure_enhancements()
+
+        # v2.0: PRE-AUTHENTICATION HOOK - Early replay detection
+        if enhancements_loaded and self._enhancements:
+            try:
+                enrichment = await self._enhancements.pre_authentication_hook(
+                    audio_data=audio_data,
+                    user_id=user_id,
+                    embedding=None,  # Will be extracted during graph execution
+                    environmental_context=config or {},
+                )
+
+                # CRITICAL: Block replay attacks before expensive processing
+                replay_risk = enrichment.get("replay_risk", 0.0)
+                if replay_risk > 0.95:
+                    logger.warning(
+                        f"[Graph] 🛡️ Replay attack blocked (risk: {replay_risk:.2%}) - "
+                        f"Session: {initial_state.session_id}"
+                    )
+
+                    # Return immediate rejection
+                    initial_state.decision = DecisionType.REJECT
+                    initial_state.final_confidence = 0.0
+                    initial_state.response_text = self._enhancements.generate_feedback(
+                        user_id=user_id,
+                        confidence=0.0,
+                        decision="DENIED",
+                        failure_reason="replay_attack",
+                    )
+                    initial_state.execution_trace.append("REPLAY_ATTACK_BLOCKED")
+
+                    # Record metrics
+                    metrics.end_time = time.perf_counter()
+                    metrics.total_duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                    metrics.final_decision = "REPLAY_BLOCKED"
+                    if self.enable_metrics:
+                        await _metrics_collector.record(metrics)
+
+                    return initial_state
+
+                # Store enrichment in state for nodes to use
+                initial_state.details["enrichment"] = enrichment
+                initial_state.details["cached_result"] = enrichment.get("cached_result")
+                initial_state.details["env_adjustment"] = enrichment.get("environmental_adjustment")
+
+            except Exception as e:
+                logger.debug(f"[Graph] Pre-auth hook error: {e}")
+
+        # v2.1: ADVANCED FEATURES ANALYSIS - Deepfake, quality, multi-speaker, evolution
+        advanced_features_loaded = await self._ensure_advanced_features()
+
+        if advanced_features_loaded and self._advanced_features:
+            try:
+                advanced_analysis = await self._advanced_features.comprehensive_analysis(
+                    audio_data=audio_data,
+                    user_id=user_id,
+                    voice_embedding=None,  # Will be extracted during graph execution
+                    sample_rate=sample_rate,
+                )
+
+                # CRITICAL: Deepfake detection blocks IMMEDIATELY
+                deepfake_result = advanced_analysis.get("deepfake", {})
+                if deepfake_result.get("result") == "FAKE":
+                    genuine_prob = deepfake_result.get("genuine_probability", 0.0)
+                    anomaly_flags = deepfake_result.get("anomaly_flags", [])
+
+                    logger.warning(
+                        f"[Graph] 🛡️ Deepfake blocked (genuine: {genuine_prob:.2%}, "
+                        f"flags: {anomaly_flags}) - Session: {initial_state.session_id}"
+                    )
+
+                    # Return immediate rejection
+                    initial_state.decision = DecisionType.REJECT
+                    initial_state.final_confidence = 0.0
+                    initial_state.response_text = (
+                        f"Advanced security: Multi-modal deepfake detection identified "
+                        f"synthetic voice (genuine: {genuine_prob:.1%}). "
+                        f"Anomalies: {', '.join(anomaly_flags[:3])}. Access denied."
+                    )
+                    initial_state.execution_trace.append("DEEPFAKE_BLOCKED")
+                    initial_state.details["deepfake_flags"] = anomaly_flags
+
+                    # Record metrics
+                    metrics.end_time = time.perf_counter()
+                    metrics.total_duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                    metrics.final_decision = "DEEPFAKE_BLOCKED"
+                    if self.enable_metrics:
+                        await _metrics_collector.record(metrics)
+
+                    return initial_state
+
+                # Store advanced analysis in state for nodes to use
+                initial_state.details["advanced_analysis"] = advanced_analysis
+
+                # Log quality and evolution insights
+                quality_metrics = advanced_analysis.get("quality", {})
+                if quality_metrics:
+                    logger.info(
+                        f"[Graph] Voice quality: {quality_metrics.get('quality_category')} "
+                        f"(SNR: {quality_metrics.get('snr_db', 0):.1f}dB)"
+                    )
+
+                evolution = advanced_analysis.get("evolution", {})
+                if evolution.get("significant_drift"):
+                    logger.info(
+                        f"[Graph] Voice evolution detected: "
+                        f"natural={evolution.get('natural_drift', False)}"
+                    )
+
+                speaker_match = advanced_analysis.get("speaker_match", {})
+                if speaker_match.get("matched_speaker_id"):
+                    logger.info(
+                        f"[Graph] Multi-speaker match: {speaker_match['matched_speaker_id']} "
+                        f"(conf: {speaker_match.get('confidence', 0):.2%})"
+                    )
+
+            except Exception as e:
+                logger.debug(f"[Graph] Advanced features analysis error: {e}")
+
         try:
             # Compile graph if needed
             compiled = self.compile()
@@ -838,6 +1047,47 @@ class VoiceAuthenticationReasoningGraph:
             metrics.reasoning_depth = len(result_state.reasoning_chain)
             metrics.errors_encountered = len(result_state.errors)
 
+            # v2.0: POST-AUTHENTICATION HOOK - Pattern learning, audit, caching
+            if enhancements_loaded and self._enhancements:
+                try:
+                    # Extract voice embedding from ML verification result
+                    voice_embedding = result_state.details.get("voice_embedding")
+
+                    if voice_embedding is not None:
+                        await self._enhancements.post_authentication_hook(
+                            session_id=result_state.session_id,
+                            user_id=user_id,
+                            embedding=voice_embedding,
+                            confidence=result_state.final_confidence,
+                            decision=result_state.decision.value if result_state.decision else "UNKNOWN",
+                            success=(result_state.decision == DecisionType.AUTHENTICATE),
+                            duration_ms=metrics.total_duration_ms,
+                            environmental_context=config or {},
+                            details={
+                                "phases_executed": result_state.execution_trace,
+                                "hypotheses_generated": len(result_state.hypotheses),
+                                "reasoning_depth": len(result_state.reasoning_chain),
+                                "early_exit": metrics.early_exit_used,
+                            },
+                        )
+                        logger.debug(f"[Graph] ✓ Post-auth hook completed (pattern stored, audited, cached)")
+
+                    # v2.0: ENHANCED FEEDBACK - Replace generic response with context-aware message
+                    if not result_state.response_text or "default" in result_state.response_text.lower():
+                        result_state.response_text = self._enhancements.generate_feedback(
+                            user_id=user_id,
+                            confidence=result_state.final_confidence,
+                            decision=result_state.decision.value if result_state.decision else "UNKNOWN",
+                            level_name="GRAPH_REASONING",
+                            failure_reason=result_state.details.get("failure_reason"),
+                            retry_count=result_state.details.get("retry_count", 0),
+                            environmental_context=config or {},
+                        )
+                        logger.debug(f"[Graph] ✓ Enhanced feedback generated")
+
+                except Exception as e:
+                    logger.debug(f"[Graph] Post-auth hook error: {e}")
+
             # Record metrics
             if self.enable_metrics:
                 await _metrics_collector.record(metrics)
@@ -846,8 +1096,10 @@ class VoiceAuthenticationReasoningGraph:
             self._execution_count += 1
 
             logger.info(
-                f"Authentication completed: {result_state.decision} "
-                f"({result_state.final_confidence:.3f}) in {metrics.total_duration_ms:.1f}ms"
+                f"[Graph] Authentication completed: {result_state.decision} "
+                f"({result_state.final_confidence:.3f}) in {metrics.total_duration_ms:.1f}ms | "
+                f"Phases: {len(result_state.execution_trace)} | "
+                f"Hypotheses: {metrics.hypotheses_generated}"
             )
 
             return result_state

@@ -748,12 +748,305 @@ class TrainingOrchestratorState:
 
 
 @dataclass
+class VoiceBiometricsState:
+    """
+    v6.2: Voice Biometric Authentication System state tracking.
+
+    Tracks comprehensive voice security initialization:
+    - ECAPA-TDNN embedding model (192-dimensional)
+    - Liveness detection (99.8% accuracy anti-spoofing)
+    - Speaker cache population
+    - Multi-tier authentication thresholds
+    - ChromaDB voice pattern recognition
+    """
+    active: bool = False
+    status: str = "idle"  # idle, initializing, loading_model, warming_cache, ready, error
+
+    # ECAPA-TDNN Model
+    ecapa_status: str = "not_loaded"  # not_loaded, loading, ready, error
+    ecapa_backend: str = "unknown"  # local, cloud_run, docker, emergency_fallback
+    embedding_dimensions: int = 192
+
+    # Liveness Detection (Anti-Spoofing)
+    liveness_enabled: bool = False
+    liveness_accuracy: float = 99.8  # Target accuracy percentage
+    anti_spoofing_ready: bool = False
+    replay_detection_ready: bool = False
+    deepfake_detection_ready: bool = False
+
+    # Speaker Cache
+    speaker_cache_status: str = "empty"  # empty, loading, populated, error
+    cached_samples: int = 0
+    target_samples: int = 59  # Expected voiceprint count
+    cache_population_percent: float = 0.0
+
+    # Multi-Tier Authentication Thresholds
+    tier1_threshold: float = 70.0  # Fast, single-factor
+    tier2_threshold: float = 85.0  # Strict, multi-factor
+    high_security_threshold: float = 95.0  # Maximum security
+    liveness_threshold: float = 80.0  # Anti-spoofing threshold
+
+    # ChromaDB Voice Pattern Recognition
+    chromadb_voice_patterns: bool = False
+    behavioral_biometrics_ready: bool = False
+
+    # Performance Metrics
+    init_time_ms: Optional[int] = None
+    last_update: Optional[str] = None
+    error_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "status": self.status,
+            "ecapa": {
+                "status": self.ecapa_status,
+                "backend": self.ecapa_backend,
+                "dimensions": self.embedding_dimensions,
+            },
+            "liveness": {
+                "enabled": self.liveness_enabled,
+                "accuracy": self.liveness_accuracy,
+                "anti_spoofing_ready": self.anti_spoofing_ready,
+                "replay_detection": self.replay_detection_ready,
+                "deepfake_detection": self.deepfake_detection_ready,
+            },
+            "speaker_cache": {
+                "status": self.speaker_cache_status,
+                "cached_samples": self.cached_samples,
+                "target_samples": self.target_samples,
+                "population_percent": self.cache_population_percent,
+            },
+            "thresholds": {
+                "tier1": self.tier1_threshold,
+                "tier2": self.tier2_threshold,
+                "high_security": self.high_security_threshold,
+                "liveness": self.liveness_threshold,
+            },
+            "chromadb": {
+                "voice_patterns": self.chromadb_voice_patterns,
+                "behavioral_biometrics": self.behavioral_biometrics_ready,
+            },
+            "performance": {
+                "init_time_ms": self.init_time_ms,
+                "last_update": self.last_update,
+                "error": self.error_message,
+            },
+        }
+
+
+@dataclass
+class NarratorState:
+    """
+    v6.2: Intelligent Voice Narrator state tracking.
+
+    Tracks voice announcement system for security events and system status.
+    Integrates with Claude for contextual, personalized narration.
+    """
+    active: bool = False
+    status: str = "idle"  # idle, initializing, ready, speaking, error
+
+    # Narrator Configuration
+    enabled: bool = True
+    voice_enabled: bool = False  # TTS capability
+    contextual_messages: bool = True  # AI-generated vs static
+
+    # Recent Announcements
+    last_announcement: Optional[str] = None
+    announcement_count: int = 0
+
+    # Milestone Tracking
+    milestones_announced: List[str] = field(default_factory=list)
+
+    # Integration Status
+    claude_integration: bool = False  # For intelligent narration
+    langfuse_tracking: bool = False  # Announcement audit trail
+
+    # Performance Metrics
+    init_time_ms: Optional[int] = None
+    last_update: Optional[str] = None
+    error_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "status": self.status,
+            "config": {
+                "enabled": self.enabled,
+                "voice_enabled": self.voice_enabled,
+                "contextual_messages": self.contextual_messages,
+            },
+            "announcements": {
+                "last": self.last_announcement,
+                "count": self.announcement_count,
+                "milestones": self.milestones_announced,
+            },
+            "integrations": {
+                "claude": self.claude_integration,
+                "langfuse": self.langfuse_tracking,
+            },
+            "performance": {
+                "init_time_ms": self.init_time_ms,
+                "last_update": self.last_update,
+                "error": self.error_message,
+            },
+        }
+
+
+@dataclass
+class CostOptimizationState:
+    """
+    v6.3: Cost Optimization and Helicone Integration state tracking.
+
+    Tracks API cost savings, caching effectiveness, and optimization metrics.
+    Integrates with Helicone for LLM cost monitoring.
+    """
+    active: bool = False
+    status: str = "idle"  # idle, initializing, monitoring, optimizing, error
+
+    # Helicone Integration
+    helicone_enabled: bool = False
+    helicone_api_key_configured: bool = False
+
+    # Cost Tracking
+    total_api_calls: int = 0
+    cached_calls: int = 0
+    cache_hit_rate: float = 0.0  # Percentage
+    estimated_cost_usd: float = 0.0
+    estimated_savings_usd: float = 0.0
+
+    # Optimization Strategies
+    caching_enabled: bool = True
+    prompt_optimization: bool = False
+    model_routing: bool = False  # Route to cheaper models when possible
+
+    # Real-Time Stats
+    last_call_cost: Optional[float] = None
+    avg_call_cost: Optional[float] = None
+    peak_cost_per_minute: Optional[float] = None
+
+    # Performance Metrics
+    init_time_ms: Optional[int] = None
+    last_update: Optional[str] = None
+    error_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "status": self.status,
+            "helicone": {
+                "enabled": self.helicone_enabled,
+                "configured": self.helicone_api_key_configured,
+            },
+            "costs": {
+                "total_calls": self.total_api_calls,
+                "cached_calls": self.cached_calls,
+                "cache_hit_rate": self.cache_hit_rate,
+                "estimated_cost": self.estimated_cost_usd,
+                "estimated_savings": self.estimated_savings_usd,
+            },
+            "optimization": {
+                "caching_enabled": self.caching_enabled,
+                "prompt_optimization": self.prompt_optimization,
+                "model_routing": self.model_routing,
+            },
+            "real_time": {
+                "last_call_cost": self.last_call_cost,
+                "avg_call_cost": self.avg_call_cost,
+                "peak_cost_per_minute": self.peak_cost_per_minute,
+            },
+            "performance": {
+                "init_time_ms": self.init_time_ms,
+                "last_update": self.last_update,
+                "error": self.error_message,
+            },
+        }
+
+
+@dataclass
+class CrossRepoState:
+    """
+    v6.3: Cross-Repository Intelligence Coordination state tracking.
+
+    Tracks integration status across JARVIS, JARVIS Prime, and Reactor Core.
+    Monitors Neural Mesh coordination and cross-repo state synchronization.
+    """
+    active: bool = False
+    status: str = "idle"  # idle, initializing, connecting, synchronized, degraded, error
+
+    # JARVIS Prime (Tier-0 Local Brain)
+    jarvis_prime_connected: bool = False
+    jarvis_prime_port: int = 8002
+    jarvis_prime_health: str = "unknown"  # unknown, healthy, degraded, offline
+    jarvis_prime_tier: str = "unknown"  # local, cloud_run, gemini_api
+
+    # Reactor Core (Model Training Pipeline)
+    reactor_core_connected: bool = False
+    reactor_core_health: str = "unknown"
+    training_pipeline_active: bool = False
+    model_sync_enabled: bool = False
+
+    # Neural Mesh (Multi-Agent Coordination)
+    neural_mesh_active: bool = False
+    neural_mesh_coordinator: str = "offline"  # offline, starting, running, degraded
+    registered_agents: int = 0
+    active_conversations: int = 0
+
+    # State Synchronization
+    state_sync_enabled: bool = False
+    last_sync_timestamp: Optional[str] = None
+    sync_failures: int = 0
+
+    # Performance Metrics
+    avg_latency_ms: Optional[float] = None
+    init_time_ms: Optional[int] = None
+    last_update: Optional[str] = None
+    error_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "active": self.active,
+            "status": self.status,
+            "jarvis_prime": {
+                "connected": self.jarvis_prime_connected,
+                "port": self.jarvis_prime_port,
+                "health": self.jarvis_prime_health,
+                "tier": self.jarvis_prime_tier,
+            },
+            "reactor_core": {
+                "connected": self.reactor_core_connected,
+                "health": self.reactor_core_health,
+                "training_active": self.training_pipeline_active,
+                "model_sync": self.model_sync_enabled,
+            },
+            "neural_mesh": {
+                "active": self.neural_mesh_active,
+                "coordinator": self.neural_mesh_coordinator,
+                "registered_agents": self.registered_agents,
+                "active_conversations": self.active_conversations,
+            },
+            "sync": {
+                "enabled": self.state_sync_enabled,
+                "last_sync": self.last_sync_timestamp,
+                "failures": self.sync_failures,
+            },
+            "performance": {
+                "avg_latency_ms": self.avg_latency_ms,
+                "init_time_ms": self.init_time_ms,
+                "last_update": self.last_update,
+                "error": self.error_message,
+            },
+        }
+
+
+@dataclass
 class ProgressState:
     """
     Thread-safe progress state with history tracking.
 
     v2.0 - Enhanced to sync with UnifiedStartupProgressHub.
     v4.0 - Added Zero-Touch and DMS state tracking.
+    v6.3 - Added Voice Biometrics, Narrator, Cost Optimization, Cross-Repo Intelligence.
     All state is now received from the hub as the single source of truth.
     """
 
@@ -794,6 +1087,14 @@ class ProgressState:
     jarvis_prime: JARVISPrimeState = field(default_factory=JARVISPrimeState)
     reactor_core: ReactorCoreState = field(default_factory=ReactorCoreState)
     training: TrainingOrchestratorState = field(default_factory=TrainingOrchestratorState)
+
+    # v6.2: Voice Biometric Intelligence
+    voice_biometrics: VoiceBiometricsState = field(default_factory=VoiceBiometricsState)
+    narrator: NarratorState = field(default_factory=NarratorState)
+
+    # v6.3: Cost Optimization and Cross-Repo Intelligence
+    cost_optimization: CostOptimizationState = field(default_factory=CostOptimizationState)
+    cross_repo: CrossRepoState = field(default_factory=CrossRepoState)
 
     # v4.0: Supervisor integration
     supervisor_connected: bool = False
@@ -992,6 +1293,13 @@ class ProgressState:
             "learning_goals": self.learning_goals.to_dict(),
             "jarvis_prime": self.jarvis_prime.to_dict(),
             "reactor_core": self.reactor_core.to_dict(),
+            # v6.2: Voice Biometric Intelligence
+            "voice_biometrics": self.voice_biometrics.to_dict(),
+            "narrator": self.narrator.to_dict(),
+            # v6.3: Cost Optimization and Cross-Repo Intelligence
+            "cost_optimization": self.cost_optimization.to_dict(),
+            "cross_repo": self.cross_repo.to_dict(),
+            # Legacy
             "supervisor_connected": self.supervisor_connected,
             "agi_os_enabled": self.agi_os_enabled,
         }
@@ -2784,6 +3092,433 @@ async def broadcast_neural_mesh_update() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# v6.2: Voice Biometric Authentication System Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def get_voice_biometrics_status(request: web.Request) -> web.Response:
+    """
+    v6.2: Get Voice Biometric Authentication System status.
+
+    Returns comprehensive voice authentication state including:
+    - ECAPA-TDNN model status and backend
+    - Liveness detection (anti-spoofing) status
+    - Speaker cache population
+    - Multi-tier authentication thresholds
+    - ChromaDB voice pattern recognition
+    """
+    try:
+        return web.json_response({
+            "status": "ok",
+            "voice_biometrics": progress_state.voice_biometrics.to_dict(),
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[VoiceBio] Get status error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def update_voice_biometrics_status(request: web.Request) -> web.Response:
+    """
+    v6.2: Update Voice Biometric Authentication status from supervisor.
+
+    Event types:
+    - voice_bio_init: Voice system initializing
+    - voice_bio_ecapa_loaded: ECAPA-TDNN model loaded
+    - voice_bio_liveness_ready: Liveness detection ready
+    - voice_bio_cache_updated: Speaker cache updated
+    - voice_bio_chromadb_ready: ChromaDB voice patterns ready
+    - voice_bio_ready: All components ready
+    - voice_bio_error: Component initialization error
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        # Update state based on event type
+        if event_type == 'voice_bio_init':
+            progress_state.voice_biometrics.active = True
+            progress_state.voice_biometrics.status = 'initializing'
+
+        elif event_type == 'voice_bio_ecapa_loaded':
+            progress_state.voice_biometrics.ecapa_status = 'loaded'
+            progress_state.voice_biometrics.ecapa_backend = data.get('backend', 'onnxruntime')
+            progress_state.voice_biometrics.embedding_dimensions = data.get('dimensions', 192)
+
+        elif event_type == 'voice_bio_liveness_ready':
+            progress_state.voice_biometrics.liveness_enabled = True
+            progress_state.voice_biometrics.anti_spoofing_ready = data.get('anti_spoofing', True)
+            progress_state.voice_biometrics.replay_detection_ready = data.get('replay_detection', True)
+            progress_state.voice_biometrics.deepfake_detection_ready = data.get('deepfake_detection', True)
+            progress_state.voice_biometrics.liveness_accuracy = data.get('accuracy', 99.8)
+            progress_state.voice_biometrics.liveness_threshold = data.get('threshold', 80.0)
+
+        elif event_type == 'voice_bio_cache_updated':
+            progress_state.voice_biometrics.speaker_cache_status = data.get('cache_status', 'populated')
+            progress_state.voice_biometrics.cached_samples = data.get('samples', 0)
+            progress_state.voice_biometrics.target_samples = data.get('target', 59)
+            if progress_state.voice_biometrics.target_samples > 0:
+                progress_state.voice_biometrics.cache_population_percent = (
+                    progress_state.voice_biometrics.cached_samples /
+                    progress_state.voice_biometrics.target_samples * 100.0
+                )
+
+        elif event_type == 'voice_bio_thresholds_set':
+            progress_state.voice_biometrics.tier1_threshold = data.get('tier1', 70.0)
+            progress_state.voice_biometrics.tier2_threshold = data.get('tier2', 85.0)
+            progress_state.voice_biometrics.high_security_threshold = data.get('high_security', 95.0)
+
+        elif event_type == 'voice_bio_chromadb_ready':
+            progress_state.voice_biometrics.chromadb_voice_patterns = True
+            progress_state.voice_biometrics.behavioral_biometrics_ready = data.get('behavioral_ready', True)
+
+        elif event_type == 'voice_bio_ready':
+            progress_state.voice_biometrics.status = 'ready'
+            progress_state.voice_biometrics.ecapa_status = 'loaded'
+            progress_state.voice_biometrics.liveness_enabled = True
+            progress_state.voice_biometrics.anti_spoofing_ready = True
+
+        elif event_type == 'voice_bio_error':
+            progress_state.voice_biometrics.status = 'error'
+            logger.error(f"[VoiceBio] Error: {data.get('message', 'Unknown error')}")
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "voice_biometrics": progress_state.voice_biometrics.to_dict(),
+        })
+
+        logger.info(f"[VoiceBio] {event_type}: {data.get('message', '')}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "voice_biometrics": progress_state.voice_biometrics.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[VoiceBio] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v6.2: Intelligent Voice Narrator Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def get_narrator_status(request: web.Request) -> web.Response:
+    """
+    v6.2: Get Intelligent Voice Narrator status.
+
+    Returns narrator state including:
+    - Active/enabled status
+    - Voice output status
+    - Contextual message capability
+    - Last announcement
+    - Milestone tracking
+    - Claude integration status
+    """
+    try:
+        return web.json_response({
+            "status": "ok",
+            "narrator": progress_state.narrator.to_dict(),
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Narrator] Get status error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def update_narrator_status(request: web.Request) -> web.Response:
+    """
+    v6.2: Update Intelligent Voice Narrator status from supervisor.
+
+    Event types:
+    - narrator_init: Narrator initializing
+    - narrator_announcement: Narrator made announcement
+    - narrator_milestone: Milestone reached and announced
+    - narrator_enabled: Voice output enabled
+    - narrator_disabled: Voice output disabled
+    - narrator_claude_connected: Claude integration active
+    - narrator_ready: Narrator ready
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        # Update state based on event type
+        if event_type == 'narrator_init':
+            progress_state.narrator.active = True
+            progress_state.narrator.status = 'initializing'
+
+        elif event_type == 'narrator_announcement':
+            progress_state.narrator.last_announcement = data.get('message', '')
+            progress_state.narrator.announcement_count += 1
+
+        elif event_type == 'narrator_milestone':
+            milestone = data.get('milestone', '')
+            if milestone and milestone not in progress_state.narrator.milestones_announced:
+                progress_state.narrator.milestones_announced.append(milestone)
+            progress_state.narrator.last_announcement = data.get('message', '')
+            progress_state.narrator.announcement_count += 1
+
+        elif event_type == 'narrator_enabled':
+            progress_state.narrator.enabled = True
+            progress_state.narrator.voice_enabled = data.get('voice_enabled', True)
+
+        elif event_type == 'narrator_disabled':
+            progress_state.narrator.enabled = False
+            progress_state.narrator.voice_enabled = False
+
+        elif event_type == 'narrator_claude_connected':
+            progress_state.narrator.claude_integration = True
+
+        elif event_type == 'narrator_langfuse_connected':
+            progress_state.narrator.langfuse_tracking = True
+
+        elif event_type == 'narrator_ready':
+            progress_state.narrator.status = 'ready'
+            progress_state.narrator.enabled = True
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "narrator": progress_state.narrator.to_dict(),
+        })
+
+        if event_type not in ['narrator_announcement']:  # Don't spam logs with every announcement
+            logger.info(f"[Narrator] {event_type}: {data.get('message', '')}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "narrator": progress_state.narrator.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[Narrator] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v6.3: Cost Optimization and Helicone Integration Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def get_cost_optimization_status(request: web.Request) -> web.Response:
+    """
+    v6.3: Get Cost Optimization and Helicone Integration status.
+
+    Returns cost tracking state including:
+    - Helicone integration status
+    - Total API calls and cached calls
+    - Cache hit rate
+    - Estimated costs and savings
+    - Optimization features (caching, prompt optimization, model routing)
+    """
+    try:
+        return web.json_response({
+            "status": "ok",
+            "cost_optimization": progress_state.cost_optimization.to_dict(),
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[CostOpt] Get status error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def update_cost_optimization_status(request: web.Request) -> web.Response:
+    """
+    v6.3: Update Cost Optimization status from supervisor.
+
+    Event types:
+    - cost_opt_init: Cost optimization initializing
+    - cost_opt_helicone_connected: Helicone integration active
+    - cost_opt_stats_updated: Cost/cache stats updated
+    - cost_opt_caching_enabled: Intelligent caching enabled
+    - cost_opt_prompt_optimization: Prompt optimization active
+    - cost_opt_model_routing: Smart model routing active
+    - cost_opt_ready: Cost optimization ready
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        # Update state based on event type
+        if event_type == 'cost_opt_init':
+            progress_state.cost_optimization.active = True
+            progress_state.cost_optimization.status = 'initializing'
+
+        elif event_type == 'cost_opt_helicone_connected':
+            progress_state.cost_optimization.helicone_enabled = True
+
+        elif event_type == 'cost_opt_stats_updated':
+            progress_state.cost_optimization.total_api_calls = data.get('total_calls', 0)
+            progress_state.cost_optimization.cached_calls = data.get('cached_calls', 0)
+
+            # Calculate cache hit rate
+            if progress_state.cost_optimization.total_api_calls > 0:
+                progress_state.cost_optimization.cache_hit_rate = (
+                    progress_state.cost_optimization.cached_calls /
+                    progress_state.cost_optimization.total_api_calls * 100.0
+                )
+
+            progress_state.cost_optimization.estimated_cost_usd = data.get('estimated_cost', 0.0)
+            progress_state.cost_optimization.estimated_savings_usd = data.get('estimated_savings', 0.0)
+
+        elif event_type == 'cost_opt_caching_enabled':
+            progress_state.cost_optimization.caching_enabled = True
+
+        elif event_type == 'cost_opt_prompt_optimization':
+            progress_state.cost_optimization.prompt_optimization = True
+
+        elif event_type == 'cost_opt_model_routing':
+            progress_state.cost_optimization.model_routing = True
+
+        elif event_type == 'cost_opt_ready':
+            progress_state.cost_optimization.status = 'ready'
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "cost_optimization": progress_state.cost_optimization.to_dict(),
+        })
+
+        logger.info(f"[CostOpt] {event_type}: {data.get('message', '')}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "cost_optimization": progress_state.cost_optimization.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[CostOpt] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v6.3: Cross-Repository Intelligence Coordination Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def get_cross_repo_status(request: web.Request) -> web.Response:
+    """
+    v6.3: Get Cross-Repository Intelligence Coordination status.
+
+    Returns cross-repo coordination state including:
+    - JARVIS Prime (Tier-0 Local Brain) connection and health
+    - Reactor Core training pipeline status
+    - Neural Mesh multi-agent coordination
+    - State synchronization status
+    """
+    try:
+        return web.json_response({
+            "status": "ok",
+            "cross_repo": progress_state.cross_repo.to_dict(),
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[CrossRepo] Get status error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+async def update_cross_repo_status(request: web.Request) -> web.Response:
+    """
+    v6.3: Update Cross-Repository Intelligence status from supervisor.
+
+    Event types:
+    - cross_repo_init: Cross-repo coordination initializing
+    - cross_repo_prime_connected: JARVIS Prime connected
+    - cross_repo_prime_health: JARVIS Prime health update
+    - cross_repo_reactor_connected: Reactor Core connected
+    - cross_repo_training_active: Training pipeline active
+    - cross_repo_neural_mesh_active: Neural Mesh coordination active
+    - cross_repo_sync_enabled: State synchronization enabled
+    - cross_repo_sync_success: State sync successful
+    - cross_repo_sync_failed: State sync failed
+    - cross_repo_ready: All cross-repo systems ready
+    """
+    try:
+        data = await request.json()
+        event_type = data.get('event', 'unknown')
+
+        # Update state based on event type
+        if event_type == 'cross_repo_init':
+            progress_state.cross_repo.active = True
+            progress_state.cross_repo.status = 'initializing'
+
+        elif event_type == 'cross_repo_prime_connected':
+            progress_state.cross_repo.jarvis_prime_connected = True
+            progress_state.cross_repo.jarvis_prime_port = data.get('port', 8002)
+            progress_state.cross_repo.jarvis_prime_health = 'connected'
+            progress_state.cross_repo.jarvis_prime_tier = data.get('tier', 'tier-0')
+
+        elif event_type == 'cross_repo_prime_health':
+            progress_state.cross_repo.jarvis_prime_health = data.get('health', 'unknown')
+
+        elif event_type == 'cross_repo_reactor_connected':
+            progress_state.cross_repo.reactor_core_connected = True
+            progress_state.cross_repo.model_sync_enabled = data.get('model_sync', True)
+
+        elif event_type == 'cross_repo_training_active':
+            progress_state.cross_repo.training_pipeline_active = True
+
+        elif event_type == 'cross_repo_training_inactive':
+            progress_state.cross_repo.training_pipeline_active = False
+
+        elif event_type == 'cross_repo_neural_mesh_active':
+            progress_state.cross_repo.neural_mesh_active = True
+            progress_state.cross_repo.neural_mesh_coordinator = data.get('coordinator', 'online')
+            progress_state.cross_repo.registered_agents = data.get('agents', 0)
+            progress_state.cross_repo.active_conversations = data.get('conversations', 0)
+
+        elif event_type == 'cross_repo_sync_enabled':
+            progress_state.cross_repo.state_sync_enabled = True
+
+        elif event_type == 'cross_repo_sync_success':
+            progress_state.cross_repo.last_sync_timestamp = datetime.now().isoformat()
+            progress_state.cross_repo.sync_failures = 0
+
+        elif event_type == 'cross_repo_sync_failed':
+            progress_state.cross_repo.sync_failures += 1
+
+        elif event_type == 'cross_repo_ready':
+            progress_state.cross_repo.status = 'ready'
+
+        # Broadcast to WebSocket clients
+        await connection_manager.broadcast({
+            "type": event_type,
+            **data,
+            "cross_repo": progress_state.cross_repo.to_dict(),
+        })
+
+        logger.info(f"[CrossRepo] {event_type}: {data.get('message', '')}")
+
+        return web.json_response({
+            "status": "ok",
+            "event": event_type,
+            "cross_repo": progress_state.cross_repo.to_dict(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[CrossRepo] Update error: {e}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# End of v6.2/v6.3 Enhanced Intelligence Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
 async def supervisor_event_handler(request: web.Request) -> web.Response:
     """
     v4.0: Unified supervisor event handler.
@@ -3071,6 +3806,22 @@ def create_app() -> web.Application:
     # v9.4: Neural Mesh endpoints
     app.router.add_get('/api/neural-mesh/status', get_neural_mesh_status)
     app.router.add_post('/api/neural-mesh/update', update_neural_mesh_status)
+
+    # v6.2: Voice Biometric Authentication System endpoints
+    app.router.add_get('/api/voice-biometrics/status', get_voice_biometrics_status)
+    app.router.add_post('/api/voice-biometrics/update', update_voice_biometrics_status)
+
+    # v6.2: Intelligent Voice Narrator endpoints
+    app.router.add_get('/api/narrator/status', get_narrator_status)
+    app.router.add_post('/api/narrator/update', update_narrator_status)
+
+    # v6.3: Cost Optimization and Helicone Integration endpoints
+    app.router.add_get('/api/cost-optimization/status', get_cost_optimization_status)
+    app.router.add_post('/api/cost-optimization/update', update_cost_optimization_status)
+
+    # v6.3: Cross-Repository Intelligence Coordination endpoints
+    app.router.add_get('/api/cross-repo/status', get_cross_repo_status)
+    app.router.add_post('/api/cross-repo/update', update_cross_repo_status)
 
     # CORS preflight
     app.router.add_route('OPTIONS', '/{path:.*}', handle_options)

@@ -277,21 +277,56 @@ class JARVISLoadingManager {
                 name: 'Voice Biometric Intelligence',
                 icon: '🎤',
                 phase: 'initialization',
-                expectedProgress: [68, 75],
-                substeps: ['Loading ECAPA-TDNN', 'Speaker cache', 'VBI initialization']
+                expectedProgress: [68, 72],
+                substeps: ['Loading ECAPA-TDNN (192-dim)', 'Initializing speaker verification', 'Multi-tier thresholds (70%/85%/95%)']
+            },
+            'voice_bio_liveness': {
+                name: 'Anti-Spoofing & Liveness Detection',
+                icon: '🛡️',
+                phase: 'initialization',
+                expectedProgress: [72, 74],
+                substeps: ['Replay attack detection', 'Deepfake detection', 'Liveness verification (99.8% accuracy)']
+            },
+            'voice_bio_cache': {
+                name: 'Speaker Recognition Cache',
+                icon: '🔐',
+                phase: 'initialization',
+                expectedProgress: [74, 75],
+                substeps: ['Loading voiceprints (59 samples)', 'ChromaDB voice patterns', 'Behavioral biometrics ready']
+            },
+            'narrator_init': {
+                name: 'Intelligent Voice Narrator',
+                icon: '🗣️',
+                phase: 'initialization',
+                expectedProgress: [75, 76],
+                substeps: ['Voice synthesis ready', 'Claude integration', 'Contextual announcements enabled']
+            },
+            'cost_optimization_init': {
+                name: 'Cost Optimization & Helicone',
+                icon: '💰',
+                phase: 'initialization',
+                expectedProgress: [76, 78],
+                substeps: ['Helicone integration', 'Intelligent caching', 'API cost tracking']
+            },
+            'cross_repo_init': {
+                name: 'Cross-Repository Intelligence',
+                icon: '🔗',
+                phase: 'initialization',
+                expectedProgress: [78, 80],
+                substeps: ['Connecting to JARVIS Prime (8002)', 'Reactor Core link', 'Neural Mesh coordination']
             },
             'cloud_ecapa': {
                 name: 'Cloud ECAPA Service',
                 icon: '☁️',
                 phase: 'initialization',
-                expectedProgress: [75, 78],
+                expectedProgress: [68, 70],
                 substeps: ['Connecting to Cloud Run', 'Warming ML endpoint']
             },
             'speaker_cache': {
                 name: 'Speaker Recognition Cache',
                 icon: '🔐',
                 phase: 'initialization',
-                expectedProgress: [78, 80],
+                expectedProgress: [70, 72],
                 substeps: ['Fast-path cache', 'Loading recent speakers']
             },
             'autonomous_systems': {
@@ -894,6 +929,78 @@ class JARVISLoadingManager {
                 windows: 0,
                 focusedApp: null,
                 status: 'inactive'
+            },
+
+            // v6.2: Voice Biometric Authentication System
+            voiceBiometrics: {
+                active: false,
+                status: 'idle',
+                ecapaStatus: 'not_loaded',
+                ecapaBackend: 'unknown',
+                embeddingDimensions: 192,
+                livenessEnabled: false,
+                antiSpoofingReady: false,
+                replayDetectionReady: false,
+                deepfakeDetectionReady: false,
+                livenessAccuracy: 99.8,
+                speakerCacheStatus: 'empty',
+                cachedSamples: 0,
+                targetSamples: 59,
+                cachePopulationPercent: 0,
+                tier1Threshold: 70.0,
+                tier2Threshold: 85.0,
+                highSecurityThreshold: 95.0,
+                chromadbVoicePatterns: false,
+                behavioralBiometricsReady: false
+            },
+
+            // v6.2: Intelligent Voice Narrator
+            narrator: {
+                active: false,
+                status: 'idle',
+                enabled: true,
+                voiceEnabled: false,
+                contextualMessages: true,
+                lastAnnouncement: null,
+                announcementCount: 0,
+                milestonesAnnounced: [],
+                claudeIntegration: false,
+                langfuseTracking: false
+            },
+
+            // v6.3: Cost Optimization & Helicone Integration
+            costOptimization: {
+                active: false,
+                status: 'idle',
+                heliconeEnabled: false,
+                totalApiCalls: 0,
+                cachedCalls: 0,
+                cacheHitRate: 0.0,
+                estimatedCostUsd: 0.0,
+                estimatedSavingsUsd: 0.0,
+                cachingEnabled: true,
+                promptOptimization: false,
+                modelRouting: false
+            },
+
+            // v6.3: Cross-Repository Intelligence Coordination
+            crossRepo: {
+                active: false,
+                status: 'idle',
+                jarvisPrimeConnected: false,
+                jarvisPrimePort: 8002,
+                jarvisPrimeHealth: 'unknown',
+                jarvisPrimeTier: 'unknown',
+                reactorCoreConnected: false,
+                trainingPipelineActive: false,
+                modelSyncEnabled: false,
+                neuralMeshActive: false,
+                neuralMeshCoordinator: 'offline',
+                registeredAgents: 0,
+                activeConversations: 0,
+                stateSyncEnabled: false,
+                lastSyncTimestamp: null,
+                syncFailures: 0
             }
         };
 
@@ -2172,6 +2279,128 @@ class JARVISLoadingManager {
                 if (sai.active) {
                     this.addLogEntry('SAI', `Tracking ${sai.windows || 0} windows across ${sai.spaces || 0} spaces`, 'info');
                 }
+            }
+
+            // ===================================================================
+            // v6.2/v6.3: Enhanced Intelligence Metadata Handling
+            // ===================================================================
+
+            // Voice Biometric Authentication System
+            if (metadata.voice_biometrics || metadata.voiceBiometrics) {
+                const vb = metadata.voice_biometrics || metadata.voiceBiometrics;
+                this.state.voiceBiometrics = {
+                    active: vb.active || false,
+                    status: vb.status || 'idle',
+                    ecapaStatus: vb.ecapa_status || vb.ecapaStatus || 'not_loaded',
+                    ecapaBackend: vb.ecapa_backend || vb.ecapaBackend || 'unknown',
+                    embeddingDimensions: vb.embedding_dimensions || vb.embeddingDimensions || 192,
+                    livenessEnabled: vb.liveness_enabled || vb.livenessEnabled || false,
+                    antiSpoofingReady: vb.anti_spoofing_ready || vb.antiSpoofingReady || false,
+                    replayDetectionReady: vb.replay_detection_ready || vb.replayDetectionReady || false,
+                    deepfakeDetectionReady: vb.deepfake_detection_ready || vb.deepfakeDetectionReady || false,
+                    livenessAccuracy: vb.liveness_accuracy || vb.livenessAccuracy || 99.8,
+                    speakerCacheStatus: vb.speaker_cache_status || vb.speakerCacheStatus || 'empty',
+                    cachedSamples: vb.cached_samples || vb.cachedSamples || 0,
+                    targetSamples: vb.target_samples || vb.targetSamples || 59,
+                    cachePopulationPercent: vb.cache_population_percent || vb.cachePopulationPercent || 0,
+                    tier1Threshold: vb.tier1_threshold || vb.tier1Threshold || 70.0,
+                    tier2Threshold: vb.tier2_threshold || vb.tier2Threshold || 85.0,
+                    highSecurityThreshold: vb.high_security_threshold || vb.highSecurityThreshold || 95.0,
+                    chromadbVoicePatterns: vb.chromadb_voice_patterns || vb.chromadbVoicePatterns || false,
+                    behavioralBiometricsReady: vb.behavioral_biometrics_ready || vb.behavioralBiometricsReady || false
+                };
+                if (vb.status === 'ready') {
+                    this.addLogEntry('VoiceBio', `ECAPA-TDNN loaded (${vb.embedding_dimensions || 192}-dim), Liveness: ${vb.liveness_accuracy || 99.8}%`, 'success');
+                } else if (vb.anti_spoofing_ready) {
+                    this.addLogEntry('VoiceBio', 'Anti-spoofing & liveness detection ready', 'success');
+                } else if (vb.cached_samples) {
+                    this.addLogEntry('VoiceBio', `Speaker cache: ${vb.cached_samples}/${vb.target_samples || 59} samples (${(vb.cache_population_percent || 0).toFixed(1)}%)`, 'info');
+                }
+                this.updateAdvancedStatusPanel('voice_biometrics');
+            }
+
+            // Intelligent Voice Narrator
+            if (metadata.narrator) {
+                const nr = metadata.narrator;
+                this.state.narrator = {
+                    active: nr.active || false,
+                    status: nr.status || 'idle',
+                    enabled: nr.enabled !== undefined ? nr.enabled : true,
+                    voiceEnabled: nr.voice_enabled || nr.voiceEnabled || false,
+                    contextualMessages: nr.contextual_messages || nr.contextualMessages !== undefined ? nr.contextualMessages : true,
+                    lastAnnouncement: nr.last_announcement || nr.lastAnnouncement || null,
+                    announcementCount: nr.announcement_count || nr.announcementCount || 0,
+                    milestonesAnnounced: nr.milestones_announced || nr.milestonesAnnounced || [],
+                    claudeIntegration: nr.claude_integration || nr.claudeIntegration || false,
+                    langfuseTracking: nr.langfuse_tracking || nr.langfuseTracking || false
+                };
+                if (nr.status === 'ready') {
+                    this.addLogEntry('Narrator', 'Intelligent voice announcements ready', 'success');
+                } else if (nr.last_announcement) {
+                    this.addLogEntry('Narrator', `Announcement: "${nr.last_announcement}"`, 'info');
+                }
+                this.updateAdvancedStatusPanel('narrator');
+            }
+
+            // Cost Optimization & Helicone Integration
+            if (metadata.cost_optimization || metadata.costOptimization) {
+                const co = metadata.cost_optimization || metadata.costOptimization;
+                this.state.costOptimization = {
+                    active: co.active || false,
+                    status: co.status || 'idle',
+                    heliconeEnabled: co.helicone_enabled || co.heliconeEnabled || false,
+                    totalApiCalls: co.total_api_calls || co.totalApiCalls || 0,
+                    cachedCalls: co.cached_calls || co.cachedCalls || 0,
+                    cacheHitRate: co.cache_hit_rate || co.cacheHitRate || 0.0,
+                    estimatedCostUsd: co.estimated_cost_usd || co.estimatedCostUsd || 0.0,
+                    estimatedSavingsUsd: co.estimated_savings_usd || co.estimatedSavingsUsd || 0.0,
+                    cachingEnabled: co.caching_enabled !== undefined ? co.caching_enabled : (co.cachingEnabled !== undefined ? co.cachingEnabled : true),
+                    promptOptimization: co.prompt_optimization || co.promptOptimization || false,
+                    modelRouting: co.model_routing || co.modelRouting || false
+                };
+                if (co.status === 'ready') {
+                    const savings = co.estimated_savings_usd || co.estimatedSavingsUsd || 0;
+                    const hitRate = co.cache_hit_rate || co.cacheHitRate || 0;
+                    this.addLogEntry('CostOpt', `Helicone ready - ${hitRate.toFixed(1)}% cache hit rate, $${savings.toFixed(2)} saved`, 'success');
+                } else if (co.helicone_enabled || co.heliconeEnabled) {
+                    this.addLogEntry('CostOpt', 'Helicone integration active', 'success');
+                }
+                this.updateAdvancedStatusPanel('cost_optimization');
+            }
+
+            // Cross-Repository Intelligence Coordination
+            if (metadata.cross_repo || metadata.crossRepo) {
+                const cr = metadata.cross_repo || metadata.crossRepo;
+                this.state.crossRepo = {
+                    active: cr.active || false,
+                    status: cr.status || 'idle',
+                    jarvisPrimeConnected: cr.jarvis_prime_connected || cr.jarvisPrimeConnected || false,
+                    jarvisPrimePort: cr.jarvis_prime_port || cr.jarvisPrimePort || 8002,
+                    jarvisPrimeHealth: cr.jarvis_prime_health || cr.jarvisPrimeHealth || 'unknown',
+                    jarvisPrimeTier: cr.jarvis_prime_tier || cr.jarvisPrimeTier || 'unknown',
+                    reactorCoreConnected: cr.reactor_core_connected || cr.reactorCoreConnected || false,
+                    trainingPipelineActive: cr.training_pipeline_active || cr.trainingPipelineActive || false,
+                    modelSyncEnabled: cr.model_sync_enabled || cr.modelSyncEnabled || false,
+                    neuralMeshActive: cr.neural_mesh_active || cr.neuralMeshActive || false,
+                    neuralMeshCoordinator: cr.neural_mesh_coordinator || cr.neuralMeshCoordinator || 'offline',
+                    registeredAgents: cr.registered_agents || cr.registeredAgents || 0,
+                    activeConversations: cr.active_conversations || cr.activeConversations || 0,
+                    stateSyncEnabled: cr.state_sync_enabled || cr.stateSyncEnabled || false,
+                    lastSyncTimestamp: cr.last_sync_timestamp || cr.lastSyncTimestamp || null,
+                    syncFailures: cr.sync_failures || cr.syncFailures || 0
+                };
+                if (cr.status === 'ready') {
+                    const connections = [];
+                    if (cr.jarvis_prime_connected || cr.jarvisPrimeConnected) connections.push(`Prime:${cr.jarvis_prime_port || cr.jarvisPrimePort || 8002}`);
+                    if (cr.reactor_core_connected || cr.reactorCoreConnected) connections.push('Reactor');
+                    if (cr.neural_mesh_active || cr.neuralMeshActive) connections.push(`Mesh:${cr.registered_agents || cr.registeredAgents || 0} agents`);
+                    this.addLogEntry('CrossRepo', `Connected: ${connections.join(', ') || 'None'}`, 'success');
+                } else if (cr.jarvis_prime_connected || cr.jarvisPrimeConnected) {
+                    this.addLogEntry('CrossRepo', `JARVIS Prime connected (port ${cr.jarvis_prime_port || cr.jarvisPrimePort || 8002})`, 'success');
+                } else if (cr.neural_mesh_active || cr.neuralMeshActive) {
+                    this.addLogEntry('CrossRepo', `Neural Mesh active: ${cr.registered_agents || cr.registeredAgents || 0} agents`, 'info');
+                }
+                this.updateAdvancedStatusPanel('cross_repo');
             }
         }
 

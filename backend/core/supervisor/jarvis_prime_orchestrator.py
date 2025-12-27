@@ -555,14 +555,15 @@ class JarvisPrimeOrchestrator:
         """
         Intelligent port coordination system - ensures port is available before starting.
 
-        Strategy:
+        Strategy (v10.5 - Enhanced with zombie detection):
         1. Check if port is in use
         2. If by our own managed process, trust it
-        3. If by related process (parent/child/sibling), coordinate shutdown
-        4. If by old JARVIS Prime instance, graceful shutdown with retries
-        5. If by unrelated process, force cleanup
-        6. Wait with exponential backoff (up to 30s total)
-        7. ONLY return when port is truly available OR raise exception
+        3. Check for zombie/defunct processes and clean immediately
+        4. If by related process (parent/child/sibling), coordinate shutdown
+        5. If by old JARVIS Prime instance, graceful shutdown with retries
+        6. If by unrelated process, force cleanup
+        7. Wait with exponential backoff (up to 45s total for stubborn processes)
+        8. ONLY return when port is truly available OR raise exception
 
         This prevents the "address already in use" error by NEVER proceeding
         until the port is guaranteed to be free.
@@ -571,7 +572,7 @@ class JarvisPrimeOrchestrator:
             RuntimeError: If port cannot be freed within timeout
         """
         port = self.config.port
-        max_wait_time = 30.0  # Maximum total wait time in seconds
+        max_wait_time = 45.0  # Increased from 30s to handle stubborn processes
         start_time = time.time()
 
         logger.info(f"[JarvisPrime] Ensuring port {port} is available for startup...")
@@ -586,6 +587,28 @@ class JarvisPrimeOrchestrator:
         if self._process and self._process.pid == pid:
             logger.debug(f"[JarvisPrime] Port {port} is used by our own managed process (PID {pid})")
             return
+
+        # v10.5: IMMEDIATE zombie/defunct process cleanup
+        # Zombies can't be killed normally, so detect and reap them first
+        if PSUTIL_AVAILABLE:
+            try:
+                proc = psutil.Process(pid)
+                if proc.status() == psutil.STATUS_ZOMBIE:
+                    logger.warning(f"[JarvisPrime] PID {pid} is zombie - attempting to reap...")
+                    try:
+                        # Zombies are already dead, just need to reap them
+                        os.waitpid(pid, os.WNOHANG)
+                        logger.info(f"[JarvisPrime] Reaped zombie process {pid}")
+                        # Wait briefly for port to free
+                        await asyncio.sleep(0.5)
+                        pid_check = await self._get_pid_on_port(port)
+                        if pid_check is None:
+                            logger.info(f"[JarvisPrime] Port {port} freed after reaping zombie")
+                            return
+                    except (OSError, ChildProcessError) as e:
+                        logger.debug(f"[JarvisPrime] Zombie reap failed (may not be our child): {e}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
         # Determine relationship to the process on the port
         is_related = await self._is_ancestor_process(pid)
