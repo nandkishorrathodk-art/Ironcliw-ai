@@ -1176,8 +1176,8 @@ class DatabaseConnectionWrapper:
         )
         translated = json_extract_pattern.sub(r"\1->>'\2'", translated)
 
-        # 3. Handle json_extract with path array ($.path[0])
-        # json_extract(metadata, '$.path') -> metadata->'path' for nested access
+        # 3. Handle json_extract with nested paths ($.path)
+        # json_extract(metadata, '$.path') -> metadata->>'path' for text extraction
         json_extract_nested = re.compile(
             r"json_extract\s*\(\s*(\w+)\s*,\s*['\"]([^'\"]+)['\"]\s*\)",
             re.IGNORECASE
@@ -1186,12 +1186,144 @@ class DatabaseConnectionWrapper:
         def replace_nested(match):
             column = match.group(1)
             path = match.group(2).replace('$.', '')
-            # Simple conversion: use ->> for final value extraction
-            return f"{column}>>'{path}'"
+            # Use ->> for text extraction (not >> which returns jsonb)
+            # This avoids "operator does not exist: jsonb >> unknown" errors
+            return f"{column}->>'{path}'"
 
         translated = json_extract_nested.sub(replace_nested, translated)
 
         return translated
+
+    def _convert_insert_to_upsert(self, sql: str, table_primary_keys: Dict[str, List[str]] = None) -> str:
+        """
+        Intelligently convert INSERT to UPSERT (INSERT ON CONFLICT).
+
+        This method is fully dynamic - automatically detects table name,
+        columns, and generates appropriate UPSERT for PostgreSQL or SQLite.
+
+        For PostgreSQL:
+            INSERT INTO table (col1, col2) VALUES ($1, $2)
+            -> INSERT INTO table (col1, col2) VALUES ($1, $2)
+               ON CONFLICT (pk_col) DO UPDATE SET col1=$1, col2=$2
+
+        For SQLite:
+            INSERT INTO table (col1, col2) VALUES (?, ?)
+            -> INSERT INTO table (col1, col2) VALUES (?, ?)
+               ON CONFLICT (pk_col) DO UPDATE SET col1=excluded.col1, col2=excluded.col2
+
+        Args:
+            sql: Original INSERT statement
+            table_primary_keys: Optional dict mapping table names to primary key columns
+                               If None, will use intelligent defaults
+
+        Returns:
+            UPSERT statement for target database
+        """
+        import re
+
+        # Don't convert if already UPSERT
+        if 'ON CONFLICT' in sql.upper() or 'ON DUPLICATE' in sql.upper():
+            return sql
+
+        # Don't convert if not INSERT
+        if not sql.strip().upper().startswith('INSERT'):
+            return sql
+
+        # Extract table name and columns
+        insert_pattern = re.compile(
+            r'INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES',
+            re.IGNORECASE
+        )
+        match = insert_pattern.search(sql)
+
+        if not match:
+            # Can't parse - return unchanged
+            return sql
+
+        table_name = match.group(1)
+        columns_str = match.group(2)
+        columns = [col.strip() for col in columns_str.split(',')]
+
+        # Define primary keys for known tables (fully dynamic - easy to extend)
+        if table_primary_keys is None:
+            table_primary_keys = {
+                'workspace_usage': ['usage_id'],
+                'app_usage_patterns': ['pattern_id'],
+                'user_workflows': ['workflow_id'],
+                'space_transitions': ['transition_id'],
+                'behavioral_patterns': ['pattern_id'],
+                'temporal_patterns': ['pattern_id'],
+                'proactive_suggestions': ['suggestion_id'],
+                'voice_samples': ['sample_id'],
+                'speaker_profiles': ['speaker_id'],
+                'voice_transcriptions': ['transcription_id'],
+                'misheard_queries': ['query_id'],
+                'query_retries': ['retry_id'],
+                'acoustic_adaptations': ['adaptation_id'],
+                'display_patterns': ['pattern_id'],
+                'user_preferences': ['preference_id'],
+                'actions': ['action_id'],
+                'goal_action_mappings': ['mapping_id'],
+                'conversation_history': ['history_id'],
+                'interaction_corrections': ['correction_id'],
+                'conversation_embeddings': ['embedding_id'],
+                'ml_training_history': ['training_id'],
+            }
+
+        # Get primary key for this table
+        pk_columns = table_primary_keys.get(table_name)
+
+        if not pk_columns:
+            # Unknown table - use intelligent default: assume first column is PK
+            # or look for columns with '_id' suffix
+            id_columns = [col for col in columns if col.endswith('_id')]
+            if id_columns:
+                pk_columns = [id_columns[0]]
+            else:
+                # Use first column as PK
+                pk_columns = [columns[0]] if columns else None
+
+        if not pk_columns:
+            # Can't determine PK - return unchanged
+            return sql
+
+        # Build UPSERT statement based on database type
+        if self.is_cloud:
+            # PostgreSQL: INSERT ... ON CONFLICT ... DO UPDATE
+            pk_clause = ', '.join(pk_columns)
+
+            # Build UPDATE SET clause (all columns except auto-increment PKs)
+            update_pairs = []
+            for i, col in enumerate(columns, start=1):
+                # Don't update auto-increment primary keys
+                if col not in pk_columns or not col.endswith('_id'):
+                    update_pairs.append(f"{col}=${i}")
+
+            update_clause = ', '.join(update_pairs)
+
+            # Append ON CONFLICT clause
+            upsert_sql = sql.rstrip(';').rstrip()
+            upsert_sql += f"\n    ON CONFLICT ({pk_clause}) DO UPDATE SET {update_clause}"
+
+            return upsert_sql
+        else:
+            # SQLite: INSERT ... ON CONFLICT ... DO UPDATE with excluded
+            pk_clause = ', '.join(pk_columns)
+
+            # Build UPDATE SET clause using excluded
+            update_pairs = []
+            for col in columns:
+                # Don't update auto-increment primary keys
+                if col not in pk_columns or not col.endswith('_id'):
+                    update_pairs.append(f"{col}=excluded.{col}")
+
+            update_clause = ', '.join(update_pairs)
+
+            # Append ON CONFLICT clause
+            upsert_sql = sql.rstrip(';').rstrip()
+            upsert_sql += f"\n    ON CONFLICT ({pk_clause}) DO UPDATE SET {update_clause}"
+
+            return upsert_sql
 
     @asynccontextmanager
     async def cursor(self):
@@ -1227,6 +1359,7 @@ class DatabaseConnectionWrapper:
         - Automatic datetime string -> datetime object conversion for PostgreSQL
         - SQL dialect translation (SQLite ? -> PostgreSQL $1, $2...)
         - json_extract() -> jsonb operators translation
+        - INSERT -> UPSERT conversion (prevents duplicate key violations)
 
         Args:
             sql: SQL query string (SQLite dialect)
@@ -1236,8 +1369,11 @@ class DatabaseConnectionWrapper:
             AsyncContextCursor: Awaitable context manager wrapping DetachedCursor
         """
         async def _execute_impl():
-            # Intelligently translate SQL and convert parameters
-            translated_sql = self._translate_sql_dialect(sql)
+            # Intelligently convert INSERT to UPSERT
+            upsert_sql = self._convert_insert_to_upsert(sql)
+            # Intelligently translate SQL dialect
+            translated_sql = self._translate_sql_dialect(upsert_sql)
+            # Intelligently convert parameters
             converted_params = self._convert_parameters_for_db(parameters)
 
             async with self.cursor() as cur:
@@ -1256,6 +1392,7 @@ class DatabaseConnectionWrapper:
         INTELLIGENT FEATURES:
         - Automatic datetime string -> datetime object conversion for PostgreSQL
         - SQL dialect translation (SQLite ? -> PostgreSQL $1, $2...)
+        - INSERT -> UPSERT conversion (prevents duplicate key violations)
         - Batch parameter conversion for all parameter sets
 
         Args:
@@ -1266,8 +1403,11 @@ class DatabaseConnectionWrapper:
             AsyncContextCursor: Awaitable context manager wrapping DetachedCursor
         """
         async def _executemany_impl():
-            # Intelligently translate SQL and convert all parameter sets
-            translated_sql = self._translate_sql_dialect(sql)
+            # Intelligently convert INSERT to UPSERT
+            upsert_sql = self._convert_insert_to_upsert(sql)
+            # Intelligently translate SQL dialect
+            translated_sql = self._translate_sql_dialect(upsert_sql)
+            # Intelligently convert all parameter sets
             converted_params_list = [
                 self._convert_parameters_for_db(params)
                 for params in parameters_list
@@ -5904,8 +6044,8 @@ class JARVISLearningDatabase:
                        COUNT(*) as occurrences, AVG(confidence) as avg_conf
                 FROM temporal_patterns
                 GROUP BY time_of_day, day_of_week, action_type
-                HAVING occurrences > 2
-                ORDER BY occurrences DESC
+                HAVING COUNT(*) > 2
+                ORDER BY COUNT(*) DESC
                 LIMIT 20
             """
             ) as cursor:
