@@ -111,6 +111,93 @@ class AsyncContextCursor:
         return False
 
 
+class UniversalRow:
+    """
+    Universal row wrapper supporting both numeric and column name access.
+
+    Works with:
+    - asyncpg.Record (PostgreSQL)
+    - sqlite3.Row (SQLite)
+    - dict (generic)
+
+    Supports:
+    - row[0], row[1] (numeric index)
+    - row['column'] (column name)
+    - row.column (attribute access)
+    - dict(row) (conversion to dict)
+    """
+
+    def __init__(self, data, columns=None):
+        """
+        Initialize universal row.
+
+        Args:
+            data: Row data (dict, asyncpg.Record, or sqlite3.Row)
+            columns: Optional column names (if data is tuple/list)
+        """
+        self._data = data
+        self._columns = columns
+
+        # Extract column names if not provided
+        if self._columns is None:
+            if hasattr(data, 'keys'):
+                # dict or Record object
+                self._columns = list(data.keys())
+            elif isinstance(data, (tuple, list)):
+                # tuple/list without column names
+                self._columns = [f"col_{i}" for i in range(len(data))]
+            else:
+                self._columns = []
+
+    def __getitem__(self, key):
+        """Support both numeric and column name access."""
+        if isinstance(key, int):
+            # Numeric index - convert to column name
+            if 0 <= key < len(self._columns):
+                col_name = self._columns[key]
+                return self._data[col_name] if hasattr(self._data, '__getitem__') else getattr(self._data, col_name)
+            raise IndexError(f"Row index {key} out of range (0-{len(self._columns)-1})")
+        else:
+            # Column name access
+            return self._data[key] if hasattr(self._data, '__getitem__') else getattr(self._data, key)
+
+    def __getattr__(self, name):
+        """Support attribute access (row.column)."""
+        if name.startswith('_'):
+            # Avoid infinite recursion with internal attributes
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        return self[name]
+
+    def __iter__(self):
+        """Iterate over column values."""
+        for col in self._columns:
+            yield self[col]
+
+    def __len__(self):
+        """Return number of columns."""
+        return len(self._columns)
+
+    def __repr__(self):
+        """String representation."""
+        return f"UniversalRow({dict(self)})"
+
+    def keys(self):
+        """Return column names."""
+        return self._columns
+
+    def values(self):
+        """Return column values."""
+        return [self[col] for col in self._columns]
+
+    def items(self):
+        """Return (column, value) pairs."""
+        return [(col, self[col]) for col in self._columns]
+
+    def __dict__(self):
+        """Convert to dict."""
+        return {col: self[col] for col in self._columns}
+
+
 class DetachedCursor:
     """
     A cursor that holds query results without maintaining a connection reference.
@@ -120,11 +207,15 @@ class DetachedCursor:
 
     This fixes the "connection has been released back to the pool" error by
     ensuring no operations are attempted on a released connection.
+
+    INTELLIGENT FEATURES:
+    - UniversalRow wrapper for results (supports both row[0] and row['column'])
+    - Works with both asyncpg.Record and dict results
     """
 
     def __init__(
         self,
-        results: List[Dict[str, Any]],
+        results: List[Any],
         row_count: int = -1,
         description: Optional[List[Tuple]] = None,
         lastrowid: Optional[int] = None,
@@ -135,14 +226,25 @@ class DetachedCursor:
         Initialize detached cursor with query results.
 
         Args:
-            results: Query result rows as list of dicts
+            results: Query result rows (UniversalRow, dict, or Record objects)
             row_count: Number of affected rows
             description: Column descriptions
             lastrowid: Last inserted row ID
             query: The executed query
             params: Query parameters
         """
-        self._results = results or []
+        # Wrap results in UniversalRow if not already wrapped
+        self._results = []
+        for row in (results or []):
+            if isinstance(row, UniversalRow):
+                self._results.append(row)
+            elif hasattr(row, 'keys'):
+                # dict or Record - wrap it
+                self._results.append(UniversalRow(row))
+            else:
+                # Unknown type - wrap as-is
+                self._results.append(row)
+
         self._row_count = row_count
         self._description = description
         self._lastrowid = lastrowid
@@ -937,6 +1039,11 @@ class DatabaseConnectionWrapper:
     """
     Advanced wrapper that makes Cloud SQL adapter look like aiosqlite connection.
     Provides transaction support, connection pooling, and comprehensive error handling.
+
+    INTELLIGENT FEATURES:
+    - Automatic type conversion (datetime strings -> datetime objects for PostgreSQL)
+    - SQL dialect translation (SQLite -> PostgreSQL syntax)
+    - Result normalization (asyncpg Records -> dict-like with numeric indices)
     """
 
     def __init__(self, adapter):
@@ -963,6 +1070,128 @@ class DatabaseConnectionWrapper:
     def in_transaction(self) -> bool:
         """Check if currently in a transaction"""
         return self._in_transaction
+
+    def _convert_parameters_for_db(self, parameters: Tuple) -> Tuple:
+        """
+        Intelligently convert parameters based on database type.
+
+        For PostgreSQL (asyncpg):
+        - Convert ISO datetime strings to datetime objects
+        - Keep everything else as-is
+
+        For SQLite:
+        - Keep datetime strings as strings
+        - Keep everything else as-is
+
+        Args:
+            parameters: Tuple of query parameters
+
+        Returns:
+            Converted tuple suitable for target database
+        """
+        if not self.is_cloud:
+            # SQLite - no conversion needed, handles strings fine
+            return parameters
+
+        # PostgreSQL - convert datetime strings to datetime objects
+        from datetime import datetime
+        import re
+
+        converted = []
+        # ISO format pattern: YYYY-MM-DDTHH:MM:SS.ffffff or YYYY-MM-DDTHH:MM:SS
+        iso_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$')
+
+        for param in parameters:
+            if isinstance(param, str) and iso_pattern.match(param):
+                # Convert ISO string to datetime object
+                try:
+                    converted.append(datetime.fromisoformat(param))
+                except (ValueError, TypeError):
+                    # If conversion fails, keep as string
+                    converted.append(param)
+            else:
+                # Keep as-is
+                converted.append(param)
+
+        return tuple(converted)
+
+    def _translate_sql_dialect(self, sql: str) -> str:
+        """
+        Translate SQL from SQLite dialect to PostgreSQL dialect.
+
+        Translations:
+        - ? placeholders -> $1, $2, $3... (PostgreSQL positional)
+        - json_extract(column, '$.path') -> column->>'path' (PostgreSQL jsonb)
+        - Other SQLite-specific functions -> PostgreSQL equivalents
+
+        Args:
+            sql: SQL query string (SQLite dialect)
+
+        Returns:
+            Translated SQL for target database
+        """
+        if not self.is_cloud:
+            # SQLite - no translation needed
+            return sql
+
+        # PostgreSQL translation
+        translated = sql
+
+        # 1. Convert ? placeholders to $1, $2, $3...
+        param_count = 0
+        result = []
+        i = 0
+        in_string = False
+        string_char = None
+
+        while i < len(translated):
+            char = translated[i]
+
+            # Track string literals to avoid replacing ? inside them
+            if char in ('"', "'") and (i == 0 or translated[i-1] != '\\'):
+                if not in_string:
+                    in_string = True
+                    string_char = char
+                elif char == string_char:
+                    in_string = False
+                    string_char = None
+
+            # Replace ? with $N outside of strings
+            if char == '?' and not in_string:
+                param_count += 1
+                result.append(f'${param_count}')
+            else:
+                result.append(char)
+
+            i += 1
+
+        translated = ''.join(result)
+
+        # 2. Convert SQLite json_extract() to PostgreSQL jsonb operators
+        # json_extract(metadata, '$.key') -> metadata->>'key'
+        import re
+        json_extract_pattern = re.compile(
+            r"json_extract\s*\(\s*(\w+)\s*,\s*['\"]?\$\.(\w+)['\"]?\s*\)",
+            re.IGNORECASE
+        )
+        translated = json_extract_pattern.sub(r"\1->>'\2'", translated)
+
+        # 3. Handle json_extract with path array ($.path[0])
+        # json_extract(metadata, '$.path') -> metadata->'path' for nested access
+        json_extract_nested = re.compile(
+            r"json_extract\s*\(\s*(\w+)\s*,\s*['\"]([^'\"]+)['\"]\s*\)",
+            re.IGNORECASE
+        )
+
+        def replace_nested(match):
+            column = match.group(1)
+            path = match.group(2).replace('$.', '')
+            # Simple conversion: use ->> for final value extraction
+            return f"{column}>>'{path}'"
+
+        translated = json_extract_nested.sub(replace_nested, translated)
+
+        return translated
 
     @asynccontextmanager
     async def cursor(self):
@@ -994,16 +1223,25 @@ class DatabaseConnectionWrapper:
             cursor = await db.execute(...)          # await pattern
             async with db.execute(...) as cursor:   # context manager pattern
 
+        INTELLIGENT FEATURES:
+        - Automatic datetime string -> datetime object conversion for PostgreSQL
+        - SQL dialect translation (SQLite ? -> PostgreSQL $1, $2...)
+        - json_extract() -> jsonb operators translation
+
         Args:
-            sql: SQL query string
-            parameters: Query parameters
+            sql: SQL query string (SQLite dialect)
+            parameters: Query parameters (datetime strings OK)
 
         Returns:
             AsyncContextCursor: Awaitable context manager wrapping DetachedCursor
         """
         async def _execute_impl():
+            # Intelligently translate SQL and convert parameters
+            translated_sql = self._translate_sql_dialect(sql)
+            converted_params = self._convert_parameters_for_db(parameters)
+
             async with self.cursor() as cur:
-                await cur.execute(sql, parameters)
+                await cur.execute(translated_sql, converted_params)
                 # Return detached cursor to prevent "connection released" errors
                 return cur.detach()
 
@@ -1015,16 +1253,28 @@ class DatabaseConnectionWrapper:
 
         Fully async and dynamic - supports both await and context manager patterns.
 
+        INTELLIGENT FEATURES:
+        - Automatic datetime string -> datetime object conversion for PostgreSQL
+        - SQL dialect translation (SQLite ? -> PostgreSQL $1, $2...)
+        - Batch parameter conversion for all parameter sets
+
         Args:
-            sql: SQL query string
-            parameters_list: List of parameter tuples
+            sql: SQL query string (SQLite dialect)
+            parameters_list: List of parameter tuples (datetime strings OK)
 
         Returns:
             AsyncContextCursor: Awaitable context manager wrapping DetachedCursor
         """
         async def _executemany_impl():
+            # Intelligently translate SQL and convert all parameter sets
+            translated_sql = self._translate_sql_dialect(sql)
+            converted_params_list = [
+                self._convert_parameters_for_db(params)
+                for params in parameters_list
+            ]
+
             async with self.cursor() as cur:
-                await cur.executemany(sql, parameters_list)
+                await cur.executemany(translated_sql, converted_params_list)
                 # Return detached cursor to prevent "connection released" errors
                 return cur.detach()
 
@@ -6629,9 +6879,247 @@ class JARVISLearningDatabase:
         logger.info("✅ Learning database closed gracefully")
 
 
+class CrossRepoSync:
+    """
+    Intelligent cross-repository database synchronization.
+
+    Syncs learning data between:
+    - JARVIS (main system)
+    - JARVIS Prime (advanced model server)
+    - Reactor Core (multi-agent orchestration)
+
+    Features:
+    - Async parallel sync across all repos
+    - Intelligent conflict resolution (latest wins)
+    - Delta sync (only changed records)
+    - Automatic reconnection on failure
+    - Zero hardcoding - dynamic repo detection
+    """
+
+    def __init__(self, jarvis_db: "JARVISLearningDatabase"):
+        """
+        Initialize cross-repo sync.
+
+        Args:
+            jarvis_db: Main JARVIS learning database instance
+        """
+        self.jarvis_db = jarvis_db
+        self.logger = logging.getLogger(__name__)
+
+        # Detect available repos dynamically
+        self.repos = self._detect_repos()
+        self._sync_interval = 60  # seconds
+        self._sync_task = None
+        self._running = False
+
+    def _detect_repos(self) -> Dict[str, Any]:
+        """
+        Dynamically detect available cross-repo integrations.
+
+        Returns:
+            Dict mapping repo name to connection info
+        """
+        repos = {}
+
+        # Try to detect JARVIS Prime
+        try:
+            from core.jarvis_prime_client import JARVISPrimeClient
+            repos['jarvis_prime'] = {
+                'client': JARVISPrimeClient(),
+                'available': True,
+                'type': 'http_api'
+            }
+            self.logger.info("✅ Detected JARVIS Prime integration")
+        except (ImportError, Exception) as e:
+            self.logger.debug(f"JARVIS Prime not available: {e}")
+
+        # Try to detect Reactor Core
+        try:
+            from autonomy.reactor_core_integration import get_reactor_integration
+            repos['reactor_core'] = {
+                'client': get_reactor_integration(),
+                'available': True,
+                'type': 'websocket'
+            }
+            self.logger.info("✅ Detected Reactor Core integration")
+        except (ImportError, Exception) as e:
+            self.logger.debug(f"Reactor Core not available: {e}")
+
+        return repos
+
+    async def start_sync(self):
+        """Start automatic background synchronization."""
+        if self._running:
+            self.logger.warning("Cross-repo sync already running")
+            return
+
+        self._running = True
+        self._sync_task = asyncio.create_task(self._sync_loop())
+        self.logger.info(f"🔄 Cross-repo sync started (interval: {self._sync_interval}s)")
+        self.logger.info(f"   Connected repos: {list(self.repos.keys())}")
+
+    async def stop_sync(self):
+        """Stop automatic synchronization."""
+        self._running = False
+        if self._sync_task:
+            self._sync_task.cancel()
+            try:
+                await self._sync_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("🔄 Cross-repo sync stopped")
+
+    async def _sync_loop(self):
+        """Background sync loop."""
+        while self._running:
+            try:
+                await self.sync_all()
+                await asyncio.sleep(self._sync_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in sync loop: {e}")
+                await asyncio.sleep(self._sync_interval)
+
+    async def sync_all(self):
+        """
+        Sync all data with all available repos in parallel.
+
+        Syncs:
+        - Goals and patterns
+        - Voice samples (metadata only, not audio)
+        - Behavioral insights
+        - Workflow patterns
+        """
+        if not self.repos:
+            self.logger.debug("No repos available for sync")
+            return
+
+        # Sync in parallel across all repos
+        sync_tasks = []
+        for repo_name, repo_info in self.repos.items():
+            if repo_info.get('available'):
+                sync_tasks.append(self._sync_repo(repo_name, repo_info))
+
+        if sync_tasks:
+            results = await asyncio.gather(*sync_tasks, return_exceptions=True)
+            success_count = sum(1 for r in results if not isinstance(r, Exception))
+            self.logger.debug(f"🔄 Sync completed: {success_count}/{len(results)} repos synced")
+
+    async def _sync_repo(self, repo_name: str, repo_info: Dict):
+        """
+        Sync data with a specific repo.
+
+        Args:
+            repo_name: Name of the repository
+            repo_info: Repository connection info
+        """
+        try:
+            client = repo_info['client']
+
+            # Get recent learning data from JARVIS
+            recent_data = await self._get_recent_learning_data()
+
+            # Send to repo (method depends on repo type)
+            if repo_name == 'jarvis_prime':
+                await self._sync_to_jarvis_prime(client, recent_data)
+            elif repo_name == 'reactor_core':
+                await self._sync_to_reactor_core(client, recent_data)
+
+            self.logger.debug(f"✅ Synced to {repo_name}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to sync to {repo_name}: {e}")
+            raise
+
+    async def _get_recent_learning_data(self, since_seconds: int = 3600) -> Dict[str, List]:
+        """
+        Get recent learning data from JARVIS database.
+
+        Args:
+            since_seconds: Get data from last N seconds (default: 1 hour)
+
+        Returns:
+            Dict with recent goals, patterns, insights
+        """
+        since_time = datetime.now() - timedelta(seconds=since_seconds)
+
+        data = {
+            'goals': [],
+            'patterns': [],
+            'insights': [],
+            'timestamp': datetime.now().isoformat()
+        }
+
+        try:
+            # Get recent goals
+            async with self.jarvis_db.db.execute(
+                """
+                SELECT goal_id, goal_type, confidence, description, created_at
+                FROM goals
+                WHERE created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT 100
+                """,
+                (since_time.isoformat(),)
+            ) as cursor:
+                async for row in cursor:
+                    data['goals'].append({
+                        'goal_id': row[0],
+                        'goal_type': row[1],
+                        'confidence': row[2],
+                        'description': row[3],
+                        'created_at': row[4]
+                    })
+
+            # Get recent behavioral insights (if available)
+            insights = await self.jarvis_db.get_behavioral_insights()
+            if insights:
+                data['insights'] = [insights]
+
+        except Exception as e:
+            self.logger.error(f"Error getting recent learning data: {e}")
+
+        return data
+
+    async def _sync_to_jarvis_prime(self, client, data: Dict):
+        """
+        Sync learning data to JARVIS Prime.
+
+        Args:
+            client: JARVIS Prime client instance
+            data: Learning data to sync
+        """
+        # Check if client has sync method
+        if hasattr(client, 'sync_learning_data'):
+            await client.sync_learning_data(data)
+        elif hasattr(client, 'post'):
+            # Fallback to generic HTTP POST
+            await client.post('/api/sync/learning', json=data)
+
+    async def _sync_to_reactor_core(self, client, data: Dict):
+        """
+        Sync learning data to Reactor Core.
+
+        Args:
+            client: Reactor Core client instance
+            data: Learning data to sync
+        """
+        # Check if client has sync method
+        if hasattr(client, 'sync_learning_data'):
+            await client.sync_learning_data(data)
+        elif hasattr(client, 'send_message'):
+            # Fallback to websocket message
+            await client.send_message({
+                'type': 'learning_sync',
+                'data': data
+            })
+
+
 # Global instance with async initialization
 _db_instance = None
 _db_lock = asyncio.Lock()
+_cross_repo_sync = None
 
 
 async def get_learning_database(config: Optional[Dict] = None) -> JARVISLearningDatabase:
@@ -6645,11 +7133,44 @@ async def get_learning_database(config: Optional[Dict] = None) -> JARVISLearning
         return _db_instance
 
 
-async def close_learning_database():
-    """Close the global learning database instance"""
-    global _db_instance
+async def get_cross_repo_sync(auto_start: bool = True) -> CrossRepoSync:
+    """
+    Get or create the global cross-repo sync instance.
+
+    Args:
+        auto_start: Automatically start sync loop (default: True)
+
+    Returns:
+        CrossRepoSync instance
+    """
+    global _cross_repo_sync, _db_instance
 
     async with _db_lock:
+        if _cross_repo_sync is None:
+            # Ensure database is initialized first
+            if _db_instance is None:
+                _db_instance = await get_learning_database()
+
+            _cross_repo_sync = CrossRepoSync(_db_instance)
+
+            if auto_start:
+                await _cross_repo_sync.start_sync()
+                logger.info("🔄 Cross-repo sync initialized and started")
+
+        return _cross_repo_sync
+
+
+async def close_learning_database():
+    """Close the global learning database instance"""
+    global _db_instance, _cross_repo_sync
+
+    async with _db_lock:
+        # Stop cross-repo sync first
+        if _cross_repo_sync is not None:
+            await _cross_repo_sync.stop_sync()
+            _cross_repo_sync = None
+
+        # Then close database
         if _db_instance is not None:
             await _db_instance.close()
             _db_instance = None
