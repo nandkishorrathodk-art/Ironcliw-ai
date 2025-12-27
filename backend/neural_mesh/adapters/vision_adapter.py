@@ -478,8 +478,13 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
 # Factory Functions
 # ============================================================================
 
-async def create_vision_cognitive_adapter() -> Optional[VisionCognitiveAdapter]:
+async def create_vision_cognitive_adapter(
+    agent_name: str = "vision_cognitive_loop"
+) -> Optional[VisionCognitiveAdapter]:
     """Create and initialize a Vision Cognitive adapter.
+
+    Args:
+        agent_name: Name for the adapter (default: "vision_cognitive_loop")
 
     Returns:
         Initialized adapter or None if creation fails
@@ -493,6 +498,7 @@ async def create_vision_cognitive_adapter() -> Optional[VisionCognitiveAdapter]:
         adapter = VisionCognitiveAdapter(
             vision_loop=vision_loop,
             component_type=VisionComponentType.COGNITIVE_LOOP,
+            agent_name=agent_name,
         )
         await adapter.initialize()
 
@@ -506,8 +512,13 @@ async def create_vision_cognitive_adapter() -> Optional[VisionCognitiveAdapter]:
         return None
 
 
-async def create_yabai_adapter() -> Optional[VisionCognitiveAdapter]:
+async def create_yabai_adapter(
+    agent_name: str = "vision_yabai_multispace"
+) -> Optional[VisionCognitiveAdapter]:
     """Create a Yabai-only adapter for multi-space awareness.
+
+    Args:
+        agent_name: Name for the adapter (default: "vision_yabai_multispace")
 
     Returns:
         Initialized adapter or None if creation fails
@@ -521,7 +532,7 @@ async def create_yabai_adapter() -> Optional[VisionCognitiveAdapter]:
         adapter = VisionCognitiveAdapter(
             vision_loop=None,  # Will use Yabai directly
             component_type=VisionComponentType.YABAI_DETECTOR,
-            agent_name="vision_yabai_multispace",
+            agent_name=agent_name,
         )
 
         # Store detector for direct access

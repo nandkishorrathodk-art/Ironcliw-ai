@@ -1009,7 +1009,7 @@ async def create_voice_unlock_adapter(
     """
     if integration is None:
         try:
-            from voice_unlock.voice_unlock_integration import (
+            from ...voice_unlock.voice_unlock_integration import (
                 VoiceUnlockIntegration,
             )
             integration = VoiceUnlockIntegration()

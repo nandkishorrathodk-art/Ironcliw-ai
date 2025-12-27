@@ -78,6 +78,7 @@ class MessageType(Enum):
     AGENT_HEARTBEAT = "agent_heartbeat"
     AGENT_HEALTH_CHECK = "agent_health_check"
     AGENT_STATUS_CHANGED = "agent_status_changed"
+    ANNOUNCEMENT = "announcement"  # General agent announcements
 
     # Knowledge Operations
     KNOWLEDGE_QUERY = "knowledge_query"

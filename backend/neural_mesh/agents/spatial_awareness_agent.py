@@ -70,7 +70,24 @@ def _get_proprioception_functions():
 
 @dataclass
 class SpatialAwarenessConfig:
-    """Configuration for Spatial Awareness Agent."""
+    """
+    Configuration for Spatial Awareness Agent.
+
+    Inherits all base agent configuration from BaseAgentConfig via composition.
+    This ensures compatibility with Neural Mesh infrastructure while maintaining
+    agent-specific spatial awareness settings.
+    """
+    # Base agent configuration (inherited attributes)
+    # These are required by BaseNeuralMeshAgent
+    heartbeat_interval_seconds: float = 10.0  # Heartbeat frequency
+    message_queue_size: int = 1000  # Message queue capacity
+    message_handler_timeout_seconds: float = 10.0  # Message processing timeout
+    enable_knowledge_access: bool = True  # Enable knowledge graph access
+    knowledge_cache_size: int = 100  # Local knowledge cache size
+    log_messages: bool = True  # Log message traffic
+    log_level: str = "INFO"  # Logging level
+
+    # Spatial Awareness specific configuration
     # Cache settings
     context_cache_ttl_seconds: float = 2.0  # How long to cache spatial context
     # Voice narration

@@ -253,7 +253,23 @@ class PredictionResult:
 
 @dataclass
 class PredictivePlanningConfig:
-    """Configuration for the Predictive Planning Agent."""
+    """
+    Configuration for the Predictive Planning Agent.
+
+    Inherits all base agent configuration from BaseAgentConfig via composition.
+    This ensures compatibility with Neural Mesh infrastructure while maintaining
+    agent-specific settings.
+    """
+    # Base agent configuration (inherited attributes)
+    # These are required by BaseNeuralMeshAgent
+    heartbeat_interval_seconds: float = 10.0  # Heartbeat frequency
+    message_queue_size: int = 1000  # Message queue capacity
+    message_handler_timeout_seconds: float = 10.0  # Message processing timeout
+    enable_knowledge_access: bool = True  # Enable knowledge graph access
+    knowledge_cache_size: int = 100  # Local knowledge cache size
+    log_messages: bool = True  # Log message traffic
+    log_level: str = "INFO"  # Logging level
+
     # LLM settings
     model: str = "claude-sonnet-4-20250514"
     max_tokens: int = 1024

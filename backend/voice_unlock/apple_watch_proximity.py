@@ -16,6 +16,9 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+# Initialize logger first before any imports that might use it
+logger = logging.getLogger(__name__)
+
 # For Bluetooth LE scanning
 try:
     import CoreBluetooth
@@ -32,8 +35,6 @@ try:
     BLEAK_AVAILABLE = True
 except ImportError:
     BLEAK_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass

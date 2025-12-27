@@ -83,6 +83,7 @@ codegen-units = 1
 inherits = "release"
 debug = true
 
-[[bench]]
-name = "vision_benchmarks"
-harness = false
+# Benchmarks disabled - run manually if needed
+# [[bench]]
+# name = "vision_benchmarks"
+# harness = false

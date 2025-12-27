@@ -218,8 +218,24 @@ GOOGLE_WORKSPACE_SCOPES = [
 
 @dataclass
 class GoogleWorkspaceConfig:
-    """Configuration for Google Workspace Agent."""
+    """
+    Configuration for Google Workspace Agent.
 
+    Inherits all base agent configuration from BaseAgentConfig via composition.
+    This ensures compatibility with Neural Mesh infrastructure while maintaining
+    agent-specific Google Workspace settings.
+    """
+    # Base agent configuration (inherited attributes)
+    # These are required by BaseNeuralMeshAgent
+    heartbeat_interval_seconds: float = 10.0  # Heartbeat frequency
+    message_queue_size: int = 1000  # Message queue capacity
+    message_handler_timeout_seconds: float = 10.0  # Message processing timeout
+    enable_knowledge_access: bool = True  # Enable knowledge graph access
+    knowledge_cache_size: int = 100  # Local knowledge cache size
+    log_messages: bool = True  # Log message traffic
+    log_level: str = "INFO"  # Logging level
+
+    # Google Workspace specific configuration
     credentials_path: str = field(
         default_factory=lambda: os.getenv(
             'GOOGLE_CREDENTIALS_PATH',
