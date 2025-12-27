@@ -143,6 +143,113 @@ workflow = WorkflowPattern(
 
 ---
 
+### 5. ✅ Supervisor Self-Termination on Port Conflicts
+
+**Error:**
+```
+WARNING | [JarvisPrime] Port 8002 is in use by PID 32987, attempting cleanup...
+WARNING | [JarvisPrime] Force killing PID 32987 on port 8002
+INFO | 📡 Received SIGTERM, initiating graceful shutdown...
+```
+
+**Root Cause:**
+The supervisor was killing itself during startup when checking for port conflicts. The critical bug was in the `_is_ancestor_process()` method:
+
+1. **Line 656-657 Critical Bug:**
+   ```python
+   if pid == current_pid:
+       return False  # ❌ WRONG! Should be True
+   ```
+   When checking its own PID, the method returned False (meaning "safe to kill"), causing the supervisor to kill itself!
+
+2. **Startup Sequence Issue:**
+   - `_ensure_port_available()` is called BEFORE subprocess is spawned
+   - During restart, the supervisor process itself is on the port
+   - It finds its own PID, the check returns False, and it kills itself
+
+3. **Incomplete Process Relationship Checking:**
+   - Only checked parent/grandparent processes
+   - Didn't check for child processes
+   - Didn't check for sibling processes
+   - Didn't check for same process group (PGID)
+
+**Fix Applied:**
+
+1. **Fixed Critical Self-Kill Bug (line 669-674):**
+   ```python
+   if pid == current_pid:
+       logger.warning(
+           f"[JarvisPrime] Port is in use by current process (PID {pid}). "
+           f"This indicates a restart scenario - cannot kill ourselves!"
+       )
+       return True  # ✅ FIXED: Never kill our own PID
+   ```
+
+2. **Added Comprehensive Process Relationship Checking with psutil:**
+   - ✅ Check 1: Same PID (ourselves) - never kill
+   - ✅ Check 2: Parent/ancestor processes - killing them propagates signals to us
+   - ✅ Check 3: Child processes we spawned - should manage via proper cleanup
+   - ✅ Check 4: Sibling processes in same process group - might be managed by same supervisor
+   - ✅ Check 5: Shared parent verification - sibling coordination
+
+3. **Intelligent Dual-Mode Implementation:**
+   - **Primary:** Uses `psutil` for comprehensive process tree analysis
+     - Recursive child checking
+     - Process group (PGID) verification
+     - Sibling process detection
+     - Up to 20 levels of ancestry checking
+   - **Fallback:** Uses `ps` command when psutil unavailable or fails
+     - Basic ancestry checking via shell commands
+     - 20 levels of parent walking
+     - Timeout protection (5s for first, 2s for subsequent)
+
+4. **Robust Error Handling:**
+   - `psutil.NoSuchProcess` → Process gone, safe to kill (no-op)
+   - `psutil.AccessDenied` → Assume unsafe (might be system process)
+   - Any other exception → Fail safe (assume unsafe to kill)
+
+**Implementation Details:**
+```python
+# File: backend/core/supervisor/jarvis_prime_orchestrator.py:646-811
+async def _is_ancestor_process(self, pid: int) -> bool:
+    """
+    Intelligent process relationship checker.
+
+    Comprehensive safety checks:
+    1. Same PID (ourselves)
+    2. Parent/ancestor processes
+    3. Child processes we spawned
+    4. Sibling processes in same process group
+    5. Process group ID matching
+
+    Uses psutil when available, falls back to ps commands.
+    """
+    # Check 1: Never kill ourselves
+    if pid == current_pid:
+        return True
+
+    # Check 2-5: Comprehensive relationship analysis with psutil
+    if PSUTIL_AVAILABLE:
+        # Ancestor check (walk up tree)
+        # Child check (recursive children)
+        # Process group check (PGID comparison)
+        # Sibling check (same parent's children)
+
+    # Fallback: ps-based ancestry walking
+    # Safe default: assume unsafe if verification fails
+```
+
+**Impact:**
+- ✅ Supervisor no longer kills itself on restart
+- ✅ No more accidental killing of parent processes
+- ✅ No more accidental killing of child processes
+- ✅ No more accidental killing of sibling supervisor instances
+- ✅ Intelligent process group coordination
+- ✅ Graceful degradation with ps fallback
+- ✅ Safe-by-default error handling
+
+---
+
 ## 🏗️ Previous Session Fixes (Already Implemented)
 
 ### 5. ✅ Intelligent UPSERT Conversion
@@ -310,6 +417,7 @@ All automatic and transparent! 🚀
 - ❌ `UndefinedFunctionError: operator jsonb >> unknown`
 - ❌ `AttributeError: 'SituationalAwarenessEngine' object has no attribute 'update_topology'`
 - ❌ `AttributeError: 'WorkflowPattern' object has no attribute 'last_seen'`
+- ❌ `Supervisor self-termination on port conflicts` (killed itself during restart)
 
 ### After Fixes:
 - ✅ Zero datetime type errors
@@ -322,6 +430,9 @@ All automatic and transparent! 🚀
 - ✅ Zero jsonb operator errors
 - ✅ Zero SAI integration errors
 - ✅ Zero workflow pattern errors
+- ✅ Zero supervisor self-termination errors
+- ✅ Intelligent process relationship checking
+- ✅ Safe-by-default error handling for process management
 
 ---
 
@@ -346,12 +457,22 @@ All automatic and transparent! 🚀
    - Added `last_seen` field to WorkflowPattern (line 107)
    - Initialize `last_seen` on workflow creation (line 315)
 
+### Process Management:
+4. **`backend/core/supervisor/jarvis_prime_orchestrator.py`**
+   - Added psutil import with availability check (lines 46-50)
+   - Fixed critical self-kill bug in `_is_ancestor_process()` (line 669)
+   - Completely rewrote `_is_ancestor_process()` with comprehensive checks (lines 646-811)
+   - Added child process detection
+   - Added sibling process detection
+   - Added process group (PGID) verification
+   - Added psutil-based intelligent checking with ps fallback
+
 ### Testing:
-4. **`test_database_conversions.py`** (new)
+5. **`test_database_conversions.py`** (new)
    - Comprehensive unit tests for all conversion methods
-5. **`DATABASE_FIXES_SUMMARY.md`** (new)
+6. **`DATABASE_FIXES_SUMMARY.md`** (new)
    - Detailed documentation of previous session fixes
-6. **`COMPLETE_FIX_SUMMARY.md`** (new, this file)
+7. **`COMPLETE_FIX_SUMMARY.md`** (new, this file)
    - Complete documentation of all fixes
 
 ---

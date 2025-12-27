@@ -43,6 +43,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -639,38 +645,134 @@ class JarvisPrimeOrchestrator:
 
     async def _is_ancestor_process(self, pid: int) -> bool:
         """
-        Check if the given PID is an ancestor of the current process.
+        Intelligent process relationship checker - determines if killing a PID would harm us.
 
-        This prevents killing parent/grandparent processes which would
-        propagate SIGTERM/SIGKILL back to the current process.
+        Checks for:
+        1. Same PID (ourselves)
+        2. Parent/ancestor processes (killing them would kill us via signal propagation)
+        3. Child processes we spawned (our responsibility to manage)
+        4. Sibling processes in same process group (might be managed by same supervisor)
+
+        This is a comprehensive safety check using psutil when available, falling back
+        to ps command parsing for maximum compatibility.
 
         Args:
             pid: Process ID to check
 
         Returns:
-            True if pid is an ancestor (parent, grandparent, etc.)
+            True if killing this PID is unsafe (would harm us or related processes)
+            False if PID is unrelated and safe to kill
         """
         current_pid = os.getpid()
 
-        # Can't be our own ancestor if it's our own PID
+        # CRITICAL FIX: If checking our own PID, return True (unsafe to kill ourselves!)
         if pid == current_pid:
-            return False
+            logger.warning(
+                f"[JarvisPrime] Port is in use by current process (PID {pid}). "
+                f"This indicates a restart scenario - cannot kill ourselves!"
+            )
+            return True  # ✅ Never kill our own PID
 
+        # Use psutil for comprehensive process tree analysis (preferred method)
+        if PSUTIL_AVAILABLE:
+            try:
+                current_process = psutil.Process(current_pid)
+                target_process = psutil.Process(pid)
+
+                # Check 1: Is target our parent/ancestor?
+                ancestors = []
+                parent = current_process.parent()
+                depth = 0
+                while parent and depth < 20:  # Prevent infinite loops
+                    ancestors.append(parent.pid)
+                    if parent.pid == pid:
+                        logger.debug(
+                            f"[JarvisPrime] PID {pid} is ancestor at depth {depth+1} - unsafe to kill"
+                        )
+                        return True
+                    parent = parent.parent()
+                    depth += 1
+
+                # Check 2: Is target our child/descendant?
+                children = current_process.children(recursive=True)
+                child_pids = [child.pid for child in children]
+                if pid in child_pids:
+                    logger.debug(
+                        f"[JarvisPrime] PID {pid} is our child process - unsafe to kill "
+                        f"(should be managed via proper cleanup)"
+                    )
+                    return True
+
+                # Check 3: Is target in our process group?
+                try:
+                    current_pgid = os.getpgid(current_pid)
+                    target_pgid = os.getpgid(pid)
+                    if current_pgid == target_pgid and current_pgid != 0:
+                        logger.debug(
+                            f"[JarvisPrime] PID {pid} is in same process group {current_pgid} - "
+                            f"potentially unsafe (might be sibling managed by same supervisor)"
+                        )
+                        # For process group members, check if they share a parent
+                        if current_process.parent() and target_process.parent():
+                            if current_process.parent().pid == target_process.parent().pid:
+                                logger.warning(
+                                    f"[JarvisPrime] PID {pid} is sibling process (same parent) - "
+                                    f"letting supervisor handle cleanup"
+                                )
+                                return True
+                except (OSError, psutil.AccessDenied):
+                    pass  # Can't determine process group - continue to other checks
+
+                # Check 4: Is target our parent's other child (sibling)?
+                if current_process.parent():
+                    siblings = current_process.parent().children()
+                    sibling_pids = [sib.pid for sib in siblings if sib.pid != current_pid]
+                    if pid in sibling_pids:
+                        logger.debug(
+                            f"[JarvisPrime] PID {pid} is sibling process - "
+                            f"supervisor should handle coordination"
+                        )
+                        return True
+
+                # All checks passed - target is unrelated and safe to kill
+                logger.debug(f"[JarvisPrime] PID {pid} is unrelated process - safe to kill")
+                return False
+
+            except psutil.NoSuchProcess:
+                logger.debug(f"[JarvisPrime] PID {pid} no longer exists")
+                return False  # Process is gone, safe to "kill" (no-op)
+            except psutil.AccessDenied:
+                logger.warning(
+                    f"[JarvisPrime] Access denied when checking PID {pid} - "
+                    f"assuming unsafe to kill (might be system process)"
+                )
+                return True  # Can't verify, be safe
+            except Exception as e:
+                logger.warning(
+                    f"[JarvisPrime] Error checking process relationship with psutil: {e}",
+                    exc_info=True
+                )
+                # Fall through to ps-based fallback
+
+        # Fallback: Use ps command for basic ancestry checking
+        # (when psutil unavailable or failed)
         try:
-            # Walk up the process tree
+            logger.debug("[JarvisPrime] Using ps fallback for process ancestry check")
+
+            # Walk up the process tree using ps
             proc = await asyncio.create_subprocess_exec(
                 "ps", "-o", "ppid=", "-p", str(current_pid),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-
             parent_pid = int(stdout.decode().strip())
 
-            # Check up to 10 levels of ancestry
+            # Check up to 20 levels of ancestry
             checked_pids = set()
             while parent_pid > 1 and parent_pid not in checked_pids:
                 if parent_pid == pid:
+                    logger.debug(f"[JarvisPrime] PID {pid} is ancestor (ps fallback)")
                     return True
 
                 checked_pids.add(parent_pid)
@@ -688,15 +790,24 @@ class JarvisPrimeOrchestrator:
                 except (ValueError, AttributeError):
                     break
 
-                if len(checked_pids) > 10:
+                if len(checked_pids) > 20:
                     break  # Prevent infinite loops
 
+            # ps-based check found no ancestry relationship
+            logger.debug(f"[JarvisPrime] PID {pid} not in ancestry chain (ps fallback)")
             return False
 
         except Exception as e:
-            logger.debug(f"[JarvisPrime] Error checking process ancestry: {e}")
-            # If we can't determine ancestry, be safe and return True
-            # This prevents accidentally killing potential ancestors
+            logger.warning(
+                f"[JarvisPrime] Error checking process ancestry with ps: {e}",
+                exc_info=True
+            )
+            # If we can't determine relationship, be safe and return True
+            # This prevents accidentally killing processes we can't verify
+            logger.warning(
+                f"[JarvisPrime] Cannot verify PID {pid} safety - "
+                f"assuming unsafe to kill as precaution"
+            )
             return True
 
     async def _get_pid_on_port(self, port: int) -> Optional[int]:
