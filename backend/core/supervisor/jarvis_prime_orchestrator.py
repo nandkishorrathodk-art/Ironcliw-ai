@@ -553,16 +553,30 @@ class JarvisPrimeOrchestrator:
 
     async def _ensure_port_available(self) -> None:
         """
-        Ensure the configured port is available before starting.
+        Intelligent port coordination system - ensures port is available before starting.
 
-        Checks if port is in use and attempts to gracefully terminate
-        any existing process using it. Uses process-hierarchy awareness
-        to avoid killing parent/sibling processes that would cause signal
-        propagation back to the supervisor.
+        Strategy:
+        1. Check if port is in use
+        2. If by our own managed process, trust it
+        3. If by related process (parent/child/sibling), coordinate shutdown
+        4. If by old JARVIS Prime instance, graceful shutdown with retries
+        5. If by unrelated process, force cleanup
+        6. Wait with exponential backoff (up to 30s total)
+        7. ONLY return when port is truly available OR raise exception
+
+        This prevents the "address already in use" error by NEVER proceeding
+        until the port is guaranteed to be free.
+
+        Raises:
+            RuntimeError: If port cannot be freed within timeout
         """
         port = self.config.port
+        max_wait_time = 30.0  # Maximum total wait time in seconds
+        start_time = time.time()
 
-        # Check if port is in use
+        logger.info(f"[JarvisPrime] Ensuring port {port} is available for startup...")
+
+        # Initial check
         pid = await self._get_pid_on_port(port)
         if pid is None:
             logger.debug(f"[JarvisPrime] Port {port} is available")
@@ -570,78 +584,102 @@ class JarvisPrimeOrchestrator:
 
         # CRITICAL: Check if this is our own stored process
         if self._process and self._process.pid == pid:
-            logger.debug(f"[JarvisPrime] Port {port} is used by our own process (PID {pid})")
+            logger.debug(f"[JarvisPrime] Port {port} is used by our own managed process (PID {pid})")
             return
 
-        # CRITICAL: Check if this PID is in our process ancestry (parent/grandparent)
-        # Killing an ancestor would propagate signals back and kill us
-        if await self._is_ancestor_process(pid):
+        # Determine relationship to the process on the port
+        is_related = await self._is_ancestor_process(pid)
+        process_info = await self._get_process_info(pid)
+
+        if is_related:
             logger.warning(
-                f"[JarvisPrime] Port {port} is used by ancestor process (PID {pid}). "
-                f"Cannot kill - would propagate signals. Waiting for port to free..."
+                f"[JarvisPrime] Port {port} is used by related process (PID {pid}). "
+                f"Process: {process_info.get('name', 'unknown')}"
             )
-            # Wait a bit and check if it frees up
-            for _ in range(3):
-                await asyncio.sleep(1)
-                check_pid = await self._get_pid_on_port(port)
-                if check_pid is None:
-                    logger.info(f"[JarvisPrime] Port {port} is now available")
-                    return
-            logger.warning(f"[JarvisPrime] Port {port} still occupied by ancestor - may fail startup")
-            return
+            logger.info(
+                f"[JarvisPrime] This appears to be an old JARVIS Prime instance or "
+                f"related supervisor process. Attempting coordinated shutdown..."
+            )
+        else:
+            logger.warning(
+                f"[JarvisPrime] Port {port} is used by unrelated process (PID {pid}). "
+                f"Process: {process_info.get('name', 'unknown')}. Attempting cleanup..."
+            )
 
-        logger.warning(f"[JarvisPrime] Port {port} is in use by PID {pid}, attempting cleanup...")
+        # Strategy 1: Try graceful HTTP shutdown (works for JARVIS Prime instances)
+        shutdown_success = await self._try_graceful_http_shutdown(port, pid)
+        if shutdown_success:
+            # Wait for port to free up with verification
+            if await self._wait_for_port_free(port, max_wait=10.0):
+                logger.info(f"[JarvisPrime] Port {port} freed via graceful shutdown")
+                return
 
-        # Try graceful shutdown first via HTTP
-        try:
-            async with aiohttp.ClientSession() as session:
-                shutdown_url = f"http://{self.config.host}:{port}/admin/shutdown"
-                async with session.post(shutdown_url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                    if resp.status == 200:
-                        logger.info(f"[JarvisPrime] Sent graceful shutdown to existing instance")
-                        await asyncio.sleep(2)  # Wait for graceful shutdown
-        except Exception:
-            pass  # Graceful shutdown failed, will try kill
-
-        # Check again
-        pid = await self._get_pid_on_port(port)
-        if pid is None:
-            logger.info(f"[JarvisPrime] Port {port} now available after graceful shutdown")
-            return
-
-        # Recheck ancestry after waiting
-        if await self._is_ancestor_process(pid):
-            logger.warning(f"[JarvisPrime] Cannot kill ancestor PID {pid}")
-            return
-
-        # Force kill the process - but only if it's safe
-        try:
-            logger.warning(f"[JarvisPrime] Force killing PID {pid} on port {port}")
-            os.kill(pid, signal.SIGTERM)
-            await asyncio.sleep(1)
-
-            # Check if still running
+        # Strategy 2: Try SIGTERM (polite kill signal)
+        if not is_related:  # Only if not related to us
+            logger.info(f"[JarvisPrime] Attempting SIGTERM on PID {pid}...")
             try:
-                os.kill(pid, 0)  # Check if process exists
-                # Still running, use SIGKILL
-                logger.warning(f"[JarvisPrime] SIGTERM failed, using SIGKILL on PID {pid}")
+                os.kill(pid, signal.SIGTERM)
+                if await self._wait_for_port_free(port, max_wait=5.0):
+                    logger.info(f"[JarvisPrime] Port {port} freed via SIGTERM")
+                    return
+            except (ProcessLookupError, PermissionError) as e:
+                logger.debug(f"[JarvisPrime] SIGTERM failed: {e}")
+
+        # Strategy 3: If related process, try coordinated restart
+        if is_related:
+            logger.warning(
+                f"[JarvisPrime] Related process (PID {pid}) won't release port {port}. "
+                f"This may indicate a stuck old instance. Waiting longer..."
+            )
+            # Wait with exponential backoff for related processes
+            if await self._wait_for_port_free(port, max_wait=20.0, exponential=True):
+                logger.info(f"[JarvisPrime] Port {port} eventually freed by related process")
+                return
+
+            # Last resort for related processes: Check if it's truly orphaned
+            if await self._is_orphaned_instance(pid, process_info):
+                logger.warning(
+                    f"[JarvisPrime] PID {pid} appears to be an orphaned JARVIS Prime instance. "
+                    f"Attempting force cleanup..."
+                )
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                    if await self._wait_for_port_free(port, max_wait=3.0):
+                        logger.info(f"[JarvisPrime] Port {port} freed by removing orphaned instance")
+                        return
+                except Exception as e:
+                    logger.error(f"[JarvisPrime] Failed to kill orphaned instance: {e}")
+
+        # Strategy 4: Force kill unrelated process (SIGKILL)
+        if not is_related:
+            logger.warning(f"[JarvisPrime] Force killing unrelated PID {pid} with SIGKILL...")
+            try:
                 os.kill(pid, signal.SIGKILL)
-                await asyncio.sleep(0.5)
-            except OSError:
-                pass  # Process is gone
+                if await self._wait_for_port_free(port, max_wait=3.0):
+                    logger.info(f"[JarvisPrime] Port {port} freed via SIGKILL")
+                    return
+            except (ProcessLookupError, PermissionError) as e:
+                logger.error(f"[JarvisPrime] SIGKILL failed: {e}")
 
-            logger.info(f"[JarvisPrime] Port {port} freed successfully")
-        except ProcessLookupError:
-            logger.debug(f"[JarvisPrime] Process {pid} already terminated")
-        except PermissionError:
-            logger.warning(f"[JarvisPrime] No permission to kill PID {pid} - may be system process")
-        except Exception as e:
-            logger.warning(f"[JarvisPrime] Failed to kill process on port {port}: {e}")
-
-        # Final check
+        # Final verification
+        elapsed = time.time() - start_time
         pid = await self._get_pid_on_port(port)
-        if pid:
-            logger.error(f"[JarvisPrime] Port {port} still in use by PID {pid} - startup may fail")
+
+        if pid is None:
+            logger.info(f"[JarvisPrime] Port {port} is now available (took {elapsed:.1f}s)")
+            return
+
+        # CRITICAL: Port is STILL occupied - cannot proceed!
+        error_msg = (
+            f"Port {port} is still in use by PID {pid} after {elapsed:.1f}s of cleanup attempts. "
+            f"Process: {process_info.get('name', 'unknown')}. "
+            f"Cannot start JARVIS Prime - port is not available. "
+            f"Manual intervention required: kill PID {pid} or use different port."
+        )
+        logger.error(f"[JarvisPrime] {error_msg}")
+
+        # Raise exception to prevent startup with occupied port
+        raise RuntimeError(error_msg)
 
     async def _is_ancestor_process(self, pid: int) -> bool:
         """
@@ -870,6 +908,212 @@ class JarvisPrimeOrchestrator:
         except Exception:
             # Can't determine - assume port is available
             return None
+
+    async def _try_graceful_http_shutdown(self, port: int, pid: int) -> bool:
+        """
+        Attempt graceful HTTP shutdown of JARVIS Prime instance on given port.
+
+        Args:
+            port: Port number
+            pid: Process ID (for logging)
+
+        Returns:
+            True if shutdown request succeeded, False otherwise
+        """
+        try:
+            logger.info(f"[JarvisPrime] Attempting graceful HTTP shutdown of PID {pid} on port {port}...")
+            async with aiohttp.ClientSession() as session:
+                shutdown_url = f"http://{self.config.host}:{port}/admin/shutdown"
+                async with session.post(shutdown_url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    if resp.status == 200:
+                        logger.info(f"[JarvisPrime] Graceful shutdown request accepted by instance on port {port}")
+                        return True
+                    else:
+                        logger.debug(f"[JarvisPrime] Shutdown request returned status {resp.status}")
+                        return False
+        except aiohttp.ClientConnectorError:
+            logger.debug(f"[JarvisPrime] No HTTP server responding on port {port}")
+            return False
+        except asyncio.TimeoutError:
+            logger.debug(f"[JarvisPrime] Shutdown request timed out on port {port}")
+            return False
+        except Exception as e:
+            logger.debug(f"[JarvisPrime] Graceful shutdown failed: {e}")
+            return False
+
+    async def _wait_for_port_free(
+        self,
+        port: int,
+        max_wait: float = 10.0,
+        exponential: bool = False
+    ) -> bool:
+        """
+        Wait for port to become available with intelligent retry logic.
+
+        Args:
+            port: Port number to monitor
+            max_wait: Maximum time to wait in seconds
+            exponential: Use exponential backoff (for related processes)
+
+        Returns:
+            True if port became free, False if timeout
+        """
+        start_time = time.time()
+        attempt = 0
+
+        while (time.time() - start_time) < max_wait:
+            # Check if port is free
+            pid = await self._get_pid_on_port(port)
+            if pid is None:
+                elapsed = time.time() - start_time
+                logger.debug(f"[JarvisPrime] Port {port} became available after {elapsed:.1f}s")
+                return True
+
+            # Calculate wait time
+            if exponential:
+                # Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, ...
+                wait_time = min(0.5 * (2 ** attempt), 8.0)
+            else:
+                # Linear backoff: 0.5s each time
+                wait_time = 0.5
+
+            # Don't wait beyond max_wait
+            remaining = max_wait - (time.time() - start_time)
+            wait_time = min(wait_time, remaining)
+
+            if wait_time > 0:
+                logger.debug(
+                    f"[JarvisPrime] Port {port} still in use by PID {pid}, "
+                    f"waiting {wait_time:.1f}s (attempt {attempt + 1})..."
+                )
+                await asyncio.sleep(wait_time)
+
+            attempt += 1
+
+        # Timeout reached
+        pid = await self._get_pid_on_port(port)
+        logger.warning(
+            f"[JarvisPrime] Timeout waiting for port {port} to free "
+            f"(still in use by PID {pid} after {max_wait:.1f}s)"
+        )
+        return False
+
+    async def _get_process_info(self, pid: int) -> Dict[str, Any]:
+        """
+        Get information about a process.
+
+        Args:
+            pid: Process ID
+
+        Returns:
+            Dictionary with process info (name, cmdline, etc.)
+        """
+        info = {
+            "pid": pid,
+            "name": "unknown",
+            "cmdline": "unknown",
+            "is_jarvis_prime": False,
+        }
+
+        if PSUTIL_AVAILABLE:
+            try:
+                proc = psutil.Process(pid)
+                info["name"] = proc.name()
+                info["cmdline"] = " ".join(proc.cmdline())
+
+                # Check if it's a JARVIS Prime instance
+                cmdline_lower = info["cmdline"].lower()
+                if "jarvis" in cmdline_lower and "prime" in cmdline_lower:
+                    info["is_jarvis_prime"] = True
+                elif "jarvis-prime" in cmdline_lower:
+                    info["is_jarvis_prime"] = True
+                elif "8002" in cmdline_lower:  # Default JARVIS Prime port
+                    info["is_jarvis_prime"] = True
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        else:
+            # Fallback using ps
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "ps", "-p", str(pid), "-o", "comm=",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                if stdout:
+                    info["name"] = stdout.decode().strip()
+                    if "python" in info["name"].lower() or "jarvis" in info["name"].lower():
+                        info["is_jarvis_prime"] = True
+            except Exception:
+                pass
+
+        return info
+
+    async def _is_orphaned_instance(self, pid: int, process_info: Dict[str, Any]) -> bool:
+        """
+        Determine if a process is an orphaned JARVIS Prime instance.
+
+        An instance is considered orphaned if:
+        1. It's a JARVIS Prime process (based on cmdline)
+        2. It's been running for a while (>30s) without supervisor
+        3. It's not responding to health checks
+        4. It's in a zombie/stuck state
+
+        Args:
+            pid: Process ID
+            process_info: Process information dict
+
+        Returns:
+            True if process appears to be orphaned JARVIS Prime instance
+        """
+        # Must be identified as JARVIS Prime
+        if not process_info.get("is_jarvis_prime", False):
+            return False
+
+        logger.debug(f"[JarvisPrime] Checking if PID {pid} is orphaned JARVIS Prime instance...")
+
+        # Check 1: Is it responding to health checks?
+        try:
+            async with aiohttp.ClientSession() as session:
+                health_url = f"http://{self.config.host}:{self.config.port}/health"
+                async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                    if resp.status == 200:
+                        logger.debug(f"[JarvisPrime] Instance on port {self.config.port} is healthy - not orphaned")
+                        return False  # It's healthy, not orphaned
+        except Exception:
+            logger.debug(f"[JarvisPrime] Instance on port {self.config.port} not responding to health check")
+
+        # Check 2: Is it in zombie/defunct state?
+        if PSUTIL_AVAILABLE:
+            try:
+                proc = psutil.Process(pid)
+                status = proc.status()
+                if status == psutil.STATUS_ZOMBIE:
+                    logger.info(f"[JarvisPrime] PID {pid} is zombie process - definitely orphaned")
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        # Check 3: Is the parent process missing/dead?
+        if PSUTIL_AVAILABLE:
+            try:
+                proc = psutil.Process(pid)
+                parent = proc.parent()
+                if parent is None or parent.pid == 1:  # Parent is init/launchd = orphaned
+                    logger.info(
+                        f"[JarvisPrime] PID {pid} has no parent or parent is init - likely orphaned"
+                    )
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        # If we can't determine health status and it's not responding, consider it orphaned
+        logger.info(
+            f"[JarvisPrime] PID {pid} appears to be JARVIS Prime but not responding - "
+            f"treating as potentially orphaned"
+        )
+        return True
 
     async def _spawn_process(self) -> bool:
         """Spawn the JARVIS-Prime subprocess (or Docker container)."""

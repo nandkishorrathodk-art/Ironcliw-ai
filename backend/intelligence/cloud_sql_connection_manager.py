@@ -1167,29 +1167,64 @@ class CloudSQLConnectionManager:
         if self.is_shutting_down:
             raise RuntimeError("Connection manager is shutting down")
 
+        # Start timing for metrics
+        start_time = time.time()
+
         # Check circuit breaker
         if self._circuit_breaker and not self._circuit_breaker.can_execute():
             raise RuntimeError(
                 f"Circuit breaker OPEN - retry in {self._conn_config.recovery_timeout_seconds}s"
             )
 
-        # v10.0: Intelligent rate limiting with ML forecasting
+        # v10.0: Intelligent rate limiting with ML forecasting + exponential backoff
         if INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE:
             try:
                 orchestrator = await get_rate_orchestrator()
-                acquired, reason = await orchestrator.acquire(
-                    RateServiceType.CLOUDSQL_CONNECTIONS,
-                    RateOpType.QUERY,
-                    RequestPriority.NORMAL,
-                )
-                if not acquired:
-                    logger.warning(f"⚡ CloudSQL connection throttled: {reason}")
-                    # Add small delay but don't block
-                    await asyncio.sleep(0.1)
+
+                # Retry with exponential backoff when throttled
+                max_retries = 5
+                retry_count = 0
+                base_delay = 0.2  # Start with 200ms
+
+                while retry_count < max_retries:
+                    acquired, reason = await orchestrator.acquire(
+                        RateServiceType.CLOUDSQL_CONNECTIONS,
+                        RateOpType.QUERY,
+                        RequestPriority.NORMAL,
+                    )
+
+                    if acquired:
+                        # Successfully acquired rate limit token
+                        if retry_count > 0:
+                            logger.debug(
+                                f"⚡ CloudSQL rate limit acquired after {retry_count} "
+                                f"retries ({(time.time() - start_time):.2f}s)"
+                            )
+                        break
+
+                    # Throttled - calculate exponential backoff
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        # Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+                        delay = min(base_delay * (2 ** (retry_count - 1)), 5.0)
+
+                        logger.debug(
+                            f"⚡ CloudSQL connection throttled: {reason} "
+                            f"(retry {retry_count}/{max_retries}, waiting {delay:.2f}s)"
+                        )
+
+                        await asyncio.sleep(delay)
+                    else:
+                        # Max retries reached - proceed anyway but log warning
+                        logger.warning(
+                            f"⚡ CloudSQL connection throttled after {max_retries} retries: {reason}. "
+                            f"Proceeding with caution - may hit rate limits!"
+                        )
+
             except Exception as e:
                 logger.debug(f"Rate orchestrator check failed: {e}")
 
-        start_time = time.time()
+        # Initialize connection tracking
         conn = None
         checkout_id = None
 

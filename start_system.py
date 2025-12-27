@@ -15324,17 +15324,21 @@ class DockerDaemonManager:
     """
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # INTELLIGENT TIMEOUT CONFIGURATION
+    # INTELLIGENT TIMEOUT CONFIGURATION (v20.0)
     # ═══════════════════════════════════════════════════════════════════════════
-    # v19.8.0: Reduced timeouts dramatically. Docker startup should be FAST.
-    # If Docker isn't ready in 15 seconds, Cloud Run is available as fallback.
-    # The old 120s × 3 = 370s timeout was unacceptable for user experience.
+    # v20.0: Intelligent timeout that adapts to Docker Desktop state
+    # - Quick timeout (15s) if Docker Desktop isn't installed or not launching
+    # - Extended timeout (45s) if Docker Desktop process is detected starting
+    # - Cloud Run is available as fallback if timeout is reached
+    #
+    # This prevents premature fallback when Docker Desktop is legitimately starting
+    # while still being fast when Docker isn't available.
     #
     # These are defaults - still configurable via environment variables.
     # ═══════════════════════════════════════════════════════════════════════════
-    DEFAULT_STARTUP_TIMEOUT = int(os.environ.get("DOCKER_STARTUP_TIMEOUT", "15"))  # 15 seconds (was 120)
-    DEFAULT_POLL_INTERVAL = float(os.environ.get("DOCKER_POLL_INTERVAL", "1.0"))  # 1 second (was 2)
-    DEFAULT_MAX_RETRIES = int(os.environ.get("DOCKER_MAX_RETRIES", "1"))  # 1 retry (was 3)
+    DEFAULT_STARTUP_TIMEOUT = int(os.environ.get("DOCKER_STARTUP_TIMEOUT", "45"))  # 45s allows Desktop startup
+    DEFAULT_POLL_INTERVAL = float(os.environ.get("DOCKER_POLL_INTERVAL", "1.5"))  # 1.5s balanced polling
+    DEFAULT_MAX_RETRIES = int(os.environ.get("DOCKER_MAX_RETRIES", "1"))  # 1 retry (2 total attempts)
 
     def __init__(self):
         self._platform = platform.system().lower()
@@ -15530,47 +15534,118 @@ class DockerDaemonManager:
             self._daemon_status["error"] = f"Failed to start Docker: {str(e)}"
             return False
 
+    async def _is_docker_desktop_starting(self) -> bool:
+        """
+        Intelligent detection of Docker Desktop startup state.
+
+        Checks if Docker Desktop app is launching but daemon isn't ready yet.
+        This helps us decide whether to wait longer or fail fast.
+
+        Returns:
+            bool: True if Docker Desktop process is detected but daemon not ready
+        """
+        if self._platform != "darwin":  # macOS only for now
+            return False
+
+        try:
+            # Check if Docker Desktop process exists
+            proc = await asyncio.create_subprocess_exec(
+                "pgrep", "-x", "Docker Desktop",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+
+            if stdout:
+                # Process exists - Docker Desktop is running/starting
+                # Check if daemon is ready
+                if not await self.check_daemon_running():
+                    # Process exists but daemon not ready = still starting
+                    return True
+
+        except Exception:
+            pass
+
+        return False
+
     async def wait_for_daemon(
         self,
         timeout: Optional[float] = None,
         poll_interval: Optional[float] = None
     ) -> bool:
         """
-        Wait asynchronously for Docker daemon to become ready.
+        Intelligently wait for Docker daemon with adaptive timeout.
+
+        Features:
+        - Detects if Docker Desktop is starting and extends timeout
+        - Fast fail if Docker isn't launching at all
+        - Progress indicators for user feedback
+        - Exponential backoff polling for efficiency
 
         Args:
-            timeout: Maximum time to wait in seconds (default from env or 120s)
-            poll_interval: Time between checks in seconds (default from env or 2s)
+            timeout: Maximum time to wait in seconds (default from env)
+            poll_interval: Time between checks in seconds (default from env)
 
         Returns:
             bool: True if daemon became ready within timeout
         """
-        timeout = timeout or self.DEFAULT_STARTUP_TIMEOUT
+        base_timeout = timeout or self.DEFAULT_STARTUP_TIMEOUT
         poll_interval = poll_interval or self.DEFAULT_POLL_INTERVAL
 
         start_time = time.time()
         attempt = 0
+        extended_timeout = False
 
-        print(f"  {Colors.CYAN}→ Waiting for Docker daemon (up to {timeout}s)...{Colors.ENDC}")
+        # Check if Docker Desktop is starting (adaptive timeout)
+        if await self._is_docker_desktop_starting():
+            extended_timeout = True
+            actual_timeout = min(base_timeout + 30, 75)  # Add 30s, max 75s total
+            print(f"  {Colors.CYAN}→ Docker Desktop is launching, waiting up to {actual_timeout}s...{Colors.ENDC}")
+        else:
+            actual_timeout = base_timeout
+            print(f"  {Colors.CYAN}→ Waiting for Docker daemon (up to {actual_timeout}s)...{Colors.ENDC}")
 
-        while (time.time() - start_time) < timeout:
+        while (time.time() - start_time) < actual_timeout:
             attempt += 1
 
             if await self.check_daemon_running():
                 elapsed = time.time() - start_time
                 self._daemon_status["startup_time_ms"] = int(elapsed * 1000)
-                print(f"  {Colors.GREEN}✓ Docker daemon ready ({elapsed:.1f}s){Colors.ENDC}")
+                if extended_timeout:
+                    print(f"  {Colors.GREEN}✓ Docker Desktop ready ({elapsed:.1f}s){Colors.ENDC}")
+                else:
+                    print(f"  {Colors.GREEN}✓ Docker daemon ready ({elapsed:.1f}s){Colors.ENDC}")
                 return True
 
-            # Progress indicator every 10 seconds
+            # Adaptive progress indicators
             elapsed = time.time() - start_time
-            if attempt % 5 == 0:  # Every 5 attempts (10 seconds with 2s interval)
-                print(f"  {Colors.CYAN}  ...still waiting ({elapsed:.0f}s elapsed){Colors.ENDC}")
 
-            await asyncio.sleep(poll_interval)
+            # More frequent updates during extended wait
+            if extended_timeout:
+                if attempt % 3 == 0:  # Every ~4.5 seconds
+                    print(f"  {Colors.CYAN}  ...Docker Desktop starting ({elapsed:.0f}s elapsed){Colors.ENDC}")
+            else:
+                if attempt % 5 == 0:  # Every ~7.5 seconds
+                    print(f"  {Colors.CYAN}  ...still waiting ({elapsed:.0f}s elapsed){Colors.ENDC}")
 
-        self._daemon_status["error"] = f"Docker daemon did not start within {timeout}s"
-        print(f"  {Colors.FAIL}✗ Docker daemon did not start within {timeout}s{Colors.ENDC}")
+            # Exponential backoff for efficiency (but capped)
+            if attempt > 5:
+                dynamic_interval = min(poll_interval * 1.5, 3.0)
+            else:
+                dynamic_interval = poll_interval
+
+            await asyncio.sleep(dynamic_interval)
+
+        # Timeout reached
+        elapsed = time.time() - start_time
+        if extended_timeout:
+            self._daemon_status["error"] = f"Docker Desktop did not become ready within {actual_timeout}s"
+            print(f"  {Colors.FAIL}✗ Docker Desktop did not become ready within {actual_timeout}s{Colors.ENDC}")
+            print(f"    {Colors.YELLOW}Hint: Docker Desktop may need more time, or try restarting it{Colors.ENDC}")
+        else:
+            self._daemon_status["error"] = f"Docker daemon did not start within {actual_timeout}s"
+            print(f"  {Colors.FAIL}✗ Docker daemon did not start within {actual_timeout}s{Colors.ENDC}")
+
         return False
 
     async def ensure_daemon_running(
