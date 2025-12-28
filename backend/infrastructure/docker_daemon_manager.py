@@ -527,6 +527,138 @@ class DockerDaemonManager:
         """Get current daemon health"""
         return self.health
 
+    async def ensure_daemon_running(
+        self,
+        auto_start: bool = True,
+        timeout: Optional[float] = None,
+        max_retries: Optional[int] = None
+    ) -> dict:
+        """
+        Ensure Docker daemon is running, with optional auto-start.
+
+        This is the main entry point for Docker daemon management,
+        providing backward compatibility with start_system.py.
+
+        Args:
+            auto_start: Whether to automatically start Docker if not running
+            timeout: Maximum time to wait for daemon startup (overrides config)
+            max_retries: Maximum number of start attempts (overrides config)
+
+        Returns:
+            dict: Status information including:
+                - installed: bool
+                - daemon_running: bool
+                - version: str or None
+                - started_automatically: bool
+                - startup_time_ms: int or None
+                - error: str or None
+                - platform: str
+        """
+        # Override config if parameters provided
+        if timeout is not None:
+            self.config.max_startup_wait_seconds = int(timeout)
+        if max_retries is not None:
+            self.config.max_retry_attempts = max_retries
+
+        status = {
+            "installed": False,
+            "daemon_running": False,
+            "version": None,
+            "started_automatically": False,
+            "startup_time_ms": None,
+            "error": None,
+            "platform": self.platform
+        }
+
+        logger.info("🐳 Docker Daemon Status Check")
+        self._report_progress("Checking Docker installation...")
+
+        # Step 1: Check if Docker is installed
+        if not await self.check_installation():
+            status["error"] = "Docker not installed"
+            logger.warning("✗ Docker not installed")
+            logger.info("  Install Docker Desktop: https://www.docker.com/products/docker-desktop")
+            return status
+
+        status["installed"] = True
+        logger.info("✓ Docker installed")
+
+        # Get version
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'docker', '--version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if proc.returncode == 0:
+                status["version"] = stdout.decode().strip()
+        except Exception:
+            pass
+
+        # Step 2: Check if daemon is already running
+        health = await self.check_daemon_health()
+        if health.is_healthy():
+            status["daemon_running"] = True
+            logger.info("✓ Docker daemon is running")
+            return status
+
+        # Step 3: Daemon not running - attempt auto-start if enabled
+        if not auto_start:
+            status["error"] = "Docker daemon not running"
+            logger.warning("✗ Docker daemon not running (auto-start disabled)")
+            return status
+
+        logger.info("⚠️  Docker daemon not running - attempting auto-start")
+        self._report_progress("Docker daemon not running - starting...")
+
+        # Use the enhanced start_daemon() method with built-in retry
+        if await self.start_daemon():
+            status["daemon_running"] = True
+            status["started_automatically"] = True
+            status["startup_time_ms"] = self.health.startup_time_ms
+            logger.info(f"✓ Docker daemon started ({self.health.startup_time_ms}ms)")
+            return status
+        else:
+            status["error"] = self.health.error_message or "Failed to start Docker daemon"
+            logger.error(f"✗ Failed to start Docker daemon: {status['error']}")
+            return status
+
+    def get_status(self) -> dict:
+        """
+        Get current daemon status without performing checks.
+
+        Returns:
+            dict: Status dictionary with current health state
+        """
+        health = self.health
+        return {
+            "installed": health.status != DaemonStatus.NOT_INSTALLED,
+            "daemon_running": health.is_healthy(),
+            "version": None,  # Would need to cache from ensure_daemon_running
+            "started_automatically": False,  # Would need to track
+            "startup_time_ms": health.startup_time_ms,
+            "error": health.error_message,
+            "platform": self.platform
+        }
+
+    def get_status_emoji(self) -> str:
+        """
+        Get a formatted status string with emoji.
+
+        Returns:
+            str: Colored status string with emoji
+        """
+        health = self.health
+
+        if health.is_healthy():
+            return f"✓ Docker: Running"
+        elif health.status == DaemonStatus.NOT_INSTALLED:
+            return f"✗ Docker: Not installed"
+        else:
+            error = health.error_message or "Not running"
+            return f"✗ Docker: {error}"
+
 
 # Factory function
 async def create_docker_manager(
