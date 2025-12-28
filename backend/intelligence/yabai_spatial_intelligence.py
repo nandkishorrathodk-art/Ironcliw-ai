@@ -603,43 +603,173 @@ class YabaiSpatialIntelligence:
             logger.error(f"[YABAI-SI] Error scanning workspace: {e}")
 
     async def _query_spaces(self) -> List[Dict]:
-        """Query Yabai for all Spaces"""
+        """
+        Query Yabai for all Spaces with robust error handling (v10.6)
+
+        Features:
+        - Timeout protection (5s) to prevent hangs
+        - Robust JSON parsing with incomplete response handling
+        - Strips trailing commas and validates JSON structure
+        - Returns empty list on any error (graceful degradation)
+        """
         try:
+            # Execute with timeout protection
             result = await asyncio.create_subprocess_exec(
                 'yabai', '-m', 'query', '--spaces',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await result.communicate()
 
-            if result.returncode == 0:
-                return json.loads(stdout.decode())
-            else:
-                logger.error(f"[YABAI-SI] Failed to query spaces: {stderr.decode()}")
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    result.communicate(),
+                    timeout=5.0  # 5 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[YABAI-SI] Query spaces timeout (5s), killing process")
+                try:
+                    result.kill()
+                except Exception:
+                    pass
                 return []
 
+            if result.returncode != 0:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                logger.debug(f"[YABAI-SI] Failed to query spaces (code {result.returncode}): {error_msg}")
+                return []
+
+            # Robust JSON parsing
+            raw_output = stdout.decode().strip()
+
+            if not raw_output:
+                logger.debug("[YABAI-SI] Empty response from yabai query --spaces")
+                return []
+
+            try:
+                # Try direct parsing first
+                return json.loads(raw_output)
+
+            except json.JSONDecodeError as json_err:
+                # Common issues: incomplete JSON, trailing commas, malformed structure
+                logger.debug(f"[YABAI-SI] JSON parse error: {json_err}")
+
+                # Attempt to fix common issues
+                fixed_output = raw_output
+
+                # Issue 1: Incomplete JSON (truncated response)
+                # Example: '[{...},{...' → '[{...},{...}]'
+                if not fixed_output.endswith(']') and fixed_output.startswith('['):
+                    # Find last complete JSON object
+                    last_brace = fixed_output.rfind('}')
+                    if last_brace > 0:
+                        fixed_output = fixed_output[:last_brace + 1] + ']'
+                        logger.debug("[YABAI-SI] Fixed incomplete JSON (added closing bracket)")
+
+                # Issue 2: Trailing comma before closing bracket
+                # Example: '[{...},{...},]' → '[{...},{...}]'
+                fixed_output = fixed_output.replace(',]', ']').replace(',}', '}')
+
+                # Try parsing again
+                try:
+                    spaces = json.loads(fixed_output)
+                    logger.debug(f"[YABAI-SI] Successfully parsed after fixes: {len(spaces)} spaces")
+                    return spaces
+
+                except json.JSONDecodeError as second_err:
+                    # Still can't parse - log for debugging but don't spam errors
+                    logger.debug(
+                        f"[YABAI-SI] Unable to parse yabai output even after fixes\n"
+                        f"  Error: {second_err}\n"
+                        f"  Output length: {len(raw_output)} chars\n"
+                        f"  First 100 chars: {raw_output[:100] if len(raw_output) > 100 else raw_output}"
+                    )
+                    return []
+
+        except FileNotFoundError:
+            logger.debug("[YABAI-SI] yabai not found in PATH (is it installed?)")
+            return []
+
         except Exception as e:
-            logger.error(f"[YABAI-SI] Error querying spaces: {e}")
+            # Catch-all for unexpected errors (don't spam logs)
+            logger.debug(f"[YABAI-SI] Unexpected error querying spaces: {type(e).__name__}: {e}")
             return []
 
     async def _query_windows(self) -> List[Dict]:
-        """Query Yabai for all windows"""
+        """
+        Query Yabai for all windows with robust error handling (v10.6)
+
+        Same robust handling as _query_spaces():
+        - Timeout protection
+        - JSON parsing with error recovery
+        - Graceful degradation
+        """
         try:
+            # Execute with timeout protection
             result = await asyncio.create_subprocess_exec(
                 'yabai', '-m', 'query', '--windows',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await result.communicate()
 
-            if result.returncode == 0:
-                return json.loads(stdout.decode())
-            else:
-                logger.error(f"[YABAI-SI] Failed to query windows: {stderr.decode()}")
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    result.communicate(),
+                    timeout=5.0  # 5 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[YABAI-SI] Query windows timeout (5s), killing process")
+                try:
+                    result.kill()
+                except Exception:
+                    pass
                 return []
 
+            if result.returncode != 0:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                logger.debug(f"[YABAI-SI] Failed to query windows (code {result.returncode}): {error_msg}")
+                return []
+
+            # Robust JSON parsing (same logic as _query_spaces)
+            raw_output = stdout.decode().strip()
+
+            if not raw_output:
+                logger.debug("[YABAI-SI] Empty response from yabai query --windows")
+                return []
+
+            try:
+                return json.loads(raw_output)
+
+            except json.JSONDecodeError as json_err:
+                logger.debug(f"[YABAI-SI] JSON parse error (windows): {json_err}")
+
+                # Attempt to fix common issues
+                fixed_output = raw_output
+
+                # Fix incomplete JSON
+                if not fixed_output.endswith(']') and fixed_output.startswith('['):
+                    last_brace = fixed_output.rfind('}')
+                    if last_brace > 0:
+                        fixed_output = fixed_output[:last_brace + 1] + ']'
+                        logger.debug("[YABAI-SI] Fixed incomplete JSON (windows)")
+
+                # Fix trailing commas
+                fixed_output = fixed_output.replace(',]', ']').replace(',}', '}')
+
+                try:
+                    windows = json.loads(fixed_output)
+                    logger.debug(f"[YABAI-SI] Successfully parsed after fixes: {len(windows)} windows")
+                    return windows
+
+                except json.JSONDecodeError:
+                    logger.debug("[YABAI-SI] Unable to parse yabai windows output")
+                    return []
+
+        except FileNotFoundError:
+            logger.debug("[YABAI-SI] yabai not found in PATH")
+            return []
+
         except Exception as e:
-            logger.error(f"[YABAI-SI] Error querying windows: {e}")
+            logger.debug(f"[YABAI-SI] Unexpected error querying windows: {type(e).__name__}: {e}")
             return []
 
     async def _handle_space_transition(self, from_space: int, to_space: int):
