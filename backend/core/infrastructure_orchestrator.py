@@ -1503,13 +1503,97 @@ class GCPReconciler:
     # v2.2: Cloud SQL Management (Cost Optimization)
     # =========================================================================
 
+    async def _ensure_gcp_project_configured(self) -> bool:
+        """
+        Ensure GCP project is configured, with intelligent fallback.
+
+        Returns:
+            True if project is configured, False otherwise
+        """
+        if not self._project_id:
+            logger.warning("[GCPReconciler] No GCP project ID configured")
+            return False
+
+        try:
+            # Check if gcloud is configured with the project
+            proc = await asyncio.create_subprocess_exec(
+                "gcloud", "config", "get-value", "project",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+
+            current_project = stdout.decode().strip()
+
+            # If no project set or empty, try to set it
+            if not current_project or current_project == "(unset)":
+                logger.info(f"[GCPReconciler] Setting gcloud project to {self._project_id}")
+
+                set_proc = await asyncio.create_subprocess_exec(
+                    "gcloud", "config", "set", "project", self._project_id,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                await asyncio.wait_for(set_proc.communicate(), timeout=10)
+
+                if set_proc.returncode == 0:
+                    logger.info(f"[GCPReconciler] Successfully set project to {self._project_id}")
+                    return True
+                else:
+                    logger.warning(f"[GCPReconciler] Failed to set project")
+                    return False
+
+            # Project is set - check if it matches ours
+            if current_project != self._project_id:
+                logger.warning(
+                    f"[GCPReconciler] gcloud configured for different project: "
+                    f"{current_project} (expected: {self._project_id})"
+                )
+                # Update to our project
+                set_proc = await asyncio.create_subprocess_exec(
+                    "gcloud", "config", "set", "project", self._project_id,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                await asyncio.wait_for(set_proc.communicate(), timeout=10)
+                return set_proc.returncode == 0
+
+            return True
+
+        except asyncio.TimeoutError:
+            logger.warning("[GCPReconciler] gcloud config check timed out")
+            return False
+        except FileNotFoundError:
+            logger.warning("[GCPReconciler] gcloud CLI not found")
+            return False
+        except Exception as e:
+            logger.debug(f"[GCPReconciler] Error checking gcloud config: {e}")
+            return False
+
     async def stop_cloud_sql(self, instance_name: str = "jarvis-learning-db") -> bool:
         """
         Stop Cloud SQL instance to save costs when JARVIS is not running.
 
         Note: Cloud SQL doesn't have a "stop" command, but you can patch
-        the activation policy to ON_DEMAND, which stops billing when no connections.
+        the activation policy to NEVER, which stops billing when no connections.
+
+        Features:
+        - Intelligent project configuration detection
+        - Automatic gcloud project setup if needed
+        - Graceful fallback if Cloud SQL not configured
         """
+        if not self._project_id:
+            logger.debug("[GCPReconciler] No GCP project configured - skipping Cloud SQL stop")
+            return False
+
+        # Ensure project is configured before attempting operation
+        if not await self._ensure_gcp_project_configured():
+            logger.debug("[GCPReconciler] GCP project not configured - skipping Cloud SQL stop")
+            return False
+
         logger.info(f"[GCPReconciler] Stopping Cloud SQL: {instance_name}")
 
         try:
@@ -1532,15 +1616,43 @@ class GCPReconciler:
                 logger.info(f"[GCPReconciler] Cloud SQL {instance_name} stopped")
                 return True
             else:
-                logger.warning(f"[GCPReconciler] Failed to stop Cloud SQL: {stderr.decode()}")
-                return False
+                error_msg = stderr.decode()
+                # Check if instance doesn't exist - not an error
+                if "does not exist" in error_msg.lower() or "not found" in error_msg.lower():
+                    logger.debug(f"[GCPReconciler] Cloud SQL instance {instance_name} not found (may not be configured)")
+                    return False
+                else:
+                    logger.warning(f"[GCPReconciler] Failed to stop Cloud SQL: {error_msg}")
+                    return False
 
+        except asyncio.TimeoutError:
+            logger.warning(f"[GCPReconciler] Cloud SQL stop operation timed out after 120s")
+            return False
+        except FileNotFoundError:
+            logger.debug("[GCPReconciler] gcloud CLI not found - Cloud SQL management unavailable")
+            return False
         except Exception as e:
-            logger.error(f"[GCPReconciler] Cloud SQL stop error: {e}")
+            logger.debug(f"[GCPReconciler] Cloud SQL stop error: {e}")
             return False
 
     async def start_cloud_sql(self, instance_name: str = "jarvis-learning-db") -> bool:
-        """Start Cloud SQL instance."""
+        """
+        Start Cloud SQL instance.
+
+        Features:
+        - Intelligent project configuration detection
+        - Automatic gcloud project setup if needed
+        - Graceful fallback if Cloud SQL not configured
+        """
+        if not self._project_id:
+            logger.debug("[GCPReconciler] No GCP project configured - skipping Cloud SQL start")
+            return False
+
+        # Ensure project is configured before attempting operation
+        if not await self._ensure_gcp_project_configured():
+            logger.debug("[GCPReconciler] GCP project not configured - skipping Cloud SQL start")
+            return False
+
         logger.info(f"[GCPReconciler] Starting Cloud SQL: {instance_name}")
 
         try:
@@ -1563,11 +1675,23 @@ class GCPReconciler:
                 logger.info(f"[GCPReconciler] Cloud SQL {instance_name} started")
                 return True
             else:
-                logger.warning(f"[GCPReconciler] Failed to start Cloud SQL: {stderr.decode()}")
-                return False
+                error_msg = stderr.decode()
+                # Check if instance doesn't exist - not an error
+                if "does not exist" in error_msg.lower() or "not found" in error_msg.lower():
+                    logger.debug(f"[GCPReconciler] Cloud SQL instance {instance_name} not found (may not be configured)")
+                    return False
+                else:
+                    logger.warning(f"[GCPReconciler] Failed to start Cloud SQL: {error_msg}")
+                    return False
 
+        except asyncio.TimeoutError:
+            logger.warning(f"[GCPReconciler] Cloud SQL start operation timed out after 120s")
+            return False
+        except FileNotFoundError:
+            logger.debug("[GCPReconciler] gcloud CLI not found - Cloud SQL management unavailable")
+            return False
         except Exception as e:
-            logger.error(f"[GCPReconciler] Cloud SQL start error: {e}")
+            logger.debug(f"[GCPReconciler] Cloud SQL start error: {e}")
             return False
 
     async def get_cloud_sql_status(self, instance_name: str = "jarvis-learning-db") -> Dict[str, Any]:

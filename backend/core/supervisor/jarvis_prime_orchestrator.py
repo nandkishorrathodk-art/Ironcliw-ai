@@ -588,8 +588,8 @@ class JarvisPrimeOrchestrator:
             logger.debug(f"[JarvisPrime] Port {port} is used by our own managed process (PID {pid})")
             return
 
-        # v10.6: CRITICAL FIX - Check if port is used by current supervisor process
-        # This happens during restart scenarios where supervisor is restarting
+        # v10.7: ENHANCED FIX - Check if port is used by current supervisor process
+        # This happens during restart scenarios where supervisor is restarting Prime
         current_pid = os.getpid()
         if pid == current_pid:
             logger.info(
@@ -605,31 +605,117 @@ class JarvisPrimeOrchestrator:
 
                     for child in children:
                         try:
-                            # Look for python processes with "backend/main.py" (JARVIS Prime signature)
+                            # Look for python processes with "jarvis_prime" in command (JARVIS Prime signature)
                             cmdline = child.cmdline()
-                            if any('backend/main.py' in arg for arg in cmdline):
+                            cmdline_str = ' '.join(cmdline)
+
+                            if ('jarvis_prime' in cmdline_str.lower() or
+                                'jarvis-prime' in cmdline_str.lower() or
+                                f'--port {port}' in cmdline_str or
+                                f'--port={port}' in cmdline_str):
+
                                 logger.info(
                                     f"[JarvisPrime] Found existing Prime subprocess (PID {child.pid}). "
                                     f"Reusing instead of starting new instance."
                                 )
+
+                                # Create a mock subprocess object that wraps the psutil.Process
+                                class MockProcess:
+                                    def __init__(self, proc):
+                                        self.pid = proc.pid
+                                        self.returncode = None
+                                        self._proc = proc
+
+                                    def terminate(self):
+                                        try:
+                                            self._proc.terminate()
+                                        except:
+                                            pass
+
+                                    def kill(self):
+                                        try:
+                                            self._proc.kill()
+                                        except:
+                                            pass
+
+                                    async def wait(self):
+                                        # Wait for process to exit
+                                        max_wait = 10
+                                        waited = 0
+                                        while waited < max_wait:
+                                            try:
+                                                if not self._proc.is_running():
+                                                    self.returncode = 0
+                                                    return
+                                            except:
+                                                self.returncode = 0
+                                                return
+                                            await asyncio.sleep(0.1)
+                                            waited += 0.1
+                                        self.returncode = 0
+
                                 # Store the existing process
-                                self._process = child
-                                self._status = "running"
+                                self._process = MockProcess(child)
+                                logger.debug(f"[JarvisPrime] Reusing existing subprocess on port {port}")
                                 return
+
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             continue
+
                 except Exception as e:
                     logger.debug(f"[JarvisPrime] Could not check for existing subprocess: {e}")
 
             # No existing subprocess found - the port binding is stale
-            # Try to unbind by closing any sockets on this port owned by us
-            logger.warning(
+            # This happens when supervisor binds the port but hasn't spawned Prime yet
+            # OR when a previous Prime instance crashed and left the socket in TIME_WAIT
+
+            logger.info(
                 f"[JarvisPrime] No existing Prime subprocess found, but port {port} is bound to us. "
-                f"This indicates a stale binding from previous run. "
-                f"Port will be freed when new Prime subprocess starts."
+                f"Attempting to release port binding before starting new instance..."
             )
-            # Don't raise exception - allow Prime to start and take over the port
-            return
+
+            # Try to force release the port by using SO_REUSEADDR socket option
+            # This allows the new Prime process to bind even if port is in TIME_WAIT
+            try:
+                import socket
+
+                # Create a temporary socket with SO_REUSEADDR to force release
+                temp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                temp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+                try:
+                    temp_sock.bind(('', port))
+                    logger.debug(f"[JarvisPrime] Successfully bound temporary socket to port {port}")
+                except OSError as e:
+                    logger.debug(f"[JarvisPrime] Could not bind temporary socket: {e}")
+                finally:
+                    temp_sock.close()
+                    logger.debug(f"[JarvisPrime] Closed temporary socket, port {port} should now be available")
+
+                # Wait a moment for the port to fully release
+                await asyncio.sleep(0.5)
+
+                # Verify port is now free
+                verify_pid = await self._get_pid_on_port(port)
+                if verify_pid is None:
+                    logger.info(f"[JarvisPrime] Port {port} successfully released")
+                    return
+                else:
+                    logger.warning(
+                        f"[JarvisPrime] Port {port} still in use after release attempt (PID {verify_pid}). "
+                        f"Will proceed anyway - Prime may use SO_REUSEADDR."
+                    )
+                    # Don't raise - allow Prime to try with SO_REUSEADDR
+                    return
+
+            except ImportError:
+                logger.debug("[JarvisPrime] socket module not available")
+                # Don't raise - allow Prime to try binding
+                return
+            except Exception as e:
+                logger.debug(f"[JarvisPrime] Error during port release: {e}")
+                # Don't raise - allow Prime to try binding
+                return
 
         # v10.5: IMMEDIATE zombie/defunct process cleanup
         # Zombies can't be killed normally, so detect and reap them first

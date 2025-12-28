@@ -17131,12 +17131,13 @@ async def main():
             docker_manager = await get_docker_daemon_manager()
 
             # Quick check: Is Docker installed?
-            if not await docker_manager.check_docker_installed():
+            if not await docker_manager.check_installation():
                 result["error"] = "Docker not installed"
                 return result
 
             # Quick check: Is daemon already running? (no wait, no auto-start)
-            if await docker_manager.check_daemon_running():
+            health = await docker_manager.check_daemon_health()
+            if health.is_healthy():
                 result["daemon_running"] = True
                 result["available"] = True
 
