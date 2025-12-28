@@ -23,7 +23,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 
@@ -36,6 +36,7 @@ try:
     PYTESSERACT_AVAILABLE = True
 except ImportError:
     PYTESSERACT_AVAILABLE = False
+    Image = None  # Set to None so we can check it
     logger.warning("pytesseract not available - OCR disabled. Install: pip install pytesseract pillow")
 
 try:
@@ -205,6 +206,8 @@ class VisualEventDetector:
                     processed_frame = frame
 
                 # Convert to PIL Image
+                if Image is None:
+                    raise RuntimeError("PIL Image not available")
                 pil_image = Image.fromarray(processed_frame)
 
                 # Run OCR in thread pool (blocking operation)
@@ -422,7 +425,7 @@ class VisualEventDetector:
     # Internal Methods
     # =========================================================================
 
-    def _run_ocr(self, pil_image: Image.Image) -> str:
+    def _run_ocr(self, pil_image: Any) -> str:
         """Run OCR on PIL image (blocking operation)."""
         try:
             config = f'--psm {self.config.ocr_psm} --oem {self.config.ocr_oem}'

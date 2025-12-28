@@ -248,6 +248,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # Lazy-loaded components - Action Execution (v11.0)
         self._computer_use_connector = None  # For executing actions
         self._agentic_task_runner = None  # For complex workflows
+        self._tts_callback = None  # For voice narration during monitoring
 
         # Active monitoring tasks
         self._watch_tasks: Dict[str, asyncio.Task] = {}
@@ -289,6 +290,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             try:
                 from backend.display.computer_use_connector import get_computer_use_connector
                 self._computer_use_connector = get_computer_use_connector()
+                # Extract TTS callback for voice narration during monitoring
+                if hasattr(self._computer_use_connector, 'narrator') and hasattr(self._computer_use_connector.narrator, 'tts_callback'):
+                    self._tts_callback = self._computer_use_connector.narrator.tts_callback
                 logger.info("✓ ClaudeComputerUseConnector initialized (Watch & Act enabled)")
             except Exception as e:
                 logger.warning(f"ComputerUseConnector init failed: {e}")
@@ -297,9 +301,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # v11.0: Initialize AgenticTaskRunner for complex workflows
         if self.config.enable_agentic_runner:
             try:
-                from backend.core.agentic_task_runner import get_agentic_task_runner
-                self._agentic_task_runner = await get_agentic_task_runner()
-                logger.info("✓ AgenticTaskRunner initialized (Complex workflows enabled)")
+                from backend.core.agentic_task_runner import get_agentic_runner
+                self._agentic_task_runner = get_agentic_runner()
+                if self._agentic_task_runner:
+                    logger.info("✓ AgenticTaskRunner initialized (Complex workflows enabled)")
+                else:
+                    logger.warning("AgenticTaskRunner not yet created - workflows will use Computer Use fallback")
             except Exception as e:
                 logger.warning(f"AgenticTaskRunner init failed: {e}")
                 logger.warning("Complex workflows will fall back to Computer Use")
@@ -420,7 +427,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         trigger_text: str,
         space_id: Optional[int] = None,
         action_config: Optional[ActionConfig] = None,
-        workflow_goal: Optional[str] = None
+        workflow_goal: Optional[str] = None,
+        wait_for_completion: bool = False
     ) -> Dict[str, Any]:
         """
         Watch an app for specific text/event and alert (or ACT!) when found.
@@ -435,6 +443,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             space_id: Optional specific space (auto-detect if None)
             action_config: Optional action to execute when event detected (v11.0)
             workflow_goal: Optional complex workflow goal (v11.0)
+            wait_for_completion: If True, wait for event detection and action execution
+                                If False, return immediately after starting watcher (default)
 
         Returns:
             Result with watcher_id, monitoring status, and action result if executed
@@ -513,15 +523,60 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 'will_act': action_config is not None  # v11.0: Flag for active monitoring
             }
 
-            return {
-                "success": True,
-                "watcher_id": watcher.watcher_id,
-                "window_id": window_id,
-                "app_name": app_name,
-                "space_id": detected_space_id,
-                "trigger_text": trigger_text,
-                "message": f"Watching {app_name} on Space {detected_space_id}"
-            }
+            # Intelligent mode selection: wait or return immediately
+            if wait_for_completion:
+                # BLOCKING MODE: Wait for event detection and action execution
+                logger.info(f"[{watcher.watcher_id}] Blocking mode: waiting for completion...")
+
+                try:
+                    # Wait for monitoring task to complete (with timeout protection)
+                    monitoring_result = await asyncio.wait_for(
+                        task,
+                        timeout=self.config.default_timeout
+                    )
+
+                    # Return comprehensive result with action execution details
+                    return {
+                        "success": True,
+                        "watcher_id": watcher.watcher_id,
+                        "window_id": window_id,
+                        "app_name": app_name,
+                        "space_id": detected_space_id,
+                        "trigger_text": trigger_text,
+                        "action_result": monitoring_result,  # Full action execution result
+                        "message": f"Completed watch on {app_name}"
+                    }
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"[{watcher.watcher_id}] Timed out waiting for event")
+                    # Clean up
+                    await self._watcher_manager.stop_watcher(watcher.watcher_id)
+                    return {
+                        "success": False,
+                        "error": f"Timeout waiting for '{trigger_text}' (>{self.config.default_timeout}s)",
+                        "watcher_id": watcher.watcher_id,
+                        "timeout": True
+                    }
+
+                except Exception as e:
+                    logger.exception(f"[{watcher.watcher_id}] Error during blocking wait: {e}")
+                    return {
+                        "success": False,
+                        "error": f"Monitoring failed: {str(e)}",
+                        "watcher_id": watcher.watcher_id
+                    }
+            else:
+                # BACKGROUND MODE: Return immediately (original behavior)
+                logger.info(f"[{watcher.watcher_id}] Background mode: watcher running asynchronously")
+                return {
+                    "success": True,
+                    "watcher_id": watcher.watcher_id,
+                    "window_id": window_id,
+                    "app_name": app_name,
+                    "space_id": detected_space_id,
+                    "trigger_text": trigger_text,
+                    "message": f"Watching {app_name} on Space {detected_space_id}"
+                }
 
         except Exception as e:
             logger.exception(f"Error in watch_and_alert: {e}")
@@ -668,7 +723,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         Returns window_id and space_id.
         """
         # Try to get SpatialAwarenessAgent from coordinator
-        if not self._spatial_agent and self.coordinator:
+        if not self._spatial_agent and hasattr(self, 'coordinator') and self.coordinator:
             try:
                 # Request spatial awareness
                 result = await self.coordinator.request(
@@ -731,15 +786,20 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         app_name: str,
         space_id: int,
         action_config: Optional[ActionConfig] = None
-    ):
+    ) -> Optional[Dict[str, Any]]:
         """
         Monitor watcher and send alert (or execute action!) when event detected.
 
         v11.0: Now supports autonomous action execution!
 
         This runs as a background task.
+
+        Returns:
+            Dict with detection and action results, or None if event not detected
         """
         action_result = None
+        detected = False
+        detection_confidence = 0.0
 
         try:
             logger.info(
@@ -760,12 +820,23 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             )
 
             if result.detected:
+                detected = True
+                detection_confidence = result.confidence
                 self._total_events_detected += 1
 
                 logger.info(
                     f"[{watcher.watcher_id}] ✅ Event detected! "
                     f"Trigger: '{trigger_text}', Confidence: {result.confidence:.2f}"
                 )
+
+                # VOICE NARRATION: Announce event detection
+                if self._tts_callback:
+                    try:
+                        await self._tts_callback(
+                            f"Event detected! I found {trigger_text} in {app_name}."
+                        )
+                    except Exception as e:
+                        logger.warning(f"TTS failed: {e}")
 
                 # Send alert
                 await self._send_alert(
@@ -782,6 +853,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         f"[{watcher.watcher_id}] 🚀 Executing action: {action_config.action_type.value}"
                     )
 
+                    # VOICE NARRATION: Announce autonomous action
+                    if self._tts_callback:
+                        try:
+                            await self._tts_callback(
+                                "I am now taking control. Executing autonomous action."
+                            )
+                        except Exception as e:
+                            logger.warning(f"TTS failed: {e}")
+
                     action_result = await self._execute_response(
                         trigger_text=trigger_text,
                         detected_text=result.trigger,  # Actual detected text
@@ -797,12 +877,31 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             f"Goal: {action_result.goal_executed}"
                         )
                         self._total_actions_succeeded += 1
+
+                        # VOICE NARRATION: Announce success
+                        if self._tts_callback:
+                            try:
+                                await self._tts_callback(
+                                    "Action completed successfully. Autonomous task finished."
+                                )
+                            except Exception as e:
+                                logger.warning(f"TTS failed: {e}")
                     else:
                         logger.warning(
                             f"[{watcher.watcher_id}] ❌ Action failed: "
                             f"{action_result.error if action_result else 'Unknown error'}"
                         )
                         self._total_actions_failed += 1
+
+                        # VOICE NARRATION: Announce failure
+                        if self._tts_callback:
+                            try:
+                                error_msg = action_result.error if action_result else 'Unknown error'
+                                await self._tts_callback(
+                                    f"Action failed: {error_msg}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"TTS failed: {e}")
 
                 # Store in knowledge graph (with action result if available)
                 if self.knowledge_graph:
@@ -839,9 +938,41 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # Cleanup
             await self._stop_watcher_by_id(watcher.watcher_id)
 
+            # Return comprehensive result
+            if detected and action_result:
+                # Event detected and action executed
+                return {
+                    "success": action_result.success,
+                    "detected": True,
+                    "confidence": detection_confidence,
+                    "action_type": action_result.action_type.value,
+                    "goal_executed": action_result.goal_executed,
+                    "error": action_result.error,
+                    "duration_ms": action_result.duration_ms
+                }
+            elif detected:
+                # Event detected but no action (passive mode)
+                return {
+                    "success": True,
+                    "detected": True,
+                    "confidence": detection_confidence
+                }
+            else:
+                # Timeout - event not detected
+                return {
+                    "success": False,
+                    "detected": False,
+                    "error": "Event not detected within timeout"
+                }
+
         except Exception as e:
             logger.exception(f"Error in monitor_and_alert: {e}")
             await self._stop_watcher_by_id(watcher.watcher_id)
+            return {
+                "success": False,
+                "detected": False,
+                "error": f"Monitoring error: {str(e)}"
+            }
 
     async def _send_alert(
         self,
@@ -1039,7 +1170,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         try:
             logger.info(f"[TELEPORT] Switching to {app_name} on Space {space_id}")
 
-            if self.coordinator:
+            if hasattr(self, 'coordinator') and self.coordinator:
                 # Use SpatialAwarenessAgent to switch
                 result = await self.coordinator.request(
                     to_agent="spatial_awareness_agent",

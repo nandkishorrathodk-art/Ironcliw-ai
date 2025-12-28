@@ -906,8 +906,13 @@ Always provide your reasoning before taking action, including grid position esti
                 from backend.vision.omniparser_integration import get_omniparser_engine
                 logger.info("[OMNIPARSER] ✅ OmniParser enabled with intelligent fallback modes")
                 logger.info("[OMNIPARSER] Modes: OmniParser → Claude Vision → OCR (auto-select)")
-                # Initialize in background (don't block startup)
-                asyncio.create_task(self._initialize_omniparser())
+                # Initialize in background (don't block startup) - only if event loop is running
+                try:
+                    loop = asyncio.get_running_loop()
+                    asyncio.create_task(self._initialize_omniparser())
+                except RuntimeError:
+                    # No running event loop - will initialize lazily on first use
+                    logger.debug("[OMNIPARSER] No event loop running, will initialize lazily")
             except ImportError:
                 logger.info("[OMNIPARSER] Import failed - using standard vision")
                 self._omniparser_enabled = False
@@ -920,8 +925,13 @@ Always provide your reasoning before taking action, including grid position esti
             try:
                 from backend.core.computer_use_bridge import get_computer_use_bridge
                 logger.info("[COMPUTER USE BRIDGE] Initializing cross-repo bridge...")
-                # Initialize in background
-                asyncio.create_task(self._initialize_bridge())
+                # Initialize in background - only if event loop is running
+                try:
+                    loop = asyncio.get_running_loop()
+                    asyncio.create_task(self._initialize_bridge())
+                except RuntimeError:
+                    # No running event loop - will initialize lazily on first use
+                    logger.debug("[COMPUTER USE BRIDGE] No event loop running, will initialize lazily")
             except ImportError:
                 logger.info("[COMPUTER USE BRIDGE] Bridge not available")
                 self._bridge_enabled = False
