@@ -29,6 +29,8 @@ import gc
 
 import numpy as np
 import psutil
+import queue
+from typing import Union
 
 # Import PyObjC frameworks (now properly installed)
 try:
@@ -60,6 +62,14 @@ try:
         CVPixelBufferGetWidth,
         kCVPixelBufferPixelFormatTypeKey,
         kCVPixelFormatType_32BGRA,
+        CGWindowListCreateImage,
+        CGRectNull,
+        kCGWindowListOptionIncludingWindow,
+        kCGWindowImageDefault,
+        CGImageGetWidth,
+        CGImageGetHeight,
+        CGImageGetDataProvider,
+        CGDataProviderCopyData,
     )
     import libdispatch
 
@@ -791,3 +801,552 @@ def check_capture_availability() -> Dict[str, Any]:
         'memory_available_mb': psutil.virtual_memory().available / 1024 / 1024,
         'cpu_count': psutil.cpu_count(),
     }
+
+
+# =============================================================================
+# Video Multi-Space Intelligence (VMSI) - Background Watcher System
+# =============================================================================
+# Production-grade background visual monitoring for specific windows
+# Features:
+# - Window-specific capture (not full display)
+# - Low-FPS streaming (1-10 FPS) for efficiency
+# - Low-priority thread execution
+# - Parallel watcher support
+# - Visual event detection integration
+# - Cross-repo state sharing
+# =============================================================================
+
+class WatcherStatus(Enum):
+    """Video watcher status states"""
+    IDLE = "idle"
+    STARTING = "starting"
+    WATCHING = "watching"
+    PAUSED = "paused"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    ERROR = "error"
+    EVENT_DETECTED = "event_detected"
+
+
+@dataclass
+class VisualEventResult:
+    """Result from visual event detection"""
+    detected: bool
+    event_type: str  # "text", "element", "color"
+    trigger: str
+    confidence: float
+    frame_number: int
+    detection_time: float
+    frame_data: Optional[np.ndarray] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class WatcherConfig:
+    """Configuration for video watcher - NO HARDCODING"""
+    window_id: int
+    fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_WATCHER_DEFAULT_FPS', '5')))
+    priority: str = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_PRIORITY', 'low'))
+    timeout: float = field(default_factory=lambda: float(os.getenv('JARVIS_WATCHER_TIMEOUT', '300.0')))
+    max_buffer_size: int = field(default_factory=lambda: int(os.getenv('JARVIS_WATCHER_BUFFER_SIZE', '10')))
+
+    # Visual detection settings
+    enable_ocr: bool = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_OCR', 'true').lower() == 'true')
+    enable_element_detection: bool = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_ELEMENTS', 'true').lower() == 'true')
+    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('JARVIS_DETECTION_CONFIDENCE', '0.75')))
+
+
+class VideoWatcher:
+    """
+    Background video watcher for a specific window.
+
+    Captures frames from a specific macOS window at low FPS and
+    enables visual event detection (text, elements, colors).
+
+    This is the core of VMSI - "The Watcher" that monitors background windows.
+    """
+
+    def __init__(self, config: WatcherConfig):
+        self.config = config
+        self.watcher_id = f"watcher_{config.window_id}_{int(time.time())}"
+        self.status = WatcherStatus.IDLE
+
+        # Frame queue (producer-consumer pattern)
+        self.frame_queue: queue.Queue = queue.Queue(maxsize=config.max_buffer_size)
+
+        # Stats
+        self.frames_captured = 0
+        self.frames_analyzed = 0
+        self.events_detected = 0
+        self.start_time: float = 0.0
+        self.last_frame_time: float = 0.0
+
+        # Threading
+        self._capture_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+        # Metadata
+        self.app_name: Optional[str] = None
+        self.space_id: Optional[int] = None
+
+        logger.info(f"VideoWatcher created: {self.watcher_id} (Window {config.window_id}, {config.fps} FPS)")
+
+    async def start(self) -> bool:
+        """Start the video watcher."""
+        if self.status == WatcherStatus.WATCHING:
+            logger.warning(f"Watcher {self.watcher_id} already running")
+            return True
+
+        self.status = WatcherStatus.STARTING
+        self.start_time = time.time()
+        self._stop_event.clear()
+
+        # Start capture thread with low priority
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop,
+            name=f"VideoWatcher-{self.config.window_id}",
+            daemon=True
+        )
+
+        # Set thread priority to low (if supported)
+        try:
+            import resource
+            # Lower priority (higher nice value)
+            resource.setrlimit(resource.RLIMIT_NICE, (19, 19))
+        except Exception:
+            pass  # Priority setting not critical
+
+        self._capture_thread.start()
+        self.status = WatcherStatus.WATCHING
+
+        logger.info(f"✅ Watcher {self.watcher_id} started")
+        return True
+
+    def _capture_loop(self):
+        """
+        Capture loop running in background thread.
+
+        Uses CGWindowListCreateImage to capture specific window only.
+        Runs at low FPS to save resources.
+        """
+        frame_interval = 1.0 / self.config.fps
+
+        while not self._stop_event.is_set():
+            try:
+                loop_start = time.time()
+
+                # Capture window-specific frame
+                frame = self._capture_window_frame()
+
+                if frame is not None:
+                    self.frames_captured += 1
+                    self.last_frame_time = time.time()
+
+                    # Add to queue (non-blocking)
+                    try:
+                        self.frame_queue.put_nowait({
+                            'frame': frame,
+                            'frame_number': self.frames_captured,
+                            'timestamp': self.last_frame_time,
+                            'window_id': self.config.window_id,
+                        })
+                    except queue.Full:
+                        # Queue full, drop oldest frame
+                        try:
+                            self.frame_queue.get_nowait()
+                            self.frame_queue.put_nowait({
+                                'frame': frame,
+                                'frame_number': self.frames_captured,
+                                'timestamp': self.last_frame_time,
+                                'window_id': self.config.window_id,
+                            })
+                        except queue.Empty:
+                            pass
+
+                # Sleep to maintain target FPS
+                elapsed = time.time() - loop_start
+                sleep_time = max(0, frame_interval - elapsed)
+
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+            except Exception as e:
+                logger.error(f"Error in watcher {self.watcher_id} capture loop: {e}")
+                time.sleep(1.0)  # Backoff on error
+
+        logger.info(f"Watcher {self.watcher_id} capture loop stopped")
+
+    def _capture_window_frame(self) -> Optional[np.ndarray]:
+        """
+        Capture frame from specific window using CGWindowListCreateImage.
+
+        This is window-specific (not full display) which is more efficient.
+        """
+        if not PYOBJC_AVAILABLE:
+            return None
+
+        try:
+            # Capture window image
+            # kCGWindowListOptionIncludingWindow = only this window
+            # kCGWindowImageDefault = default quality
+            cg_image = CGWindowListCreateImage(
+                CGRectNull,  # Entire window bounds
+                kCGWindowListOptionIncludingWindow,
+                self.config.window_id,
+                kCGWindowImageDefault
+            )
+
+            if not cg_image:
+                return None
+
+            # Get image dimensions
+            width = CGImageGetWidth(cg_image)
+            height = CGImageGetHeight(cg_image)
+
+            # Get pixel data
+            data_provider = CGImageGetDataProvider(cg_image)
+            data = CGDataProviderCopyData(data_provider)
+
+            # Convert to numpy array
+            # CGImage format is typically BGRA
+            bytes_data = bytes(data)
+            frame = np.frombuffer(bytes_data, dtype=np.uint8)
+
+            # Reshape to image dimensions
+            # Assuming 4 bytes per pixel (BGRA)
+            bytes_per_row = width * 4
+            frame = frame.reshape((height, bytes_per_row // 4, 4))
+            frame = frame[:, :width, :3]  # Remove alpha
+            frame = frame[:, :, ::-1]  # BGR to RGB
+
+            return frame
+
+        except Exception as e:
+            logger.debug(f"Error capturing window {self.config.window_id}: {e}")
+            return None
+
+    async def get_latest_frame(self, timeout: float = 1.0) -> Optional[Dict[str, Any]]:
+        """Get the latest frame from the watcher."""
+        try:
+            frame_data = await asyncio.wait_for(
+                asyncio.to_thread(self.frame_queue.get),
+                timeout=timeout
+            )
+            return frame_data
+        except asyncio.TimeoutError:
+            return None
+        except Exception as e:
+            logger.error(f"Error getting frame from watcher {self.watcher_id}: {e}")
+            return None
+
+    async def stop(self):
+        """Stop the video watcher."""
+        if self.status in (WatcherStatus.STOPPED, WatcherStatus.STOPPING):
+            return
+
+        self.status = WatcherStatus.STOPPING
+        logger.info(f"Stopping watcher {self.watcher_id}...")
+
+        # Signal stop
+        self._stop_event.set()
+
+        # Wait for capture thread
+        if self._capture_thread and self._capture_thread.is_alive():
+            self._capture_thread.join(timeout=2.0)
+
+        # Clear queue
+        while not self.frame_queue.empty():
+            try:
+                self.frame_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        self.status = WatcherStatus.STOPPED
+
+        # Log stats
+        uptime = time.time() - self.start_time if self.start_time > 0 else 0
+        logger.info(
+            f"✅ Watcher {self.watcher_id} stopped - "
+            f"Uptime: {uptime:.1f}s, Frames: {self.frames_captured}, "
+            f"Events: {self.events_detected}"
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get watcher statistics."""
+        uptime = time.time() - self.start_time if self.start_time > 0 else 0
+        actual_fps = self.frames_captured / uptime if uptime > 0 else 0
+
+        return {
+            'watcher_id': self.watcher_id,
+            'window_id': self.config.window_id,
+            'status': self.status.value,
+            'app_name': self.app_name,
+            'space_id': self.space_id,
+            'target_fps': self.config.fps,
+            'actual_fps': round(actual_fps, 2),
+            'frames_captured': self.frames_captured,
+            'frames_analyzed': self.frames_analyzed,
+            'events_detected': self.events_detected,
+            'uptime_seconds': round(uptime, 2),
+            'queue_size': self.frame_queue.qsize(),
+        }
+
+
+class VideoWatcherManager:
+    """
+    Manager for multiple background video watchers.
+
+    Enables parallel monitoring of multiple windows simultaneously.
+    This is the "God Mode" - JARVIS watching multiple things at once.
+    """
+
+    def __init__(
+        self,
+        max_parallel_watchers: Optional[int] = None
+    ):
+        self.max_parallel_watchers = max_parallel_watchers or int(
+            os.getenv('JARVIS_WATCHER_MAX_PARALLEL', '3')
+        )
+
+        self.watchers: Dict[str, VideoWatcher] = {}
+        self._watcher_lock = asyncio.Lock()
+
+        # Stats
+        self.total_watchers_spawned = 0
+        self.total_events_detected = 0
+
+        logger.info(f"VideoWatcherManager initialized (max parallel: {self.max_parallel_watchers})")
+
+    async def spawn_watcher(
+        self,
+        window_id: int,
+        fps: int = 5,
+        app_name: Optional[str] = None,
+        space_id: Optional[int] = None,
+        priority: str = "low",
+        timeout: float = 300.0
+    ) -> VideoWatcher:
+        """
+        Spawn a new background video watcher for a specific window.
+
+        Args:
+            window_id: macOS window ID to watch
+            fps: Frame rate (1-10, default 5)
+            app_name: Name of app (for logging)
+            space_id: macOS Space ID (for logging)
+            priority: Thread priority ("low", "normal", "high")
+            timeout: Max watch time in seconds
+
+        Returns:
+            VideoWatcher instance
+        """
+        async with self._watcher_lock:
+            # Check if we're at max capacity
+            active_watchers = [w for w in self.watchers.values()
+                              if w.status == WatcherStatus.WATCHING]
+
+            if len(active_watchers) >= self.max_parallel_watchers:
+                raise RuntimeError(
+                    f"Maximum parallel watchers ({self.max_parallel_watchers}) reached"
+                )
+
+            # Validate FPS
+            min_fps = int(os.getenv('JARVIS_WATCHER_MIN_FPS', '1'))
+            max_fps = int(os.getenv('JARVIS_WATCHER_MAX_FPS', '10'))
+            fps = max(min_fps, min(max_fps, fps))
+
+            # Create watcher
+            config = WatcherConfig(
+                window_id=window_id,
+                fps=fps,
+                priority=priority,
+                timeout=timeout
+            )
+
+            watcher = VideoWatcher(config)
+            watcher.app_name = app_name
+            watcher.space_id = space_id
+
+            # Start watcher
+            success = await watcher.start()
+
+            if not success:
+                raise RuntimeError(f"Failed to start watcher for window {window_id}")
+
+            # Register watcher
+            self.watchers[watcher.watcher_id] = watcher
+            self.total_watchers_spawned += 1
+
+            logger.info(
+                f"✅ Spawned watcher {watcher.watcher_id} for {app_name or 'Unknown'} "
+                f"(Window {window_id}, Space {space_id}, {fps} FPS)"
+            )
+
+            return watcher
+
+    async def wait_for_visual_event(
+        self,
+        watcher: VideoWatcher,
+        trigger: Union[str, Dict],
+        detector: Optional[Any] = None,
+        timeout: Optional[float] = None
+    ) -> VisualEventResult:
+        """
+        Wait for a visual event to occur in watcher stream.
+
+        Args:
+            watcher: Active VideoWatcher instance
+            trigger: Text to find (str) or element spec (dict)
+            detector: VisualEventDetector instance (optional)
+            timeout: Max wait time (uses watcher config if None)
+
+        Returns:
+            VisualEventResult with detection details
+        """
+        timeout = timeout or watcher.config.timeout
+        start_time = time.time()
+
+        logger.info(
+            f"[Watcher {watcher.watcher_id}] Waiting for event: {trigger} "
+            f"(timeout: {timeout}s)"
+        )
+
+        frame_count = 0
+
+        while (time.time() - start_time) < timeout:
+            # Get latest frame
+            frame_data = await watcher.get_latest_frame(timeout=1.0)
+
+            if not frame_data:
+                continue
+
+            frame = frame_data['frame']
+            frame_number = frame_data['frame_number']
+            frame_count += 1
+            watcher.frames_analyzed += 1
+
+            # Detect event (simplified for now - full detector implementation next)
+            detected = False
+            confidence = 0.0
+
+            if detector:
+                # Use full detector if provided
+                try:
+                    result = await detector.detect_text(frame, str(trigger))
+                    detected = result.detected
+                    confidence = result.confidence
+                except Exception as e:
+                    logger.error(f"Detector error: {e}")
+            else:
+                # Simple fallback: always return not detected
+                # (Full OCR implementation in VisualEventDetector)
+                detected = False
+                confidence = 0.0
+
+            if detected:
+                watcher.events_detected += 1
+                watcher.status = WatcherStatus.EVENT_DETECTED
+                self.total_events_detected += 1
+
+                detection_time = time.time() - start_time
+
+                logger.info(
+                    f"[Watcher {watcher.watcher_id}] ✅ Event detected! "
+                    f"Trigger: '{trigger}', Confidence: {confidence:.2f}, "
+                    f"Time: {detection_time:.1f}s, Frames analyzed: {frame_count}"
+                )
+
+                return VisualEventResult(
+                    detected=True,
+                    event_type="text",
+                    trigger=str(trigger),
+                    confidence=confidence,
+                    frame_number=frame_number,
+                    detection_time=detection_time,
+                    frame_data=frame,
+                    metadata={
+                        'watcher_id': watcher.watcher_id,
+                        'window_id': watcher.config.window_id,
+                        'app_name': watcher.app_name,
+                        'space_id': watcher.space_id,
+                        'frames_analyzed': frame_count,
+                    }
+                )
+
+            # Brief sleep to prevent tight loop
+            await asyncio.sleep(0.1)
+
+        # Timeout reached
+        logger.warning(
+            f"[Watcher {watcher.watcher_id}] ⏱️ Timeout waiting for event: {trigger} "
+            f"(analyzed {frame_count} frames)"
+        )
+
+        return VisualEventResult(
+            detected=False,
+            event_type="text",
+            trigger=str(trigger),
+            confidence=0.0,
+            frame_number=frame_count,
+            detection_time=timeout,
+            metadata={
+                'watcher_id': watcher.watcher_id,
+                'timeout_reached': True,
+                'frames_analyzed': frame_count,
+            }
+        )
+
+    async def stop_watcher(self, watcher_id: str):
+        """Stop a specific watcher."""
+        async with self._watcher_lock:
+            if watcher_id in self.watchers:
+                watcher = self.watchers[watcher_id]
+                await watcher.stop()
+                del self.watchers[watcher_id]
+                logger.info(f"Stopped and removed watcher {watcher_id}")
+            else:
+                logger.warning(f"Watcher {watcher_id} not found")
+
+    async def stop_all_watchers(self):
+        """Stop all active watchers."""
+        async with self._watcher_lock:
+            logger.info(f"Stopping {len(self.watchers)} watchers...")
+
+            stop_tasks = [w.stop() for w in self.watchers.values()]
+            await asyncio.gather(*stop_tasks, return_exceptions=True)
+
+            self.watchers.clear()
+            logger.info("✅ All watchers stopped")
+
+    def list_watchers(self) -> List[Dict[str, Any]]:
+        """List all active watchers."""
+        return [w.get_stats() for w in self.watchers.values()]
+
+    def get_watcher(self, watcher_id: str) -> Optional[VideoWatcher]:
+        """Get a specific watcher by ID."""
+        return self.watchers.get(watcher_id)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get manager statistics."""
+        active = sum(1 for w in self.watchers.values()
+                    if w.status == WatcherStatus.WATCHING)
+
+        return {
+            'total_watchers_spawned': self.total_watchers_spawned,
+            'total_events_detected': self.total_events_detected,
+            'active_watchers': active,
+            'max_parallel': self.max_parallel_watchers,
+            'watchers': self.list_watchers(),
+        }
+
+
+# Global watcher manager instance
+_watcher_manager: Optional[VideoWatcherManager] = None
+
+
+def get_watcher_manager() -> VideoWatcherManager:
+    """Get the global VideoWatcherManager instance."""
+    global _watcher_manager
+    if _watcher_manager is None:
+        _watcher_manager = VideoWatcherManager()
+    return _watcher_manager

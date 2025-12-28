@@ -28,6 +28,7 @@ from .health_monitor_agent import HealthMonitorAgent
 from .context_tracker_agent import ContextTrackerAgent
 from .error_analyzer_agent import ErrorAnalyzerAgent
 from .pattern_recognition_agent import PatternRecognitionAgent
+from .visual_monitor_agent import VisualMonitorAgent
 
 from .agent_initializer import (
     AgentInitializer,
@@ -45,6 +46,7 @@ __all__ = [
     "ContextTrackerAgent",
     "ErrorAnalyzerAgent",
     "PatternRecognitionAgent",
+    "VisualMonitorAgent",
     # Initializer
     "AgentInitializer",
     "PRODUCTION_AGENTS",
