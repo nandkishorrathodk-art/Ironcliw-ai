@@ -29,12 +29,17 @@ load_dotenv()
 # Add backend to path
 sys.path.insert(0, os.path.join(os.getcwd(), "backend"))
 
-# Configure logging
+# Configure logging with DEBUG level for detailed diagnostics
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed from INFO to DEBUG for detailed monitoring
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Set specific loggers to appropriate levels
+logging.getLogger('backend.vision.macos_video_capture_advanced').setLevel(logging.DEBUG)
+logging.getLogger('backend.vision.visual_event_detector').setLevel(logging.DEBUG)
+logging.getLogger('backend.neural_mesh.agents.visual_monitor_agent').setLevel(logging.INFO)
 
 
 # ============================================================================
@@ -86,6 +91,41 @@ async def test_autonomous_loop():
     print()
     print("=" * 70)
     print()
+
+    # Check Screen Recording permission upfront
+    print("🔒 Checking macOS Screen Recording permission...")
+    try:
+        from Quartz import (
+            CGWindowListCreateImage,
+            CGRectNull,
+            kCGWindowListOptionIncludingWindow,
+            kCGWindowImageDefault,
+            CGImageGetWidth,
+        )
+
+        # Try a test capture
+        test_image = CGWindowListCreateImage(
+            CGRectNull,
+            kCGWindowListOptionIncludingWindow,
+            1,  # Test window ID
+            kCGWindowImageDefault
+        )
+
+        if not test_image or CGImageGetWidth(test_image) == 0:
+            print()
+            print("⚠️  CGWindowListCreateImage not available (expected on macOS Sequoia)")
+            print("   → Will use screencapture fallback method instead")
+            print("   → This is normal and expected on newer macOS versions")
+            print()
+            await jarvis_speak("Screen capture API requires fallback method. Using screencapture command instead.")
+        else:
+            print("   ✅ Screen Recording permission granted (using Quartz API)!")
+            print()
+    except Exception as e:
+        logger.warning(f"Could not check Screen Recording permission: {e}")
+        print("   ⚠️  Could not verify Screen Recording permission")
+        print("   → Proceeding with fallback capture method")
+        print()
 
     try:
         # Import after path is set

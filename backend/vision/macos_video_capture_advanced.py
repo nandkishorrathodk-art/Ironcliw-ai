@@ -930,6 +930,10 @@ class VideoWatcher:
         Runs at low FPS to save resources.
         """
         frame_interval = 1.0 / self.config.fps
+        consecutive_failures = 0
+        last_log_time = 0
+
+        logger.info(f"[Watcher {self.watcher_id}] Capture loop started (target FPS: {self.config.fps})")
 
         while not self._stop_event.is_set():
             try:
@@ -941,6 +945,14 @@ class VideoWatcher:
                 if frame is not None:
                     self.frames_captured += 1
                     self.last_frame_time = time.time()
+                    consecutive_failures = 0
+
+                    # Log successful capture periodically
+                    if self.frames_captured % 10 == 1:
+                        logger.debug(
+                            f"[Watcher {self.watcher_id}] Captured frame #{self.frames_captured}, "
+                            f"shape={frame.shape}, queue_size={self.frame_queue.qsize()}"
+                        )
 
                     # Add to queue (non-blocking)
                     try:
@@ -962,6 +974,31 @@ class VideoWatcher:
                             })
                         except queue.Empty:
                             pass
+                else:
+                    # Frame capture failed
+                    consecutive_failures += 1
+
+                    # Log capture failures periodically (not every time to avoid spam)
+                    current_time = time.time()
+                    if current_time - last_log_time > 5.0:  # Log every 5 seconds
+                        logger.warning(
+                            f"[Watcher {self.watcher_id}] Frame capture failing! "
+                            f"Consecutive failures: {consecutive_failures}, "
+                            f"Total captured: {self.frames_captured}, "
+                            f"Window ID: {self.config.window_id}"
+                        )
+                        last_log_time = current_time
+
+                        # After many failures, log detailed diagnostics
+                        if consecutive_failures > 20:
+                            logger.error(
+                                f"[Watcher {self.watcher_id}] CRITICAL: Frame capture has failed "
+                                f"{consecutive_failures} times in a row. Possible causes:\n"
+                                f"  1. Screen Recording permission not granted (System Preferences → Privacy)\n"
+                                f"  2. Window ID {self.config.window_id} is invalid or window was closed\n"
+                                f"  3. PyObjC frameworks not available\n"
+                                f"  PYOBJC_AVAILABLE={PYOBJC_AVAILABLE}"
+                            )
 
                 # Sleep to maintain target FPS
                 elapsed = time.time() - loop_start
@@ -971,18 +1008,21 @@ class VideoWatcher:
                     time.sleep(sleep_time)
 
             except Exception as e:
-                logger.error(f"Error in watcher {self.watcher_id} capture loop: {e}")
+                logger.error(f"Error in watcher {self.watcher_id} capture loop: {e}", exc_info=True)
                 time.sleep(1.0)  # Backoff on error
 
-        logger.info(f"Watcher {self.watcher_id} capture loop stopped")
+        logger.info(f"Watcher {self.watcher_id} capture loop stopped (captured {self.frames_captured} frames)")
 
     def _capture_window_frame(self) -> Optional[np.ndarray]:
         """
         Capture frame from specific window using CGWindowListCreateImage.
 
         This is window-specific (not full display) which is more efficient.
+
+        FALLBACK: If CGWindowListCreateImage fails (permissions), use screencapture command.
         """
         if not PYOBJC_AVAILABLE:
+            logger.error(f"[Watcher {self.watcher_id}] PyObjC not available - cannot capture frames")
             return None
 
         try:
@@ -997,15 +1037,28 @@ class VideoWatcher:
             )
 
             if not cg_image:
-                return None
+                # FALLBACK: Try screencapture command (works without Screen Recording permission on some macOS versions)
+                if self.frames_captured == 0:
+                    logger.info(
+                        f"[Watcher {self.watcher_id}] CGWindowListCreateImage failed - using screencapture fallback"
+                    )
+                return self._capture_window_frame_fallback()
 
             # Get image dimensions
             width = CGImageGetWidth(cg_image)
             height = CGImageGetHeight(cg_image)
 
+            if width == 0 or height == 0:
+                logger.warning(f"[Watcher {self.watcher_id}] Captured image has zero dimensions: {width}x{height}")
+                return None
+
             # Get pixel data
             data_provider = CGImageGetDataProvider(cg_image)
             data = CGDataProviderCopyData(data_provider)
+
+            if not data:
+                logger.error(f"[Watcher {self.watcher_id}] Failed to get pixel data from CGImage")
+                return None
 
             # Convert to numpy array
             # CGImage format is typically BGRA
@@ -1019,10 +1072,102 @@ class VideoWatcher:
             frame = frame[:, :width, :3]  # Remove alpha
             frame = frame[:, :, ::-1]  # BGR to RGB
 
+            # Log successful capture details (first frame only)
+            if self.frames_captured == 0:
+                logger.info(
+                    f"[Watcher {self.watcher_id}] First frame captured successfully! "
+                    f"Dimensions: {width}x{height}, Shape: {frame.shape}"
+                )
+
             return frame
 
         except Exception as e:
             logger.debug(f"Error capturing window {self.config.window_id}: {e}")
+            return None
+
+    def _capture_window_frame_fallback(self) -> Optional[np.ndarray]:
+        """
+        Fallback capture method using macOS screencapture command.
+
+        This works when CGWindowListCreateImage fails (e.g., macOS Sequoia 15.1
+        with changed Screen Recording permission requirements).
+
+        The screencapture command has different permission requirements and
+        works in cases where the Quartz API fails.
+
+        Returns:
+            numpy array in RGB format, or None if capture fails
+        """
+        import subprocess
+        import tempfile
+
+        try:
+            # Import PIL (widely used in codebase)
+            try:
+                from PIL import Image
+            except ImportError:
+                logger.error("[Fallback Capture] PIL not available - cannot use fallback method")
+                return None
+
+            # Create temporary file for screenshot
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            try:
+                # Use screencapture with window ID
+                # -l <window_id> = capture specific window
+                # -x = no sound
+                # -t png = PNG format
+                result = subprocess.run(
+                    ['screencapture', '-l', str(self.config.window_id), '-x', '-t', 'png', tmp_path],
+                    capture_output=True,
+                    timeout=2.0,  # 2 second timeout
+                    check=False  # Don't raise on non-zero exit
+                )
+
+                # Check if file was created and has content
+                if not os.path.exists(tmp_path):
+                    logger.debug(f"[Fallback Capture] screencapture did not create file for window {self.config.window_id}")
+                    return None
+
+                file_size = os.path.getsize(tmp_path)
+                if file_size == 0:
+                    logger.debug(f"[Fallback Capture] screencapture created empty file for window {self.config.window_id}")
+                    return None
+
+                # Load image with PIL
+                pil_image = Image.open(tmp_path)
+
+                # Convert to RGB (in case it's RGBA or other format)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+
+                # Convert to numpy array
+                frame = np.array(pil_image)
+
+                # Log successful fallback capture (first time only)
+                if self.frames_captured == 0:
+                    logger.info(
+                        f"[Watcher {self.watcher_id}] Fallback capture successful! "
+                        f"Using screencapture command. Dimensions: {frame.shape[1]}x{frame.shape[0]}, "
+                        f"File size: {file_size} bytes"
+                    )
+
+                return frame
+
+            finally:
+                # Always clean up temp file
+                try:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                except Exception as cleanup_error:
+                    logger.debug(f"[Fallback Capture] Failed to clean up temp file: {cleanup_error}")
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"[Fallback Capture] screencapture command timed out for window {self.config.window_id}")
+            return None
+        except Exception as e:
+            logger.debug(f"[Fallback Capture] Error in fallback capture: {e}")
             return None
 
     async def get_latest_frame(self, timeout: float = 1.0) -> Optional[Dict[str, Any]]:
@@ -1218,12 +1363,35 @@ class VideoWatcherManager:
             frame_data = await watcher.get_latest_frame(timeout=1.0)
 
             if not frame_data:
+                logger.debug(f"[Watcher {watcher.watcher_id}] No frame received (frame_count={frame_count})")
                 continue
 
             frame = frame_data['frame']
             frame_number = frame_data['frame_number']
             frame_count += 1
             watcher.frames_analyzed += 1
+
+            # Log frame capture progress every 5 frames and save debug frame
+            if frame_count % 5 == 0:
+                logger.info(
+                    f"[Watcher {watcher.watcher_id}] Processing frames: {frame_count} analyzed, "
+                    f"shape={frame.shape if frame is not None else 'None'}, "
+                    f"elapsed={time.time() - start_time:.1f}s"
+                )
+
+                # Save debug frame for visual inspection (every 5th frame)
+                try:
+                    debug_dir = Path.home() / ".jarvis" / "debug_frames"
+                    debug_dir.mkdir(parents=True, exist_ok=True)
+                    debug_path = debug_dir / f"frame_{watcher.watcher_id}_{frame_number}.png"
+
+                    import cv2
+                    # Convert RGB to BGR for OpenCV
+                    frame_bgr = frame[:, :, ::-1] if frame is not None and len(frame.shape) == 3 else frame
+                    cv2.imwrite(str(debug_path), frame_bgr)
+                    logger.debug(f"[Watcher {watcher.watcher_id}] Saved debug frame to {debug_path}")
+                except Exception as e:
+                    logger.debug(f"Could not save debug frame: {e}")
 
             # Detect event (simplified for now - full detector implementation next)
             detected = False
@@ -1232,11 +1400,24 @@ class VideoWatcherManager:
             if detector:
                 # Use full detector if provided
                 try:
+                    logger.debug(f"[Watcher {watcher.watcher_id}] Running OCR on frame {frame_number}...")
                     result = await detector.detect_text(frame, str(trigger))
                     detected = result.detected
                     confidence = result.confidence
+
+                    # Log OCR results for debugging
+                    if result.all_text:
+                        logger.debug(
+                            f"[Watcher {watcher.watcher_id}] OCR found text: {result.all_text[:100]}... "
+                            f"(searching for '{trigger}')"
+                        )
+                    else:
+                        logger.debug(f"[Watcher {watcher.watcher_id}] OCR found no text in frame {frame_number}")
+
+                    if detected:
+                        logger.info(f"[Watcher {watcher.watcher_id}] 🎯 MATCH FOUND! Text: '{trigger}', Confidence: {confidence:.2f}")
                 except Exception as e:
-                    logger.error(f"Detector error: {e}")
+                    logger.error(f"Detector error on frame {frame_number}: {e}", exc_info=True)
             else:
                 # Simple fallback: always return not detected
                 # (Full OCR implementation in VisualEventDetector)

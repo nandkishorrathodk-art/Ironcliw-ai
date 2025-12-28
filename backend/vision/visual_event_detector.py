@@ -216,7 +216,10 @@ class VisualEventDetector:
                     pil_image
                 )
 
+                logger.debug(f"OCR extracted {len(ocr_text) if ocr_text else 0} characters from frame")
+
                 if not ocr_text:
+                    logger.debug(f"OCR returned no text - looking for '{target_text}'")
                     result = TextDetectionResult(
                         detected=False,
                         confidence=0.0,
@@ -228,6 +231,8 @@ class VisualEventDetector:
                     )
                     self.failed_detections += 1
                     return result
+                else:
+                    logger.debug(f"OCR text preview: '{ocr_text[:200]}'... (looking for '{target_text}')")
 
                 # Search for target text
                 detected, confidence, fuzzy_score = self._match_text(
