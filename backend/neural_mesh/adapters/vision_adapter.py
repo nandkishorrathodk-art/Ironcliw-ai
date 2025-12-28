@@ -163,11 +163,14 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
             VisionCapabilities(),
         )
 
-        # Initialize base agent
+        # Initialize base agent with correct parameters
         super().__init__(
-            name=agent_name or f"vision_{component_type.value}",
+            agent_name=agent_name or f"vision_{component_type.value}",
+            agent_type="vision",
             capabilities=self._capabilities.to_set(),
-            description=f"Vision Cognitive adapter ({component_type.value})",
+            backend="local",
+            version="10.6",
+            dependencies=set(),
         )
 
         # State tracking
@@ -177,36 +180,148 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
         self._verifications_performed: int = 0
 
         logger.debug(
-            "Created VisionCognitiveAdapter: name=%s, type=%s, capabilities=%s",
-            self.name,
+            "[Vision Adapter] Created: name=%s, type=%s, capabilities=%s",
+            self.agent_name,
             component_type.value,
             self._capabilities.to_set(),
         )
 
+    async def on_initialize(self) -> None:
+        """
+        Agent-specific initialization (REQUIRED by BaseNeuralMeshAgent).
+
+        This method is called by the base class during Neural Mesh integration.
+        Performs robust, async initialization of the vision system with:
+        - Parallel capability detection
+        - Intelligent error recovery
+        - Health monitoring setup
+        - Dynamic configuration
+        """
+        try:
+            logger.info("[Vision Adapter] Starting initialization: %s", self.agent_name)
+
+            # Initialize vision loop if provided (with async support)
+            if self._vision_loop:
+                if not getattr(self._vision_loop, '_initialized', False):
+                    logger.debug("[Vision Adapter] Initializing vision loop...")
+                    await self._vision_loop.initialize()
+                    logger.info("[Vision Adapter] ✓ Vision loop initialized")
+                else:
+                    logger.debug("[Vision Adapter] Vision loop already initialized")
+
+            # Initialize Yabai detector if provided (for multi-space adapters)
+            if hasattr(self, '_yabai_detector') and self._yabai_detector:
+                logger.debug("[Vision Adapter] Initializing Yabai detector...")
+                try:
+                    # Yabai detector doesn't have async init, wrap in executor if needed
+                    if hasattr(self._yabai_detector, 'initialize'):
+                        await asyncio.to_thread(self._yabai_detector.initialize)
+                    logger.info("[Vision Adapter] ✓ Yabai detector initialized")
+                except Exception as yabai_err:
+                    logger.warning("[Vision Adapter] Yabai init failed (non-critical): %s", yabai_err)
+                    # Non-critical - adapter can still work without Yabai
+
+            # Perform initial capability verification (parallel checks)
+            await self._verify_capabilities()
+
+            # Setup health monitoring
+            self._setup_health_monitoring()
+
+            logger.info("[Vision Adapter] ✅ Initialization complete: %s (capabilities: %s)",
+                       self.agent_name,
+                       ', '.join(self.capabilities))
+
+        except Exception as e:
+            logger.error("[Vision Adapter] ❌ Initialization failed: %s - %s", self.agent_name, e)
+            raise  # Re-raise to signal initialization failure
+
+    async def _verify_capabilities(self) -> None:
+        """Verify adapter capabilities with parallel checks."""
+        logger.debug("[Vision Adapter] Verifying capabilities...")
+
+        # Run capability checks in parallel for speed
+        checks = []
+
+        if self._capabilities.visual_awareness and self._vision_loop:
+            checks.append(self._check_visual_awareness())
+
+        if self._capabilities.multi_space_awareness:
+            checks.append(self._check_multi_space())
+
+        if checks:
+            results = await asyncio.gather(*checks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning("[Vision Adapter] Capability check %d failed: %s", i, result)
+
+        logger.debug("[Vision Adapter] ✓ Capability verification complete")
+
+    async def _check_visual_awareness(self) -> bool:
+        """Check if visual awareness is functional."""
+        try:
+            if hasattr(self._vision_loop, 'get_visual_context_for_prompt'):
+                context = self._vision_loop.get_visual_context_for_prompt()
+                return bool(context)
+            return True
+        except Exception as e:
+            logger.debug("[Vision Adapter] Visual awareness check failed: %s", e)
+            return False
+
+    async def _check_multi_space(self) -> bool:
+        """Check if multi-space awareness is functional."""
+        try:
+            if hasattr(self, '_yabai_detector') and self._yabai_detector:
+                # Check if Yabai is responsive
+                if hasattr(self._yabai_detector, 'is_enabled'):
+                    return self._yabai_detector.is_enabled()
+            return True
+        except Exception as e:
+            logger.debug("[Vision Adapter] Multi-space check failed: %s", e)
+            return False
+
+    def _setup_health_monitoring(self) -> None:
+        """Setup health monitoring for vision components."""
+        # Initialize health metrics
+        self._health_metrics = {
+            'last_capture_time': None,
+            'total_captures': 0,
+            'total_verifications': 0,
+            'total_errors': 0,
+            'vision_loop_healthy': self._vision_loop is not None,
+            'yabai_healthy': hasattr(self, '_yabai_detector') and self._yabai_detector is not None,
+        }
+        logger.debug("[Vision Adapter] Health monitoring initialized")
+
     async def initialize(self) -> bool:
-        """Initialize the adapter and underlying vision loop.
+        """
+        Legacy initialize method for backward compatibility.
+
+        NOTE: The actual initialization now happens in on_initialize() which
+        is called by the Neural Mesh base class during registration.
 
         Returns:
-            True if initialization successful
+            True if already initialized or if running in standalone mode
         """
         if self._initialized:
             return True
 
-        try:
-            # Initialize vision loop if not already done
-            if self._vision_loop and not getattr(self._vision_loop, '_initialized', False):
-                await self._vision_loop.initialize()
+        # If not connected to Neural Mesh, do standalone initialization
+        if not hasattr(self, 'message_bus') or self.message_bus is None:
+            logger.info("[Vision Adapter] Standalone mode - initializing directly")
+            try:
+                await self.on_initialize()
+                self._initialized = True
+                return True
+            except Exception as e:
+                logger.error("[Vision Adapter] Standalone initialization failed: %s", e)
+                return False
 
-            self._initialized = True
-            logger.info("VisionCognitiveAdapter initialized: %s", self.name)
-            return True
-
-        except Exception as e:
-            logger.error("Failed to initialize VisionCognitiveAdapter: %s", e)
-            return False
+        # If connected to Neural Mesh, initialization happens via base class
+        return self._initialized
 
     async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a vision-related task.
+        """
+        Execute a vision-related task (ROBUST & ASYNC).
 
         Supported actions:
         - look: Capture current visual state
@@ -215,26 +330,29 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
         - navigate_to_space: Switch to a specific space
         - find_app: Find which space contains an app
         - get_visual_context: Get formatted visual context for prompts
+        - get_health: Get adapter health metrics
 
         Args:
             task: Task dictionary with 'action' and optional parameters
 
         Returns:
-            Result dictionary with execution outcome
+            Result dictionary with execution outcome and health metrics
         """
         action = task.get("action", "").lower()
         params = task.get("params", {})
+        start_time = asyncio.get_event_loop().time()
 
         result = {
             "success": False,
             "action": action,
             "data": None,
             "error": None,
+            "execution_time_ms": 0,
         }
 
-        if not self._vision_loop:
-            result["error"] = "No vision loop available"
-            return result
+        # Update health metrics
+        if hasattr(self, '_health_metrics'):
+            self._health_metrics['total_captures'] += 1
 
         try:
             if action == "look":
@@ -327,12 +445,41 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
                     "loop_metrics": loop_metrics,
                 }
 
+            elif action == "get_health":
+                # Get health metrics (NEW - v10.6)
+                health_data = self._health_metrics.copy() if hasattr(self, '_health_metrics') else {}
+                health_data.update({
+                    "adapter_initialized": self._initialized,
+                    "vision_loop_available": self._vision_loop is not None,
+                    "yabai_available": hasattr(self, '_yabai_detector') and self._yabai_detector is not None,
+                    "capabilities": list(self.capabilities),
+                    "component_type": self._component_type.value,
+                })
+
+                result["success"] = True
+                result["data"] = health_data
+
             else:
                 result["error"] = f"Unknown action: {action}"
 
         except Exception as e:
-            logger.error("Vision task failed: %s - %s", action, e)
+            logger.error("[Vision Adapter] Task failed: %s - %s", action, e)
             result["error"] = str(e)
+
+            # Update error metrics
+            if hasattr(self, '_health_metrics'):
+                self._health_metrics['total_errors'] += 1
+
+        finally:
+            # Calculate execution time
+            if start_time:
+                execution_time_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+                result["execution_time_ms"] = round(execution_time_ms, 2)
+
+            # Update last capture time if successful
+            if result["success"] and action == "look" and hasattr(self, '_health_metrics'):
+                import time
+                self._health_metrics['last_capture_time'] = time.time()
 
         return result
 
@@ -357,7 +504,7 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
 
                 if task_result["success"]:
                     return AgentMessage(
-                        source=self.name,
+                        source=self.agent_name,
                         target=message.source,
                         message_type=MessageType.RESPONSE,
                         payload={
@@ -373,7 +520,7 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
 
                 if task_result["success"]:
                     return AgentMessage(
-                        source=self.name,
+                        source=self.agent_name,
                         target=message.source,
                         message_type=MessageType.RESPONSE,
                         payload=task_result["data"],
@@ -392,7 +539,7 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
                 })
 
                 return AgentMessage(
-                    source=self.name,
+                    source=self.agent_name,
                     target=message.source,
                     message_type=MessageType.RESPONSE,
                     payload=task_result,
@@ -413,7 +560,7 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
         if self._last_visual_state:
             entries.append(KnowledgeEntry(
                 id=str(uuid4()),
-                source=self.name,
+                source=self.agent_name,
                 knowledge_type=KnowledgeType.SPATIAL,
                 content={
                     "type": "visual_state",
@@ -431,7 +578,7 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
         if self._last_space_context:
             entries.append(KnowledgeEntry(
                 id=str(uuid4()),
-                source=self.name,
+                source=self.agent_name,
                 knowledge_type=KnowledgeType.SPATIAL,
                 content={
                     "type": "space_context",
