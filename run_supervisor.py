@@ -139,13 +139,16 @@ backend_path = Path(__file__).parent / "backend"
 if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
-# v10.6: Structured Logging System
+# v10.6: Structured Logging System with Real-Time Monitoring
 try:
     from core.logging import (
         configure_structured_logging,
         get_structured_logger,
         get_global_logging_stats,
         LoggingConfig,
+        get_log_monitor,
+        stop_global_monitor,
+        LogMonitorConfig,
     )
     STRUCTURED_LOGGING_AVAILABLE = True
 except ImportError:
@@ -2108,6 +2111,13 @@ class SupervisorBootstrapper:
         # v10.3: Unified Progress Hub (Cross-component progress synchronization)
         self._progress_hub = None
 
+        # v10.6: Real-Time Log Monitor (Intelligent health monitoring with voice alerts)
+        self._log_monitor = None
+        self._log_monitor_enabled = (
+            STRUCTURED_LOGGING_AVAILABLE and
+            os.getenv("JARVIS_LOG_MONITOR_ENABLED", "true").lower() == "true"
+        )
+
         # CRITICAL: Set CI=true to prevent npm start from hanging interactively
         # if port 3000 is taken. This ensures we fail fast or handle it automatically.
         os.environ["CI"] = "true"
@@ -2317,6 +2327,44 @@ class SupervisorBootstrapper:
             if self._reactor_core_enabled:
                 await self._initialize_reactor_core_api()
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v10.6: Start Real-Time Log Monitor with Voice Narrator Integration
+            # ═══════════════════════════════════════════════════════════════════
+            if self._log_monitor_enabled:
+                try:
+                    self.logger.info("[LogMonitor] Starting real-time log monitoring with voice alerts")
+
+                    # Create narrator callback for log monitor
+                    async def log_monitor_narrator(message: str):
+                        """Narrator callback for log monitor - speaks critical issues."""
+                        try:
+                            await self.narrator.speak(message, wait=False, priority=True)
+                        except Exception as e:
+                            self.logger.debug(f"[LogMonitor] Narrator error: {e}")
+
+                    # Initialize and start log monitor
+                    monitor_config = LogMonitorConfig.from_env()
+                    self._log_monitor = await get_log_monitor(
+                        config=monitor_config,
+                        narrator=log_monitor_narrator,
+                        logger=self.logger,
+                    )
+
+                    await self._log_monitor.start()
+
+                    self.logger.info(
+                        "[LogMonitor] Real-time monitoring active",
+                        poll_interval=monitor_config.poll_interval,
+                        error_threshold=monitor_config.critical_error_threshold,
+                        voice_alerts_enabled=True,
+                    )
+
+                    print(f"  {TerminalUI.GREEN}✓ Real-Time Log Monitor: Active (voice alerts enabled){TerminalUI.RESET}")
+
+                except Exception as e:
+                    self.logger.warning(f"[LogMonitor] Failed to start: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️ Real-Time Log Monitor: Disabled ({e}){TerminalUI.RESET}")
+
             self.perf.end("validation")
 
             # Phase 3: Initialize supervisor
@@ -2444,7 +2492,25 @@ class SupervisorBootstrapper:
                     self.logger.debug("Loading server already exited")
                 except Exception as e:
                     self.logger.debug(f"Loading server cleanup error: {e}")
-            
+
+            # v10.6: Stop log monitor
+            if self._log_monitor:
+                try:
+                    self.logger.info("[LogMonitor] Stopping real-time monitoring")
+                    await self._log_monitor.stop()
+
+                    # Get final stats
+                    stats = self._log_monitor.get_stats()
+                    self.logger.info(
+                        "[LogMonitor] Final statistics",
+                        total_logs_analyzed=stats["total_logs_analyzed"],
+                        issues_detected=stats["issues_detected"],
+                        voice_announcements=stats["voice_announcements"],
+                        uptime_seconds=stats.get("uptime_seconds"),
+                    )
+                except Exception as e:
+                    self.logger.debug(f"[LogMonitor] Cleanup error: {e}")
+
             # Log performance summary
             summary = self.perf.get_summary()
             self.logger.info(f"Bootstrap performance: {summary}")
