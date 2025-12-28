@@ -17127,7 +17127,8 @@ async def main():
             # Do NOT wait for Docker daemon to start - that blocks startup.
             # Auto-start only happens in Phase 2 if Cloud Run is unavailable.
             # ═══════════════════════════════════════════════════════════════════
-            docker_manager = get_docker_daemon_manager()
+            # v10.6: CRITICAL FIX - await async function to get actual manager instance
+            docker_manager = await get_docker_daemon_manager()
 
             # Quick check: Is Docker installed?
             if not await docker_manager.check_docker_installed():
