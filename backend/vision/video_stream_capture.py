@@ -33,13 +33,36 @@ try:
     )
     MACOS_CAPTURE_ADVANCED_AVAILABLE = True
     MACOS_CAPTURE_AVAILABLE = AVFOUNDATION_AVAILABLE  # Backward compatibility
+
+    # If advanced import succeeded, also import legacy PyObjC classes
+    # for backward compatibility with old MacOSVideoCapture class
+    if AVFOUNDATION_AVAILABLE:
+        try:
+            import AVFoundation
+            import CoreMedia
+            from Quartz import CoreVideo
+            from Cocoa import NSObject
+            import objc
+            from Foundation import NSRunLoop
+            import libdispatch
+            logging.info("✅ Advanced macOS capture available with legacy compatibility")
+        except ImportError as legacy_import_error:
+            logging.warning(f"Advanced capture available but legacy imports failed: {legacy_import_error}")
+            # Define dummy classes for legacy code
+            NSObject = object
+            objc = None
+    else:
+        # Advanced module imported but AVFoundation not available - define dummies
+        NSObject = object
+        objc = None
+
 except ImportError as e:
     MACOS_CAPTURE_ADVANCED_AVAILABLE = False
     MACOS_CAPTURE_AVAILABLE = False
     logging.warning(f"Advanced macOS capture not available: {e}")
     logging.info("Falling back to basic capture methods")
 
-    # Fallback: Try legacy PyObjC imports
+    # Fallback: Try legacy PyObjC imports directly
     try:
         import AVFoundation
         import CoreMedia
@@ -49,9 +72,13 @@ except ImportError as e:
         from Foundation import NSRunLoop
         import libdispatch
         MACOS_CAPTURE_AVAILABLE = True
+        logging.info("✅ Legacy macOS capture available")
     except ImportError as e2:
         MACOS_CAPTURE_AVAILABLE = False
         logging.warning(f"macOS capture frameworks not available - will use fallback: {e2}")
+        # Define dummy classes so module can still load
+        NSObject = object
+        objc = None
 
 # Import Swift bridge for better macOS integration
 try:
@@ -294,27 +321,31 @@ class MacOSVideoCapture:
             self.is_running = False
             logger.info("Stopped macOS video capture")
 
-# Only define VideoFrameDelegate if macOS frameworks are available
-if MACOS_CAPTURE_AVAILABLE:
+# Only define LegacyVideoFrameDelegate if macOS frameworks are available
+# NOTE: This is for backward compatibility with old MacOSVideoCapture class
+# The advanced capture (v10.6) has its own VideoFrameDelegate
+if MACOS_CAPTURE_AVAILABLE and not MACOS_CAPTURE_ADVANCED_AVAILABLE:
+    # Only define if advanced capture is NOT available (to avoid duplicate class registration)
     class VideoFrameDelegate(NSObject):
-        """Delegate for handling video frames"""
-        
+        """Legacy delegate for handling video frames (backward compatibility)"""
+
         def initWithCallback_(self, callback):
             self = objc.super(VideoFrameDelegate, self).init()
             if self:
                 self.callback = callback
             return self
-        
+
         def captureOutput_didOutputSampleBuffer_fromConnection_(self, output, sample_buffer, connection):
             """Handle frame capture"""
             self.callback(sample_buffer)
-else:
+elif not MACOS_CAPTURE_AVAILABLE:
     # Placeholder class when macOS frameworks aren't available
     class VideoFrameDelegate:
         """Placeholder delegate for non-macOS systems"""
-        
+
         def __init__(self):
             raise NotImplementedError("VideoFrameDelegate requires macOS frameworks")
+# else: Advanced capture is available, use its VideoFrameDelegate
 
 class VideoStreamCapture:
     """Main video stream capture manager with memory-safe processing"""

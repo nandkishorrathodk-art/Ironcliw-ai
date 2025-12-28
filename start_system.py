@@ -8211,18 +8211,39 @@ class AsyncSystemManager:
                 print("  • Dynamic memory allocation (1.2GB budget)")  # noqa: F541
                 print("  • Cross-language optimization (Python/Rust/Swift)")  # noqa: F541
 
-                # Check for native video capture
+                # Check for native video capture (v10.6 - enhanced diagnostics)
                 try:
-                    from backend.vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE
+                    from backend.vision.video_stream_capture import (
+                        MACOS_CAPTURE_AVAILABLE,
+                        MACOS_CAPTURE_ADVANCED_AVAILABLE,
+                    )
 
-                    if MACOS_CAPTURE_AVAILABLE:
+                    if MACOS_CAPTURE_ADVANCED_AVAILABLE:
                         print(
-                            f"{Colors.GREEN}✓ Native macOS video capture available (🟣 purple indicator){Colors.ENDC}"
+                            f"{Colors.GREEN}✓ Advanced macOS video capture available (v10.6){Colors.ENDC}"
+                        )
+                        print(
+                            f"{Colors.GREEN}  • Native AVFoundation with async support{Colors.ENDC}"
+                        )
+                        print(
+                            f"{Colors.GREEN}  • 🟣 Purple indicator enabled{Colors.ENDC}"
+                        )
+                        print(
+                            f"{Colors.GREEN}  • Real-time metrics and adaptive quality{Colors.ENDC}"
+                        )
+                    elif MACOS_CAPTURE_AVAILABLE:
+                        print(
+                            f"{Colors.YELLOW}⚠ Legacy macOS video capture (basic mode){Colors.ENDC}"
+                        )
+                        print(
+                            f"{Colors.YELLOW}  • Consider updating to advanced capture{Colors.ENDC}"
                         )
                     else:
                         print(f"{Colors.YELLOW}⚠ Video streaming using fallback mode{Colors.ENDC}")
-                except ImportError:
-                    pass
+                        print(f"{Colors.YELLOW}  • Screenshot loop (reduced quality){Colors.ENDC}")
+                        print(f"{Colors.YELLOW}  • Install PyObjC for native capture{Colors.ENDC}")
+                except ImportError as import_err:
+                    print(f"{Colors.YELLOW}⚠ Video capture module import failed: {import_err}{Colors.ENDC}")
             else:
                 print(
                     f"{Colors.YELLOW}⚠ Configure ANTHROPIC_API_KEY for vision features{Colors.ENDC}"
