@@ -159,9 +159,19 @@ class VisionIntelligenceBridge:
 
         # Execution pools
         if _HAS_MANAGED_EXECUTOR:
-            self.executor = ManagedThreadPoolExecutor(max_workers=8, name_prefix='vision_intel')
+            # Use 'name' parameter for managed executor
+            self.executor = ManagedThreadPoolExecutor(
+                max_workers=8,
+                name='vision_intel',
+                category='vision',
+                priority=5  # Medium priority
+            )
         else:
-            self.executor = ThreadPoolExecutor(max_workers=8)
+            # Use thread_name_prefix for standard ThreadPoolExecutor
+            self.executor = ThreadPoolExecutor(
+                max_workers=8,
+                thread_name_prefix='vision_intel-'
+            )
 
         # Performance tracking
         self.stats = {

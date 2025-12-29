@@ -667,7 +667,8 @@ class ManagedThreadPoolExecutor(ThreadPoolExecutor):
         initargs: Tuple = (),
         name: Optional[str] = None,
         category: str = "general",
-        priority: int = 0
+        priority: int = 0,
+        name_prefix: Optional[str] = None  # Backwards compatibility alias
     ):
         """
         Initialize a managed executor.
@@ -680,10 +681,21 @@ class ManagedThreadPoolExecutor(ThreadPoolExecutor):
             name: Human-readable name (default: thread_name_prefix or 'ManagedPool')
             category: Category for grouping executors
             priority: Shutdown priority (higher = shutdown later)
+            name_prefix: DEPRECATED - Use 'name' instead (kept for backwards compatibility)
+
+        This design supports multiple calling conventions:
+        - ManagedThreadPoolExecutor(max_workers=8, name='my_pool')  # Preferred
+        - ManagedThreadPoolExecutor(max_workers=8, thread_name_prefix='my_pool-')  # Standard ThreadPoolExecutor style
+        - ManagedThreadPoolExecutor(max_workers=8, name_prefix='my_pool')  # Backwards compatibility
         """
         # Determine worker count
         if max_workers is None:
             max_workers = min(32, (os.cpu_count() or 1) * 2)
+
+        # Handle backwards compatibility: name_prefix -> name
+        if name_prefix is not None and name is None:
+            logger.debug(f"Using deprecated 'name_prefix' parameter. Use 'name' instead.")
+            name = name_prefix
 
         self._pool_name = name or thread_name_prefix or 'ManagedPool'
         self._category = category
