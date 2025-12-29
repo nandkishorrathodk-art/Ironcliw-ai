@@ -1232,19 +1232,42 @@ class IntelligentCommandHandler:
         """
         Execute God Mode surveillance command by routing to VisualMonitorAgent.
 
+        ROOT CAUSE FIX v2.0.0:
+        - Non-blocking execution (returns immediately)
+        - Background monitoring with async notifications
+        - Timeout protection to prevent infinite hangs
+        - Progress indicators for transparency
+
         Args:
             watch_params: Dict with app_name, trigger_text, all_spaces, max_duration
 
         Returns:
-            Voice-friendly response string
+            Voice-friendly response string (immediate acknowledgment)
         """
         app_name = watch_params['app_name']
         trigger_text = watch_params['trigger_text']
         all_spaces = watch_params['all_spaces']
         max_duration = watch_params.get('max_duration')
 
-        # Get VisualMonitorAgent (lazy init)
-        agent = await self._get_visual_monitor_agent()
+        # =====================================================================
+        # ROOT CAUSE FIX: Add timeout protection to prevent infinite hangs
+        # =====================================================================
+        initialization_timeout = float(os.getenv("JARVIS_AGENT_INIT_TIMEOUT", "10"))
+
+        # Get VisualMonitorAgent (lazy init with timeout!)
+        try:
+            agent = await asyncio.wait_for(
+                self._get_visual_monitor_agent(),
+                timeout=initialization_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"VisualMonitorAgent initialization timed out after {initialization_timeout}s")
+            return (f"I'm having trouble initializing my vision monitoring system, {self.user_name}. "
+                   f"This usually resolves quickly - please try again.")
+        except Exception as e:
+            logger.error(f"VisualMonitorAgent initialization failed: {e}", exc_info=True)
+            return self._format_error_response("initialization_failed", app_name, trigger_text)
+
         if not agent:
             return self._format_error_response("initialization_failed", app_name, trigger_text)
 
@@ -1265,18 +1288,49 @@ class IntelligentCommandHandler:
                 'trigger_text': trigger_text
             }
 
-            # Call VisualMonitorAgent's unified watch interface
-            # This routes to either single-window or God Mode based on all_spaces parameter
-            result = await agent.watch(
-                app_name=app_name,
-                trigger_text=trigger_text,
-                all_spaces=all_spaces,
-                action_config=action_config,
-                max_duration=max_duration
-            )
+            # =====================================================================
+            # ROOT CAUSE FIX: Non-Blocking Execution v2.0.0
+            # =====================================================================
+            # CRITICAL: Pass wait_for_completion=False to return IMMEDIATELY
+            # Detection notifications will happen async via TTS (already implemented)
+            # =====================================================================
 
-            # Process results and generate voice-friendly response
-            return self._format_surveillance_response(result, watch_params, initial_msg)
+            # Start background monitoring with timeout protection
+            watch_timeout = float(os.getenv("JARVIS_WATCH_START_TIMEOUT", "15"))
+
+            try:
+                result = await asyncio.wait_for(
+                    agent.watch(
+                        app_name=app_name,
+                        trigger_text=trigger_text,
+                        all_spaces=all_spaces,
+                        action_config=action_config,
+                        max_duration=max_duration,
+                        wait_for_completion=False  # ✅ ROOT CAUSE FIX: Don't block!
+                    ),
+                    timeout=watch_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Watch start timed out after {watch_timeout}s")
+                return (f"{initial_msg}\n\n"
+                       f"However, it's taking longer than expected to start monitoring. "
+                       f"The system may be under heavy load. Please try again.")
+
+            # =====================================================================
+            # Return IMMEDIATELY with acknowledgment
+            # =====================================================================
+            # User will hear TTS notifications when detection happens (async)
+            logger.info(f"✅ Background monitoring initiated - returning immediate acknowledgment")
+
+            # Check if monitoring started successfully
+            if result.get('success', False):
+                # Return immediate success acknowledgment
+                return initial_msg
+            else:
+                # Monitoring failed to start
+                error = result.get('error', 'unknown error')
+                return (f"{initial_msg}\n\n"
+                       f"However, I encountered an issue: {error}")
 
         except asyncio.TimeoutError:
             return self._format_timeout_response(app_name, trigger_text, max_duration)

@@ -700,7 +700,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         trigger_text: str,
         action_config: Optional[Dict[str, Any]] = None,
         alert_config: Optional[Dict[str, Any]] = None,
-        max_duration: Optional[float] = None
+        max_duration: Optional[float] = None,
+        wait_for_completion: bool = False
     ) -> Dict[str, Any]:
         """
         God Mode: Watch ALL instances of an app across ALL macOS spaces simultaneously.
@@ -715,6 +716,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             action_config: Actions to execute upon detection
             alert_config: Alert settings (notification, logging)
             max_duration: Max monitoring time in seconds (None = indefinite)
+            wait_for_completion: If True, wait for event detection (blocking)
+                                If False, return immediately after starting watchers (default)
 
         Returns:
             {
@@ -795,36 +798,107 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         logger.info(f"🚀 Spawned {len(watcher_tasks)} parallel Ferrari Engine watchers")
 
-        # ===== STEP 3: Race Condition - First Trigger Wins =====
-        try:
-            # Run all watchers in parallel with timeout
-            if max_duration:
-                results = await asyncio.wait_for(
-                    self._coordinate_watchers(watcher_tasks, watcher_metadata),
-                    timeout=max_duration
-                )
-            else:
-                results = await self._coordinate_watchers(watcher_tasks, watcher_metadata)
+        # =====================================================================
+        # ROOT CAUSE FIX: Non-Blocking Execution v2.0.0
+        # =====================================================================
+        # Intelligent mode selection: wait or return immediately
+        # =====================================================================
 
-            return results
+        if wait_for_completion:
+            # BLOCKING MODE: Wait for event detection across all spaces
+            logger.info(f"[God Mode] Blocking mode: waiting for trigger across {len(watcher_tasks)} spaces...")
 
-        except asyncio.TimeoutError:
-            # Timeout - stop all watchers
-            logger.warning(f"⏱️  God Mode timeout after {max_duration}s")
-            await self._stop_all_watchers()
+            # ===== STEP 3A: Race Condition - First Trigger Wins (BLOCKING) =====
+            try:
+                # Run all watchers in parallel with timeout
+                if max_duration:
+                    results = await asyncio.wait_for(
+                        self._coordinate_watchers(watcher_tasks, watcher_metadata),
+                        timeout=max_duration
+                    )
+                else:
+                    results = await self._coordinate_watchers(watcher_tasks, watcher_metadata)
+
+                return results
+
+            except asyncio.TimeoutError:
+                # Timeout - stop all watchers
+                logger.warning(f"⏱️  God Mode timeout after {max_duration}s")
+                await self._stop_all_watchers()
+                return {
+                    'status': 'timeout',
+                    'total_watchers': len(watcher_tasks),
+                    'duration': max_duration
+                }
+
+            except Exception as e:
+                logger.error(f"❌ Error in God Mode watch: {e}")
+                await self._stop_all_watchers()
+                return {
+                    'status': 'error',
+                    'error': str(e),
+                    'total_watchers': len(watcher_tasks)
+                }
+
+        else:
+            # BACKGROUND MODE: Return immediately, watchers run asynchronously
+            logger.info(f"[God Mode] Background mode: {len(watcher_tasks)} watchers running asynchronously")
+
+            # ===== STEP 3B: Non-Blocking Execution - Return Immediately =====
+            # Create unique coordination task ID
+            god_mode_task_id = f"god_mode_{app_name}_{int(datetime.now().timestamp() * 1000)}"
+
+            # Spawn coordination as background task
+            async def _background_coordination():
+                """Background task wrapper for God Mode coordination"""
+                try:
+                    if max_duration:
+                        results = await asyncio.wait_for(
+                            self._coordinate_watchers(watcher_tasks, watcher_metadata),
+                            timeout=max_duration
+                        )
+                    else:
+                        results = await self._coordinate_watchers(watcher_tasks, watcher_metadata)
+
+                    logger.info(f"✅ [God Mode {god_mode_task_id}] Detection completed: {results.get('status')}")
+                    return results
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏱️  [God Mode {god_mode_task_id}] Timeout after {max_duration}s")
+                    await self._stop_all_watchers()
+                    return {
+                        'status': 'timeout',
+                        'total_watchers': len(watcher_tasks),
+                        'duration': max_duration
+                    }
+
+                except Exception as e:
+                    logger.error(f"❌ [God Mode {god_mode_task_id}] Error: {e}")
+                    await self._stop_all_watchers()
+                    return {
+                        'status': 'error',
+                        'error': str(e),
+                        'total_watchers': len(watcher_tasks)
+                    }
+
+            # Spawn background task
+            coordination_task = asyncio.create_task(_background_coordination())
+
+            # Store task for potential cancellation/monitoring
+            if not hasattr(self, '_god_mode_tasks'):
+                self._god_mode_tasks = {}
+            self._god_mode_tasks[god_mode_task_id] = coordination_task
+
+            # Return immediately with acknowledgment
             return {
-                'status': 'timeout',
+                'success': True,
+                'status': 'monitoring',
+                'god_mode_task_id': god_mode_task_id,
                 'total_watchers': len(watcher_tasks),
-                'duration': max_duration
-            }
-
-        except Exception as e:
-            logger.error(f"❌ Error in God Mode watch: {e}")
-            await self._stop_all_watchers()
-            return {
-                'status': 'error',
-                'error': str(e),
-                'total_watchers': len(watcher_tasks)
+                'app_name': app_name,
+                'trigger_text': trigger_text,
+                'spaces_monitored': [meta['space_id'] for meta in watcher_metadata],
+                'message': f"Monitoring {len(watcher_tasks)} {app_name} windows across all spaces for '{trigger_text}'"
             }
 
     async def _coordinate_watchers(
