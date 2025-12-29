@@ -230,11 +230,26 @@ class VisionCognitiveLoop:
         enable_multi_space: bool = True,
         verification_timeout_ms: float = 5000.0,
         max_retries: int = 3,
+        **kwargs  # Accept any additional parameters gracefully
     ):
+        """
+        Initialize Vision Cognitive Loop.
+
+        Args:
+            enable_vision: Enable vision analysis
+            enable_multi_space: Enable multi-space awareness
+            verification_timeout_ms: Timeout for verification operations
+            max_retries: Maximum retries for operations
+            **kwargs: Additional parameters (e.g., name_prefix) - safely ignored for flexibility
+        """
         self.enable_vision = enable_vision
         self.enable_multi_space = enable_multi_space
         self.verification_timeout_ms = verification_timeout_ms
         self.max_retries = max_retries
+
+        # Ignore any additional kwargs (for backward compatibility)
+        if kwargs:
+            logger.debug(f"[VisionLoop] Ignoring additional init parameters: {list(kwargs.keys())}")
 
         # Components (lazy loaded)
         self._vision_bridge = None
@@ -260,12 +275,40 @@ class VisionCognitiveLoop:
 
         logger.info("[VisionLoop] Vision Cognitive Loop created")
 
-    async def initialize(self) -> bool:
-        """Initialize all vision components."""
+    async def initialize(self, **kwargs) -> bool:
+        """
+        Initialize all vision components.
+
+        **Flexible Initialization** - accepts optional parameters for Neural Mesh integration:
+        - message_bus: Optional message bus (ignored in standalone mode)
+        - registry: Optional registry (ignored in standalone mode)
+        - Any other kwargs (ignored gracefully)
+
+        This dual-mode design allows:
+        1. Standalone usage: `await loop.initialize()`
+        2. Neural Mesh integration: `await loop.initialize(message_bus=bus, registry=reg)`
+
+        Args:
+            **kwargs: Optional parameters (e.g., message_bus, registry) - safely ignored
+
+        Returns:
+            True if initialization successful, False otherwise
+        """
         if self._initialized:
+            logger.debug("[VisionLoop] Already initialized")
             return True
 
         try:
+            # Detect mode (Neural Mesh or standalone)
+            message_bus = kwargs.get('message_bus')
+            registry = kwargs.get('registry')
+
+            if message_bus and registry:
+                logger.info("[VisionLoop] Initializing with Neural Mesh integration")
+                # Future: Could register with Neural Mesh here
+            else:
+                logger.info("[VisionLoop] Initializing in standalone mode")
+
             # Initialize vision components
             if self.enable_vision:
                 await self._init_vision_components()
@@ -275,11 +318,11 @@ class VisionCognitiveLoop:
                 await self._init_space_components()
 
             self._initialized = True
-            logger.info("[VisionLoop] Vision Cognitive Loop initialized")
+            logger.info("[VisionLoop] Vision Cognitive Loop initialized successfully")
             return True
 
         except Exception as e:
-            logger.error(f"[VisionLoop] Initialization failed: {e}")
+            logger.error(f"[VisionLoop] Initialization failed: {e}", exc_info=True)
             return False
 
     async def _init_vision_components(self) -> None:

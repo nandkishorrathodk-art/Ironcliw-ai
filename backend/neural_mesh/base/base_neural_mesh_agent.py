@@ -158,57 +158,114 @@ class BaseNeuralMeshAgent(ABC):
 
     async def initialize(
         self,
-        message_bus: AgentCommunicationBus,
-        registry: AgentRegistry,
+        message_bus: Optional[AgentCommunicationBus] = None,
+        registry: Optional[AgentRegistry] = None,
         knowledge_graph: Optional[SharedKnowledgeGraph] = None,
+        **kwargs  # Accept any additional kwargs for flexibility
     ) -> None:
         """
-        Initialize the agent and connect to Neural Mesh.
+        Initialize the agent - supports both standalone and Neural Mesh modes.
+
+        **Dual-Mode Initialization:**
+
+        1. **Standalone Mode** (no parameters):
+           - Agent works independently
+           - No message bus, no registry
+           - Perfect for simple use cases
+           - Example: `await agent.initialize()`
+
+        2. **Neural Mesh Mode** (with parameters):
+           - Full Neural Mesh integration
+           - Message routing, discovery, knowledge sharing
+           - Example: `await agent.initialize(message_bus, registry, knowledge_graph)`
 
         Args:
-            message_bus: Communication bus for messaging
-            registry: Agent registry for discovery
-            knowledge_graph: Knowledge graph for collective memory
+            message_bus: Communication bus for messaging (optional)
+            registry: Agent registry for discovery (optional)
+            knowledge_graph: Knowledge graph for collective memory (optional)
+            **kwargs: Additional parameters for agent-specific initialization
+
+        This design enables:
+        - ✅ Gradual migration to Neural Mesh
+        - ✅ Backward compatibility with standalone agents
+        - ✅ Graceful degradation when infrastructure unavailable
+        - ✅ Zero breaking changes
         """
         if self._initialized:
-            logger.warning("Agent %s already initialized", self.agent_name)
+            logger.debug("Agent %s already initialized", self.agent_name)
             return
 
+        # Detect mode
+        mesh_mode = message_bus is not None and registry is not None
+        standalone_mode = not mesh_mode
+
+        if standalone_mode:
+            logger.info(
+                "Agent %s initializing in STANDALONE mode (no Neural Mesh)",
+                self.agent_name
+            )
+        else:
+            logger.info(
+                "Agent %s initializing in NEURAL MESH mode",
+                self.agent_name
+            )
+
+        # Set Neural Mesh components (may be None in standalone mode)
         self.message_bus = message_bus
         self.registry = registry
         self.knowledge_graph = knowledge_graph
 
-        # Register with registry
-        await self.registry.register(
-            agent_name=self.agent_name,
-            agent_type=self.agent_type,
-            capabilities=self.capabilities,
-            backend=self.backend,
-            version=self.version,
-            dependencies=self.dependencies,
-            metadata={"config": self.config.__dict__},
-        )
+        # Only register if in Neural Mesh mode
+        if mesh_mode:
+            try:
+                # Register with registry
+                await self.registry.register(
+                    agent_name=self.agent_name,
+                    agent_type=self.agent_type,
+                    capabilities=self.capabilities,
+                    backend=self.backend,
+                    version=self.version,
+                    dependencies=self.dependencies,
+                    metadata={"config": self.config.__dict__},
+                )
 
-        # Subscribe to task assignments
-        await self.message_bus.subscribe(
-            self.agent_name,
-            MessageType.TASK_ASSIGNED,
-            self._handle_task_message,
-        )
+                # Subscribe to task assignments
+                await self.message_bus.subscribe(
+                    self.agent_name,
+                    MessageType.TASK_ASSIGNED,
+                    self._handle_task_message,
+                )
 
-        # Subscribe to health checks
-        await self.message_bus.subscribe(
-            self.agent_name,
-            MessageType.AGENT_HEALTH_CHECK,
-            self._handle_health_check,
-        )
+                # Subscribe to health checks
+                await self.message_bus.subscribe(
+                    self.agent_name,
+                    MessageType.AGENT_HEALTH_CHECK,
+                    self._handle_health_check,
+                )
 
-        # Call agent-specific initialization
-        await self.on_initialize()
+                logger.info("Agent %s registered with Neural Mesh", self.agent_name)
+
+            except Exception as e:
+                logger.warning(
+                    "Agent %s Neural Mesh registration failed (degrading to standalone): %s",
+                    self.agent_name,
+                    e
+                )
+                # Graceful degradation - continue in standalone mode
+                self.message_bus = None
+                self.registry = None
+
+        # Call agent-specific initialization (pass kwargs for flexibility)
+        try:
+            await self.on_initialize(**kwargs)
+        except TypeError:
+            # Fallback for agents that don't accept kwargs
+            await self.on_initialize()
 
         self._initialized = True
 
-        logger.info("Agent %s initialized", self.agent_name)
+        mode_str = "Neural Mesh" if mesh_mode else "standalone"
+        logger.info("Agent %s initialized (%s mode)", self.agent_name, mode_str)
 
     async def start(self) -> None:
         """Start the agent."""
@@ -281,7 +338,7 @@ class BaseNeuralMeshAgent(ABC):
     # =========================================================================
 
     @abstractmethod
-    async def on_initialize(self) -> None:
+    async def on_initialize(self, **kwargs) -> None:
         """
         Agent-specific initialization.
 
@@ -289,6 +346,10 @@ class BaseNeuralMeshAgent(ABC):
         - Loading models
         - Establishing connections
         - Subscribing to message types
+
+        Args:
+            **kwargs: Optional parameters for flexible initialization
+                      (agents can accept custom parameters)
         """
         pass
 
