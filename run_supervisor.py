@@ -7064,48 +7064,76 @@ from reactor_core.api.server import app
 uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warning")
 '''
 
-            # Start as subprocess
+            # ROOT CAUSE FIX: Proper error logging (no DEVNULL!) and longer timeout
+            # Create log directory
+            log_dir = Path.home() / ".jarvis" / "logs" / "services"
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+            stdout_log = log_dir / "reactor_core_stdout.log"
+            stderr_log = log_dir / "reactor_core_stderr.log"
+
+            # Start as subprocess with proper error logging
             self._reactor_core_process = subprocess.Popen(
                 [sys.executable, "-c", startup_code],
                 cwd=str(reactor_core_path),
                 env={**os.environ, "PYTHONPATH": str(reactor_core_path)},
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=open(stdout_log, "w"),  # LOG OUTPUT!
+                stderr=open(stderr_log, "w"),  # LOG ERRORS!
+                start_new_session=True,
             )
 
-            # Wait for startup
-            await asyncio.sleep(2)
+            self.logger.info(f"   Logs: {stdout_log}, {stderr_log}")
 
-            # Verify it's running
-            try:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        f"http://localhost:{self._reactor_core_port}/health",
-                        timeout=aiohttp.ClientTimeout(total=5)
-                    ) as response:
-                        if response.status == 200:
-                            self.logger.info(f"   ✅ Reactor-Core API started (PID: {self._reactor_core_process.pid})")
-                            print(f"  {TerminalUI.GREEN}✓ Reactor-Core API started (port {self._reactor_core_port}){TerminalUI.RESET}")
+            # Wait for startup with intelligent retry (not just 2s!)
+            max_retries = int(os.getenv("REACTOR_CORE_MAX_RETRIES", "10"))
+            retry_delay = float(os.getenv("REACTOR_CORE_RETRY_DELAY", "2.0"))
+            health_timeout = float(os.getenv("REACTOR_CORE_HEALTH_TIMEOUT", "10.0"))
 
-                            # Update bridge state
-                            bridge_file = Path.home() / ".jarvis" / "cross_repo" / "bridge_state.json"
-                            if bridge_file.exists():
-                                import json
-                                with open(bridge_file, "r") as f:
-                                    bridge_state = json.load(f)
-                                bridge_state["repos"]["reactor_core"]["status"] = "running"
-                                bridge_state["repos"]["reactor_core"]["pid"] = self._reactor_core_process.pid
-                                bridge_state["repos"]["reactor_core"]["port"] = self._reactor_core_port
-                                with open(bridge_file, "w") as f:
-                                    json.dump(bridge_state, f, indent=2)
-                            return
-            except Exception:
-                pass
+            import aiohttp
+            for attempt in range(max_retries):
+                await asyncio.sleep(retry_delay)
 
-            # Failed to start
-            self.logger.warning("   ⚠️ Reactor-Core API failed to start")
-            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core API failed to start{TerminalUI.RESET}")
+                # Verify it's running
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"http://localhost:{self._reactor_core_port}/health",
+                            timeout=aiohttp.ClientTimeout(total=health_timeout)
+                        ) as response:
+                            if response.status == 200:
+                                self.logger.info(f"   ✅ Reactor-Core API started (PID: {self._reactor_core_process.pid}, attempts: {attempt + 1})")
+                                print(f"  {TerminalUI.GREEN}✓ Reactor-Core API started (port {self._reactor_core_port}){TerminalUI.RESET}")
+
+                                # Update bridge state
+                                bridge_file = Path.home() / ".jarvis" / "cross_repo" / "bridge_state.json"
+                                if bridge_file.exists():
+                                    import json
+                                    with open(bridge_file, "r") as f:
+                                        bridge_state = json.load(f)
+                                    bridge_state["repos"]["reactor_core"]["status"] = "running"
+                                    bridge_state["repos"]["reactor_core"]["pid"] = self._reactor_core_process.pid
+                                    bridge_state["repos"]["reactor_core"]["port"] = self._reactor_core_port
+                                    with open(bridge_file, "w") as f:
+                                        json.dump(bridge_state, f, indent=2)
+                                return
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        self.logger.debug(f"   Reactor-Core not ready (attempt {attempt + 1}/{max_retries}): {e}")
+                    else:
+                        # Last attempt - log full error
+                        self.logger.warning(f"   Reactor-Core health check failed: {e}")
+                        # Read stderr to show actual error
+                        try:
+                            with open(stderr_log, "r") as f:
+                                stderr_content = f.read().strip()
+                                if stderr_content:
+                                    self.logger.error(f"   Reactor-Core stderr:\n{stderr_content[-500:]}")  # Last 500 chars
+                        except Exception:
+                            pass
+
+            # Failed to start after all retries
+            self.logger.warning(f"   ⚠️ Reactor-Core API failed to start after {max_retries} attempts. Check logs: {stderr_log}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core API failed (check {stderr_log}){TerminalUI.RESET}")
 
             if self._reactor_core_process:
                 self._reactor_core_process.terminate()

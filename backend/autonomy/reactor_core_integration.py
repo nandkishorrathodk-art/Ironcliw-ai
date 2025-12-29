@@ -770,8 +770,9 @@ class PrimeNeuralMeshBridge:
 
             except ConnectionRefusedError:
                 retry_count += 1
-                delay = min(base_delay * (2 ** min(retry_count, 5)), 300)  # Max 5 min delay
-                logger.debug(f"[PrimeNeuralMesh] Prime not ready (attempt {retry_count}), retrying in {delay}s...")
+                # ROOT CAUSE FIX: Exponential backoff with cap
+                delay = min(base_delay * (2 ** min(retry_count, 8)), 300)  # Max 5 min delay, capped at 2^8
+                logger.debug(f"[PrimeNeuralMesh] Prime not ready (attempt {retry_count}), retrying in {delay:.1f}s...")
                 await asyncio.sleep(delay)
 
             except asyncio.CancelledError:
@@ -781,20 +782,29 @@ class PrimeNeuralMeshBridge:
             except Exception as e:
                 error_msg = str(e)
                 if "404" in error_msg:
+                    # ROOT CAUSE FIX: Exponential backoff instead of linear delay
                     # WebSocket endpoint not available - JARVIS Prime may need restart
                     retry_count += 1
-                    if retry_count <= max_retries:
-                        delay = min(base_delay * retry_count, 60)
-                        logger.info(f"[PrimeNeuralMesh] WebSocket endpoint initializing (attempt {retry_count}/{max_retries}), retrying in {delay}s...")
+
+                    # Exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
+                    delay = min(base_delay * (2 ** min(retry_count - 1, 5)), 60.0)
+
+                    # Get max retries from environment (not hardcoded 5!)
+                    max_retries_env = int(os.getenv("PRIME_WEBSOCKET_MAX_RETRIES", "15"))  # Default 15, not 5
+
+                    if retry_count <= max_retries_env:
+                        logger.info(f"[PrimeNeuralMesh] WebSocket endpoint initializing (attempt {retry_count}/{max_retries_env}), retrying in {delay:.1f}s...")
                         await asyncio.sleep(delay)
                     else:
-                        logger.info("[PrimeNeuralMesh] WebSocket not available yet - switching to REST polling")
+                        logger.info(f"[PrimeNeuralMesh] WebSocket not available after {max_retries_env} attempts - switching to REST polling")
                         await self._poll_prime_status()
                         retry_count = 0  # Reset for next WebSocket attempt
                         await asyncio.sleep(60)  # Wait before trying WebSocket again
                 else:
                     logger.warning(f"[PrimeNeuralMesh] Event stream error: {e}")
-                    await asyncio.sleep(10)
+                    # Exponential backoff for other errors too
+                    error_retry_delay = min(10 * (1.5 ** min(retry_count, 5)), 60.0)
+                    await asyncio.sleep(error_retry_delay)
 
     async def _poll_prime_status(self) -> None:
         """Fallback: Poll Prime status via REST when WebSocket unavailable."""

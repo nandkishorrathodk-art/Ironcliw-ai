@@ -1688,16 +1688,17 @@ class MLEngineRegistry:
         Returns:
             Tuple of (is_ready: bool, reason: str)
         """
-        # Dynamic configuration from environment
-        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "15.0"))
-        retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
+        # ROOT CAUSE FIX: Increase timeouts for Cloud Run cold starts
+        # Cloud Run can take 30-60s for ECAPA cold start, not 15s!
+        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "60.0"))  # INCREASED from 15s to 60s
+        retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "5"))  # INCREASED from 3 to 5
         fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
         test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
 
         # NEW: Wait for ECAPA to become ready (handles cold starts)
         wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
-        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "60.0"))  # 60s for pre-baked cache cold start
-        ecapa_poll_interval = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL", "3.0"))
+        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "120.0"))  # INCREASED from 60s to 120s for cold starts
+        ecapa_poll_interval = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL", "5.0"))  # INCREASED from 3s to 5s (less aggressive)
 
         if not self._cloud_endpoint:
             return False, "Cloud endpoint not configured"
