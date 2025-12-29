@@ -70,6 +70,33 @@ from ..data_models import (
 
 logger = logging.getLogger(__name__)
 
+# =====================================================================
+# ROOT CAUSE FIX: Robust Real-Time Detection Notifications v2.0.0
+# =====================================================================
+# Import UnifiedVoiceOrchestrator for consistent TTS across all components
+# Import WebSocket manager for real-time frontend notifications
+# =====================================================================
+try:
+    from backend.core.supervisor.unified_voice_orchestrator import (
+        get_voice_orchestrator,
+        VoicePriority,
+        VoiceSource,
+        SpeechTopic
+    )
+    VOICE_ORCHESTRATOR_AVAILABLE = True
+    logger.info("[VisualMonitor] ✅ UnifiedVoiceOrchestrator available")
+except ImportError as e:
+    VOICE_ORCHESTRATOR_AVAILABLE = False
+    logger.warning(f"[VisualMonitor] UnifiedVoiceOrchestrator not available: {e}")
+
+try:
+    from backend.api.unified_websocket import get_ws_manager
+    WEBSOCKET_MANAGER_AVAILABLE = True
+    logger.info("[VisualMonitor] ✅ WebSocket Manager available for real-time notifications")
+except ImportError as e:
+    WEBSOCKET_MANAGER_AVAILABLE = False
+    logger.warning(f"[VisualMonitor] WebSocket Manager not available: {e}")
+
 # Multi-space window detection for "God Mode" parallel watching
 try:
     from backend.vision.multi_space_window_detector import MultiSpaceWindowDetector
@@ -1904,14 +1931,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     f"Trigger: '{trigger_text}', Confidence: {detection_confidence:.2f}"
                 )
 
-                # VOICE NARRATION: Announce event detection
-                if self._tts_callback:
-                    try:
-                        await self._tts_callback(
-                            f"Event detected! I found {trigger_text} in {app_name}."
-                        )
-                    except Exception as e:
-                        logger.warning(f"TTS failed: {e}")
+                # =====================================================================
+                # ROOT CAUSE FIX: Robust Multi-Channel Detection Notification v2.0.0
+                # =====================================================================
+                # Send notifications via ALL available channels:
+                # 1. TTS Voice (UnifiedVoiceOrchestrator)
+                # 2. WebSocket (real-time frontend updates)
+                # 3. Legacy TTS callback (fallback compatibility)
+                # =====================================================================
+                await self._send_detection_notification(
+                    trigger_text=trigger_text,
+                    app_name=app_name,
+                    space_id=space_id,
+                    confidence=detection_confidence,
+                    window_id=watcher.window_id if hasattr(watcher, 'window_id') else None
+                )
 
                 # Send alert
                 await self._send_alert(
@@ -2048,6 +2082,143 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 "detected": False,
                 "error": f"Monitoring error: {str(e)}"
             }
+
+    async def _send_detection_notification(
+        self,
+        trigger_text: str,
+        app_name: str,
+        space_id: int,
+        confidence: float,
+        window_id: Optional[int] = None
+    ):
+        """
+        ROOT CAUSE FIX: Robust Multi-Channel Detection Notification v2.0.0
+
+        Sends real-time notifications through ALL available channels:
+        1. TTS Voice (UnifiedVoiceOrchestrator) - primary
+        2. WebSocket (real-time frontend updates) - for UI transparency
+        3. Legacy TTS callback - backward compatibility
+
+        Features:
+        - Configurable notification templates (no hardcoding!)
+        - Async parallel delivery
+        - Graceful degradation
+        - Rich detection metadata
+        """
+        logger.info(
+            f"[Detection] 📢 Notifying user: '{trigger_text}' detected in {app_name} "
+            f"(Space {space_id}, confidence: {confidence:.2%})"
+        )
+
+        # =====================================================================
+        # 1. TTS VOICE NOTIFICATION (UnifiedVoiceOrchestrator)
+        # =====================================================================
+        if VOICE_ORCHESTRATOR_AVAILABLE:
+            try:
+                # Load configurable notification templates
+                import os
+                detection_template = os.getenv(
+                    "JARVIS_DETECTION_TTS_TEMPLATE",
+                    "I found {trigger} in {app_name}"
+                )
+
+                # Format message with detected values
+                tts_message = detection_template.format(
+                    trigger=trigger_text,
+                    app_name=app_name,
+                    space_id=space_id,
+                    confidence=f"{confidence:.0%}"
+                )
+
+                # Get voice orchestrator and speak
+                orchestrator = get_voice_orchestrator()
+
+                # Start orchestrator if not running
+                if not orchestrator._running:
+                    await orchestrator.start()
+
+                # Speak with HIGH priority (detection is important!)
+                await orchestrator.speak(
+                    text=tts_message,
+                    priority=VoicePriority.HIGH,
+                    source=VoiceSource.AGENT,
+                    wait=False,  # Don't block - async
+                    topic=SpeechTopic.MONITORING
+                )
+
+                logger.info(f"[Detection] ✅ TTS notification sent: '{tts_message}'")
+
+            except Exception as e:
+                logger.error(f"[Detection] TTS notification failed: {e}", exc_info=True)
+        else:
+            # Fallback to legacy TTS callback
+            if self._tts_callback:
+                try:
+                    await self._tts_callback(
+                        f"Event detected! I found {trigger_text} in {app_name}."
+                    )
+                    logger.info(f"[Detection] ✅ Legacy TTS callback sent")
+                except Exception as e:
+                    logger.warning(f"[Detection] Legacy TTS callback failed: {e}")
+
+        # =====================================================================
+        # 2. WEBSOCKET REAL-TIME NOTIFICATION (Frontend Transparency)
+        # =====================================================================
+        if WEBSOCKET_MANAGER_AVAILABLE:
+            try:
+                ws_manager = get_ws_manager()
+
+                # Create rich detection payload
+                detection_payload = {
+                    "type": "visual_detection",
+                    "event": "detection_found",
+                    "data": {
+                        "trigger_text": trigger_text,
+                        "app_name": app_name,
+                        "space_id": space_id,
+                        "window_id": window_id,
+                        "confidence": confidence,
+                        "timestamp": datetime.now().isoformat(),
+                        "agent": self.agent_name,
+                        "notification_channels": {
+                            "tts": VOICE_ORCHESTRATOR_AVAILABLE,
+                            "websocket": True,
+                            "legacy_callback": self._tts_callback is not None
+                        }
+                    }
+                }
+
+                # Broadcast to ALL connected WebSocket clients
+                await ws_manager.broadcast_to_all(detection_payload)
+
+                logger.info(
+                    f"[Detection] ✅ WebSocket notification broadcast to "
+                    f"{len(ws_manager.connections)} clients"
+                )
+
+            except Exception as e:
+                logger.error(f"[Detection] WebSocket notification failed: {e}", exc_info=True)
+
+        # =====================================================================
+        # 3. METRICS & LOGGING
+        # =====================================================================
+        # Log rich detection event for analytics
+        detection_event = {
+            "event_type": "visual_detection",
+            "trigger": trigger_text,
+            "app": app_name,
+            "space": space_id,
+            "window": window_id,
+            "confidence": confidence,
+            "timestamp": datetime.now().isoformat(),
+            "notification_methods": {
+                "voice_orchestrator": VOICE_ORCHESTRATOR_AVAILABLE,
+                "websocket": WEBSOCKET_MANAGER_AVAILABLE,
+                "legacy_callback": self._tts_callback is not None
+            }
+        }
+
+        logger.info(f"[Detection] Event logged: {json.dumps(detection_event, indent=2)}")
 
     async def _send_alert(
         self,

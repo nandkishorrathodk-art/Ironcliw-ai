@@ -2955,7 +2955,126 @@ class UnifiedCommandProcessor:
         try:
             # Different handlers have different interfaces, normalize them
             if command_type == CommandType.VISION:
-                # For vision commands, check if it's a monitoring command or analysis
+                # =====================================================================
+                # ROOT CAUSE FIX: Intent Disambiguation v2.0.0
+                # =====================================================================
+                # PROBLEM: "Watch all Chrome windows for bouncing ball" was being
+                # routed to VisionCommandHandler (returns "Application window active")
+                # instead of VisualMonitorAgent (background surveillance).
+                #
+                # SOLUTION: Detect Surveillance Intent before simple vision analysis
+                # =====================================================================
+
+                # Load configurable surveillance patterns (no hardcoding!)
+                import os
+                monitoring_keywords = os.getenv(
+                    "JARVIS_MONITORING_KEYWORDS",
+                    "watch,monitor,track,alert when,notify when,detect when,look for,scan for"
+                ).split(",")
+                monitoring_keywords = [k.strip() for k in monitoring_keywords]
+
+                # Load surveillance structure patterns (no hardcoding!)
+                surveillance_patterns = os.getenv(
+                    "JARVIS_SURVEILLANCE_PATTERNS",
+                    "for,when,until,if,whenever"
+                ).split(",")
+                surveillance_patterns = [p.strip() for p in surveillance_patterns]
+
+                command_lower = command_text.lower()
+
+                # Intelligent pattern matching:
+                # - Must have monitoring keyword AND surveillance structure
+                # - Examples: "watch Chrome FOR ball", "monitor windows WHEN error"
+                has_monitoring_keyword = any(k in command_lower for k in monitoring_keywords)
+                has_surveillance_structure = any(p in command_lower for p in surveillance_patterns)
+                is_surveillance_command = has_monitoring_keyword and has_surveillance_structure
+
+                # Additional heuristic: Multi-window/app monitoring
+                # "watch all Chrome windows" implies surveillance even without "for"
+                has_multi_target = any(phrase in command_lower for phrase in [
+                    "all windows", "all chrome", "all safari", "every window",
+                    "each window", "multiple windows"
+                ])
+                if has_monitoring_keyword and has_multi_target:
+                    is_surveillance_command = True
+
+                logger.debug(
+                    f"[INTENT] Disambiguation: monitoring_keyword={has_monitoring_keyword}, "
+                    f"surveillance_structure={has_surveillance_structure}, "
+                    f"multi_target={has_multi_target}, "
+                    f"is_surveillance={is_surveillance_command}"
+                )
+
+                if is_surveillance_command:
+                    # =====================================================================
+                    # SURVEILLANCE INTENT: Route to IntelligentCommandHandler
+                    # =====================================================================
+                    logger.info(
+                        f"[UNIFIED] 👁️ Surveillance Intent Detected: '{command_text}' "
+                        f"-> Routing to Neural Mesh (VisualMonitorAgent)"
+                    )
+
+                    try:
+                        # Lazy import to avoid circular dependencies
+                        from voice.intelligent_command_handler import IntelligentCommandHandler
+
+                        # Initialize handler dynamically
+                        intelligent_handler = IntelligentCommandHandler()
+
+                        # Route to intelligent handler (has _parse_watch_command logic)
+                        result = await intelligent_handler.handle_command(command_text)
+
+                        # Ensure proper response format
+                        if not isinstance(result, dict):
+                            result = {
+                                "handled": True,
+                                "success": True,
+                                "response": str(result) if result else "Monitoring initiated",
+                                "command_type": "surveillance"
+                            }
+
+                        # Add intent metadata
+                        result["intent_disambiguation"] = {
+                            "detected_intent": "surveillance",
+                            "routed_to": "IntelligentCommandHandler->VisualMonitorAgent",
+                            "keywords_matched": [k for k in monitoring_keywords if k in command_lower],
+                            "patterns_matched": [p for p in surveillance_patterns if p in command_lower],
+                        }
+
+                        logger.info(
+                            f"[UNIFIED] ✅ Surveillance command handled: "
+                            f"success={result.get('success', False)}"
+                        )
+
+                        return {
+                            "success": result.get("handled", result.get("success", False)),
+                            "response": result.get("response", "Monitoring initiated"),
+                            "command_type": command_type.value,
+                            **result,
+                        }
+
+                    except ImportError as e:
+                        logger.error(
+                            f"[UNIFIED] Failed to load IntelligentCommandHandler: {e}. "
+                            f"Falling back to standard vision handler."
+                        )
+                        # Fall through to standard vision handling
+                    except Exception as e:
+                        logger.error(
+                            f"[UNIFIED] Surveillance command failed: {e}",
+                            exc_info=True
+                        )
+                        return {
+                            "success": False,
+                            "response": f"I encountered an error setting up monitoring: {str(e)}",
+                            "command_type": command_type.value,
+                            "error": True,
+                        }
+
+                # =====================================================================
+                # LEGACY MONITORING CHECK (kept for backward compatibility)
+                # =====================================================================
+                # For simple "start monitor" / "stop monitor" commands
                 if any(word in command_text.lower() for word in ["start", "stop", "monitor"]):
                     result = await handler.handle_command(command_text)
                 else:
