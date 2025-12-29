@@ -848,10 +848,38 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # Create unique coordination task ID
             god_mode_task_id = f"god_mode_{app_name}_{int(datetime.now().timestamp() * 1000)}"
 
-            # Spawn coordination as background task
-            async def _background_coordination():
-                """Background task wrapper for God Mode coordination"""
+            # =====================================================================
+            # ROOT CAUSE FIX: Safety Harness for Background Tasks v5.0.0
+            # =====================================================================
+            # PROBLEM: Background tasks crash silently ("Future exception never retrieved")
+            # - ConnectionError from network drops not caught
+            # - Resources (video streams) not cleaned up on crash
+            # - Zombie processes left running
+            #
+            # SOLUTION: Comprehensive exception handling + done callback safety net
+            # - Catch specific exceptions (TimeoutError, ConnectionError, etc.)
+            # - Always clean up resources via _stop_all_watchers()
+            # - Done callback as final safety net
+            # =====================================================================
+
+            async def _safe_background_coordination():
+                """
+                Safety harness for background surveillance task.
+
+                Handles all exceptions gracefully and ensures resources are cleaned up:
+                - TimeoutError: Max duration exceeded
+                - ConnectionError: Network/Ferrari Engine connection lost
+                - asyncio.CancelledError: Task cancelled by user
+                - Exception: Any other unexpected error
+
+                Returns:
+                    Result dict with status (triggered/timeout/error/cancelled)
+                """
+                watcher_count = len(watcher_tasks)
+                logger.debug(f"[God Mode {god_mode_task_id}] Safety harness active for {watcher_count} watchers")
+
                 try:
+                    # ===== MAIN COORDINATION LOGIC =====
                     if max_duration:
                         results = await asyncio.wait_for(
                             self._coordinate_watchers(watcher_tasks, watcher_metadata),
@@ -864,25 +892,120 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     return results
 
                 except asyncio.TimeoutError:
-                    logger.warning(f"⏱️  [God Mode {god_mode_task_id}] Timeout after {max_duration}s")
+                    # Max duration exceeded - normal timeout condition
+                    logger.warning(
+                        f"⏱️  [God Mode {god_mode_task_id}] Timeout after {max_duration}s. "
+                        f"Stopping {watcher_count} watchers..."
+                    )
                     await self._stop_all_watchers()
                     return {
                         'status': 'timeout',
-                        'total_watchers': len(watcher_tasks),
-                        'duration': max_duration
+                        'total_watchers': watcher_count,
+                        'duration': max_duration,
+                        'god_mode_task_id': god_mode_task_id
+                    }
+
+                except ConnectionError as e:
+                    # Network drop or Ferrari Engine disconnection
+                    logger.error(
+                        f"🔌 [God Mode {god_mode_task_id}] Connection lost: {e}. "
+                        f"Stopping {watcher_count} watchers..."
+                    )
+                    await self._stop_all_watchers()
+                    return {
+                        'status': 'connection_error',
+                        'error': f"Connection lost: {str(e)}",
+                        'total_watchers': watcher_count,
+                        'god_mode_task_id': god_mode_task_id
+                    }
+
+                except asyncio.CancelledError:
+                    # Task was cancelled (user stopped monitoring)
+                    logger.info(
+                        f"🛑 [God Mode {god_mode_task_id}] Task cancelled by user. "
+                        f"Stopping {watcher_count} watchers..."
+                    )
+                    await self._stop_all_watchers()
+                    # Re-raise to properly propagate cancellation
+                    raise
+
+                except OSError as e:
+                    # OS-level errors (file descriptor issues, etc.)
+                    logger.error(
+                        f"💥 [God Mode {god_mode_task_id}] OS error: {e}. "
+                        f"Stopping {watcher_count} watchers...",
+                        exc_info=True
+                    )
+                    await self._stop_all_watchers()
+                    return {
+                        'status': 'os_error',
+                        'error': f"OS error: {str(e)}",
+                        'total_watchers': watcher_count,
+                        'god_mode_task_id': god_mode_task_id
                     }
 
                 except Exception as e:
-                    logger.error(f"❌ [God Mode {god_mode_task_id}] Error: {e}")
+                    # Catch-all for any other unexpected errors
+                    logger.critical(
+                        f"❌ [God Mode {god_mode_task_id}] Critical failure: {e}. "
+                        f"Stopping {watcher_count} watchers...",
+                        exc_info=True  # Full stack trace for debugging
+                    )
                     await self._stop_all_watchers()
                     return {
                         'status': 'error',
                         'error': str(e),
-                        'total_watchers': len(watcher_tasks)
+                        'error_type': type(e).__name__,
+                        'total_watchers': watcher_count,
+                        'god_mode_task_id': god_mode_task_id
                     }
 
-            # Spawn background task
-            coordination_task = asyncio.create_task(_background_coordination())
+                finally:
+                    # ===== FINAL SAFETY NET: Always clean up task reference =====
+                    logger.debug(f"[God Mode {god_mode_task_id}] Cleaning up task reference...")
+                    if hasattr(self, '_god_mode_tasks') and god_mode_task_id in self._god_mode_tasks:
+                        del self._god_mode_tasks[god_mode_task_id]
+
+            # =====================================================================
+            # Spawn background task with safety harness
+            # =====================================================================
+            coordination_task = asyncio.create_task(_safe_background_coordination())
+
+            # =====================================================================
+            # Done Callback: Final safety net for uncaught exceptions
+            # =====================================================================
+            def _handle_task_completion(task: asyncio.Task):
+                """
+                Done callback - catches any exceptions that slip through try/except.
+                This is the FINAL safety net to prevent "Future exception never retrieved".
+                """
+                try:
+                    # Retrieve result to surface any uncaught exceptions
+                    result = task.result()
+                    if result and result.get('status') in ['error', 'connection_error', 'os_error']:
+                        logger.warning(
+                            f"[God Mode {god_mode_task_id}] Task completed with error status: "
+                            f"{result.get('status')}"
+                        )
+                except asyncio.CancelledError:
+                    # Expected cancellation - don't log as error
+                    logger.debug(f"[God Mode {god_mode_task_id}] Task cancelled successfully")
+                except Exception as e:
+                    # This should NEVER happen if _safe_background_coordination is correct
+                    # But if it does, we catch it here as absolute final safety net
+                    logger.critical(
+                        f"🚨 [God Mode {god_mode_task_id}] UNCAUGHT EXCEPTION in background task: {e}",
+                        exc_info=True
+                    )
+                    # Try one last cleanup attempt
+                    try:
+                        # Can't use await in callback, so create a task
+                        asyncio.create_task(self._stop_all_watchers())
+                    except Exception as cleanup_error:
+                        logger.error(f"Failed final cleanup attempt: {cleanup_error}")
+
+            # Attach done callback for final safety net
+            coordination_task.add_done_callback(_handle_task_completion)
 
             # Store task for potential cancellation/monitoring
             if not hasattr(self, '_god_mode_tasks'):
