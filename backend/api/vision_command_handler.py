@@ -118,6 +118,15 @@ except ImportError as e:
     logger.warning(f"Proactive suggestions system not available: {e}")
     proactive_suggestions_available = False
 
+# Import IntelligentCommandHandler for God Mode surveillance
+try:
+    from voice.intelligent_command_handler import IntelligentCommandHandler
+    INTELLIGENT_HANDLER_AVAILABLE = True
+    logger.info("[VISION] ✅ IntelligentCommandHandler loaded (God Mode surveillance enabled)")
+except ImportError as e:
+    logger.warning(f"IntelligentCommandHandler not available - God Mode surveillance disabled: {e}")
+    INTELLIGENT_HANDLER_AVAILABLE = False
+
 
 class WebSocketLogger:
     """Logger that sends logs to WebSocket for browser console"""
@@ -232,7 +241,35 @@ class VisionCommandHandler:
                 logger.info("[VISION] ✅ Proactive suggestions system initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize proactive system: {e}")
-        
+
+        # Initialize IntelligentCommandHandler for God Mode surveillance (lazy loading)
+        self._intelligent_handler = None
+        self._intelligent_handler_initialized = False
+
+    async def _get_intelligent_handler(self) -> Optional[Any]:
+        """
+        Lazy initialization of IntelligentCommandHandler for God Mode surveillance.
+        Returns None if not available.
+        """
+        if not INTELLIGENT_HANDLER_AVAILABLE:
+            return None
+
+        if self._intelligent_handler_initialized:
+            return self._intelligent_handler
+
+        try:
+            logger.info("[VISION] Initializing IntelligentCommandHandler for God Mode...")
+            # Get user name from environment or use default
+            user_name = os.getenv("USER_NAME", "Derek")
+            self._intelligent_handler = IntelligentCommandHandler(user_name=user_name)
+            self._intelligent_handler_initialized = True
+            logger.info("[VISION] ✅ IntelligentCommandHandler ready - God Mode activated")
+            return self._intelligent_handler
+        except Exception as e:
+            logger.error(f"[VISION] Failed to initialize IntelligentCommandHandler: {e}")
+            self._intelligent_handler_initialized = True  # Don't retry
+            return None
+
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
         if not self.intelligence:
@@ -478,6 +515,36 @@ class VisionCommandHandler:
                 "handled": False,
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
+
+        # =========================================================================
+        # 🏎️ GOD MODE SURVEILLANCE - Voice-Activated Window Monitoring
+        # =========================================================================
+        # Check for "watch" commands FIRST - route to IntelligentCommandHandler
+        # This enables: "watch all Chrome for Error" → spawns Ferrari Engines
+        # =========================================================================
+        try:
+            handler = await self._get_intelligent_handler()
+            if handler:
+                # Check if this is a watch/monitor command
+                watch_params = handler._parse_watch_command(command_text)
+                if watch_params:
+                    logger.info(f"[VISION] 🏎️  GOD MODE: Watch command detected - routing to surveillance system")
+                    logger.info(f"[VISION] Params: app={watch_params['app_name']}, trigger='{watch_params['trigger_text']}', all_spaces={watch_params['all_spaces']}")
+
+                    # Execute surveillance command through IntelligentCommandHandler
+                    response_text = await handler._execute_surveillance_command(watch_params)
+
+                    logger.info(f"[VISION] ✅ God Mode surveillance complete")
+                    return {
+                        "handled": True,
+                        "response": response_text,
+                        "god_mode": True,
+                        "surveillance_params": watch_params,
+                        "command_type": "god_mode_surveillance",
+                    }
+        except Exception as e:
+            logger.error(f"[VISION] God Mode surveillance error: {e}", exc_info=True)
+            # Don't fail - continue to other handlers
 
         # =========================================================================
         # SYSTEM COMMAND BYPASS - Route to UnifiedCommandProcessor, NOT vision
