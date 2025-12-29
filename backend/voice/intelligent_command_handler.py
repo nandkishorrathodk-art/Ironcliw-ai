@@ -9,7 +9,9 @@ import asyncio
 import logging
 import re
 from typing import Dict, Any, Optional, Tuple, List
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import deque, Counter
+from enum import Enum
 
 # Import Swift bridge
 import sys
@@ -30,6 +32,17 @@ try:
 except ImportError as e:
     VISUAL_MONITOR_AVAILABLE = False
     logger.warning(f"VisualMonitorAgent not available: {e}")
+
+class ResponseStyle(Enum):
+    """
+    Response style variations based on time of day and context.
+    Enables natural, time-aware communication that adapts to user's environment.
+    """
+    SUBDUED = "subdued"           # Late night/early morning (quiet, minimal)
+    ENERGETIC = "energetic"       # Morning (enthusiastic, upbeat)
+    PROFESSIONAL = "professional" # Work hours (efficient, focused)
+    RELAXED = "relaxed"           # Evening (calm, conversational)
+    ENCOURAGING = "encouraging"   # Error recovery (supportive, helpful)
 
 class IntelligentCommandHandler:
     """
@@ -72,6 +85,37 @@ class IntelligentCommandHandler:
             'average_confidence': 0.0,
         }
         self.last_milestone_announced = 0
+
+        # ===================================================================
+        # Phase 2: Real-Time Interaction Intelligence (v7.0)
+        # ===================================================================
+
+        # Conversation history for context-aware responses
+        self.conversation_history = deque(maxlen=20)  # Last 20 interactions
+        self.conversation_stats = {
+            'total_interactions': 0,
+            'topics_discussed': set(),           # Track discussed topics
+            'last_interaction_time': None,       # Detect long gaps
+            'interaction_frequency': 0.0,        # Interactions per hour
+            'repeated_questions_count': 0,       # Track repetitions
+        }
+
+        # Interaction pattern learning
+        self.interaction_patterns = {
+            'frequent_commands': Counter(),      # Command frequency tracking
+            'preferred_apps': set(),             # Apps user opens often
+            'typical_workflows': [],             # Sequential command patterns
+            'error_recovery_patterns': [],       # How user recovers from errors
+            'command_milestones': {},            # Track command usage milestones
+        }
+
+        # Interaction milestones (for encouraging messages)
+        self.interaction_milestones = [10, 25, 50, 100, 250, 500, 1000]
+        self.last_interaction_milestone = 0
+
+        # Response style tracking
+        self.last_response_style = None
+        self.style_switch_count = 0
 
     async def _get_visual_monitor_agent(self) -> Optional[VisualMonitorAgent]:
         """
@@ -750,6 +794,440 @@ class IntelligentCommandHandler:
 
         return None
 
+    # ===================================================================
+    # Phase 2: Real-Time Interaction Intelligence Methods (v7.0)
+    # ===================================================================
+
+    def _get_response_style(self) -> ResponseStyle:
+        """
+        Determine appropriate response style based on time of day and context.
+
+        Returns:
+            ResponseStyle enum indicating how JARVIS should communicate
+        """
+        hour = datetime.now().hour
+
+        # Late night/early morning (10 PM - 7 AM): Subdued, quiet, minimal
+        if hour < 7 or hour >= 22:
+            return ResponseStyle.SUBDUED
+
+        # Morning (7 AM - 9 AM): Energetic, enthusiastic, upbeat
+        elif hour >= 7 and hour < 9:
+            return ResponseStyle.ENERGETIC
+
+        # Work hours (9 AM - 5 PM): Professional, efficient, focused
+        elif hour >= 9 and hour < 17:
+            return ResponseStyle.PROFESSIONAL
+
+        # Evening (5 PM - 10 PM): Relaxed, calm, conversational
+        elif hour >= 17 and hour < 22:
+            return ResponseStyle.RELAXED
+
+        # Default
+        else:
+            return ResponseStyle.PROFESSIONAL
+
+    def _record_interaction(
+        self,
+        command: str,
+        response: str,
+        handler_type: str,
+        success: bool
+    ):
+        """
+        Record interaction for conversation history and pattern learning.
+
+        This enables:
+        - Detecting repeated questions
+        - Recognizing workflow patterns
+        - Tracking interaction frequency
+        - Identifying preferred apps/commands
+        - Celebrating milestones
+        """
+        now = datetime.now()
+
+        # Update conversation stats
+        self.conversation_stats['total_interactions'] += 1
+
+        # Calculate time since last interaction
+        if self.conversation_stats['last_interaction_time']:
+            time_since_last = (now - self.conversation_stats['last_interaction_time']).total_seconds()
+
+            # Update interaction frequency (rolling average)
+            # Frequency = interactions per hour
+            if time_since_last > 0:
+                current_freq = 3600 / time_since_last  # Convert to hourly rate
+                total = self.conversation_stats['total_interactions']
+                avg_freq = self.conversation_stats['interaction_frequency']
+                self.conversation_stats['interaction_frequency'] = (
+                    (avg_freq * (total - 1) + current_freq) / total
+                )
+
+        self.conversation_stats['last_interaction_time'] = now
+
+        # Track command frequency
+        self.interaction_patterns['frequent_commands'][command.lower()] += 1
+
+        # Track app preferences (extract app names from commands)
+        app_keywords = ['open', 'close', 'switch to', 'launch']
+        command_lower = command.lower()
+        for keyword in app_keywords:
+            if keyword in command_lower:
+                # Extract app name after keyword
+                parts = command_lower.split(keyword)
+                if len(parts) > 1:
+                    app_name = parts[1].strip().split()[0] if parts[1].strip().split() else None
+                    if app_name and len(app_name) > 2:
+                        self.interaction_patterns['preferred_apps'].add(app_name.title())
+
+        # Track topics discussed
+        # Simple keyword extraction for topic tracking
+        topic_keywords = command.lower().split()
+        for word in topic_keywords:
+            if len(word) > 4:  # Only track meaningful words
+                self.conversation_stats['topics_discussed'].add(word)
+
+        # Add to conversation history
+        history_entry = {
+            'timestamp': now.isoformat(),
+            'command': command,
+            'response': response[:200],  # Store first 200 chars
+            'handler_type': handler_type,
+            'success': success,
+            'style': self.last_response_style.value if self.last_response_style else 'professional'
+        }
+
+        self.conversation_history.append(history_entry)
+
+        # Detect workflow patterns (sequences of commands)
+        if len(self.conversation_history) >= 3:
+            recent_commands = [
+                entry['command'].lower() for entry in list(self.conversation_history)[-3:]
+            ]
+
+            # Check if this sequence exists in typical_workflows
+            workflow_key = ' -> '.join(recent_commands)
+            existing_workflow = None
+            for workflow in self.interaction_patterns['typical_workflows']:
+                if workflow['sequence'] == recent_commands:
+                    existing_workflow = workflow
+                    break
+
+            if existing_workflow:
+                existing_workflow['count'] += 1
+            else:
+                # New workflow detected (only store if it might repeat)
+                if len(self.interaction_patterns['typical_workflows']) < 10:
+                    self.interaction_patterns['typical_workflows'].append({
+                        'sequence': recent_commands,
+                        'count': 1,
+                        'first_seen': now.isoformat()
+                    })
+
+    def _check_repeated_question(self, command: str) -> Optional[str]:
+        """
+        Check if user is asking the same question repeatedly.
+
+        Returns:
+            Acknowledgment message if question was asked recently, None otherwise
+        """
+        if not self.conversation_history:
+            return None
+
+        command_lower = command.lower().strip()
+
+        # Check last 5 interactions
+        recent_history = list(self.conversation_history)[-5:]
+
+        for entry in reversed(recent_history):
+            prev_command = entry['command'].lower().strip()
+            time_diff = datetime.now() - datetime.fromisoformat(entry['timestamp'])
+
+            # Same question within last 10 minutes
+            if prev_command == command_lower and time_diff.total_seconds() < 600:
+                minutes_ago = int(time_diff.total_seconds() / 60)
+
+                if minutes_ago < 1:
+                    return f"Same as a moment ago, {self.user_name}"
+                elif minutes_ago == 1:
+                    return f"Still the same as a minute ago, {self.user_name}"
+                else:
+                    return f"Same as {minutes_ago} minutes ago, {self.user_name}"
+
+        return None
+
+    def _check_long_gap(self) -> Optional[str]:
+        """
+        Check if there's been a long gap since last interaction.
+
+        Returns:
+            Welcome back message if gap is significant, None otherwise
+        """
+        if not self.conversation_stats['last_interaction_time']:
+            return None
+
+        time_since_last = (
+            datetime.now() - self.conversation_stats['last_interaction_time']
+        ).total_seconds()
+
+        # Gap thresholds
+        if time_since_last > 21600:  # 6 hours
+            return f"Welcome back, {self.user_name}. It's been quiet for a while. What can I do for you?"
+        elif time_since_last > 7200:  # 2 hours
+            return f"Welcome back, {self.user_name}. How can I help?"
+        elif time_since_last > 3600:  # 1 hour
+            return f"Hey there, {self.user_name}. What's next?"
+
+        return None
+
+    def _check_interaction_milestone(self) -> Optional[str]:
+        """
+        Check if we've reached an interaction milestone worth celebrating.
+
+        Returns:
+            Celebration message if milestone reached, None otherwise
+        """
+        import random
+
+        total_interactions = self.conversation_stats['total_interactions']
+
+        # Check if we hit a milestone and haven't announced it yet
+        for milestone in self.interaction_milestones:
+            if total_interactions == milestone and self.last_interaction_milestone < milestone:
+                self.last_interaction_milestone = milestone
+
+                freq_commands = self.interaction_patterns['frequent_commands'].most_common(3)
+                apps_count = len(self.interaction_patterns['preferred_apps'])
+                avg_freq = self.conversation_stats['interaction_frequency']
+
+                # Different celebration messages based on milestone
+                if milestone == 10:
+                    celebrations = [
+                        f"By the way, {self.user_name} - that's our 10th interaction! "
+                        f"I'm starting to learn your patterns.",
+
+                        f"Fun fact: We've interacted 10 times now, {self.user_name}. "
+                        f"I'm getting a feel for how you work.",
+                    ]
+
+                elif milestone == 25:
+                    top_command = freq_commands[0][0] if freq_commands else "various commands"
+                    celebrations = [
+                        f"Milestone: 25 interactions, {self.user_name}! "
+                        f"You use '{top_command}' quite frequently. "
+                        f"I've learned {apps_count} of your preferred apps.",
+
+                        f"That's our 25th interaction! "
+                        f"I'm noticing patterns - you favor {apps_count} apps and use "
+                        f"'{top_command}' often.",
+                    ]
+
+                elif milestone >= 50:
+                    top_3 = [cmd for cmd, count in freq_commands] if freq_commands else []
+                    celebrations = [
+                        f"🎯 Major milestone: {milestone} interactions, {self.user_name}! "
+                        f"Your top commands: {', '.join(top_3[:3])}. "
+                        f"{apps_count} apps in your rotation. "
+                        f"I'm finely tuned to your workflow now.",
+
+                        f"Impressive - {milestone} interactions! "
+                        f"I know your {apps_count} favorite apps, your command patterns, "
+                        f"and your typical workflows. We're a great team, {self.user_name}.",
+                    ]
+
+                return random.choice(celebrations)
+
+        return None
+
+    def _generate_encouragement(self, context: str) -> str:
+        """
+        Generate encouraging message based on context.
+
+        Args:
+            context: Context for encouragement (new_command, error_recovery, etc.)
+
+        Returns:
+            Encouraging message
+        """
+        import random
+
+        if context == "new_command":
+            messages = [
+                f"First time you've asked for this, {self.user_name}. Adding to my command vocabulary.",
+                f"New command learned! I'll remember this for next time, {self.user_name}.",
+                f"Got it - I've added this to what I know about you, {self.user_name}.",
+            ]
+
+        elif context == "frequent_command":
+            messages = [
+                f"You use this quite a bit, {self.user_name}.",
+                f"This is a favorite of yours, {self.user_name}.",
+                f"I've noticed you request this often.",
+            ]
+
+        elif context == "workflow_detected":
+            messages = [
+                f"I've noticed a pattern in your workflow, {self.user_name}.",
+                f"Interesting - this is becoming a typical sequence for you.",
+                f"I'm learning your workflow patterns, {self.user_name}.",
+            ]
+
+        elif context == "error_recovery":
+            messages = [
+                f"Let's try that again, {self.user_name}.",
+                f"No worries - I'll help you get this working.",
+                f"We'll figure this out together, {self.user_name}.",
+            ]
+
+        else:
+            messages = [f"I'm here to help, {self.user_name}."]
+
+        return random.choice(messages)
+
+    def _detect_workflow_pattern(self) -> Optional[Dict[str, Any]]:
+        """
+        Detect if user has repeated a workflow sequence multiple times.
+
+        Returns:
+            Workflow dict if pattern detected (>= 3 repetitions), None otherwise
+        """
+        for workflow in self.interaction_patterns['typical_workflows']:
+            if workflow['count'] >= 3:
+                # Pattern confirmed - user has done this sequence 3+ times
+                return workflow
+
+        return None
+
+    def _format_encouraging_error(self, error_type: str, details: str = "") -> str:
+        """
+        Transform technical errors into encouraging, helpful messages.
+
+        Args:
+            error_type: Type of error (not_found, permission_denied, timeout, etc.)
+            details: Additional context about the error
+
+        Returns:
+            Encouraging error message with helpful guidance
+        """
+        import random
+
+        if error_type == "app_not_found":
+            return random.choice([
+                f"I can't find that app, {self.user_name}. Want me to help you install it?",
+                f"That app doesn't appear to be installed, {self.user_name}. Should I guide you through adding it?",
+                f"I don't see that app on your system, {self.user_name}. Let's get it set up - want help?",
+            ])
+
+        elif error_type == "permission_denied":
+            return random.choice([
+                f"I need permission to do that, {self.user_name}. Should I guide you through enabling it in System Preferences?",
+                f"I don't have access to that yet, {self.user_name}. Want me to show you how to grant permission?",
+                f"Permission issue, {self.user_name}. I can walk you through fixing this in System Preferences if you'd like.",
+            ])
+
+        elif error_type == "timeout":
+            return random.choice([
+                f"That's taking longer than expected, {self.user_name}. Want me to try a different approach?",
+                f"Hmm, this is slow. Let me try something else, {self.user_name}.",
+                f"Taking too long - I'll attempt a faster method, {self.user_name}.",
+            ])
+
+        elif error_type == "command_failed":
+            return random.choice([
+                f"Having trouble with that command, {self.user_name}. Let me try a different approach...",
+                f"That didn't work as expected, {self.user_name}. Give me a moment to figure out why...",
+                f"Something went wrong there, {self.user_name}. Let me troubleshoot this...",
+            ])
+
+        elif error_type == "network_error":
+            return random.choice([
+                f"I'm having connectivity issues, {self.user_name}. Can you check if you're online?",
+                f"Network trouble, {self.user_name}. Let's make sure we're connected...",
+                f"Can't reach the network right now, {self.user_name}. Mind checking your connection?",
+            ])
+
+        else:
+            return f"I encountered an issue there, {self.user_name}. Let me see if I can work around it..."
+
+    def _format_success_celebration(
+        self,
+        action: str,
+        result: Any,
+        response_style: ResponseStyle
+    ) -> str:
+        """
+        Format success messages with appropriate celebration based on context and style.
+
+        Args:
+            action: Action that was performed
+            result: Result of the action
+            response_style: Current response style
+
+        Returns:
+            Formatted success message
+        """
+        import random
+
+        # Check if this is a frequent command
+        command_count = self.interaction_patterns['frequent_commands'].get(action.lower(), 0)
+        is_frequent = command_count > 10
+
+        # Check if this is a new command
+        is_new = command_count == 1
+
+        # Style-specific celebrations
+        if response_style == ResponseStyle.ENERGETIC:
+            # Morning energy - enthusiastic
+            if is_new:
+                base_messages = [
+                    f"Done! First time with this command - added to my vocabulary, {self.user_name}.",
+                    f"Got it! New command learned. I'll remember this, {self.user_name}.",
+                ]
+            else:
+                base_messages = [
+                    f"All set, {self.user_name}!",
+                    f"Done and done!",
+                    f"There you go, {self.user_name}!",
+                ]
+
+        elif response_style == ResponseStyle.SUBDUED:
+            # Late night/early morning - quiet, minimal
+            if is_new:
+                base_messages = [f"Done. New command noted."]
+            else:
+                base_messages = [f"Done.", f"Complete.", f"Ready."]
+
+        elif response_style == ResponseStyle.PROFESSIONAL:
+            # Work hours - efficient, focused
+            if is_new:
+                base_messages = [
+                    f"Complete, {self.user_name}. First time with this - command learned.",
+                ]
+            else:
+                base_messages = [
+                    f"Done, {self.user_name}.",
+                    f"Complete.",
+                    f"Ready, {self.user_name}.",
+                ]
+
+        elif response_style == ResponseStyle.RELAXED:
+            # Evening - calm, conversational
+            if is_new:
+                base_messages = [
+                    f"All done, {self.user_name}. First time you've asked for this - I've got it now.",
+                ]
+            else:
+                base_messages = [
+                    f"All set, {self.user_name}.",
+                    f"Done and ready.",
+                    f"There you go.",
+                ]
+
+        else:
+            base_messages = [f"Done, {self.user_name}."]
+
+        return random.choice(base_messages)
+
     async def _execute_surveillance_command(self, watch_params: Dict[str, Any]) -> str:
         """
         Execute God Mode surveillance command by routing to VisualMonitorAgent.
@@ -865,15 +1343,37 @@ class IntelligentCommandHandler:
 
     async def handle_command(self, text: str, context: Optional[Dict] = None) -> Tuple[str, str]:
         """
-        Intelligently handle command using Swift classification
-        
+        Intelligently handle command using Swift classification with Phase 2 enhancements.
+
+        Phase 2 Features:
+        - Context-aware responses based on time of day
+        - Detects repeated questions and acknowledges them
+        - Checks for long gaps since last interaction
+        - Records interactions for pattern learning
+        - Celebrates milestones
+
         Returns:
             Tuple of (response, handler_used)
         """
         if not self.enabled:
             return "I need my API key to handle commands intelligently.", "error"
-        
+
         try:
+            # ===================================================================
+            # Phase 2: Determine response style based on time and context
+            # ===================================================================
+            response_style = self._get_response_style()
+            self.last_response_style = response_style
+
+            # ===================================================================
+            # Phase 2: Check for long gap since last interaction
+            # ===================================================================
+            long_gap_msg = self._check_long_gap()
+
+            # ===================================================================
+            # Phase 2: Check for repeated question
+            # ===================================================================
+            repeated_msg = self._check_repeated_question(text)
             # Check for weather-related queries FIRST - route to system for Weather app workflow
             if any(word in text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy', 'hot', 'cold', 'humid', 'windy', 'storm']):
                 logger.info(f"Detected weather query, routing to system handler for Weather app workflow")
@@ -918,14 +1418,44 @@ class IntelligentCommandHandler:
                 response = await self._handle_fallback(text, classification)
                 handler_type = 'fallback'
             
-            # Record for learning
+            # Record for learning (original method)
             self._record_command(text, handler_type, classification, response)
-            
+
+            # ===================================================================
+            # Phase 2: Record interaction for conversation history and pattern learning
+            # ===================================================================
+            success = handler_type != "error" and handler_type != "fallback"
+            self._record_interaction(text, response, handler_type, success)
+
+            # ===================================================================
+            # Phase 2: Check for interaction milestone
+            # ===================================================================
+            milestone_msg = self._check_interaction_milestone()
+
+            # ===================================================================
+            # Phase 2: Build final response with context awareness
+            # ===================================================================
+
+            # If repeated question, acknowledge it
+            if repeated_msg:
+                response = f"{repeated_msg}. {response}"
+
+            # If long gap, prepend welcome back message
+            if long_gap_msg:
+                response = f"{long_gap_msg} {response}"
+
+            # If milestone reached, append celebration
+            if milestone_msg:
+                response += f"\n\n{milestone_msg}"
+
             return response, handler_type
-            
+
         except Exception as e:
             logger.error(f"Error in intelligent command handling: {e}")
-            return f"I encountered an error processing your command, {self.user_name}.", "error"
+
+            # Phase 2: Use encouraging error format
+            error_response = self._format_encouraging_error("command_failed", str(e))
+            return error_response, "error"
     
     async def _handle_system_command(self, text: str, classification: Dict[str, Any]) -> str:
         """Handle system control commands"""
@@ -945,19 +1475,29 @@ class IntelligentCommandHandler:
             # Execute if confident
             if intent.confidence >= 0.6:
                 result = await self.command_interpreter.execute_intent(intent)
-                
+
                 if result.success:
                     # Learn from successful execution
                     await self.router.provide_feedback(text, 'system', True)
-                    return self._format_success_response(intent, result)
+
+                    # Phase 2: Use style-aware success celebration
+                    return self._format_success_celebration(
+                        action=text,
+                        result=result,
+                        response_style=self.last_response_style or ResponseStyle.PROFESSIONAL
+                    )
                 else:
-                    return f"I couldn't complete that action: {result.message}"
+                    # Phase 2: Use encouraging error format
+                    return self._format_encouraging_error("command_failed", result.message)
             else:
-                return f"I'm not confident about that command, {self.user_name}. Could you rephrase?"
-                
+                # Phase 2: More encouraging low-confidence response
+                return (f"I'm not quite sure about that command, {self.user_name}. "
+                       f"Could you rephrase or give me a bit more detail?")
+
         except Exception as e:
             logger.error(f"System command error: {e}")
-            return f"I encountered an error with that system command, {self.user_name}."
+            # Phase 2: Use encouraging error format
+            return self._format_encouraging_error("command_failed", str(e))
     
     async def _handle_vision_command(self, text: str, classification: Dict[str, Any]) -> str:
         """Handle vision analysis commands"""
@@ -1061,44 +1601,61 @@ class IntelligentCommandHandler:
                     await self.router.provide_feedback(text, 'vision', True)
                     return result.message  # Return the actual vision analysis
                 else:
-                    return f"I couldn't analyze the screen: {result.message}"
+                    # Phase 2: Use encouraging error format
+                    return self._format_encouraging_error("command_failed", result.message)
             else:
-                return f"I'm not confident about that vision command, {self.user_name}. Could you rephrase?"
-                
+                # Phase 2: More encouraging low-confidence response
+                return (f"I'm not quite sure about that vision command, {self.user_name}. "
+                       f"Could you describe what you'd like me to look at?")
+
         except Exception as e:
             logger.error(f"Vision command error: {e}")
             error_msg = str(e).lower()
-            
-            # Provide specific error messages based on the error type
+
+            # Phase 2: Provide specific encouraging error messages based on the error type
             if "503" in error_msg or "service unavailable" in error_msg:
-                return f"The vision system is temporarily unavailable, {self.user_name}. Please try again in a moment."
+                return self._format_encouraging_error("network_error",
+                    "The vision system is temporarily unavailable. I'll retry in a moment...")
             elif "timeout" in error_msg:
-                return f"The vision analysis is taking too long, {self.user_name}. Please try again."
+                return self._format_encouraging_error("timeout",
+                    "Vision analysis is taking too long...")
             elif "connection" in error_msg or "connect" in error_msg:
-                return f"I'm having trouble connecting to the vision system, {self.user_name}. Please check if the service is running."
+                return self._format_encouraging_error("network_error",
+                    "Can't connect to the vision system...")
             elif "permission" in error_msg or "denied" in error_msg:
-                return f"I don't have permission to access the screen, {self.user_name}. Please check the system permissions."
+                return self._format_encouraging_error("permission_denied",
+                    "Need screen access permission...")
             else:
-                return f"I encountered an error analyzing the screen: {str(e)[:100]}. Please try again, {self.user_name}."
+                return self._format_encouraging_error("command_failed", str(e)[:100])
     
     async def _handle_conversation(self, text: str, classification: Dict[str, Any]) -> str:
-        """Handle conversational queries"""
+        """Handle conversational queries with Phase 2 enhancements"""
         if self.claude_chatbot:
             try:
                 response = await self.claude_chatbot.generate_response(text)
+
+                # Phase 2: Enhance response based on style
+                # (chatbot already has the response, just return it)
                 return response
+
             except Exception as e:
                 logger.error(f"Conversation error: {e}")
-                return f"I'm having trouble with that conversation, {self.user_name}."
+
+                # Phase 2: Use encouraging error format
+                return self._format_encouraging_error("network_error",
+                    "Having trouble with Claude API...")
         else:
-            return f"I need my Claude API to have conversations, {self.user_name}."
+            return (f"I need my Claude API to have conversations, {self.user_name}. "
+                   f"Would you like me to help you set it up?")
     
     async def _handle_fallback(self, text: str, classification: Dict[str, Any]) -> str:
-        """Fallback handler for uncertain classifications"""
+        """Fallback handler for uncertain classifications with Phase 2 enhancements"""
         confidence = classification.get('confidence', 0)
-        
+
         if confidence < 0.3:
-            return f"I'm not sure how to interpret that command, {self.user_name}. Could you rephrase?"
+            # Phase 2: More encouraging uncertainty response
+            return (f"I'm not quite sure how to help with that, {self.user_name}. "
+                   f"Could you rephrase or give me a bit more detail about what you'd like me to do?")
         else:
             # Try conversation as fallback
             return await self._handle_conversation(text, classification)

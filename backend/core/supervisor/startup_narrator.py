@@ -108,6 +108,15 @@ class NarrationPriority(Enum):
     CRITICAL = auto()  # Must announce (errors, completion)
 
 
+class StartupConfidence(Enum):
+    """Confidence levels for startup success - affects narration tone."""
+    EXCELLENT = "excellent"     # <10s startup, all services up, no warnings
+    GOOD = "good"               # 10-30s startup, all services up
+    ACCEPTABLE = "acceptable"   # 30-60s startup, most services up
+    PARTIAL = "partial"         # >60s startup, some services down
+    PROBLEMATIC = "problematic" # Failed services, multiple warnings
+
+
 @dataclass
 class NarrationConfig:
     """Configuration for startup narration - all dynamic, no hardcoding."""
@@ -700,9 +709,10 @@ class IntelligentStartupNarrator:
         >>> await narrator.announce_complete()
     """
 
-    def __init__(self, config: Optional[NarrationConfig] = None):
+    def __init__(self, config: Optional[NarrationConfig] = None, user_name: str = "Sir"):
         self.config = config or NarrationConfig()
         self._is_macos = platform.system() == "Darwin"
+        self.user_name = user_name  # User personalization
 
         # v2.0: Get unified voice orchestrator (single source of truth)
         self._orchestrator: UnifiedVoiceOrchestrator = get_voice_orchestrator()
@@ -724,7 +734,26 @@ class IntelligentStartupNarrator:
         self._milestones_announced: Set[int] = set()
         self._slow_phase_announced: bool = False
 
-        logger.info(f"🎙️ Startup narrator initialized (delegating to UnifiedVoiceOrchestrator)")
+        # v7.0: Startup intelligence - learning and milestone tracking
+        self.startup_stats = {
+            'total_startups': 0,
+            'successful_startups': 0,
+            'partial_startups': 0,
+            'failed_startups': 0,
+            'average_startup_time': 0.0,
+            'fastest_startup_time': float('inf'),
+            'slowest_startup_time': 0.0,
+            'first_startup_ever': True,
+            'first_startup_today': True,
+            'last_startup_date': None,
+            'consecutive_fast_startups': 0,  # <10s startups in a row
+            'services_learned': set(),
+            'startup_history': deque(maxlen=100),  # Last 100 startups
+        }
+        self.last_milestone_announced = 0
+        self.startup_milestones = [10, 25, 50, 100, 250, 500, 1000, 5000, 10000]
+
+        logger.info(f"🎙️ Startup narrator initialized (delegating to UnifiedVoiceOrchestrator, user={user_name})")
     
     async def start(self) -> None:
         """Start the narration processor."""
@@ -967,63 +996,413 @@ class IntelligentStartupNarrator:
             self._slow_phase_announced = True
             text = random.choice(SLOW_STARTUP_MESSAGES)
             await self._queue_narration(text, NarrationPriority.LOW)
-    
+
+    # =========================================================================
+    # v7.0: STARTUP INTELLIGENCE - Progressive Confidence, Learning, Milestones
+    # =========================================================================
+
+    def _determine_startup_confidence(
+        self,
+        duration_seconds: float,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
+    ) -> StartupConfidence:
+        """
+        Determine startup confidence level based on duration and service status.
+
+        Args:
+            duration_seconds: Total startup duration
+            services_ready: List of services that are ready
+            services_failed: List of services that failed
+
+        Returns:
+            StartupConfidence level (EXCELLENT, GOOD, ACCEPTABLE, PARTIAL, PROBLEMATIC)
+        """
+        failed_count = len(services_failed) if services_failed else 0
+
+        # PROBLEMATIC: Multiple services failed
+        if failed_count > 2:
+            return StartupConfidence.PROBLEMATIC
+
+        # PARTIAL: Some services failed or very slow startup
+        if failed_count > 0 or duration_seconds > 60:
+            return StartupConfidence.PARTIAL
+
+        # EXCELLENT: Fast startup (<10s), all services up
+        if duration_seconds < 10:
+            return StartupConfidence.EXCELLENT
+
+        # GOOD: Normal startup (10-30s), all services up
+        if duration_seconds < 30:
+            return StartupConfidence.GOOD
+
+        # ACCEPTABLE: Slower startup (30-60s), all services up
+        return StartupConfidence.ACCEPTABLE
+
+    def _get_time_aware_greeting(self, hour: int) -> str:
+        """
+        Get time-aware greeting based on hour of day.
+
+        Args:
+            hour: Hour of day (0-23)
+
+        Returns:
+            Appropriate greeting for the time
+        """
+        if hour < 5:
+            return f"You're up early, {self.user_name}"  # 12 AM - 5 AM
+        elif hour < 7:
+            return f"Good morning, {self.user_name}"  # 5 AM - 7 AM (subdued)
+        elif hour < 12:
+            return f"Good morning, {self.user_name}"  # 7 AM - 12 PM
+        elif hour < 17:
+            return f"Good afternoon, {self.user_name}"  # 12 PM - 5 PM
+        elif hour < 21:
+            return f"Good evening, {self.user_name}"  # 5 PM - 9 PM
+        else:
+            return f"Working late, I see, {self.user_name}"  # 9 PM - 12 AM
+
+    def _record_startup_operation(
+        self,
+        duration_seconds: float,
+        success: bool,
+        confidence: StartupConfidence,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
+    ):
+        """
+        Record startup operation for learning and milestone tracking.
+
+        This enables:
+        - Milestone celebrations (10th, 100th, 1000th startup)
+        - Learning acknowledgments (first startup, fastest startup)
+        - Startup evolution tracking (getting faster over time)
+        """
+        # Update counts
+        self.startup_stats['total_startups'] += 1
+
+        if success and confidence in (StartupConfidence.EXCELLENT, StartupConfidence.GOOD):
+            self.startup_stats['successful_startups'] += 1
+        elif confidence == StartupConfidence.PARTIAL:
+            self.startup_stats['partial_startups'] += 1
+        else:
+            self.startup_stats['failed_startups'] += 1
+
+        # Update timing stats
+        total_startups = self.startup_stats['total_startups']
+        current_avg = self.startup_stats['average_startup_time']
+        self.startup_stats['average_startup_time'] = (
+            (current_avg * (total_startups - 1) + duration_seconds) / total_startups
+        )
+
+        if duration_seconds < self.startup_stats['fastest_startup_time']:
+            self.startup_stats['fastest_startup_time'] = duration_seconds
+
+        if duration_seconds > self.startup_stats['slowest_startup_time']:
+            self.startup_stats['slowest_startup_time'] = duration_seconds
+
+        # Track consecutive fast startups
+        if duration_seconds < 10:
+            self.startup_stats['consecutive_fast_startups'] += 1
+        else:
+            self.startup_stats['consecutive_fast_startups'] = 0
+
+        # Track services learned
+        if services_ready:
+            for service in services_ready:
+                if service not in self.startup_stats['services_learned']:
+                    self.startup_stats['services_learned'].add(service)
+
+        # Check if first startup today
+        today = datetime.now().date()
+        if self.startup_stats['last_startup_date'] != today:
+            self.startup_stats['first_startup_today'] = True
+            self.startup_stats['last_startup_date'] = today
+        else:
+            self.startup_stats['first_startup_today'] = False
+
+        # Mark first startup ever as complete
+        if self.startup_stats['first_startup_ever']:
+            self.startup_stats['first_startup_ever'] = False
+
+        # Record in history
+        record = {
+            'timestamp': datetime.now().isoformat(),
+            'duration_seconds': duration_seconds,
+            'success': success,
+            'confidence': confidence.value,
+            'services_ready': services_ready or [],
+            'services_failed': services_failed or [],
+        }
+        self.startup_stats['startup_history'].append(record)
+
+    def _check_startup_milestone(self) -> Optional[str]:
+        """
+        Check if we've reached a startup milestone worth celebrating.
+
+        Milestones: 10, 25, 50, 100, 250, 500, 1000, 5000, 10000
+
+        Returns:
+            Celebration message if milestone reached, None otherwise
+        """
+        total_startups = self.startup_stats['total_startups']
+
+        for milestone in self.startup_milestones:
+            if total_startups == milestone and self.last_milestone_announced < milestone:
+                self.last_milestone_announced = milestone
+
+                successful = self.startup_stats['successful_startups']
+                avg_time = self.startup_stats['average_startup_time']
+                fastest = self.startup_stats['fastest_startup_time']
+
+                # Different celebration messages based on milestone
+                if milestone == 10:
+                    return (
+                        f"By the way, {self.user_name}, that was my 10th startup! "
+                        f"{successful} successful, average time {avg_time:.1f} seconds. "
+                        f"We're getting efficient!"
+                    )
+
+                elif milestone == 25:
+                    success_rate = int(successful / total_startups * 100)
+                    return (
+                        f"Milestone: 25 startups completed, {self.user_name}! "
+                        f"{successful}/{total_startups} successful ({success_rate}% success rate), "
+                        f"average {avg_time:.1f} seconds."
+                    )
+
+                elif milestone >= 50:
+                    success_rate = int(successful / total_startups * 100)
+                    consecutive = self.startup_stats['consecutive_fast_startups']
+
+                    msg = (
+                        f"Major milestone, {self.user_name}: {milestone} startups completed! "
+                        f"Stats: {success_rate}% success rate, "
+                        f"average {avg_time:.1f}s, fastest {fastest:.1f}s."
+                    )
+
+                    if consecutive >= 5:
+                        msg += f" {consecutive} fast starts in a row - you've powered me up quite a bit!"
+
+                    return msg
+
+        return None
+
+    def _generate_learning_acknowledgment(
+        self,
+        duration_seconds: float,
+        confidence: StartupConfidence,
+        services_ready: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """
+        Generate acknowledgment when the system learns something new.
+
+        Examples:
+        - First startup ever
+        - First startup today
+        - Fastest startup yet
+        - New service encountered
+        - Startup getting consistently faster
+
+        Returns:
+            Learning acknowledgment message if applicable, None otherwise
+        """
+        # First startup ever
+        if self.startup_stats['first_startup_ever']:
+            return (
+                f"First startup complete, {self.user_name}. I've learned your environment. "
+                f"Future startups will be faster as I optimize."
+            )
+
+        # First startup today
+        if self.startup_stats['first_startup_today']:
+            return f"First startup today completed in {duration_seconds:.1f} seconds. Systems fresh and ready."
+
+        # Fastest startup yet
+        if duration_seconds == self.startup_stats['fastest_startup_time'] and self.startup_stats['total_startups'] > 3:
+            return f"That's my fastest startup yet, {self.user_name} - only {duration_seconds:.1f} seconds!"
+
+        # Consistently fast startups
+        consecutive = self.startup_stats['consecutive_fast_startups']
+        if consecutive == 5:
+            return f"Fifth sub-10-second startup in a row. The system is really humming now, {self.user_name}."
+
+        # New service encountered
+        if services_ready:
+            new_services = [s for s in services_ready if s not in self.startup_stats['services_learned']]
+            if new_services and len(new_services) == 1:
+                return f"{new_services[0]} initialized for the first time, {self.user_name}. I've learned this component."
+
+        return None
+
+    def _check_startup_evolution(self, duration_seconds: float) -> Optional[str]:
+        """
+        Check if startup time has significantly improved or degraded.
+
+        Args:
+            duration_seconds: Current startup duration
+
+        Returns:
+            Evolution message if significant change, None otherwise
+        """
+        if self.startup_stats['total_startups'] < 5:
+            return None  # Not enough data
+
+        avg = self.startup_stats['average_startup_time']
+
+        # Significant improvement (>30% faster than average)
+        if duration_seconds < avg * 0.7 and avg > 15:
+            improvement = int((avg - duration_seconds) / avg * 100)
+            return (
+                f"Startup is getting faster, {self.user_name}. "
+                f"This one was {improvement}% quicker than my average."
+            )
+
+        # Significant degradation (>50% slower than average)
+        if duration_seconds > avg * 1.5 and self.startup_stats['total_startups'] > 10:
+            return (
+                f"Startup took longer than usual, {self.user_name}. "
+                f"Might be worth checking what's slowing things down. Want diagnostics?"
+            )
+
+        return None
+
     async def announce_complete(
         self,
         message: Optional[str] = None,
         duration_seconds: Optional[float] = None,
+        services_ready: Optional[List[str]] = None,
+        services_failed: Optional[List[str]] = None,
     ) -> None:
         """
-        Announce startup completion.
-        
-        v5.0 Integration: Now uses IntelligentStartupAnnouncer for dynamic,
-        context-aware completion messages instead of static templates.
-        
+        Announce startup completion with progressive confidence, learning, and milestones.
+
+        v7.0 Enhancement: Now uses progressive confidence levels, time-aware greetings,
+        learning acknowledgments, and milestone celebrations for sophisticated narration.
+
         Args:
             message: Optional custom completion message (overrides intelligent generation)
             duration_seconds: Total startup duration
+            services_ready: List of services that successfully started
+            services_failed: List of services that failed to start
         """
         # Complete any remaining phase
         if self._current_phase:
             info = self._phases.get(self._current_phase)
             if info and not info.is_complete:
                 info.complete()
-        
+
         self._current_phase = StartupPhase.COMPLETE
-        
-        # v5.0: Use IntelligentStartupAnnouncer for dynamic completion messages
+
+        # Use provided duration or calculate from start time
+        if duration_seconds is None and self._startup_start_time:
+            duration_seconds = (datetime.now() - self._startup_start_time).total_seconds()
+        elif duration_seconds is None:
+            duration_seconds = 15.0  # Default estimate
+
+        # v7.0: Determine startup confidence level
+        confidence = self._determine_startup_confidence(
+            duration_seconds, services_ready, services_failed
+        )
+
+        # v7.0: Record this startup operation (BEFORE checking milestones)
+        success = (confidence in (StartupConfidence.EXCELLENT, StartupConfidence.GOOD, StartupConfidence.ACCEPTABLE))
+        self._record_startup_operation(
+            duration_seconds, success, confidence, services_ready, services_failed
+        )
+
+        # v7.0: Check for milestone celebration
+        milestone_msg = self._check_startup_milestone()
+
+        # v7.0: Generate learning acknowledgment
+        learning_msg = self._generate_learning_acknowledgment(
+            duration_seconds, confidence, services_ready
+        )
+
+        # v7.0: Check startup evolution
+        evolution_msg = self._check_startup_evolution(duration_seconds)
+
+        # Build progressive confidence-based response
         if not message:
-            try:
-                from agi_os.intelligent_startup_announcer import (
-                    get_intelligent_announcer,
-                    StartupType,
+            hour = datetime.now().hour
+            greeting = self._get_time_aware_greeting(hour)
+
+            # ===================================================================
+            # EXCELLENT CONFIDENCE (<10s, all services up)
+            # ===================================================================
+            if confidence == StartupConfidence.EXCELLENT:
+                responses = [
+                    f"{greeting}! JARVIS online in {duration_seconds:.1f} seconds - that was quick! All systems operational.",
+                    f"Systems online, {self.user_name}. {duration_seconds:.1f} seconds - that's a fast one! Ready when you are.",
+                    f"{greeting}! All systems green in {duration_seconds:.1f} seconds. Everything's running perfectly.",
+                    f"Ready for action, {self.user_name}. {duration_seconds:.1f}-second startup! All services up and operational.",
+                ]
+                text = random.choice(responses)
+
+            # ===================================================================
+            # GOOD CONFIDENCE (10-30s, all services up)
+            # ===================================================================
+            elif confidence == StartupConfidence.GOOD:
+                responses = [
+                    f"{greeting}! JARVIS online. All systems operational. How can I help today?",
+                    f"Systems restored, {self.user_name}. Ready when you are.",
+                    f"{greeting}! All systems green. What's first on the agenda?",
+                    f"Initialization complete, {self.user_name}. At your service.",
+                    f"Back online and ready, {self.user_name}. Let's get to work.",
+                ]
+                text = random.choice(responses)
+
+            # ===================================================================
+            # ACCEPTABLE CONFIDENCE (30-60s, all services up)
+            # ===================================================================
+            elif confidence == StartupConfidence.ACCEPTABLE:
+                responses = [
+                    f"{greeting}. I'm ready, {self.user_name}. Took a bit longer than usual ({duration_seconds:.0f} seconds), but everything's working perfectly now.",
+                    f"Systems online, {self.user_name}. Startup took {duration_seconds:.0f} seconds - a bit slower, but all services are operational.",
+                    f"{greeting}! JARVIS online. {duration_seconds:.0f}-second startup, but everything's running smoothly now.",
+                ]
+                text = random.choice(responses)
+
+            # ===================================================================
+            # PARTIAL CONFIDENCE (>60s or some services down)
+            # ===================================================================
+            elif confidence == StartupConfidence.PARTIAL:
+                failed_count = len(services_failed) if services_failed else 0
+                if failed_count > 0:
+                    text = (
+                        f"{greeting}. Core systems are online, {self.user_name}, though {failed_count} "
+                        f"service{'s' if failed_count > 1 else ''} {'are' if failed_count > 1 else 'is'} still warming up. "
+                        f"I can handle most tasks while the rest finish initializing."
+                    )
+                else:
+                    text = (
+                        f"{greeting}. I'm ready, {self.user_name}, though startup took longer than expected "
+                        f"({duration_seconds:.0f} seconds). Everything's working, just took some extra time."
+                    )
+
+            # ===================================================================
+            # PROBLEMATIC CONFIDENCE (multiple services failed)
+            # ===================================================================
+            else:  # PROBLEMATIC
+                failed_count = len(services_failed) if services_failed else 0
+                text = (
+                    f"{greeting}. I've started, {self.user_name}, but I'm running into trouble with "
+                    f"{failed_count} services. Core functions work, but some advanced features may be limited. "
+                    f"Want me to retry the failed services?"
                 )
-                
-                announcer = await get_intelligent_announcer()
-                
-                # Determine startup type based on duration
-                startup_type = StartupType.COLD_BOOT
-                if duration_seconds and duration_seconds > 120:
-                    startup_type = StartupType.SLOW_BOOT
-                
-                # Generate intelligent, context-aware message
-                text = await announcer.generate_startup_message(startup_type=startup_type)
-                
-                logger.info(f"[Narrator] Using intelligent announcement: \"{text}\"")
-                
-            except Exception as e:
-                logger.debug(f"IntelligentStartupAnnouncer unavailable, using templates: {e}")
-                # Fallback to static templates
-                text = self._get_phase_message(StartupPhase.COMPLETE, "complete") or "JARVIS online."
-                
-                # Add duration context for long startups
-                if duration_seconds and duration_seconds > 30:
-                    duration_min = int(duration_seconds // 60)
-                    if duration_min > 0:
-                        text = f"{text} Startup took {duration_min} minute{'s' if duration_min > 1 else ''}."
+
+            # Append learning/milestone/evolution messages
+            if learning_msg:
+                text += f"\n\n{learning_msg}"
+            if evolution_msg and not learning_msg:  # Avoid both if learning is present
+                text += f"\n\n{evolution_msg}"
+            if milestone_msg:
+                text += f"\n\n{milestone_msg}"
+
         else:
+            # Custom message provided - just record stats
             text = message
-        
+
         await self._speak(text, NarrationPriority.CRITICAL)
     
     async def announce_error(
@@ -1423,11 +1802,14 @@ def get_phase_from_stage(stage: str) -> StartupPhase:
 _startup_narrator: Optional[IntelligentStartupNarrator] = None
 
 
-def get_startup_narrator(config: Optional[NarrationConfig] = None) -> IntelligentStartupNarrator:
+def get_startup_narrator(
+    config: Optional[NarrationConfig] = None,
+    user_name: str = "Sir"
+) -> IntelligentStartupNarrator:
     """Get the singleton startup narrator instance."""
     global _startup_narrator
     if _startup_narrator is None:
-        _startup_narrator = IntelligentStartupNarrator(config)
+        _startup_narrator = IntelligentStartupNarrator(config, user_name)
     return _startup_narrator
 
 
