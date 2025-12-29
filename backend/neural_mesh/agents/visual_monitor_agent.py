@@ -562,8 +562,34 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             logger.info(f"Starting watch: {app_name} for '{trigger_text}'")
             self._total_watches_started += 1
 
-            # Step 1: Find window using SpatialAwarenessAgent
-            window_info = await self._find_window(app_name, space_id)
+            # =====================================================================
+            # ROOT CAUSE FIX: Timeout Protection for _find_window v6.0.0
+            # =====================================================================
+            # PROBLEM: _find_window can block forever if Yabai/MultiSpaceDetector hangs
+            # - Blocks voice thread indefinitely
+            # - User sees "Processing..." forever
+            #
+            # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
+            # =====================================================================
+
+            # Step 1: Find window using SpatialAwarenessAgent (with timeout protection)
+            find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "5"))
+
+            try:
+                window_info = await asyncio.wait_for(
+                    self._find_window(app_name, space_id),
+                    timeout=find_window_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"_find_window timed out after {find_window_timeout}s for '{app_name}'. "
+                    f"Yabai or MultiSpaceDetector may be unresponsive."
+                )
+                return {
+                    "success": False,
+                    "error": f"Could not find {app_name} (window search timed out)",
+                    "timeout": True
+                }
 
             if not window_info['found']:
                 return {
@@ -742,10 +768,38 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         """
         logger.info(f"🚀 God Mode: Initiating parallel watch for '{app_name}' - '{trigger_text}'")
 
-        # ===== STEP 1: Discover All Windows Across All Spaces =====
+        # =====================================================================
+        # ROOT CAUSE FIX: Timeout Protection for God Mode Window Discovery v6.0.0
+        # =====================================================================
+        # PROBLEM: _find_window(find_all=True) can block forever
+        # - MultiSpaceWindowDetector may hang on Yabai
+        # - Voice thread blocks indefinitely
+        # - User stuck at "Processing..."
+        #
+        # SOLUTION: Wrap in asyncio.wait_for with timeout
+        # =====================================================================
+
+        # ===== STEP 1: Discover All Windows Across All Spaces (with timeout) =====
         logger.info(f"🔍 Discovering all {app_name} windows across spaces...")
 
-        windows = await self._find_window(app_name, find_all=True)
+        find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "5"))
+
+        try:
+            windows = await asyncio.wait_for(
+                self._find_window(app_name, find_all=True),
+                timeout=find_window_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"🚨 God Mode window discovery timed out after {find_window_timeout}s for '{app_name}'. "
+                f"MultiSpaceWindowDetector or Yabai may be unresponsive."
+            )
+            return {
+                'status': 'error',
+                'error': f"Window discovery timed out after {find_window_timeout}s (Yabai/MultiSpaceDetector unresponsive)",
+                'total_watchers': 0,
+                'timeout': True
+            }
 
         if not windows or len(windows) == 0:
             logger.warning(f"⚠️  No windows found for {app_name}")
