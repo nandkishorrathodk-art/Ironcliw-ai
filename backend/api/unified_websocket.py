@@ -183,9 +183,11 @@ class UnifiedWebSocketManager:
             "uptime_start": time.time(),
         }
 
-        # Rate limiting (prevents connection flooding)
-        self.connection_rate_limit = int(os.getenv("WS_CONNECTION_RATE_LIMIT", "10"))  # per minute
-        self.connection_timestamps: deque = deque(maxlen=100)
+        # ROOT CAUSE FIX: Rate limiting (prevents connection flooding)
+        # INCREASED from hardcoded 10/min to configurable 100/min default
+        # For local development, this should be generous to avoid blocking legitimate reconnects
+        self.connection_rate_limit = int(os.getenv("WS_CONNECTION_RATE_LIMIT", "100"))  # per minute
+        self.connection_timestamps: deque = deque(maxlen=int(os.getenv("WS_CONNECTION_HISTORY_SIZE", "200")))
 
         # Message handlers (dynamically extensible)
         self.handlers = {
@@ -897,26 +899,44 @@ class UnifiedWebSocketManager:
             return {"type": "vision_result", "success": False, "error": str(e)}
 
     async def connect(self, websocket: WebSocket, client_id: str):
-        """Accept new WebSocket connection with health monitoring and rate limiting"""
+        """
+        Accept new WebSocket connection with health monitoring and rate limiting.
+
+        ROOT CAUSE FIX v2.0.0:
+        - Raises WebSocketDisconnect if connection is rejected (not silent return!)
+        - This prevents calling code from trying to use un-accepted websocket
+        - Increased rate limit default from 10/min to 100/min
+        - All limits configurable via environment variables
+
+        Raises:
+            WebSocketDisconnect: If connection is rejected due to shutdown or rate limit
+        """
         # Check if shutting down
         if self._shutdown_event.is_set():
             logger.warning(f"[UNIFIED-WS] Rejecting connection from {client_id} - system is shutting down")
             await websocket.close(code=1001, reason="Server shutting down")
-            return
+            # ROOT CAUSE FIX: Raise exception instead of silent return!
+            raise WebSocketDisconnect(code=1001, reason="Server shutting down")
 
         # Rate limiting check
         current_time = time.time()
         self.connection_timestamps.append(current_time)
 
-        # Count connections in last minute
-        recent_connections = sum(1 for ts in self.connection_timestamps if current_time - ts < 60)
+        # ROOT CAUSE FIX: Configurable rate limit window (not hardcoded 60s)
+        rate_limit_window = float(os.getenv("WS_RATE_LIMIT_WINDOW_SECONDS", "60"))
+        recent_connections = sum(1 for ts in self.connection_timestamps if current_time - ts < rate_limit_window)
 
         if recent_connections > self.connection_rate_limit:
             logger.warning(
-                f"[UNIFIED-WS] ⚠️ Rate limit exceeded: {recent_connections}/{self.connection_rate_limit} per minute"
+                f"[UNIFIED-WS] ⚠️ Rate limit exceeded: {recent_connections}/{self.connection_rate_limit} per {rate_limit_window}s"
+            )
+            logger.info(
+                f"[UNIFIED-WS] Tip: Increase WS_CONNECTION_RATE_LIMIT (currently {self.connection_rate_limit}) "
+                f"if this is blocking legitimate connections"
             )
             await websocket.close(code=1008, reason="Rate limit exceeded")
-            return
+            # ROOT CAUSE FIX: Raise exception instead of silent return!
+            raise WebSocketDisconnect(code=1008, reason="Rate limit exceeded")
 
         await websocket.accept()
         self.connections[client_id] = websocket
@@ -1911,13 +1931,34 @@ def set_jarvis_instance(jarvis_api):
 
 @router.websocket("/ws")
 async def unified_websocket_endpoint(websocket: WebSocket):
-    """Single unified WebSocket endpoint for all communication with advanced self-healing"""
+    """
+    Single unified WebSocket endpoint for all communication with advanced self-healing.
+
+    ROOT CAUSE FIX v2.0.0:
+    - Properly handles connection rejection (rate limit, shutdown)
+    - Ensures websocket.accept() is called before any receive operations
+    - Graceful error handling with proper cleanup
+    """
     client_id = f"client_{id(websocket)}_{datetime.now().timestamp()}"
 
     # Get the manager lazily (now safe since we're in an async context with event loop)
     manager = get_ws_manager()
 
-    await manager.connect(websocket, client_id)
+    # ROOT CAUSE FIX: Wrap connect() in try block since it can now raise WebSocketDisconnect
+    try:
+        await manager.connect(websocket, client_id)
+    except WebSocketDisconnect as e:
+        # Connection rejected (rate limit, shutdown, etc.)
+        logger.info(f"[UNIFIED-WS] Connection rejected for {client_id}: {e.reason if hasattr(e, 'reason') else e}")
+        return  # Exit cleanly, websocket already closed by connect()
+    except Exception as e:
+        logger.error(f"[UNIFIED-WS] Failed to establish connection for {client_id}: {e}")
+        # Try to close websocket gracefully if not already closed
+        try:
+            await websocket.close(code=1011, reason="Connection failed")
+        except:
+            pass
+        return
 
     try:
         while True:
