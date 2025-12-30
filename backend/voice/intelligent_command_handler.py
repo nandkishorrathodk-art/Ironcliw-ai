@@ -8,30 +8,73 @@ import os
 import asyncio
 import logging
 import re
+import sys
 from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timedelta
 from collections import deque, Counter
 from enum import Enum
 
-# Import Swift bridge
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'swift_bridge'))
-from python_bridge import IntelligentCommandRouter
+# =====================================================================
+# ROOT CAUSE FIX: Robust Import Path Setup
+# =====================================================================
+# Ensure backend directory is in Python path for absolute imports
+# This fixes "attempted relative import with no known parent package"
+# =====================================================================
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_backend_dir = os.path.dirname(_current_dir)  # backend/
+_project_root = os.path.dirname(_backend_dir)  # project root
 
-# Import existing components
-from system_control import ClaudeCommandInterpreter, CommandCategory
-from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+# Add paths if not already present
+for _path in [_backend_dir, _project_root]:
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
-# Import VisualMonitorAgent for God Mode surveillance
 logger = logging.getLogger(__name__)
 
+# Import Swift bridge with fallback
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    _swift_bridge_path = os.path.join(_backend_dir, 'swift_bridge')
+    if _swift_bridge_path not in sys.path:
+        sys.path.append(_swift_bridge_path)
+    from python_bridge import IntelligentCommandRouter
+    SWIFT_ROUTER_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Swift IntelligentCommandRouter not available: {e}")
+    SWIFT_ROUTER_AVAILABLE = False
+    IntelligentCommandRouter = None
+
+# Import existing components with robust fallbacks
+ClaudeCommandInterpreter = None
+CommandCategory = None
+try:
+    from system_control import ClaudeCommandInterpreter, CommandCategory
+except ImportError:
+    try:
+        from backend.system_control import ClaudeCommandInterpreter, CommandCategory
+    except ImportError as e:
+        logger.warning(f"ClaudeCommandInterpreter not available: {e}")
+
+ClaudeVisionChatbot = None
+try:
+    from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+except ImportError:
+    try:
+        from backend.chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+    except ImportError as e:
+        logger.warning(f"ClaudeVisionChatbot not available: {e}")
+
+# Import VisualMonitorAgent for God Mode surveillance
+VisualMonitorAgent = None
+VISUAL_MONITOR_AVAILABLE = False
+try:
     from neural_mesh.agents.visual_monitor_agent import VisualMonitorAgent
     VISUAL_MONITOR_AVAILABLE = True
-except ImportError as e:
-    VISUAL_MONITOR_AVAILABLE = False
-    logger.warning(f"VisualMonitorAgent not available: {e}")
+except ImportError:
+    try:
+        from backend.neural_mesh.agents.visual_monitor_agent import VisualMonitorAgent
+        VISUAL_MONITOR_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"VisualMonitorAgent not available: {e}")
 
 class ResponseStyle(Enum):
     """
@@ -49,21 +92,47 @@ class IntelligentCommandHandler:
     Handles commands using Swift-based intelligent classification
     No hardcoding - learns and adapts dynamically
     """
-    
+
     def __init__(self, user_name: str = "Sir", vision_analyzer: Optional[Any] = None):
         self.user_name = user_name
-        self.router = IntelligentCommandRouter()
 
-        # Initialize handlers
+        # Initialize Swift router with fallback
+        self.router = None
+        if SWIFT_ROUTER_AVAILABLE and IntelligentCommandRouter is not None:
+            try:
+                self.router = IntelligentCommandRouter()
+                logger.info("Swift IntelligentCommandRouter initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Swift router: {e}")
+
+        # Initialize handlers with robust null checks
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.command_interpreter = None
+        self.claude_chatbot = None
+        self.enabled = False
+
         if self.api_key:
-            self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            # Pass the vision analyzer to the chatbot
-            self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
-            self.enabled = True
-        else:
-            self.enabled = False
-            logger.warning("Intelligent command handling disabled - no API key")
+            # Initialize command interpreter if available
+            if ClaudeCommandInterpreter is not None:
+                try:
+                    self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
+                except Exception as e:
+                    logger.warning(f"Failed to initialize ClaudeCommandInterpreter: {e}")
+
+            # Initialize vision chatbot if available
+            if ClaudeVisionChatbot is not None:
+                try:
+                    self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
+                except Exception as e:
+                    logger.warning(f"Failed to initialize ClaudeVisionChatbot: {e}")
+
+            # We're enabled if we have at least one handler
+            self.enabled = (self.command_interpreter is not None or
+                           self.claude_chatbot is not None or
+                           VISUAL_MONITOR_AVAILABLE)
+
+        if not self.enabled:
+            logger.warning("Intelligent command handling limited - no API key or handlers unavailable")
 
         # Initialize VisualMonitorAgent for God Mode surveillance (lazy loading)
         self._visual_monitor_agent: Optional[VisualMonitorAgent] = None
