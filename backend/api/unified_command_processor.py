@@ -1064,22 +1064,24 @@ class UnifiedCommandProcessor:
         # ─────────────────────────────────────────────────────────────────────────
         # 2. Grammar-Based Multi-Target Detection (God Mode)
         # ─────────────────────────────────────────────────────────────────────────
-        # Pattern: "\b(all|every|each)\s+.*?\s+(windows?|tabs?|instances?|spaces?)\b"
-        # Matches: "all chrome windows", "every arc tab", "each terminal instance"
+        # Pattern: "\b(all|every|each)\s+(?:\w+\s*)?(windows?|tabs?|instances?|spaces?)\b"
+        # Matches: "all windows", "all chrome windows", "every arc tab", "each terminal instance"
         # Works for ANY app without hardcoding (Chrome, Arc, Safari, VSCode, etc.)
+        # Also works WITHOUT app name: "all windows", "every tab", etc.
         # ─────────────────────────────────────────────────────────────────────────
         god_mode_pattern = os.getenv(
             "JARVIS_GOD_MODE_GRAMMAR_PATTERN",
-            r"\b(all|every|each)\s+.*?\s+(windows?|tabs?|instances?|spaces?)\b"
+            r"\b(all|every|each)\s+(?:\w+\s*)?(windows?|tabs?|instances?|spaces?)\b"
         )
 
-        # Fallback patterns for edge cases
+        # Fallback patterns for edge cases (more flexible matching)
         fallback_patterns = [
-            r"\ball\s+\w+\s+windows?\b",      # "all APP windows"
-            r"\bevery\s+\w+\s+windows?\b",    # "every APP windows"
-            r"\beach\s+\w+\s+windows?\b",     # "each APP windows"
-            r"\ball\s+\w+\s+tabs?\b",         # "all APP tabs"
-            r"\bevery\s+\w+\s+tabs?\b",       # "every APP tabs"
+            r"\ball\s+(?:\w+\s+)?windows?\b",   # "all windows" or "all APP windows"
+            r"\bevery\s+(?:\w+\s+)?windows?\b", # "every windows" or "every APP windows"
+            r"\beach\s+(?:\w+\s+)?windows?\b",  # "each windows" or "each APP windows"
+            r"\ball\s+(?:\w+\s+)?tabs?\b",      # "all tabs" or "all APP tabs"
+            r"\bevery\s+(?:\w+\s+)?tabs?\b",    # "every tabs" or "every APP tabs"
+            r"\ball\s+(?:\w+\s+)?instances?\b", # "all instances" or "all APP instances"
         ]
 
         # ─────────────────────────────────────────────────────────────────────────
