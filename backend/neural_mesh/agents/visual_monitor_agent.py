@@ -1694,8 +1694,68 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             try:
                 logger.info(f"🔍 God Mode: Searching for ALL '{app_name}' windows across ALL spaces...")
 
+                # =====================================================================
+                # ROOT CAUSE FIX: Non-Blocking Yabai Queries v7.0.0
+                # =====================================================================
+                # PROBLEM: MultiSpaceWindowDetector makes synchronous subprocess.run() calls
+                # - Blocks entire event loop while waiting for Yabai
+                # - asyncio.wait_for timeout doesn't work on blocking calls
+                # - User stuck at "Processing..." forever
+                #
+                # SOLUTION: Run in thread pool executor via asyncio.to_thread()
+                # - Subprocess calls run in background thread
+                # - Event loop stays responsive
+                # - Timeout protection now actually works
+                # =====================================================================
+
+                # Fast-fail check: Verify yabai executable exists
+                yabai_check_timeout = float(os.getenv("JARVIS_YABAI_CHECK_TIMEOUT", "1"))
+
+                async def _check_yabai_available():
+                    """Quick check if yabai is available"""
+                    try:
+                        import shutil
+                        # Non-blocking check for yabai executable
+                        yabai_path = await asyncio.to_thread(shutil.which, "yabai")
+                        if not yabai_path:
+                            return False
+
+                        # Quick ping to verify it's responsive
+                        proc = await asyncio.create_subprocess_exec(
+                            "pgrep", "-x", "yabai",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await proc.communicate()
+                        return proc.returncode == 0
+                    except Exception as e:
+                        logger.debug(f"Yabai availability check failed: {e}")
+                        return False
+
+                # Quick yabai availability check with timeout
+                try:
+                    yabai_available = await asyncio.wait_for(
+                        _check_yabai_available(),
+                        timeout=yabai_check_timeout
+                    )
+
+                    if not yabai_available:
+                        logger.warning(
+                            f"⚠️  Yabai not available - skipping multi-space detection for '{app_name}'"
+                        )
+                        # Fall through to single-window detection
+                        raise Exception("Yabai not available")
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"⚠️  Yabai availability check timed out after {yabai_check_timeout}s")
+                    raise Exception("Yabai check timeout")
+
                 detector = MultiSpaceWindowDetector()
-                result = detector.get_all_windows_across_spaces()
+
+                # Run blocking Yabai query in thread pool (non-blocking)
+                result = await asyncio.to_thread(
+                    detector.get_all_windows_across_spaces
+                )
 
                 # Extract windows list from result dict
                 all_windows = result.get('windows', [])
@@ -2541,10 +2601,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             title = f"JARVIS - {app_name}"
             message = f"{trigger_text} (Space {space_id})"
 
-            subprocess.run([
-                'osascript', '-e',
-                f'display notification "{message}" with title "{title}"'
-            ], check=False, capture_output=True)
+            # Non-blocking notification (run in thread pool)
+            await asyncio.to_thread(
+                subprocess.run,
+                ['osascript', '-e', f'display notification "{message}" with title "{title}"'],
+                check=False,
+                capture_output=True
+            )
 
             logger.info(f"📬 Notification sent: {message}")
 
