@@ -3348,21 +3348,26 @@ class SupervisorBootstrapper:
         frontend_ready = False
         last_status = None
         
-        # v9.0: Adaptive timeout tracking
+        # v20.0: CONSERVATIVE timeout tracking (reduced from v9.0)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Key insight: The /health/ready endpoint now reports ready=True as soon as
+        # WebSocket is available. We don't need to wait for ML models or voice.
+        # These extensions are kept minimal for truly exceptional circumstances.
+        # ═══════════════════════════════════════════════════════════════════════════
         adaptive_max_wait = max_wait
         timeout_extended = False
         extension_reasons: List[str] = []
-        
-        # Check for conditions that require extended timeouts
+
+        # v20.0: REDUCED - Only add minimal extension for Docker (not 60s)
         docker_needs_start = not self._is_docker_running()
         if docker_needs_start:
-            adaptive_max_wait += 60  # +60s for Docker startup
-            extension_reasons.append("Docker startup")
-        
-        # Check if this is a cold start (first run after long idle)
+            adaptive_max_wait += 15  # Reduced from 60s to 15s
+            extension_reasons.append("Docker startup (+15s)")
+
+        # Cold start extension reduced
         if os.getenv("JARVIS_COLD_START") == "1":
-            adaptive_max_wait += 30  # +30s for cold start
-            extension_reasons.append("Cold start")
+            adaptive_max_wait += 15  # Reduced from 30s to 15s
+            extension_reasons.append("Cold start (+15s)")
         
         if extension_reasons:
             self.logger.info(f"⏱️  Adaptive timeout: {adaptive_max_wait:.0f}s (base: {max_wait}s)")
@@ -3446,29 +3451,26 @@ class SupervisorBootstrapper:
                                         {"icon": "✅", "label": "Backend Ready", "backend_ready": True}
                                     )
                                 
-                                # v9.0: Dynamic timeout extension for slow services
-                                # If we detect heavy initialization in progress, extend the timeout
+                                # v20.0: MINIMAL dynamic timeout extension
+                                # ═══════════════════════════════════════════════════════════════
+                                # Key change: We DON'T extend for ML warmup anymore because
+                                # /health/ready returns ready=True when WebSocket is available.
+                                # ML models load in background - users can interact immediately.
+                                # ═══════════════════════════════════════════════════════════════
                                 if not timeout_extended:
-                                    ml_warmup = data.get("ml_warmup_info", {})
-                                    is_warming = ml_warmup.get("is_warming_up", False)
-                                    
-                                    # Detect Docker/Cloud Run initialization
+                                    # Detect Docker/Cloud Run initialization (these are real blockers)
                                     cloud_init = data.get("cloud_init", {})
                                     docker_starting = cloud_init.get("docker_starting", False)
                                     cloud_run_init = cloud_init.get("cloud_run_initializing", False)
-                                    
-                                    if is_warming and elapsed > 60:
-                                        # ML models taking long - extend timeout
-                                        adaptive_max_wait = max(adaptive_max_wait, start_time + elapsed + 60)
-                                        timeout_extended = True
-                                        self.logger.info(f"⏱️  Extended timeout for ML warmup: +60s (new max: {adaptive_max_wait - start_time:.0f}s)")
-                                    
+
+                                    # v20.0: Only extend for cloud services, NOT for ML warmup
+                                    # ML warmup no longer blocks readiness
                                     if docker_starting or cloud_run_init:
-                                        # Cloud services initializing - extend timeout
-                                        adaptive_max_wait = max(adaptive_max_wait, start_time + elapsed + 90)
+                                        # Cloud services initializing - moderate extension
+                                        adaptive_max_wait = max(adaptive_max_wait, start_time + elapsed + 30)
                                         timeout_extended = True
                                         service = "Docker" if docker_starting else "Cloud Run"
-                                        self.logger.info(f"⏱️  Extended timeout for {service}: +90s (new max: {adaptive_max_wait - start_time:.0f}s)")
+                                        self.logger.info(f"⏱️  Extended timeout for {service}: +30s (new max: {adaptive_max_wait - start_time:.0f}s)")
                                         
                 except Exception as e:
                     # /health/ready might not exist - fallback after 45s if /health works

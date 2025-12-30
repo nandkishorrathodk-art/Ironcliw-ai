@@ -702,23 +702,18 @@ class JARVISSupervisor:
             Exit code from the JARVIS process
         """
         self._set_state(SupervisorState.STARTING)
-        
-        # v5.0: Initialize and start the unified voice coordinator
-        # This coordinates both startup_narrator and intelligent_startup_announcer
-        try:
-            self._voice_coordinator = await get_startup_voice_coordinator()
-            await self._voice_coordinator.start_startup()
-            logger.info("✅ Unified startup voice coordinator active")
-        except Exception as e:
-            logger.warning(f"Voice coordinator unavailable, using narrator only: {e}")
-            self._voice_coordinator = None
-        
-        # Start the startup narrator (fallback if coordinator not available)
-        await self._startup_narrator.start()
-        
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # v20.0: ULTRA-FAST STARTUP - Loading server FIRST, voice in background
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Critical insight: The loading page must start IMMEDIATELY so users see
+        # progress feedback. Voice initialization can happen in the background
+        # while the visual loading continues.
+        # ═══════════════════════════════════════════════════════════════════════════
+
         # Start loading page if enabled (first start or after crash)
         show_loading = self._show_loading_page and os.environ.get("JARVIS_NO_LOADING") != "1"
-        
+
         if show_loading:
             try:
                 loading_server = _get_loading_server()
@@ -728,6 +723,17 @@ class JARVISSupervisor:
 
                 # Get progress reporter
                 self._progress_reporter = loading_server.get_progress_reporter()
+
+                # Report progress IMMEDIATELY - before any other initialization
+                # This ensures users see "Supervisor process started" within seconds
+                await self._progress_reporter.report(
+                    "supervisor_init",
+                    "Supervisor initializing...",
+                    5,
+                    log_entry="Supervisor process started and initializing components",
+                    log_source="Supervisor",
+                    log_type="info"
+                )
 
                 # Initialize unified progress hub (single source of truth)
                 # The hub pre-registers ALL components with their weights upfront
@@ -748,17 +754,6 @@ class JARVISSupervisor:
                     # Mark supervisor as starting (already pre-registered in hub.initialize)
                     await self._progress_hub.component_start("supervisor", "Supervisor initializing...")
 
-                # Report progress with detailed log entry
-                await self._progress_reporter.report(
-                    "supervisor_init",
-                    "Supervisor initializing...",
-                    5,
-                    log_entry="Supervisor process started and initializing components",
-                    log_source="Supervisor",
-                    log_type="info"
-                )
-                # NOTE: Don't announce SUPERVISOR_INIT here - run() already did it via _narrator
-
                 # Open browser to loading page (only on first start AND if not already opened)
                 # CRITICAL: Skip if run_supervisor.py already opened the browser
                 # v3.1: Use explicit flag (more reliable than env var timing)
@@ -777,7 +772,46 @@ class JARVISSupervisor:
                 logger.warning(f"⚠️ Loading page unavailable: {e}")
                 self._progress_reporter = None
                 self._progress_hub = None
-        
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # v20.0: NON-BLOCKING VOICE INITIALIZATION
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Voice initialization runs in background so it doesn't block startup.
+        # The startup_narrator is started first (fast), then the full voice
+        # coordinator initializes asynchronously.
+        # ═══════════════════════════════════════════════════════════════════════════
+
+        async def _init_voice_systems():
+            """Initialize voice systems in background (non-blocking)."""
+            try:
+                # Start the startup narrator first (fast, reliable)
+                await self._startup_narrator.start()
+                logger.info("✅ Startup narrator active")
+
+                # Initialize the unified voice coordinator (may be slow)
+                try:
+                    self._voice_coordinator = await asyncio.wait_for(
+                        get_startup_voice_coordinator(),
+                        timeout=10.0  # 10s max for voice coordinator
+                    )
+                    await asyncio.wait_for(
+                        self._voice_coordinator.start_startup(),
+                        timeout=5.0  # 5s max for startup signal
+                    )
+                    logger.info("✅ Unified startup voice coordinator active")
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ Voice coordinator initialization timed out (continuing without)")
+                    self._voice_coordinator = None
+                except Exception as e:
+                    logger.warning(f"Voice coordinator unavailable: {e}")
+                    self._voice_coordinator = None
+            except Exception as e:
+                logger.warning(f"Voice system initialization failed: {e}")
+
+        # Start voice initialization as background task (non-blocking)
+        voice_init_task = asyncio.create_task(_init_voice_systems())
+        logger.info("🔊 Voice system initialization started (background)")
+
         # Build command
         python_executable = sys.executable
         cmd = [python_executable, self.jarvis_entry_point]
