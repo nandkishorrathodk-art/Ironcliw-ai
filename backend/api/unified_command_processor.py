@@ -3530,6 +3530,58 @@ class UnifiedCommandProcessor:
                         }
 
                 # =====================================================================
+                # CIRCUIT BREAKER v1.0.0: Block Cloud Fallback for Surveillance
+                # =====================================================================
+                # PROBLEM: If is_surveillance_command was True but IntelligentCommandHandler
+                # failed/crashed, the code falls through to generic vision handling which
+                # calls expensive Claude API → 401 Invalid API Key error or $$ charges.
+                #
+                # SOLUTION: Re-check surveillance intent here. If this was a surveillance
+                # command, BLOCK cloud fallback and return clean error instead.
+                #
+                # WHY HERE: This is the last line of defense before vision_router.execute_query()
+                # or handler.analyze_screen() which both hit Claude API.
+                # =====================================================================
+
+                # Re-detect surveillance intent (defensive - in case we fell through somehow)
+                _cb_watch_keywords = ['watch', 'monitor', 'track', 'alert when', 'notify when',
+                                      'detect when', 'look for', 'scan for', 'observe']
+                _cb_surveillance_triggers = ['for', 'when', 'until', 'if', 'whenever', 'while']
+                _cb_god_mode_pattern = r'\b(all|every|each)\s+.*?\s*(windows?|tabs?|instances?|spaces?)\b'
+
+                _cb_command_lower = command_text.lower()
+                _cb_is_watch = any(k in _cb_command_lower for k in _cb_watch_keywords)
+                _cb_is_trigger = any(t in _cb_command_lower for t in _cb_surveillance_triggers)
+                _cb_is_multi_target = bool(re.search(_cb_god_mode_pattern, _cb_command_lower, re.IGNORECASE))
+
+                # Circuit breaker trips if: watch keyword + (trigger pattern OR multi-target)
+                _cb_should_trip = _cb_is_watch and (_cb_is_trigger or _cb_is_multi_target)
+
+                if _cb_should_trip:
+                    logger.error(
+                        f"🛑 [CIRCUIT BREAKER] Local Surveillance Failed. "
+                        f"Blocking Cloud Fallback for: '{command_text}' | "
+                        f"watch={_cb_is_watch}, trigger={_cb_is_trigger}, multi_target={_cb_is_multi_target}"
+                    )
+                    return {
+                        "success": False,
+                        "response": (
+                            f"My local surveillance system is offline, {self.user_name}. "
+                            f"I cannot execute this monitoring request via the cloud API. "
+                            f"Please check the logs or restart the system."
+                        ),
+                        "command_type": command_type.value,
+                        "error": "circuit_breaker_trip",
+                        "circuit_breaker_active": True,
+                        "blocked_cloud_fallback": True,
+                        "surveillance_intent": {
+                            "watch_keyword_detected": _cb_is_watch,
+                            "trigger_pattern_detected": _cb_is_trigger,
+                            "multi_target_detected": _cb_is_multi_target,
+                        }
+                    }
+
+                # =====================================================================
                 # LEGACY MONITORING CHECK (kept for backward compatibility)
                 # =====================================================================
                 # For simple "start monitor" / "stop monitor" commands
