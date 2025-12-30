@@ -15,8 +15,14 @@ Features:
 - Multi-factor authentication fusion
 - Progressive confidence communication
 
-Enhanced Version: 2.1.0 - Async Optimized (Non-Blocking)
+Enhanced Version: 2.2.0 - LAZY LOADING for Fast Startup
+
+LAZY LOADING: ML components (torch, speechbrain, learning_database) are
+imported on first use, not at module load time. This prevents 12+ second
+startup delays from heavy ML imports.
 """
+
+from __future__ import annotations  # PEP 563: Lazy evaluation of annotations
 
 # ============================================================================
 # CRITICAL: Apple Silicon / PyTorch Segfault Prevention
@@ -117,125 +123,232 @@ def shutdown_verification_executor():
         _verification_executor = None
 
 # ============================================================================
-# CRITICAL FIX: Patch torchaudio for compatibility with version 2.9.0+
+# LAZY LOADING SYSTEM - Avoids 12+ second startup delay from ML imports
 # ============================================================================
-# Issue: torchaudio.list_audio_backends() was removed in torchaudio 2.9.0
-# This breaks SpeechBrain 1.0.3 which still calls the deprecated function
-# Solution: Monkey patch torchaudio before importing SpeechBrain
+# torch, torchaudio, speechbrain, and learning_database are imported on-demand
+# to prevent blocking startup. First access to these components will trigger
+# the lazy import (typically during first voice verification request).
 # ============================================================================
-try:
-    import torch
-    import torchaudio
-
-    # CRITICAL: Enforce single-threaded mode on Apple Silicon to prevent segfaults
-    try:
-        if torch.get_num_threads() != 1:
-            torch.set_num_threads(1)
-        if torch.get_num_interop_threads() != 1:
-            torch.set_num_interop_threads(1)
-        logging.getLogger(__name__).info(
-            "🍎 Apple Silicon detected - enforcing single-threaded PyTorch mode"
-        )
-    except RuntimeError:
-        # Already set - that's fine
-        pass
-
-    # Check if list_audio_backends is missing (torchaudio >= 2.9.0)
-    if not hasattr(torchaudio, 'list_audio_backends'):
-        logging.getLogger(__name__).info(
-            "🔧 Patching torchaudio 2.9.0+ for SpeechBrain compatibility..."
-        )
-
-        # Add dummy list_audio_backends function that returns available backends
-        # In torchaudio 2.9+, the backend system was simplified - we can safely
-        # return a list of known backends without actually checking
-        def _list_audio_backends_fallback():
-            """
-            Fallback implementation for removed torchaudio.list_audio_backends()
-
-            Returns list of potentially available backends. Since torchaudio 2.9+
-            handles backend selection automatically, we just return common ones.
-            """
-            backends = []
-            try:
-                # Try to import soundfile (most common backend)
-                import soundfile
-                backends.append('soundfile')
-            except ImportError:
-                pass
-
-            try:
-                # Try to import sox_io
-                import torchaudio.backend.sox_io_backend
-                backends.append('sox_io')
-            except (ImportError, AttributeError):
-                pass
-
-            # If no backends found, return default
-            if not backends:
-                backends = ['soundfile']  # Default assumption
-
-            return backends
-
-        # Monkey patch the missing function
-        torchaudio.list_audio_backends = _list_audio_backends_fallback
-
-        logging.getLogger(__name__).info(
-            f"✅ torchaudio patched successfully - backends: {torchaudio.list_audio_backends()}"
-        )
-
-except ImportError as e:
-    logging.getLogger(__name__).warning(f"Could not patch torchaudio: {e}")
-
-# Now safe to import SpeechBrain components
-from intelligence.learning_database import JARVISLearningDatabase
-from voice.engines.speechbrain_engine import SpeechBrainEngine
-from voice.stt_config import ModelConfig, STTEngine
-from voice.audio_format_converter import (
-    prepare_audio_for_stt,
-    prepare_audio_for_stt_async,
-    prepare_audio_with_analysis,
-    AudioConverterConfig,
-)
 
 logger = logging.getLogger(__name__)
 
+# Lazy loading state
+_torch = None
+_torchaudio = None
+_JARVISLearningDatabase = None
+_SpeechBrainEngine = None
+_ModelConfig = None
+_STTEngine = None
+_audio_converter_funcs = None
+_ML_INITIALIZED = False
+_ML_INIT_LOCK = threading.Lock()
+
+
+def _init_ml_components():
+    """
+    Lazily initialize all ML components on first use.
+    This moves 12+ seconds of import time from startup to first request.
+    """
+    global _torch, _torchaudio, _JARVISLearningDatabase, _SpeechBrainEngine
+    global _ModelConfig, _STTEngine, _audio_converter_funcs, _ML_INITIALIZED
+
+    if _ML_INITIALIZED:
+        return True
+
+    with _ML_INIT_LOCK:
+        if _ML_INITIALIZED:
+            return True
+
+        logger.info("🔄 Lazy-loading ML components for speaker verification...")
+        start_time = time.time()
+
+        try:
+            # Import torch and torchaudio
+            import torch as torch_module
+            import torchaudio as torchaudio_module
+            _torch = torch_module
+            _torchaudio = torchaudio_module
+
+            # CRITICAL: Enforce single-threaded mode on Apple Silicon
+            try:
+                if _torch.get_num_threads() != 1:
+                    _torch.set_num_threads(1)
+                if _torch.get_num_interop_threads() != 1:
+                    _torch.set_num_interop_threads(1)
+                logger.info("🍎 Apple Silicon - single-threaded PyTorch mode")
+            except RuntimeError:
+                pass
+
+            # Patch torchaudio for SpeechBrain compatibility
+            if not hasattr(_torchaudio, 'list_audio_backends'):
+                def _list_audio_backends_fallback():
+                    backends = []
+                    try:
+                        import soundfile
+                        backends.append('soundfile')
+                    except ImportError:
+                        pass
+                    try:
+                        import torchaudio.backend.sox_io_backend
+                        backends.append('sox_io')
+                    except (ImportError, AttributeError):
+                        pass
+                    return backends or ['soundfile']
+
+                _torchaudio.list_audio_backends = _list_audio_backends_fallback
+                logger.info("🔧 Patched torchaudio for SpeechBrain compatibility")
+
+            # Import SpeechBrain and related components
+            from intelligence.learning_database import JARVISLearningDatabase as _LDB
+            from voice.engines.speechbrain_engine import SpeechBrainEngine as _SBE
+            from voice.stt_config import ModelConfig as _MC, STTEngine as _SE
+            from voice.audio_format_converter import (
+                prepare_audio_for_stt,
+                prepare_audio_for_stt_async,
+                prepare_audio_with_analysis,
+                AudioConverterConfig,
+            )
+
+            _JARVISLearningDatabase = _LDB
+            _SpeechBrainEngine = _SBE
+            _ModelConfig = _MC
+            _STTEngine = _SE
+            _audio_converter_funcs = {
+                'prepare_audio_for_stt': prepare_audio_for_stt,
+                'prepare_audio_for_stt_async': prepare_audio_for_stt_async,
+                'prepare_audio_with_analysis': prepare_audio_with_analysis,
+                'AudioConverterConfig': AudioConverterConfig,
+            }
+
+            _ML_INITIALIZED = True
+            elapsed = (time.time() - start_time) * 1000
+            logger.info(f"✅ ML components loaded in {elapsed:.0f}ms")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load ML components: {e}")
+            return False
+
+
+def get_learning_database_class():
+    """Get JARVISLearningDatabase class, initializing ML if needed."""
+    _init_ml_components()
+    return _JARVISLearningDatabase
+
+
+def get_speechbrain_engine_class():
+    """Get SpeechBrainEngine class, initializing ML if needed."""
+    _init_ml_components()
+    return _SpeechBrainEngine
+
+
+def get_audio_converter(name: str):
+    """Get audio converter function by name, initializing ML if needed."""
+    _init_ml_components()
+    return _audio_converter_funcs.get(name)
+
+
 # ============================================================================
-# Optional Dependencies for Enhanced Features
+# Optional Dependencies - Also Lazy Loaded
 # ============================================================================
 
-# ChromaDB for voice pattern recognition
-try:
-    import chromadb
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    CHROMADB_AVAILABLE = False
-    logger.info("ChromaDB not available - voice pattern store disabled")
+_CHROMADB_AVAILABLE = None
+_chromadb = None
 
-# Langfuse for observability (v3.x SDK)
-try:
-    from langfuse import Langfuse, observe, get_client
-    # langfuse_context moved in newer versions
-    try:
-        from langfuse.decorators import langfuse_context
-    except ImportError:
-        langfuse_context = None  # Optional in newer versions
-    LANGFUSE_AVAILABLE = True
-except ImportError:
-    LANGFUSE_AVAILABLE = False
-    observe = None
-    langfuse_context = None
-    get_client = None
-    logger.info("Langfuse not available - audit trails disabled")
 
-# LangGraph for reasoning
-try:
-    from langgraph.graph import StateGraph, END
-    from langgraph.checkpoint.memory import MemorySaver
-    LANGGRAPH_AVAILABLE = True
-except ImportError:
-    LANGGRAPH_AVAILABLE = False
-    logger.info("LangGraph not available - using fallback reasoning")
+def is_chromadb_available() -> bool:
+    """Check if ChromaDB is available (lazy import)."""
+    global _CHROMADB_AVAILABLE, _chromadb
+    if _CHROMADB_AVAILABLE is None:
+        try:
+            import chromadb
+            _chromadb = chromadb
+            _CHROMADB_AVAILABLE = True
+        except ImportError:
+            _CHROMADB_AVAILABLE = False
+            logger.info("ChromaDB not available - voice pattern store disabled")
+    return _CHROMADB_AVAILABLE
+
+
+# Backwards compatibility aliases
+CHROMADB_AVAILABLE = property(lambda self: is_chromadb_available())
+
+# ============================================================================
+# LAZY LOADING: Langfuse and LangGraph
+# ============================================================================
+# These imports are deferred to first use to avoid 8+ second startup delays
+# from langchain, transformers, and other heavy dependencies.
+# ============================================================================
+
+_LANGFUSE_AVAILABLE = None
+_langfuse_module = None
+_langfuse_context = None
+
+_LANGGRAPH_AVAILABLE = None
+_langgraph_module = None
+
+
+def _init_langfuse():
+    """Lazily initialize Langfuse for observability."""
+    global _LANGFUSE_AVAILABLE, _langfuse_module, _langfuse_context
+    if _LANGFUSE_AVAILABLE is None:
+        try:
+            from langfuse import Langfuse, observe, get_client
+            _langfuse_module = {
+                'Langfuse': Langfuse,
+                'observe': observe,
+                'get_client': get_client,
+            }
+            try:
+                from langfuse.decorators import langfuse_context
+                _langfuse_context = langfuse_context
+            except ImportError:
+                _langfuse_context = None
+            _LANGFUSE_AVAILABLE = True
+            logger.debug("Langfuse loaded (lazy import)")
+        except ImportError:
+            _LANGFUSE_AVAILABLE = False
+            logger.info("Langfuse not available - audit trails disabled")
+    return _LANGFUSE_AVAILABLE
+
+
+def get_langfuse_observe():
+    """Get the Langfuse observe decorator, lazily loading if needed."""
+    if _init_langfuse():
+        return _langfuse_module.get('observe')
+    return None
+
+
+def get_langfuse_client():
+    """Get the Langfuse client class, lazily loading if needed."""
+    if _init_langfuse():
+        return _langfuse_module.get('get_client')
+    return None
+
+
+def _init_langgraph():
+    """Lazily initialize LangGraph for reasoning."""
+    global _LANGGRAPH_AVAILABLE, _langgraph_module
+    if _LANGGRAPH_AVAILABLE is None:
+        try:
+            from langgraph.graph import StateGraph, END
+            from langgraph.checkpoint.memory import MemorySaver
+            _langgraph_module = {
+                'StateGraph': StateGraph,
+                'END': END,
+                'MemorySaver': MemorySaver,
+            }
+            _LANGGRAPH_AVAILABLE = True
+            logger.debug("LangGraph loaded (lazy import)")
+        except ImportError:
+            _LANGGRAPH_AVAILABLE = False
+            logger.info("LangGraph not available - using fallback reasoning")
+    return _LANGGRAPH_AVAILABLE
+
+
+# Backwards compatibility - these will trigger lazy import on first access
+LANGFUSE_AVAILABLE = property(lambda self: _init_langfuse())
+LANGGRAPH_AVAILABLE = property(lambda self: _init_langgraph())
 
 # ML Engine Registry for singleton ECAPA-TDNN engine
 # This prevents multiple instances and runtime HuggingFace downloads
@@ -1637,17 +1750,53 @@ class VoiceFeedbackGenerator:
 
 
 # ============================================================================
-# LangChain Tools for Multi-Factor Authentication
+# LAZY LOADING: LangChain Tools for Multi-Factor Authentication
+# ============================================================================
+# LangChain imports pull in transformers (7s+) and other heavy dependencies.
+# Deferred to first use to avoid startup delay.
 # ============================================================================
 
-try:
-    from langchain.tools import BaseTool
-    from langchain.agents import AgentExecutor
-    from langchain_core.runnables import RunnablePassthrough
-    LANGCHAIN_AVAILABLE = True
-except ImportError:
-    LANGCHAIN_AVAILABLE = False
-    logger.info("LangChain not available - using direct orchestration")
+_LANGCHAIN_AVAILABLE = None
+_langchain_module = None
+
+
+def _init_langchain():
+    """Lazily initialize LangChain components."""
+    global _LANGCHAIN_AVAILABLE, _langchain_module
+    if _LANGCHAIN_AVAILABLE is None:
+        try:
+            from langchain.tools import BaseTool
+            from langchain.agents import AgentExecutor
+            from langchain_core.runnables import RunnablePassthrough
+            _langchain_module = {
+                'BaseTool': BaseTool,
+                'AgentExecutor': AgentExecutor,
+                'RunnablePassthrough': RunnablePassthrough,
+            }
+            _LANGCHAIN_AVAILABLE = True
+            logger.debug("LangChain loaded (lazy import)")
+        except ImportError:
+            _LANGCHAIN_AVAILABLE = False
+            logger.info("LangChain not available - using direct orchestration")
+    return _LANGCHAIN_AVAILABLE
+
+
+def get_langchain_base_tool():
+    """Get LangChain BaseTool class, lazily loading if needed."""
+    if _init_langchain():
+        return _langchain_module.get('BaseTool')
+    return None
+
+
+def get_langchain_agent_executor():
+    """Get LangChain AgentExecutor class, lazily loading if needed."""
+    if _init_langchain():
+        return _langchain_module.get('AgentExecutor')
+    return None
+
+
+# Backwards compatibility
+LANGCHAIN_AVAILABLE = property(lambda self: _init_langchain())
 
 
 class VoiceAnalysisHypothesis(str, Enum):
@@ -2674,9 +2823,11 @@ class SpeakerVerificationService:
             logger.info("ℹ️ [FAST-INIT] ML Registry not available - using SpeechBrain encoder")
 
         # Create SpeechBrain engine but DON'T initialize it yet (deferred to background)
-        model_config = ModelConfig(
+        # Lazy load the ML components
+        _init_ml_components()
+        model_config = _ModelConfig(
             name="speechbrain-wav2vec2",
-            engine=STTEngine.SPEECHBRAIN,
+            engine=_STTEngine.SPEECHBRAIN,
             disk_size_mb=380,
             ram_required_gb=2.0,
             vram_required_gb=1.8,
@@ -2686,7 +2837,7 @@ class SpeakerVerificationService:
             model_path="speechbrain/asr-wav2vec2-commonvoice-en",
         )
 
-        self.speechbrain_engine = SpeechBrainEngine(model_config)
+        self.speechbrain_engine = _SpeechBrainEngine(model_config)
         # DON'T call initialize() here - defer to background thread
 
         # Load speaker profiles from database
@@ -3116,9 +3267,11 @@ class SpeakerVerificationService:
             self.learning_db = await get_learning_database()
 
         # Initialize SpeechBrain engine for embeddings
-        model_config = ModelConfig(
+        # Lazy load the ML components
+        _init_ml_components()
+        model_config = _ModelConfig(
             name="speechbrain-wav2vec2",
-            engine=STTEngine.SPEECHBRAIN,
+            engine=_STTEngine.SPEECHBRAIN,
             disk_size_mb=380,
             ram_required_gb=2.0,
             vram_required_gb=1.8,
@@ -3201,7 +3354,7 @@ class SpeakerVerificationService:
                 # ECAPA is ready - use registry encoder
                 # Still create SpeechBrain engine for other features (ASR, etc)
                 # but skip the encoder preload since registry already has it
-                self.speechbrain_engine = SpeechBrainEngine(model_config)
+                self.speechbrain_engine = _SpeechBrainEngine(model_config)
                 await self.speechbrain_engine.initialize()
                 # Load speaker profiles
                 await self._load_speaker_profiles()
@@ -3222,13 +3375,13 @@ class SpeakerVerificationService:
             logger.info("✅ ML Engine Registry has ECAPA-TDNN loaded - using singleton!")
             self._use_registry_encoder = True
             self._ecapa_load_source = "registry"
-            self.speechbrain_engine = SpeechBrainEngine(model_config)
+            self.speechbrain_engine = _SpeechBrainEngine(model_config)
             await self.speechbrain_engine.initialize()
             await self._load_speaker_profiles()
             logger.info("✅ Using registry ECAPA-TDNN - unlock will be instant!")
         else:
             # Fallback: Load our own engine if registry not available
-            self.speechbrain_engine = SpeechBrainEngine(model_config)
+            self.speechbrain_engine = _SpeechBrainEngine(model_config)
 
             # OPTIMIZED: Initialize engine and start encoder pre-load in PARALLEL
             # This significantly reduces startup time

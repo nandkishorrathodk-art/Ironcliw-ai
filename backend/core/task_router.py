@@ -1,6 +1,9 @@
 """
 Task Router - Intelligence Dispatcher for JARVIS
 Analyzes query complexity and routes to appropriate model tier
+
+LAZY LOADING: nltk is imported on-demand, not at module load time.
+This prevents 2.8+ second delays during startup.
 """
 
 import logging
@@ -13,25 +16,61 @@ import time
 
 logger = logging.getLogger(__name__)
 
-# Try to import NLTK, but make it optional
-try:
-    import nltk
-    from nltk.tokenize import word_tokenize
-    # Download required NLTK data
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
+# =============================================================================
+# LAZY NLTK IMPORT - Avoids 2.8 second startup delay
+# =============================================================================
+# NLTK is heavy and takes 2.8+ seconds to import due to scipy.stats dependencies.
+# We defer the import until actually needed (first call to _get_tokenizer()).
+# =============================================================================
+
+_nltk = None
+_word_tokenize = None
+_NLTK_AVAILABLE = None  # None = not checked yet, True/False = checked
+
+
+def _get_tokenizer():
+    """Get the tokenizer function, lazily importing nltk if needed."""
+    global _nltk, _word_tokenize, _NLTK_AVAILABLE
+
+    if _NLTK_AVAILABLE is None:
+        # First call - try to import nltk
         try:
-            nltk.download('punkt', quiet=True)
-        except:
-            logger.warning("Could not download NLTK data, using fallback tokenizer")
-    NLTK_AVAILABLE = True
-except ImportError:
-    logger.warning("NLTK not available, using fallback tokenizer")
-    NLTK_AVAILABLE = False
-    # Simple fallback tokenizer
-    def word_tokenize(text):
-        return text.split()
+            import nltk as _nltk_module
+            from nltk.tokenize import word_tokenize as _wt
+            _nltk = _nltk_module
+            _word_tokenize = _wt
+
+            # Download required NLTK data
+            try:
+                _nltk.data.find('tokenizers/punkt')
+            except LookupError:
+                try:
+                    _nltk.download('punkt', quiet=True)
+                except Exception:
+                    logger.warning("Could not download NLTK data, using fallback tokenizer")
+
+            _NLTK_AVAILABLE = True
+            logger.debug("NLTK loaded successfully (lazy import)")
+
+        except ImportError:
+            logger.warning("NLTK not available, using fallback tokenizer")
+            _NLTK_AVAILABLE = False
+            _word_tokenize = lambda text: text.split()
+
+    return _word_tokenize
+
+
+def word_tokenize(text: str) -> List[str]:
+    """Tokenize text, lazily loading nltk on first use."""
+    tokenizer = _get_tokenizer()
+    return tokenizer(text)
+
+
+# For backwards compatibility - check if nltk is available (lazy)
+def is_nltk_available() -> bool:
+    """Check if NLTK is available (triggers lazy import on first call)."""
+    _get_tokenizer()  # Force initialization
+    return _NLTK_AVAILABLE
 
 class TaskType(Enum):
     """Types of tasks JARVIS can handle"""
