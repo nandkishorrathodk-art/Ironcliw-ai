@@ -1132,8 +1132,36 @@ class UnifiedCommandProcessor:
             # 5. Route to IntelligentCommandHandler (Surveillance System)
             # ─────────────────────────────────────────────────────────────────────
             try:
+                # =====================================================================
+                # ROOT CAUSE FIX v10.0.0: Dynamic Path Injection for Local Brain
+                # =====================================================================
+                # PROBLEM: Import fails because Python can't find 'voice' package
+                # - Causes fallback to expensive Claude API (401 error or cost)
+                # - User sees "Application window active" instead of surveillance
+                #
+                # SOLUTION: Dynamically inject backend path BEFORE import
+                # - Calculate paths relative to THIS file's location
+                # - No hardcoding - works regardless of installation location
+                # - Prevents cloud fallback by loading local handler
+                # =====================================================================
+                import sys
+
+                # Calculate paths dynamically from THIS file's location
+                _current_file = os.path.abspath(__file__)
+                _api_dir = os.path.dirname(_current_file)           # backend/api/
+                _backend_root = os.path.dirname(_api_dir)           # backend/
+                _project_root = os.path.dirname(_backend_root)      # project root
+
+                # Inject paths if not present (order matters: backend first)
+                for _inject_path in [_backend_root, _project_root]:
+                    if _inject_path not in sys.path:
+                        sys.path.insert(0, _inject_path)
+                        logger.debug(f"[SURVEILLANCE] Injected path: {_inject_path}")
+
+                # Now import the local handler (should find 'voice' package)
                 from voice.intelligent_command_handler import IntelligentCommandHandler
 
+                logger.info("[SURVEILLANCE] ✅ Local Handler Loaded Successfully")
                 logger.info("[SURVEILLANCE] Initializing IntelligentCommandHandler...")
                 intelligent_handler = IntelligentCommandHandler()
 
@@ -3324,8 +3352,36 @@ class UnifiedCommandProcessor:
                         # SOLUTION: Robust unpacking for ALL return types (tuple, dict, string)
                         # =====================================================================
 
-                        # Lazy import to avoid circular dependencies
+                        # =====================================================================
+                        # ROOT CAUSE FIX v10.0.0: Dynamic Path Injection for Local Brain
+                        # =====================================================================
+                        # PROBLEM: Import fails because Python can't find 'voice' package
+                        # - Causes fallback to expensive Claude API (401 error or cost)
+                        # - User sees "Application window active" instead of surveillance
+                        #
+                        # SOLUTION: Dynamically inject backend path BEFORE import
+                        # - Calculate paths relative to THIS file's location
+                        # - No hardcoding - works regardless of installation location
+                        # - Prevents cloud fallback by loading local handler
+                        # =====================================================================
+                        import sys
+
+                        # Calculate paths dynamically from THIS file's location
+                        _current_file = os.path.abspath(__file__)
+                        _api_dir = os.path.dirname(_current_file)           # backend/api/
+                        _backend_root = os.path.dirname(_api_dir)           # backend/
+                        _project_root = os.path.dirname(_backend_root)      # project root
+
+                        # Inject paths if not present (order matters: backend first)
+                        for _inject_path in [_backend_root, _project_root]:
+                            if _inject_path not in sys.path:
+                                sys.path.insert(0, _inject_path)
+                                logger.debug(f"[UNIFIED] Injected path: {_inject_path}")
+
+                        # Now import the local handler (should find 'voice' package)
                         from voice.intelligent_command_handler import IntelligentCommandHandler
+
+                        logger.info("[UNIFIED] ✅ Local Handler Loaded Successfully")
 
                         # Initialize handler dynamically
                         intelligent_handler = IntelligentCommandHandler()
