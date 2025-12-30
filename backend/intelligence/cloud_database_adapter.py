@@ -55,7 +55,20 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseConfig:
-    """Configuration for database connection"""
+    """
+    Intelligent database configuration with dynamic backend detection.
+
+    Features:
+    - Auto-detects best available database backend
+    - Silent fallback to SQLite when Cloud SQL isn't fully configured
+    - Only warns when Cloud SQL was explicitly requested but unavailable
+    - Caches detection results to avoid repeated checks
+    """
+
+    # Class-level cache for detection results
+    _detection_cache = None
+    _detection_timestamp = None
+    _cache_ttl = 300  # 5 minutes
 
     def __init__(self):
         # Initialize all attributes with defaults
@@ -70,16 +83,32 @@ class DatabaseConfig:
         # Local SQLite config
         self.sqlite_path = Path.home() / ".jarvis" / "learning" / "jarvis_learning.db"
 
+        # Track if Cloud SQL was explicitly requested
+        self._explicit_cloudsql_request = False
+
+        # Track configuration completeness
+        self._config_file_exists = False
+        self._has_connection_name = False
+        self._has_password = False
+        self._has_asyncpg = ASYNCPG_AVAILABLE
+
         # Load from config file if exists
         self._load_from_config()
 
+        # Check for explicit Cloud SQL request via environment
+        env_db_type = os.getenv("JARVIS_DB_TYPE", "").lower()
+        if env_db_type == "cloudsql":
+            self._explicit_cloudsql_request = True
+
         # Environment variables can override config file
-        self.db_type = os.getenv("JARVIS_DB_TYPE", "cloudsql" if self.connection_name else "sqlite")
         self.connection_name = os.getenv("JARVIS_DB_CONNECTION_NAME", self.connection_name)
         self.db_host = os.getenv("JARVIS_DB_HOST", self.db_host)
         self.db_port = int(os.getenv("JARVIS_DB_PORT", str(self.db_port)))
         self.db_name = os.getenv("JARVIS_DB_NAME", self.db_name)
         self.db_user = os.getenv("JARVIS_DB_USER", self.db_user)
+
+        # Track connection name availability
+        self._has_connection_name = bool(self.connection_name)
 
         # Get password with fallback chain: Secret Manager -> environment -> config file
         if SECRET_MANAGER_AVAILABLE:
@@ -87,15 +116,86 @@ class DatabaseConfig:
         else:
             self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
 
+        # Track password availability
+        self._has_password = bool(self.db_password)
+
+        # INTELLIGENT DB TYPE SELECTION
+        # Only use Cloud SQL if ALL requirements are met
+        self.db_type = self._determine_optimal_db_type(env_db_type)
+
         # CRITICAL: Always use localhost for Cloud SQL proxy connections
         # The proxy running locally handles the actual connection to Cloud SQL
         if self.db_type == "cloudsql" and self.connection_name:
             self.db_host = "127.0.0.1"
 
+    def _determine_optimal_db_type(self, env_db_type: str) -> str:
+        """
+        Intelligently determine the optimal database type based on available resources.
+
+        Priority:
+        1. If Cloud SQL explicitly requested AND fully configured -> use cloudsql
+        2. If Cloud SQL requirements not met -> fall back to sqlite (warn only if explicit request)
+        3. If nothing specified, use sqlite (stable, always available)
+
+        Returns:
+            str: 'cloudsql' or 'sqlite'
+        """
+        import time
+
+        # Check cache
+        if (DatabaseConfig._detection_cache is not None and
+            DatabaseConfig._detection_timestamp is not None and
+            time.time() - DatabaseConfig._detection_timestamp < DatabaseConfig._cache_ttl):
+            return DatabaseConfig._detection_cache
+
+        # Check Cloud SQL requirements
+        cloudsql_requirements = {
+            'asyncpg_available': self._has_asyncpg,
+            'connection_name': self._has_connection_name,
+            'password': self._has_password,
+            'config_file': self._config_file_exists,
+        }
+
+        all_requirements_met = all(cloudsql_requirements.values())
+
+        # Determine final db_type
+        if env_db_type == "cloudsql" or (not env_db_type and self._has_connection_name):
+            if all_requirements_met:
+                logger.info(f"☁️  Cloud SQL configuration complete - will use cloudsql")
+                result = "cloudsql"
+            else:
+                # Only warn if explicitly requested
+                if self._explicit_cloudsql_request:
+                    missing = [k for k, v in cloudsql_requirements.items() if not v]
+                    logger.warning(
+                        f"⚠️  Cloud SQL explicitly requested but requirements not met: {missing}. "
+                        f"Falling back to SQLite."
+                    )
+                else:
+                    # Silent fallback - Cloud SQL config incomplete, just use SQLite
+                    logger.debug(
+                        f"Cloud SQL config incomplete (missing: "
+                        f"{[k for k, v in cloudsql_requirements.items() if not v]}). "
+                        f"Using SQLite."
+                    )
+                result = "sqlite"
+        elif env_db_type == "sqlite":
+            result = "sqlite"
+        else:
+            # Default: use SQLite (always available, stable)
+            result = "sqlite"
+
+        # Cache result
+        DatabaseConfig._detection_cache = result
+        DatabaseConfig._detection_timestamp = time.time()
+
+        return result
+
     def _load_from_config(self):
         """Load config from JSON file"""
         config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
         if config_path.exists():
+            self._config_file_exists = True
             try:
                 with open(config_path, "r") as f:
                     config = json.load(f)
@@ -108,9 +208,12 @@ class DatabaseConfig:
 
                     self.db_password = cloud_sql.get("password", self.db_password)
 
-                    logger.info(f"✅ Loaded database config from {config_path}")
+                    logger.debug(f"Loaded database config from {config_path}")
             except Exception as e:
                 logger.warning(f"Failed to load config from {config_path}: {e}")
+                self._config_file_exists = False
+        else:
+            self._config_file_exists = False
 
     @property
     def use_cloud_sql(self) -> bool:
@@ -147,10 +250,22 @@ class CloudDatabaseAdapter:
         else:
             await self._init_sqlite()
 
-    async def _ensure_proxy_running(self):
-        """Ensure Cloud SQL proxy is running, start it if not"""
+    async def _ensure_proxy_running(self) -> bool:
+        """
+        Ensure Cloud SQL proxy is running, start it if not.
+
+        Features:
+        - Intelligent detection with caching
+        - Only warns when Cloud SQL was explicitly requested
+        - Auto-start with exponential backoff
+        - Silent fallback when proxy unavailable
+
+        Returns:
+            bool: True if proxy is running, False otherwise
+        """
         import asyncio
         import socket
+        import time
 
         # Check if proxy port is already listening
         try:
@@ -160,14 +275,18 @@ class CloudDatabaseAdapter:
             sock.close()
 
             if result == 0:
-                logger.info(f"✅ Cloud SQL proxy already running on port {self.config.db_port}")
+                logger.debug(f"Cloud SQL proxy detected on port {self.config.db_port}")
                 return True
         except Exception as e:
             logger.debug(f"Port check failed: {e}")
 
-        # Proxy not running, try to start it
-        logger.warning(f"⚠️  Cloud SQL proxy not detected on port {self.config.db_port}")
-        logger.info(f"🚀 Attempting to start Cloud SQL proxy...")
+        # Proxy not running - check if we should even try to start it
+        # Only log warning if Cloud SQL was explicitly requested
+        if self.config._explicit_cloudsql_request:
+            logger.warning(f"⚠️  Cloud SQL proxy not detected on port {self.config.db_port}")
+            logger.info(f"🚀 Attempting to start Cloud SQL proxy...")
+        else:
+            logger.debug(f"Cloud SQL proxy not running on port {self.config.db_port}")
 
         try:
             from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
@@ -181,11 +300,25 @@ class CloudDatabaseAdapter:
                 await asyncio.sleep(2)
                 return True
             else:
-                logger.error(f"❌ Failed to start Cloud SQL proxy")
+                if self.config._explicit_cloudsql_request:
+                    logger.error(f"❌ Failed to start Cloud SQL proxy")
+                else:
+                    logger.debug(f"Cloud SQL proxy not available - will use SQLite")
                 return False
 
+        except FileNotFoundError as e:
+            # Config file or proxy binary not found - this is expected if not configured
+            if self.config._explicit_cloudsql_request:
+                logger.error(f"❌ Cloud SQL proxy not configured: {e}")
+            else:
+                logger.debug(f"Cloud SQL proxy not configured: {e}")
+            return False
+
         except Exception as e:
-            logger.error(f"❌ Error starting Cloud SQL proxy: {e}", exc_info=True)
+            if self.config._explicit_cloudsql_request:
+                logger.error(f"❌ Error starting Cloud SQL proxy: {e}")
+            else:
+                logger.debug(f"Cloud SQL proxy error: {e}")
             return False
 
     async def _init_sqlite(self):
@@ -194,25 +327,43 @@ class CloudDatabaseAdapter:
         logger.info(f"📂 Using local SQLite: {self.config.sqlite_path}")
 
     async def _init_cloud_sql(self):
-        """Initialize Cloud SQL connection via singleton connection manager"""
+        """
+        Initialize Cloud SQL connection via singleton connection manager.
+
+        Features:
+        - Intelligent proxy detection with auto-start
+        - Silent fallback to SQLite when Cloud SQL unavailable
+        - Only logs errors/warnings when Cloud SQL was explicitly requested
+        """
         import asyncio
 
         if not CONNECTION_MANAGER_AVAILABLE or not self.connection_manager:
-            logger.error("❌ CloudSQL connection manager not available")
+            if self.config._explicit_cloudsql_request:
+                logger.error("❌ CloudSQL connection manager not available")
+            else:
+                logger.debug("CloudSQL connection manager not available - using SQLite")
             await self._init_sqlite()
             return
 
         try:
-            logger.info(f"☁️  Connecting to Cloud SQL via singleton manager: {self.config.connection_name}")
+            logger.debug(f"Attempting Cloud SQL connection: {self.config.connection_name}")
 
             # ROBUSTNESS: Ensure Cloud SQL proxy is running before attempting connection
-            await self._ensure_proxy_running()
+            proxy_running = await self._ensure_proxy_running()
 
-            logger.info(
+            if not proxy_running:
+                if self.config._explicit_cloudsql_request:
+                    logger.warning("⚠️  Cloud SQL proxy not available, falling back to SQLite")
+                else:
+                    logger.debug("Cloud SQL proxy not available - using SQLite")
+                await self._init_sqlite()
+                return
+
+            logger.info(f"☁️  Connecting to Cloud SQL: {self.config.connection_name}")
+            logger.debug(
                 f"   Connecting via proxy at {self.config.db_host}:{self.config.db_port}"
             )
-            logger.info(f"   Database: {self.config.db_name}, User: {self.config.db_user}")
-            logger.info(f"   Connection name: {self.config.connection_name}")
+            logger.debug(f"   Database: {self.config.db_name}, User: {self.config.db_user}")
 
             # Use singleton connection manager (reuses existing pool if available)
             success = await self.connection_manager.initialize(
@@ -228,17 +379,21 @@ class CloudDatabaseAdapter:
             if success:
                 # Set pool reference for backward compatibility
                 self.pool = self.connection_manager.pool
-                logger.info("✅ Cloud SQL singleton connection manager initialized")
+                logger.info("✅ Cloud SQL connection initialized")
             else:
-                logger.warning("⚠️  Cloud SQL connection manager initialization failed")
-                logger.info("📂 Falling back to local SQLite")
+                if self.config._explicit_cloudsql_request:
+                    logger.warning("⚠️  Cloud SQL connection failed, falling back to SQLite")
+                else:
+                    logger.debug("Cloud SQL connection failed - using SQLite")
                 self.pool = None
                 await self._init_sqlite()
 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Cloud SQL connection manager: {e}")
-            logger.error(f"   Connection details: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}, user={self.config.db_user}")
-            logger.info("📂 Falling back to local SQLite")
+            if self.config._explicit_cloudsql_request:
+                logger.error(f"❌ Cloud SQL initialization failed: {e}")
+                logger.error(f"   Connection: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}")
+            else:
+                logger.debug(f"Cloud SQL initialization failed: {e} - using SQLite")
             self.pool = None
             await self._init_sqlite()
 
