@@ -1033,6 +1033,180 @@ class UnifiedCommandProcessor:
         self.command_stats[command_text.lower()] += 1
 
         # =========================================================================
+        # 👁️ SURVEILLANCE INTENT DETECTION v9.0.0 - Pre-Classification Override
+        # =========================================================================
+        # ROOT CAUSE FIX: Surveillance commands were being misclassified as SYSTEM
+        # because apps like "Chrome" trigger app detection before vision detection.
+        # SOLUTION: Detect surveillance intent BEFORE routing to handlers, regardless
+        # of initial classification. This ensures "Watch all Chrome windows" routes
+        # to IntelligentCommandHandler, not generic SYSTEM/VISION handlers.
+        # =========================================================================
+        import re
+        import os
+
+        command_lower = command_text.lower().strip()
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # 1. Load Dynamic Surveillance Patterns (Environment-Configurable)
+        # ─────────────────────────────────────────────────────────────────────────
+        monitoring_keywords = os.getenv(
+            "JARVIS_MONITORING_KEYWORDS",
+            "watch,monitor,track,alert when,notify when,detect when,look for,scan for,observe"
+        ).split(",")
+        monitoring_keywords = [k.strip() for k in monitoring_keywords]
+
+        surveillance_patterns = os.getenv(
+            "JARVIS_SURVEILLANCE_PATTERNS",
+            "for,when,until,if,whenever,while"
+        ).split(",")
+        surveillance_patterns = [p.strip() for p in surveillance_patterns]
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # 2. Grammar-Based Multi-Target Detection (God Mode)
+        # ─────────────────────────────────────────────────────────────────────────
+        # Pattern: "\b(all|every|each)\s+.*?\s+(windows?|tabs?|instances?|spaces?)\b"
+        # Matches: "all chrome windows", "every arc tab", "each terminal instance"
+        # Works for ANY app without hardcoding (Chrome, Arc, Safari, VSCode, etc.)
+        # ─────────────────────────────────────────────────────────────────────────
+        god_mode_pattern = os.getenv(
+            "JARVIS_GOD_MODE_GRAMMAR_PATTERN",
+            r"\b(all|every|each)\s+.*?\s+(windows?|tabs?|instances?|spaces?)\b"
+        )
+
+        # Fallback patterns for edge cases
+        fallback_patterns = [
+            r"\ball\s+\w+\s+windows?\b",      # "all APP windows"
+            r"\bevery\s+\w+\s+windows?\b",    # "every APP windows"
+            r"\beach\s+\w+\s+windows?\b",     # "each APP windows"
+            r"\ball\s+\w+\s+tabs?\b",         # "all APP tabs"
+            r"\bevery\s+\w+\s+tabs?\b",       # "every APP tabs"
+        ]
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # 3. Multi-Strategy Intent Detection
+        # ─────────────────────────────────────────────────────────────────────────
+        has_monitoring_keyword = any(k in command_lower for k in monitoring_keywords)
+        has_surveillance_structure = any(p in command_lower for p in surveillance_patterns)
+
+        # Try main grammar pattern
+        has_multi_target = bool(re.search(god_mode_pattern, command_lower, re.IGNORECASE))
+        matched_pattern = god_mode_pattern if has_multi_target else None
+
+        # Try fallback patterns if main pattern failed
+        if not has_multi_target:
+            for fallback_pattern in fallback_patterns:
+                if re.search(fallback_pattern, command_lower, re.IGNORECASE):
+                    has_multi_target = True
+                    matched_pattern = fallback_pattern
+                    logger.debug(f"[SURVEILLANCE] Fallback pattern matched: {fallback_pattern}")
+                    break
+
+        # Determine if this is a surveillance command
+        is_surveillance_command = False
+        detection_reason = None
+
+        if has_monitoring_keyword and has_surveillance_structure:
+            is_surveillance_command = True
+            detection_reason = "monitoring_keyword + surveillance_structure"
+        elif has_monitoring_keyword and has_multi_target:
+            is_surveillance_command = True
+            detection_reason = "monitoring_keyword + multi_target (God Mode)"
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # 4. Logging & Decision
+        # ─────────────────────────────────────────────────────────────────────────
+        if is_surveillance_command:
+            logger.info(
+                f"[SURVEILLANCE] 👁️ Detected surveillance intent: '{command_text}' | "
+                f"Reason: {detection_reason} | "
+                f"monitoring={has_monitoring_keyword}, structure={has_surveillance_structure}, "
+                f"multi_target={has_multi_target}, pattern='{matched_pattern}'"
+            )
+            logger.info(
+                f"[SURVEILLANCE] 🔄 Overriding classification from {command_type.value} to surveillance"
+            )
+
+            # ─────────────────────────────────────────────────────────────────────
+            # 5. Route to IntelligentCommandHandler (Surveillance System)
+            # ─────────────────────────────────────────────────────────────────────
+            try:
+                from voice.intelligent_command_handler import IntelligentCommandHandler
+
+                logger.info("[SURVEILLANCE] Initializing IntelligentCommandHandler...")
+                intelligent_handler = IntelligentCommandHandler()
+
+                # Execute with timeout protection
+                handler_timeout = float(os.getenv("JARVIS_HANDLER_TIMEOUT", "30"))
+                try:
+                    result = await asyncio.wait_for(
+                        intelligent_handler.handle_command(command_text),
+                        timeout=handler_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"[SURVEILLANCE] Timeout after {handler_timeout}s")
+                    return {
+                        "success": False,
+                        "response": f"I'm having trouble processing that surveillance command. The system is taking longer than expected.",
+                        "command_type": "surveillance",
+                        "error": "handler_timeout",
+                    }
+
+                # Unpack result (handles tuple, dict, or string)
+                response_text = None
+                handler_used = None
+
+                if isinstance(result, tuple) and len(result) == 2:
+                    response_text, handler_used = result
+                elif isinstance(result, dict):
+                    response_text = result.get("response", result.get("text", "Monitoring initiated"))
+                    handler_used = result.get("handler", "surveillance")
+                elif isinstance(result, str):
+                    response_text = result
+                    handler_used = "surveillance"
+                else:
+                    response_text = str(result) if result else "Monitoring initiated"
+                    handler_used = "unknown"
+
+                logger.info(f"[SURVEILLANCE] ✅ Success: {response_text[:100]}")
+
+                return {
+                    "success": True,
+                    "response": response_text,
+                    "command_type": "surveillance",
+                    "handler_used": handler_used,
+                    "detection_method": "pre_classification_v9.0.0",
+                    "detection_reason": detection_reason,
+                    "original_classification": command_type.value,
+                    "intent_disambiguation": {
+                        "detected_intent": "surveillance",
+                        "routed_to": "IntelligentCommandHandler->VisualMonitorAgent",
+                        "keywords_matched": [k for k in monitoring_keywords if k in command_lower],
+                        "patterns_matched": [p for p in surveillance_patterns if p in command_lower],
+                        "grammar_pattern": matched_pattern,
+                        "god_mode_detected": has_multi_target,
+                    }
+                }
+
+            except ImportError as e:
+                logger.error(f"[SURVEILLANCE] ❌ Failed to import IntelligentCommandHandler: {e}")
+                return {
+                    "success": False,
+                    "response": f"I couldn't load my surveillance system. The IntelligentCommandHandler is unavailable: {str(e)}",
+                    "command_type": "surveillance",
+                    "error": "import_error",
+                    "error_details": str(e),
+                }
+            except Exception as e:
+                logger.error(f"[SURVEILLANCE] ❌ Error executing surveillance: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "response": f"I encountered an error setting up monitoring: {str(e)}",
+                    "command_type": "surveillance",
+                    "error": "execution_error",
+                    "error_details": str(e),
+                }
+
+        # =========================================================================
         # FAST PATH v3.0: SCREEN_LOCK commands COMPLETELY bypass everything
         # Jump directly to lock execution without touching VBI/ECAPA/Context handlers
         # =========================================================================
