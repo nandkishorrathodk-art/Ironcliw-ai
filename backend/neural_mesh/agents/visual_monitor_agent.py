@@ -1696,60 +1696,47 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 logger.info(f"🔍 God Mode: Searching for ALL '{app_name}' windows across ALL spaces...")
 
                 # =====================================================================
-                # ROOT CAUSE FIX: Non-Blocking Yabai Queries v7.0.0
+                # ROOT CAUSE FIX v11.0.0: Non-Blocking Yabai Queries with Cache
                 # =====================================================================
                 # PROBLEM: MultiSpaceWindowDetector makes synchronous subprocess.run() calls
                 # - Blocks entire event loop while waiting for Yabai
                 # - asyncio.wait_for timeout doesn't work on blocking calls
                 # - User stuck at "Processing..." forever
                 #
-                # SOLUTION: Run in thread pool executor via asyncio.to_thread()
-                # - Subprocess calls run in background thread
-                # - Event loop stays responsive
-                # - Timeout protection now actually works
+                # SOLUTION: Use module-level cached check + thread pool execution
+                # - Cache avoids repeated blocking checks
+                # - Short timeout (1s) prevents hang
+                # - Thread pool execution for detector queries
                 # =====================================================================
 
-                # Fast-fail check: Verify yabai executable exists
-                yabai_check_timeout = float(os.getenv("JARVIS_YABAI_CHECK_TIMEOUT", "1"))
+                # Fast-fail check: Use cached yabai availability
+                yabai_check_timeout = float(os.getenv("JARVIS_YABAI_CHECK_TIMEOUT", "2"))
 
-                async def _check_yabai_available():
-                    """Quick check if yabai is available"""
-                    try:
-                        import shutil
-                        # Non-blocking check for yabai executable
-                        yabai_path = await asyncio.to_thread(shutil.which, "yabai")
-                        if not yabai_path:
-                            return False
-
-                        # Quick ping to verify it's responsive
-                        proc = await asyncio.create_subprocess_exec(
-                            "pgrep", "-x", "yabai",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await proc.communicate()
-                        return proc.returncode == 0
-                    except Exception as e:
-                        logger.debug(f"Yabai availability check failed: {e}")
-                        return False
-
-                # Quick yabai availability check with timeout
                 try:
-                    yabai_available = await asyncio.wait_for(
-                        _check_yabai_available(),
+                    # Import the async cached check from yabai_space_detector
+                    from vision.yabai_space_detector import async_quick_yabai_check
+
+                    yabai_available, yabai_path = await asyncio.wait_for(
+                        async_quick_yabai_check(),
                         timeout=yabai_check_timeout
                     )
 
                     if not yabai_available:
                         logger.warning(
-                            f"⚠️  Yabai not available - skipping multi-space detection for '{app_name}'"
+                            f"⚠️  Yabai not available (cached check) - skipping multi-space detection for '{app_name}'"
                         )
                         # Fall through to single-window detection
                         raise Exception("Yabai not available")
 
+                    logger.debug(f"[GOD MODE] Yabai available at {yabai_path}")
+
                 except asyncio.TimeoutError:
                     logger.warning(f"⚠️  Yabai availability check timed out after {yabai_check_timeout}s")
                     raise Exception("Yabai check timeout")
+                except ImportError:
+                    # Fallback to inline check if module not available
+                    logger.warning("⚠️  async_quick_yabai_check not available, using fallback")
+                    raise Exception("Yabai check module not available")
 
                 detector = MultiSpaceWindowDetector()
 

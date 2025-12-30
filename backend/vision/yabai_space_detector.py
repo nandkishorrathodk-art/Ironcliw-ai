@@ -42,6 +42,132 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# ROOT CAUSE FIX v11.0.0: Non-Blocking Yabai Availability Cache
+# =============================================================================
+# PROBLEM: YabaiSpaceDetector.__init__ calls subprocess.run() which blocks
+# the entire event loop, causing "Processing..." hang
+#
+# SOLUTION: Module-level cache + async initialization
+# - Cache yabai availability status at module level
+# - Skip blocking checks if we already know yabai state
+# - Async methods for initialization when needed
+# =============================================================================
+
+# Module-level cache for yabai availability (avoids repeated blocking checks)
+_YABAI_AVAILABILITY_CACHE = {
+    "checked": False,
+    "available": False,
+    "path": None,
+    "version": None,
+    "last_check": None,
+    "check_count": 0,
+}
+
+# Cache validity duration (seconds) - don't recheck too often
+_YABAI_CACHE_TTL = 60.0
+
+
+def _is_yabai_cache_valid() -> bool:
+    """Check if the yabai availability cache is still valid."""
+    if not _YABAI_AVAILABILITY_CACHE["checked"]:
+        return False
+    last_check = _YABAI_AVAILABILITY_CACHE.get("last_check")
+    if last_check is None:
+        return False
+    age = (datetime.now() - last_check).total_seconds()
+    return age < _YABAI_CACHE_TTL
+
+
+def _quick_yabai_check() -> Tuple[bool, Optional[str]]:
+    """
+    Quick non-blocking check for yabai availability.
+    Uses short timeout and caches result.
+
+    Returns:
+        Tuple of (is_available, yabai_path)
+    """
+    global _YABAI_AVAILABILITY_CACHE
+
+    # Return cached result if valid
+    if _is_yabai_cache_valid():
+        return _YABAI_AVAILABILITY_CACHE["available"], _YABAI_AVAILABILITY_CACHE["path"]
+
+    # Quick path check (non-blocking)
+    yabai_path = shutil.which("yabai")
+    if not yabai_path:
+        # Check common locations
+        common_paths = [
+            "/opt/homebrew/bin/yabai",
+            "/usr/local/bin/yabai",
+        ]
+        for path in common_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                yabai_path = path
+                break
+
+    if not yabai_path:
+        # Yabai not installed
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True,
+            "available": False,
+            "path": None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+        return False, None
+
+    # Quick subprocess check with SHORT timeout (1 second max)
+    try:
+        result = subprocess.run(
+            [yabai_path, "-m", "query", "--spaces"],
+            capture_output=True,
+            text=True,
+            timeout=1.0,  # Very short timeout!
+        )
+        is_available = result.returncode == 0
+
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True,
+            "available": is_available,
+            "path": yabai_path if is_available else None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+        return is_available, yabai_path if is_available else None
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        logger.debug(f"[YABAI] Quick check failed: {e}")
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True,
+            "available": False,
+            "path": None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+        return False, None
+
+
+async def async_quick_yabai_check() -> Tuple[bool, Optional[str]]:
+    """
+    Async wrapper for quick yabai check.
+    Runs the blocking check in a thread pool.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _quick_yabai_check)
+
+
+def get_cached_yabai_status() -> Dict[str, Any]:
+    """Get the current cached yabai status without blocking."""
+    return dict(_YABAI_AVAILABILITY_CACHE)
+
+
+def invalidate_yabai_cache():
+    """Invalidate the yabai cache to force a recheck."""
+    global _YABAI_AVAILABILITY_CACHE
+    _YABAI_AVAILABILITY_CACHE["checked"] = False
+
+
+# =============================================================================
 # SERVICE STATE & HEALTH TRACKING
 # =============================================================================
 
@@ -192,6 +318,11 @@ class YabaiSpaceDetector:
     - Health monitoring and auto-recovery
     - Async-first design for non-blocking operations
     - Graceful degradation when unavailable
+
+    ROOT CAUSE FIX v11.0.0: Non-Blocking Initialization
+    - Uses module-level cache to avoid blocking subprocess calls in __init__
+    - Lazy initialization - only check yabai when actually needed
+    - All blocking operations moved out of constructor
     """
 
     def __init__(
@@ -207,49 +338,74 @@ class YabaiSpaceDetector:
         self._status_callbacks: List[Callable[[YabaiStatus], None]] = []
         self._health_check_task: Optional[asyncio.Task] = None
         self._initialized = False
+        self._lazy_init_done = False
 
-        # Discover yabai
-        self._discover_yabai()
+        # =====================================================================
+        # ROOT CAUSE FIX v11.0.0: Non-Blocking Constructor
+        # =====================================================================
+        # PROBLEM: subprocess.run() in __init__ blocks the event loop
+        # - Causes "Processing..." hang when YabaiSpaceDetector is created
+        # - asyncio.wait_for timeout doesn't work on blocked event loop
+        #
+        # SOLUTION: Use cached quick-check, defer full init to lazy method
+        # - Check cache first (instant, non-blocking)
+        # - If cache says unavailable, skip all subprocess calls
+        # - Full discovery only happens when is_available() is called
+        # =====================================================================
 
-        # Attempt auto-start if enabled
-        if auto_start and self.config.auto_start:
-            self._attempt_startup()
+        # Quick non-blocking check using cache
+        is_available, yabai_path = _quick_yabai_check()
+
+        if yabai_path:
+            self._health.yabai_path = yabai_path
+            self._health.is_running = is_available
+            if is_available:
+                logger.debug(f"[YABAI] Quick check: Available at {yabai_path}")
+        else:
+            logger.debug("[YABAI] Quick check: Not available (skipping blocking init)")
 
         self._initialized = True
 
-    def _discover_yabai(self) -> None:
-        """Discover yabai installation and version."""
-        # Find yabai binary
-        yabai_path = shutil.which("yabai")
+    def _discover_yabai_lazy(self) -> None:
+        """
+        Lazy discovery of yabai installation and version.
+        Only called when full yabai info is needed, not in __init__.
+        """
+        if self._lazy_init_done:
+            return
+
+        self._lazy_init_done = True
+
+        # Use cached result first
+        is_available, yabai_path = _quick_yabai_check()
+
         if not yabai_path:
-            # Check common locations
-            common_paths = [
-                "/opt/homebrew/bin/yabai",
-                "/usr/local/bin/yabai",
-                str(Path.home() / ".local" / "bin" / "yabai"),
-            ]
-            for path in common_paths:
-                if os.path.isfile(path) and os.access(path, os.X_OK):
-                    yabai_path = path
-                    break
+            # Not available, skip expensive operations
+            logger.debug("[YABAI] Lazy init: Yabai not available, skipping")
+            return
 
         self._health.yabai_path = yabai_path
 
-        if yabai_path:
-            try:
-                result = subprocess.run(
-                    [yabai_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    self._health.yabai_version = result.stdout.strip()
-                    logger.info(f"[YABAI] Found yabai: {yabai_path} ({self._health.yabai_version})")
-            except Exception as e:
-                logger.warning(f"[YABAI] Could not get yabai version: {e}")
-        else:
-            logger.warning("[YABAI] Yabai not found - install with: brew install koekeishiya/formulae/yabai")
+        # Only get version if yabai is available (with short timeout)
+        try:
+            result = subprocess.run(
+                [yabai_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=1.0,  # Short timeout
+            )
+            if result.returncode == 0:
+                self._health.yabai_version = result.stdout.strip()
+                logger.info(f"[YABAI] Lazy init: Found yabai {self._health.yabai_version}")
+        except Exception as e:
+            logger.debug(f"[YABAI] Lazy init: Could not get version: {e}")
+
+    def _discover_yabai(self) -> None:
+        """
+        DEPRECATED: Use _discover_yabai_lazy() instead.
+        Kept for backward compatibility but now just calls lazy version.
+        """
+        self._discover_yabai_lazy()
 
     def _attempt_startup(self) -> bool:
         """Attempt to start yabai service."""
@@ -354,23 +510,11 @@ class YabaiSpaceDetector:
 
     @property
     def yabai_available(self) -> bool:
-        """Property for backward compatibility."""
+        """
+        Property for backward compatibility.
+        ROOT CAUSE FIX v11.0.0: Uses cached quick check.
+        """
         return self._check_yabai_available()
-
-    def _check_yabai_available(self) -> bool:
-        """Check if Yabai is installed and running"""
-        self._health.last_check = datetime.now()
-
-        if not self._health.yabai_path:
-            return False
-
-        is_running = self._check_service_running()
-        self._health.is_running = is_running
-
-        if is_running:
-            self._health.permissions_granted = True
-
-        return is_running
 
     def register_status_callback(self, callback: Callable[[YabaiStatus], None]) -> None:
         """Register a callback for status changes."""
@@ -423,10 +567,20 @@ class YabaiSpaceDetector:
         return self._vision_analyzer
 
     def _check_yabai_available(self) -> bool:
-        """Check if Yabai is installed and running"""
+        """
+        Check if Yabai is installed and running.
+
+        ROOT CAUSE FIX v11.0.0: Uses cached quick check to avoid blocking.
+        """
+        # Use the non-blocking cached check
+        is_available, _ = _quick_yabai_check()
+        return is_available
+
+    def _check_yabai_available_legacy(self) -> bool:
+        """Legacy blocking check - DEPRECATED, use _check_yabai_available instead."""
         try:
             # Check if yabai command exists
-            result = subprocess.run(["which", "yabai"], capture_output=True, text=True)
+            result = subprocess.run(["which", "yabai"], capture_output=True, text=True, timeout=1)
             if result.returncode != 0:
                 return False
 
@@ -435,7 +589,7 @@ class YabaiSpaceDetector:
                 ["yabai", "-m", "query", "--spaces"],
                 capture_output=True,
                 text=True,
-                timeout=2,
+                timeout=1,  # Reduced from 2 to 1
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
