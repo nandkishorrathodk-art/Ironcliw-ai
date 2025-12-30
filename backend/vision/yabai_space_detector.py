@@ -78,35 +78,70 @@ def _is_yabai_cache_valid() -> bool:
     return age < _YABAI_CACHE_TTL
 
 
-def _quick_yabai_check() -> Tuple[bool, Optional[str]]:
+async def async_quick_yabai_check() -> Tuple[bool, Optional[str]]:
     """
-    Quick non-blocking check for yabai availability.
-    Uses short timeout and caches result.
+    TRUE ASYNC yabai availability check using asyncio subprocesses.
+
+    ROOT CAUSE FIX v12.0.0: True Non-Blocking Implementation
+    =========================================================
+    PROBLEM: Previous implementation used subprocess.run() which blocks
+    the entire event loop, even with short timeouts. During that block:
+    - UI spinner freezes
+    - Voice input stops processing
+    - WebSocket messages queue up
+    - System feels unresponsive
+
+    SOLUTION: Use asyncio.create_subprocess_exec() which:
+    - Yields control to event loop while waiting for OS
+    - Allows other coroutines to run during subprocess execution
+    - Keeps spinner, voice, and WebSocket 100% responsive
+    - True concurrent execution, not fake-async
 
     Returns:
         Tuple of (is_available, yabai_path)
     """
     global _YABAI_AVAILABILITY_CACHE
 
-    # Return cached result if valid
+    # =========================================================================
+    # STEP 1: Check cache FIRST (instant, no I/O)
+    # =========================================================================
     if _is_yabai_cache_valid():
+        logger.debug("[YABAI] Using cached availability result")
         return _YABAI_AVAILABILITY_CACHE["available"], _YABAI_AVAILABILITY_CACHE["path"]
 
-    # Quick path check (non-blocking)
-    yabai_path = shutil.which("yabai")
+    # =========================================================================
+    # STEP 2: Find yabai path (filesystem check - very fast)
+    # =========================================================================
+    # Use asyncio.to_thread for shutil.which (it's a blocking syscall)
+    try:
+        yabai_path = await asyncio.wait_for(
+            asyncio.to_thread(shutil.which, "yabai"),
+            timeout=0.5
+        )
+    except asyncio.TimeoutError:
+        yabai_path = None
+
     if not yabai_path:
-        # Check common locations
+        # Check common locations (fast filesystem checks)
         common_paths = [
             "/opt/homebrew/bin/yabai",
             "/usr/local/bin/yabai",
         ]
         for path in common_paths:
-            if os.path.isfile(path) and os.access(path, os.X_OK):
-                yabai_path = path
-                break
+            try:
+                exists = await asyncio.to_thread(
+                    lambda p: os.path.isfile(p) and os.access(p, os.X_OK),
+                    path
+                )
+                if exists:
+                    yabai_path = path
+                    break
+            except Exception:
+                continue
 
     if not yabai_path:
-        # Yabai not installed
+        # Yabai not installed - cache and return
+        logger.debug("[YABAI] Yabai executable not found")
         _YABAI_AVAILABILITY_CACHE.update({
             "checked": True,
             "available": False,
@@ -116,16 +151,99 @@ def _quick_yabai_check() -> Tuple[bool, Optional[str]]:
         })
         return False, None
 
-    # Quick subprocess check with SHORT timeout (1 second max)
+    # =========================================================================
+    # STEP 3: TRUE ASYNC subprocess check (yields to event loop!)
+    # =========================================================================
+    try:
+        # Create subprocess WITHOUT blocking the event loop
+        process = await asyncio.create_subprocess_exec(
+            yabai_path, "-m", "query", "--spaces",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        # Wait for completion with timeout (event loop stays responsive!)
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=2.0  # 2 second timeout for subprocess
+            )
+            is_available = process.returncode == 0
+        except asyncio.TimeoutError:
+            # Kill the hung process
+            try:
+                process.kill()
+                await process.wait()
+            except Exception:
+                pass
+            logger.warning("[YABAI] Async subprocess timed out after 2s")
+            is_available = False
+
+        # Update cache with result
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True,
+            "available": is_available,
+            "path": yabai_path if is_available else None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+
+        if is_available:
+            logger.debug(f"[YABAI] Async check: Available at {yabai_path}")
+        else:
+            logger.debug(f"[YABAI] Async check: Not running (returncode={process.returncode})")
+
+        return is_available, yabai_path if is_available else None
+
+    except Exception as e:
+        logger.debug(f"[YABAI] Async check failed: {e}")
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True,
+            "available": False,
+            "path": None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+        return False, None
+
+
+def _quick_yabai_check() -> Tuple[bool, Optional[str]]:
+    """
+    SYNC version of yabai check (for non-async contexts).
+
+    WARNING: This blocks the event loop! Use async_quick_yabai_check() when possible.
+    Kept for backward compatibility with sync code paths.
+    """
+    global _YABAI_AVAILABILITY_CACHE
+
+    # Return cached result if valid (instant)
+    if _is_yabai_cache_valid():
+        return _YABAI_AVAILABILITY_CACHE["available"], _YABAI_AVAILABILITY_CACHE["path"]
+
+    # Quick path check
+    yabai_path = shutil.which("yabai")
+    if not yabai_path:
+        common_paths = ["/opt/homebrew/bin/yabai", "/usr/local/bin/yabai"]
+        for path in common_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                yabai_path = path
+                break
+
+    if not yabai_path:
+        _YABAI_AVAILABILITY_CACHE.update({
+            "checked": True, "available": False, "path": None,
+            "last_check": datetime.now(),
+            "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
+        })
+        return False, None
+
+    # Blocking subprocess check (1s timeout)
     try:
         result = subprocess.run(
             [yabai_path, "-m", "query", "--spaces"],
-            capture_output=True,
-            text=True,
-            timeout=1.0,  # Very short timeout!
+            capture_output=True, text=True, timeout=1.0
         )
         is_available = result.returncode == 0
-
         _YABAI_AVAILABILITY_CACHE.update({
             "checked": True,
             "available": is_available,
@@ -134,26 +252,14 @@ def _quick_yabai_check() -> Tuple[bool, Optional[str]]:
             "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
         })
         return is_available, yabai_path if is_available else None
-
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-        logger.debug(f"[YABAI] Quick check failed: {e}")
+    except Exception as e:
+        logger.debug(f"[YABAI] Sync check failed: {e}")
         _YABAI_AVAILABILITY_CACHE.update({
-            "checked": True,
-            "available": False,
-            "path": None,
+            "checked": True, "available": False, "path": None,
             "last_check": datetime.now(),
             "check_count": _YABAI_AVAILABILITY_CACHE["check_count"] + 1,
         })
         return False, None
-
-
-async def async_quick_yabai_check() -> Tuple[bool, Optional[str]]:
-    """
-    Async wrapper for quick yabai check.
-    Runs the blocking check in a thread pool.
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _quick_yabai_check)
 
 
 def get_cached_yabai_status() -> Dict[str, Any]:
