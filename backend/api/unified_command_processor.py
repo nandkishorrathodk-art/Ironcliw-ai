@@ -3135,6 +3135,110 @@ class UnifiedCommandProcessor:
     ) -> Dict[str, Any]:
         """Execute command using appropriate handler"""
 
+        # =========================================================================
+        # 🛡️ SOVEREIGN SURVEILLANCE ROUTING v1.0.0
+        # =========================================================================
+        # Goal: Zero-Leak Routing. Surveillance commands NEVER hit the Cloud API.
+        # Strategy: Dynamic Grammar + Semantic Triangulation + Hard Circuit Breaker.
+        # =========================================================================
+
+        command_lower = command_text.lower().strip()
+
+        # --- LAYER 1: DYNAMIC GRAMMAR ENGINE ---
+        # Matches: "all [ANY APP] windows", "every [ANY APP] tab", "each instance"
+        god_mode_pattern = r"\b(all|every|each)\s+.*?\s*(windows?|tabs?|instances?|spaces?)\b"
+        has_multi_target = bool(re.search(god_mode_pattern, command_lower, re.IGNORECASE))
+
+        # --- LAYER 2: SEMANTIC TRIANGULATION ---
+        watch_keywords = ['watch', 'monitor', 'track', 'alert when', 'notify when', 'detect', 'scan']
+        triggers = ['for', 'when', 'until', 'if', 'whenever']
+
+        has_watch = any(k in command_lower for k in watch_keywords)
+        has_trigger = any(t in command_lower for t in triggers)
+
+        # High-Confidence Classification
+        is_surveillance_intent = has_multi_target or (has_watch and has_trigger)
+
+        if has_watch or has_multi_target:
+            logger.info(
+                f"[SOVEREIGN] Intent Analysis: '{command_text}' | "
+                f"Grammar={has_multi_target}, Keywords={has_watch}, Structure={has_trigger} | "
+                f"DECISION={'🔒 LOCAL SURVEILLANCE' if is_surveillance_intent else '☁️ VISION'}"
+            )
+
+        # --- LAYER 3: SOVEREIGNTY CIRCUIT BREAKER ---
+        if is_surveillance_intent:
+            logger.info(f"[SOVEREIGN] 🔒 Enforcing Local-Only Routing for: '{command_text}'")
+
+            try:
+                # 3a. RESILIENT PATH INJECTION
+                _current_file = os.path.abspath(__file__)
+                _api_dir = os.path.dirname(_current_file)
+                _backend_root = os.path.dirname(_api_dir)
+                _project_root = os.path.dirname(_backend_root)
+
+                for _path in [_backend_root, _project_root]:
+                    if _path not in sys.path:
+                        sys.path.insert(0, _path)
+
+                # 3b. LOCAL MODULE LOADING
+                from voice.intelligent_command_handler import IntelligentCommandHandler
+                intelligent_handler = IntelligentCommandHandler()
+                logger.info("[SOVEREIGN] ✅ Local surveillance handler loaded")
+
+                # 3c. ASYNC EXECUTION WITH TIMEOUT
+                handler_timeout = float(os.getenv("JARVIS_HANDLER_TIMEOUT", "30"))
+                result = await asyncio.wait_for(
+                    intelligent_handler.handle_command(command_text),
+                    timeout=handler_timeout
+                )
+
+                # 3d. NORMALIZE RESPONSE
+                if isinstance(result, tuple) and len(result) == 2:
+                    response_text, handler_used = result
+                elif isinstance(result, dict):
+                    response_text = result.get("response", "Monitoring initiated")
+                    handler_used = result.get("handler", "surveillance")
+                else:
+                    response_text = str(result) if result else "Monitoring initiated"
+                    handler_used = "surveillance"
+
+                logger.info(f"[SOVEREIGN] ✅ Local execution success: {response_text[:80]}...")
+
+                return {
+                    "success": True,
+                    "response": response_text,
+                    "command_type": "surveillance",
+                    "handler_used": handler_used,
+                    "routing": "sovereign_local_only",
+                    "cloud_blocked": True,
+                }
+
+            except asyncio.TimeoutError:
+                logger.error(f"[SOVEREIGN] ⏱️ Local handler timeout after {handler_timeout}s")
+                return {
+                    "success": False,
+                    "response": "My local surveillance system timed out. Cloud fallback blocked for privacy.",
+                    "command_type": "surveillance",
+                    "error": "local_timeout",
+                    "circuit_breaker_tripped": True,
+                }
+
+            except Exception as e:
+                # 3e. HARD CIRCUIT BREAKER - NEVER fall through to cloud
+                logger.critical(f"[SOVEREIGN] ❌ Local surveillance failure: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "response": f"My local surveillance core failed. Cloud fallback blocked for privacy. (Error: {str(e)[:100]})",
+                    "command_type": "surveillance",
+                    "error": "local_module_crash",
+                    "circuit_breaker_tripped": True,
+                }
+
+        # =========================================================================
+        # END SOVEREIGN ROUTING - Non-surveillance commands continue below
+        # =========================================================================
+
         # Get or initialize handler
         if command_type not in self.handlers:
             handler = await self._get_handler(command_type)
