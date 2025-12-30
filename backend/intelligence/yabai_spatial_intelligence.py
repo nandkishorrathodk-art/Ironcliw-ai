@@ -195,8 +195,18 @@ class YabaiSpatialIntelligence:
             'events_emitted': 0
         }
 
-        # Check Yabai availability
-        self.yabai_available = self._check_yabai()
+        # =====================================================================
+        # ROOT CAUSE FIX v12.0.0: Non-Blocking Yabai Check in Constructor
+        # =====================================================================
+        # PROBLEM: subprocess.run() in __init__ blocks event loop for up to 2s
+        # - During startup, this adds to total initialization time
+        # - Can cause cascade blocking with other components
+        #
+        # SOLUTION: Use cached quick check from yabai_space_detector
+        # - Returns cached result instantly if available
+        # - Only runs subprocess if cache is invalid (with short timeout)
+        # =====================================================================
+        self.yabai_available = self._check_yabai_fast()
 
         logger.info("[YABAI-SI] Yabai Spatial Intelligence initialized")
         logger.info(f"[YABAI-SI] Yabai available: {self.yabai_available}")
@@ -204,14 +214,37 @@ class YabaiSpatialIntelligence:
         logger.info(f"[YABAI-SI] Monitoring interval: {self.monitoring_interval}s")
         logger.info(f"[YABAI-SI] Event-driven architecture: ENABLED")
 
+    def _check_yabai_fast(self) -> bool:
+        """
+        Fast check if Yabai is available using cached result.
+
+        ROOT CAUSE FIX v12.0.0: Uses module-level cache to avoid blocking.
+        """
+        try:
+            # Try to use the cached check from yabai_space_detector
+            from vision.yabai_space_detector import _quick_yabai_check
+            is_available, _ = _quick_yabai_check()
+            return is_available
+        except ImportError:
+            # Fallback to quick filesystem check (no subprocess)
+            import shutil
+            yabai_path = shutil.which("yabai")
+            if not yabai_path:
+                return False
+            # Just check if executable exists, don't run subprocess
+            return True
+        except Exception as e:
+            logger.debug(f"[YABAI-SI] Fast check failed: {e}")
+            return False
+
     def _check_yabai(self) -> bool:
-        """Check if Yabai is installed and accessible"""
+        """Legacy blocking check - DEPRECATED, use _check_yabai_fast instead."""
         try:
             result = subprocess.run(
                 ['yabai', '-m', 'query', '--spaces'],
                 capture_output=True,
                 text=True,
-                timeout=2
+                timeout=1  # Reduced from 2s
             )
             return result.returncode == 0
         except Exception as e:

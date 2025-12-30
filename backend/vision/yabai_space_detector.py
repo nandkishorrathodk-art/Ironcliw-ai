@@ -447,28 +447,43 @@ class YabaiSpaceDetector:
         self._lazy_init_done = False
 
         # =====================================================================
-        # ROOT CAUSE FIX v11.0.0: Non-Blocking Constructor
+        # ROOT CAUSE FIX v12.0.0: ZERO-BLOCKING Constructor
         # =====================================================================
-        # PROBLEM: subprocess.run() in __init__ blocks the event loop
-        # - Causes "Processing..." hang when YabaiSpaceDetector is created
-        # - asyncio.wait_for timeout doesn't work on blocked event loop
+        # PROBLEM: Even _quick_yabai_check() with cache uses subprocess.run()
+        # on cache miss, which blocks the event loop during startup.
         #
-        # SOLUTION: Use cached quick-check, defer full init to lazy method
-        # - Check cache first (instant, non-blocking)
-        # - If cache says unavailable, skip all subprocess calls
-        # - Full discovery only happens when is_available() is called
+        # SOLUTION: NEVER run subprocess in __init__
+        # - Only check if cache is already valid (instant)
+        # - If cache invalid, DON'T run subprocess - defer to lazy init
+        # - Actual yabai check happens on first is_available() call
         # =====================================================================
 
-        # Quick non-blocking check using cache
-        is_available, yabai_path = _quick_yabai_check()
-
-        if yabai_path:
-            self._health.yabai_path = yabai_path
-            self._health.is_running = is_available
-            if is_available:
-                logger.debug(f"[YABAI] Quick check: Available at {yabai_path}")
+        # Check ONLY the cache - NO subprocess calls allowed in __init__!
+        if _is_yabai_cache_valid():
+            # Cache is valid - use cached result (instant)
+            is_available = _YABAI_AVAILABILITY_CACHE["available"]
+            yabai_path = _YABAI_AVAILABILITY_CACHE["path"]
+            if yabai_path:
+                self._health.yabai_path = yabai_path
+                self._health.is_running = is_available
+            logger.debug(f"[YABAI] Using cached result: available={is_available}")
         else:
-            logger.debug("[YABAI] Quick check: Not available (skipping blocking init)")
+            # Cache invalid - defer check to lazy initialization
+            # Just check if executable exists (fast filesystem check, no subprocess)
+            yabai_path = shutil.which("yabai")
+            if not yabai_path:
+                # Check common locations
+                for path in ["/opt/homebrew/bin/yabai", "/usr/local/bin/yabai"]:
+                    if os.path.isfile(path) and os.access(path, os.X_OK):
+                        yabai_path = path
+                        break
+
+            if yabai_path:
+                self._health.yabai_path = yabai_path
+                # Don't set is_running - we don't know yet (deferred)
+                logger.debug(f"[YABAI] Found yabai at {yabai_path} (availability check deferred)")
+            else:
+                logger.debug("[YABAI] Yabai not found - availability check deferred")
 
         self._initialized = True
 
