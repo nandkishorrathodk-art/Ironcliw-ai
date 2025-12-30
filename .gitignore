@@ -197,6 +197,10 @@ core.*
 !docs/core/
 !docs/core/**
 !docs/core/**/*
+# Exception: Allow backend/context_intelligence/core directory
+!backend/context_intelligence/core/
+!backend/context_intelligence/core/**
+!backend/context_intelligence/core/**/*
 # But still ignore build artifacts and cache in backend/core/
 backend/core/__pycache__/
 backend/core/**/__pycache__/

@@ -26,15 +26,24 @@ class ContextAwareCommandHandler:
         self.system_monitor = get_system_monitor()
         self.execution_steps = []
         
-    async def handle_command_with_context(self, command: str, 
-                                        execute_callback=None) -> Dict[str, Any]:
+    async def handle_command_with_context(
+        self,
+        command: str,
+        execute_callback=None,
+        audio_data: Optional[bytes] = None,
+        speaker_name: Optional[str] = None,
+        **kwargs  # Accept additional kwargs for flexibility
+    ) -> Dict[str, Any]:
         """
         Handle a command with full context awareness
-        
+
         Args:
             command: The command to execute
             execute_callback: Callback to execute the actual command
-            
+            audio_data: Optional audio data for voice authentication
+            speaker_name: Optional speaker name from voice recognition
+            **kwargs: Additional optional parameters
+
         Returns:
             Response dict with status and messages
         """

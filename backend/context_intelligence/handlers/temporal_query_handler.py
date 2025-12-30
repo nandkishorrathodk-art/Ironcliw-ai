@@ -1075,3 +1075,65 @@ class TemporalQueryHandler:
             summary_parts.append(f"{len(set(patterns))} patterns recognized")
 
         return "; ".join(summary_parts)
+
+
+# =============================================================================
+# GLOBAL HANDLER INSTANCE & FACTORY FUNCTIONS
+# =============================================================================
+
+_global_handler: Optional[TemporalQueryHandler] = None
+
+
+def get_temporal_query_handler() -> Optional[TemporalQueryHandler]:
+    """Get the global temporal query handler.
+
+    Returns:
+        The global TemporalQueryHandler instance, or None if not initialized.
+
+    Example:
+        >>> handler = get_temporal_query_handler()
+        >>> if handler:
+        ...     result = await handler.handle_query("What changed?")
+    """
+    return _global_handler
+
+
+def initialize_temporal_query_handler(
+    proactive_monitoring_manager=None,
+    change_detection_manager=None,
+    implicit_resolver=None,
+    conversation_tracker=None
+) -> TemporalQueryHandler:
+    """Initialize the global temporal query handler.
+
+    Creates and stores a global TemporalQueryHandler instance with the provided
+    dependencies. This allows the handler to be accessed from anywhere via
+    `get_temporal_query_handler()`.
+
+    Args:
+        proactive_monitoring_manager: HybridProactiveMonitoringManager instance
+        change_detection_manager: ChangeDetectionManager instance
+        implicit_resolver: ImplicitReferenceResolver instance
+        conversation_tracker: ConversationTracker instance
+
+    Returns:
+        The initialized TemporalQueryHandler instance.
+
+    Example:
+        >>> handler = initialize_temporal_query_handler(
+        ...     proactive_monitoring_manager=monitoring_mgr,
+        ...     change_detection_manager=change_mgr
+        ... )
+        >>> result = await handler.handle_query("What changed in space 3?")
+    """
+    global _global_handler
+
+    _global_handler = TemporalQueryHandler(
+        proactive_monitoring_manager=proactive_monitoring_manager,
+        change_detection_manager=change_detection_manager,
+        implicit_resolver=implicit_resolver,
+        conversation_tracker=conversation_tracker
+    )
+
+    logger.info("[TEMPORAL-HANDLER] ✅ Global handler initialized")
+    return _global_handler

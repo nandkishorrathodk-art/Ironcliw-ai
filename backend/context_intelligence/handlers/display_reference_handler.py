@@ -889,12 +889,84 @@ class AdvancedDisplayReferenceHandler:
 
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate text similarity score using Jaccard similarity.
-        
+
         Args:
             text1: First text to compare
             text2: Second text to compare
-            
+
         Returns:
             Similarity score between 0.0 and 1.0
         """
         words1 = set(text1.split())
+        words2 = set(text2.split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+
+        return len(intersection) / len(union) if union else 0.0
+
+
+# =============================================================================
+# BACKWARDS COMPATIBILITY ALIAS
+# =============================================================================
+
+# Alias for backwards compatibility with handlers/__init__.py
+DisplayReferenceHandler = AdvancedDisplayReferenceHandler
+
+
+# =============================================================================
+# GLOBAL HANDLER INSTANCE & FACTORY FUNCTIONS
+# =============================================================================
+
+_global_handler: Optional[AdvancedDisplayReferenceHandler] = None
+
+
+def get_display_reference_handler() -> Optional[AdvancedDisplayReferenceHandler]:
+    """Get the global display reference handler.
+
+    Returns:
+        The global AdvancedDisplayReferenceHandler instance, or None if not initialized.
+
+    Example:
+        >>> handler = get_display_reference_handler()
+        >>> if handler:
+        ...     ref = await handler.resolve("connect to living room TV")
+    """
+    return _global_handler
+
+
+def initialize_display_reference_handler(
+    implicit_resolver=None,
+    display_monitor=None
+) -> AdvancedDisplayReferenceHandler:
+    """Initialize the global display reference handler.
+
+    Creates and stores a global AdvancedDisplayReferenceHandler instance with the
+    provided dependencies.
+
+    Args:
+        implicit_resolver: ImplicitReferenceResolver instance for context
+        display_monitor: AdvancedDisplayMonitor for display detection
+
+    Returns:
+        The initialized AdvancedDisplayReferenceHandler instance.
+
+    Example:
+        >>> handler = initialize_display_reference_handler(
+        ...     implicit_resolver=resolver,
+        ...     display_monitor=monitor
+        ... )
+        >>> ref = await handler.resolve("connect to projector")
+    """
+    global _global_handler
+
+    _global_handler = AdvancedDisplayReferenceHandler(
+        implicit_resolver=implicit_resolver,
+        display_monitor=display_monitor
+    )
+
+    logger.info("[DISPLAY-REF-ADV] ✅ Global handler initialized")
+    return _global_handler

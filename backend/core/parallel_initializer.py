@@ -368,13 +368,21 @@ class ParallelInitializer:
             else:
                 logger.info(f"[READY] {name}")
 
-            # Broadcast completion via WebSocket
-            broadcaster = get_startup_broadcaster()
-            await broadcaster.broadcast_component_complete(
-                component=name,
-                message=f"{name.replace('_', ' ').title()} ready",
-                duration_ms=duration_ms
-            )
+            # Broadcast completion via WebSocket (with timeout to prevent blocking)
+            try:
+                broadcaster = get_startup_broadcaster()
+                await asyncio.wait_for(
+                    broadcaster.broadcast_component_complete(
+                        component=name,
+                        message=f"{name.replace('_', ' ').title()} ready",
+                        duration_ms=duration_ms
+                    ),
+                    timeout=2.0  # 2 second timeout to prevent startup blocking
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"[STARTUP] Broadcast timeout for {name} - continuing startup")
+            except Exception as e:
+                logger.warning(f"[STARTUP] Broadcast error for {name}: {e} - continuing startup")
 
     async def _mark_failed(self, name: str, error: str):
         """Mark a component as failed"""
@@ -386,13 +394,21 @@ class ParallelInitializer:
             self.app.state.components_failed.add(name)
             logger.warning(f"[FAILED] {name}: {error}")
 
-            # Broadcast failure via WebSocket
-            broadcaster = get_startup_broadcaster()
-            await broadcaster.broadcast_component_failed(
-                component=name,
-                error=error,
-                is_critical=comp.is_critical
-            )
+            # Broadcast failure via WebSocket (with timeout to prevent blocking)
+            try:
+                broadcaster = get_startup_broadcaster()
+                await asyncio.wait_for(
+                    broadcaster.broadcast_component_failed(
+                        component=name,
+                        error=error,
+                        is_critical=comp.is_critical
+                    ),
+                    timeout=2.0  # 2 second timeout to prevent startup blocking
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"[STARTUP] Broadcast timeout for {name} failure - continuing")
+            except Exception as e:
+                logger.warning(f"[STARTUP] Broadcast error for {name} failure: {e} - continuing")
 
     async def _mark_skipped(self, name: str, reason: str):
         """Mark a component as skipped"""
