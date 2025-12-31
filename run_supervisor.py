@@ -118,6 +118,91 @@ Author: JARVIS System
 Version: 7.0.0
 """
 
+# =============================================================================
+# CRITICAL: VENV AUTO-ACTIVATION (MUST BE FIRST - BEFORE ANY IMPORTS)
+# =============================================================================
+# This ensures we use the venv Python with correct packages, avoiding the
+# "cannot import name 'get_hashable_key' from partially initialized module"
+# error that occurs when user-level numba conflicts with venv numba.
+#
+# If running with system Python and venv exists, re-exec with venv Python.
+# This MUST happen before ANY imports to prevent loading wrong packages.
+# =============================================================================
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+def _ensure_venv_python():
+    """
+    Ensure we're running with the venv Python.
+    If not, re-execute the script with the venv Python.
+
+    The key is checking if venv site-packages is in sys.path, NOT comparing
+    executable paths (since venv Python often symlinks to system Python).
+    """
+    # Skip if explicitly disabled (for debugging)
+    if _os.environ.get('JARVIS_SKIP_VENV_CHECK') == '1':
+        return
+
+    # Skip if already re-executed (prevent infinite loop)
+    if _os.environ.get('_JARVIS_VENV_REEXEC') == '1':
+        return
+
+    # Find project root and venv
+    script_dir = _Path(__file__).parent.resolve()
+    venv_python = script_dir / "venv" / "bin" / "python3"
+    if not venv_python.exists():
+        venv_python = script_dir / "venv" / "bin" / "python"
+
+    if not venv_python.exists():
+        # No venv found, continue with current Python
+        return
+
+    # KEY CHECK: Is the venv's site-packages in sys.path?
+    # This is the definitive test - venv Python adds its site-packages to path
+    venv_site_packages = str(script_dir / "venv" / "lib")
+    venv_in_path = any(venv_site_packages in p for p in _sys.path)
+
+    if venv_in_path:
+        # Running with venv Python - all good
+        return
+
+    # Check if we're actually running from the venv's bin directory
+    # (handles case where venv is symlinked but executable path matches)
+    current_exe = _Path(_sys.executable)
+    if str(script_dir / "venv" / "bin") in str(current_exe):
+        # Running from venv bin directory - should be fine
+        return
+
+    # NOT running with venv - need to re-exec
+    print(f"[JARVIS] Detected system Python without venv packages")
+    print(f"[JARVIS] Current: {_sys.executable}")
+    print(f"[JARVIS] Switching to: {venv_python}")
+
+    # Set marker to prevent infinite re-exec
+    _os.environ['_JARVIS_VENV_REEXEC'] = '1'
+
+    # Set PYTHONPATH to include project directories
+    pythonpath = _os.pathsep.join([
+        str(script_dir),
+        str(script_dir / "backend"),
+        _os.environ.get('PYTHONPATH', '')
+    ])
+    _os.environ['PYTHONPATH'] = pythonpath
+
+    # Re-execute with venv Python
+    # This replaces the current process with the venv Python running the same script
+    _os.execv(str(venv_python), [str(venv_python)] + _sys.argv)
+
+# Execute venv check immediately
+_ensure_venv_python()
+
+# Clean up the temporary imports (they'll be re-imported properly below)
+del _os, _sys, _Path, _ensure_venv_python
+
+# =============================================================================
+# NORMAL IMPORTS START HERE
+# =============================================================================
 from __future__ import annotations
 
 import asyncio

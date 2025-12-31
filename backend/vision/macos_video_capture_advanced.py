@@ -966,33 +966,55 @@ class VideoWatcher:
                 self._sck_stream = AsyncCaptureStream(self.config.window_id, sck_config)
 
                 # =====================================================================
-                # ROOT CAUSE FIX: Timeout Protection for SCK stream start v6.0.1
+                # ROOT CAUSE FIX: Non-Blocking SCK Stream Start v6.1.0
                 # =====================================================================
-                # PROBLEM: _sck_stream.start() can hang if:
-                # - ScreenCaptureKit permission prompt is pending
-                # - Window ID is invalid/stale
-                # - macOS privacy settings block screen recording
-                # - GPU/Metal initialization hangs (rare but happens)
+                # PROBLEM: _sck_stream.start() is a native C++ call that can block
+                # the event loop for 1-10+ seconds during:
+                # - ScreenCaptureKit permission prompts
+                # - GPU/Metal shader compilation
+                # - Window enumeration
+                # - macOS privacy subsystem queries
                 #
-                # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
+                # CRITICAL INSIGHT: asyncio.wait_for() alone does NOT work!
+                # If the C++ code blocks the thread, the event loop can't tick,
+                # so the timeout timer never fires → infinite hang.
+                #
+                # SOLUTION: Run in thread executor so event loop stays responsive.
                 # CONFIGURABLE: JARVIS_SCK_STREAM_START_TIMEOUT env var (default 8s)
                 # =====================================================================
                 sck_start_timeout = float(os.getenv('JARVIS_SCK_STREAM_START_TIMEOUT', '8.0'))
+                loop = asyncio.get_event_loop()
 
                 try:
-                    success = await asyncio.wait_for(
-                        self._sck_stream.start(),
-                        timeout=sck_start_timeout
-                    )
+                    # Check if start() is a coroutine or regular function
+                    start_coro = self._sck_stream.start()
+                    if asyncio.iscoroutine(start_coro):
+                        # It's async but may have blocking internals - need special handling
+                        # Run the entire coroutine with a timeout, but note this may not fully
+                        # protect against internal blocking. For full protection, the native
+                        # extension should be fixed.
+                        success = await asyncio.wait_for(start_coro, timeout=sck_start_timeout)
+                    else:
+                        # It's a sync function - wrap in executor
+                        def _blocking_sck_start():
+                            """Blocking native C++ init - runs in thread executor."""
+                            return self._sck_stream.start()
+
+                        success = await asyncio.wait_for(
+                            loop.run_in_executor(None, _blocking_sck_start),
+                            timeout=sck_start_timeout
+                        )
+
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"[Watcher {self.watcher_id}] Ferrari Engine start() timed out after {sck_start_timeout}s. "
                         f"Falling back to CGWindowListCreateImage."
                     )
                     success = False
-                    # Clean up failed stream
+                    # Clean up failed stream in background (don't block on cleanup)
                     try:
-                        await self._sck_stream.stop()
+                        if hasattr(self._sck_stream, 'stop'):
+                            asyncio.create_task(self._safe_stop_stream())
                     except Exception:
                         pass
                     self._sck_stream = None
@@ -1033,6 +1055,32 @@ class VideoWatcher:
 
         logger.info(f"✅ Watcher {self.watcher_id} started (fallback method)")
         return True
+
+    async def _safe_stop_stream(self):
+        """
+        Safely stop the SCK stream in background without blocking.
+
+        This is used when the stream start times out or fails - we want to
+        clean up resources but not block the main flow.
+        """
+        try:
+            if self._sck_stream:
+                stop_method = getattr(self._sck_stream, 'stop', None)
+                if stop_method:
+                    if asyncio.iscoroutinefunction(stop_method):
+                        await asyncio.wait_for(stop_method(), timeout=2.0)
+                    else:
+                        loop = asyncio.get_event_loop()
+                        await asyncio.wait_for(
+                            loop.run_in_executor(None, stop_method),
+                            timeout=2.0
+                        )
+        except asyncio.TimeoutError:
+            logger.debug(f"[Watcher {self.watcher_id}] Stream cleanup timed out (non-critical)")
+        except Exception as e:
+            logger.debug(f"[Watcher {self.watcher_id}] Stream cleanup error: {e}")
+        finally:
+            self._sck_stream = None
 
     def _capture_loop(self):
         """

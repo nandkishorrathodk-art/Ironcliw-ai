@@ -1186,16 +1186,19 @@ class UnifiedCommandProcessor:
         surveillance_patterns = [p.strip() for p in surveillance_patterns]
 
         # ─────────────────────────────────────────────────────────────────────────
-        # 2. Grammar-Based Multi-Target Detection (God Mode)
+        # 2. Grammar-Based Multi-Target Detection (God Mode) v6.1.0
         # ─────────────────────────────────────────────────────────────────────────
-        # Pattern: "\b(all|every|each)\s+(?:\w+\s*)?(windows?|tabs?|instances?|spaces?)\b"
-        # Matches: "all windows", "all chrome windows", "every arc tab", "each terminal instance"
-        # Works for ANY app without hardcoding (Chrome, Arc, Safari, VSCode, etc.)
-        # Also works WITHOUT app name: "all windows", "every tab", etc.
+        # FIXED: Pattern now supports MULTI-WORD app names (e.g., "Google Chrome")
+        # Old pattern: (?:\w+\s*)? only matched SINGLE words like "Chrome"
+        # New pattern: .*? matches ANY text (including "Google Chrome")
+        #
+        # Matches: "all windows", "all chrome windows", "all Google Chrome windows",
+        #          "every arc tab", "each terminal instance", "all VS Code windows"
+        # Works for ANY app without hardcoding
         # ─────────────────────────────────────────────────────────────────────────
         god_mode_pattern = os.getenv(
             "JARVIS_GOD_MODE_GRAMMAR_PATTERN",
-            r"\b(all|every|each)\s+(?:\w+\s*)?(windows?|tabs?|instances?|spaces?)\b"
+            r"\b(all|every|each)\s+.*?\s*(windows?|tabs?|instances?|spaces?)\b"
         )
 
         # Fallback patterns for edge cases (more flexible matching)
