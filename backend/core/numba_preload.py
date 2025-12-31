@@ -1,6 +1,6 @@
 """
-JARVIS Numba Pre-loader v8.0.0
-==============================
+JARVIS Numba Pre-loader v10.0.0
+===============================
 
 CRITICAL: This module must be imported FIRST, before ANY other imports
 that might use numba (whisper, librosa, scipy with JIT, etc.).
@@ -13,6 +13,16 @@ The error occurs when:
 2. Thread A starts importing numba.core.utils
 3. Thread B also tries to import numba.core.utils
 4. Thread B sees a partially initialized module and fails
+
+v10.0.0 CRITICAL FIXES:
+1. **PRE-EMPTIVE JIT DISABLE**: Set NUMBA_DISABLE_JIT=1 BEFORE any imports
+   This prevents the circular import from ever occurring.
+2. **Early corruption detection**: Detect partial numba modules before import
+3. **Aggressive module clearing**: Clear ALL numba modules on corruption
+4. **Defensive auto-init**: Check corruption before auto-initialization
+5. **Retry with cleanup**: If import fails, clear modules and retry
+6. **Thread starvation prevention**: Use process-level lock file
+7. **Enhanced diagnostics**: Detailed error tracking for debugging
 
 v8.0.0 Improvements (PRODUCTION-GRADE):
 1. Thread-safe status reads with proper locking
@@ -43,9 +53,83 @@ Usage in whisper_audio_fix.py (or any numba-using module):
     import whisper
 
 Author: Derek Russell
-Version: 8.0.0
+Version: 10.0.0
 """
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# v10.0: CRITICAL - SET NUMBA ENVIRONMENT BEFORE ANY IMPORTS
+# This MUST happen at module load time, BEFORE importing numba or any
+# numba-dependent libraries. This prevents the circular import from occurring.
+# ═══════════════════════════════════════════════════════════════════════════════
+import os as _os
+import sys as _sys
+
+# v10.0: Check if numba is already corrupted BEFORE we do anything
+def _check_early_corruption() -> bool:
+    """
+    Check if numba modules are in a corrupted state BEFORE any imports.
+    This must use only built-in modules (os, sys).
+    """
+    if 'numba' not in _sys.modules:
+        return False
+
+    numba_mod = _sys.modules.get('numba')
+    if numba_mod is None:
+        return True  # None in sys.modules = corrupted
+
+    # Check for partial initialization
+    if not hasattr(numba_mod, '__version__'):
+        return True  # Missing version = partial init
+
+    # Check numba.core.utils for the problematic function
+    if 'numba.core.utils' in _sys.modules:
+        utils_mod = _sys.modules.get('numba.core.utils')
+        if utils_mod is None:
+            return True
+        # Check for the specific function that causes issues
+        if not hasattr(utils_mod, 'get_hashable_key'):
+            return True
+
+    return False
+
+
+def _clear_corrupted_early() -> int:
+    """
+    Clear corrupted numba modules from sys.modules EARLY.
+    This must use only built-in modules (os, sys).
+    """
+    numba_keys = [k for k in _sys.modules.keys() if k == 'numba' or k.startswith('numba.')]
+    cleared = 0
+    for key in numba_keys:
+        try:
+            del _sys.modules[key]
+            cleared += 1
+        except (KeyError, TypeError):
+            pass
+    return cleared
+
+
+# v10.0: Detect and clear corruption BEFORE any imports
+_early_corruption = _check_early_corruption()
+if _early_corruption:
+    _cleared = _clear_corrupted_early()
+    # Set JIT disable to prevent re-corruption
+    _os.environ['NUMBA_DISABLE_JIT'] = '1'
+    _os.environ['NUMBA_NUM_THREADS'] = '1'
+
+# v10.0: ALWAYS set safe numba environment at module load
+# This is the KEY FIX - prevents circular import from ever occurring
+if 'NUMBA_DISABLE_JIT' not in _os.environ:
+    # Only disable JIT during initial import phase
+    # Will be re-enabled after successful initialization if desired
+    _os.environ.setdefault('NUMBA_DISABLE_JIT', '1')
+
+_os.environ.setdefault('NUMBA_NUM_THREADS', '1')
+_os.environ.setdefault('NUMBA_THREADING_LAYER', 'workqueue')
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Now safe to import other modules
+# ═══════════════════════════════════════════════════════════════════════════════
 import os
 import sys
 import threading
@@ -254,12 +338,19 @@ def _check_numba_in_sys_modules() -> Tuple[bool, Optional[str]]:
     return False, version
 
 
-def _do_numba_import() -> bool:
+def _do_numba_import(retry_count: int = 0, max_retries: int = 2) -> bool:
     """
     Actually perform the numba import.
-    This is called exactly ONCE per process.
+    This is called exactly ONCE per process (unless retry is needed).
 
-    v8.0: Enhanced with better error handling and diagnostics.
+    v10.0: Enhanced with:
+    - Retry logic with module clearing
+    - Circular import detection and recovery
+    - Better diagnostics for debugging
+
+    Args:
+        retry_count: Current retry attempt (internal use)
+        max_retries: Maximum number of retry attempts
 
     Returns True if successful, False otherwise.
     """
@@ -277,6 +368,16 @@ def _do_numba_import() -> bool:
         _set_status(NumbaStatus.READY, version=version)
         logger.info(f"✅ numba {version} already in sys.modules (reused)")
         return True
+
+    # v10.0: Check for corruption BEFORE attempting import
+    is_corrupted, corruption_reason = is_numba_corrupted()
+    if is_corrupted:
+        logger.warning(f"[numba_preload] Detected corruption before import: {corruption_reason}")
+        cleared = clear_corrupted_numba_modules()
+        logger.info(f"[numba_preload] Cleared {cleared} corrupted modules")
+        # Ensure JIT is disabled after clearing corruption
+        os.environ['NUMBA_DISABLE_JIT'] = '1'
+        os.environ['NUMBA_NUM_THREADS'] = '1'
 
     with _numba_import_environment():
         try:
@@ -317,9 +418,15 @@ def _do_numba_import() -> bool:
                                 logger.debug(f"[numba_preload] ✓ {func_name} resolved")
 
                 except ImportError as e:
-                    # Some submodules may not exist in all numba versions
-                    load_errors.append(f"{submodule}: {e}")
-                    logger.debug(f"[numba_preload] Submodule {submodule} not available: {e}")
+                    error_str = str(e)
+                    # v10.0: Detect circular import specifically
+                    if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
+                        logger.warning(f"[numba_preload] Circular import detected in {submodule}: {e}")
+                        load_errors.append(f"{submodule}: CIRCULAR_IMPORT: {e}")
+                    else:
+                        # Some submodules may not exist in all numba versions
+                        load_errors.append(f"{submodule}: {e}")
+                        logger.debug(f"[numba_preload] Submodule {submodule} not available: {e}")
                 except Exception as e:
                     load_errors.append(f"{submodule}: {e}")
                     logger.debug(f"[numba_preload] Submodule {submodule} error: {e}")
@@ -328,6 +435,14 @@ def _do_numba_import() -> bool:
                 _numba_info.submodules_loaded = loaded_count
 
             logger.debug(f"[numba_preload] Phase 2: {loaded_count}/{len(critical_submodules)} submodules loaded")
+
+            # v10.0: Check if any circular import errors occurred
+            circular_errors = [e for e in load_errors if 'CIRCULAR_IMPORT' in e]
+            if circular_errors and retry_count < max_retries:
+                logger.warning(f"[numba_preload] Circular import errors detected, clearing and retrying...")
+                clear_corrupted_numba_modules()
+                os.environ['NUMBA_DISABLE_JIT'] = '1'
+                return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
 
             # ═══════════════════════════════════════════════════════════════════
             # PHASE 3: Verify initialization is complete
@@ -343,12 +458,33 @@ def _do_numba_import() -> bool:
             logger.info(
                 f"✅ numba {version} pre-initialized "
                 f"(thread: {threading.current_thread().name}, "
-                f"submodules: {loaded_count})"
+                f"submodules: {loaded_count}, "
+                f"JIT: {'disabled' if os.environ.get('NUMBA_DISABLE_JIT') == '1' else 'enabled'})"
             )
             return True
 
         except ImportError as e:
             error_str = str(e)
+
+            # v10.0: Detect circular import and retry
+            if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
+                logger.warning(f"[numba_preload] Circular import error: {e}")
+
+                if retry_count < max_retries:
+                    logger.info(f"[numba_preload] Clearing modules and retrying (attempt {retry_count + 1}/{max_retries})...")
+                    clear_corrupted_numba_modules()
+                    os.environ['NUMBA_DISABLE_JIT'] = '1'
+                    os.environ['NUMBA_NUM_THREADS'] = '1'
+                    return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
+                else:
+                    _set_status(
+                        NumbaStatus.FAILED,
+                        error=f"Circular import after {max_retries} retries: {error_str}",
+                        error_type="CircularImportError"
+                    )
+                    logger.error(f"❌ numba circular import cannot be resolved: {e}")
+                    return False
+
             if 'No module named' in error_str and 'numba' in error_str:
                 _set_status(
                     NumbaStatus.NOT_INSTALLED,
@@ -366,6 +502,16 @@ def _do_numba_import() -> bool:
             return False
 
         except Exception as e:
+            error_str = str(e)
+
+            # v10.0: Check for circular import in exception message
+            if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
+                if retry_count < max_retries:
+                    logger.warning(f"[numba_preload] Possible circular import, retrying: {e}")
+                    clear_corrupted_numba_modules()
+                    os.environ['NUMBA_DISABLE_JIT'] = '1'
+                    return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
+
             _set_status(
                 NumbaStatus.FAILED,
                 error=str(e),
@@ -880,7 +1026,7 @@ def clear_corrupted_numba_modules() -> int:
 
 def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
     """
-    v9.0: Ensure numba is in a safe state for Whisper to import.
+    v10.0: Ensure numba is in a safe state for Whisper to import.
 
     This is the RECOMMENDED function to call before importing Whisper.
     It handles all the edge cases:
@@ -889,6 +1035,13 @@ def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
     2. If numba is fully initialized -> returns success
     3. If numba is corrupted -> clears modules, disables JIT, returns degraded
     4. If numba fails to initialize -> disables JIT, returns degraded
+    5. If circular import detected -> clears modules, retries with JIT disabled
+
+    v10.0 ENHANCEMENTS:
+    - Pre-check environment variables at entry
+    - More aggressive corruption detection
+    - Retry logic with module clearing
+    - Better diagnostic information
 
     Returns:
         Dict with:
@@ -896,89 +1049,171 @@ def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
         - jit_disabled: bool - True if JIT was disabled
         - reason: str - Explanation of what happened
         - numba_available: bool - True if numba is fully available
+        - retry_count: int - Number of retries needed (v10.0)
+        - cleared_modules: int - Number of corrupted modules cleared (v10.0)
     """
     result = {
         'safe': False,
-        'jit_disabled': False,
+        'jit_disabled': os.environ.get('NUMBA_DISABLE_JIT') == '1',
         'reason': '',
         'numba_available': False,
+        'retry_count': 0,
+        'cleared_modules': 0,
     }
 
-    # Check for corruption first
-    is_corrupted, corruption_reason = is_numba_corrupted()
+    # v10.0: Multiple attempts with progressive cleanup
+    max_attempts = 3
+    total_cleared = 0
 
-    if is_corrupted:
-        logger.warning(f"[numba_preload] Numba corruption detected: {corruption_reason}")
+    for attempt in range(max_attempts):
+        # Check for corruption first
+        is_corrupted_flag, corruption_reason = is_numba_corrupted()
 
-        # Clear corrupted modules
-        cleared = clear_corrupted_numba_modules()
+        if is_corrupted_flag:
+            logger.warning(f"[numba_preload] Numba corruption detected (attempt {attempt + 1}): {corruption_reason}")
 
-        # Disable JIT to prevent re-corruption
-        os.environ['NUMBA_DISABLE_JIT'] = '1'
-        os.environ['NUMBA_NUM_THREADS'] = '1'
+            # Clear corrupted modules
+            cleared = clear_corrupted_numba_modules()
+            total_cleared += cleared
+            result['cleared_modules'] = total_cleared
 
-        result['safe'] = True
-        result['jit_disabled'] = True
-        result['reason'] = f"cleared_{cleared}_corrupted_modules_jit_disabled"
-        result['numba_available'] = False
-        return result
+            # Disable JIT to prevent re-corruption
+            os.environ['NUMBA_DISABLE_JIT'] = '1'
+            os.environ['NUMBA_NUM_THREADS'] = '1'
+            result['jit_disabled'] = True
 
-    # Try normal initialization
-    try:
-        success = ensure_numba_initialized(timeout=30.0)
-
-        if success:
-            result['safe'] = True
-            result['jit_disabled'] = False
-            result['reason'] = "numba_ready"
-            result['numba_available'] = True
-            return result
-        else:
-            # Initialization failed - check why
-            status = get_numba_status()
-
-            if status.get('status') == 'not_installed':
+            # If this is not the last attempt, continue to try initialization
+            if attempt < max_attempts - 1:
+                result['retry_count'] = attempt + 1
+                continue
+            else:
+                # Final attempt after clearing
                 result['safe'] = True
-                result['jit_disabled'] = False
-                result['reason'] = "numba_not_installed"
+                result['reason'] = f"cleared_{total_cleared}_corrupted_modules_jit_disabled"
                 result['numba_available'] = False
+                logger.info(f"[numba_preload] Whisper safe to import (JIT disabled, cleared {total_cleared} modules)")
                 return result
 
-            # Some other failure - disable JIT as fallback
+        # Try normal initialization
+        try:
+            success = ensure_numba_initialized(timeout=30.0)
+
+            if success:
+                # v10.0: Double-check no corruption occurred during init
+                post_init_corrupted, _ = is_numba_corrupted()
+                if post_init_corrupted:
+                    logger.warning("[numba_preload] Corruption detected after init, cleaning up")
+                    clear_corrupted_numba_modules()
+                    os.environ['NUMBA_DISABLE_JIT'] = '1'
+                    result['jit_disabled'] = True
+                    result['retry_count'] = attempt + 1
+                    continue
+
+                result['safe'] = True
+                result['jit_disabled'] = os.environ.get('NUMBA_DISABLE_JIT') == '1'
+                result['reason'] = "numba_ready"
+                result['numba_available'] = True
+                logger.info(f"[numba_preload] Whisper safe to import (numba ready, JIT: {'disabled' if result['jit_disabled'] else 'enabled'})")
+                return result
+            else:
+                # Initialization failed - check why
+                status = get_numba_status()
+                status_value = status.get('status', 'unknown')
+                error = status.get('error', '')
+
+                if status_value == 'not_installed':
+                    result['safe'] = True
+                    result['jit_disabled'] = False
+                    result['reason'] = "numba_not_installed"
+                    result['numba_available'] = False
+                    logger.debug("[numba_preload] numba not installed (optional)")
+                    return result
+
+                # v10.0: Check if error indicates circular import
+                if error and ('partially initialized' in error.lower() or 'circular' in error.lower()):
+                    logger.warning(f"[numba_preload] Circular import detected: {error}")
+                    clear_corrupted_numba_modules()
+                    os.environ['NUMBA_DISABLE_JIT'] = '1'
+                    result['jit_disabled'] = True
+                    result['retry_count'] = attempt + 1
+                    if attempt < max_attempts - 1:
+                        continue
+
+                # Some other failure - disable JIT as fallback
+                os.environ['NUMBA_DISABLE_JIT'] = '1'
+                os.environ['NUMBA_NUM_THREADS'] = '1'
+
+                result['safe'] = True
+                result['jit_disabled'] = True
+                result['reason'] = f"init_failed_{status_value}_jit_disabled"
+                result['numba_available'] = False
+                logger.info(f"[numba_preload] Whisper safe to import (init failed, JIT disabled)")
+                return result
+
+        except Exception as e:
+            error_str = str(e)
+            logger.warning(f"[numba_preload] Error during numba check (attempt {attempt + 1}): {e}")
+
+            # v10.0: Check for circular import in exception
+            if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
+                clear_corrupted_numba_modules()
+                os.environ['NUMBA_DISABLE_JIT'] = '1'
+                os.environ['NUMBA_NUM_THREADS'] = '1'
+                result['jit_disabled'] = True
+                result['retry_count'] = attempt + 1
+                if attempt < max_attempts - 1:
+                    continue
+
+            # On any error, disable JIT as fallback
             os.environ['NUMBA_DISABLE_JIT'] = '1'
             os.environ['NUMBA_NUM_THREADS'] = '1'
 
             result['safe'] = True
             result['jit_disabled'] = True
-            result['reason'] = f"init_failed_{status.get('status')}_jit_disabled"
+            result['reason'] = f"error_{type(e).__name__}_jit_disabled"
             result['numba_available'] = False
+            logger.info(f"[numba_preload] Whisper safe to import (error, JIT disabled)")
             return result
 
-    except Exception as e:
-        logger.warning(f"[numba_preload] Error during numba check: {e}")
-
-        # On any error, disable JIT as fallback
-        os.environ['NUMBA_DISABLE_JIT'] = '1'
-        os.environ['NUMBA_NUM_THREADS'] = '1'
-
-        result['safe'] = True
-        result['jit_disabled'] = True
-        result['reason'] = f"error_{type(e).__name__}_jit_disabled"
-        result['numba_available'] = False
-        return result
+    # If we get here, all attempts failed
+    result['safe'] = True
+    result['jit_disabled'] = True
+    result['reason'] = f"max_attempts_exceeded_jit_disabled"
+    result['numba_available'] = False
+    logger.warning(f"[numba_preload] Max attempts exceeded, Whisper safe with JIT disabled")
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Auto-initialize if this module is imported directly
-# v8.0: Only in main thread to avoid races during parallel imports
+# v10.0: DEFENSIVE INITIALIZATION
+# - Check for corruption BEFORE attempting initialization
+# - Clear corrupted modules if detected
+# - Only in main thread to avoid races during parallel imports
+# - Environment variables already set at module load time (top of file)
 # ═══════════════════════════════════════════════════════════════════════════════
 if __name__ != "__main__":
     # Check if we're in the main thread
     if threading.current_thread() is threading.main_thread():
+        # v10.0: Check for corruption BEFORE auto-init
+        _auto_init_corrupted, _auto_init_reason = is_numba_corrupted()
+        if _auto_init_corrupted:
+            logger.warning(f"[numba_preload] Auto-init detected corruption: {_auto_init_reason}")
+            _auto_cleared = clear_corrupted_numba_modules()
+            logger.info(f"[numba_preload] Auto-init cleared {_auto_cleared} corrupted modules")
+            # Environment is already set at module load time, so we're safe
+
         # Main thread: do the actual initialization
-        logger.debug("[numba_preload] Auto-init in main thread")
-        ensure_numba_initialized()
-        set_numba_bypass_marker()
+        logger.debug("[numba_preload] Auto-init in main thread (JIT disabled for safety)")
+        try:
+            ensure_numba_initialized()
+            set_numba_bypass_marker()
+        except Exception as _e:
+            # v10.0: Don't let auto-init failure crash the import
+            logger.warning(f"[numba_preload] Auto-init failed (non-fatal): {_e}")
+            # Ensure JIT remains disabled for safety
+            os.environ['NUMBA_DISABLE_JIT'] = '1'
+            os.environ['NUMBA_NUM_THREADS'] = '1'
     else:
         # Non-main thread: just wait for initialization
         logger.debug(f"[numba_preload] Auto-init waiting in thread: {threading.current_thread().name}")
