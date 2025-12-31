@@ -97,6 +97,17 @@ from ghost_hands.narration_engine import (
     get_narration_engine,
 )
 
+# Yabai-Aware Actuator (cross-space actions)
+from ghost_hands.yabai_aware_actuator import (
+    YabaiAwareActuator,
+    YabaiActuatorConfig,
+    YabaiWindowInfo,
+    YabaiSpaceInfo,
+    CrossSpaceActionResult,
+    CrossSpaceActionReport,
+    get_yabai_actuator,
+)
+
 __all__ = [
     # Orchestrator
     "GhostHandsOrchestrator",
@@ -129,6 +140,15 @@ __all__ = [
     "ActionResult",
     "ActionReport",
     "get_background_actuator",
+
+    # Yabai-Aware Actuator (Cross-Space)
+    "YabaiAwareActuator",
+    "YabaiActuatorConfig",
+    "YabaiWindowInfo",
+    "YabaiSpaceInfo",
+    "CrossSpaceActionResult",
+    "CrossSpaceActionReport",
+    "get_yabai_actuator",
 
     # Narration Engine
     "NarrationEngine",
