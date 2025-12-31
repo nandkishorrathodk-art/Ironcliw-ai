@@ -117,6 +117,7 @@ Usage:
 Author: JARVIS System
 Version: 7.0.0
 """
+from __future__ import annotations
 
 # =============================================================================
 # CRITICAL: VENV AUTO-ACTIVATION (MUST BE FIRST - BEFORE ANY IMPORTS)
@@ -203,8 +204,6 @@ del _os, _sys, _Path, _ensure_venv_python
 # =============================================================================
 # NORMAL IMPORTS START HERE
 # =============================================================================
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
