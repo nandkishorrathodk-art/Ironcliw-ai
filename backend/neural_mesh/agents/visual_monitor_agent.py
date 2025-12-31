@@ -324,6 +324,124 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # Cross-repo state
         self._state_sync_task: Optional[asyncio.Task] = None
 
+        # Purple indicator session (for visual feedback that JARVIS is watching)
+        self._indicator_session = None
+
+    # =========================================================================
+    # Helper Methods for Non-Blocking Initialization
+    # =========================================================================
+
+    def _create_spatial_agent_sync(self):
+        """
+        Synchronously create SpatialAwarenessAgent instance.
+
+        This runs in a thread executor to prevent Yabai from blocking
+        the main event loop during import/instantiation.
+
+        Returns:
+            SpatialAwarenessAgent instance or None if failed
+        """
+        try:
+            from backend.neural_mesh.agents.spatial_awareness_agent import SpatialAwarenessAgent
+            return SpatialAwarenessAgent()
+        except Exception as e:
+            logger.warning(f"Failed to create SpatialAwarenessAgent: {e}")
+            return None
+
+    async def _ensure_purple_indicator(self) -> bool:
+        """
+        Force macOS to show the purple recording indicator in the menu bar.
+
+        WHY THIS MATTERS:
+        ScreenCaptureKit (Ferrari Engine) does NOT trigger the purple icon by default
+        because it captures window content directly without going through the
+        traditional screen recording APIs.
+
+        This creates a UX problem: the user says "Watch Chrome" but sees no visual
+        confirmation that JARVIS is actually watching.
+
+        SOLUTION:
+        Start a lightweight AVCaptureSession that triggers the purple indicator.
+        This is purely for visual feedback - the actual capture still uses
+        ScreenCaptureKit for performance.
+
+        Returns:
+            True if indicator activated, False otherwise
+        """
+        try:
+            # Check if already active
+            if self._indicator_session is not None:
+                logger.debug("🟣 Purple indicator already active")
+                return True
+
+            loop = asyncio.get_event_loop()
+
+            def _start_indicator_session():
+                """Start AVCaptureSession in thread (may have blocking init)."""
+                try:
+                    import AVFoundation
+
+                    # Create lightweight capture session (doesn't capture anything,
+                    # just triggers the macOS privacy indicator)
+                    session = AVFoundation.AVCaptureSession.alloc().init()
+
+                    # Configure for minimal resource usage
+                    if hasattr(AVFoundation, 'AVCaptureSessionPresetLow'):
+                        session.setSessionPreset_(AVFoundation.AVCaptureSessionPresetLow)
+
+                    # Start the session (this triggers the purple icon)
+                    session.startRunning()
+
+                    return session
+                except ImportError:
+                    logger.debug("AVFoundation not available for purple indicator")
+                    return None
+                except Exception as e:
+                    logger.debug(f"Purple indicator session failed: {e}")
+                    return None
+
+            # Run in executor with timeout (AVFoundation init can be slow)
+            indicator_timeout = float(os.getenv('JARVIS_INDICATOR_TIMEOUT', '3.0'))
+
+            try:
+                self._indicator_session = await asyncio.wait_for(
+                    loop.run_in_executor(None, _start_indicator_session),
+                    timeout=indicator_timeout
+                )
+
+                if self._indicator_session:
+                    logger.info("🟣 Purple Video Indicator ACTIVATED - Visual confirmation of monitoring")
+                    return True
+                else:
+                    logger.debug("Purple indicator not available (AVFoundation may be missing)")
+                    return False
+
+            except asyncio.TimeoutError:
+                logger.debug(f"Purple indicator timed out after {indicator_timeout}s")
+                return False
+
+        except Exception as e:
+            logger.debug(f"Purple indicator error: {e}")
+            return False
+
+    async def _stop_purple_indicator(self):
+        """Stop the purple indicator session when monitoring ends."""
+        if self._indicator_session:
+            try:
+                loop = asyncio.get_event_loop()
+
+                def _stop_session():
+                    try:
+                        self._indicator_session.stopRunning()
+                    except Exception:
+                        pass
+
+                await loop.run_in_executor(None, _stop_session)
+                self._indicator_session = None
+                logger.debug("🟣 Purple indicator deactivated")
+            except Exception as e:
+                logger.debug(f"Error stopping purple indicator: {e}")
+
     async def on_initialize(self) -> None:
         """
         Initialize agent resources with NON-BLOCKING execution.
@@ -1755,6 +1873,14 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     "error": f"No watchers found for {app_name}"
                 }
 
+        # =====================================================================
+        # v6.1.0: Deactivate Purple Indicator when all watchers stopped
+        # =====================================================================
+        # Only stop the indicator when NO active watchers remain
+        total_active = len(self._active_watchers) + len(self._active_video_watchers)
+        if total_active == 0:
+            await self._stop_purple_indicator()
+
         return {
             "success": True,
             "stopped_count": stopped_count,
@@ -2292,6 +2418,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             if not success:
                 logger.error(f"❌ Ferrari Engine watcher failed to start for window {window_id}")
                 return None
+
+            # =====================================================================
+            # v6.1.0: Activate Purple Indicator for Visual Confirmation
+            # =====================================================================
+            # WHY: ScreenCaptureKit doesn't trigger the macOS purple indicator.
+            # Users need visual confirmation that JARVIS is actively watching.
+            # This starts a lightweight AVCaptureSession purely for the icon.
+            # =====================================================================
+            await self._ensure_purple_indicator()
 
             # Store watcher info
             watcher_id = watcher.watcher_id
