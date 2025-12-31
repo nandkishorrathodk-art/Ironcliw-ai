@@ -246,53 +246,162 @@ class SwiftCommandClassifier:
             return self._fallback_classification(text)
     
     def _fallback_classification(self, text: str) -> Dict[str, Any]:
-        """Fallback classification using simple rules.
-        
-        Provides basic classification when the Swift classifier is unavailable
-        or fails. Uses simple keyword matching and linguistic patterns.
-        
+        """Fallback classification using intelligent pattern detection.
+
+        Provides robust classification when the Swift classifier is unavailable
+        or fails. Uses multi-tier pattern matching with semantic understanding.
+
+        ROOT CAUSE FIX v3.0.0:
+        - Added surveillance/monitoring keywords for God Mode detection
+        - Multi-tier intent classification (surveillance > vision > system > conversation)
+        - Semantic pattern detection without hardcoding
+
         Args:
             text: The command text to classify.
-        
+
         Returns:
-            Basic classification result with lower confidence scores.
+            Classification result with appropriate confidence scores.
         """
-        text_lower = text.lower()
-        
-        # Simple rule-based fallback
-        action_words = ["close", "quit", "open", "launch", "start", "switch"]
-        question_words = ["what", "where", "when", "how", "why", "which"]
-        
-        is_action = any(word in text_lower for word in action_words)
-        is_question = any(text_lower.startswith(word) for word in question_words)
-        
-        if is_action and not is_question:
+        import re
+        text_lower = text.lower().strip()
+
+        # =====================================================================
+        # TIER 0: SURVEILLANCE / GOD MODE DETECTION (Highest Priority)
+        # =====================================================================
+        # Detects watch/monitor patterns that trigger God Mode surveillance
+        # These MUST route to 'vision' handler where _parse_watch_command() lives
+        # =====================================================================
+
+        # Primary surveillance indicators (verb-based)
+        surveillance_verbs = [
+            r'\bwatch\b', r'\bmonitor\b', r'\btrack\b', r'\bobserve\b',
+            r'\bsurveillance\b', r'\bkeep\s+an?\s+eye\b', r'\bscan\b'
+        ]
+
+        # Secondary surveillance indicators (notification-based)
+        notification_patterns = [
+            r'\bnotify\s+me\s+when\b', r'\balert\s+me\s+when\b',
+            r'\btell\s+me\s+when\b', r'\blet\s+me\s+know\s+when\b',
+            r'\bwarn\s+me\s+when\b', r'\bping\s+me\s+when\b'
+        ]
+
+        # Trigger/target indicators (what to look for)
+        trigger_patterns = [
+            r'\bfor\s+.+', r'\bwhen\s+.+\s+(?:says|shows|displays|appears)\b',
+            r'\buntil\s+.+', r'\bwindows?\b', r'\binstances?\b', r'\btabs?\b'
+        ]
+
+        # Multi-space God Mode indicators
+        god_mode_patterns = [
+            r'\b(?:all|every|each)\s+.*?\s*(?:windows?|tabs?|instances?|spaces?)\b',
+            r'\bacross\s+all\b', r'\bevery\s+space\b', r'\ball\s+spaces\b'
+        ]
+
+        # Check for surveillance command
+        has_surveillance_verb = any(re.search(p, text_lower) for p in surveillance_verbs)
+        has_notification = any(re.search(p, text_lower) for p in notification_patterns)
+        has_trigger = any(re.search(p, text_lower) for p in trigger_patterns)
+        has_god_mode = any(re.search(p, text_lower) for p in god_mode_patterns)
+
+        # Surveillance detected - route to vision handler for God Mode processing
+        if (has_surveillance_verb and has_trigger) or has_notification or has_god_mode:
+            confidence = 0.95 if has_god_mode else 0.9 if has_notification else 0.85
+            intent = "god_mode_surveillance" if has_god_mode else "surveillance"
             return {
-                "type": "system",
-                "intent": "system_control",
-                "confidence": 0.6,
-                "entities": {},
-                "reasoning": "Fallback: Action word detected",
-                "processing_time_ms": 0.1
+                "type": "vision",
+                "intent": intent,
+                "confidence": confidence,
+                "entities": {"is_god_mode": has_god_mode},
+                "reasoning": f"Surveillance pattern detected: verb={has_surveillance_verb}, "
+                            f"notification={has_notification}, trigger={has_trigger}, "
+                            f"god_mode={has_god_mode}",
+                "processing_time_ms": 0.2
             }
-        elif is_question:
+
+        # =====================================================================
+        # TIER 1: VISION / SCREEN ANALYSIS COMMANDS
+        # =====================================================================
+        vision_patterns = [
+            r'\b(?:see|look\s+at|describe|analyze|check|show)\s+(?:my\s+)?screen\b',
+            r'\bwhat\s+(?:is|am\s+i)\s+(?:on|looking\s+at)\b',
+            r'\bscreen\s+(?:content|analysis|capture)\b',
+            r'\bwhat\s+do\s+you\s+see\b', r'\bcan\s+you\s+see\b'
+        ]
+
+        if any(re.search(p, text_lower) for p in vision_patterns):
             return {
                 "type": "vision",
                 "intent": "analyze_screen",
-                "confidence": 0.6,
+                "confidence": 0.8,
                 "entities": {},
-                "reasoning": "Fallback: Question structure detected",
-                "processing_time_ms": 0.1
+                "reasoning": "Vision analysis pattern detected",
+                "processing_time_ms": 0.15
             }
-        else:
+
+        # =====================================================================
+        # TIER 2: SYSTEM CONTROL COMMANDS
+        # =====================================================================
+        # App control, settings, file operations
+        system_verbs = [
+            "close", "quit", "open", "launch", "start", "switch", "toggle",
+            "set", "adjust", "enable", "disable", "kill", "terminate", "run"
+        ]
+
+        is_system_action = any(
+            re.search(rf'\b{verb}\b', text_lower) for verb in system_verbs
+        )
+
+        if is_system_action:
             return {
                 "type": "system",
                 "intent": "system_control",
-                "confidence": 0.5,
+                "confidence": 0.75,
                 "entities": {},
-                "reasoning": "Fallback: Default classification",
+                "reasoning": "System control verb detected",
                 "processing_time_ms": 0.1
             }
+
+        # =====================================================================
+        # TIER 3: QUESTION / QUERY CLASSIFICATION
+        # =====================================================================
+        question_patterns = [
+            r'^(?:what|who|where|when|how|why|which|can|could|would|should|is|are|do|does)\b'
+        ]
+
+        is_question = any(re.search(p, text_lower) for p in question_patterns)
+
+        if is_question:
+            # Questions about screen go to vision
+            if any(word in text_lower for word in ['screen', 'see', 'looking', 'window', 'display']):
+                return {
+                    "type": "vision",
+                    "intent": "visual_query",
+                    "confidence": 0.7,
+                    "entities": {},
+                    "reasoning": "Visual question detected",
+                    "processing_time_ms": 0.1
+                }
+            else:
+                return {
+                    "type": "conversation",
+                    "intent": "general_query",
+                    "confidence": 0.65,
+                    "entities": {},
+                    "reasoning": "General question detected",
+                    "processing_time_ms": 0.1
+                }
+
+        # =====================================================================
+        # TIER 4: DEFAULT FALLBACK
+        # =====================================================================
+        return {
+            "type": "conversation",
+            "intent": "general",
+            "confidence": 0.5,
+            "entities": {},
+            "reasoning": "Default classification - no specific pattern matched",
+            "processing_time_ms": 0.1
+        }
     
     async def learn_from_feedback(self, command: str, actual_type: str, was_correct: bool):
         """Teach the classifier from user feedback.

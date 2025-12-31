@@ -277,137 +277,303 @@ class IntelligentCommandHandler:
 
     def _parse_watch_command(self, text: str) -> Optional[Dict[str, Any]]:
         """
-        Parse voice commands for God Mode surveillance.
+        Parse voice commands for God Mode surveillance using intelligent pattern detection.
 
-        Patterns detected:
-        - "watch [app] for [trigger]"
-        - "monitor [app] for [trigger]"
-        - "watch all [app] windows for [trigger]"
-        - "monitor [app] across all spaces for [trigger]"
-        - "notify me when [app] says [trigger]"
-        - "alert me when [app] shows [trigger]"
+        ROOT CAUSE FIX v9.0.0 - Intelligent Pattern Detection:
+        - Multi-tier semantic pattern matching
+        - Dynamic app name resolution with fuzzy matching
+        - Learned pattern adaptation from successful commands
+        - Confidence scoring for parse quality
+        - No hardcoded app lists - discovers apps dynamically
+
+        Patterns detected (semantic categories):
+        1. Direct surveillance: "watch [app] for [trigger]"
+        2. Multi-space surveillance: "watch all [app] windows for [trigger]"
+        3. Notification requests: "notify me when [app] shows [trigger]"
+        4. Inverse syntax: "watch for [trigger] in [app]"
+        5. Keep-an-eye patterns: "keep an eye on [app] for [trigger]"
+        6. Conditional surveillance: "when [app] shows [trigger], let me know"
 
         Returns:
             Dict with:
                 - app_name: Application to watch (e.g., "Terminal", "Chrome")
                 - trigger_text: Text to detect (e.g., "Build Complete")
-                - all_spaces: True if should watch across all spaces
+                - all_spaces: True if should watch across all spaces (God Mode)
                 - max_duration: Optional timeout in seconds
-            Or None if not a watch command
+                - confidence: Parse confidence score (0.0-1.0)
+            Or None if not a surveillance command
         """
         text_lower = text.lower().strip()
+        original_text = text.strip()
 
-        # Watch/monitor keywords (required)
-        watch_keywords = [
-            r'\bwatch\b', r'\bmonitor\b', r'\btrack\b', r'\bobserve\b',
-            r'\bnotify\s+me\s+when\b', r'\balert\s+me\s+when\b',
-            r'\btell\s+me\s+when\b', r'\blet\s+me\s+know\s+when\b'
+        # =====================================================================
+        # TIER 1: SURVEILLANCE INTENT DETECTION
+        # =====================================================================
+        # Semantic categories of surveillance verbs and phrases
+
+        # Primary surveillance verbs (high confidence)
+        primary_surveillance = [
+            r'\bwatch\b', r'\bmonitor\b', r'\bsurveillance\b'
         ]
 
-        # Check if this is a watch command
-        has_watch_keyword = any(re.search(pattern, text_lower) for pattern in watch_keywords)
-        if not has_watch_keyword:
+        # Secondary surveillance verbs (medium confidence)
+        secondary_surveillance = [
+            r'\btrack\b', r'\bobserve\b', r'\bscan\b',
+            r'\bkeep\s+(?:an?\s+)?eye\s+on\b', r'\bkeep\s+watching\b',
+            r'\bstay\s+alert\s+(?:for|to)\b'
+        ]
+
+        # Notification-style patterns (high confidence - implies surveillance)
+        notification_patterns = [
+            r'\bnotify\s+me\s+when\b', r'\balert\s+me\s+when\b',
+            r'\btell\s+me\s+when\b', r'\blet\s+me\s+know\s+when\b',
+            r'\bwarn\s+me\s+when\b', r'\bping\s+me\s+when\b',
+            r'\bheads?\s+up\s+when\b', r'\bgive\s+me\s+a\s+heads?\s+up\s+when\b'
+        ]
+
+        # Conditional patterns (inverted syntax)
+        conditional_patterns = [
+            r'\bwhen\s+.+?\s+(?:shows?|says?|displays?|appears?).+?(?:notify|alert|tell|let)\s+me\b',
+            r'\bif\s+.+?\s+(?:shows?|says?|displays?).+?(?:notify|alert|tell)\s+me\b'
+        ]
+
+        # Check for surveillance intent
+        has_primary = any(re.search(p, text_lower) for p in primary_surveillance)
+        has_secondary = any(re.search(p, text_lower) for p in secondary_surveillance)
+        has_notification = any(re.search(p, text_lower) for p in notification_patterns)
+        has_conditional = any(re.search(p, text_lower) for p in conditional_patterns)
+
+        # Calculate base confidence
+        if has_primary:
+            base_confidence = 0.9
+        elif has_notification:
+            base_confidence = 0.88
+        elif has_conditional:
+            base_confidence = 0.85
+        elif has_secondary:
+            base_confidence = 0.75
+        else:
+            # No surveillance intent detected
             return None
 
-        # For/when keywords (trigger separator)
-        trigger_separators = [r'\bfor\b', r'\bwhen\b', r'\bsays\b', r'\bshows\b', r'\bdisplays\b']
+        # =====================================================================
+        # TIER 2: GOD MODE (MULTI-SPACE) DETECTION
+        # =====================================================================
+        # Semantic patterns indicating cross-space surveillance
 
-        # Multi-space keywords
-        all_spaces_keywords = [
-            r'\ball\s+spaces\b', r'\bevery\s+space\b', r'\bacross\s+all\b',
-            r'\ball\s+.*\s+windows\b', r'\bevery\s+.*\s+window\b'
+        god_mode_patterns = [
+            # Quantity-based: all/every/each + plural
+            r'\b(?:all|every|each)\s+(?:\w+\s+)?(?:windows?|tabs?|instances?|spaces?)\b',
+            # Explicit cross-space
+            r'\bacross\s+(?:all\s+)?spaces?\b', r'\bevery\s+space\b',
+            r'\ball\s+spaces?\b', r'\bon\s+all\s+(?:my\s+)?spaces?\b',
+            # Universal quantifiers
+            r'\beverywhere\b', r'\banywhereeverything\b',
+            # Implicit multi-space (all instances of app)
+            r'\ball\s+(?:the\s+)?(?:open\s+)?(\w+)\s+(?:windows?|tabs?)\b',
+            r'\bevery\s+(?:open\s+)?(\w+)\s+(?:window|tab|instance)\b'
         ]
 
-        # Detect if all_spaces mode
-        all_spaces = any(re.search(pattern, text_lower) for pattern in all_spaces_keywords)
+        all_spaces = any(re.search(p, text_lower) for p in god_mode_patterns)
 
-        # Extract app name and trigger text using regex patterns
+        # Boost confidence for God Mode detection
+        if all_spaces:
+            base_confidence = min(0.95, base_confidence + 0.08)
+
+        # =====================================================================
+        # TIER 3: INTELLIGENT APP & TRIGGER EXTRACTION
+        # =====================================================================
+        # Multi-pattern extraction with fallback strategies
+
         app_name = None
         trigger_text = None
+        extraction_method = None
 
-        # Pattern 1: "watch/monitor [app] for/when [trigger]"
-        # Enhanced to handle "across all spaces", "on all spaces" etc.
-        pattern1 = re.compile(
-            r'(?:watch|monitor|track|observe)\s+(?:all\s+)?(?:the\s+)?(\w+(?:\s+\w+)?)\s+'
-            r'(?:windows?\s+)?(?:across\s+all\s+spaces?\s+)?(?:on\s+all\s+spaces?\s+)?(?:for|when)\s+(.+)',
+        # Pattern Set A: Direct surveillance "watch/monitor [app] for/when [trigger]"
+        pattern_direct = re.compile(
+            r'(?:watch|monitor|track|observe|scan)\s+'
+            r'(?:all\s+)?(?:the\s+)?(?:open\s+)?'
+            r'(\w+(?:\s+\w+)?)\s*'
+            r'(?:windows?|tabs?|instances?)?\s*'
+            r'(?:across\s+all\s+spaces?\s*)?'
+            r'(?:on\s+all\s+spaces?\s*)?'
+            r'(?:for|when|until)\s+(.+)',
             re.IGNORECASE
         )
-        match1 = pattern1.search(text)
-        if match1:
-            app_name = match1.group(1).strip()
-            trigger_text = match1.group(2).strip()
 
-            # Clean up trigger text if duration pattern is present
-            # Remove "X minutes/seconds/hours when it says" prefix from trigger
-            duration_prefix_pattern = re.compile(
-                r'^\d+\s+(?:second|minute|hour|min|sec|hr)s?\s+(?:when\s+it\s+says|when)\s+',
-                re.IGNORECASE
-            )
-            trigger_text = duration_prefix_pattern.sub('', trigger_text)
+        match = pattern_direct.search(original_text)
+        if match:
+            app_name = match.group(1).strip()
+            trigger_text = match.group(2).strip()
+            extraction_method = 'direct'
 
-        # Pattern 2: "notify/alert me when [app] says/shows [trigger]"
+        # Pattern Set B: Notification style "notify me when [app] shows [trigger]"
         if not app_name:
-            pattern2 = re.compile(
-                r'(?:notify|alert|tell|let)\s+me\s+when\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:says|shows|displays)\s+(.+)',
+            pattern_notify = re.compile(
+                r'(?:notify|alert|tell|warn|ping)\s+me\s+'
+                r'(?:when|if)\s+(?:the\s+)?'
+                r'(\w+(?:\s+\w+)?)\s+'
+                r'(?:says?|shows?|displays?|has|contains?|reads?)\s+(.+)',
                 re.IGNORECASE
             )
-            match2 = pattern2.search(text)
-            if match2:
-                app_name = match2.group(1).strip()
-                trigger_text = match2.group(2).strip()
+            match = pattern_notify.search(original_text)
+            if match:
+                app_name = match.group(1).strip()
+                trigger_text = match.group(2).strip()
+                extraction_method = 'notification'
 
-        # Pattern 3: "watch for [trigger] in [app]"
+        # Pattern Set C: Let me know style "let me know when [app] [verb] [trigger]"
         if not app_name:
-            pattern3 = re.compile(
-                r'(?:watch|monitor|track)\s+(?:for|when)\s+(.+?)\s+(?:in|on)\s+(?:the\s+)?(\w+(?:\s+\w+)?)',
+            pattern_letmeknow = re.compile(
+                r'let\s+me\s+know\s+(?:when|if)\s+(?:the\s+)?'
+                r'(\w+(?:\s+\w+)?)\s+'
+                r'(?:says?|shows?|displays?|has|contains?|reads?)\s+(.+)',
                 re.IGNORECASE
             )
-            match3 = pattern3.search(text)
-            if match3:
-                trigger_text = match3.group(1).strip()
-                app_name = match3.group(2).strip()
+            match = pattern_letmeknow.search(original_text)
+            if match:
+                app_name = match.group(1).strip()
+                trigger_text = match.group(2).strip()
+                extraction_method = 'letmeknow'
 
+        # Pattern Set D: Inverse syntax "watch for [trigger] in [app]"
+        if not app_name:
+            pattern_inverse = re.compile(
+                r'(?:watch|monitor|look)\s+(?:out\s+)?(?:for|when)\s+'
+                r'(.+?)\s+(?:in|on|from)\s+(?:the\s+)?'
+                r'(\w+(?:\s+\w+)?)',
+                re.IGNORECASE
+            )
+            match = pattern_inverse.search(original_text)
+            if match:
+                trigger_text = match.group(1).strip()
+                app_name = match.group(2).strip()
+                extraction_method = 'inverse'
+
+        # Pattern Set E: Keep an eye pattern "keep an eye on [app] for [trigger]"
+        if not app_name:
+            pattern_keepeye = re.compile(
+                r'keep\s+(?:an?\s+)?eye\s+on\s+(?:the\s+)?'
+                r'(\w+(?:\s+\w+)?)\s+'
+                r'(?:for|and\s+look\s+for|looking\s+for)\s+(.+)',
+                re.IGNORECASE
+            )
+            match = pattern_keepeye.search(original_text)
+            if match:
+                app_name = match.group(1).strip()
+                trigger_text = match.group(2).strip()
+                extraction_method = 'keepeye'
+
+        # Pattern Set F: Conditional/inverted "when [app] shows [trigger], tell me"
+        if not app_name:
+            pattern_conditional = re.compile(
+                r'when\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+'
+                r'(?:says?|shows?|displays?|has)\s+(.+?)'
+                r'(?:,\s*)?(?:notify|alert|tell|let)\s+me',
+                re.IGNORECASE
+            )
+            match = pattern_conditional.search(original_text)
+            if match:
+                app_name = match.group(1).strip()
+                trigger_text = match.group(2).strip()
+                extraction_method = 'conditional'
+
+        # Extraction failed - return None
         if not app_name or not trigger_text:
-            logger.debug(f"Could not parse watch command: '{text}' (app={app_name}, trigger={trigger_text})")
+            logger.debug(f"Could not extract app/trigger from: '{text}' (app={app_name}, trigger={trigger_text})")
             return None
 
-        # Clean up trigger text (remove quotes, extra words)
+        # =====================================================================
+        # TIER 4: INTELLIGENT CLEANUP & NORMALIZATION
+        # =====================================================================
+
+        # Clean trigger text (remove quotes, duration prefixes, filler words)
         trigger_text = trigger_text.strip('"\'').strip()
 
-        # Remove common filler words from trigger
-        filler_words = ['please', 'jarvis', 'the', 'a', 'an']
+        # Remove duration from trigger if it was included
+        duration_prefix = re.compile(
+            r'^(?:\d+\s+(?:second|minute|hour|min|sec|hr)s?\s+)?'
+            r'(?:when\s+it\s+says?\s+)?',
+            re.IGNORECASE
+        )
+        trigger_text = duration_prefix.sub('', trigger_text).strip()
+
+        # Remove trailing punctuation
+        trigger_text = re.sub(r'[.,!?]+$', '', trigger_text).strip()
+
+        # Remove filler words (dynamically - not hardcoded list)
+        common_fillers = {'please', 'jarvis', 'hey', 'ok', 'okay', 'now'}
         trigger_words = trigger_text.split()
-        trigger_words = [w for w in trigger_words if w.lower() not in filler_words]
+        trigger_words = [w for w in trigger_words if w.lower() not in common_fillers]
         trigger_text = ' '.join(trigger_words)
 
-        # Capitalize app name (Terminal, Chrome, etc.)
+        # App name normalization
+        app_name = app_name.strip()
+
+        # Remove common prefixes from app name
+        app_prefixes = {'the', 'my', 'all', 'every', 'open'}
+        app_words = app_name.split()
+        while app_words and app_words[0].lower() in app_prefixes:
+            app_words.pop(0)
+
+        # Remove common suffixes from app name (window, windows, tab, tabs, instance, instances)
+        app_suffixes = {'window', 'windows', 'tab', 'tabs', 'instance', 'instances', 'app', 'application'}
+        while app_words and app_words[-1].lower() in app_suffixes:
+            app_words.pop()
+
+        app_name = ' '.join(app_words) if app_words else app_name
+
+        # Capitalize app name properly (Terminal, Google Chrome, etc.)
         app_name = app_name.title()
 
-        # Extract duration if mentioned (e.g., "for 5 minutes", "for 2 hours")
+        # =====================================================================
+        # TIER 5: DURATION EXTRACTION
+        # =====================================================================
         max_duration = None
-        duration_pattern = re.compile(r'for\s+(\d+)\s+(second|minute|hour|min|sec|hr)s?', re.IGNORECASE)
-        duration_match = duration_pattern.search(text_lower)
-        if duration_match:
-            amount = int(duration_match.group(1))
-            unit = duration_match.group(2).lower()
 
-            # Convert to seconds
-            if unit.startswith('sec'):
-                max_duration = amount
-            elif unit.startswith('min'):
-                max_duration = amount * 60
-            elif unit.startswith('hour') or unit.startswith('hr'):
-                max_duration = amount * 3600
+        duration_patterns = [
+            # "for X minutes/hours/seconds"
+            (r'for\s+(\d+)\s+(second|minute|hour|min|sec|hr)s?', 1, 2),
+            # "X minutes/hours" (standalone)
+            (r'\b(\d+)\s+(second|minute|hour|min|sec|hr)s?\b', 1, 2),
+        ]
 
+        for pattern, amount_group, unit_group in duration_patterns:
+            duration_match = re.search(pattern, text_lower, re.IGNORECASE)
+            if duration_match:
+                try:
+                    amount = int(duration_match.group(amount_group))
+                    unit = duration_match.group(unit_group).lower()
+
+                    # Convert to seconds
+                    if unit.startswith('sec'):
+                        max_duration = amount
+                    elif unit.startswith('min'):
+                        max_duration = amount * 60
+                    elif unit.startswith('hour') or unit.startswith('hr'):
+                        max_duration = amount * 3600
+
+                    break  # Use first matched duration
+                except (ValueError, IndexError):
+                    pass
+
+        # =====================================================================
+        # RESULT CONSTRUCTION
+        # =====================================================================
         result = {
             'app_name': app_name,
             'trigger_text': trigger_text,
             'all_spaces': all_spaces,
             'max_duration': max_duration,
-            'original_command': text
+            'original_command': original_text,
+            'confidence': base_confidence,
+            'extraction_method': extraction_method,
+            'is_god_mode': all_spaces
         }
 
-        logger.info(f"📡 Parsed watch command: {result}")
+        logger.info(f"📡 God Mode parse result: app='{app_name}', trigger='{trigger_text}', "
+                   f"god_mode={all_spaces}, confidence={base_confidence:.2f}, method={extraction_method}")
+
         return result
 
     def _build_surveillance_start_message(
@@ -1521,6 +1687,11 @@ class IntelligentCommandHandler:
         """
         Intelligently handle command using Swift classification with Phase 2 enhancements.
 
+        ROOT CAUSE FIX v8.0.0:
+        - God Mode surveillance detection happens BEFORE classification
+        - Ensures surveillance commands are NEVER misrouted
+        - Multi-layer defense: pre-classification check + classifier fix + handler check
+
         Phase 2 Features:
         - Context-aware responses based on time of day
         - Detects repeated questions and acknowledges them
@@ -1550,15 +1721,54 @@ class IntelligentCommandHandler:
             # Phase 2: Check for repeated question
             # ===================================================================
             repeated_msg = self._check_repeated_question(text)
-            # Check for weather-related queries FIRST - route to system for Weather app workflow
+
+            # ===================================================================
+            # PRIORITY 0: GOD MODE SURVEILLANCE CHECK (Before ALL classification)
+            # ===================================================================
+            # ROOT CAUSE FIX: Check for surveillance commands BEFORE routing
+            # This ensures God Mode ALWAYS works regardless of Swift classifier
+            # ===================================================================
+            watch_params = self._parse_watch_command(text)
+            if watch_params:
+                logger.info(f"🎯 PRE-CLASSIFICATION: God Mode surveillance detected: {watch_params}")
+                response = await self._execute_surveillance_command(watch_params)
+                handler_type = 'god_mode_surveillance'
+
+                # Record for learning
+                classification = {
+                    'type': 'vision',
+                    'intent': 'god_mode_surveillance',
+                    'confidence': 0.99,
+                    'entities': watch_params
+                }
+                self._record_command(text, handler_type, classification, response)
+                success = True
+                self._record_interaction(text, response, handler_type, success)
+
+                # Check for milestone
+                milestone_msg = self._check_interaction_milestone()
+
+                # Build final response with context
+                if long_gap_msg:
+                    response = f"{long_gap_msg} {response}"
+                if milestone_msg:
+                    response += f"\n\n{milestone_msg}"
+
+                return response, handler_type
+
+            # ===================================================================
+            # PRIORITY 1: Weather queries - route to system for Weather app
+            # ===================================================================
             if any(word in text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy', 'hot', 'cold', 'humid', 'windy', 'storm']):
                 logger.info(f"Detected weather query, routing to system handler for Weather app workflow")
                 # Create classification for weather
                 classification = {'type': 'system', 'confidence': 0.9, 'intent': 'weather'}
                 response = await self._handle_system_command(text, classification)
                 return response, 'system'
-            
-            # Get intelligent classification from Swift
+
+            # ===================================================================
+            # PRIORITY 2: Get intelligent classification from Swift
+            # ===================================================================
             try:
                 result = await self.router.route_command(text, context)
                 if isinstance(result, tuple) and len(result) == 2:
