@@ -69,6 +69,9 @@ def _check_early_corruption() -> bool:
     """
     Check if numba modules are in a corrupted state BEFORE any imports.
     This must use only built-in modules (os, sys).
+
+    v11.0: More defensive - checks for active import locks to avoid
+    racing with concurrent imports that would cause circular import errors.
     """
     if 'numba' not in _sys.modules:
         return False
@@ -81,13 +84,32 @@ def _check_early_corruption() -> bool:
     if not hasattr(numba_mod, '__version__'):
         return True  # Missing version = partial init
 
+    # v11.0: Check if any numba module is currently being imported
+    # This catches the "partially initialized" race condition
+    try:
+        import importlib._bootstrap as _bootstrap
+        for mod_name in list(_sys.modules.keys()):
+            if mod_name.startswith('numba.'):
+                mod = _sys.modules.get(mod_name)
+                # Check for partially initialized module (has __spec__ but missing attributes)
+                if mod is not None and hasattr(mod, '__spec__') and mod.__spec__ is not None:
+                    if hasattr(mod.__spec__, '_initializing') and mod.__spec__._initializing:
+                        return True  # Module is currently being initialized
+    except (AttributeError, ImportError):
+        pass  # Fall through to hasattr check
+
     # Check numba.core.utils for the problematic function
     if 'numba.core.utils' in _sys.modules:
         utils_mod = _sys.modules.get('numba.core.utils')
         if utils_mod is None:
             return True
-        # Check for the specific function that causes issues
-        if not hasattr(utils_mod, 'get_hashable_key'):
+        # v11.0: Use try/except for hasattr to catch partially initialized state
+        try:
+            has_key = hasattr(utils_mod, 'get_hashable_key')
+            if not has_key:
+                return True
+        except (AttributeError, ImportError) as e:
+            # If hasattr itself fails, the module is corrupted
             return True
 
     return False
@@ -1186,34 +1208,59 @@ def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Auto-initialize if this module is imported directly
-# v10.0: DEFENSIVE INITIALIZATION
+# v11.0: ULTRA-DEFENSIVE INITIALIZATION
 # - Check for corruption BEFORE attempting initialization
 # - Clear corrupted modules if detected
+# - SKIP auto-init if numba is currently being imported by another thread
 # - Only in main thread to avoid races during parallel imports
 # - Environment variables already set at module load time (top of file)
+# - Use lazy initialization to avoid circular imports during startup
 # ═══════════════════════════════════════════════════════════════════════════════
 if __name__ != "__main__":
     # Check if we're in the main thread
     if threading.current_thread() is threading.main_thread():
-        # v10.0: Check for corruption BEFORE auto-init
-        _auto_init_corrupted, _auto_init_reason = is_numba_corrupted()
-        if _auto_init_corrupted:
-            logger.warning(f"[numba_preload] Auto-init detected corruption: {_auto_init_reason}")
-            _auto_cleared = clear_corrupted_numba_modules()
-            logger.info(f"[numba_preload] Auto-init cleared {_auto_cleared} corrupted modules")
-            # Environment is already set at module load time, so we're safe
+        # v11.0: Check for corruption OR partial import BEFORE auto-init
+        _auto_init_corrupted = _check_early_corruption()
 
-        # Main thread: do the actual initialization
-        logger.debug("[numba_preload] Auto-init in main thread (JIT disabled for safety)")
-        try:
-            ensure_numba_initialized()
-            set_numba_bypass_marker()
-        except Exception as _e:
-            # v10.0: Don't let auto-init failure crash the import
-            logger.warning(f"[numba_preload] Auto-init failed (non-fatal): {_e}")
-            # Ensure JIT remains disabled for safety
+        if _auto_init_corrupted:
+            # Module is corrupted or currently being imported - DON'T try to init
+            # Just set environment and let the caller decide when to init
+            logger.debug("[numba_preload] Corruption/partial import detected - deferring init")
             os.environ['NUMBA_DISABLE_JIT'] = '1'
             os.environ['NUMBA_NUM_THREADS'] = '1'
+        else:
+            # v11.0: Only auto-init if numba is NOT already in sys.modules
+            # This prevents triggering import during another import
+            _numba_already_imported = 'numba' in sys.modules
+
+            if not _numba_already_imported:
+                # Safe to initialize - numba is not yet imported
+                logger.debug("[numba_preload] Auto-init in main thread (JIT disabled for safety)")
+                try:
+                    ensure_numba_initialized()
+                    set_numba_bypass_marker()
+                except Exception as _e:
+                    # v11.0: Don't let auto-init failure crash the import
+                    error_str = str(_e)
+                    if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
+                        logger.debug("[numba_preload] Circular import during auto-init - deferring")
+                        clear_corrupted_numba_modules()
+                    else:
+                        logger.warning(f"[numba_preload] Auto-init failed (non-fatal): {_e}")
+                    # Ensure JIT remains disabled for safety
+                    os.environ['NUMBA_DISABLE_JIT'] = '1'
+                    os.environ['NUMBA_NUM_THREADS'] = '1'
+            else:
+                # numba already imported - just verify status
+                logger.debug("[numba_preload] numba already imported - skipping auto-init")
+                try:
+                    is_complete, version = _check_numba_in_sys_modules()
+                    if is_complete:
+                        _set_status(NumbaStatus.READY, version=version)
+                        _initialization_complete.set()
+                        set_numba_bypass_marker()
+                except Exception:
+                    pass
     else:
         # Non-main thread: just wait for initialization
         logger.debug(f"[numba_preload] Auto-init waiting in thread: {threading.current_thread().name}")

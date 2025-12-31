@@ -51,87 +51,136 @@ _numba_jit_disabled = False
 _numba_retry_count = 0
 _numba_cleared_modules = 0
 
+# v11.0: CRITICAL - Set environment FIRST before ANY imports
+# This is the PRIMARY defense against circular imports - must happen BEFORE
+# importing numba_preload or anything else that might touch numba
+os.environ.setdefault('NUMBA_DISABLE_JIT', '1')
+os.environ.setdefault('NUMBA_NUM_THREADS', '1')
+os.environ.setdefault('NUMBA_THREADING_LAYER', 'workqueue')
+
+# v11.0: Check for partial numba import BEFORE importing numba_preload
+# This catches the race condition where numba is being imported by another thread
+_numba_partial_import = False
+if 'numba' in sys.modules:
+    _numba_mod = sys.modules.get('numba')
+    if _numba_mod is None or not hasattr(_numba_mod, '__version__'):
+        _numba_partial_import = True
+        _numba_jit_disabled = True
+
 try:
-    # Import the centralized numba preloader with v10.0 corruption handling
-    # NOTE: Just importing numba_preload will set NUMBA_DISABLE_JIT=1 at
-    # module load time, BEFORE any numba imports occur. This is the KEY FIX.
-    from core.numba_preload import (
-        ensure_numba_safe_for_whisper,
-        is_numba_ready,
-        get_numba_status,
-        is_numba_corrupted,
-        clear_corrupted_numba_modules,
-    )
-
-    # v10.0: Use the new safe initialization that handles corruption
-    # This is the RECOMMENDED approach - it handles all edge cases
-    safety_result = ensure_numba_safe_for_whisper()
-
-    _numba_ready = safety_result.get('numba_available', False)
-    _numba_jit_disabled = safety_result.get('jit_disabled', False)
-    _numba_retry_count = safety_result.get('retry_count', 0)
-    _numba_cleared_modules = safety_result.get('cleared_modules', 0)
-
-    if _numba_ready:
-        status = get_numba_status()
-        _numba_version = status.get('version')
+    if _numba_partial_import:
+        # Partial import detected - skip numba_preload initialization
+        # Just use JIT disabled mode
         if threading.current_thread() is threading.main_thread():
-            jit_status = "JIT disabled" if _numba_jit_disabled else "JIT enabled"
-            print(f"[whisper_audio_fix] ✅ numba {_numba_version} ready ({jit_status})")
-    elif _numba_jit_disabled:
-        # JIT disabled due to corruption or failure - this is OK
-        if threading.current_thread() is threading.main_thread():
-            reason = safety_result.get('reason', 'unknown')
-            extra = ""
-            if _numba_retry_count > 0:
-                extra = f", retries: {_numba_retry_count}"
-            if _numba_cleared_modules > 0:
-                extra += f", cleared: {_numba_cleared_modules} modules"
-            print(f"[whisper_audio_fix] ⚠️ numba JIT disabled: {reason}{extra}")
-            print("[whisper_audio_fix] Whisper will work but without numba optimization")
+            print("[whisper_audio_fix] ⚠️ numba partial import detected - using JIT disabled mode")
     else:
-        # numba not installed or other benign state
+        # Import the centralized numba preloader with v11.0 corruption handling
+        # NOTE: Just importing numba_preload will set NUMBA_DISABLE_JIT=1 at
+        # module load time, BEFORE any numba imports occur. This is the KEY FIX.
+        from core.numba_preload import (
+            ensure_numba_safe_for_whisper,
+            is_numba_ready,
+            get_numba_status,
+            is_numba_corrupted,
+            clear_corrupted_numba_modules,
+        )
+
+        # v11.0: Use the new safe initialization that handles corruption
+        # This is the RECOMMENDED approach - it handles all edge cases
+        safety_result = ensure_numba_safe_for_whisper()
+
+        _numba_ready = safety_result.get('numba_available', False)
+        _numba_jit_disabled = safety_result.get('jit_disabled', False)
+        _numba_retry_count = safety_result.get('retry_count', 0)
+        _numba_cleared_modules = safety_result.get('cleared_modules', 0)
+
+        if _numba_ready:
+            status = get_numba_status()
+            _numba_version = status.get('version')
+            if threading.current_thread() is threading.main_thread():
+                jit_status = "JIT disabled" if _numba_jit_disabled else "JIT enabled"
+                print(f"[whisper_audio_fix] ✅ numba {_numba_version} ready ({jit_status})")
+        elif _numba_jit_disabled:
+            # JIT disabled due to corruption or failure - this is OK
+            if threading.current_thread() is threading.main_thread():
+                reason = safety_result.get('reason', 'unknown')
+                extra = ""
+                if _numba_retry_count > 0:
+                    extra = f", retries: {_numba_retry_count}"
+                if _numba_cleared_modules > 0:
+                    extra += f", cleared: {_numba_cleared_modules} modules"
+                print(f"[whisper_audio_fix] ⚠️ numba JIT disabled: {reason}{extra}")
+                print("[whisper_audio_fix] Whisper will work but without numba optimization")
+        else:
+            # numba not installed or other benign state
+            if threading.current_thread() is threading.main_thread():
+                reason = safety_result.get('reason', 'unknown')
+                if 'not_installed' in reason:
+                    print("[whisper_audio_fix] numba not installed (optional)")
+                else:
+                    print(f"[whisper_audio_fix] numba status: {reason}")
+
+except ImportError as e:
+    # numba_preload module doesn't exist OR circular import occurred
+    error_str = str(e)
+    is_circular = 'partially initialized' in error_str.lower() or 'circular' in error_str.lower()
+
+    if is_circular:
+        # v11.0: Circular import - clear numba and use JIT disabled
         if threading.current_thread() is threading.main_thread():
-            reason = safety_result.get('reason', 'unknown')
-            if 'not_installed' in reason:
+            print(f"[whisper_audio_fix] ⚠️ Circular import during numba_preload: {e}")
+        # Clear any partial numba modules
+        for mod_name in list(sys.modules.keys()):
+            if mod_name == 'numba' or mod_name.startswith('numba.'):
+                try:
+                    del sys.modules[mod_name]
+                except (KeyError, TypeError):
+                    pass
+        _numba_jit_disabled = True
+    else:
+        # numba_preload not available - use legacy fallback
+        if threading.current_thread() is threading.main_thread():
+            print("[whisper_audio_fix] numba_preload not available, using safe fallback")
+
+        try:
+            import numba
+            _numba_version = numba.__version__
+            _numba_ready = False  # JIT disabled, so not "fully" ready
+            if threading.current_thread() is threading.main_thread():
+                print(f"[whisper_audio_fix] numba {_numba_version} imported (JIT disabled)")
+        except ImportError:
+            if threading.current_thread() is threading.main_thread():
                 print("[whisper_audio_fix] numba not installed (optional)")
-            else:
-                print(f"[whisper_audio_fix] numba status: {reason}")
-
-except ImportError:
-    # numba_preload module doesn't exist - use legacy fallback with safety
-    if threading.current_thread() is threading.main_thread():
-        print("[whisper_audio_fix] numba_preload not available, using safe fallback")
-
-    # ALWAYS disable JIT for the fallback to prevent circular imports
-    os.environ['NUMBA_DISABLE_JIT'] = '1'
-    os.environ['NUMBA_NUM_THREADS'] = '1'
-    _numba_jit_disabled = True
-
-    try:
-        import numba
-        _numba_version = numba.__version__
-        _numba_ready = False  # JIT disabled, so not "fully" ready
-        if threading.current_thread() is threading.main_thread():
-            print(f"[whisper_audio_fix] numba {_numba_version} imported (JIT disabled)")
-    except ImportError:
-        if threading.current_thread() is threading.main_thread():
-            print("[whisper_audio_fix] numba not installed (optional)")
-    except Exception as e:
-        if threading.current_thread() is threading.main_thread():
-            print(f"[whisper_audio_fix] ⚠️ numba fallback error: {e}")
+        except Exception as inner_e:
+            inner_error_str = str(inner_e)
+            if 'partially initialized' in inner_error_str.lower():
+                # Clear corrupted numba modules
+                for mod_name in list(sys.modules.keys()):
+                    if mod_name == 'numba' or mod_name.startswith('numba.'):
+                        try:
+                            del sys.modules[mod_name]
+                        except (KeyError, TypeError):
+                            pass
+            if threading.current_thread() is threading.main_thread():
+                print(f"[whisper_audio_fix] ⚠️ numba fallback error: {inner_e}")
+        _numba_jit_disabled = True
 
 except Exception as e:
     # Any other error - disable JIT as safety measure
     error_str = str(e)
     if threading.current_thread() is threading.main_thread():
-        # v10.0: Check if this is a circular import error and provide helpful message
+        # v11.0: Check if this is a circular import error and provide helpful message
         if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
-            print(f"[whisper_audio_fix] ⚠️ numba circular import detected, disabling JIT")
+            print(f"[whisper_audio_fix] ⚠️ numba circular import detected, clearing modules")
+            # Clear any corrupted numba modules
+            for mod_name in list(sys.modules.keys()):
+                if mod_name == 'numba' or mod_name.startswith('numba.'):
+                    try:
+                        del sys.modules[mod_name]
+                    except (KeyError, TypeError):
+                        pass
         else:
             print(f"[whisper_audio_fix] ⚠️ numba pre-init error: {e}")
-    os.environ['NUMBA_DISABLE_JIT'] = '1'
-    os.environ['NUMBA_NUM_THREADS'] = '1'
     _numba_jit_disabled = True
 
 # =============================================================================
