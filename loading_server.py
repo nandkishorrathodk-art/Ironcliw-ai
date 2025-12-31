@@ -1318,8 +1318,24 @@ class ConnectionManager:
     def __init__(self, max_connections: int = 100):
         self.max_connections = max_connections
         self._connections: Set[web.WebSocketResponse] = set()
-        self._lock = asyncio.Lock()
+        # Lock will be created in initialize_async_objects() to ensure
+        # it's attached to the correct event loop
+        self._lock: Optional[asyncio.Lock] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._async_initialized = False
+
+    def initialize_async_objects(self):
+        """
+        Initialize asyncio objects within the current event loop.
+
+        CRITICAL: Must be called from within an async context to ensure
+        Locks and Events are attached to the correct loop.
+        """
+        if self._async_initialized:
+            return
+        self._lock = asyncio.Lock()
+        self._async_initialized = True
+        logger.debug("[ConnectionManager] Async objects initialized for current event loop")
 
     @property
     def count(self) -> int:
@@ -1454,13 +1470,15 @@ class GracefulShutdownManager:
         self._browser_disconnected_at: Optional[datetime] = None
         self._startup_completed_at: Optional[datetime] = None
 
-        # Shutdown coordination
-        self._shutdown_event = asyncio.Event()
+        # Shutdown coordination - these will be recreated in initialize_async_objects()
+        # to ensure they're attached to the correct event loop
+        self._shutdown_event: Optional[asyncio.Event] = None
         self._app_runner: Optional[web.AppRunner] = None
         self._monitor_task: Optional[asyncio.Task] = None
 
-        # Lock for thread-safe operations
-        self._lock = asyncio.Lock()
+        # Lock for thread-safe operations - will be recreated in initialize_async_objects()
+        self._lock: Optional[asyncio.Lock] = None
+        self._async_initialized = False
 
         logger.info(
             f"[GracefulShutdown] Initialized - "
@@ -1468,6 +1486,24 @@ class GracefulShutdownManager:
             f"grace_period={self._disconnect_grace_period}s, "
             f"max_idle={self._max_idle_after_complete}s"
         )
+
+    def initialize_async_objects(self):
+        """
+        Initialize asyncio objects within the current event loop.
+
+        CRITICAL: This MUST be called from within an async context (running event loop)
+        to ensure Events and Locks are attached to the correct loop. This fixes the
+        "attached to a different loop" error that occurs when global objects are
+        created at module import time before asyncio.run() starts a new loop.
+        """
+        if self._async_initialized:
+            return
+
+        # Create new asyncio objects attached to the current running loop
+        self._shutdown_event = asyncio.Event()
+        self._lock = asyncio.Lock()
+        self._async_initialized = True
+        logger.debug("[GracefulShutdown] Async objects initialized for current event loop")
 
     def set_app_runner(self, runner: web.AppRunner):
         """Set the app runner for graceful shutdown."""
@@ -4227,6 +4263,13 @@ def create_app() -> web.Application:
 async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     """Start the standalone loading server."""
     port = port or config.loading_port
+
+    # CRITICAL: Initialize asyncio objects within the running event loop
+    # This fixes the "attached to a different loop" error that occurs when
+    # global objects are created at module import time
+    shutdown_manager.initialize_async_objects()
+    connection_manager.initialize_async_objects()
+
     app = create_app()
 
     runner = web.AppRunner(app)
