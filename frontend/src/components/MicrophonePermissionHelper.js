@@ -1,87 +1,171 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './MicrophonePermissionHelper.css';
 import microphonePermissionManager from '../services/MicrophonePermissionManager';
 
+/**
+ * MicrophonePermissionHelper v4.0
+ *
+ * Enhanced React component for managing microphone permissions with:
+ * - Real-time device monitoring
+ * - Platform-specific troubleshooting
+ * - Intelligent error recovery
+ * - Live device enumeration display
+ * - macOS System Settings guidance
+ */
 const MicrophonePermissionHelper = ({ onPermissionGranted }) => {
+  // =========================================================================
+  // State
+  // =========================================================================
   const [permissionStatus, setPermissionStatus] = useState('checking');
-  const [browserInfo, setBrowserInfo] = useState('');
+  const [deviceStatus, setDeviceStatus] = useState(null);
+  const [troubleshootingSteps, setTroubleshootingSteps] = useState([]);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [lastError, setLastError] = useState(null);
 
-  useEffect(() => {
-    checkMicrophonePermission();
-    detectBrowser();
-  }, []);
+  // Track if we've already notified parent of permission grant
+  const hasNotifiedParent = useRef(false);
 
-  // v2.0: Call onPermissionGranted when permission status changes to 'granted'
-  // This ensures the parent component is notified even when permission was
-  // already granted before the component mounted
+  // =========================================================================
+  // Initialize and Subscribe to Permission Manager
+  // =========================================================================
   useEffect(() => {
-    if (permissionStatus === 'granted' && onPermissionGranted) {
-      console.log('[MicrophonePermissionHelper] Permission already granted, notifying parent');
+    let unsubscribe = null;
+
+    const initialize = async () => {
+      console.log('[MicrophonePermissionHelper] v4.0 Initializing...');
+
+      // Subscribe to permission manager events
+      unsubscribe = microphonePermissionManager.subscribe((event, state) => {
+        console.log(`[MicrophonePermissionHelper] Event: ${event}`, state);
+
+        if (event === 'granted') {
+          setPermissionStatus('granted');
+          notifyParent();
+        } else if (event === 'denied') {
+          setPermissionStatus('denied');
+        } else if (event === 'device_change' || event === 'device_availability_change') {
+          // Refresh device status on change
+          refreshDeviceStatus();
+        } else if (event === 'reset') {
+          // Manager state was reset, check again
+          checkMicrophonePermission();
+        }
+      });
+
+      // Initial permission check
+      await checkMicrophonePermission();
+    };
+
+    initialize();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // =========================================================================
+  // Notify Parent When Permission Granted
+  // =========================================================================
+  const notifyParent = useCallback(() => {
+    if (!hasNotifiedParent.current && onPermissionGranted) {
+      hasNotifiedParent.current = true;
+      console.log('[MicrophonePermissionHelper] Notifying parent of permission grant');
       onPermissionGranted();
     }
-  }, [permissionStatus, onPermissionGranted]);
+  }, [onPermissionGranted]);
 
-  const detectBrowser = () => {
-    const userAgent = navigator.userAgent;
-    let browser = 'Unknown';
-    
-    if (userAgent.indexOf('Chrome') > -1) {
-      browser = 'Chrome';
-    } else if (userAgent.indexOf('Safari') > -1 && userAgent.indexOf('Chrome') === -1) {
-      browser = 'Safari';
-    } else if (userAgent.indexOf('Firefox') > -1) {
-      browser = 'Firefox';
-    } else if (userAgent.indexOf('Edge') > -1) {
-      browser = 'Edge';
+  useEffect(() => {
+    if (permissionStatus === 'granted') {
+      notifyParent();
     }
-    
-    setBrowserInfo(browser);
-  };
+  }, [permissionStatus, notifyParent]);
 
-  const checkMicrophonePermission = async () => {
+  // =========================================================================
+  // Refresh Device Status
+  // =========================================================================
+  const refreshDeviceStatus = useCallback(async () => {
     try {
+      const status = await microphonePermissionManager.getDeviceStatus();
+      setDeviceStatus(status);
+      setTroubleshootingSteps(status.troubleshooting || []);
+      return status;
+    } catch (error) {
+      console.error('[MicrophonePermissionHelper] Error getting device status:', error);
+      return null;
+    }
+  }, []);
+
+  // =========================================================================
+  // Check Microphone Permission
+  // =========================================================================
+  const checkMicrophonePermission = useCallback(async () => {
+    try {
+      console.log('[MicrophonePermissionHelper] Checking microphone permission...');
+
       // Check if mediaDevices API is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setPermissionStatus('unsupported');
         return;
       }
 
-      // Check permission status if available
+      // Get detailed device status
+      const status = await refreshDeviceStatus();
+
+      // Check permission status via Permissions API
       if (navigator.permissions && navigator.permissions.query) {
         try {
           const permission = await navigator.permissions.query({ name: 'microphone' });
+
+          console.log(`[MicrophonePermissionHelper] Permission API state: ${permission.state}`);
           setPermissionStatus(permission.state);
-          
+
+          // Listen for permission changes
           permission.addEventListener('change', () => {
+            console.log(`[MicrophonePermissionHelper] Permission changed: ${permission.state}`);
             setPermissionStatus(permission.state);
             if (permission.state === 'granted') {
-              onPermissionGranted && onPermissionGranted();
+              notifyParent();
             }
           });
+
+          // If already granted, notify parent
+          if (permission.state === 'granted') {
+            notifyParent();
+          }
+
         } catch (e) {
-          // Fallback to requesting permission
-          requestMicrophoneAccess();
+          // Safari doesn't support 'microphone' permission query
+          console.log('[MicrophonePermissionHelper] Permissions API not available, falling back to prompt');
+          setPermissionStatus('prompt');
         }
       } else {
-        // Directly request permission
-        requestMicrophoneAccess();
+        // Directly show prompt state if Permissions API not available
+        setPermissionStatus('prompt');
       }
-    } catch (error) {
-      console.error('Error checking microphone permission:', error);
-      setPermissionStatus('error');
-    }
-  };
 
+    } catch (error) {
+      console.error('[MicrophonePermissionHelper] Error checking permission:', error);
+      setPermissionStatus('error');
+      setLastError(error.message);
+    }
+  }, [refreshDeviceStatus, notifyParent]);
+
+  // =========================================================================
+  // Request Microphone Access
+  // =========================================================================
   const requestMicrophoneAccess = useCallback(async () => {
     try {
-      console.log('[MicrophonePermissionHelper] User clicked Grant Access - requesting microphone permission');
+      console.log('[MicrophonePermissionHelper] User requesting microphone access...');
+      setIsRetrying(true);
+      setLastError(null);
 
-      // v2.0: Reset manager's denial state when user explicitly requests permission
-      // This allows retry even if manager thinks permission was denied
+      // Reset manager's denial state when user explicitly requests permission
       microphonePermissionManager.resetDenialState();
 
-      // Try through the unified permission manager first for proper state tracking
+      // Request through the unified permission manager
       const result = await microphonePermissionManager.requestPermission('MicrophonePermissionHelper', {
         audio: {
           echoCancellation: true,
@@ -90,54 +174,50 @@ const MicrophonePermissionHelper = ({ onPermissionGranted }) => {
         }
       });
 
+      setIsRetrying(false);
+
       if (result.success) {
         // Clean up the stream (manager returns it)
         if (result.stream) {
           result.stream.getTracks().forEach(track => track.stop());
         }
-        console.log('[MicrophonePermissionHelper] Permission granted via manager');
+        console.log('[MicrophonePermissionHelper] Permission granted!');
         setPermissionStatus('granted');
-        onPermissionGranted && onPermissionGranted();
+        notifyParent();
         return;
       }
 
-      // If manager blocked due to denial state, try direct getUserMedia as fallback
-      if (result.error === 'permission_denied') {
-        console.log('[MicrophonePermissionHelper] Manager blocked request, trying direct getUserMedia');
+      // Handle specific errors
+      console.log('[MicrophonePermissionHelper] Permission request result:', result);
+      setLastError(result.reason || result.error);
 
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            }
-          });
-          stream.getTracks().forEach(track => track.stop());
-
-          console.log('[MicrophonePermissionHelper] Direct getUserMedia succeeded');
-          setPermissionStatus('granted');
-          onPermissionGranted && onPermissionGranted();
-          return;
-        } catch (directError) {
-          // Fall through to error handling
-          console.warn('[MicrophonePermissionHelper] Direct getUserMedia failed:', directError);
-          throw directError;
-        }
+      switch (result.error) {
+        case 'permission_denied':
+          setPermissionStatus('denied');
+          break;
+        case 'no_device':
+          setPermissionStatus('no-device');
+          break;
+        case 'device_busy':
+          setPermissionStatus('device-busy');
+          break;
+        case 'security':
+          setPermissionStatus('security-error');
+          break;
+        case 'unsupported':
+          setPermissionStatus('unsupported');
+          break;
+        default:
+          setPermissionStatus('error');
       }
 
-      // Handle other manager errors
-      if (result.error === 'no_device') {
-        setPermissionStatus('no-device');
-      } else if (result.error === 'device_busy') {
-        setPermissionStatus('error');
-        console.warn('[MicrophonePermissionHelper] Microphone is busy:', result.reason);
-      } else {
-        setPermissionStatus('error');
-      }
+      // Refresh device status after error
+      await refreshDeviceStatus();
 
     } catch (error) {
       console.error('[MicrophonePermissionHelper] Permission request error:', error);
+      setIsRetrying(false);
+      setLastError(error.message);
 
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setPermissionStatus('denied');
@@ -145,128 +225,356 @@ const MicrophonePermissionHelper = ({ onPermissionGranted }) => {
       } else if (error.name === 'NotFoundError') {
         setPermissionStatus('no-device');
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        setPermissionStatus('error');
-        console.warn('[MicrophonePermissionHelper] Microphone is in use by another application');
+        setPermissionStatus('device-busy');
+      } else if (error.name === 'SecurityError') {
+        setPermissionStatus('security-error');
       } else {
         setPermissionStatus('error');
       }
-    }
-  }, [onPermissionGranted]);
 
-  const getBrowserInstructions = () => {
-    switch (browserInfo) {
-      case 'Chrome':
-      case 'Edge':
-        return (
-          <ol>
-            <li>Click the lock icon 🔒 in the address bar</li>
-            <li>Find "Microphone" in the permissions list</li>
-            <li>Change it from "Block" to "Allow"</li>
-            <li>Reload the page</li>
-          </ol>
-        );
-      case 'Safari':
-        return (
-          <ol>
-            <li>Go to Safari → Preferences → Websites → Microphone</li>
-            <li>Find localhost:3000 in the list</li>
-            <li>Change to "Allow"</li>
-            <li>Reload the page</li>
-          </ol>
-        );
-      case 'Firefox':
-        return (
-          <ol>
-            <li>Click the microphone icon 🎤 in the address bar</li>
-            <li>Click "Blocked Temporarily" dropdown</li>
-            <li>Select "Allow"</li>
-            <li>Reload the page</li>
-          </ol>
-        );
-      default:
-        return (
-          <ol>
-            <li>Check your browser settings for microphone permissions</li>
-            <li>Allow access for localhost:3000</li>
-            <li>Reload the page</li>
-          </ol>
-        );
+      await refreshDeviceStatus();
     }
+  }, [notifyParent, refreshDeviceStatus]);
+
+  // =========================================================================
+  // Render Device List
+  // =========================================================================
+  const renderDeviceList = () => {
+    if (!deviceStatus?.devices?.devices) {
+      return <span className="device-checking">Checking devices...</span>;
+    }
+
+    const devices = deviceStatus.devices.devices;
+
+    if (devices.length === 0) {
+      return (
+        <span className="no-devices">
+          No microphones detected.
+          {deviceStatus.permission !== 'granted' && (
+            <span className="device-hint"> (Grant permission to see device names)</span>
+          )}
+        </span>
+      );
+    }
+
+    return (
+      <ul className="device-list">
+        {devices.map((device, i) => (
+          <li key={device.deviceId || i}>
+            {device.label}
+          </li>
+        ))}
+      </ul>
+    );
   };
 
+  // =========================================================================
+  // Render Troubleshooting Steps
+  // =========================================================================
+  const renderTroubleshootingSteps = () => {
+    if (troubleshootingSteps.length === 0) return null;
+
+    return (
+      <div className="troubleshooting-section">
+        <h4>Troubleshooting Steps:</h4>
+        <ol className="troubleshooting-steps">
+          {troubleshootingSteps.map((step, i) => (
+            <li key={i} className={`priority-${step.priority}`}>
+              <strong>{step.issue}:</strong>
+              <span className="step-action">{step.action}</span>
+              {step.detail && <p className="step-detail">{step.detail}</p>}
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // Render Platform-Specific Help
+  // =========================================================================
+  const renderPlatformHelp = () => {
+    const platform = deviceStatus?.platform?.os || 'unknown';
+    const browser = deviceStatus?.browser?.name || 'default';
+
+    if (platform === 'macos') {
+      return (
+        <div className="platform-help macos">
+          <h4>macOS Permission Required</h4>
+          <p>Your browser needs microphone access at the system level:</p>
+          <ol>
+            <li>Open <strong>System Settings</strong> (or System Preferences)</li>
+            <li>Go to <strong>Privacy & Security</strong> → <strong>Microphone</strong></li>
+            <li>Find <strong>{getBrowserDisplayName(browser)}</strong> in the list</li>
+            <li>Toggle the switch to <strong>ON</strong></li>
+            <li>You may need to restart your browser</li>
+          </ol>
+          <button
+            onClick={() => window.open('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone', '_blank')}
+            className="open-settings-btn"
+          >
+            Open System Settings
+          </button>
+        </div>
+      );
+    }
+
+    if (platform === 'windows') {
+      return (
+        <div className="platform-help windows">
+          <h4>Windows Permission Required</h4>
+          <p>Your browser needs microphone access:</p>
+          <ol>
+            <li>Open <strong>Settings</strong></li>
+            <li>Go to <strong>Privacy</strong> → <strong>Microphone</strong></li>
+            <li>Ensure "Allow apps to access your microphone" is <strong>ON</strong></li>
+            <li>Find <strong>{getBrowserDisplayName(browser)}</strong> and enable access</li>
+          </ol>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // =========================================================================
+  // Helper Functions
+  // =========================================================================
+  const getBrowserDisplayName = (browser) => {
+    const names = {
+      chrome: 'Google Chrome',
+      safari: 'Safari',
+      firefox: 'Firefox',
+      edge: 'Microsoft Edge',
+    };
+    return names[browser] || 'Your browser';
+  };
+
+  // =========================================================================
+  // Render - Return null if granted
+  // =========================================================================
   if (permissionStatus === 'granted') {
-    return null; // Don't show anything if permission is granted
+    return null;
   }
 
+  // =========================================================================
+  // Main Render
+  // =========================================================================
   return (
     <div className="microphone-permission-helper">
       <div className="permission-status">
+
+        {/* Checking State */}
         {permissionStatus === 'checking' && (
-          <>
+          <div className="status-checking">
             <div className="spinner"></div>
             <p>Checking microphone access...</p>
-          </>
+          </div>
         )}
-        
+
+        {/* Prompt State - Ready to Request */}
         {permissionStatus === 'prompt' && (
-          <>
-            <p>🎤 Microphone permission required</p>
-            <button onClick={requestMicrophoneAccess} className="permission-button">
-              Grant Microphone Access
+          <div className="status-prompt">
+            <div className="icon">🎤</div>
+            <h3>Microphone Permission Required</h3>
+            <p>JARVIS needs microphone access for voice commands.</p>
+            <button
+              onClick={requestMicrophoneAccess}
+              className="permission-button primary"
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Requesting...' : 'Grant Microphone Access'}
             </button>
-          </>
+
+            <div className="device-info">
+              <strong>Available Devices:</strong>
+              {renderDeviceList()}
+            </div>
+          </div>
         )}
-        
+
+        {/* Denied State */}
         {permissionStatus === 'denied' && (
-          <>
-            <p className="error">❌ Microphone access denied</p>
-            <p>JARVIS needs microphone access for voice commands</p>
-            <button onClick={() => setShowInstructions(!showInstructions)} className="help-button">
-              How to Enable Microphone
+          <div className="status-denied">
+            <div className="icon error">❌</div>
+            <h3>Microphone Access Denied</h3>
+            <p>Permission was blocked. Please enable microphone access to use voice commands.</p>
+
+            {renderPlatformHelp()}
+
+            <button
+              onClick={() => setShowInstructions(!showInstructions)}
+              className="help-button"
+            >
+              {showInstructions ? 'Hide Instructions' : 'Show Browser Instructions'}
             </button>
+
             {showInstructions && (
-              <div className="instructions">
-                <h4>Enable Microphone in {browserInfo}:</h4>
-                {getBrowserInstructions()}
+              <div className="browser-instructions">
+                <h4>Enable Microphone in Your Browser:</h4>
+                <ol>
+                  {microphonePermissionManager.getPermissionInstructions().steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
               </div>
             )}
-          </>
-        )}
-        
-        {permissionStatus === 'no-device' && (
-          <>
-            <p className="error">🎤 No microphone found</p>
-            <p>Please connect a microphone and reload the page</p>
-            <p className="device-list">Available devices: {navigator.mediaDevices ? 'Checking...' : 'Not supported'}</p>
-          </>
-        )}
-        
-        {permissionStatus === 'unsupported' && (
-          <>
-            <p className="error">❌ Browser not supported</p>
-            <p>Please use Chrome, Firefox, Safari, or Edge</p>
-          </>
-        )}
-        
-        {permissionStatus === 'error' && (
-          <>
-            <p className="error">❌ Error accessing microphone</p>
-            <button onClick={checkMicrophonePermission} className="retry-button">
-              Try Again
+
+            <button
+              onClick={requestMicrophoneAccess}
+              className="retry-button"
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Trying...' : 'Try Again'}
             </button>
-          </>
+          </div>
+        )}
+
+        {/* No Device State */}
+        {permissionStatus === 'no-device' && (
+          <div className="status-no-device">
+            <div className="icon warning">🎤</div>
+            <h3>No Microphone Found</h3>
+            <p>No microphone device was detected on your system.</p>
+
+            <div className="device-info">
+              <strong>Detected Audio Devices:</strong>
+              {renderDeviceList()}
+            </div>
+
+            <div className="suggestions">
+              <h4>Things to Try:</h4>
+              <ul>
+                <li>Connect a USB microphone or headset</li>
+                <li>Check your headphone/microphone jack connection</li>
+                <li>Ensure your built-in microphone is enabled in System Settings</li>
+                <li>Close other apps that might be using the microphone</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={requestMicrophoneAccess}
+              className="retry-button"
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Checking...' : 'Check Again'}
+            </button>
+
+            <p className="auto-retry-note">
+              We'll automatically detect when you connect a microphone.
+            </p>
+          </div>
+        )}
+
+        {/* Device Busy State */}
+        {permissionStatus === 'device-busy' && (
+          <div className="status-device-busy">
+            <div className="icon warning">🔒</div>
+            <h3>Microphone In Use</h3>
+            <p>Your microphone is being used by another application.</p>
+
+            <div className="suggestions">
+              <h4>Things to Try:</h4>
+              <ul>
+                <li>Close video conferencing apps (Zoom, Teams, Meet)</li>
+                <li>Close other browser tabs using the microphone</li>
+                <li>Check for recording software running in the background</li>
+                <li>Restart your browser</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={requestMicrophoneAccess}
+              className="retry-button"
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Trying...' : 'Try Again'}
+            </button>
+          </div>
+        )}
+
+        {/* Security Error State */}
+        {permissionStatus === 'security-error' && (
+          <div className="status-security-error">
+            <div className="icon error">🔐</div>
+            <h3>Security Error</h3>
+            <p>Microphone access requires a secure connection (HTTPS).</p>
+
+            {!deviceStatus?.isSecureContext && (
+              <div className="security-warning">
+                <strong>Current context is not secure.</strong>
+                <p>
+                  You are accessing this page via HTTP. Microphone access is only
+                  available on HTTPS or localhost.
+                </p>
+              </div>
+            )}
+
+            <div className="suggestions">
+              <h4>Solutions:</h4>
+              <ul>
+                <li>Access this page via <code>https://</code></li>
+                <li>For development, use <code>localhost</code> instead of IP address</li>
+                <li>Configure your development server with HTTPS</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Unsupported Browser State */}
+        {permissionStatus === 'unsupported' && (
+          <div className="status-unsupported">
+            <div className="icon error">❌</div>
+            <h3>Browser Not Supported</h3>
+            <p>Your browser doesn't support microphone access.</p>
+            <p>Please use a modern browser:</p>
+            <ul className="browser-list">
+              <li>Google Chrome (recommended)</li>
+              <li>Mozilla Firefox</li>
+              <li>Safari</li>
+              <li>Microsoft Edge</li>
+            </ul>
+          </div>
+        )}
+
+        {/* Generic Error State */}
+        {permissionStatus === 'error' && (
+          <div className="status-error">
+            <div className="icon error">⚠️</div>
+            <h3>Error Accessing Microphone</h3>
+            <p>Something went wrong while trying to access the microphone.</p>
+
+            {lastError && (
+              <p className="error-detail">Error: {lastError}</p>
+            )}
+
+            {renderTroubleshootingSteps()}
+
+            <button
+              onClick={requestMicrophoneAccess}
+              className="retry-button"
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Trying...' : 'Try Again'}
+            </button>
+          </div>
         )}
       </div>
-      
-      <div className="troubleshooting-tips">
-        <h4>Quick Fixes:</h4>
-        <ul>
-          <li>Make sure you're using HTTPS or localhost</li>
-          <li>Check if other apps are using the microphone</li>
-          <li>Try closing and reopening your browser</li>
-          <li>On macOS: System Preferences → Security → Privacy → Microphone</li>
-        </ul>
-      </div>
+
+      {/* Always show troubleshooting tips for non-granted states */}
+      {permissionStatus !== 'checking' && permissionStatus !== 'prompt' && (
+        <div className="troubleshooting-tips">
+          <details>
+            <summary>Advanced Troubleshooting</summary>
+            <ul>
+              <li>Run diagnostics in console: <code>window.microphonePermissionManager.runDiagnostics()</code></li>
+              <li>Check browser console for detailed error logs</li>
+              <li>Try incognito/private window (fresh permissions)</li>
+              <li>Clear site data and try again</li>
+            </ul>
+          </details>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,8 +1,18 @@
 /**
- * Unified Microphone Permission Manager
+ * Unified Microphone Permission Manager v4.0
  *
  * A singleton service that manages microphone permission state across all components.
- * Prevents race conditions and infinite retry loops by providing:
+ *
+ * v4.0 ENHANCEMENTS:
+ * - Proper distinction between permission denied vs no physical device
+ * - Real-time device monitoring with event notifications
+ * - macOS-aware permission guidance
+ * - Intelligent retry with exponential backoff
+ * - Browser permission vs OS permission detection
+ * - Proactive device availability checking
+ * - Self-healing permission recovery
+ *
+ * Features:
  * - Centralized permission state tracking
  * - Pre-check capability before any getUserMedia call
  * - Event-driven permission change notifications
@@ -18,21 +28,28 @@ class MicrophonePermissionManager {
     }
     MicrophonePermissionManager.instance = this;
 
-    // v3.0: Comprehensive debugging for microphone issues
-    this._debug = true; // Enable debug logging
-    this._log('MicrophonePermissionManager v3.0 initializing...');
+    // v4.0: Enhanced debugging
+    this._debug = true;
+    this._version = '4.0.0';
+    this._log(`MicrophonePermissionManager v${this._version} initializing...`);
 
     // =========================================================================
-    // Permission State
+    // Permission State (v4.0 Enhanced)
     // =========================================================================
     this.state = {
-      permission: 'unknown',  // 'unknown' | 'prompt' | 'granted' | 'denied'
+      permission: 'unknown',      // 'unknown' | 'prompt' | 'granted' | 'denied'
       lastChecked: null,
       deniedAt: null,
       deniedCount: 0,
-      isHardDenied: false,    // True if user clicked "Block" or browser setting
+      isHardDenied: false,        // True if user clicked "Block" or browser setting
       lastError: null,
-      deviceAvailable: null,  // null = unchecked, true = has mic, false = no mic
+      lastErrorName: null,        // v4.0: Track specific error name
+      deviceAvailable: null,      // null = unchecked, true = has mic, false = no mic
+      deviceCount: 0,             // v4.0: Number of audio input devices
+      devices: [],                // v4.0: List of available devices
+      osPermissionBlocked: false, // v4.0: macOS/Windows OS-level permission blocked
+      browserPermissionBlocked: false, // v4.0: Browser site setting blocked
+      isSecureContext: typeof window !== 'undefined' ? window.isSecureContext : false,
     };
 
     // =========================================================================
@@ -45,6 +62,26 @@ class MicrophonePermissionManager {
     };
 
     // =========================================================================
+    // Retry Configuration (v4.0)
+    // =========================================================================
+    this.retryConfig = {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      currentRetry: 0,
+      lastRetryTime: null,
+    };
+
+    // =========================================================================
+    // Device Monitoring (v4.0)
+    // =========================================================================
+    this.deviceMonitor = {
+      isMonitoring: false,
+      checkIntervalMs: 2000,
+      intervalId: null,
+    };
+
+    // =========================================================================
     // Event Subscribers
     // =========================================================================
     this.subscribers = new Set();
@@ -53,11 +90,13 @@ class MicrophonePermissionManager {
     // Browser Info
     // =========================================================================
     this.browser = this._detectBrowser();
+    this.platform = this._detectPlatform();
 
     // =========================================================================
     // Initialize
     // =========================================================================
     this._initializePermissionMonitoring();
+    this._startDeviceMonitoring();
   }
 
   // ===========================================================================
@@ -611,6 +650,308 @@ class MicrophonePermissionManager {
     }
 
     return { name, version, ua };
+  }
+
+  // ===========================================================================
+  // v4.0: Platform Detection
+  // ===========================================================================
+  _detectPlatform() {
+    const ua = navigator.userAgent;
+    const platform = navigator.platform || '';
+
+    let os = 'unknown';
+    let isMobile = false;
+
+    if (platform.includes('Mac') || ua.includes('Macintosh')) {
+      os = 'macos';
+    } else if (platform.includes('Win') || ua.includes('Windows')) {
+      os = 'windows';
+    } else if (platform.includes('Linux') || ua.includes('Linux')) {
+      os = 'linux';
+    } else if (/iPhone|iPad|iPod/.test(ua)) {
+      os = 'ios';
+      isMobile = true;
+    } else if (/Android/.test(ua)) {
+      os = 'android';
+      isMobile = true;
+    }
+
+    return { os, isMobile, platform };
+  }
+
+  // ===========================================================================
+  // v4.0: Device Monitoring
+  // ===========================================================================
+  _startDeviceMonitoring() {
+    if (this.deviceMonitor.isMonitoring) return;
+
+    this._log('Starting device monitoring...');
+    this.deviceMonitor.isMonitoring = true;
+
+    // Initial device check
+    this._checkDevices();
+
+    // Listen for device changes (USB connect/disconnect)
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', async () => {
+        this._log('Device change detected');
+        await this._checkDevices();
+        this._notifySubscribers('device_change');
+      });
+    }
+
+    // Periodic check for devices (catches cases where devicechange doesn't fire)
+    this.deviceMonitor.intervalId = setInterval(() => {
+      this._checkDevices();
+    }, this.deviceMonitor.checkIntervalMs);
+  }
+
+  _stopDeviceMonitoring() {
+    if (this.deviceMonitor.intervalId) {
+      clearInterval(this.deviceMonitor.intervalId);
+      this.deviceMonitor.intervalId = null;
+    }
+    this.deviceMonitor.isMonitoring = false;
+  }
+
+  async _checkDevices() {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) {
+        return;
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+
+      // Check if we have real device info (labels) or just placeholders
+      const hasRealLabels = audioInputs.some(d => d.label && d.label !== '');
+
+      const deviceInfo = audioInputs.map(d => ({
+        deviceId: d.deviceId?.substring(0, 8) || 'unknown',
+        label: d.label || '(permission required to see name)',
+        groupId: d.groupId?.substring(0, 8) || '',
+      }));
+
+      const previousCount = this.state.deviceCount;
+      const previousAvailable = this.state.deviceAvailable;
+
+      this._updateState({
+        deviceCount: audioInputs.length,
+        deviceAvailable: audioInputs.length > 0,
+        devices: deviceInfo,
+      });
+
+      // Log changes
+      if (previousCount !== audioInputs.length) {
+        this._log(`Device count changed: ${previousCount} → ${audioInputs.length}`, deviceInfo);
+      }
+
+      // Notify if device availability changed
+      if (previousAvailable !== null && previousAvailable !== (audioInputs.length > 0)) {
+        this._log(`Device availability changed: ${previousAvailable} → ${audioInputs.length > 0}`);
+        this._notifySubscribers('device_availability_change');
+
+        // Auto-retry if devices became available
+        if (audioInputs.length > 0 && !previousAvailable) {
+          this._log('Devices became available, resetting denial state');
+          this.resetDenialState();
+        }
+      }
+
+      return {
+        count: audioInputs.length,
+        hasLabels: hasRealLabels,
+        devices: deviceInfo,
+      };
+
+    } catch (error) {
+      this._error('Device enumeration failed:', error);
+      return { count: 0, hasLabels: false, devices: [] };
+    }
+  }
+
+  // ===========================================================================
+  // v4.0: Enhanced Error Classification
+  // ===========================================================================
+  _classifyError(error) {
+    const errorName = error.name || 'UnknownError';
+    const errorMessage = error.message || '';
+
+    const classification = {
+      errorName,
+      errorMessage,
+      category: 'unknown',
+      isRecoverable: false,
+      requiresUserAction: true,
+      suggestedAction: null,
+    };
+
+    switch (errorName) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        // Could be browser OR OS level denial
+        if (errorMessage.includes('system') || errorMessage.includes('OS')) {
+          classification.category = 'os_permission_denied';
+          classification.suggestedAction = 'Enable microphone access in System Settings';
+          this._updateState({ osPermissionBlocked: true });
+        } else {
+          classification.category = 'browser_permission_denied';
+          classification.suggestedAction = 'Click the microphone icon in address bar to allow';
+          this._updateState({ browserPermissionBlocked: true });
+        }
+        break;
+
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        // No microphone hardware detected
+        classification.category = 'no_device';
+        classification.isRecoverable = true; // Can recover if device is plugged in
+        classification.requiresUserAction = true;
+        classification.suggestedAction = 'Connect a microphone and try again';
+        break;
+
+      case 'NotReadableError':
+      case 'TrackStartError':
+        // Device exists but can't be accessed
+        classification.category = 'device_busy';
+        classification.isRecoverable = true;
+        classification.suggestedAction = 'Close other apps using the microphone';
+        break;
+
+      case 'OverconstrainedError':
+        // Audio constraints can't be satisfied
+        classification.category = 'overconstrained';
+        classification.isRecoverable = true;
+        classification.suggestedAction = 'Try with default audio settings';
+        break;
+
+      case 'AbortError':
+        classification.category = 'aborted';
+        classification.isRecoverable = true;
+        classification.requiresUserAction = false;
+        break;
+
+      case 'SecurityError':
+        classification.category = 'security';
+        classification.suggestedAction = 'This page must be served over HTTPS';
+        break;
+
+      default:
+        classification.category = 'unknown';
+        classification.suggestedAction = 'Try reloading the page';
+    }
+
+    return classification;
+  }
+
+  // ===========================================================================
+  // v4.0: Intelligent Retry
+  // ===========================================================================
+  async _retryWithBackoff(operation, context = 'unknown') {
+    const { maxRetries, baseDelayMs, maxDelayMs } = this.retryConfig;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        const classification = this._classifyError(error);
+
+        // Don't retry non-recoverable errors
+        if (!classification.isRecoverable && attempt > 0) {
+          throw error;
+        }
+
+        if (attempt < maxRetries) {
+          const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+          this._log(`Retry ${attempt + 1}/${maxRetries} for ${context} in ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          // Re-check devices before retry
+          await this._checkDevices();
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  // ===========================================================================
+  // v4.0: Get Detailed Device Status (for UI)
+  // ===========================================================================
+  async getDeviceStatus() {
+    const deviceInfo = await this._checkDevices();
+    const permissionState = await this.checkPermission();
+
+    return {
+      permission: permissionState,
+      devices: deviceInfo,
+      platform: this.platform,
+      browser: this.browser,
+      isSecureContext: this.state.isSecureContext,
+      osPermissionBlocked: this.state.osPermissionBlocked,
+      browserPermissionBlocked: this.state.browserPermissionBlocked,
+      canRequest: this.canUseMicrophone(),
+      troubleshooting: this._getTroubleshootingSteps(),
+    };
+  }
+
+  // ===========================================================================
+  // v4.0: Platform-Specific Troubleshooting
+  // ===========================================================================
+  _getTroubleshootingSteps() {
+    const steps = [];
+    const { os } = this.platform;
+    const { name: browser } = this.browser;
+
+    // Security context check
+    if (!this.state.isSecureContext) {
+      steps.push({
+        priority: 1,
+        issue: 'Insecure context',
+        action: 'Use HTTPS or localhost',
+        detail: 'Microphone access requires a secure context (HTTPS or localhost)',
+      });
+    }
+
+    // macOS-specific
+    if (os === 'macos') {
+      steps.push({
+        priority: 2,
+        issue: 'macOS System Permission',
+        action: 'System Settings → Privacy & Security → Microphone',
+        detail: `Ensure ${browser === 'chrome' ? 'Google Chrome' : browser === 'safari' ? 'Safari' : browser === 'firefox' ? 'Firefox' : 'your browser'} has a checkmark next to it`,
+      });
+    }
+
+    // Windows-specific
+    if (os === 'windows') {
+      steps.push({
+        priority: 2,
+        issue: 'Windows Microphone Privacy',
+        action: 'Settings → Privacy → Microphone',
+        detail: 'Ensure "Allow apps to access your microphone" is ON',
+      });
+    }
+
+    // Browser-specific
+    steps.push({
+      priority: 3,
+      issue: 'Browser Site Permission',
+      action: this.getPermissionInstructions().steps.join(' → '),
+      detail: 'Allow microphone access for this specific website',
+    });
+
+    // Device check
+    if (this.state.deviceCount === 0) {
+      steps.push({
+        priority: 1,
+        issue: 'No microphone detected',
+        action: 'Connect a microphone',
+        detail: 'Ensure your microphone is properly connected and not in use by another app',
+      });
+    }
+
+    return steps.sort((a, b) => a.priority - b.priority);
   }
 
   // ===========================================================================
