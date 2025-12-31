@@ -5117,15 +5117,27 @@ class JARVISLearningDatabase:
                 # Process each group
                 for pattern_hash, group in pattern_groups.items():
                     if len(group) == 1:
-                        # Single pattern - insert directly
+                        # Single pattern - insert with UPSERT on pattern_hash conflict
                         pattern_id, pattern = group[0]
 
+                        # CRITICAL FIX: Use ON CONFLICT(pattern_hash) DO UPDATE
+                        # instead of INSERT OR REPLACE which only works on PRIMARY KEY
+                        # This fixes "UNIQUE constraint failed: patterns.pattern_hash"
                         await cursor.execute(
                             """
-                            INSERT OR REPLACE INTO patterns
+                            INSERT INTO patterns
                             (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
                              success_rate, occurrence_count, first_seen, last_seen, metadata)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(pattern_hash) DO UPDATE SET
+                                pattern_type = excluded.pattern_type,
+                                pattern_data = excluded.pattern_data,
+                                confidence = MAX(patterns.confidence, excluded.confidence),
+                                success_rate = (patterns.success_rate * patterns.occurrence_count + excluded.success_rate)
+                                              / (patterns.occurrence_count + 1),
+                                occurrence_count = patterns.occurrence_count + 1,
+                                last_seen = excluded.last_seen,
+                                metadata = excluded.metadata
                         """,
                             (
                                 pattern_id,
@@ -5181,13 +5193,25 @@ class JARVISLearningDatabase:
                             if len(merged_metadata[key]) == 1:
                                 merged_metadata[key] = merged_metadata[key][0]
 
-                        # Insert merged pattern
+                        # Insert merged pattern with UPSERT on pattern_hash conflict
+                        # CRITICAL FIX: Use ON CONFLICT(pattern_hash) DO UPDATE
+                        # instead of INSERT OR REPLACE which only works on PRIMARY KEY
                         await cursor.execute(
                             """
-                            INSERT OR REPLACE INTO patterns
+                            INSERT INTO patterns
                             (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
                              success_rate, occurrence_count, first_seen, last_seen, boost_count, metadata)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(pattern_hash) DO UPDATE SET
+                                pattern_type = excluded.pattern_type,
+                                pattern_data = excluded.pattern_data,
+                                confidence = MAX(patterns.confidence, excluded.confidence),
+                                success_rate = (patterns.success_rate * patterns.occurrence_count + excluded.success_rate * excluded.occurrence_count)
+                                              / (patterns.occurrence_count + excluded.occurrence_count),
+                                occurrence_count = patterns.occurrence_count + excluded.occurrence_count,
+                                last_seen = excluded.last_seen,
+                                boost_count = patterns.boost_count + excluded.boost_count,
+                                metadata = excluded.metadata
                         """,
                             (
                                 base_pattern_id,
@@ -5608,57 +5632,63 @@ class JARVISLearningDatabase:
             trigger_app: App that triggered transition
             trigger_action: Action that triggered transition
             metadata: Additional metadata
+
+        Note: Uses _db_lock to prevent concurrent access and "database is locked" errors.
         """
         now = datetime.now()
 
         try:
-            # Check for existing transition pattern
-            async with self.db.execute(
-                """
-                SELECT transition_id, frequency, avg_time_between_seconds
-                FROM space_transitions
-                WHERE from_space_id = ? AND to_space_id = ?
-                  AND hour_of_day = ? AND day_of_week = ?
-            """,
-                (from_space, to_space, now.hour, now.weekday()),
-            ) as cursor:
-                row = await cursor.fetchone()
-
-            if row:
-                # Update existing
-                trans_id, freq, avg_time = row
-                await self.db.execute(
+            # CRITICAL FIX: Use _db_lock to prevent concurrent database access
+            # This fixes the "database is locked" error that occurs when multiple
+            # async tasks try to write to SQLite simultaneously
+            async with self._db_lock:
+                # Check for existing transition pattern
+                async with self.db.execute(
                     """
-                    UPDATE space_transitions
-                    SET frequency = ?,
-                        timestamp = ?
-                    WHERE transition_id = ?
+                    SELECT transition_id, frequency, avg_time_between_seconds
+                    FROM space_transitions
+                    WHERE from_space_id = ? AND to_space_id = ?
+                      AND hour_of_day = ? AND day_of_week = ?
                 """,
-                    (freq + 1, now.isoformat(), trans_id),
-                )
-            else:
-                # Create new
-                await self.db.execute(
-                    """
-                    INSERT INTO space_transitions (
-                        from_space_id, to_space_id, trigger_app, trigger_action,
-                        frequency, timestamp, hour_of_day, day_of_week, metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        from_space,
-                        to_space,
-                        trigger_app,
-                        trigger_action,
-                        1,
-                        now.isoformat(),
-                        now.hour,
-                        now.weekday(),
-                        json.dumps(metadata) if metadata else None,
-                    ),
-                )
+                    (from_space, to_space, now.hour, now.weekday()),
+                ) as cursor:
+                    row = await cursor.fetchone()
 
-            await self.db.commit()
+                if row:
+                    # Update existing
+                    trans_id, freq, avg_time = row
+                    await self.db.execute(
+                        """
+                        UPDATE space_transitions
+                        SET frequency = ?,
+                            timestamp = ?
+                        WHERE transition_id = ?
+                    """,
+                        (freq + 1, now.isoformat(), trans_id),
+                    )
+                else:
+                    # Create new
+                    await self.db.execute(
+                        """
+                        INSERT INTO space_transitions (
+                            from_space_id, to_space_id, trigger_app, trigger_action,
+                            frequency, timestamp, hour_of_day, day_of_week, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            from_space,
+                            to_space,
+                            trigger_app,
+                            trigger_action,
+                            1,
+                            now.isoformat(),
+                            now.hour,
+                            now.weekday(),
+                            json.dumps(metadata) if metadata else None,
+                        ),
+                    )
+
+                await self.db.commit()
 
         except Exception as e:
             logger.error(f"Error storing space transition: {e}", exc_info=True)
@@ -5689,66 +5719,71 @@ class JARVISLearningDatabase:
 
         Returns:
             behavior_id
+
+        Note: Uses _db_lock to prevent concurrent access and "database is locked" errors.
         """
         now = datetime.now()
 
         try:
-            # Check if behavior exists
-            async with self.db.execute(
-                """
-                SELECT behavior_id, frequency, confidence
-                FROM behavioral_patterns
-                WHERE behavior_type = ? AND behavior_description = ?
-            """,
-                (behavior_type, description),
-            ) as cursor:
-                row = await cursor.fetchone()
-
-            if row:
-                # Update existing
-                beh_id, freq, old_conf = row
-                new_conf = min(0.99, old_conf + 0.03)
-
-                await self.db.execute(
-                    """
-                    UPDATE behavioral_patterns
-                    SET frequency = ?,
-                        confidence = ?,
-                        last_observed = ?,
-                        prediction_accuracy = ?
-                    WHERE behavior_id = ?
-                """,
-                    (freq + 1, new_conf, now.isoformat(), prediction_accuracy, beh_id),
-                )
-
-                return beh_id
-            else:
-                # Create new
+            # CRITICAL FIX: Use _db_lock to prevent concurrent database access
+            async with self._db_lock:
+                # Check if behavior exists
                 async with self.db.execute(
                     """
-                    INSERT INTO behavioral_patterns (
-                        behavior_type, behavior_description, pattern_data,
-                        frequency, confidence, temporal_pattern,
-                        contextual_triggers, first_observed, last_observed,
-                        prediction_accuracy, metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    SELECT behavior_id, frequency, confidence
+                    FROM behavioral_patterns
+                    WHERE behavior_type = ? AND behavior_description = ?
                 """,
-                    (
-                        behavior_type,
-                        description,
-                        json.dumps(pattern_data),
-                        1,
-                        confidence,
-                        json.dumps(temporal_pattern) if temporal_pattern else None,
-                        json.dumps(contextual_triggers) if contextual_triggers else None,
-                        now.isoformat(),
-                        now.isoformat(),
-                        prediction_accuracy,
-                        json.dumps(metadata) if metadata else None,
-                    ),
+                    (behavior_type, description),
                 ) as cursor:
+                    row = await cursor.fetchone()
+
+                if row:
+                    # Update existing
+                    beh_id, freq, old_conf = row
+                    new_conf = min(0.99, old_conf + 0.03)
+
+                    await self.db.execute(
+                        """
+                        UPDATE behavioral_patterns
+                        SET frequency = ?,
+                            confidence = ?,
+                            last_observed = ?,
+                            prediction_accuracy = ?
+                        WHERE behavior_id = ?
+                    """,
+                        (freq + 1, new_conf, now.isoformat(), prediction_accuracy, beh_id),
+                    )
+
                     await self.db.commit()
-                    return cursor.lastrowid
+                    return beh_id
+                else:
+                    # Create new
+                    async with self.db.execute(
+                        """
+                        INSERT INTO behavioral_patterns (
+                            behavior_type, behavior_description, pattern_data,
+                            frequency, confidence, temporal_pattern,
+                            contextual_triggers, first_observed, last_observed,
+                            prediction_accuracy, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            behavior_type,
+                            description,
+                            json.dumps(pattern_data),
+                            1,
+                            confidence,
+                            json.dumps(temporal_pattern) if temporal_pattern else None,
+                            json.dumps(contextual_triggers) if contextual_triggers else None,
+                            now.isoformat(),
+                            now.isoformat(),
+                            prediction_accuracy,
+                            json.dumps(metadata) if metadata else None,
+                        ),
+                    ) as cursor:
+                        await self.db.commit()
+                        return cursor.lastrowid
 
         except Exception as e:
             logger.error(f"Error storing behavioral pattern: {e}", exc_info=True)
@@ -5781,67 +5816,71 @@ class JARVISLearningDatabase:
             frequency: Occurrence frequency
             confidence: Confidence score
             metadata: Additional metadata
+
+        Note: Uses _db_lock to prevent concurrent access and "database is locked" errors.
         """
         now = datetime.now()
         is_leap = calendar.isleap(now.year)
 
         try:
-            # Check if pattern exists
-            async with self.db.execute(
-                """
-                SELECT temporal_id, frequency, confidence
-                FROM temporal_patterns
-                WHERE pattern_type = ? AND action_type = ? AND target = ?
-                  AND time_of_day = ? AND day_of_week = ?
-            """,
-                (pattern_type, action_type, target, time_of_day, day_of_week),
-            ) as cursor:
-                row = await cursor.fetchone()
-
-            if row:
-                # Update existing
-                temp_id, freq, old_conf = row
-                new_freq = freq + frequency
-                new_conf = min(0.99, old_conf + 0.02)
-
-                await self.db.execute(
+            # CRITICAL FIX: Use _db_lock to prevent concurrent database access
+            async with self._db_lock:
+                # Check if pattern exists
+                async with self.db.execute(
                     """
-                    UPDATE temporal_patterns
-                    SET frequency = ?,
-                        confidence = ?,
-                        last_occurrence = ?
-                    WHERE temporal_id = ?
+                    SELECT temporal_id, frequency, confidence
+                    FROM temporal_patterns
+                    WHERE pattern_type = ? AND action_type = ? AND target = ?
+                      AND time_of_day = ? AND day_of_week = ?
                 """,
-                    (new_freq, new_conf, now.isoformat(), temp_id),
-                )
-            else:
-                # Create new
-                await self.db.execute(
-                    """
-                    INSERT INTO temporal_patterns (
-                        pattern_type, time_of_day, day_of_week,
-                        day_of_month, month_of_year, is_leap_year,
-                        action_type, target, frequency, confidence,
-                        last_occurrence, metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        pattern_type,
-                        time_of_day,
-                        day_of_week,
-                        day_of_month,
-                        month_of_year,
-                        is_leap,
-                        action_type,
-                        target,
-                        frequency,
-                        confidence,
-                        now.isoformat(),
-                        json.dumps(metadata) if metadata else None,
-                    ),
-                )
+                    (pattern_type, action_type, target, time_of_day, day_of_week),
+                ) as cursor:
+                    row = await cursor.fetchone()
 
-            await self.db.commit()
+                if row:
+                    # Update existing
+                    temp_id, freq, old_conf = row
+                    new_freq = freq + frequency
+                    new_conf = min(0.99, old_conf + 0.02)
+
+                    await self.db.execute(
+                        """
+                        UPDATE temporal_patterns
+                        SET frequency = ?,
+                            confidence = ?,
+                            last_occurrence = ?
+                        WHERE temporal_id = ?
+                    """,
+                        (new_freq, new_conf, now.isoformat(), temp_id),
+                    )
+                else:
+                    # Create new
+                    await self.db.execute(
+                        """
+                        INSERT INTO temporal_patterns (
+                            pattern_type, time_of_day, day_of_week,
+                            day_of_month, month_of_year, is_leap_year,
+                            action_type, target, frequency, confidence,
+                            last_occurrence, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            pattern_type,
+                            time_of_day,
+                            day_of_week,
+                            day_of_month,
+                            month_of_year,
+                            is_leap,
+                            action_type,
+                            target,
+                            frequency,
+                            confidence,
+                            now.isoformat(),
+                            json.dumps(metadata) if metadata else None,
+                        ),
+                    )
+
+                await self.db.commit()
 
         except Exception as e:
             logger.error(f"Error storing temporal pattern: {e}", exc_info=True)
@@ -5866,35 +5905,39 @@ class JARVISLearningDatabase:
 
         Returns:
             suggestion_id
+
+        Note: Uses _db_lock to prevent concurrent access and "database is locked" errors.
         """
         now = datetime.now()
 
         try:
-            async with self.db.execute(
-                """
-                INSERT INTO proactive_suggestions (
-                    suggestion_type, suggestion_text, trigger_pattern_id,
-                    confidence, times_suggested, times_accepted,
-                    times_rejected, acceptance_rate, created_at,
-                    last_suggested, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    suggestion_type,
-                    suggestion_text,
-                    trigger_pattern_id,
-                    confidence,
-                    0,
-                    0,
-                    0,
-                    0.0,
-                    now.isoformat(),
-                    None,
-                    json.dumps(metadata) if metadata else None,
-                ),
-            ) as cursor:
-                await self.db.commit()
-                return cursor.lastrowid
+            # CRITICAL FIX: Use _db_lock to prevent concurrent database access
+            async with self._db_lock:
+                async with self.db.execute(
+                    """
+                    INSERT INTO proactive_suggestions (
+                        suggestion_type, suggestion_text, trigger_pattern_id,
+                        confidence, times_suggested, times_accepted,
+                        times_rejected, acceptance_rate, created_at,
+                        last_suggested, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        suggestion_type,
+                        suggestion_text,
+                        trigger_pattern_id,
+                        confidence,
+                        0,
+                        0,
+                        0,
+                        0.0,
+                        now.isoformat(),
+                        None,
+                        json.dumps(metadata) if metadata else None,
+                    ),
+                ) as cursor:
+                    await self.db.commit()
+                    return cursor.lastrowid
 
         except Exception as e:
             logger.error(f"Error storing suggestion: {e}", exc_info=True)
@@ -5907,51 +5950,55 @@ class JARVISLearningDatabase:
         Args:
             suggestion_id: Suggestion ID
             accepted: Whether user accepted/rejected
+
+        Note: Uses _db_lock to prevent concurrent access and "database is locked" errors.
         """
         now = datetime.now()
 
         try:
-            # Get current stats
-            async with self.db.execute(
-                """
-                SELECT times_suggested, times_accepted, times_rejected
-                FROM proactive_suggestions
-                WHERE suggestion_id = ?
-            """,
-                (suggestion_id,),
-            ) as cursor:
-                row = await cursor.fetchone()
-
-            if row:
-                suggested, accepted_count, rejected_count = row
-
-                if accepted:
-                    accepted_count += 1
-                else:
-                    rejected_count += 1
-
-                total = accepted_count + rejected_count
-                acceptance_rate = accepted_count / total if total > 0 else 0.0
-
-                await self.db.execute(
+            # CRITICAL FIX: Use _db_lock to prevent concurrent database access
+            async with self._db_lock:
+                # Get current stats
+                async with self.db.execute(
                     """
-                    UPDATE proactive_suggestions
-                    SET times_accepted = ?,
-                        times_rejected = ?,
-                        acceptance_rate = ?,
-                        last_suggested = ?
+                    SELECT times_suggested, times_accepted, times_rejected
+                    FROM proactive_suggestions
                     WHERE suggestion_id = ?
                 """,
-                    (
-                        accepted_count,
-                        rejected_count,
-                        acceptance_rate,
-                        now.isoformat(),
-                        suggestion_id,
-                    ),
-                )
+                    (suggestion_id,),
+                ) as cursor:
+                    row = await cursor.fetchone()
 
-                await self.db.commit()
+                if row:
+                    suggested, accepted_count, rejected_count = row
+
+                    if accepted:
+                        accepted_count += 1
+                    else:
+                        rejected_count += 1
+
+                    total = accepted_count + rejected_count
+                    acceptance_rate = accepted_count / total if total > 0 else 0.0
+
+                    await self.db.execute(
+                        """
+                        UPDATE proactive_suggestions
+                        SET times_accepted = ?,
+                            times_rejected = ?,
+                            acceptance_rate = ?,
+                            last_suggested = ?
+                        WHERE suggestion_id = ?
+                    """,
+                        (
+                            accepted_count,
+                            rejected_count,
+                            acceptance_rate,
+                            now.isoformat(),
+                            suggestion_id,
+                        ),
+                    )
+
+                    await self.db.commit()
 
         except Exception as e:
             logger.error(f"Error updating suggestion feedback: {e}", exc_info=True)
