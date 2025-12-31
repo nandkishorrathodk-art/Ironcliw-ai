@@ -1761,6 +1761,13 @@ class HybridDatabaseSync:
 
                 # Try to reconnect if unhealthy
                 if not self.cloudsql_healthy:
+                    # CRITICAL: Don't attempt reconnection if core dependencies are missing
+                    # asyncpg/connection_manager won't magically appear at runtime
+                    if not CONNECTION_MANAGER_AVAILABLE or not ASYNCPG_AVAILABLE:
+                        # Already logged during initialization - don't spam
+                        # Only log once per hour at debug level
+                        continue
+
                     # v5.0: Check if proxy detector says we should even try
                     if proxy_detector and not proxy_detector.should_retry():
                         # Proxy detector has determined proxy isn't available (local dev mode)

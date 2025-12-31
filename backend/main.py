@@ -451,6 +451,21 @@ try:
 except ImportError:
     SECRET_MANAGER_AVAILABLE = False
 
+# Import TaskLifecycleManager for proper async task management (prevents SIGKILL)
+try:
+    from core.task_lifecycle_manager import (
+        get_task_manager,
+        TaskPriority,
+        spawn_task,
+        spawn_monitor_task,
+        is_shutting_down,
+        shutdown_all_tasks,
+    )
+    TASK_LIFECYCLE_AVAILABLE = True
+except ImportError:
+    TASK_LIFECYCLE_AVAILABLE = False
+    logger.warning("TaskLifecycleManager not available - using basic task tracking")
+
 # Import Advanced Thread Manager for bulletproof thread management
 try:
     from core.thread_manager import (
@@ -1570,8 +1585,18 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             dynamic_component_manager.memory_monitor.register_callback(memory_pressure_callback)
             logger.info("✅ Memory pressure callback registered")
 
-        # Start memory pressure monitoring
-        asyncio.create_task(dynamic_component_manager.start_monitoring())
+        # Start memory pressure monitoring (tracked for cleanup)
+        if TASK_LIFECYCLE_AVAILABLE:
+            task_mgr = get_task_manager()
+            await task_mgr.spawn_monitor(
+                "dynamic_component_monitor",
+                dynamic_component_manager.start_monitoring()
+            )
+        else:
+            asyncio.create_task(
+                dynamic_component_manager.start_monitoring(),
+                name="dynamic_component_monitor"
+            )
         logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
         logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
         logger.info("✅ Dynamic component loading enabled")
@@ -1686,12 +1711,35 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             logger.error(f"❌ Component warmup error: {e}", exc_info=True)
             logger.warning("⚠️ Falling back to lazy initialization")
 
-    # Initialize memory manager
+    # Initialize memory manager (NON-BLOCKING - spawns monitoring as background task)
     memory_class = components.get("memory", {}).get("manager_class")
     if memory_class:
         app.state.memory_manager = memory_class()
-        await app.state.memory_manager.start_monitoring()
-        logger.info("✅ Memory manager initialized")
+        # CRITICAL FIX: Don't await start_monitoring() - it's an infinite loop!
+        # Spawn it as a tracked background task instead
+        if TASK_LIFECYCLE_AVAILABLE:
+            try:
+                task_mgr = get_task_manager()
+                await task_mgr.spawn_monitor(
+                    "memory_manager_monitor",
+                    app.state.memory_manager.start_monitoring()
+                )
+                logger.info("✅ Memory manager initialized (monitoring task spawned)")
+            except Exception as e:
+                logger.warning(f"⚠️ Memory manager task spawn failed: {e}")
+                # Fallback: spawn untracked task
+                asyncio.create_task(
+                    app.state.memory_manager.start_monitoring(),
+                    name="memory_manager_monitor"
+                )
+                logger.info("✅ Memory manager initialized (fallback)")
+        else:
+            # Fallback without TaskLifecycleManager
+            asyncio.create_task(
+                app.state.memory_manager.start_monitoring(),
+                name="memory_manager_monitor"
+            )
+            logger.info("✅ Memory manager initialized (basic)")
 
     # ═══════════════════════════════════════════════════════════════
     # VOICE UNLOCK ML MODEL PREWARMING (Critical for instant "unlock my screen")
@@ -1910,41 +1958,82 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             app.state.goal_inference_integration = integration
 
             # Start background tasks for learning and pattern optimization
+            # These are graceful loops that check for shutdown and handle CancelledError
+
             async def periodic_database_cleanup():
-                """Clean up old patterns and optimize database"""
-                while True:
-                    try:
-                        await asyncio.sleep(3600)  # Run every hour
-                        if hasattr(integration, "learning_db"):
-                            # Clean up old patterns
-                            integration.learning_db.cleanup_old_patterns(days=30)
-                            # Optimize database
-                            integration.learning_db.optimize()
-                            logger.debug("✅ Goal Inference database cleanup completed")
-                    except Exception as e:
-                        logger.error(f"Database cleanup error: {e}")
+                """Clean up old patterns and optimize database (graceful loop)"""
+                task_mgr = get_task_manager() if TASK_LIFECYCLE_AVAILABLE else None
+                try:
+                    while True:
+                        # Check for shutdown before sleeping
+                        if task_mgr and task_mgr.is_shutting_down():
+                            logger.info("Database cleanup: shutdown requested, exiting")
+                            break
+                        try:
+                            # Interruptible sleep (check every 30s for shutdown)
+                            for _ in range(120):  # 120 * 30s = 3600s = 1 hour
+                                if task_mgr and task_mgr.is_shutting_down():
+                                    break
+                                await asyncio.sleep(30)
+                            if task_mgr and task_mgr.is_shutting_down():
+                                break
+                            if hasattr(integration, "learning_db"):
+                                # Clean up old patterns
+                                integration.learning_db.cleanup_old_patterns(days=30)
+                                # Optimize database
+                                integration.learning_db.optimize()
+                                logger.debug("✅ Goal Inference database cleanup completed")
+                        except asyncio.CancelledError:
+                            raise  # Re-raise for proper cancellation
+                        except Exception as e:
+                            logger.error(f"Database cleanup error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("Database cleanup task cancelled")
+                    raise
 
             async def periodic_pattern_analysis():
-                """Analyze patterns and update confidence scores"""
-                while True:
-                    try:
-                        await asyncio.sleep(1800)  # Run every 30 minutes
-                        if hasattr(integration, "learning_db"):
-                            # Analyze patterns
-                            patterns = integration.learning_db.analyze_patterns()
-                            # Update confidence scores based on success rates
-                            for pattern in patterns:
-                                if pattern.get("success_rate", 0) > 0.9:
-                                    integration.learning_db.boost_pattern_confidence(
-                                        pattern["id"], boost=0.05
-                                    )
-                            logger.debug("✅ Pattern analysis completed")
-                    except Exception as e:
-                        logger.error(f"Pattern analysis error: {e}")
+                """Analyze patterns and update confidence scores (graceful loop)"""
+                task_mgr = get_task_manager() if TASK_LIFECYCLE_AVAILABLE else None
+                try:
+                    while True:
+                        # Check for shutdown before sleeping
+                        if task_mgr and task_mgr.is_shutting_down():
+                            logger.info("Pattern analysis: shutdown requested, exiting")
+                            break
+                        try:
+                            # Interruptible sleep (check every 30s for shutdown)
+                            for _ in range(60):  # 60 * 30s = 1800s = 30 minutes
+                                if task_mgr and task_mgr.is_shutting_down():
+                                    break
+                                await asyncio.sleep(30)
+                            if task_mgr and task_mgr.is_shutting_down():
+                                break
+                            if hasattr(integration, "learning_db"):
+                                # Analyze patterns
+                                patterns = integration.learning_db.analyze_patterns()
+                                # Update confidence scores based on success rates
+                                for pattern in patterns:
+                                    if pattern.get("success_rate", 0) > 0.9:
+                                        integration.learning_db.boost_pattern_confidence(
+                                            pattern["id"], boost=0.05
+                                        )
+                                logger.debug("✅ Pattern analysis completed")
+                        except asyncio.CancelledError:
+                            raise  # Re-raise for proper cancellation
+                        except Exception as e:
+                            logger.error(f"Pattern analysis error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("Pattern analysis task cancelled")
+                    raise
 
-            # Start background tasks
-            asyncio.create_task(periodic_database_cleanup())
-            asyncio.create_task(periodic_pattern_analysis())
+            # Start background tasks (tracked for cleanup)
+            if TASK_LIFECYCLE_AVAILABLE:
+                task_mgr = get_task_manager()
+                await task_mgr.spawn_monitor("goal_inference_db_cleanup", periodic_database_cleanup())
+                await task_mgr.spawn_monitor("goal_inference_pattern_analysis", periodic_pattern_analysis())
+            else:
+                asyncio.create_task(periodic_database_cleanup(), name="goal_inference_db_cleanup")
+                asyncio.create_task(periodic_pattern_analysis(), name="goal_inference_pattern_analysis")
 
             logger.info("✅ Goal Inference background tasks started")
             logger.info("   • Database cleanup: every 1 hour")

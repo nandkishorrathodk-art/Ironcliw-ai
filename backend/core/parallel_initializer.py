@@ -40,6 +40,17 @@ from typing import Any, Callable, Dict, List, Optional
 # Import the startup progress broadcaster for real-time WebSocket updates
 from core.startup_progress_broadcaster import get_startup_broadcaster
 
+# Import TaskLifecycleManager for proper task tracking
+try:
+    from core.task_lifecycle_manager import (
+        get_task_manager,
+        TaskPriority,
+        is_shutting_down,
+    )
+    TASK_MANAGER_AVAILABLE = True
+except ImportError:
+    TASK_MANAGER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -301,9 +312,15 @@ class ParallelInitializer:
         - Per-component timeout protection (60s default, 120s for heavy components)
         - Graceful degradation for non-critical components
         - Better error context and logging
+        - Skips already-completed components (e.g., config marked complete in minimal_setup)
         """
         comp = self.components.get(name)
         if not comp:
+            return
+
+        # Skip if already complete (e.g., config is marked complete in minimal_setup)
+        if comp.phase == InitPhase.COMPLETE:
+            logger.debug(f"[SKIP] {name} already complete")
             return
 
         comp.phase = InitPhase.RUNNING
@@ -467,8 +484,19 @@ class ParallelInitializer:
                     # Continue anyway - proxy might still be starting
                     pass
 
-            # Start health monitor in background (non-blocking)
-            asyncio.create_task(proxy_manager.monitor(check_interval=60))
+            # Start health monitor in background (non-blocking, tracked)
+            if TASK_MANAGER_AVAILABLE:
+                task_mgr = get_task_manager()
+                await task_mgr.spawn_monitor(
+                    "cloud_sql_proxy_monitor",
+                    proxy_manager.monitor(check_interval=60)
+                )
+            else:
+                monitor_task = asyncio.create_task(
+                    proxy_manager.monitor(check_interval=60),
+                    name="cloud_sql_proxy_monitor"
+                )
+                self._tasks.append(monitor_task)
 
             # Store in app state
             self.app.state.cloud_sql_proxy_manager = proxy_manager
@@ -483,8 +511,20 @@ class ParallelInitializer:
                 else:
                     logger.warning("   ⚠️ Cloud SQL proxy not confirmed running - will use fallback")
 
-            # Run readiness signal in background (don't block startup)
-            asyncio.create_task(signal_proxy_ready())
+            # Run readiness signal in background (don't block startup, tracked)
+            if TASK_MANAGER_AVAILABLE:
+                task_mgr = get_task_manager()
+                await task_mgr.spawn(
+                    "cloud_sql_proxy_ready_signal",
+                    signal_proxy_ready(),
+                    priority=TaskPriority.HIGH
+                )
+            else:
+                ready_task = asyncio.create_task(
+                    signal_proxy_ready(),
+                    name="cloud_sql_proxy_ready_signal"
+                )
+                self._tasks.append(ready_task)
 
             logger.info(f"   Cloud SQL proxy starting on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}")
 
@@ -738,8 +778,20 @@ class ParallelInitializer:
                         "timestamp": time.time()
                     }
 
-            # Launch background pre-warm task (fire and forget)
-            asyncio.create_task(background_prewarm())
+            # Launch background pre-warm task (tracked for cleanup)
+            if TASK_MANAGER_AVAILABLE:
+                task_mgr = get_task_manager()
+                await task_mgr.spawn(
+                    "vbi_background_prewarm",
+                    background_prewarm(),
+                    priority=TaskPriority.LOW
+                )
+            else:
+                prewarm_task = asyncio.create_task(
+                    background_prewarm(),
+                    name="vbi_background_prewarm"
+                )
+                self._tasks.append(prewarm_task)
 
             # Return immediately - don't wait for pre-warming to complete
             logger.info("   VBI pre-warm running in background (non-blocking)")
@@ -1170,7 +1222,19 @@ class ParallelInitializer:
             manager = get_component_manager()
             if manager:
                 self.app.state.component_manager = manager
-                asyncio.create_task(manager.start_monitoring())
+                # Track the monitoring task for proper cleanup
+                if TASK_MANAGER_AVAILABLE:
+                    task_mgr = get_task_manager()
+                    await task_mgr.spawn_monitor(
+                        "dynamic_component_monitor",
+                        manager.start_monitoring()
+                    )
+                else:
+                    monitor_task = asyncio.create_task(
+                        manager.start_monitoring(),
+                        name="dynamic_component_monitor"
+                    )
+                    self._tasks.append(monitor_task)
                 logger.info("   Dynamic component manager ready")
 
         except ImportError:
@@ -1206,27 +1270,11 @@ class ParallelInitializer:
                 logger.warning("   Agentic config not available - using defaults")
                 agentic_config = None
 
-            # Step 2: Initialize Computer Use Tool
-            try:
-                from autonomy.computer_use_tool import get_computer_use_tool
-
-                # Get TTS callback if available
-                tts_callback = None
-                if hasattr(self.app.state, 'vbi_orchestrator'):
-                    vbi = self.app.state.vbi_orchestrator
-                    if hasattr(vbi, 'speak'):
-                        tts_callback = vbi.speak
-
-                computer_use_tool = get_computer_use_tool(
-                    tts_callback=tts_callback,
-                    config=agentic_config,
-                )
-                self.app.state.computer_use_tool = computer_use_tool
-                logger.info("   Computer Use Tool initialized")
-
-            except ImportError as e:
-                logger.warning(f"   Computer Use Tool not available: {e}")
-                self.app.state.computer_use_tool = None
+            # Step 2: Initialize Computer Use Tool (LAZY - don't block startup)
+            # Computer Use is heavy and can block. Initialize lazily on first use.
+            self.app.state.computer_use_tool = None
+            self.app.state.computer_use_lazy_config = {"config": agentic_config}
+            logger.info("   Computer Use Tool ready (lazy load on first use)")
 
             # Step 3: Connect UAE to Computer Use (if both available)
             uae_engine = getattr(self.app.state, 'uae_engine', None)
@@ -1250,40 +1298,12 @@ class ParallelInitializer:
             else:
                 self.app.state.agentic_routing_enabled = False
 
-            # Step 4: Register Computer Use agent with Neural Mesh
-            neural_mesh = getattr(self.app.state, 'neural_mesh', None)
-            if neural_mesh:
-                try:
-                    from autonomy.neural_mesh_integration import register_computer_use_agent
-
-                    agent = await register_computer_use_agent(
-                        tts_callback=tts_callback
-                    )
-                    if agent:
-                        self.app.state.computer_use_agent = agent
-                        logger.info("   Computer Use agent registered with Neural Mesh")
-
-                except ImportError:
-                    logger.debug("   Neural Mesh integration not available")
-                except Exception as e:
-                    logger.warning(f"   Neural Mesh agent registration failed: {e}")
-
-            # Step 5: Initialize workflow executor
-            try:
-                from autonomy.neural_mesh_integration import get_workflow_executor
-
-                executor = get_workflow_executor(
-                    neural_mesh=neural_mesh.get('coordinator') if isinstance(neural_mesh, dict) else None,
-                    tts_callback=tts_callback,
-                )
-                await executor.initialize()
-                self.app.state.agentic_workflow_executor = executor
-                logger.info("   Agentic workflow executor ready")
-
-            except ImportError:
-                logger.debug("   Workflow executor not available")
-            except Exception as e:
-                logger.warning(f"   Workflow executor failed: {e}")
+            # Step 4 & 5: Neural Mesh integration and workflow executor
+            # These are heavy operations - defer to background or lazy load
+            self.app.state.computer_use_agent = None
+            self.app.state.agentic_workflow_executor = None
+            self.app.state.neural_mesh_lazy_init_pending = True
+            logger.info("   Neural Mesh agent & workflow executor ready (lazy)")
 
             # Step 6: Store status
             self.app.state.agentic_system = {
@@ -1439,25 +1459,60 @@ class ParallelInitializer:
     # =========================================================================
 
     async def shutdown(self):
-        """Clean shutdown of all components"""
-        logger.info("Shutting down parallel initializer...")
+        """Clean shutdown of all components with proper task lifecycle management"""
+        logger.info("=" * 60)
+        logger.info("PARALLEL INITIALIZER SHUTDOWN")
+        logger.info("=" * 60)
+
         self._shutdown_event.set()
 
-        # Cancel background task
+        # Use TaskLifecycleManager if available for coordinated shutdown
+        if TASK_MANAGER_AVAILABLE:
+            try:
+                task_mgr = get_task_manager()
+                task_mgr.request_shutdown()  # Signal all managed tasks
+                logger.info("TaskLifecycleManager shutdown signaled")
+            except Exception as e:
+                logger.warning(f"TaskLifecycleManager shutdown signal failed: {e}")
+
+        # Cancel background initialization task
         if self.background_task and not self.background_task.done():
+            logger.info("Cancelling background initialization task...")
             self.background_task.cancel()
             try:
-                await self.background_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(
+                    asyncio.shield(self.background_task),
+                    timeout=5.0
+                )
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
 
-        # Cancel all tasks
-        for task in self._tasks:
-            if not task.done():
+        # Cancel all tracked tasks with timeout protection
+        active_tasks = [t for t in self._tasks if not t.done()]
+        if active_tasks:
+            logger.info(f"Cancelling {len(active_tasks)} tracked tasks...")
+
+            for task in active_tasks:
                 task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+
+            # Wait for all with timeout
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*active_tasks, return_exceptions=True),
+                    timeout=10.0
+                )
+                logger.info("All tracked tasks cancelled successfully")
+            except asyncio.TimeoutError:
+                logger.warning("Some tasks did not cancel within timeout")
+
+        # If TaskLifecycleManager is available, do full shutdown
+        if TASK_MANAGER_AVAILABLE:
+            try:
+                task_mgr = get_task_manager()
+                result = await task_mgr.shutdown_all(timeout=15.0)
+                logger.info(f"TaskLifecycleManager shutdown: {result.get('status', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"TaskLifecycleManager shutdown error: {e}")
 
         logger.info("Parallel initializer shutdown complete")
+        logger.info("=" * 60)

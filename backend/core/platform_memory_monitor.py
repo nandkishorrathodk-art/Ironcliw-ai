@@ -668,6 +668,7 @@ class PlatformMemoryMonitor:
         self,
         interval_seconds: int = 5,
         callback: Optional[Callable[[MemoryPressureSnapshot], Any]] = None,
+        shutdown_event: Optional[asyncio.Event] = None,
     ) -> None:
         """Continuously monitor memory pressure and call callback on changes.
 
@@ -675,12 +676,15 @@ class PlatformMemoryMonitor:
         Calls the provided callback function whenever the pressure level changes,
         and logs warnings when GCP VM creation is recommended.
 
+        This method properly handles CancelledError for graceful shutdown.
+
         Args:
             interval_seconds: Time between pressure checks in seconds
             callback: Optional async function(snapshot) called on pressure level changes
+            shutdown_event: Optional event to signal shutdown (alternative to cancellation)
 
         Raises:
-            No exceptions propagated - errors are logged and monitoring continues.
+            asyncio.CancelledError: Re-raised for proper task cancellation
 
         Example:
             >>> async def on_pressure_change(snapshot):
@@ -689,32 +693,98 @@ class PlatformMemoryMonitor:
         """
         last_pressure_level = None
 
-        while True:
-            try:
-                snapshot = await self.get_memory_pressure()
+        # Try to get TaskLifecycleManager for coordinated shutdown
+        try:
+            from core.task_lifecycle_manager import get_task_manager
+            task_manager = get_task_manager()
+        except ImportError:
+            task_manager = None
 
-                # Call callback on pressure level changes
-                if snapshot.pressure_level != last_pressure_level:
-                    logger.info(
-                        f"🧠 Memory pressure: {snapshot.pressure_level.upper()} | "
-                        f"{snapshot.reasoning}"
+        logger.info(f"🧠 Memory monitor starting (interval={interval_seconds}s)")
+
+        try:
+            while True:
+                # Check for shutdown signals
+                if shutdown_event and shutdown_event.is_set():
+                    logger.info("🧠 Memory monitor: Shutdown event received, exiting")
+                    break
+
+                if task_manager and task_manager.is_shutting_down():
+                    logger.info("🧠 Memory monitor: Task manager shutdown, exiting")
+                    break
+
+                try:
+                    snapshot = await self.get_memory_pressure()
+
+                    # Call callback on pressure level changes
+                    if snapshot.pressure_level != last_pressure_level:
+                        logger.info(
+                            f"🧠 Memory pressure: {snapshot.pressure_level.upper()} | "
+                            f"{snapshot.reasoning}"
+                        )
+
+                        if callback:
+                            try:
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(snapshot)
+                                else:
+                                    callback(snapshot)
+                            except Exception as cb_err:
+                                logger.warning(f"Memory callback error: {cb_err}")
+
+                        last_pressure_level = snapshot.pressure_level
+
+                    # Log warnings for high pressure
+                    if snapshot.gcp_shift_recommended:
+                        urgency = "URGENT" if snapshot.gcp_shift_urgent else "RECOMMENDED"
+                        logger.warning(f"⚠️  GCP shift {urgency}: {snapshot.reasoning}")
+
+                    # Interruptible sleep for graceful shutdown
+                    await self._interruptible_sleep(
+                        interval_seconds,
+                        shutdown_event,
+                        task_manager
                     )
 
-                    if callback:
-                        await callback(snapshot)
+                except asyncio.CancelledError:
+                    # Re-raise immediately - don't catch CancelledError
+                    raise
+                except Exception as e:
+                    logger.error(f"Memory monitoring error: {e}")
+                    await asyncio.sleep(min(interval_seconds, 5))
 
-                    last_pressure_level = snapshot.pressure_level
+        except asyncio.CancelledError:
+            logger.info("🧠 Memory monitor cancelled, cleaning up...")
+            raise  # Re-raise for proper task cancellation
+        finally:
+            logger.info("🧠 Memory monitor stopped")
 
-                # Log warnings for high pressure
-                if snapshot.gcp_shift_recommended:
-                    urgency = "URGENT" if snapshot.gcp_shift_urgent else "RECOMMENDED"
-                    logger.warning(f"⚠️  GCP shift {urgency}: {snapshot.reasoning}")
+    async def _interruptible_sleep(
+        self,
+        seconds: float,
+        shutdown_event: Optional[asyncio.Event] = None,
+        task_manager: Optional[Any] = None,
+        check_interval: float = 0.5,
+    ) -> bool:
+        """
+        Sleep that can be interrupted by shutdown.
 
-                await asyncio.sleep(interval_seconds)
+        Returns True if completed normally, False if interrupted.
+        """
+        remaining = seconds
 
-            except Exception as e:
-                logger.error(f"Memory monitoring error: {e}")
-                await asyncio.sleep(interval_seconds)
+        while remaining > 0:
+            # Check shutdown conditions
+            if shutdown_event and shutdown_event.is_set():
+                return False
+            if task_manager and task_manager.is_shutting_down():
+                return False
+
+            sleep_time = min(remaining, check_interval)
+            await asyncio.sleep(sleep_time)
+            remaining -= sleep_time
+
+        return True
 
 
 # Global singleton

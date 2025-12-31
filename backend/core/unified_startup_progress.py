@@ -270,6 +270,31 @@ class UnifiedStartupProgressHub:
     # Component Registration (Dynamic, Not Hardcoded)
     # =========================================================================
 
+    def _register_component_internal(
+        self,
+        name: str,
+        weight: float = 5.0,
+        is_critical: bool = False,
+        is_required_for_ready: bool = True
+    ):
+        """
+        Internal component registration (MUST be called while holding _state_lock).
+
+        This is the non-locking version used by methods that already hold the lock.
+        """
+        if name not in self._components:
+            self._components[name] = ComponentInfo(
+                name=name,
+                weight=weight,
+                is_critical=is_critical
+            )
+            self._component_order.append(name)
+
+            if is_required_for_ready:
+                self._required_components.add(name)
+
+            logger.debug(f"[UnifiedProgress] Registered component: {name} (weight={weight})")
+
     async def register_component(
         self,
         name: str,
@@ -287,18 +312,7 @@ class UnifiedStartupProgressHub:
             is_required_for_ready: If True, must complete for system to be "ready"
         """
         async with self._state_lock:
-            if name not in self._components:
-                self._components[name] = ComponentInfo(
-                    name=name,
-                    weight=weight,
-                    is_critical=is_critical
-                )
-                self._component_order.append(name)
-
-                if is_required_for_ready:
-                    self._required_components.add(name)
-
-                logger.debug(f"[UnifiedProgress] Registered component: {name} (weight={weight})")
+            self._register_component_internal(name, weight, is_critical, is_required_for_ready)
 
     async def register_components_batch(
         self,
@@ -371,7 +385,8 @@ class UnifiedStartupProgressHub:
         """Mark a component as starting"""
         async with self._state_lock:
             if component not in self._components:
-                await self.register_component(component)
+                # Use internal version to avoid deadlock (we already hold the lock)
+                self._register_component_internal(component)
 
             comp = self._components[component]
             comp.status = ComponentStatus.RUNNING
@@ -426,7 +441,8 @@ class UnifiedStartupProgressHub:
         """Mark a component as complete"""
         async with self._state_lock:
             if component not in self._components:
-                await self.register_component(component)
+                # Use internal version to avoid deadlock (we already hold the lock)
+                self._register_component_internal(component)
 
             comp = self._components[component]
             comp.status = ComponentStatus.COMPLETE
@@ -467,7 +483,8 @@ class UnifiedStartupProgressHub:
         """Mark a component as failed"""
         async with self._state_lock:
             if component not in self._components:
-                await self.register_component(component)
+                # Use internal version to avoid deadlock (we already hold the lock)
+                self._register_component_internal(component)
 
             comp = self._components[component]
             comp.status = ComponentStatus.FAILED
@@ -501,7 +518,8 @@ class UnifiedStartupProgressHub:
         """Mark a component as skipped"""
         async with self._state_lock:
             if component not in self._components:
-                await self.register_component(component)
+                # Use internal version to avoid deadlock (we already hold the lock)
+                self._register_component_internal(component)
 
             comp = self._components[component]
             comp.status = ComponentStatus.SKIPPED
