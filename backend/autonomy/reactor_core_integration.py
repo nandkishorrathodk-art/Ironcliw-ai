@@ -717,7 +717,8 @@ class PrimeNeuralMeshBridge:
         """Initialize JARVIS-Prime client connection."""
         try:
             from core.jarvis_prime_client import get_jarvis_prime_client
-            self._prime_client = await get_jarvis_prime_client()
+            # get_jarvis_prime_client() is a sync function that returns a singleton
+            self._prime_client = get_jarvis_prime_client()
             logger.info("[PrimeNeuralMesh] ✓ Connected to JARVIS-Prime client")
         except ImportError:
             logger.warning("[PrimeNeuralMesh] JARVIS-Prime client not available")
