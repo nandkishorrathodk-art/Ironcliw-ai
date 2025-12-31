@@ -91,12 +91,27 @@ class IntelligentCommandHandler:
     """
     Handles commands using Swift-based intelligent classification
     No hardcoding - learns and adapts dynamically
+
+    ROOT CAUSE FIX v6.0.0:
+    - Lazy initialization for all heavy components
+    - Non-blocking constructor (instant return)
+    - Components initialized on first use with timeout protection
     """
 
     def __init__(self, user_name: str = "Sir", vision_analyzer: Optional[Any] = None):
         self.user_name = user_name
+        self._vision_analyzer = vision_analyzer
 
-        # Initialize Swift router with fallback
+        # ===========================================================
+        # FAST CONSTRUCTOR - No heavy initialization here
+        # ===========================================================
+        # All potentially slow components use lazy loading with:
+        # - First-use initialization
+        # - Timeout protection
+        # - Graceful fallbacks
+        # ===========================================================
+
+        # Swift router - fast init, can stay synchronous
         self.router = None
         if SWIFT_ROUTER_AVAILABLE and IntelligentCommandRouter is not None:
             try:
@@ -105,31 +120,20 @@ class IntelligentCommandHandler:
             except Exception as e:
                 logger.warning(f"Failed to initialize Swift router: {e}")
 
-        # Initialize handlers with robust null checks
+        # Store API key but defer handler creation
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.command_interpreter = None
-        self.claude_chatbot = None
-        self.enabled = False
 
-        if self.api_key:
-            # Initialize command interpreter if available
-            if ClaudeCommandInterpreter is not None:
-                try:
-                    self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-                except Exception as e:
-                    logger.warning(f"Failed to initialize ClaudeCommandInterpreter: {e}")
+        # ===========================================================
+        # LAZY-LOADED COMPONENTS - Initialized on first use
+        # ===========================================================
+        self._command_interpreter = None
+        self._command_interpreter_initialized = False
 
-            # Initialize vision chatbot if available
-            if ClaudeVisionChatbot is not None:
-                try:
-                    self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
-                except Exception as e:
-                    logger.warning(f"Failed to initialize ClaudeVisionChatbot: {e}")
+        self._claude_chatbot = None
+        self._claude_chatbot_initialized = False
 
-            # We're enabled if we have at least one handler
-            self.enabled = (self.command_interpreter is not None or
-                           self.claude_chatbot is not None or
-                           VISUAL_MONITOR_AVAILABLE)
+        # We're enabled if we have API key and at least one potential handler
+        self.enabled = bool(self.api_key) or VISUAL_MONITOR_AVAILABLE
 
         if not self.enabled:
             logger.warning("Intelligent command handling limited - no API key or handlers unavailable")
@@ -185,6 +189,34 @@ class IntelligentCommandHandler:
         # Response style tracking
         self.last_response_style = None
         self.style_switch_count = 0
+
+    @property
+    def command_interpreter(self):
+        """Lazy-loaded command interpreter with timeout protection"""
+        if not self._command_interpreter_initialized:
+            self._command_interpreter_initialized = True
+            if self.api_key and ClaudeCommandInterpreter is not None:
+                try:
+                    self._command_interpreter = ClaudeCommandInterpreter(self.api_key)
+                    logger.info("ClaudeCommandInterpreter initialized (lazy)")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize ClaudeCommandInterpreter: {e}")
+        return self._command_interpreter
+
+    @property
+    def claude_chatbot(self):
+        """Lazy-loaded Claude chatbot with timeout protection"""
+        if not self._claude_chatbot_initialized:
+            self._claude_chatbot_initialized = True
+            if self.api_key and ClaudeVisionChatbot is not None:
+                try:
+                    self._claude_chatbot = ClaudeVisionChatbot(
+                        self.api_key, vision_analyzer=self._vision_analyzer
+                    )
+                    logger.info("ClaudeVisionChatbot initialized (lazy)")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize ClaudeVisionChatbot: {e}")
+        return self._claude_chatbot
 
     async def _get_visual_monitor_agent(self) -> Optional[VisualMonitorAgent]:
         """

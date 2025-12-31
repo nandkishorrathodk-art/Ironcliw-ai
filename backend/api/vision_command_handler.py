@@ -249,7 +249,13 @@ class VisionCommandHandler:
     async def _get_intelligent_handler(self) -> Optional[Any]:
         """
         Lazy initialization of IntelligentCommandHandler for God Mode surveillance.
-        Returns None if not available.
+
+        ROOT CAUSE FIX v5.0.0:
+        - Async wrapper with timeout protection (5s max)
+        - Non-blocking initialization via executor
+        - Prevents voice thread hang during handler init
+
+        Returns None if not available or initialization times out.
         """
         if not INTELLIGENT_HANDLER_AVAILABLE:
             return None
@@ -257,14 +263,44 @@ class VisionCommandHandler:
         if self._intelligent_handler_initialized:
             return self._intelligent_handler
 
+        # ===========================================================
+        # TIMEOUT-PROTECTED INITIALIZATION - 5 SECOND MAX
+        # ===========================================================
+        # IntelligentCommandHandler init is synchronous and can hang:
+        # - Swift router initialization
+        # - ClaudeCommandInterpreter API calls
+        # - ClaudeVisionChatbot creation
+        # ===========================================================
+        handler_init_timeout = float(os.getenv("JARVIS_HANDLER_INIT_TIMEOUT", "5"))
+
         try:
-            logger.info("[VISION] Initializing IntelligentCommandHandler for God Mode...")
+            logger.info(f"[VISION] Initializing IntelligentCommandHandler (timeout: {handler_init_timeout}s)...")
+
             # Get user name from environment or use default
             user_name = os.getenv("USER_NAME", "Derek")
-            self._intelligent_handler = IntelligentCommandHandler(user_name=user_name)
+
+            # Wrap synchronous initialization in executor with timeout
+            loop = asyncio.get_event_loop()
+
+            def _create_handler():
+                return IntelligentCommandHandler(user_name=user_name)
+
+            self._intelligent_handler = await asyncio.wait_for(
+                loop.run_in_executor(None, _create_handler),
+                timeout=handler_init_timeout
+            )
+
             self._intelligent_handler_initialized = True
             logger.info("[VISION] ✅ IntelligentCommandHandler ready - God Mode activated")
             return self._intelligent_handler
+
+        except asyncio.TimeoutError:
+            logger.error(
+                f"[VISION] ⚠️ IntelligentCommandHandler init timed out after {handler_init_timeout}s. "
+                f"God Mode surveillance unavailable."
+            )
+            self._intelligent_handler_initialized = True  # Don't retry
+            return None
         except Exception as e:
             logger.error(f"[VISION] Failed to initialize IntelligentCommandHandler: {e}")
             self._intelligent_handler_initialized = True  # Don't retry
@@ -566,6 +602,11 @@ class VisionCommandHandler:
         # =========================================================================
         # Check for "watch" commands FIRST - route to IntelligentCommandHandler
         # This enables: "watch all Chrome for Error" → spawns Ferrari Engines
+        #
+        # ROOT CAUSE FIX v5.0.0:
+        # - Timeout protection on both handler init and execution
+        # - Non-blocking returns with informative error messages
+        # - Prevents indefinite hangs on surveillance commands
         # =========================================================================
         try:
             handler = await self._get_intelligent_handler()
@@ -576,8 +617,40 @@ class VisionCommandHandler:
                     logger.info(f"[VISION] 🏎️  GOD MODE: Watch command detected - routing to surveillance system")
                     logger.info(f"[VISION] Params: app={watch_params['app_name']}, trigger='{watch_params['trigger_text']}', all_spaces={watch_params['all_spaces']}")
 
-                    # Execute surveillance command through IntelligentCommandHandler
-                    response_text = await handler._execute_surveillance_command(watch_params)
+                    # ===========================================================
+                    # TIMEOUT-PROTECTED SURVEILLANCE EXECUTION - 20 SECOND MAX
+                    # ===========================================================
+                    # _execute_surveillance_command includes:
+                    # - VisualMonitorAgent initialization (has its own 10s timeout)
+                    # - Window discovery (has its own 5s timeout)
+                    # - Watcher spawning (has its own 15s timeout)
+                    # Total cascade: ~30s max, but we add outer protection at 20s
+                    # for immediate acknowledgment (watchers continue in background)
+                    # ===========================================================
+                    surveillance_timeout = float(os.getenv("JARVIS_SURVEILLANCE_TIMEOUT", "20"))
+
+                    try:
+                        response_text = await asyncio.wait_for(
+                            handler._execute_surveillance_command(watch_params),
+                            timeout=surveillance_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            f"[VISION] ⚠️ Surveillance command timed out after {surveillance_timeout}s "
+                            f"for app='{watch_params['app_name']}'"
+                        )
+                        return {
+                            "handled": True,
+                            "response": (
+                                f"I'm setting up monitoring for {watch_params['app_name']}, but it's taking "
+                                f"longer than expected. The surveillance may still start in the background. "
+                                f"Please try again if you don't see monitoring activate."
+                            ),
+                            "god_mode": True,
+                            "surveillance_params": watch_params,
+                            "command_type": "god_mode_surveillance",
+                            "timeout": True,
+                        }
 
                     logger.info(f"[VISION] ✅ God Mode surveillance complete")
                     return {
