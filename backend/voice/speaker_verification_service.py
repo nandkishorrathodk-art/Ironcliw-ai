@@ -2966,7 +2966,7 @@ class SpeakerVerificationService:
             logger.info("🚀 Initializing enhanced authentication components...")
 
             # Initialize Voice Pattern Store (ChromaDB)
-            if CHROMADB_AVAILABLE:
+            if is_chromadb_available():
                 await self.voice_pattern_store.initialize()
                 self._pattern_store_initialized = True
                 logger.info("✅ Voice pattern store (ChromaDB) initialized")
