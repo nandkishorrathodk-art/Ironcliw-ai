@@ -964,7 +964,38 @@ class VideoWatcher:
                 )
 
                 self._sck_stream = AsyncCaptureStream(self.config.window_id, sck_config)
-                success = await self._sck_stream.start()
+
+                # =====================================================================
+                # ROOT CAUSE FIX: Timeout Protection for SCK stream start v6.0.1
+                # =====================================================================
+                # PROBLEM: _sck_stream.start() can hang if:
+                # - ScreenCaptureKit permission prompt is pending
+                # - Window ID is invalid/stale
+                # - macOS privacy settings block screen recording
+                # - GPU/Metal initialization hangs (rare but happens)
+                #
+                # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
+                # CONFIGURABLE: JARVIS_SCK_STREAM_START_TIMEOUT env var (default 8s)
+                # =====================================================================
+                sck_start_timeout = float(os.getenv('JARVIS_SCK_STREAM_START_TIMEOUT', '8.0'))
+
+                try:
+                    success = await asyncio.wait_for(
+                        self._sck_stream.start(),
+                        timeout=sck_start_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[Watcher {self.watcher_id}] Ferrari Engine start() timed out after {sck_start_timeout}s. "
+                        f"Falling back to CGWindowListCreateImage."
+                    )
+                    success = False
+                    # Clean up failed stream
+                    try:
+                        await self._sck_stream.stop()
+                    except Exception:
+                        pass
+                    self._sck_stream = None
 
                 if success:
                     logger.info(f"🏎️  [Watcher {self.watcher_id}] Ferrari Engine started for window {self.config.window_id}")

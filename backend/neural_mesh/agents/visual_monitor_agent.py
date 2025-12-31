@@ -2134,8 +2134,37 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # Create VideoWatcher (will auto-select Ferrari Engine if available)
             watcher = VideoWatcher(watcher_config)
 
-            # Start the watcher
-            success = await watcher.start()
+            # =====================================================================
+            # ROOT CAUSE FIX: Timeout Protection for watcher.start() v6.0.1
+            # =====================================================================
+            # PROBLEM: watcher.start() can hang forever if:
+            # - ScreenCaptureKit permission dialog is pending
+            # - Window ID is invalid or stale
+            # - macOS privacy/accessibility blocks the capture
+            # - GPU/Metal initialization hangs
+            #
+            # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
+            # CONFIGURABLE: JARVIS_WATCHER_START_TIMEOUT env var (default 10s)
+            # =====================================================================
+            watcher_start_timeout = float(os.getenv('JARVIS_WATCHER_START_TIMEOUT', '10.0'))
+
+            try:
+                success = await asyncio.wait_for(
+                    watcher.start(),
+                    timeout=watcher_start_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"❌ Ferrari Engine watcher.start() timed out after {watcher_start_timeout}s "
+                    f"for window {window_id} ({app_name}). "
+                    f"Possible causes: permission dialog, invalid window, GPU hang."
+                )
+                # Try to clean up the watcher
+                try:
+                    await watcher.stop()
+                except Exception:
+                    pass
+                return None
 
             if not success:
                 logger.error(f"❌ Ferrari Engine watcher failed to start for window {window_id}")
