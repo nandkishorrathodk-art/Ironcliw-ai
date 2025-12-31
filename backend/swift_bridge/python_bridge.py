@@ -103,26 +103,35 @@ class SwiftCommandClassifier:
         
     def _build_swift_package(self):
         """Build the Swift package if not already built.
-        
+
         Compiles the Swift classifier package in release mode for optimal
         performance. Logs build progress and handles build failures gracefully.
-        
+
+        ROOT CAUSE FIX v2.0.0:
+        - 5 second timeout on Swift build to prevent blocking
+        - Fast-fail if Swift not available
+
         Raises:
             RuntimeError: If Swift is not available or build fails.
         """
         if not SWIFT_AVAILABLE:
             logger.warning("Swift not available, using Python fallback classifier")
             raise RuntimeError("Swift not available")
-            
-        logger.info("Building Swift command classifier...")
+
+        logger.info("Building Swift command classifier (5s timeout)...")
         try:
-            subprocess.run(
+            # Add timeout to prevent blocking on slow/failing builds
+            result = subprocess.run(
                 ["swift", "build", "-c", "release"],
                 cwd=self.swift_bridge_dir,
                 check=True,
-                capture_output=True
+                capture_output=True,
+                timeout=5.0  # 5 second timeout - fail fast
             )
             logger.info("Swift classifier built successfully")
+        except subprocess.TimeoutExpired:
+            logger.error("Swift build timed out after 5s - using Python fallback")
+            raise RuntimeError("Swift build timed out after 5s")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to build Swift classifier: {e}")
             raise RuntimeError(f"Swift build failed: {e}")
