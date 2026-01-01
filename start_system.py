@@ -7952,54 +7952,73 @@ class AsyncSystemManager:
         except:
             return True
 
-    async def kill_process_on_port(self, port: int):
-        """Kill process using a specific port, excluding IDEs. Detects stuck processes."""
-        if platform.system() == "Darwin":  # macOS
-            # Get PIDs on port, but exclude IDE processes
-            try:
-                result = subprocess.run(
-                    f"lsof -ti:{port}", shell=True, capture_output=True, text=True
-                )
-                pids = result.stdout.strip().split("\n")
+    async def kill_process_on_port(self, port: int, max_retries: int = 3, verify: bool = True) -> bool:
+        """
+        Kill process using a specific port with robust verification.
 
-                for pid in pids:
-                    if not pid:
-                        continue
+        v5.3: Enhanced with retry logic, verification, and intelligent error reporting.
 
-                    pid_int = int(pid)
+        Args:
+            port: The port number to free
+            max_retries: Maximum kill attempts before giving up
+            verify: If True, verify port is actually free after killing
 
-                    # Check if this PID belongs to an IDE
-                    try:
-                        proc_info = subprocess.run(
-                            f"ps -p {pid} -o comm=",
-                            shell=True,
-                            capture_output=True,
-                            text=True,
+        Returns:
+            True if port is now available, False if still occupied
+        """
+        # IDE processes to skip (they might have ephemeral connections to our ports)
+        ide_patterns = ["cursor", "code", "vscode", "sublime", "pycharm",
+                        "intellij", "webstorm", "atom", "vim", "emacs", "google chrome"]
+
+        for attempt in range(max_retries):
+            if attempt > 0:
+                print(f"{Colors.YELLOW}  Retry {attempt + 1}/{max_retries} for port {port}...{Colors.ENDC}")
+
+            if platform.system() == "Darwin":  # macOS
+                try:
+                    # Get PIDs on port with more specific matching
+                    result = subprocess.run(
+                        f"lsof -ti:{port} -sTCP:LISTEN", shell=True, capture_output=True, text=True
+                    )
+                    pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
+
+                    if not pids:
+                        # No LISTEN processes, check any connections
+                        result = subprocess.run(
+                            f"lsof -ti:{port}", shell=True, capture_output=True, text=True
                         )
-                        proc_name = proc_info.stdout.strip().lower()
+                        pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
 
-                        # Skip IDE processes
-                        ide_patterns = [
-                            "cursor",
-                            "code",
-                            "vscode",
-                            "sublime",
-                            "pycharm",
-                            "intellij",
-                            "webstorm",
-                            "atom",
-                            "vim",
-                            "emacs",
-                        ]
-
-                        if any(pattern in proc_name for pattern in ide_patterns):
-                            print(
-                                f"{Colors.YELLOW}Skipping IDE process: {proc_name} (PID {pid}){Colors.ENDC}"
-                            )
+                    if not pids:
+                        # Port is already free
+                        if verify:
+                            is_free = await self.check_port_available(port)
+                            if is_free:
+                                return True
+                            # Port shows occupied but no PIDs - wait and retry
+                            await asyncio.sleep(1)
                             continue
+                        return True
 
-                        # Check if process is stuck (uninterruptible sleep)
+                    killed_any = False
+                    for pid in pids:
                         try:
+                            pid_int = int(pid)
+
+                            # Get process info for filtering and logging
+                            proc_info = subprocess.run(
+                                f"ps -p {pid} -o comm=,args=",
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                            )
+                            proc_name = proc_info.stdout.strip().lower()
+
+                            # Skip IDE processes (they have ephemeral connections)
+                            if any(pattern in proc_name for pattern in ide_patterns):
+                                continue
+
+                            # Check if process is stuck (uninterruptible sleep)
                             proc_state = subprocess.run(
                                 f"ps -o stat= -p {pid}",
                                 shell=True,
@@ -8008,51 +8027,62 @@ class AsyncSystemManager:
                             )
                             state = proc_state.stdout.strip()
 
-                            # UE, D, U states indicate uninterruptible sleep
                             if 'U' in state or 'D' in state:
-                                print(f"\n{Colors.FAIL}🚨 CRITICAL: Process PID {pid} is STUCK (state: {state}){Colors.ENDC}")
-                                print(f"{Colors.FAIL}   This process is in uninterruptible sleep and CANNOT be killed.{Colors.ENDC}")
-                                print(f"{Colors.FAIL}   It was likely blocked by ML operations (torch/librosa) blocking the event loop.{Colors.ENDC}")
-                                print(f"\n{Colors.YELLOW}   ⚠️  SYSTEM RESTART REQUIRED to clear this process.{Colors.ENDC}")
-                                print(f"{Colors.CYAN}   The fixes have been applied to prevent this in the future.{Colors.ENDC}")
-                                print(f"{Colors.CYAN}   After restart, ML operations will run in thread pools.{Colors.ENDC}\n")
-                                # Don't try to kill - it won't work
-                                return False
+                                print(f"{Colors.FAIL}🚨 Process PID {pid} is STUCK (state: {state}) - cannot kill{Colors.ENDC}")
+                                continue
+
+                            # Try graceful termination first (SIGTERM)
+                            subprocess.run(f"kill -15 {pid}", shell=True, capture_output=True)
+                            await asyncio.sleep(0.5)
+
+                            # Check if process is still running
+                            check = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True)
+                            if check.returncode == 0:
+                                # Force kill (SIGKILL)
+                                subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                                await asyncio.sleep(0.3)
+
+                                # Final verification
+                                check2 = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True)
+                                if check2.returncode == 0:
+                                    print(f"{Colors.FAIL}⚠️ Process {pid} survived SIGKILL{Colors.ENDC}")
+                                    continue
+
+                            killed_any = True
+
+                        except ValueError:
+                            continue
                         except Exception as e:
-                            pass
+                            print(f"{Colors.WARNING}Error killing PID {pid}: {e}{Colors.ENDC}")
+                            continue
 
-                        # Try graceful termination first
-                        subprocess.run(f"kill -15 {pid}", shell=True, capture_output=True)
-                        await asyncio.sleep(0.5)
+                    # Wait for OS to release the port
+                    if killed_any:
+                        await asyncio.sleep(1)
 
-                        # Check if still running
-                        check = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True)
-                        if check.returncode == 0:
-                            # Force kill
-                            subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
-                            await asyncio.sleep(0.3)
+                except Exception as e:
+                    print(f"{Colors.WARNING}Error during port cleanup: {e}{Colors.ENDC}")
 
-                            # Verify killed
-                            check2 = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True)
-                            if check2.returncode == 0:
-                                # Process survived kill -9 - likely stuck
-                                print(f"{Colors.FAIL}⚠️ Process {pid} survived kill -9 - may be stuck{Colors.ENDC}")
-                                return False
-                    except:
-                        pass
+            else:  # Linux
+                try:
+                    subprocess.run(f"fuser -k {port}/tcp", shell=True, capture_output=True, timeout=5)
+                    await asyncio.sleep(1)
+                except Exception:
+                    pass
 
+            # Verify port is now free
+            if verify:
+                is_free = await self.check_port_available(port)
+                if is_free:
+                    return True
+                # Still occupied - will retry
+                await asyncio.sleep(0.5)
+            else:
                 return True
-            except:
-                pass
-            return True
-        else:  # Linux
-            cmd = f"fuser -k {port}/tcp"
-            try:
-                subprocess.run(cmd, shell=True, capture_output=True)
-            except:
-                pass
 
-        await asyncio.sleep(1)
+        # All retries exhausted
+        print(f"{Colors.FAIL}✗ Failed to free port {port} after {max_retries} attempts{Colors.ENDC}")
+        return False
 
     async def check_performance_fixes(self):
         """Check if performance fixes have been applied"""
@@ -9142,7 +9172,15 @@ class AsyncSystemManager:
             return await self.start_backend_standard()
 
     async def start_frontend(self) -> Optional[asyncio.subprocess.Process]:
-        """Start frontend service"""
+        """
+        Start frontend service with robust port handling and intelligent error recovery.
+
+        v5.3: Enhanced with:
+        - Verified port cleanup before starting
+        - Alternative port fallback
+        - Intelligent error detection and reporting
+        - Log monitoring for startup failures
+        """
         if not self.frontend_dir.exists():
             print(f"{Colors.YELLOW}Frontend directory not found, skipping...{Colors.ENDC}")
             return None
@@ -9165,21 +9203,50 @@ class AsyncSystemManager:
             )
             await proc.wait()
 
-        # Kill any existing process
-        if not await self.check_port_available(self.ports["frontend"]):
-            await self.kill_process_on_port(self.ports["frontend"])
-            await asyncio.sleep(2)
+        # v5.3: Robust port cleanup with verification
+        frontend_port = self.ports["frontend"]
+        port_available = await self.check_port_available(frontend_port)
+
+        if not port_available:
+            print(f"{Colors.YELLOW}Port {frontend_port} is in use, clearing...{Colors.ENDC}")
+            port_freed = await self.kill_process_on_port(frontend_port, max_retries=3, verify=True)
+
+            if not port_freed:
+                # Port couldn't be freed - try alternative port
+                alt_port = frontend_port + 1  # e.g., 3001
+                print(f"{Colors.YELLOW}Port {frontend_port} stuck, trying port {alt_port}...{Colors.ENDC}")
+
+                if await self.check_port_available(alt_port):
+                    print(f"{Colors.GREEN}Using alternative port {alt_port}{Colors.ENDC}")
+                    frontend_port = alt_port
+                    self.ports["frontend"] = alt_port
+                else:
+                    # Try to free alternative port too
+                    alt_freed = await self.kill_process_on_port(alt_port, max_retries=2, verify=True)
+                    if alt_freed:
+                        print(f"{Colors.GREEN}Using alternative port {alt_port}{Colors.ENDC}")
+                        frontend_port = alt_port
+                        self.ports["frontend"] = alt_port
+                    else:
+                        print(f"{Colors.FAIL}✗ Cannot start frontend - ports {self.ports['frontend']} and {alt_port} unavailable{Colors.ENDC}")
+                        print(f"{Colors.YELLOW}  Try running: lsof -i :{self.ports['frontend']} to identify blocking process{Colors.ENDC}")
+                        return None
+
+        # Final verification before starting
+        if not await self.check_port_available(frontend_port):
+            print(f"{Colors.FAIL}✗ Port {frontend_port} still occupied after cleanup{Colors.ENDC}")
+            return None
 
         # Start frontend with browser disabled and safety measures
         env = os.environ.copy()
-        env["PORT"] = str(self.ports["frontend"])
+        env["PORT"] = str(frontend_port)
         env["BROWSER"] = "none"  # Disable React's auto-opening of browser
         env["SKIP_PREFLIGHT_CHECK"] = "true"  # Skip CRA preflight checks
-        
+
         # Configure Node memory dynamically (default 4GB, configurable via env)
         frontend_memory = os.getenv("JARVIS_FRONTEND_MEMORY_MB", "4096")
         env["NODE_OPTIONS"] = f"--max-old-space-size={frontend_memory}"
-        
+
         env["GENERATE_SOURCEMAP"] = "false"  # Disable source maps to reduce memory
 
         # Create a log file for frontend to help debug issues
@@ -9205,28 +9272,120 @@ class AsyncSystemManager:
         # Give frontend a moment to start and check if it crashes immediately
         await asyncio.sleep(2)
         if process.returncode is not None:
+            # v5.3: Enhanced error detection
             print(
                 f"{Colors.WARNING}Frontend process exited immediately with code {process.returncode}{Colors.ENDC}"
             )
-            print(f"{Colors.YELLOW}Check log file: {log_file}{Colors.ENDC}")
-            # Try to show last few lines of log
+
+            # Read log to detect specific errors
             try:
+                log.flush()
                 with open(log_file, "r") as f:
-                    lines = f.readlines()
+                    log_content = f.read()
+
+                # Detect common startup failures
+                if "Something is already running on port" in log_content:
+                    print(f"{Colors.FAIL}✗ Port conflict detected (process started after our check){Colors.ENDC}")
+                    print(f"{Colors.YELLOW}  This is a race condition - another process grabbed port {frontend_port}{Colors.ENDC}")
+                elif "ENOSPC" in log_content:
+                    print(f"{Colors.FAIL}✗ System out of disk space or watchers{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}  Try: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf{Colors.ENDC}")
+                elif "ENOMEM" in log_content or "heap" in log_content.lower():
+                    print(f"{Colors.FAIL}✗ Out of memory during frontend compilation{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}  Try: export JARVIS_FRONTEND_MEMORY_MB=2048{Colors.ENDC}")
+                elif "Module not found" in log_content:
+                    print(f"{Colors.FAIL}✗ Missing npm dependency{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}  Try: cd frontend && npm install{Colors.ENDC}")
+                else:
+                    # Show last few lines for unknown errors
+                    lines = log_content.strip().split('\n')
                     if lines:
                         print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
                         for line in lines[-5:]:
                             print(f"  {line.strip()}")
             except Exception:
                 pass
+
+            print(f"{Colors.YELLOW}Full log: {log_file}{Colors.ENDC}")
             return None
+
+        # v5.3: Monitor for delayed crash (happens after initial startup)
+        # This catches cases where frontend starts but crashes during compilation
+        asyncio.create_task(self._monitor_frontend_startup(process, log_file, frontend_port))
 
         self.processes.append(process)
         print(
-            f"{Colors.GREEN}✓ Frontend starting on port {self.ports['frontend']} (PID: {process.pid}){Colors.ENDC}"
+            f"{Colors.GREEN}✓ Frontend starting on port {frontend_port} (PID: {process.pid}){Colors.ENDC}"
         )
 
         return process
+
+    async def _monitor_frontend_startup(
+        self,
+        process: asyncio.subprocess.Process,
+        log_file: Path,
+        port: int,
+        timeout: int = 60
+    ) -> None:
+        """
+        Background task to monitor frontend startup and detect delayed failures.
+
+        v5.3: Monitors the frontend process during its webpack compilation phase
+        to detect crashes that occur after the initial 2-second check.
+        """
+        start_time = time.time()
+        check_interval = 2  # Check every 2 seconds
+
+        while time.time() - start_time < timeout:
+            await asyncio.sleep(check_interval)
+
+            # Check if process died
+            if process.returncode is not None:
+                elapsed = int(time.time() - start_time)
+                print(f"\n{Colors.FAIL}✗ Frontend crashed after {elapsed}s (exit code: {process.returncode}){Colors.ENDC}")
+
+                # Read log for error details
+                try:
+                    with open(log_file, "r") as f:
+                        log_content = f.read()
+                    lines = log_content.strip().split('\n')
+                    if lines:
+                        print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
+                        for line in lines[-8:]:
+                            if line.strip():
+                                print(f"  {line.strip()}")
+                except Exception:
+                    pass
+
+                return
+
+            # Check if frontend is now listening on port (success!)
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://localhost:{port}",
+                        timeout=aiohttp.ClientTimeout(total=2)
+                    ) as resp:
+                        if resp.status in [200, 304]:
+                            elapsed = int(time.time() - start_time)
+                            print(f"{Colors.GREEN}✓ Frontend compiled and ready (took {elapsed}s){Colors.ENDC}")
+                            return
+            except Exception:
+                pass  # Not ready yet, keep waiting
+
+        # Timeout reached - frontend still compiling (this is OK, just slow)
+        if process.returncode is None:
+            # Still running but slow - check the log for progress
+            try:
+                with open(log_file, "r") as f:
+                    log_content = f.read()
+                if "Compiled" in log_content:
+                    print(f"{Colors.GREEN}✓ Frontend compilation completed{Colors.ENDC}")
+                elif "Compiling" in log_content:
+                    print(f"{Colors.YELLOW}Frontend still compiling (slow but running)...{Colors.ENDC}")
+            except Exception:
+                pass
 
     async def _run_parallel_health_checks(self, timeout: int = 10) -> None:
         """Run parallel health checks on all services"""
