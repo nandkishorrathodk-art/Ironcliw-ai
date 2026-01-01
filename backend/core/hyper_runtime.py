@@ -77,6 +77,51 @@ class RuntimeEngine:
     activated: bool = False
 
 
+def _get_intelligent_worker_count() -> int:
+    """
+    Dynamically determine optimal worker count based on context.
+
+    Strategy:
+    - JARVIS_SERVER_WORKERS env var: Explicit override (highest priority)
+    - JARVIS_FAST_STARTUP=true: 1 worker (fastest boot, single-user mode)
+    - JARVIS_SINGLE_USER=true: 1-2 workers (personal assistant mode)
+    - Development mode (JARVIS_DEV_MODE): 1 worker (fast iteration)
+    - Production mode: CPU cores (max throughput)
+
+    Returns:
+        Optimal worker count as integer
+    """
+    # Check for explicit override first
+    explicit_workers = os.getenv("JARVIS_SERVER_WORKERS")
+    if explicit_workers:
+        return int(explicit_workers)
+
+    # Fast startup mode: Single worker for instant boot
+    fast_startup = os.getenv("JARVIS_FAST_STARTUP", "").lower() in ("1", "true", "yes")
+    if fast_startup:
+        return 1
+
+    # Single user mode: Personal assistant doesn't need multiple workers
+    single_user = os.getenv("JARVIS_SINGLE_USER", "true").lower() in ("1", "true", "yes")
+    if single_user:
+        return 1
+
+    # Development mode: Single worker for fast code iteration
+    dev_mode = os.getenv("JARVIS_DEV_MODE", "").lower() in ("1", "true", "yes")
+    if dev_mode:
+        return 1
+
+    # Supervised mode (run_supervisor.py): Single worker for controlled startup
+    supervised = os.getenv("JARVIS_SUPERVISED", "").lower() in ("1", "true", "yes")
+    if supervised:
+        return 1
+
+    # Production/server mode: Use CPU cores (capped at 4 for personal systems)
+    cpu_count = multiprocessing.cpu_count()
+    # Cap at 4 workers to avoid resource contention on personal machines
+    return min(4, max(1, cpu_count))
+
+
 @dataclass
 class ServerConfig:
     """
@@ -85,7 +130,7 @@ class ServerConfig:
     All values can be overridden via environment variables:
         JARVIS_SERVER_HOST: Bind address (default: 0.0.0.0)
         JARVIS_SERVER_PORT: Port number (default: 8010)
-        JARVIS_SERVER_WORKERS: Worker count (default: CPU cores)
+        JARVIS_SERVER_WORKERS: Worker count (default: intelligent detection)
         JARVIS_SERVER_THREADS: Threads per worker (default: 2)
         JARVIS_SERVER_INTERFACE: ASGI/WSGI (default: asgi)
         JARVIS_SERVER_HTTP_VERSION: HTTP/1 or HTTP/2 (default: auto)
@@ -93,13 +138,16 @@ class ServerConfig:
         JARVIS_SERVER_BACKLOG: Connection backlog (default: 1024)
         JARVIS_SERVER_TIMEOUT_KEEP_ALIVE: Keep-alive timeout (default: 5)
         JARVIS_RUNTIME_LEVEL: Force runtime level (1=asyncio, 2=uvloop, 3=granian)
+
+    Worker count is intelligently determined:
+        - JARVIS_FAST_STARTUP=true: 1 worker (instant boot)
+        - JARVIS_SINGLE_USER=true: 1 worker (default for personal use)
+        - Development mode: 1 worker (fast iteration)
+        - Production: min(4, CPU cores)
     """
     host: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_PORT", "8010")))
-    workers: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_SERVER_WORKERS",
-        str(max(1, multiprocessing.cpu_count()))
-    )))
+    workers: int = field(default_factory=_get_intelligent_worker_count)
     threads: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_THREADS", "2")))
     interface: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_INTERFACE", "asgi"))
     http_version: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_HTTP_VERSION", "auto"))
@@ -303,7 +351,7 @@ def activate_runtime() -> RuntimeEngine:
 # =============================================================================
 
 def start_hyper_server(
-    app: str,
+    app,  # Union[str, ASGIApplication] - accepts both app path string or app object
     host: Optional[str] = None,
     port: Optional[int] = None,
     workers: Optional[int] = None,
@@ -319,7 +367,9 @@ def start_hyper_server(
     - uvicorn + asyncio as fallback
 
     Args:
-        app: Application path (e.g., "backend.main:app")
+        app: Application - either path string (e.g., "backend.main:app") or app object.
+             OPTIMIZATION: Pass app object directly in single-worker mode to avoid
+             module reimport and double-initialization.
         host: Bind address (default from config)
         port: Port number (default from config)
         workers: Worker count (default from config)

@@ -7093,7 +7093,15 @@ if __name__ == "__main__":
             log_level="info" if OPTIMIZE_STARTUP else "warning",
             websockets=True,
         )
-        start_hyper_server("main:app", config=config)
+        # OPTIMIZATION: Pass app object directly in single-worker mode
+        # This prevents module reimport and double-initialization
+        # String format "main:app" is only needed for multi-worker/reload modes
+        if config.workers <= 1:
+            # Single worker: Pass app object directly (no reimport)
+            start_hyper_server(app, config=config)
+        else:
+            # Multi-worker: Use string format for proper process forking
+            start_hyper_server("main:app", config=config)
     elif OPTIMIZE_STARTUP:
         # Fallback: uvicorn with optimized settings
         uvicorn.run(
