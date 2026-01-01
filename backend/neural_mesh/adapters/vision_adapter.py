@@ -292,20 +292,45 @@ class VisionCognitiveAdapter(BaseNeuralMeshAgent):
         }
         logger.debug("[Vision Adapter] Health monitoring initialized")
 
-    async def initialize(self) -> bool:
+    async def initialize(
+        self,
+        message_bus=None,
+        registry=None,
+        knowledge_graph=None,
+        **kwargs
+    ) -> bool:
         """
-        Legacy initialize method for backward compatibility.
+        Initialize the vision adapter with Neural Mesh integration.
 
-        NOTE: The actual initialization now happens in on_initialize() which
-        is called by the Neural Mesh base class during registration.
+        Supports both standalone mode and full Neural Mesh mode with:
+        - message_bus: Agent communication bus for inter-agent messaging
+        - registry: Agent registry for discovery and heartbeats
+        - knowledge_graph: Shared knowledge graph for collective memory
 
         Returns:
-            True if already initialized or if running in standalone mode
+            True if initialization successful
         """
         if self._initialized:
             return True
 
-        # If not connected to Neural Mesh, do standalone initialization
+        # If Neural Mesh components provided, use base class initialization
+        if message_bus is not None or registry is not None or knowledge_graph is not None:
+            logger.info("[Vision Adapter] Neural Mesh mode - initializing with components")
+            try:
+                # Call base class initialize with all components
+                await super().initialize(
+                    message_bus=message_bus,
+                    registry=registry,
+                    knowledge_graph=knowledge_graph,
+                    **kwargs
+                )
+                self._initialized = True
+                return True
+            except Exception as e:
+                logger.error("[Vision Adapter] Neural Mesh initialization failed: %s", e)
+                return False
+
+        # Standalone mode - initialize directly
         if not hasattr(self, 'message_bus') or self.message_bus is None:
             logger.info("[Vision Adapter] Standalone mode - initializing directly")
             try:
