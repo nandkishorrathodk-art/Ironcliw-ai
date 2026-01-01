@@ -1362,52 +1362,82 @@ class JARVISSupervisor:
                 except Exception as health_err:
                     logger.debug(f"Health check error: {health_err}")
 
-                # Get progress from multiple sources for best accuracy
+                # ═══════════════════════════════════════════════════════════════════
+                # GET PROGRESS FROM ALL SOURCES (v8.0 - Unified Progress Detection)
+                # ═══════════════════════════════════════════════════════════════════
+                # Multiple progress sources to prevent false-negative timeouts:
+                # 1. Progress hub (orchestrated components)
+                # 2. Backend status endpoint
+                # 3. Reporter's last reported value (what the UI sees)
+                # 4. Stages completed count
+                # ═══════════════════════════════════════════════════════════════════
                 hub_progress = get_progress()
                 backend_progress = system_status.get("progress", 0) if system_status else 0
-                effective_progress = max(hub_progress, backend_progress)
+                reporter_progress = getattr(self._progress_reporter, '_last_progress', 0) if self._progress_reporter else 0
+                stages_progress = min(len(stages_completed) * 15, 100)  # Each stage ~15%
+
+                # Use the MAXIMUM of all sources - if ANY source shows progress, we have progress
+                effective_progress = max(hub_progress, backend_progress, reporter_progress, stages_progress)
 
                 # ═══════════════════════════════════════════════════════════════════
-                # INTELLIGENT TIMEOUT HANDLING (v7.0)
+                # INTELLIGENT TIMEOUT HANDLING (v8.0 - Ultra-Resilient)
                 # ═══════════════════════════════════════════════════════════════════
-                # Only fail if:
-                # 1. We've exceeded timeout AND
-                # 2. No services are responding AND
-                # 3. Progress is below 50% (no significant work done)
+                # NEVER fail startup if:
+                # 1. Any service is responding, OR
+                # 2. Progress is above 30% (even low progress means work is happening), OR
+                # 3. We've completed any stages (stages_completed > 0)
                 #
-                # This prevents false failures when:
-                # - Backend is making progress but health endpoint is slow
-                # - Services are initializing but not yet reporting "ready"
+                # Only fail if NOTHING is working and NO progress has been made
                 # ═══════════════════════════════════════════════════════════════════
                 if elapsed > adaptive_timeout:
-                    # Check if we should fail or continue
-                    services_responding = backend_ready or frontend_ready or backend_state.is_ready or frontend_state.is_ready
-                    significant_progress = effective_progress >= 50
+                    # Multiple conditions that indicate startup IS working
+                    services_responding = (
+                        backend_ready or
+                        frontend_ready or
+                        backend_state.is_ready or
+                        frontend_state.is_ready
+                    )
+                    has_progress = effective_progress >= 30
+                    has_completed_stages = len(stages_completed) > 0
 
-                    if not services_responding and not significant_progress:
-                        # ACTUAL failure - nothing is working and no progress
-                        logger.warning(f"⚠️ Startup timeout after {elapsed:.1f}s - no services responding (progress: {effective_progress}%)")
+                    # If ANY of these are true, DON'T fail
+                    if services_responding or has_progress or has_completed_stages:
+                        # Log warning but continue - startup is progressing
+                        if elapsed > adaptive_timeout * 1.2:
+                            logger.info(
+                                f"⏳ Extended startup ({elapsed:.0f}s) - Progress: {effective_progress}%, "
+                                f"Stages: {len(stages_completed)}, "
+                                f"Backend: {'ready' if backend_ready else 'starting'}"
+                            )
+
+                        # If we've exceeded 2x timeout but have good progress, just complete
+                        if elapsed > adaptive_timeout * 2.0 and effective_progress >= 75:
+                            logger.info(f"✅ Force completing startup: {effective_progress}% after {elapsed:.0f}s")
+                            if not backend_state.is_ready:
+                                backend_state.record_success()
+                                backend_ready = True
+
+                    else:
+                        # ACTUAL failure - absolutely nothing is working
+                        logger.warning(
+                            f"⚠️ Startup timeout after {elapsed:.1f}s - no services responding "
+                            f"(progress: {effective_progress}%, stages: {len(stages_completed)})"
+                        )
                         await self._progress_reporter.fail(
                             f"Startup timeout after {int(elapsed)}s",
-                            error=f"Backend: {'ready' if backend_ready else 'not ready'}, Frontend: {'ready' if frontend_ready else 'not ready'}, Progress: {effective_progress}%"
+                            error=f"Backend: {'ready' if backend_ready else 'not ready'}, "
+                                  f"Frontend: {'ready' if frontend_ready else 'not ready'}, "
+                                  f"Progress: {effective_progress}%"
                         )
                         await self._startup_narrator.announce_error("Startup timeout - no services responding")
                         break
 
-                    # Services responding OR making progress - don't fail, let fallbacks handle it
-                    if elapsed > adaptive_timeout * 1.5 and not services_responding:
-                        logger.warning(
-                            f"⏰ Extended startup ({elapsed:.0f}s) - Progress: {effective_progress}%, "
-                            f"Backend: {'ready' if backend_ready else 'starting'}, "
-                            f"Frontend: {'ready' if frontend_ready else 'starting'}"
-                        )
-
                 # ═══════════════════════════════════════════════════════════════════
-                # PROGRESS-BASED AUTO-COMPLETION (v7.0)
+                # PROGRESS-BASED AUTO-COMPLETION (v8.0 - Lower Threshold)
                 # ═══════════════════════════════════════════════════════════════════
-                # If progress is high enough, complete startup regardless of health check state
-                # This handles cases where the backend is working but /health is slow
-                if effective_progress >= 85 and elapsed > 60:
+                # If progress is reasonably high, complete startup even if health slow
+                # Lowered threshold from 85% to 75% to prevent false timeouts
+                if effective_progress >= 75 and elapsed > 45:
                     logger.info(f"✅ Progress-based completion: {effective_progress}% after {elapsed:.0f}s")
                     # Mark backend as ready based on progress
                     if not backend_state.is_ready:

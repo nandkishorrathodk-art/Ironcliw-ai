@@ -737,13 +737,26 @@ class PrimeNeuralMeshBridge:
         logger.info("[PrimeNeuralMesh] Event stream started")
 
     async def _stream_prime_events(self) -> None:
-        """Background task that streams Prime events to Neural Mesh."""
+        """
+        Background task that streams Prime events to Neural Mesh.
+
+        v8.0 - Non-Blocking Startup Edition:
+        - During startup phase, uses short delays (2-5s) to avoid blocking
+        - Switches to normal delays after initial startup window (120s)
+        - Graceful degradation: if WebSocket unavailable, uses REST polling
+        - Never blocks main JARVIS startup
+        """
         retry_count = 0
-        max_retries = 5
-        base_delay = 10
+        base_delay = 2.0  # Start with 2s, not 10s
+        start_time = asyncio.get_event_loop().time()
+        startup_window = 120.0  # First 2 minutes use short delays
 
         while True:
             try:
+                # Check if we're still in startup window
+                elapsed = asyncio.get_event_loop().time() - start_time
+                in_startup = elapsed < startup_window
+
                 # Connect to Prime WebSocket for real-time events
                 prime_url = f"ws://{self.config.prime_host}:{self.config.prime_port}/ws/events"
 
@@ -754,7 +767,7 @@ class PrimeNeuralMeshBridge:
                     ping_timeout=10,
                     close_timeout=5,
                 ) as ws:
-                    logger.info(f"[PrimeNeuralMesh] Connected to Prime WebSocket: {prime_url}")
+                    logger.info(f"[PrimeNeuralMesh] ✓ Connected to Prime WebSocket: {prime_url}")
                     retry_count = 0  # Reset on successful connection
 
                     async for message in ws:
@@ -766,14 +779,19 @@ class PrimeNeuralMeshBridge:
                             continue
 
             except ImportError:
-                logger.warning("[PrimeNeuralMesh] websockets library not available - install with: pip install websockets")
+                logger.warning("[PrimeNeuralMesh] websockets library not available")
                 break
 
             except ConnectionRefusedError:
                 retry_count += 1
-                # ROOT CAUSE FIX: Exponential backoff with cap
-                delay = min(base_delay * (2 ** min(retry_count, 8)), 300)  # Max 5 min delay, capped at 2^8
-                logger.debug(f"[PrimeNeuralMesh] Prime not ready (attempt {retry_count}), retrying in {delay:.1f}s...")
+                # Short delays during startup, longer after
+                if in_startup:
+                    delay = min(base_delay * (1.5 ** min(retry_count - 1, 3)), 10.0)  # Max 10s during startup
+                else:
+                    delay = min(base_delay * (2 ** min(retry_count, 6)), 120.0)  # Max 2min normally
+
+                if retry_count <= 3 or retry_count % 10 == 0:  # Log first 3, then every 10th
+                    logger.debug(f"[PrimeNeuralMesh] Prime not available (attempt {retry_count}), retry in {delay:.1f}s")
                 await asyncio.sleep(delay)
 
             except asyncio.CancelledError:
@@ -782,30 +800,44 @@ class PrimeNeuralMeshBridge:
 
             except Exception as e:
                 error_msg = str(e)
+                retry_count += 1
+
                 if "404" in error_msg:
-                    # ROOT CAUSE FIX: Exponential backoff instead of linear delay
-                    # WebSocket endpoint not available - JARVIS Prime may need restart
-                    retry_count += 1
-
-                    # Exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
-                    delay = min(base_delay * (2 ** min(retry_count - 1, 5)), 60.0)
-
-                    # Get max retries from environment (not hardcoded 5!)
-                    max_retries_env = int(os.getenv("PRIME_WEBSOCKET_MAX_RETRIES", "15"))  # Default 15, not 5
-
-                    if retry_count <= max_retries_env:
-                        logger.info(f"[PrimeNeuralMesh] WebSocket endpoint initializing (attempt {retry_count}/{max_retries_env}), retrying in {delay:.1f}s...")
-                        await asyncio.sleep(delay)
+                    # WebSocket endpoint not available - Prime may not have this endpoint
+                    # Use very short delays during startup to not block
+                    if in_startup:
+                        delay = min(5.0 * retry_count, 15.0)  # 5s, 10s, 15s during startup
+                        max_startup_retries = 5
+                        if retry_count <= max_startup_retries:
+                            if retry_count == 1:
+                                logger.info("[PrimeNeuralMesh] Waiting for Prime WebSocket (background)...")
+                            await asyncio.sleep(delay)
+                        else:
+                            # During startup, just switch to polling and don't block
+                            logger.info("[PrimeNeuralMesh] Prime WebSocket not ready - using REST polling (non-blocking)")
+                            asyncio.create_task(self._poll_prime_status())  # Fire and forget
+                            retry_count = 0
+                            await asyncio.sleep(30)  # Wait 30s before trying WebSocket again
                     else:
-                        logger.info(f"[PrimeNeuralMesh] WebSocket not available after {max_retries_env} attempts - switching to REST polling")
-                        await self._poll_prime_status()
-                        retry_count = 0  # Reset for next WebSocket attempt
-                        await asyncio.sleep(60)  # Wait before trying WebSocket again
+                        # After startup, use normal retry logic
+                        delay = min(base_delay * (2 ** min(retry_count - 1, 5)), 60.0)
+                        max_retries = int(os.getenv("PRIME_WEBSOCKET_MAX_RETRIES", "15"))
+
+                        if retry_count <= max_retries:
+                            if retry_count == 1 or retry_count % 5 == 0:
+                                logger.info(f"[PrimeNeuralMesh] WebSocket retry {retry_count}/{max_retries} in {delay:.1f}s")
+                            await asyncio.sleep(delay)
+                        else:
+                            logger.info("[PrimeNeuralMesh] Falling back to REST polling")
+                            await self._poll_prime_status()
+                            retry_count = 0
+                            await asyncio.sleep(60)
                 else:
-                    logger.warning(f"[PrimeNeuralMesh] Event stream error: {e}")
-                    # Exponential backoff for other errors too
-                    error_retry_delay = min(10 * (1.5 ** min(retry_count, 5)), 60.0)
-                    await asyncio.sleep(error_retry_delay)
+                    # Other errors
+                    if retry_count <= 3:
+                        logger.warning(f"[PrimeNeuralMesh] Event stream error: {e}")
+                    delay = min(5.0 * (1.5 ** min(retry_count - 1, 4)), 30.0)
+                    await asyncio.sleep(delay)
 
     async def _poll_prime_status(self) -> None:
         """Fallback: Poll Prime status via REST when WebSocket unavailable."""
