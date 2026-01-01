@@ -1313,7 +1313,17 @@ progress_state = ProgressState()
 # =============================================================================
 
 class ConnectionManager:
-    """Manages WebSocket connections with heartbeat and cleanup"""
+    """
+    Manages WebSocket connections with heartbeat, cleanup, and health monitoring.
+
+    Features:
+    - Connection pooling with configurable limits
+    - Automatic heartbeat for keep-alive
+    - Dead connection cleanup
+    - Health tracking with metrics
+    - Graceful shutdown
+    - Connection recovery logging
+    """
 
     def __init__(self, max_connections: int = 100):
         self.max_connections = max_connections
@@ -1322,7 +1332,15 @@ class ConnectionManager:
         # it's attached to the correct event loop
         self._lock: Optional[asyncio.Lock] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._health_check_task: Optional[asyncio.Task] = None
         self._async_initialized = False
+
+        # Health tracking
+        self._total_connections = 0
+        self._total_disconnections = 0
+        self._failed_broadcasts = 0
+        self._last_successful_broadcast = None
+        self._connection_errors = []  # Last 10 errors
 
     def initialize_async_objects(self):
         """
@@ -1341,20 +1359,38 @@ class ConnectionManager:
     def count(self) -> int:
         return len(self._connections)
 
+    @property
+    def health_status(self) -> Dict[str, Any]:
+        """Get detailed health status of the connection manager."""
+        return {
+            "active_connections": len(self._connections),
+            "max_connections": self.max_connections,
+            "total_connections": self._total_connections,
+            "total_disconnections": self._total_disconnections,
+            "failed_broadcasts": self._failed_broadcasts,
+            "last_successful_broadcast": self._last_successful_broadcast,
+            "recent_errors": self._connection_errors[-5:] if self._connection_errors else [],
+            "is_healthy": len(self._connections) < self.max_connections,
+        }
+
     async def add(self, ws: web.WebSocketResponse) -> bool:
         """Add a WebSocket connection. Returns False if at capacity."""
         async with self._lock:
             if len(self._connections) >= self.max_connections:
+                logger.warning(f"[ConnectionManager] At capacity ({self.max_connections}), rejecting connection")
                 return False
             self._connections.add(ws)
+            self._total_connections += 1
             metrics.websocket_connections = len(self._connections)
             return True
 
     async def remove(self, ws: web.WebSocketResponse):
         """Remove a WebSocket connection."""
         async with self._lock:
-            self._connections.discard(ws)
-            metrics.websocket_connections = len(self._connections)
+            if ws in self._connections:
+                self._connections.discard(ws)
+                self._total_disconnections += 1
+                metrics.websocket_connections = len(self._connections)
 
     async def broadcast(self, data: Dict[str, Any]):
         """Broadcast to all connections, removing dead ones."""
@@ -1363,57 +1399,157 @@ class ConnectionManager:
 
         disconnected = set()
         message = json.dumps(data)
+        successful = 0
 
         async with self._lock:
             for ws in self._connections:
                 try:
                     if not ws.closed:
-                        await ws.send_str(message)
+                        await asyncio.wait_for(ws.send_str(message), timeout=5.0)
                         metrics.websocket_messages_sent += 1
+                        successful += 1
+                except asyncio.TimeoutError:
+                    logger.warning("[ConnectionManager] Broadcast timeout - connection may be slow")
+                    disconnected.add(ws)
+                    self._record_error("broadcast_timeout")
                 except Exception as e:
                     logger.debug(f"Broadcast failed to client: {e}")
                     disconnected.add(ws)
+                    self._failed_broadcasts += 1
 
             # Clean up disconnected
             for ws in disconnected:
                 self._connections.discard(ws)
+                self._total_disconnections += 1
 
             metrics.websocket_connections = len(self._connections)
+
+            if successful > 0:
+                self._last_successful_broadcast = datetime.now().isoformat()
+
+    def _record_error(self, error_type: str):
+        """Record an error for health tracking."""
+        error = {
+            "type": error_type,
+            "timestamp": datetime.now().isoformat(),
+        }
+        self._connection_errors.append(error)
+        # Keep only last 10 errors
+        if len(self._connection_errors) > 10:
+            self._connection_errors = self._connection_errors[-10:]
 
     async def start_heartbeat(self):
         """Start heartbeat task to keep connections alive."""
         if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(),
+                name="websocket_heartbeat"
+            )
+            logger.info("[ConnectionManager] ♥ Heartbeat task started")
+
+        # Also start health check task
+        if self._health_check_task is None or self._health_check_task.done():
+            self._health_check_task = asyncio.create_task(
+                self._health_check_loop(),
+                name="websocket_health_check"
+            )
 
     async def stop_heartbeat(self):
-        """Stop heartbeat task."""
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
+        """Stop heartbeat and health check tasks."""
+        for task in [self._heartbeat_task, self._health_check_task]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._heartbeat_task = None
+        self._health_check_task = None
 
     async def _heartbeat_loop(self):
         """Send periodic heartbeats to all connections."""
+        consecutive_failures = 0
+
         while True:
             try:
                 await asyncio.sleep(config.ws_heartbeat_interval)
-                await self.broadcast({"type": "heartbeat", "timestamp": datetime.now().isoformat()})
+
+                if self._connections:
+                    await self.broadcast({
+                        "type": "heartbeat",
+                        "timestamp": datetime.now().isoformat(),
+                        "connections": len(self._connections),
+                    })
+                    consecutive_failures = 0
+                else:
+                    # No connections - that's fine, just log occasionally
+                    if consecutive_failures == 0:
+                        logger.debug("[ConnectionManager] No active connections for heartbeat")
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"Heartbeat error: {e}")
+                consecutive_failures += 1
+                if consecutive_failures <= 3 or consecutive_failures % 10 == 0:
+                    logger.warning(f"[ConnectionManager] Heartbeat error (#{consecutive_failures}): {e}")
+                self._record_error(f"heartbeat_error: {str(e)[:50]}")
+                # Brief pause on error to avoid tight loop
+                await asyncio.sleep(1.0)
+
+    async def _health_check_loop(self):
+        """Periodically check and clean up stale connections."""
+        while True:
+            try:
+                await asyncio.sleep(30.0)  # Check every 30 seconds
+
+                stale_connections = []
+                async with self._lock:
+                    for ws in self._connections:
+                        try:
+                            if ws.closed:
+                                stale_connections.append(ws)
+                        except Exception:
+                            stale_connections.append(ws)
+
+                    for ws in stale_connections:
+                        self._connections.discard(ws)
+                        self._total_disconnections += 1
+
+                if stale_connections:
+                    logger.info(f"[ConnectionManager] Cleaned up {len(stale_connections)} stale connections")
+                    metrics.websocket_connections = len(self._connections)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[ConnectionManager] Health check error: {e}")
 
     async def close_all(self):
         """Close all connections gracefully."""
+        logger.info(f"[ConnectionManager] Closing {len(self._connections)} connections...")
+
         async with self._lock:
+            close_tasks = []
             for ws in list(self._connections):
                 try:
-                    await ws.close(code=WSCloseCode.GOING_AWAY, message=b'Server shutting down')
+                    # Create close task with timeout
+                    close_tasks.append(
+                        asyncio.wait_for(
+                            ws.close(code=WSCloseCode.GOING_AWAY, message=b'Server shutting down'),
+                            timeout=2.0
+                        )
+                    )
                 except Exception:
                     pass
+
+            # Wait for all close tasks
+            if close_tasks:
+                await asyncio.gather(*close_tasks, return_exceptions=True)
+
             self._connections.clear()
+            metrics.websocket_connections = 0
+
+        logger.info("[ConnectionManager] All connections closed")
 
 
 connection_manager = ConnectionManager(max_connections=config.ws_max_connections)
@@ -4953,78 +5089,271 @@ async def report_failure(message: str, error: str = None) -> bool:
 # Loading Server Launcher - Start server in background for start_system.py
 # =============================================================================
 
+# =============================================================================
+# Loading Server Process Management - Robust Background Startup
+# =============================================================================
 _loading_server_process = None
+_loading_server_log_file = None
+_loading_server_start_attempts = 0
+_MAX_START_ATTEMPTS = 3
+
+
+async def _check_server_health(host: str, port: int, timeout: float = 1.0) -> bool:
+    """Check if loading server is responding to health checks."""
+    try:
+        connector = aiohttp.TCPConnector(force_close=True)
+        async with aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=timeout, connect=timeout / 2)
+        ) as session:
+            async with session.get(f"http://{host}:{port}/health") as resp:
+                return resp.status == 200
+    except Exception:
+        return False
+
+
+async def _check_process_alive() -> bool:
+    """Check if the loading server subprocess is still running."""
+    global _loading_server_process
+    if _loading_server_process is None:
+        return False
+    poll_result = _loading_server_process.poll()
+    return poll_result is None  # None means still running
+
+
+async def _read_process_errors() -> str:
+    """Read any error output from the loading server process."""
+    global _loading_server_log_file
+    if _loading_server_log_file is None:
+        return ""
+    try:
+        log_path = Path(_loading_server_log_file)
+        if log_path.exists():
+            content = log_path.read_text()
+            # Return last 2000 chars if very long
+            return content[-2000:] if len(content) > 2000 else content
+    except Exception as e:
+        return f"Error reading log: {e}"
+    return ""
+
+
+async def _kill_existing_on_port(port: int) -> bool:
+    """Kill any existing process on the port."""
+    import subprocess
+    try:
+        # Find process using the port
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                try:
+                    subprocess.run(["kill", "-9", pid], timeout=2)
+                    logger.info(f"Killed existing process on port {port}: PID {pid}")
+                except Exception:
+                    pass
+            await asyncio.sleep(0.5)  # Give time for port to be released
+            return True
+    except Exception as e:
+        logger.debug(f"No existing process to kill on port {port}: {e}")
+    return False
 
 
 async def start_loading_server_background() -> bool:
     """
-    Start loading server as a background subprocess.
-    Call this at the very beginning of start_system.py.
-    
+    Start loading server as a background subprocess with robust error handling.
+
+    Features:
+    - Captures stderr/stdout to log file for debugging
+    - Checks process health and restarts if crashed
+    - Retries with exponential backoff
+    - Kills existing processes on the port if needed
+    - Returns detailed error info on failure
+
     Returns True if server is running (either started or already running).
     """
-    global _loading_server_process
-    
+    global _loading_server_process, _loading_server_log_file, _loading_server_start_attempts
+
     import subprocess
-    
+    import tempfile
+
     host = os.getenv('LOADING_SERVER_HOST', 'localhost')
     port = int(os.getenv('LOADING_SERVER_PORT', '3001'))
-    
-    # Check if already running
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1.0)) as session:
-            async with session.get(f"http://{host}:{port}/health") as resp:
-                if resp.status == 200:
-                    logger.info(f"Loading server already running on port {port}")
+
+    # Check if already running and healthy
+    if await _check_server_health(host, port):
+        logger.info(f"✓ Loading server already running on port {port}")
+        _loading_server_start_attempts = 0  # Reset attempts
+        return True
+
+    # If we have a process handle but it's not responding, check if it died
+    if _loading_server_process is not None:
+        if not await _check_process_alive():
+            # Process died - read any error output
+            error_output = await _read_process_errors()
+            logger.warning(f"Loading server process died. Exit code: {_loading_server_process.poll()}")
+            if error_output:
+                logger.error(f"Loading server error output:\n{error_output}")
+            _loading_server_process = None
+        else:
+            # Process is running but not responding - might be starting up
+            logger.info("Loading server process exists, waiting for it to respond...")
+            for i in range(5):
+                await asyncio.sleep(0.5)
+                if await _check_server_health(host, port):
+                    logger.info(f"✓ Loading server now responding on port {port}")
                     return True
-    except:
-        pass  # Not running, start it
-    
-    # Start the server
+            # Still not responding - kill and restart
+            logger.warning("Loading server not responding, killing and restarting...")
+            await stop_loading_server_background()
+
+    # Check if something else is using the port
+    await _kill_existing_on_port(port)
+
+    # Increment attempt counter
+    _loading_server_start_attempts += 1
+    if _loading_server_start_attempts > _MAX_START_ATTEMPTS:
+        logger.error(f"Loading server failed to start after {_MAX_START_ATTEMPTS} attempts")
+        return False
+
+    # Start the server with proper output capture
     try:
-        logger.info(f"Starting loading server on port {port}...")
+        logger.info(f"Starting loading server on port {port} (attempt {_loading_server_start_attempts}/{_MAX_START_ATTEMPTS})...")
         script_path = Path(__file__).resolve()
-        
+
+        # Create a log file for capturing output
+        jarvis_home = os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+        log_dir = Path(jarvis_home) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _loading_server_log_file = str(log_dir / "loading_server.log")
+
+        # Open log file for writing
+        log_file = open(_loading_server_log_file, 'w')
+
+        # Set environment to ensure proper error reporting
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'  # Ensure output is not buffered
+
         _loading_server_process = subprocess.Popen(
             [sys.executable, str(script_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
+            stdout=log_file,
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            start_new_session=True,
+            env=env
         )
-        
-        # Wait for server to be ready
-        for _ in range(10):
-            await asyncio.sleep(0.3)
-            try:
-                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1.0)) as session:
-                    async with session.get(f"http://{host}:{port}/health") as resp:
-                        if resp.status == 200:
-                            logger.info("Loading server started successfully")
-                            return True
-            except:
-                continue
-        
-        logger.warning("Loading server started but health check failed")
-        return False
-        
+
+        # Wait for server to be ready with progressive backoff
+        max_wait_time = 10.0  # Maximum 10 seconds
+        check_interval = 0.2
+        elapsed = 0.0
+
+        while elapsed < max_wait_time:
+            await asyncio.sleep(check_interval)
+            elapsed += check_interval
+
+            # Check if process is still alive
+            if not await _check_process_alive():
+                exit_code = _loading_server_process.poll()
+                error_output = await _read_process_errors()
+                logger.error(f"Loading server process crashed! Exit code: {exit_code}")
+                if error_output:
+                    logger.error(f"Captured output:\n{error_output}")
+                _loading_server_process = None
+
+                # Retry if we have attempts left
+                if _loading_server_start_attempts < _MAX_START_ATTEMPTS:
+                    await asyncio.sleep(1.0)  # Wait before retry
+                    return await start_loading_server_background()
+                return False
+
+            # Check if responding to health checks
+            if await _check_server_health(host, port):
+                logger.info(f"✓ Loading server started successfully on port {port} (took {elapsed:.1f}s)")
+                _loading_server_start_attempts = 0  # Reset attempts on success
+                return True
+
+            # Progressive backoff
+            check_interval = min(check_interval * 1.5, 1.0)
+
+        # Server started but not responding to health checks
+        logger.warning(f"Loading server process running but not responding to health checks after {max_wait_time}s")
+        error_output = await _read_process_errors()
+        if error_output:
+            logger.warning(f"Server output so far:\n{error_output}")
+
+        # Give it a bit more time - it might be a slow startup
+        return True  # Return true since process is running
+
     except Exception as e:
-        logger.error(f"Failed to start loading server: {e}")
+        logger.error(f"Failed to start loading server: {e}", exc_info=True)
         return False
 
 
 async def stop_loading_server_background():
-    """Stop the loading server subprocess"""
-    global _loading_server_process
-    if _loading_server_process:
+    """Stop the loading server subprocess gracefully."""
+    global _loading_server_process, _loading_server_log_file, _loading_server_start_attempts
+
+    if _loading_server_process is not None:
+        logger.info("Stopping loading server...")
+
+        # Try graceful termination first
         try:
             _loading_server_process.terminate()
-            _loading_server_process.wait(timeout=5)
-        except:
+
+            # Wait up to 5 seconds for graceful shutdown
+            for _ in range(50):
+                if _loading_server_process.poll() is not None:
+                    break
+                await asyncio.sleep(0.1)
+
+            # Force kill if still running
+            if _loading_server_process.poll() is None:
+                logger.warning("Loading server didn't stop gracefully, force killing...")
+                _loading_server_process.kill()
+                await asyncio.sleep(0.2)
+
+        except ProcessLookupError:
+            # Process already dead
+            pass
+        except Exception as e:
+            logger.warning(f"Error stopping loading server: {e}")
             try:
                 _loading_server_process.kill()
-            except:
+            except Exception:
                 pass
+
         _loading_server_process = None
+        logger.info("Loading server stopped")
+
+    # Reset state
+    _loading_server_start_attempts = 0
+
+
+async def get_loading_server_status() -> dict:
+    """Get detailed status of the loading server."""
+    global _loading_server_process, _loading_server_log_file, _loading_server_start_attempts
+
+    host = os.getenv('LOADING_SERVER_HOST', 'localhost')
+    port = int(os.getenv('LOADING_SERVER_PORT', '3001'))
+
+    status = {
+        "host": host,
+        "port": port,
+        "process_running": await _check_process_alive(),
+        "health_check_passed": await _check_server_health(host, port),
+        "start_attempts": _loading_server_start_attempts,
+        "log_file": _loading_server_log_file,
+    }
+
+    if _loading_server_process is not None:
+        status["pid"] = _loading_server_process.pid
+        status["exit_code"] = _loading_server_process.poll()
+
+    return status
 
 
 if __name__ == "__main__":

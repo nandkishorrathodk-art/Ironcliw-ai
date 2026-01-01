@@ -589,20 +589,79 @@ class BaseNeuralMeshAgent(ABC):
     # =========================================================================
 
     async def _heartbeat_loop(self) -> None:
-        """Send periodic heartbeats."""
+        """
+        Send periodic heartbeats with resilient error recovery.
+
+        Features:
+        - Continues sending heartbeats even if registry temporarily unavailable
+        - Exponential backoff on errors to avoid overwhelming system
+        - Auto-recovery when registry becomes available again
+        - Logs warning only after consecutive failures (not every time)
+        """
+        consecutive_failures = 0
+        max_backoff = 30.0  # Maximum backoff in seconds
+        base_interval = self.config.heartbeat_interval_seconds
+
         while self._running:
             try:
                 if self.registry:
-                    await self.registry.heartbeat(
+                    # Send heartbeat
+                    success = await self.registry.heartbeat(
                         self.agent_name,
                         load=self._current_load,
                         task_queue_size=self._task_queue_size,
                     )
-                await asyncio.sleep(self.config.heartbeat_interval_seconds)
+
+                    if success:
+                        consecutive_failures = 0
+                    else:
+                        # Agent might not be registered yet - try re-registering
+                        consecutive_failures += 1
+                        if consecutive_failures >= 3:
+                            logger.warning(
+                                "Agent %s heartbeat failed %d times - attempting re-registration",
+                                self.agent_name,
+                                consecutive_failures,
+                            )
+                            # Try to re-register
+                            try:
+                                await self.registry.register(
+                                    agent_name=self.agent_name,
+                                    agent_type=self.agent_type,
+                                    capabilities=self.capabilities,
+                                    backend=self.backend,
+                                    version=self.version,
+                                    dependencies=self.dependencies,
+                                    metadata={"config": self.config.__dict__},
+                                )
+                                logger.info("Agent %s re-registered successfully", self.agent_name)
+                                consecutive_failures = 0
+                            except Exception as re_reg_err:
+                                logger.debug("Re-registration failed: %s", re_reg_err)
+
+                # Calculate next sleep interval with backoff on failures
+                if consecutive_failures > 0:
+                    # Exponential backoff: 2^failures * base, capped at max_backoff
+                    backoff = min(max_backoff, base_interval * (2 ** min(consecutive_failures, 5)))
+                    await asyncio.sleep(backoff)
+                else:
+                    await asyncio.sleep(base_interval)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.exception("Heartbeat error: %s", e)
+                consecutive_failures += 1
+                if consecutive_failures <= 3 or consecutive_failures % 10 == 0:
+                    # Log only first few failures, then every 10th to avoid log spam
+                    logger.warning(
+                        "Agent %s heartbeat error (failure %d): %s",
+                        self.agent_name,
+                        consecutive_failures,
+                        str(e),
+                    )
+                # Backoff on errors
+                backoff = min(max_backoff, base_interval * (2 ** min(consecutive_failures, 5)))
+                await asyncio.sleep(backoff)
 
     async def _message_handler_loop(self) -> None:
         """Process incoming messages."""

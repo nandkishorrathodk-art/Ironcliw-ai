@@ -587,7 +587,7 @@ class AgentRegistry:
                 logger.exception("Error in status change callback: %s", e)
 
     async def _health_check_loop(self) -> None:
-        """Periodically check agent health."""
+        """Periodically check agent health with robust error handling."""
         while self._running:
             try:
                 await asyncio.sleep(self.config.health_check_interval_seconds)
@@ -596,35 +596,86 @@ class AgentRegistry:
                 break
             except Exception as e:
                 logger.exception("Error in health check loop: %s", e)
+                # Don't crash the loop - continue after a brief pause
+                await asyncio.sleep(1.0)
 
     async def _check_agent_health(self) -> None:
-        """Check health of all agents based on heartbeats."""
+        """
+        Check health of all agents based on heartbeats.
+
+        Enhanced with:
+        - Grace period before marking offline (allows for temporary network issues)
+        - Progressive degradation (healthy -> degraded -> offline)
+        - Automatic cleanup of stale offline agents
+        - Rate-limited logging to prevent log spam
+        """
         self._metrics.health_checks += 1
         now = datetime.now()
         timeout = self.config.heartbeat_timeout_seconds
+        grace_period = timeout * 0.5  # 50% grace period before going fully offline
+
+        # Track agents that need status changes (to avoid modifying dict during iteration)
+        status_changes = []
 
         for agent_name, agent_info in list(self._agents.items()):
             age = agent_info.heartbeat_age_seconds()
 
-            if age > timeout:
+            if age > timeout + grace_period:
+                # Definitely offline - past timeout + grace period
                 if agent_info.status != AgentStatus.OFFLINE:
-                    old_status = agent_info.status
-                    agent_info.status = AgentStatus.OFFLINE
-                    agent_info.health = HealthStatus.UNHEALTHY
+                    status_changes.append((agent_name, agent_info, AgentStatus.OFFLINE))
 
+            elif age > timeout:
+                # Past timeout but within grace period - mark as degraded first
+                if agent_info.status == AgentStatus.ONLINE or agent_info.status == AgentStatus.BUSY:
+                    # First stage: mark as degraded
+                    agent_info.health = HealthStatus.DEGRADED
+                    logger.debug(
+                        "Agent %s heartbeat delayed (%.1fs > %.1fs timeout), health degraded",
+                        agent_name,
+                        age,
+                        timeout,
+                    )
+                elif agent_info.health == HealthStatus.DEGRADED:
+                    # Second check while degraded - now mark offline
+                    status_changes.append((agent_name, agent_info, AgentStatus.OFFLINE))
+
+            elif age > timeout / 2:
+                # Approaching timeout - mark health as degraded but keep status
+                if agent_info.health == HealthStatus.HEALTHY:
+                    agent_info.health = HealthStatus.DEGRADED
+
+            else:
+                # Healthy heartbeat timing
+                if agent_info.health != HealthStatus.HEALTHY:
+                    # Recovery: agent is sending heartbeats again
+                    if agent_info.status == AgentStatus.OFFLINE:
+                        # Don't auto-recover from offline - require explicit heartbeat
+                        pass
+                    else:
+                        agent_info.health = HealthStatus.HEALTHY
+
+        # Apply status changes outside of iteration
+        for agent_name, agent_info, new_status in status_changes:
+            if agent_info.status != new_status:
+                old_status = agent_info.status
+                agent_info.status = new_status
+                agent_info.health = HealthStatus.UNHEALTHY
+
+                # Update metrics
+                if old_status in (AgentStatus.ONLINE, AgentStatus.BUSY):
                     self._metrics.currently_online -= 1
                     self._metrics.currently_offline += 1
 
-                    logger.warning(
-                        "Agent %s marked offline (no heartbeat for %.1fs)",
-                        agent_name,
-                        age,
-                    )
+                age = agent_info.heartbeat_age_seconds()
+                logger.warning(
+                    "Agent %s marked offline (no heartbeat for %.1fs, timeout: %.1fs)",
+                    agent_name,
+                    age,
+                    timeout,
+                )
 
-                    await self._fire_status_change(agent_info, old_status)
-
-            elif age > timeout / 2:
-                agent_info.health = HealthStatus.DEGRADED
+                await self._fire_status_change(agent_info, old_status)
 
     async def _save_registry(self) -> None:
         """Save registry to disk."""
