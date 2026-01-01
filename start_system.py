@@ -13704,33 +13704,94 @@ except Exception as e:
             / "logs"
             / f"websocket_router_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
+        log_file.parent.mkdir(exist_ok=True)
 
         # Correctly set the environment variable for the port
         env = os.environ.copy()
         env["PORT"] = str(port)
+        env["NODE_ENV"] = "production"
+        env["PYTHONUNBUFFERED"] = "1"  # Ensure Node output is not buffered
 
-        with open(log_file, "w") as log:
-            process = await asyncio.create_subprocess_exec(
-                "npm",
-                "start",
-                cwd=str(websocket_dir),
-                stdout=log,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env,
-            )
+        # CRITICAL FIX: Don't use 'with' block - keep file open for subprocess
+        # Using 'with' closes the file handle when the block exits, causing
+        # the subprocess to fail when writing to stdout
+        log = open(log_file, "w")
+        self.open_files.append(log)  # Track for cleanup later
+
+        process = await asyncio.create_subprocess_exec(
+            "npm",
+            "start",
+            cwd=str(websocket_dir),
+            stdout=log,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
 
         self.processes.append(process)
         print(
             f"{Colors.GREEN}✓ WebSocket Router starting on port {port} (PID: {process.pid}){Colors.ENDC}"
         )
 
-        # Health check for the websocket router
-        router_ready = await self.wait_for_service(f"http://localhost:{port}/health", timeout=15)
+        # Give the Node.js process time to initialize
+        await asyncio.sleep(2)
+
+        # Check if process died immediately
+        if process.returncode is not None:
+            print(f"{Colors.FAIL}✗ WebSocket router process died immediately (exit code: {process.returncode}){Colors.ENDC}")
+            # Read log for error details
+            try:
+                log.flush()
+                with open(log_file, "r") as f:
+                    content = f.read()
+                if content:
+                    print(f"{Colors.YELLOW}  Log output:{Colors.ENDC}")
+                    for line in content.strip().split('\n')[-10:]:
+                        print(f"    {line}")
+            except Exception:
+                pass
+            return None
+
+        # Health check for the websocket router with retries
+        router_ready = False
+        max_health_attempts = 5
+        health_check_delay = 2.0
+
+        for attempt in range(max_health_attempts):
+            try:
+                router_ready = await self.wait_for_service(
+                    f"http://localhost:{port}/health",
+                    timeout=5
+                )
+                if router_ready:
+                    break
+            except Exception as e:
+                if attempt < max_health_attempts - 1:
+                    print(f"{Colors.YELLOW}  Health check attempt {attempt + 1}/{max_health_attempts} failed, retrying...{Colors.ENDC}")
+                    await asyncio.sleep(health_check_delay)
+
+            # Check if process died during health check
+            if process.returncode is not None:
+                print(f"{Colors.FAIL}✗ WebSocket router crashed during startup{Colors.ENDC}")
+                break
+
         if not router_ready:
             print(
                 f"{Colors.FAIL}✗ WebSocket router failed to start or is not healthy.{Colors.ENDC}"
             )
             print(f"  Check log file: {log_file}")
+
+            # Read and show log content for debugging
+            try:
+                log.flush()
+                with open(log_file, "r") as f:
+                    content = f.read()
+                if content:
+                    print(f"{Colors.YELLOW}  Recent log output:{Colors.ENDC}")
+                    for line in content.strip().split('\n')[-5:]:
+                        print(f"    {line}")
+            except Exception:
+                pass
+
             try:
                 process.kill()
             except ProcessLookupError:
