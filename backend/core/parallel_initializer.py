@@ -185,6 +185,10 @@ class ParallelInitializer:
             self._add_component("ai_loader", priority=5, is_critical=False, stale_threshold=10.0)
             # Optimized voice models use Ghost Proxies - instant registration
             self._add_component("optimized_voice_models", priority=6, is_interactive=True, stale_threshold=5.0)
+            # Optimized vision system uses Ghost Proxies - instant registration
+            self._add_component("optimized_vision_system", priority=7, stale_threshold=5.0)
+            # Optimized intelligence/neural mesh uses Ghost Proxies
+            self._add_component("optimized_intelligence", priority=8, stale_threshold=5.0)
 
         # Cloud SQL proxy - give it more time but not critical for interactive use
         self._add_component("cloud_sql_proxy", priority=10, stale_threshold=45.0)
@@ -884,6 +888,365 @@ class ParallelInitializer:
             self.app.state.voice_models_registered = False
             # Don't raise - voice models will be loaded directly as fallback
 
+    async def _init_optimized_vision_system(self):
+        """
+        Register Vision System via Hyper-Speed AI Loader.
+
+        Vision components include:
+        - Claude Vision Analyzer (Claude API-based image analysis)
+        - Display Monitor (screen capture and analysis)
+        - YOLO Object Detection (optional, if available)
+        - CLIP Vision Encoder (optional, for embeddings)
+
+        All registered as Ghost Proxies for instant startup.
+        """
+        if not AI_LOADER_AVAILABLE:
+            logger.info("AI Loader not available - vision system will load directly")
+            return
+
+        try:
+            logger.info("=" * 60)
+            logger.info("OPTIMIZED VISION SYSTEM REGISTRATION (Ghost Proxies)")
+            logger.info("=" * 60)
+
+            ai_manager = get_ai_manager()
+            start_time = time.time()
+
+            # =========================================================
+            # 1. Claude Vision Analyzer (Primary vision system)
+            # =========================================================
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+
+            def load_claude_vision():
+                """Heavy loader for Claude Vision Analyzer."""
+                try:
+                    from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+                    if api_key:
+                        analyzer = ClaudeVisionAnalyzer(api_key)
+                        logger.info("   [BACKGROUND] Claude Vision Analyzer loaded")
+                        return analyzer
+                    logger.warning("   [BACKGROUND] No API key - Claude Vision unavailable")
+                    return None
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] Claude Vision load failed: {e}")
+                    return None
+
+            vision_proxy = ai_manager.register_model(
+                name="vision_analyzer",
+                loader_func=load_claude_vision,
+                priority=ModelPriority.HIGH,
+                hints={
+                    "category": "vision",
+                    "prefer_speed": True,
+                },
+                quantize=False,  # API-based, no quantization needed
+            )
+
+            self.app.state.vision_analyzer = vision_proxy
+            logger.info(f"   ✅ Claude Vision Analyzer registered (proxy: {vision_proxy.status.name})")
+
+            # =========================================================
+            # 2. Display Monitor (Screen capture and analysis)
+            # =========================================================
+            def load_display_monitor():
+                """Heavy loader for Display Monitor."""
+                try:
+                    from vision.display_monitor import DisplayMonitor
+                    monitor = DisplayMonitor()
+                    logger.info("   [BACKGROUND] Display Monitor loaded")
+                    return monitor
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] Display Monitor load failed: {e}")
+                    return None
+
+            display_proxy = ai_manager.register_model(
+                name="display_monitor",
+                loader_func=load_display_monitor,
+                priority=ModelPriority.NORMAL,
+                hints={"category": "vision"},
+                quantize=False,
+            )
+
+            self.app.state.display_monitor = display_proxy
+            logger.info(f"   ✅ Display Monitor registered (proxy: {display_proxy.status.name})")
+
+            # =========================================================
+            # 3. YOLO Object Detector (optional)
+            # =========================================================
+            def load_yolo_detector():
+                """Heavy loader for YOLO object detector."""
+                try:
+                    from ultralytics import YOLO
+                    # Use YOLOv8 nano for speed
+                    model = YOLO("yolov8n.pt")
+                    logger.info("   [BACKGROUND] YOLO detector loaded")
+                    return model
+                except ImportError:
+                    logger.debug("   [BACKGROUND] YOLO not available (ultralytics not installed)")
+                    return None
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] YOLO load failed: {e}")
+                    return None
+
+            yolo_proxy = ai_manager.register_model(
+                name="yolo_detector",
+                loader_func=load_yolo_detector,
+                priority=ModelPriority.LOW,  # Optional, load last
+                hints={
+                    "category": "vision",
+                    "engine": "onnx",  # Prefer ONNX for YOLO
+                },
+                quantize=True,
+                lazy=True,  # Only load on first use
+            )
+
+            self.app.state.yolo_detector = yolo_proxy
+            logger.info(f"   ✅ YOLO Detector registered (proxy: {yolo_proxy.status.name}, lazy=True)")
+
+            # =========================================================
+            # 4. Screen OCR (Tesseract-based text extraction)
+            # =========================================================
+            def load_screen_ocr():
+                """Heavy loader for screen OCR."""
+                try:
+                    import pytesseract
+                    # Verify tesseract is available
+                    pytesseract.get_tesseract_version()
+                    logger.info("   [BACKGROUND] Screen OCR (Tesseract) loaded")
+                    return {"engine": "tesseract", "available": True}
+                except Exception as e:
+                    logger.debug(f"   [BACKGROUND] OCR not available: {e}")
+                    return None
+
+            ocr_proxy = ai_manager.register_model(
+                name="screen_ocr",
+                loader_func=load_screen_ocr,
+                priority=ModelPriority.LOW,
+                hints={"category": "vision"},
+                quantize=False,
+                lazy=True,  # Only load on first use
+            )
+
+            self.app.state.screen_ocr = ocr_proxy
+            logger.info(f"   ✅ Screen OCR registered (proxy: {ocr_proxy.status.name}, lazy=True)")
+
+            # =========================================================
+            # Registration complete
+            # =========================================================
+            elapsed_ms = (time.time() - start_time) * 1000
+
+            logger.info("")
+            logger.info(f"   🚀 All vision components registered in {elapsed_ms:.1f}ms!")
+            logger.info("   Vision system loading in BACKGROUND - server is ready NOW")
+            logger.info("=" * 60)
+
+            # Store registration status
+            self.app.state.vision_system_registered = True
+            self.app.state.vision_model_proxies = {
+                "vision_analyzer": vision_proxy,
+                "display_monitor": display_proxy,
+                "yolo_detector": yolo_proxy,
+                "screen_ocr": ocr_proxy,
+            }
+
+        except Exception as e:
+            logger.error(f"Vision system registration failed: {e}", exc_info=True)
+            self.app.state.vision_system_registered = False
+
+    async def _init_optimized_intelligence(self):
+        """
+        Register Intelligence/Neural Mesh via Hyper-Speed AI Loader.
+
+        Intelligence components include:
+        - Neural Mesh (multi-agent coordination)
+        - Hybrid Orchestrator (local/cloud decision engine)
+        - Goal Inference Engine (user intent prediction)
+        - UAE Engine (Unified Awareness Engine)
+
+        All registered as Ghost Proxies for instant startup.
+        """
+        if not AI_LOADER_AVAILABLE:
+            logger.info("AI Loader not available - intelligence system will load directly")
+            return
+
+        try:
+            logger.info("=" * 60)
+            logger.info("OPTIMIZED INTELLIGENCE REGISTRATION (Ghost Proxies)")
+            logger.info("=" * 60)
+
+            ai_manager = get_ai_manager()
+            start_time = time.time()
+
+            # Check startup decision for cloud-first mode
+            startup_decision = getattr(self.app.state, 'startup_decision', None)
+            skip_neural_mesh = startup_decision and getattr(startup_decision, 'skip_neural_mesh', False)
+
+            # =========================================================
+            # 1. Neural Mesh (Multi-agent coordination)
+            # =========================================================
+            if not skip_neural_mesh:
+                def load_neural_mesh():
+                    """Heavy loader for Neural Mesh."""
+                    try:
+                        from neural_mesh.integration import (
+                            initialize_neural_mesh,
+                            NeuralMeshConfig,
+                        )
+                        import asyncio
+
+                        config = NeuralMeshConfig(
+                            enable_crew=True,
+                            enable_monitoring=True,
+                            enable_knowledge_graph=True,
+                            lazy_load=True,
+                        )
+
+                        # Run async init in sync context
+                        loop = asyncio.new_event_loop()
+                        try:
+                            result = loop.run_until_complete(initialize_neural_mesh(config))
+                            logger.info("   [BACKGROUND] Neural Mesh loaded")
+                            return result
+                        finally:
+                            loop.close()
+                    except ImportError:
+                        logger.debug("   [BACKGROUND] Neural Mesh not available")
+                        return None
+                    except Exception as e:
+                        logger.warning(f"   [BACKGROUND] Neural Mesh load failed: {e}")
+                        return None
+
+                mesh_proxy = ai_manager.register_model(
+                    name="neural_mesh",
+                    loader_func=load_neural_mesh,
+                    priority=ModelPriority.NORMAL,
+                    hints={
+                        "category": "neural_net",
+                        "prefer_speed": False,  # Prefer thoroughness
+                    },
+                    quantize=False,
+                )
+
+                self.app.state.neural_mesh = mesh_proxy
+                logger.info(f"   ✅ Neural Mesh registered (proxy: {mesh_proxy.status.name})")
+            else:
+                logger.info("   ⏭️ Neural Mesh skipped (cloud-first mode)")
+
+            # =========================================================
+            # 2. Hybrid Orchestrator (Local/Cloud decision engine)
+            # =========================================================
+            def load_hybrid_orchestrator():
+                """Heavy loader for Hybrid Orchestrator."""
+                try:
+                    from core.hybrid_orchestrator import get_orchestrator
+                    import asyncio
+
+                    orchestrator = get_orchestrator()
+
+                    # Run async start in sync context
+                    loop = asyncio.new_event_loop()
+                    try:
+                        loop.run_until_complete(orchestrator.start())
+                        logger.info("   [BACKGROUND] Hybrid Orchestrator loaded")
+                        return orchestrator
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] Hybrid Orchestrator load failed: {e}")
+                    return None
+
+            orchestrator_proxy = ai_manager.register_model(
+                name="hybrid_orchestrator",
+                loader_func=load_hybrid_orchestrator,
+                priority=ModelPriority.NORMAL,
+                hints={"category": "neural_net"},
+                quantize=False,
+            )
+
+            self.app.state.hybrid_orchestrator = orchestrator_proxy
+            logger.info(f"   ✅ Hybrid Orchestrator registered (proxy: {orchestrator_proxy.status.name})")
+
+            # =========================================================
+            # 3. Goal Inference Engine
+            # =========================================================
+            def load_goal_inference():
+                """Heavy loader for Goal Inference Engine."""
+                try:
+                    from intelligence.goal_inference_engine import GoalInferenceEngine
+                    engine = GoalInferenceEngine()
+                    logger.info("   [BACKGROUND] Goal Inference Engine loaded")
+                    return engine
+                except ImportError:
+                    logger.debug("   [BACKGROUND] Goal Inference not available")
+                    return None
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] Goal Inference load failed: {e}")
+                    return None
+
+            goal_proxy = ai_manager.register_model(
+                name="goal_inference",
+                loader_func=load_goal_inference,
+                priority=ModelPriority.LOW,
+                hints={"category": "neural_net"},
+                quantize=False,
+                lazy=True,  # Load on first use
+            )
+
+            self.app.state.goal_inference = goal_proxy
+            logger.info(f"   ✅ Goal Inference registered (proxy: {goal_proxy.status.name}, lazy=True)")
+
+            # =========================================================
+            # 4. UAE Engine (Unified Awareness Engine)
+            # =========================================================
+            def load_uae_engine():
+                """Heavy loader for UAE Engine."""
+                try:
+                    from intelligence.unified_awareness_engine import get_uae_engine
+                    vision_analyzer = getattr(self.app.state, 'vision_analyzer', None)
+                    engine = get_uae_engine(vision_analyzer=vision_analyzer)
+                    logger.info("   [BACKGROUND] UAE Engine loaded")
+                    return engine
+                except ImportError:
+                    logger.debug("   [BACKGROUND] UAE Engine not available")
+                    return None
+                except Exception as e:
+                    logger.warning(f"   [BACKGROUND] UAE Engine load failed: {e}")
+                    return None
+
+            uae_proxy = ai_manager.register_model(
+                name="uae_engine",
+                loader_func=load_uae_engine,
+                priority=ModelPriority.NORMAL,
+                hints={"category": "neural_net"},
+                quantize=False,
+            )
+
+            self.app.state.uae_engine = uae_proxy
+            logger.info(f"   ✅ UAE Engine registered (proxy: {uae_proxy.status.name})")
+
+            # =========================================================
+            # Registration complete
+            # =========================================================
+            elapsed_ms = (time.time() - start_time) * 1000
+
+            logger.info("")
+            logger.info(f"   🚀 All intelligence components registered in {elapsed_ms:.1f}ms!")
+            logger.info("   Intelligence system loading in BACKGROUND - server is ready NOW")
+            logger.info("=" * 60)
+
+            # Store registration status
+            self.app.state.intelligence_registered = True
+            self.app.state.intelligence_proxies = {
+                "neural_mesh": getattr(self.app.state, 'neural_mesh', None),
+                "hybrid_orchestrator": orchestrator_proxy,
+                "goal_inference": goal_proxy,
+                "uae_engine": uae_proxy,
+            }
+
+        except Exception as e:
+            logger.error(f"Intelligence registration failed: {e}", exc_info=True)
+            self.app.state.intelligence_registered = False
+
     async def _init_cloud_sql_proxy(self):
         """
         Initialize Cloud SQL proxy with non-blocking startup and graceful degradation.
@@ -1576,6 +1939,17 @@ class ParallelInitializer:
 
     async def _init_neural_mesh(self):
         """Initialize neural mesh multi-agent system"""
+        # Check if we already have Ghost Proxy from AI Loader
+        intel_proxies = getattr(self.app.state, 'intelligence_proxies', {})
+
+        if intel_proxies.get('neural_mesh'):
+            # Already registered via AI Loader - just log status
+            proxy = intel_proxies['neural_mesh']
+            if proxy:
+                logger.info(f"   Neural mesh: using Ghost Proxy ({proxy.status.name})")
+            return
+
+        # Fallback: Load directly if AI Loader not available
         try:
             startup_decision = getattr(self.app.state, 'startup_decision', None)
             if startup_decision and startup_decision.skip_neural_mesh:
@@ -1606,6 +1980,15 @@ class ParallelInitializer:
 
     async def _init_hybrid_orchestrator(self):
         """Initialize hybrid orchestrator"""
+        # Check if we already have Ghost Proxy from AI Loader
+        intel_proxies = getattr(self.app.state, 'intelligence_proxies', {})
+
+        if intel_proxies.get('hybrid_orchestrator'):
+            proxy = intel_proxies['hybrid_orchestrator']
+            logger.info(f"   Hybrid orchestrator: using Ghost Proxy ({proxy.status.name})")
+            return
+
+        # Fallback: Load directly if AI Loader not available
         try:
             from core.hybrid_orchestrator import get_orchestrator
 
@@ -1619,6 +2002,16 @@ class ParallelInitializer:
 
     async def _init_vision_analyzer(self):
         """Initialize vision analyzer"""
+        # Check if we already have Ghost Proxy from AI Loader
+        vision_proxies = getattr(self.app.state, 'vision_model_proxies', {})
+
+        if vision_proxies.get('vision_analyzer'):
+            # Already registered via AI Loader - just log status
+            proxy = vision_proxies['vision_analyzer']
+            logger.info(f"   Vision analyzer: using Ghost Proxy ({proxy.status.name})")
+            return
+
+        # Fallback: Load directly if AI Loader not available
         try:
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
