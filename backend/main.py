@@ -1414,6 +1414,27 @@ async def parallel_lifespan(app: FastAPI):
         else:
             app.state.performance_optimizer = None
 
+        # =================================================================
+        # HYPER-SPEED AI LOADER: Ghost Proxies for instant model access
+        # =================================================================
+        # Initialize AI model manager for zero-copy loading with Ghost Proxies
+        # Models load in background while server responds immediately
+        try:
+            from core.ai_loader import get_ai_manager, get_config as get_ai_config
+            ai_manager = get_ai_manager()
+            app.state.ai_manager = ai_manager
+
+            ai_config = get_ai_config()
+            logger.info("🧠 Hyper-Speed AI Loader initialized")
+            logger.info(f"   Workers: {ai_config.max_workers}, Quantize: {ai_config.quantize_default}")
+            logger.info("   Ghost Proxies ready for instant model access")
+        except ImportError as e:
+            logger.debug(f"AI Loader not available: {e}")
+            app.state.ai_manager = None
+        except Exception as e:
+            logger.warning(f"AI Loader initialization failed: {e}")
+            app.state.ai_manager = None
+
         yield
 
         # =====================================================================
@@ -1448,6 +1469,17 @@ async def parallel_lifespan(app: FastAPI):
     finally:
         # Shutdown
         logger.info("Shutting down parallel startup...")
+
+        # =================================================================
+        # HYPER-SPEED AI LOADER: Graceful shutdown
+        # =================================================================
+        if hasattr(app.state, 'ai_manager') and app.state.ai_manager:
+            try:
+                logger.info("🧠 Shutting down AI Loader...")
+                await app.state.ai_manager.shutdown()
+                logger.info("🧠 AI Loader shutdown complete")
+            except Exception as e:
+                logger.debug(f"AI Loader shutdown error (non-critical): {e}")
 
         # =================================================================
         # PERFORMANCE OPTIMIZER: Graceful shutdown
@@ -3101,10 +3133,42 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     else:
         app.state.performance_optimizer = None
 
+    # =================================================================
+    # HYPER-SPEED AI LOADER: Ghost Proxies for instant model access
+    # =================================================================
+    # Initialize AI model manager for zero-copy loading with Ghost Proxies
+    # Models load in background while server responds immediately
+    try:
+        from core.ai_loader import get_ai_manager, get_config as get_ai_config
+        ai_manager = get_ai_manager()
+        app.state.ai_manager = ai_manager
+
+        ai_config = get_ai_config()
+        logger.info("🧠 Hyper-Speed AI Loader initialized")
+        logger.info(f"   Workers: {ai_config.max_workers}, Quantize: {ai_config.quantize_default}")
+        logger.info("   Ghost Proxies ready for instant model access")
+    except ImportError as e:
+        logger.debug(f"AI Loader not available: {e}")
+        app.state.ai_manager = None
+    except Exception as e:
+        logger.warning(f"AI Loader initialization failed: {e}")
+        app.state.ai_manager = None
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # =================================================================
+    # HYPER-SPEED AI LOADER: Graceful shutdown
+    # =================================================================
+    if hasattr(app.state, 'ai_manager') and app.state.ai_manager:
+        try:
+            logger.info("🧠 Shutting down AI Loader...")
+            await app.state.ai_manager.shutdown()
+            logger.info("🧠 AI Loader shutdown complete")
+        except Exception as e:
+            logger.debug(f"AI Loader shutdown error (non-critical): {e}")
 
     # =================================================================
     # PERFORMANCE OPTIMIZER: Graceful shutdown
@@ -4771,6 +4835,45 @@ async def health_performance():
                 "cache_l2_enabled": config.cache_l2_enabled,
                 "slow_threshold_ms": config.profile_slow_threshold_ms,
             },
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+# ============================================================================
+# Hyper-Speed AI Loader Stats Endpoint
+# ============================================================================
+
+@app.get("/health/ai-loader")
+async def health_ai_loader():
+    """
+    Get AI model loading statistics and Ghost Proxy status.
+
+    Returns:
+        models: Status and metrics for each registered model
+        summary: Counts of ready/loading/failed models
+        config: AI loader configuration
+    """
+    if not hasattr(app.state, 'ai_manager') or app.state.ai_manager is None:
+        return {
+            "status": "unavailable",
+            "message": "AI Loader not initialized",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    try:
+        stats = app.state.ai_manager.get_stats()
+
+        return {
+            "status": "ok",
+            "models": stats.get("models", {}),
+            "summary": stats.get("summary", {}),
+            "config": stats.get("config", {}),
             "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
