@@ -1154,7 +1154,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         space_id: Optional[int] = None,
         action_config: Optional[ActionConfig] = None,
         workflow_goal: Optional[str] = None,
-        wait_for_completion: bool = False
+        wait_for_completion: bool = False,
+        max_duration: Optional[float] = None,
+        **kwargs  # Accept additional kwargs for forward compatibility
     ) -> Dict[str, Any]:
         """
         Watch an app for specific text/event and alert (or ACT!) when found.
@@ -1171,6 +1173,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             workflow_goal: Optional complex workflow goal (v11.0)
             wait_for_completion: If True, wait for event detection and action execution
                                 If False, return immediately after starting watcher (default)
+            max_duration: Optional max monitoring time in seconds (None = indefinite)
 
         Returns:
             Result with watcher_id, monitoring status, and action result if executed

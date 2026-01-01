@@ -149,14 +149,22 @@ class VisualEventDetector:
         self._cache: Dict[str, Any] = {}
         self._cache_timestamps: Dict[str, float] = {}
 
-        # Semaphore for concurrent detection limit
-        self._detection_semaphore = asyncio.Semaphore(self.config.max_concurrent_detections)
+        # Lazy-initialized semaphore (created on first async use to avoid
+        # "no current event loop" error when created in thread pool)
+        self._detection_semaphore: Optional[asyncio.Semaphore] = None
+        self._max_concurrent_detections = self.config.max_concurrent_detections
 
         logger.info(
             f"VisualEventDetector initialized - "
             f"OCR: {self._ocr_available}, CV: {self._cv_available}, "
             f"Fuzzy: {self._fuzzy_available}"
         )
+
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        """Lazily create semaphore on first async use."""
+        if self._detection_semaphore is None:
+            self._detection_semaphore = asyncio.Semaphore(self._max_concurrent_detections)
+        return self._detection_semaphore
 
     async def detect_text(
         self,
@@ -177,7 +185,7 @@ class VisualEventDetector:
         Returns:
             TextDetectionResult with detection details
         """
-        async with self._detection_semaphore:
+        async with self._get_semaphore():
             self.total_detections += 1
 
             if not self._ocr_available:
@@ -300,7 +308,7 @@ class VisualEventDetector:
         Returns:
             ElementDetectionResult with detection details
         """
-        async with self._detection_semaphore:
+        async with self._get_semaphore():
             self.total_detections += 1
 
             if not self._cv_available:
@@ -365,7 +373,7 @@ class VisualEventDetector:
         Returns:
             ColorDetectionResult with detection details
         """
-        async with self._detection_semaphore:
+        async with self._get_semaphore():
             self.total_detections += 1
 
             if not self._cv_available:

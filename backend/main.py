@@ -1371,7 +1371,7 @@ async def parallel_lifespan(app: FastAPI):
     - Thread manager initialized lazily
     - All ML models loaded in background
     """
-    from core.parallel_initializer import ParallelInitializer
+    from backend.core.parallel_initializer import ParallelInitializer
 
     # v4.0: Ultra-minimal pre-yield setup
     logger.info("=" * 60)

@@ -14,23 +14,43 @@ Features:
 """
 
 import asyncio
+import gc
 import logging
 import os
 import time
+import threading
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from datetime import datetime
-import threading
-import weakref
-import gc
 
 import numpy as np
 import psutil
 import queue
-from typing import Union
+
+# Import thread-safety guard for native library protection
+try:
+    from backend.core.thread_manager import (
+        get_native_library_guard,
+        NativeLibraryType,
+    )
+    NATIVE_GUARD_AVAILABLE = True
+except ImportError:
+    try:
+        # Fallback for direct imports
+        from core.thread_manager import (
+            get_native_library_guard,
+            NativeLibraryType,
+        )
+        NATIVE_GUARD_AVAILABLE = True
+    except ImportError:
+        NATIVE_GUARD_AVAILABLE = False
+        logging.getLogger(__name__).debug(
+            "NativeLibrarySafetyGuard not available, using direct calls"
+        )
 
 # Import PyObjC frameworks (now properly installed)
 try:
@@ -336,6 +356,14 @@ class AVFoundationCapture:
 
     This is the highest quality capture method with the purple indicator.
     Requires screen recording permission.
+
+    THREAD SAFETY:
+    ==============
+    AVFoundation APIs (AVCaptureSession, etc.) require careful thread handling.
+    This implementation uses NativeLibrarySafetyGuard to ensure:
+    1. Session start/stop happens with proper synchronization
+    2. Callbacks are protected against shutdown races
+    3. Memory is not freed while callbacks are executing
     """
 
     def __init__(self, config: AdvancedCaptureConfig):
@@ -348,6 +376,14 @@ class AVFoundationCapture:
         self.frame_callback: Optional[Callable] = None
         self._runloop_thread: Optional[threading.Thread] = None
         self._stop_runloop = threading.Event()
+
+        # Shutdown coordination
+        self._shutdown_requested = threading.Event()
+        self._active_callbacks = 0
+        self._callback_lock = threading.Lock()
+
+        # Event loop reference for callbacks
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
         if not AVFOUNDATION_AVAILABLE:
             raise RuntimeError("AVFoundation not available - install PyObjC frameworks")
@@ -367,6 +403,13 @@ class AVFoundationCapture:
             return True
 
         self.frame_callback = frame_callback
+        self._shutdown_requested.clear()
+
+        # Store the event loop for callback dispatching
+        try:
+            self._event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._event_loop = asyncio.get_event_loop()
 
         try:
             logger.info("🎥 Starting AVFoundation capture session...")
@@ -485,42 +528,99 @@ class AVFoundationCapture:
         Synchronous frame handler called from Objective-C thread
 
         This bridges from the Objective-C dispatch queue to Python asyncio.
+
+        THREAD SAFETY:
+        - Checks shutdown flag before processing
+        - Tracks active callbacks to allow clean shutdown
+        - Uses stored event loop reference (not get_event_loop())
         """
+        # Fast path: check shutdown before doing any work
+        if self._shutdown_requested.is_set():
+            return
+
+        # Register active callback
+        with self._callback_lock:
+            if self._shutdown_requested.is_set():
+                return
+            self._active_callbacks += 1
+
         try:
-            if self.frame_callback:
-                # Schedule async callback in event loop
+            if self.frame_callback and self._event_loop:
+                # Make a copy of the frame to ensure we own the memory
+                # This prevents segfaults if the original buffer is freed
+                frame_copy = frame.copy()
+
+                # Check again before scheduling
+                if self._shutdown_requested.is_set():
+                    return
+
+                # Schedule async callback in the stored event loop
                 asyncio.run_coroutine_threadsafe(
-                    self.frame_callback(frame, metadata),
-                    asyncio.get_event_loop()
+                    self.frame_callback(frame_copy, metadata),
+                    self._event_loop
                 )
         except Exception as e:
-            logger.error(f"Error scheduling frame callback: {e}")
+            if not self._shutdown_requested.is_set():
+                logger.error(f"Error scheduling frame callback: {e}")
+        finally:
+            # Unregister callback
+            with self._callback_lock:
+                self._active_callbacks -= 1
 
     async def stop_capture(self):
-        """Stop AVFoundation capture session"""
+        """
+        Stop AVFoundation capture session with proper callback drain.
+
+        CRITICAL: This ensures all callbacks complete before freeing resources.
+        This prevents the segfault caused by callbacks accessing freed memory.
+        """
         if not self.is_running:
             return
 
         logger.info("Stopping AVFoundation capture...")
 
         try:
-            # Stop capture session
-            if self.session:
-                self.session.stopRunning()
+            # STEP 1: Signal shutdown (fast, non-blocking)
+            self._shutdown_requested.set()
 
-            # Stop runloop thread
+            # STEP 2: Wait for active callbacks to complete
+            timeout = 2.0
+            start_time = time.monotonic()
+            while self._active_callbacks > 0:
+                if time.monotonic() - start_time > timeout:
+                    logger.warning(
+                        f"Timeout waiting for {self._active_callbacks} callbacks to complete"
+                    )
+                    break
+                await asyncio.sleep(0.05)
+
+            # STEP 3: Stop capture session
+            if self.session:
+                try:
+                    self.session.stopRunning()
+                except Exception as e:
+                    logger.debug(f"Error stopping session: {e}")
+
+            # STEP 4: Stop runloop thread
             if self._runloop_thread and self._runloop_thread.is_alive():
                 self._stop_runloop.set()
                 self._runloop_thread.join(timeout=2.0)
 
-            # Clean up
+            # STEP 5: Small delay to ensure all cleanup completes
+            await asyncio.sleep(0.05)
+
+            # STEP 6: Clean up references
             self.is_running = False
             self.session = None
             self.output = None
             self.delegate = None
             self.dispatch_queue = None
+            self._event_loop = None
 
-            logger.info("✅ AVFoundation capture stopped")
+            # Force garbage collection
+            gc.collect()
+
+            logger.info("✅ AVFoundation capture stopped safely")
 
         except Exception as e:
             logger.error(f"Error stopping AVFoundation capture: {e}")
@@ -1508,13 +1608,21 @@ class VideoWatcherManager:
         )
 
         self.watchers: Dict[str, VideoWatcher] = {}
-        self._watcher_lock = asyncio.Lock()
+        # Lazy-initialized lock (created on first async use to avoid
+        # "no current event loop" error when created in thread pool)
+        self._watcher_lock: Optional[asyncio.Lock] = None
 
         # Stats
         self.total_watchers_spawned = 0
         self.total_events_detected = 0
 
         logger.info(f"VideoWatcherManager initialized (max parallel: {self.max_parallel_watchers})")
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Lazily create lock on first async use."""
+        if self._watcher_lock is None:
+            self._watcher_lock = asyncio.Lock()
+        return self._watcher_lock
 
     async def spawn_watcher(
         self,
@@ -1539,7 +1647,7 @@ class VideoWatcherManager:
         Returns:
             VideoWatcher instance
         """
-        async with self._watcher_lock:
+        async with self._get_lock():
             # Check if we're at max capacity
             active_watchers = [w for w in self.watchers.values()
                               if w.status == WatcherStatus.WATCHING]
@@ -1733,7 +1841,7 @@ class VideoWatcherManager:
 
     async def stop_watcher(self, watcher_id: str):
         """Stop a specific watcher."""
-        async with self._watcher_lock:
+        async with self._get_lock():
             if watcher_id in self.watchers:
                 watcher = self.watchers[watcher_id]
                 await watcher.stop()
@@ -1744,7 +1852,7 @@ class VideoWatcherManager:
 
     async def stop_all_watchers(self):
         """Stop all active watchers."""
-        async with self._watcher_lock:
+        async with self._get_lock():
             logger.info(f"Stopping {len(self.watchers)} watchers...")
 
             stop_tasks = [w.stop() for w in self.watchers.values()]

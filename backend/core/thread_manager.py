@@ -2220,3 +2220,593 @@ def comprehensive_shutdown_sync(timeout: float = 20.0) -> Dict[str, Any]:
     """
     coordinator = get_shutdown_coordinator()
     return coordinator.shutdown_sync(timeout=timeout)
+
+
+# =============================================================================
+# NATIVE LIBRARY SAFETY GUARD - Prevents Segfaults from C Extensions
+# =============================================================================
+# This provides unified protection for operations involving:
+# - PyTorch/SpeechBrain model inference
+# - AVFoundation (macOS video/audio APIs)
+# - PIL/NumPy array operations
+# - PyAudio/SoundDevice callbacks
+# - OpenCV operations
+# - Any C extension with threading issues
+# =============================================================================
+
+
+class NativeLibraryType(Enum):
+    """Types of native libraries requiring protection."""
+    PYTORCH = auto()      # PyTorch, SpeechBrain, Transformers
+    AVFOUNDATION = auto() # macOS AVCaptureSession, AVAudioSession
+    PYAUDIO = auto()      # PortAudio, SoundDevice
+    OPENCV = auto()       # cv2, image processing
+    NUMPY = auto()        # NumPy array operations in callbacks
+    GENERIC = auto()      # Other C extensions
+
+
+@dataclass
+class NativeOperationStats:
+    """Statistics for native library operations."""
+    library_type: NativeLibraryType
+    total_operations: int = 0
+    successful_operations: int = 0
+    failed_operations: int = 0
+    total_time_ms: float = 0.0
+    max_time_ms: float = 0.0
+    last_error: Optional[str] = None
+    last_operation_time: Optional[datetime] = None
+
+
+class NativeLibrarySafetyGuard:
+    """
+    Unified protection for native library operations that can cause segfaults.
+
+    The Problem:
+    ============
+    Native C extensions (PyTorch, AVFoundation, PyAudio, etc.) are not thread-safe.
+    Calling them from arbitrary threads, especially during shutdown, causes:
+    - SIGSEGV (segmentation fault)
+    - Memory corruption
+    - GIL deadlocks
+    - Resource leaks
+
+    The Solution:
+    =============
+    This guard provides:
+    1. Main thread dispatch for thread-sensitive APIs (AVFoundation)
+    2. Single-threaded executor for PyTorch operations
+    3. Callback protection with shutdown coordination
+    4. Safe cleanup with proper resource release order
+    5. Error isolation to prevent cascade failures
+
+    Usage:
+    ======
+    ```python
+    guard = NativeLibrarySafetyGuard.get_instance()
+
+    # For PyTorch operations
+    result = await guard.execute_pytorch(
+        lambda: model(input_tensor),
+        timeout=30.0
+    )
+
+    # For AVFoundation (must run on main thread)
+    result = await guard.execute_main_thread(
+        lambda: capture_session.startRunning()
+    )
+
+    # For callback-based APIs (PyAudio, SoundDevice)
+    with guard.callback_context(NativeLibraryType.PYAUDIO) as should_process:
+        if should_process:
+            process_audio(data)
+    ```
+    """
+
+    _instance: Optional['NativeLibrarySafetyGuard'] = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls) -> 'NativeLibrarySafetyGuard':
+        """Singleton pattern."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        """Initialize the safety guard."""
+        if self._initialized:
+            return
+
+        self._initialized = True
+        self._lock = threading.RLock()
+
+        # Shutdown coordination
+        self._shutdown_requested = threading.Event()
+        self._active_operations: Dict[NativeLibraryType, int] = defaultdict(int)
+        self._operations_lock = threading.Lock()
+        self._all_operations_done = threading.Condition(self._operations_lock)
+
+        # Dedicated executors for different library types
+        self._pytorch_executor: Optional[ThreadPoolExecutor] = None
+        self._main_thread_queue: Optional[asyncio.Queue] = None
+        self._main_thread_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Statistics
+        self._stats: Dict[NativeLibraryType, NativeOperationStats] = {
+            lib_type: NativeOperationStats(library_type=lib_type)
+            for lib_type in NativeLibraryType
+        }
+
+        # Error tracking
+        self._consecutive_errors: Dict[NativeLibraryType, int] = defaultdict(int)
+        self._max_consecutive_errors = _env_int('NATIVE_MAX_CONSECUTIVE_ERRORS', 5)
+
+        # Configuration
+        self._pytorch_workers = 1  # MUST be 1 for PyTorch thread safety
+        self._default_timeout = _env_float('NATIVE_OP_TIMEOUT', 30.0)
+
+        # Register with shutdown coordinator
+        self._register_shutdown_handler()
+
+        logger.info("🛡️ NativeLibrarySafetyGuard initialized")
+
+    def _register_shutdown_handler(self):
+        """Register shutdown handler with global coordinator."""
+        try:
+            def on_shutdown():
+                self.request_shutdown()
+                self.wait_for_operations(timeout=5.0)
+
+            atexit.register(on_shutdown)
+        except Exception as e:
+            logger.warning(f"Could not register shutdown handler: {e}")
+
+    @classmethod
+    def get_instance(cls) -> 'NativeLibrarySafetyGuard':
+        """Get the singleton instance."""
+        return cls()
+
+    def request_shutdown(self) -> None:
+        """Signal that shutdown has been requested."""
+        self._shutdown_requested.set()
+        logger.info("🛡️ NativeLibrarySafetyGuard shutdown requested")
+
+    def is_shutdown_requested(self) -> bool:
+        """Check if shutdown was requested."""
+        return self._shutdown_requested.is_set()
+
+    def _get_pytorch_executor(self) -> ThreadPoolExecutor:
+        """Get or create the PyTorch executor."""
+        with self._lock:
+            if self._pytorch_executor is None:
+                self._pytorch_executor = ThreadPoolExecutor(
+                    max_workers=self._pytorch_workers,
+                    thread_name_prefix="PyTorchSafe"
+                )
+            return self._pytorch_executor
+
+    @contextmanager
+    def operation_context(self, library_type: NativeLibraryType):
+        """
+        Context manager for tracking active operations.
+
+        Args:
+            library_type: Type of native library being used
+
+        Yields:
+            bool: Whether operation should proceed (False if shutdown requested)
+        """
+        # Fast path: check shutdown first
+        if self._shutdown_requested.is_set():
+            yield False
+            return
+
+        # Register operation
+        with self._operations_lock:
+            if self._shutdown_requested.is_set():
+                yield False
+                return
+            self._active_operations[library_type] += 1
+            self._stats[library_type].total_operations += 1
+            self._stats[library_type].last_operation_time = datetime.now()
+
+        start_time = time.monotonic()
+        success = False
+
+        try:
+            yield True
+            success = True
+            self._consecutive_errors[library_type] = 0
+        except Exception as e:
+            self._consecutive_errors[library_type] += 1
+            self._stats[library_type].failed_operations += 1
+            self._stats[library_type].last_error = str(e)
+
+            if self._consecutive_errors[library_type] >= self._max_consecutive_errors:
+                logger.error(
+                    f"🛡️ {library_type.name}: {self._consecutive_errors[library_type]} "
+                    f"consecutive errors, requesting shutdown"
+                )
+                self._shutdown_requested.set()
+            raise
+        finally:
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+
+            with self._operations_lock:
+                self._active_operations[library_type] -= 1
+                if success:
+                    self._stats[library_type].successful_operations += 1
+                self._stats[library_type].total_time_ms += elapsed_ms
+                self._stats[library_type].max_time_ms = max(
+                    self._stats[library_type].max_time_ms,
+                    elapsed_ms
+                )
+
+                # Notify waiters if no more operations
+                if sum(self._active_operations.values()) == 0:
+                    self._all_operations_done.notify_all()
+
+    @contextmanager
+    def callback_context(self, library_type: NativeLibraryType):
+        """
+        Context manager for callback-based APIs (PyAudio, SoundDevice).
+
+        Same as operation_context but named for clarity in callback code.
+
+        Usage:
+            def audio_callback(indata, frames, time_info, status):
+                with guard.callback_context(NativeLibraryType.PYAUDIO) as should_process:
+                    if not should_process:
+                        return  # Shutdown in progress
+                    # Process audio...
+        """
+        with self.operation_context(library_type) as should_process:
+            yield should_process
+
+    async def execute_pytorch(
+        self,
+        func: Callable[[], T],
+        timeout: Optional[float] = None,
+        name: str = "pytorch_op"
+    ) -> T:
+        """
+        Execute a PyTorch operation on the dedicated single-threaded executor.
+
+        This ensures:
+        - All PyTorch operations happen on the same thread
+        - No GIL contention with model inference
+        - Proper timeout handling without corrupting model state
+
+        Args:
+            func: The PyTorch operation to execute
+            timeout: Timeout in seconds (default: 30.0)
+            name: Operation name for logging
+
+        Returns:
+            Result of the function
+
+        Raises:
+            asyncio.TimeoutError: If operation times out
+            RuntimeError: If shutdown was requested
+            Exception: Any exception from the function
+        """
+        if self._shutdown_requested.is_set():
+            raise RuntimeError("NativeLibrarySafetyGuard shutdown in progress")
+
+        timeout = timeout or self._default_timeout
+        executor = self._get_pytorch_executor()
+        loop = asyncio.get_event_loop()
+
+        def wrapped():
+            with self.operation_context(NativeLibraryType.PYTORCH):
+                return func()
+
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(executor, wrapped),
+                timeout=timeout
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"🛡️ PyTorch operation '{name}' timed out after {timeout}s")
+            raise
+        except Exception as e:
+            logger.error(f"🛡️ PyTorch operation '{name}' failed: {e}")
+            raise
+
+    def execute_pytorch_sync(
+        self,
+        func: Callable[[], T],
+        timeout: Optional[float] = None,
+        name: str = "pytorch_op"
+    ) -> T:
+        """
+        Synchronous version of execute_pytorch.
+
+        For use in non-async contexts where you still need thread safety.
+        """
+        if self._shutdown_requested.is_set():
+            raise RuntimeError("NativeLibrarySafetyGuard shutdown in progress")
+
+        timeout = timeout or self._default_timeout
+        executor = self._get_pytorch_executor()
+
+        def wrapped():
+            with self.operation_context(NativeLibraryType.PYTORCH):
+                return func()
+
+        future = executor.submit(wrapped)
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            logger.error(f"🛡️ PyTorch operation '{name}' timed out after {timeout}s")
+            future.cancel()
+            raise
+
+    async def execute_main_thread(
+        self,
+        func: Callable[[], T],
+        timeout: Optional[float] = None,
+        name: str = "main_thread_op"
+    ) -> T:
+        """
+        Execute a function on the main thread.
+
+        Required for:
+        - AVFoundation (AVCaptureSession, etc.)
+        - AppKit/Cocoa UI operations
+        - Any API that requires main thread
+
+        Args:
+            func: Function to execute on main thread
+            timeout: Timeout in seconds
+            name: Operation name for logging
+
+        Returns:
+            Result of the function
+        """
+        if self._shutdown_requested.is_set():
+            raise RuntimeError("NativeLibrarySafetyGuard shutdown in progress")
+
+        timeout = timeout or self._default_timeout
+
+        # If already on main thread, execute directly
+        if threading.current_thread() is threading.main_thread():
+            with self.operation_context(NativeLibraryType.AVFOUNDATION):
+                return func()
+
+        # Otherwise, schedule on main thread's event loop
+        # This requires the main thread to be running an event loop
+        try:
+            main_loop = asyncio.get_running_loop()
+
+            # Create a future to hold the result
+            result_future: asyncio.Future = main_loop.create_future()
+
+            def execute_and_set_result():
+                try:
+                    with self.operation_context(NativeLibraryType.AVFOUNDATION):
+                        result = func()
+                    main_loop.call_soon_threadsafe(
+                        result_future.set_result, result
+                    )
+                except Exception as e:
+                    main_loop.call_soon_threadsafe(
+                        result_future.set_exception, e
+                    )
+
+            # Schedule on main thread
+            main_loop.call_soon_threadsafe(execute_and_set_result)
+
+            return await asyncio.wait_for(result_future, timeout=timeout)
+
+        except Exception as e:
+            logger.error(f"🛡️ Main thread operation '{name}' failed: {e}")
+            raise
+
+    def execute_numpy_safe(
+        self,
+        func: Callable[[], T],
+        name: str = "numpy_op"
+    ) -> T:
+        """
+        Execute a NumPy operation with protection.
+
+        NumPy operations in callbacks can cause issues if the array
+        memory is freed by another thread. This provides a safe context.
+
+        Args:
+            func: NumPy operation to execute
+            name: Operation name for logging
+
+        Returns:
+            Result of the function
+        """
+        with self.operation_context(NativeLibraryType.NUMPY):
+            return func()
+
+    def wait_for_operations(self, timeout: float = 5.0) -> bool:
+        """
+        Wait for all active operations to complete.
+
+        Call this during shutdown AFTER request_shutdown().
+
+        Args:
+            timeout: Maximum seconds to wait
+
+        Returns:
+            True if all operations completed, False if timeout
+        """
+        deadline = time.monotonic() + timeout
+
+        with self._operations_lock:
+            while sum(self._active_operations.values()) > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    active = dict(self._active_operations)
+                    logger.warning(
+                        f"🛡️ Timeout waiting for operations: {active}"
+                    )
+                    return False
+                self._all_operations_done.wait(timeout=remaining)
+
+        return True
+
+    def cleanup(self) -> None:
+        """Clean up all resources."""
+        self.request_shutdown()
+
+        # Wait for operations
+        self.wait_for_operations(timeout=5.0)
+
+        # Shutdown PyTorch executor
+        with self._lock:
+            if self._pytorch_executor is not None:
+                self._pytorch_executor.shutdown(wait=True, cancel_futures=True)
+                self._pytorch_executor = None
+
+        logger.info("🛡️ NativeLibrarySafetyGuard cleanup complete")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics for all native library operations."""
+        return {
+            lib_type.name: {
+                'total': stats.total_operations,
+                'successful': stats.successful_operations,
+                'failed': stats.failed_operations,
+                'avg_time_ms': (
+                    stats.total_time_ms / stats.successful_operations
+                    if stats.successful_operations > 0 else 0
+                ),
+                'max_time_ms': stats.max_time_ms,
+                'last_error': stats.last_error,
+                'consecutive_errors': self._consecutive_errors[lib_type],
+            }
+            for lib_type, stats in self._stats.items()
+        }
+
+
+# Global instance getter
+def get_native_library_guard() -> NativeLibrarySafetyGuard:
+    """Get the global NativeLibrarySafetyGuard instance."""
+    return NativeLibrarySafetyGuard.get_instance()
+
+
+# =============================================================================
+# SIGSEGV SIGNAL HANDLER - Last resort crash recovery
+# =============================================================================
+
+class SegfaultHandler:
+    """
+    Emergency handler for SIGSEGV signals.
+
+    This provides:
+    1. Graceful logging of crash information
+    2. Stack trace capture
+    3. Cleanup attempt before termination
+    4. Crash dump for debugging
+
+    Note: This is a last resort - proper fixes should prevent SIGSEGV.
+    """
+
+    _installed = False
+    _original_handler = None
+
+    @classmethod
+    def install(cls) -> bool:
+        """
+        Install the SIGSEGV handler.
+
+        Returns:
+            True if installed successfully
+        """
+        if cls._installed:
+            return True
+
+        try:
+            # Only in main thread
+            if threading.current_thread() is not threading.main_thread():
+                return False
+
+            # Store original handler
+            cls._original_handler = signal.signal(
+                signal.SIGSEGV,
+                cls._handle_sigsegv
+            )
+
+            cls._installed = True
+            logger.info("🛡️ SIGSEGV handler installed")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Could not install SIGSEGV handler: {e}")
+            return False
+
+    @classmethod
+    def _handle_sigsegv(cls, signum, frame):
+        """Handle SIGSEGV signal."""
+        try:
+            # Get thread info
+            thread = threading.current_thread()
+            thread_id = thread.ident
+            thread_name = thread.name
+
+            # Log crash info
+            print("\n" + "=" * 70, file=sys.stderr)
+            print("🔥 CRITICAL: SIGSEGV (Segmentation Fault) detected!", file=sys.stderr)
+            print("=" * 70, file=sys.stderr)
+            print(f"Thread: {thread_name} (ID: {thread_id})", file=sys.stderr)
+            print(f"Time: {datetime.now().isoformat()}", file=sys.stderr)
+
+            # Try to get stack trace
+            if frame:
+                print("\nStack trace:", file=sys.stderr)
+                traceback.print_stack(frame, file=sys.stderr)
+
+            # Log native guard stats
+            try:
+                guard = get_native_library_guard()
+                stats = guard.get_stats()
+                print(f"\nNative library stats: {stats}", file=sys.stderr)
+            except Exception:
+                pass
+
+            print("=" * 70, file=sys.stderr)
+            print("Attempting graceful shutdown...", file=sys.stderr)
+
+            # Try graceful shutdown
+            try:
+                guard = get_native_library_guard()
+                guard.request_shutdown()
+            except Exception:
+                pass
+
+        except Exception as e:
+            print(f"Error in SIGSEGV handler: {e}", file=sys.stderr)
+
+        finally:
+            # Re-raise to let default handler terminate
+            if cls._original_handler:
+                signal.signal(signal.SIGSEGV, cls._original_handler)
+            # Exit with error code
+            sys.exit(139)  # 128 + 11 (SIGSEGV)
+
+    @classmethod
+    def uninstall(cls) -> None:
+        """Uninstall the SIGSEGV handler."""
+        if not cls._installed:
+            return
+
+        try:
+            if cls._original_handler:
+                signal.signal(signal.SIGSEGV, cls._original_handler)
+            cls._installed = False
+        except Exception:
+            pass
+
+
+# Auto-install SIGSEGV handler if enabled
+if _env_bool('JARVIS_SIGSEGV_HANDLER', True):
+    SegfaultHandler.install()

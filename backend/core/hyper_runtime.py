@@ -119,9 +119,11 @@ _activation_attempted: bool = False
 
 
 def _detect_granian() -> RuntimeEngine:
-    """Detect if Granian (Rust/Tokio) is available."""
+    """Detect if Granian (Rust/Tokio) is available with all required features."""
     try:
         import granian
+        # Also verify the constants we need are available (ThreadModes was added later)
+        from granian.constants import Interfaces, Loops, HTTPModes, ThreadModes  # noqa: F401
         version = getattr(granian, "__version__", "unknown")
         return RuntimeEngine(
             name="Granian",
@@ -131,12 +133,17 @@ def _detect_granian() -> RuntimeEngine:
             backend="Rust/Tokio",
             description="Rust-based ASGI server with Tokio async runtime",
         )
-    except ImportError:
+    except ImportError as e:
+        # Distinguish between granian not installed vs missing features
+        if "granian" in str(e).lower() and "constants" not in str(e).lower():
+            desc = "Not installed - run: pip install granian"
+        else:
+            desc = f"Incompatible version (missing required features): {e}"
         return RuntimeEngine(
             name="Granian",
             level=RuntimeLevel.HYPER,
             available=False,
-            description="Not installed - run: pip install granian",
+            description=desc,
         )
 
 
