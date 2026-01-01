@@ -204,12 +204,17 @@ def _isolated_model_load(cache_dir: str, device: str = "cpu") -> Dict[str, Any]:
         if not result['success']:
             print(f"[SUBPROCESS] Trying SpeechBrain EncoderClassifier", flush=True)
             try:
+                import warnings
                 from speechbrain.inference.speaker import EncoderClassifier
-                _classifier = EncoderClassifier.from_hparams(
-                    source="speechbrain/spkrec-ecapa-voxceleb",
-                    savedir=cache_dir,
-                    run_opts={"device": device}
-                )
+                # Suppress benign HuggingFace warnings about Wav2Vec2 weight initialization
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Some weights of.*were not initialized.*")
+                    warnings.filterwarnings("ignore", message=".*TRAIN this model.*")
+                    _classifier = EncoderClassifier.from_hparams(
+                        source="speechbrain/spkrec-ecapa-voxceleb",
+                        savedir=cache_dir,
+                        run_opts={"device": device}
+                    )
                 result['success'] = True
                 result['strategy'] = 'speechbrain'
                 result['optimized'] = False
@@ -1568,11 +1573,16 @@ class ECAPAModelManager:
             try:
                 logger.info(f"Loading ECAPA-TDNN model (attempt {attempt + 1}/{max_retries})...")
 
-                self.model = EncoderClassifier.from_hparams(
-                    source=self.model_path,
-                    savedir=self.cache_dir,
-                    run_opts={"device": device}
-                )
+                # Suppress benign HuggingFace warnings about Wav2Vec2 weight initialization
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Some weights of.*were not initialized.*")
+                    warnings.filterwarnings("ignore", message=".*TRAIN this model.*")
+                    self.model = EncoderClassifier.from_hparams(
+                        source=self.model_path,
+                        savedir=self.cache_dir,
+                        run_opts={"device": device}
+                    )
 
                 load_duration = (time.time() - load_start) * 1000
                 self.device = device
@@ -1605,11 +1615,15 @@ class ECAPAModelManager:
                         self.load_source = "fresh_download_fallback"
                         self._using_prebaked = False
 
-                        self.model = EncoderClassifier.from_hparams(
-                            source=self.model_path,
-                            savedir=self.cache_dir,
-                            run_opts={"device": device}
-                        )
+                        # Suppress benign HuggingFace warnings
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore", message="Some weights of.*were not initialized.*")
+                            warnings.filterwarnings("ignore", message=".*TRAIN this model.*")
+                            self.model = EncoderClassifier.from_hparams(
+                                source=self.model_path,
+                                savedir=self.cache_dir,
+                                run_opts={"device": device}
+                            )
 
                         self.device = device
                         load_duration = (time.time() - load_start) * 1000

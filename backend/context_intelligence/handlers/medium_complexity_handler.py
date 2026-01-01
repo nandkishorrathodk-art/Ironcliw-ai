@@ -84,22 +84,33 @@ except ImportError:
     logger.warning("Strategy managers not available")
 
 try:
-    from backend.context_intelligence.resolvers import (
-        get_implicit_reference_resolver
+    from context_intelligence.resolvers import (
+        get_implicit_reference_resolver,
+        is_implicit_resolver_available,
     )
-    IMPLICIT_RESOLVER_AVAILABLE = True
+    IMPLICIT_RESOLVER_AVAILABLE = is_implicit_resolver_available()
 except ImportError:
     IMPLICIT_RESOLVER_AVAILABLE = False
     get_implicit_reference_resolver = lambda: None
-    logger.warning("ImplicitReferenceResolver not available")
+    logger.debug("ImplicitReferenceResolver deferred - will be available after initialization")
 
-try:
-    from context_intelligence.handlers import get_multi_monitor_query_handler
-    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = True
-except ImportError:
-    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = False
-    get_multi_monitor_query_handler = lambda: None
-    logger.warning("MultiMonitorQueryHandler not available")
+# MultiMonitorQueryHandler - use lazy import to avoid circular dependency
+MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = True  # Assume available, lazy load
+_multi_monitor_query_handler = None
+
+def get_multi_monitor_query_handler():
+    """Lazy loader for MultiMonitorQueryHandler to avoid circular imports."""
+    global _multi_monitor_query_handler, MULTI_MONITOR_QUERY_HANDLER_AVAILABLE
+    if _multi_monitor_query_handler is None:
+        try:
+            from context_intelligence.handlers.multi_monitor_query_handler import (
+                get_multi_monitor_query_handler as _get_handler
+            )
+            _multi_monitor_query_handler = _get_handler
+        except ImportError:
+            MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = False
+            return None
+    return _multi_monitor_query_handler() if _multi_monitor_query_handler else None
 
 
 # ============================================================================

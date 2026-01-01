@@ -45,12 +45,15 @@ except ImportError:
     logger.warning("Multi-monitor managers not available")
 
 try:
-    from backend.context_intelligence.resolvers import get_implicit_reference_resolver
-    IMPLICIT_RESOLVER_AVAILABLE = True
+    from context_intelligence.resolvers import (
+        get_implicit_reference_resolver,
+        is_implicit_resolver_available,
+    )
+    IMPLICIT_RESOLVER_AVAILABLE = is_implicit_resolver_available()
 except ImportError:
     IMPLICIT_RESOLVER_AVAILABLE = False
     get_implicit_reference_resolver = lambda: None
-    logger.warning("ImplicitReferenceResolver not available")
+    logger.debug("ImplicitReferenceResolver deferred - will be available after initialization")
 
 
 # ============================================================================

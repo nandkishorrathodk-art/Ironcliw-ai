@@ -46,17 +46,18 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
-# Import Implicit Reference Resolver
+# Import Implicit Reference Resolver - use the new resolvers module
 try:
-    from backend.context_intelligence.resolvers import (
+    from context_intelligence.resolvers import (
         get_implicit_reference_resolver,
+        is_implicit_resolver_available,
         ImplicitReferenceResolver
     )
-    IMPLICIT_RESOLVER_AVAILABLE = True
+    IMPLICIT_RESOLVER_AVAILABLE = is_implicit_resolver_available()
 except ImportError:
     IMPLICIT_RESOLVER_AVAILABLE = False
     get_implicit_reference_resolver = lambda: None
-    logger.warning("ImplicitReferenceResolver not available")
+    logger.debug("ImplicitReferenceResolver deferred - will be available after initialization")
 
 
 # ============================================================================

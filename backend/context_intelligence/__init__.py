@@ -5,6 +5,16 @@ Context Intelligence Module
 Provides intelligent task execution and automation capabilities.
 """
 
+# Resolvers - must be imported early for handler dependencies
+from .resolvers import (
+    ContextualQueryResolver,
+    get_contextual_resolver,
+    get_implicit_reference_resolver,
+    get_implicit_resolver,
+    is_implicit_resolver_available,
+    ImplicitReferenceResolver,
+)
+
 from .executors import get_document_writer, parse_document_request, DocumentRequest
 from .automation import get_browser_controller, get_google_docs_client
 # get_claude_streamer causes import hangs - import directly when needed
@@ -166,6 +176,14 @@ from .handlers import (
 )
 
 __all__ = [
+    # Resolvers
+    "ContextualQueryResolver",
+    "get_contextual_resolver",
+    "get_implicit_reference_resolver",
+    "get_implicit_resolver",
+    "is_implicit_resolver_available",
+    "ImplicitReferenceResolver",
+    # Document handling
     "get_document_writer",
     "parse_document_request",
     "DocumentRequest",

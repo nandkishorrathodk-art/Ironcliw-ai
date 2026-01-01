@@ -34,7 +34,9 @@ import asyncio
 import logging
 import os
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -42,6 +44,44 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import threading
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# HUGGINGFACE/TRANSFORMERS WARNING SUPPRESSION
+# ============================================================================
+# The Wav2Vec2 model emits a benign warning about weights not initialized from
+# the checkpoint. This is expected behavior when using the model with SpeechBrain
+# for speaker verification. The warning about "training this model" doesn't apply
+# since we're using it for inference with pre-trained weights.
+# ============================================================================
+
+@contextmanager
+def suppress_hf_model_warnings():
+    """
+    Context manager to suppress expected HuggingFace model loading warnings.
+
+    These warnings are benign and occur when:
+    1. Wav2Vec2 model is loaded with PyTorch parametrizations
+    2. The model is being used for inference (not training)
+
+    Example:
+        with suppress_hf_model_warnings():
+            model = load_some_transformer_model()
+    """
+    with warnings.catch_warnings():
+        # Suppress "Some weights were not initialized" warnings
+        warnings.filterwarnings(
+            "ignore",
+            message="Some weights of.*were not initialized.*",
+            category=UserWarning,
+        )
+        # Suppress "You should probably TRAIN this model" warnings
+        warnings.filterwarnings(
+            "ignore",
+            message=".*TRAIN this model.*",
+            category=UserWarning,
+        )
+        yield
 
 
 class ModelState(Enum):
@@ -490,10 +530,12 @@ async def load_ecapa_encoder() -> Any:
         # Force CPU for ECAPA-TDNN (MPS doesn't support required FFT ops)
         torch.set_num_threads(1)
 
-        encoder = EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            run_opts={"device": "cpu"}
-        )
+        # Suppress benign HuggingFace warnings about Wav2Vec2 weight initialization
+        with suppress_hf_model_warnings():
+            encoder = EncoderClassifier.from_hparams(
+                source="speechbrain/spkrec-ecapa-voxceleb",
+                run_opts={"device": "cpu"}
+            )
         return encoder
 
     loader = get_model_loader()
@@ -518,10 +560,12 @@ async def load_all_voice_models() -> ParallelLoadResult:
 
     def load_ecapa():
         torch.set_num_threads(1)
-        return EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            run_opts={"device": "cpu"}
-        )
+        # Suppress benign HuggingFace warnings about Wav2Vec2 weight initialization
+        with suppress_hf_model_warnings():
+            return EncoderClassifier.from_hparams(
+                source="speechbrain/spkrec-ecapa-voxceleb",
+                run_opts={"device": "cpu"}
+            )
 
     loader = get_model_loader()
     return await loader.load_models_parallel([

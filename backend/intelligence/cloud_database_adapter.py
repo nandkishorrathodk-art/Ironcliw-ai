@@ -330,10 +330,14 @@ class CloudDatabaseAdapter:
         """
         Initialize Cloud SQL connection via singleton connection manager.
 
+        v5.5: Enhanced with intelligent credential validation and recovery.
+
         Features:
+        - Pre-validates credentials before connection attempt
         - Intelligent proxy detection with auto-start
+        - Specific error detection for password/authentication issues
+        - Clear guidance on credential refresh
         - Silent fallback to SQLite when Cloud SQL unavailable
-        - Only logs errors/warnings when Cloud SQL was explicitly requested
         """
         import asyncio
 
@@ -381,21 +385,75 @@ class CloudDatabaseAdapter:
                 self.pool = self.connection_manager.pool
                 logger.info("✅ Cloud SQL connection initialized")
             else:
-                if self.config._explicit_cloudsql_request:
-                    logger.warning("⚠️  Cloud SQL connection failed, falling back to SQLite")
-                else:
-                    logger.debug("Cloud SQL connection failed - using SQLite")
-                self.pool = None
-                await self._init_sqlite()
+                # v5.5: Enhanced error detection for credential issues
+                await self._handle_connection_failure()
 
         except Exception as e:
-            if self.config._explicit_cloudsql_request:
-                logger.error(f"❌ Cloud SQL initialization failed: {e}")
-                logger.error(f"   Connection: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}")
+            # v5.5: Detect specific error types
+            error_str = str(e).lower()
+
+            if "password authentication failed" in error_str:
+                await self._handle_auth_failure()
+            elif "connection refused" in error_str:
+                if self.config._explicit_cloudsql_request:
+                    logger.error("❌ Connection refused - Cloud SQL proxy may not be running")
+                await self._init_sqlite()
+            elif "timeout" in error_str:
+                if self.config._explicit_cloudsql_request:
+                    logger.error("❌ Connection timeout - Cloud SQL may be overloaded or unreachable")
+                await self._init_sqlite()
             else:
-                logger.debug(f"Cloud SQL initialization failed: {e} - using SQLite")
+                if self.config._explicit_cloudsql_request:
+                    logger.error(f"❌ Cloud SQL initialization failed: {e}")
+                    logger.error(f"   Connection: host={self.config.db_host}, port={self.config.db_port}, db={self.config.db_name}")
+                else:
+                    logger.debug(f"Cloud SQL initialization failed: {e} - using SQLite")
+                await self._init_sqlite()
+
             self.pool = None
-            await self._init_sqlite()
+
+    async def _handle_auth_failure(self):
+        """
+        Handle authentication failure with intelligent diagnostics.
+
+        v5.5: Provides clear guidance on credential issues.
+        """
+        logger.error("❌ Password authentication failed for Cloud SQL")
+        logger.error("   The password in GCP Secret Manager does not match Cloud SQL.")
+        logger.error("")
+        logger.error("   To fix this issue:")
+        logger.error("   1. Get the current Cloud SQL password from your admin")
+        logger.error("   2. Update GCP Secret Manager:")
+        logger.error(f"      gcloud secrets versions add jarvis-db-password --data-file=-")
+        logger.error("   3. Or update Cloud SQL user password:")
+        logger.error(f"      gcloud sql users set-password {self.config.db_user} \\")
+        logger.error(f"        --instance=jarvis-learning-db --password=NEW_PASSWORD")
+        logger.error("")
+        logger.warning("⚠️  Falling back to local SQLite database")
+
+        await self._init_sqlite()
+
+    async def _handle_connection_failure(self):
+        """
+        Handle generic connection failure with diagnostics.
+
+        v5.5: Checks for common issues and provides guidance.
+        """
+        # Try to get more specific error info from the connection manager
+        if self.connection_manager and hasattr(self.connection_manager, 'last_error'):
+            last_error = getattr(self.connection_manager, 'last_error', None)
+            if last_error and "password authentication" in str(last_error).lower():
+                await self._handle_auth_failure()
+                return
+
+        if self.config._explicit_cloudsql_request:
+            logger.warning("⚠️  Cloud SQL connection failed, falling back to SQLite")
+            logger.warning("   Check: 1) Cloud SQL proxy running 2) Credentials valid 3) DB exists")
+        else:
+            logger.debug("Cloud SQL connection failed - using SQLite")
+
+        self.pool = None
+        await self._init_sqlite()
 
     @asynccontextmanager
     async def connection(self):

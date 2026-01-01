@@ -769,6 +769,10 @@ class CloudSQLConnectionManager:
         self._start_time = time.time()
         self._startup_grace_period = 60  # seconds before logging connection errors
 
+        # v5.5: Store last error for diagnostic purposes
+        self.last_error: Optional[str] = None
+        self.last_error_time: Optional[datetime] = None
+
         self._register_shutdown_handlers()
         CloudSQLConnectionManager._initialized = True
         logger.info("🔧 CloudSQL Connection Manager v3.0 initialized")
@@ -920,10 +924,39 @@ class CloudSQLConnectionManager:
                 logger.error("⏱️ Connection pool creation timeout")
                 logger.error("   Causes: proxy not running, bad credentials, network issues")
                 self.pool = None
+                self.last_error = "Connection timeout"
+                self.last_error_time = datetime.now()
                 return False
 
             except Exception as e:
-                logger.error(f"❌ Failed to create pool: {e}")
+                error_str = str(e)
+                self.last_error = error_str
+                self.last_error_time = datetime.now()
+
+                # v5.5: Detect specific error types for better diagnostics
+                if "password authentication failed" in error_str.lower():
+                    logger.error(f"❌ Failed to create pool: {e}")
+                    logger.error("")
+                    logger.error("   🔐 CREDENTIAL MISMATCH DETECTED")
+                    logger.error("   The password from GCP Secret Manager doesn't match Cloud SQL.")
+                    logger.error("")
+                    logger.error("   To fix this, either:")
+                    logger.error("   A) Update Secret Manager with the correct password:")
+                    logger.error("      echo 'YOUR_PASSWORD' | gcloud secrets versions add jarvis-db-password --data-file=-")
+                    logger.error("")
+                    logger.error("   B) Reset the Cloud SQL user password to match:")
+                    logger.error(f"      gcloud sql users set-password {user} \\")
+                    logger.error(f"        --instance=jarvis-learning-db --password='YOUR_PASSWORD'")
+                    logger.error("")
+                elif "connection refused" in error_str.lower():
+                    logger.error(f"❌ Failed to create pool: Connection refused")
+                    logger.error("   Cloud SQL proxy may not be running on port 5432")
+                elif "does not exist" in error_str.lower():
+                    logger.error(f"❌ Failed to create pool: {e}")
+                    logger.error(f"   Database '{database}' may not exist on the Cloud SQL instance")
+                else:
+                    logger.error(f"❌ Failed to create pool: {e}")
+
                 self.pool = None
                 self.error_count += 1
                 return False
