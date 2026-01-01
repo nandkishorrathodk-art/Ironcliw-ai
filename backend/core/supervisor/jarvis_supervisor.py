@@ -978,9 +978,20 @@ class JARVISSupervisor:
         health_check_timeout = float(os.environ.get("HEALTH_CHECK_TIMEOUT", "3.0"))
         slow_threshold = float(os.environ.get("STARTUP_SLOW_THRESHOLD", "45.0"))
         poll_interval = float(os.environ.get("STARTUP_POLL_INTERVAL", "0.5"))
-        # CRITICAL: Default to waiting for frontend since loading page expects to redirect to it
-        # Only set FRONTEND_OPTIONAL=true for headless/no-browser mode
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # FRONTEND HANDLING (v8.0 - Intelligent Non-Blocking)
+        # ═══════════════════════════════════════════════════════════════════════
+        # Three modes:
+        # 1. FRONTEND_OPTIONAL=true - Don't wait for frontend at all
+        # 2. FRONTEND_OPTIONAL=false (default) - Wait, but with intelligent timeout
+        # 3. FRONTEND_SOFT_TIMEOUT - After this many seconds, treat as optional
+        #
+        # This prevents startup from blocking forever if frontend is slow/stuck
+        # ═══════════════════════════════════════════════════════════════════════
         frontend_optional = os.environ.get("FRONTEND_OPTIONAL", "false").lower() == "true"
+        frontend_soft_timeout = float(os.environ.get("FRONTEND_SOFT_TIMEOUT", "60.0"))  # After 60s, treat as optional
+        frontend_became_optional = False  # Tracks if we switched to optional mode
         
         backend_url = f"http://localhost:{backend_port}"
         frontend_url = f"http://localhost:{frontend_port}"
@@ -1444,6 +1455,33 @@ class JARVISSupervisor:
                         backend_state.record_success()
                         backend_ready = True
 
+                # ═══════════════════════════════════════════════════════════════════
+                # FRONTEND SOFT-OPTIONAL (v8.0 - Non-Blocking Frontend)
+                # ═══════════════════════════════════════════════════════════════════
+                # If backend is ready but frontend isn't responding after soft timeout,
+                # switch to optional mode. This prevents the frontend from blocking
+                # startup indefinitely.
+                # ═══════════════════════════════════════════════════════════════════
+                if (not frontend_optional and
+                    not frontend_became_optional and
+                    backend_ready and
+                    not frontend_ready and
+                    elapsed > frontend_soft_timeout):
+
+                    frontend_became_optional = True
+                    logger.info(
+                        f"⏳ Frontend not responding after {elapsed:.0f}s - "
+                        f"switching to optional mode (backend is ready)"
+                    )
+                    await self._progress_reporter.log(
+                        "Supervisor",
+                        f"Frontend still loading - completing startup without waiting",
+                        "warning"
+                    )
+
+                # Use either original optional flag OR soft-optional status
+                frontend_effectively_optional = frontend_optional or frontend_became_optional
+
                 # === PROCESS HEALTH CHECK RESULTS ===
                 try:
                     
@@ -1594,10 +1632,11 @@ class JARVISSupervisor:
                         logger.debug(f"Backend HTTP OK but not operationally ready (status={backend_status})")
 
                     # Primary completion: All systems fully initialized
+                    # v8.0: Use frontend_effectively_optional which includes soft-optional mode
                     ready_for_completion = (
                         backend_ready and
                         backend_fully_complete and
-                        (frontend_ready or frontend_optional)
+                        (frontend_ready or frontend_effectively_optional)
                     )
 
                     # ═══════════════════════════════════════════════════════════════════
@@ -1607,7 +1646,7 @@ class JARVISSupervisor:
                     if (not ready_for_completion and
                         backend_ready and
                         backend_operationally_ready and
-                        (frontend_ready or frontend_optional)):
+                        (frontend_ready or frontend_effectively_optional)):
                         logger.info(f"✅ Backend operationally ready (status={backend_status}) - completing startup")
                         ready_for_completion = True
 
@@ -1620,25 +1659,25 @@ class JARVISSupervisor:
                     if (not ready_for_completion and
                         backend_ready and
                         websocket_ready and
-                        (frontend_ready or frontend_optional) and
+                        (frontend_ready or frontend_effectively_optional) and
                         elapsed > 45):
                         logger.info(f"✅ WebSocket + HTTP ready after {elapsed:.1f}s - completing")
                         ready_for_completion = True
 
                     # ═══════════════════════════════════════════════════════════════════
                     # FALLBACK 3: Complete when backend is responding (no frontend)
-                    # v4.0: For headless mode or slow frontend (after 60 seconds)
+                    # v8.0: For headless mode or slow frontend - uses effectively_optional
                     # ═══════════════════════════════════════════════════════════════════
                     if (not ready_for_completion and
                         backend_ready and
-                        frontend_optional and
+                        frontend_effectively_optional and
                         elapsed > 60):
                         services_ready = system_status.get("services_ready", []) if system_status else []
                         services_failed = system_status.get("services_failed", []) if system_status else []
 
                         # v4.0: More relaxed condition - complete if backend responds
                         # Even if ML models are still warming up, user can interact
-                        logger.info(f"✅ Backend + Frontend ready after {elapsed:.1f}s - completing")
+                        logger.info(f"✅ Backend ready (frontend soft-optional) after {elapsed:.1f}s - completing")
                         logger.debug(f"   Services: ready={services_ready}, failed={services_failed}")
                         ready_for_completion = True
 
