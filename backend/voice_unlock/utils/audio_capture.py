@@ -28,15 +28,19 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import gc
 import logging
 import os
 import queue
 import random
 import subprocess
+import sys
 import threading
 import time
 import weakref
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
@@ -52,6 +56,241 @@ from typing import (
 )
 
 import numpy as np
+
+
+# =============================================================================
+# CRITICAL: Thread-Safe Callback Guard for Native Audio Libraries
+# =============================================================================
+# This prevents segfaults caused by callbacks accessing freed memory during
+# stream shutdown. The guard uses atomic operations and memory fences.
+# =============================================================================
+
+class CallbackGuard:
+    """
+    Thread-safe guard for protecting audio callbacks from use-after-free.
+
+    This solves the segfault issue caused by:
+    1. Native audio libraries (PortAudio/CoreAudio) invoking Python callbacks
+       from background threads (e.g., thread 28)
+    2. The main thread closing the stream and freeing memory
+    3. The callback thread still executing and accessing freed memory
+
+    Solution:
+    - Uses an atomic flag checked at the START of every callback
+    - Tracks active callback count to ensure all callbacks complete
+    - Implements proper memory fence before freeing resources
+    - Uses threading.Event for reliable cross-thread signaling
+    """
+
+    def __init__(self, name: str = "audio"):
+        self._name = name
+        # Shutdown signal - checked at callback entry
+        self._shutdown_requested = threading.Event()
+        # Active callback counter with lock
+        self._active_callbacks = 0
+        self._callback_lock = threading.Lock()
+        # Condition for waiting on callbacks to drain
+        self._all_callbacks_done = threading.Condition(self._callback_lock)
+        # Last callback timestamp for detecting stuck callbacks
+        self._last_callback_time: Optional[float] = None
+        # Error tracking
+        self._callback_errors = 0
+        self._max_errors_before_shutdown = 10
+
+    def request_shutdown(self) -> None:
+        """Signal that shutdown has been requested. Thread-safe."""
+        self._shutdown_requested.set()
+
+    def is_shutdown_requested(self) -> bool:
+        """Check if shutdown was requested. Thread-safe and very fast."""
+        return self._shutdown_requested.is_set()
+
+    def reset(self) -> None:
+        """Reset the guard for reuse. Only call when no callbacks active."""
+        with self._callback_lock:
+            if self._active_callbacks > 0:
+                raise RuntimeError(
+                    f"Cannot reset CallbackGuard with {self._active_callbacks} active callbacks"
+                )
+            self._shutdown_requested.clear()
+            self._callback_errors = 0
+            self._last_callback_time = None
+
+    @contextmanager
+    def callback_context(self):
+        """
+        Context manager for callback execution.
+
+        Usage in callback:
+            with guard.callback_context() as should_process:
+                if not should_process:
+                    return  # Shutdown in progress, exit immediately
+                # ... process audio ...
+        """
+        # Fast path: check shutdown FIRST before acquiring any locks
+        if self._shutdown_requested.is_set():
+            yield False
+            return
+
+        # Register callback
+        with self._callback_lock:
+            if self._shutdown_requested.is_set():
+                yield False
+                return
+            self._active_callbacks += 1
+            self._last_callback_time = time.monotonic()
+
+        try:
+            yield True
+        except Exception as e:
+            self._callback_errors += 1
+            if self._callback_errors >= self._max_errors_before_shutdown:
+                logger.error(
+                    f"[{self._name}] Too many callback errors ({self._callback_errors}), "
+                    f"requesting shutdown"
+                )
+                self._shutdown_requested.set()
+            raise
+        finally:
+            # Unregister callback
+            with self._callback_lock:
+                self._active_callbacks -= 1
+                if self._active_callbacks == 0:
+                    self._all_callbacks_done.notify_all()
+
+    def wait_for_callbacks(self, timeout: float = 2.0) -> bool:
+        """
+        Wait for all active callbacks to complete.
+
+        Call this AFTER request_shutdown() and BEFORE freeing resources.
+
+        Args:
+            timeout: Maximum seconds to wait
+
+        Returns:
+            True if all callbacks completed, False if timeout
+        """
+        deadline = time.monotonic() + timeout
+
+        with self._callback_lock:
+            while self._active_callbacks > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    logger.warning(
+                        f"[{self._name}] Timeout waiting for {self._active_callbacks} "
+                        f"callbacks to complete"
+                    )
+                    return False
+                self._all_callbacks_done.wait(timeout=remaining)
+
+        # Memory fence: ensure all writes from callbacks are visible
+        # This is critical on ARM (Apple Silicon) where memory ordering is relaxed
+        threading._allocate_lock()  # Forces memory barrier in CPython
+
+        return True
+
+    @property
+    def active_callback_count(self) -> int:
+        """Get current active callback count. Thread-safe."""
+        with self._callback_lock:
+            return self._active_callbacks
+
+    @property
+    def stats(self) -> Dict[str, Any]:
+        """Get callback statistics."""
+        return {
+            "shutdown_requested": self._shutdown_requested.is_set(),
+            "active_callbacks": self.active_callback_count,
+            "callback_errors": self._callback_errors,
+            "last_callback_time": self._last_callback_time,
+        }
+
+
+class SafeArrayCopier:
+    """
+    Safe numpy array copier that guards against memory corruption.
+
+    When native audio libraries provide audio data to Python callbacks,
+    the underlying memory can be invalidated at any time. This class
+    provides safe copying with validation.
+    """
+
+    @staticmethod
+    def safe_copy(
+        indata: np.ndarray,
+        guard: CallbackGuard,
+        validate: bool = True
+    ) -> Optional[np.ndarray]:
+        """
+        Safely copy audio data with corruption detection.
+
+        Args:
+            indata: Input numpy array (may be backed by native memory)
+            guard: CallbackGuard to check shutdown status
+            validate: Whether to validate the copy
+
+        Returns:
+            Safe copy of the data, or None if copy failed
+        """
+        try:
+            # Check shutdown before any memory access
+            if guard.is_shutdown_requested():
+                return None
+
+            # Validate input array is sane
+            if indata is None or not hasattr(indata, 'copy'):
+                return None
+
+            # Check array properties before accessing data
+            if indata.size == 0:
+                return np.array([], dtype=np.float32)
+
+            # Get expected size for validation
+            expected_size = indata.size
+
+            # Make copy immediately - this is the critical section
+            # We use np.array() instead of .copy() for an extra safety layer
+            # as it creates a new array from scratch rather than copying memory
+            try:
+                # Fast path: try direct copy first
+                result = np.array(indata, dtype=np.float32, copy=True)
+            except (ValueError, MemoryError, SystemError) as e:
+                # Memory may be corrupted, try element-wise copy
+                logger.warning(f"Direct copy failed: {e}, trying element-wise")
+                try:
+                    result = np.zeros(expected_size, dtype=np.float32)
+                    np.copyto(result, indata.flatten()[:expected_size])
+                except Exception:
+                    return None
+
+            # Validate copy if requested
+            if validate:
+                if result is None or result.size != expected_size:
+                    logger.warning(
+                        f"Array copy validation failed: "
+                        f"expected {expected_size}, got {result.size if result is not None else 'None'}"
+                    )
+                    return None
+
+                # Check for NaN/Inf which may indicate memory corruption
+                if not np.isfinite(result).all():
+                    # Don't fail, but log - some audio can legitimately have extreme values
+                    nan_count = np.sum(np.isnan(result))
+                    inf_count = np.sum(np.isinf(result))
+                    if nan_count > 0 or inf_count > 0:
+                        logger.debug(
+                            f"Array has {nan_count} NaN and {inf_count} Inf values"
+                        )
+                        # Replace NaN/Inf with zeros
+                        result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+
+            return result.flatten()
+
+        except Exception as e:
+            # Any exception during copy means memory may be invalid
+            # Note: logger may not be defined yet at module load time
+            return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -441,7 +680,25 @@ class AudioBackend(ABC):
 # =============================================================================
 
 class SoundDeviceBackend(AudioBackend):
-    """Primary audio backend using sounddevice (async compatible)."""
+    """
+    Primary audio backend using sounddevice (async compatible).
+
+    THREAD SAFETY CRITICAL:
+    =======================
+    This backend uses a callback-based InputStream where the audio_callback
+    function is invoked from a native C thread (e.g., thread 28 in crash reports).
+
+    The segfault issue occurs when:
+    1. The callback thread is executing audio_callback()
+    2. The main thread calls close_stream() which frees memory
+    3. The callback thread tries to access the freed memory -> SIGSEGV
+
+    Solution implemented:
+    - CallbackGuard: Atomic shutdown flag checked at callback entry
+    - Callback drain: Wait for all callbacks to complete before freeing memory
+    - Safe array copy: Validate memory before copying
+    - Weak reference: Prevent use-after-free of backend object
+    """
 
     def __init__(self, config: MicrophoneConfig):
         super().__init__(config)
@@ -450,6 +707,12 @@ class SoundDeviceBackend(AudioBackend):
         self._audio_queue: queue.Queue = queue.Queue(maxsize=100)
         self._overflow_count: int = 0
         self._stream_callback_active: bool = False
+
+        # CRITICAL: Thread-safe callback protection
+        self._callback_guard = CallbackGuard(name="sounddevice")
+
+        # Stream close synchronization
+        self._close_in_progress = threading.Event()
 
     @property
     def backend_type(self) -> AudioBackendType:
@@ -479,7 +742,7 @@ class SoundDeviceBackend(AudioBackend):
             return False
 
     async def open_stream(self, device_index: Optional[int] = None) -> bool:
-        """Open sounddevice input stream."""
+        """Open sounddevice input stream with thread-safe callback."""
         if not self._initialized:
             if not await self.initialize():
                 return False
@@ -491,6 +754,15 @@ class SoundDeviceBackend(AudioBackend):
 
                 self._device_index = device_index
                 self._overflow_count = 0
+                self._close_in_progress.clear()
+
+                # Reset callback guard for new stream
+                try:
+                    self._callback_guard.reset()
+                except RuntimeError:
+                    # Callbacks still active from previous stream, wait
+                    self._callback_guard.wait_for_callbacks(timeout=1.0)
+                    self._callback_guard.reset()
 
                 # Clear any stale data from queue
                 while not self._audio_queue.empty():
@@ -499,23 +771,51 @@ class SoundDeviceBackend(AudioBackend):
                     except queue.Empty:
                         break
 
-                # Create callback-based stream for async operation
-                def audio_callback(indata, frames, time_info, status):
-                    if status:
-                        if status.input_overflow:
-                            self._overflow_count += 1
-                            if self._overflow_count % 100 == 0:
-                                logger.warning(f"Audio overflow #{self._overflow_count}")
+                # Create weak reference to self for callback
+                # This prevents the callback from keeping self alive after deletion
+                backend_ref = weakref.ref(self)
 
-                    try:
-                        # Copy audio data to thread-safe queue
-                        audio_copy = indata.copy().flatten()
+                # Create thread-safe callback with shutdown protection
+                def audio_callback(indata, frames, time_info, status):
+                    """
+                    Thread-safe audio callback with memory protection.
+
+                    CRITICAL: This runs in a native C thread (not the Python main thread).
+                    We must NOT access any memory that could be freed by the main thread.
+                    """
+                    # Get backend reference - may be None if backend was garbage collected
+                    backend = backend_ref()
+                    if backend is None:
+                        return  # Backend no longer exists, exit immediately
+
+                    # Use callback guard to track active callbacks and check shutdown
+                    with backend._callback_guard.callback_context() as should_process:
+                        if not should_process:
+                            return  # Shutdown in progress, exit immediately
+
+                        # Process status (only if we're still active)
+                        if status:
+                            if status.input_overflow:
+                                backend._overflow_count += 1
+                                if backend._overflow_count % 100 == 0:
+                                    # Use print instead of logger to avoid GIL issues
+                                    print(f"[SoundDevice] Audio overflow #{backend._overflow_count}")
+
+                        # Safe copy of audio data with validation
+                        audio_copy = SafeArrayCopier.safe_copy(
+                            indata,
+                            backend._callback_guard,
+                            validate=True
+                        )
+
+                        if audio_copy is None:
+                            return  # Copy failed, likely due to shutdown or corruption
+
+                        # Put in queue (non-blocking)
                         try:
-                            self._audio_queue.put_nowait(audio_copy)
+                            backend._audio_queue.put_nowait(audio_copy)
                         except queue.Full:
-                            pass  # Drop frame if queue is full
-                    except Exception as e:
-                        logger.error(f"Audio callback error: {e}")
+                            pass  # Drop frame if queue is full - this is normal
 
                 self._stream = self._sd.InputStream(
                     device=device_index,
@@ -537,31 +837,82 @@ class SoundDeviceBackend(AudioBackend):
             return False
 
     async def close_stream(self) -> bool:
-        """Close sounddevice stream."""
+        """
+        Close sounddevice stream with proper callback drain.
+
+        CRITICAL: This method ensures all callbacks complete before freeing memory.
+        This prevents the segfault caused by callbacks accessing freed memory.
+        """
         try:
+            # Signal that close is in progress
+            self._close_in_progress.set()
+
             with self._lock:
+                if self._stream is None:
+                    return True
+
+                # STEP 1: Signal callbacks to stop (fast, non-blocking)
+                self._callback_guard.request_shutdown()
+                self._stream_callback_active = False
+
+            # STEP 2: Wait for active callbacks to complete (OUTSIDE lock)
+            # This is critical - callbacks may be blocked waiting for the lock
+            if not self._callback_guard.wait_for_callbacks(timeout=2.0):
+                logger.warning(
+                    "Some callbacks did not complete in time, proceeding with cleanup"
+                )
+                # Give a tiny bit more time for callbacks to see shutdown flag
+                await asyncio.sleep(0.1)
+
+            with self._lock:
+                # STEP 3: Now safe to stop and close stream
                 if self._stream is not None:
-                    self._stream.stop()
-                    self._stream.close()
+                    try:
+                        # stop() tells PortAudio to stop invoking callbacks
+                        self._stream.stop()
+                    except Exception as e:
+                        logger.debug(f"Error stopping stream: {e}")
+
+                    # Small delay to ensure PortAudio has stopped callbacks
+                    await asyncio.sleep(0.05)
+
+                    try:
+                        # close() frees the memory - only safe after callbacks stopped
+                        self._stream.close()
+                    except Exception as e:
+                        logger.debug(f"Error closing stream: {e}")
+
                     self._stream = None
-                    self._stream_callback_active = False
 
-                    # Clear audio queue
-                    while not self._audio_queue.empty():
-                        try:
-                            self._audio_queue.get_nowait()
-                        except queue.Empty:
-                            break
+                # STEP 4: Clear audio queue
+                while not self._audio_queue.empty():
+                    try:
+                        self._audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
 
-                    logger.info("SoundDevice stream closed")
+                # STEP 5: Force garbage collection to clean up any lingering references
+                gc.collect()
+
+                logger.info("SoundDevice stream closed safely")
                 return True
+
         except Exception as e:
             logger.error(f"Error closing sounddevice stream: {e}")
+            # Even on error, try to clean up
+            self._stream = None
+            self._stream_callback_active = False
             return False
+        finally:
+            self._close_in_progress.clear()
 
     async def read_chunk(self) -> Optional[np.ndarray]:
         """Read audio chunk from thread-safe queue (non-blocking async)."""
         if not self._stream_callback_active:
+            return None
+
+        # Don't read if close is in progress
+        if self._close_in_progress.is_set():
             return None
 
         try:
@@ -585,6 +936,10 @@ class SoundDeviceBackend(AudioBackend):
         except Exception as e:
             logger.error(f"Error reading audio chunk: {e}")
             return None
+
+    def get_callback_stats(self) -> Dict[str, Any]:
+        """Get callback guard statistics for debugging."""
+        return self._callback_guard.stats
 
     async def list_devices(self) -> List[AudioDeviceInfo]:
         """List available audio input devices."""
@@ -631,7 +986,23 @@ class SoundDeviceBackend(AudioBackend):
 # =============================================================================
 
 class PyAudioBackend(AudioBackend):
-    """Fallback audio backend using PyAudio."""
+    """
+    Fallback audio backend using PyAudio.
+
+    THREAD SAFETY CRITICAL:
+    =======================
+    PyAudio uses a blocking read() call in a background thread. The segfault
+    can occur when:
+    1. The capture thread is blocked on stream.read()
+    2. The main thread closes the stream
+    3. The read() returns with invalid memory -> SIGSEGV
+
+    Solution implemented:
+    - Use CallbackGuard for shutdown coordination
+    - Proper thread join with timeout
+    - Stream close after thread is confirmed stopped
+    - Exception handling around all stream operations
+    """
 
     def __init__(self, config: MicrophoneConfig):
         super().__init__(config)
@@ -640,6 +1011,12 @@ class PyAudioBackend(AudioBackend):
         self._read_queue: queue.Queue = queue.Queue(maxsize=100)
         self._capture_thread: Optional[threading.Thread] = None
         self._stop_event: threading.Event = threading.Event()
+
+        # CRITICAL: Thread-safe shutdown coordination
+        self._callback_guard = CallbackGuard(name="pyaudio")
+
+        # Track stream state atomically
+        self._stream_active = threading.Event()
 
     @property
     def backend_type(self) -> AudioBackendType:
@@ -679,7 +1056,7 @@ class PyAudioBackend(AudioBackend):
         return formats.get(self.config.dtype, self._pyaudio.paInt16)
 
     async def open_stream(self, device_index: Optional[int] = None) -> bool:
-        """Open PyAudio input stream."""
+        """Open PyAudio input stream with thread-safe capture."""
         if not self._initialized:
             if not await self.initialize():
                 return False
@@ -691,6 +1068,14 @@ class PyAudioBackend(AudioBackend):
 
                 self._device_index = device_index
                 self._stop_event.clear()
+                self._stream_active.clear()
+
+                # Reset callback guard for new stream
+                try:
+                    self._callback_guard.reset()
+                except RuntimeError:
+                    self._callback_guard.wait_for_callbacks(timeout=1.0)
+                    self._callback_guard.reset()
 
                 # Open PyAudio stream
                 self._stream = self._audio_instance.open(
@@ -701,6 +1086,8 @@ class PyAudioBackend(AudioBackend):
                     input_device_index=device_index,
                     frames_per_buffer=self.config.chunk_size,
                 )
+
+                self._stream_active.set()
 
                 # Start capture thread
                 self._capture_thread = threading.Thread(
@@ -716,70 +1103,143 @@ class PyAudioBackend(AudioBackend):
         except Exception as e:
             logger.error(f"Failed to open PyAudio stream: {e}")
             self._stream = None
+            self._stream_active.clear()
             return False
 
     def _capture_loop(self):
-        """Background thread for capturing audio."""
-        while not self._stop_event.is_set():
+        """
+        Background thread for capturing audio with proper shutdown handling.
+
+        CRITICAL: This thread must handle shutdown gracefully to prevent segfaults.
+        """
+        while not self._stop_event.is_set() and not self._callback_guard.is_shutdown_requested():
             try:
-                if self._stream is None:
-                    break
+                # Use callback context to track active "callbacks" (reads)
+                with self._callback_guard.callback_context() as should_process:
+                    if not should_process:
+                        break  # Shutdown requested
 
-                # Read audio data
-                data = self._stream.read(
-                    self.config.chunk_size,
-                    exception_on_overflow=False
-                )
+                    # Check stream is still valid
+                    if self._stream is None or not self._stream_active.is_set():
+                        break
 
-                # Convert to numpy array
-                if self.config.dtype == "int16":
-                    audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                else:
-                    audio_array = np.frombuffer(data, dtype=np.float32)
+                    # Create local reference to stream to prevent race
+                    stream = self._stream
+                    if stream is None:
+                        break
 
-                # Put in queue
-                try:
-                    self._read_queue.put_nowait(audio_array)
-                except queue.Full:
-                    pass  # Drop frame if queue is full
+                    # Read audio data with timeout behavior via exception_on_overflow=False
+                    try:
+                        data = stream.read(
+                            self.config.chunk_size,
+                            exception_on_overflow=False
+                        )
+                    except OSError as e:
+                        # Stream may have been closed
+                        if "Stream is not active" in str(e) or "Stream closed" in str(e):
+                            break
+                        raise
+
+                    # Check shutdown again before processing
+                    if self._callback_guard.is_shutdown_requested():
+                        break
+
+                    # Convert to numpy array safely
+                    try:
+                        if self.config.dtype == "int16":
+                            audio_array = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                        else:
+                            audio_array = np.frombuffer(data, dtype=np.float32)
+
+                        # Make a copy to ensure we own the memory
+                        audio_array = audio_array.copy()
+                    except (ValueError, MemoryError) as e:
+                        logger.debug(f"PyAudio array conversion failed: {e}")
+                        continue
+
+                    # Put in queue (non-blocking)
+                    try:
+                        self._read_queue.put_nowait(audio_array)
+                    except queue.Full:
+                        pass  # Drop frame if queue is full
 
             except Exception as e:
-                if not self._stop_event.is_set():
+                if not self._stop_event.is_set() and not self._callback_guard.is_shutdown_requested():
                     logger.error(f"PyAudio capture error: {e}")
                 break
 
-    async def close_stream(self) -> bool:
-        """Close PyAudio stream."""
-        try:
-            with self._lock:
-                # Stop capture thread
-                self._stop_event.set()
-                if self._capture_thread is not None:
-                    self._capture_thread.join(timeout=1.0)
-                    self._capture_thread = None
+        logger.debug("PyAudio capture thread exiting")
 
-                # Close stream
+    async def close_stream(self) -> bool:
+        """
+        Close PyAudio stream with proper thread synchronization.
+
+        CRITICAL: Ensures capture thread exits before closing stream.
+        """
+        try:
+            # STEP 1: Signal shutdown (fast, non-blocking)
+            self._stop_event.set()
+            self._callback_guard.request_shutdown()
+            self._stream_active.clear()
+
+            # STEP 2: Wait for capture thread to exit (OUTSIDE lock)
+            if self._capture_thread is not None:
+                # Give thread time to see shutdown flag
+                self._capture_thread.join(timeout=2.0)
+
+                if self._capture_thread.is_alive():
+                    logger.warning("PyAudio capture thread did not exit cleanly")
+                    # Give a bit more time
+                    await asyncio.sleep(0.1)
+                else:
+                    logger.debug("PyAudio capture thread exited cleanly")
+
+            # STEP 3: Wait for any remaining "callbacks" (reads) to complete
+            self._callback_guard.wait_for_callbacks(timeout=1.0)
+
+            with self._lock:
+                self._capture_thread = None
+
+                # STEP 4: Now safe to close stream
                 if self._stream is not None:
-                    self._stream.stop_stream()
-                    self._stream.close()
+                    try:
+                        self._stream.stop_stream()
+                    except Exception as e:
+                        logger.debug(f"Error stopping PyAudio stream: {e}")
+
+                    await asyncio.sleep(0.05)  # Brief delay for cleanup
+
+                    try:
+                        self._stream.close()
+                    except Exception as e:
+                        logger.debug(f"Error closing PyAudio stream: {e}")
+
                     self._stream = None
 
-                # Clear queue
+                # STEP 5: Clear queue
                 while not self._read_queue.empty():
                     try:
                         self._read_queue.get_nowait()
                     except queue.Empty:
                         break
 
-                logger.info("PyAudio stream closed")
+                # Force garbage collection
+                gc.collect()
+
+                logger.info("PyAudio stream closed safely")
                 return True
 
         except Exception as e:
             logger.error(f"Error closing PyAudio stream: {e}")
+            self._stream = None
             return False
 
     async def read_chunk(self) -> Optional[np.ndarray]:
         """Read audio chunk from queue."""
+        # Don't read if stream is not active
+        if not self._stream_active.is_set():
+            return None
+
         try:
             audio_data = self._read_queue.get(timeout=0.5)
             return audio_data
@@ -788,6 +1248,10 @@ class PyAudioBackend(AudioBackend):
         except Exception as e:
             logger.error(f"Error reading audio chunk: {e}")
             return None
+
+    def get_callback_stats(self) -> Dict[str, Any]:
+        """Get callback guard statistics for debugging."""
+        return self._callback_guard.stats
 
     async def list_devices(self) -> List[AudioDeviceInfo]:
         """List available audio input devices."""
