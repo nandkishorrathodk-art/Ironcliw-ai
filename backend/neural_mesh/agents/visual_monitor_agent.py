@@ -1,5 +1,5 @@
 """
-JARVIS Neural Mesh - Visual Monitor Agent v12.0
+JARVIS Neural Mesh - Visual Monitor Agent v14.0
 ===============================================
 
 The "Watcher & Actor" of Video Multi-Space Intelligence (VMSI) - Ferrari Engine Edition.
@@ -14,6 +14,21 @@ This agent provides GPU-ACCELERATED visual surveillance capabilities:
 - Support conditional branching (if Error -> Retry, if Success -> Deploy)
 - Integrate with SpatialAwarenessAgent for window location
 - Share state across repos (JARVIS ↔ JARVIS Prime ↔ Reactor Core)
+- 👻 Ghost Hands: Cross-space actions without focus stealing (v13.0)
+- 🗣️ Working Out Loud: Real-time narration during monitoring (v14.0)
+
+v14.0 WORKING OUT LOUD - TRANSPARENT CO-PILOT MODE:
+- Heartbeat narration: Regular status updates during monitoring
+- Near-miss narration: Alert when interesting but non-matching text is detected
+- Activity narration: Announce significant screen changes
+- Intelligent debouncing: Prevents spam with rate limiting and content similarity checks
+- Configurable verbosity: minimal, normal, verbose, debug
+- Environment variable control: JARVIS_WORKING_OUT_LOUD, JARVIS_HEARTBEAT_INTERVAL, etc.
+
+v13.0 GHOST HANDS INTEGRATION:
+- Cross-space action execution via YabaiAwareActuator
+- Zero focus stealing: User stays on their current space
+- Surgical window targeting via window_id from vision detection
 
 v12.0 FERRARI ENGINE INTEGRATION:
 - Direct VideoWatcher usage (bypasses legacy VideoWatcherManager)
@@ -41,11 +56,15 @@ Usage from voice:
     God Mode (Multi-Watch):
     "Watch Chrome for 'Application Submitted' and Terminal for 'Error'"
 
+    Working Out Loud (v14.0):
+    JARVIS will periodically narrate: "Still watching Chrome for 'Build Complete'. 45 seconds in."
+    JARVIS will announce near-misses: "I see 'Build Started' but waiting for 'Build Complete'."
+
 This is JARVIS's "60 FPS eyes AND autonomous hands" - GPU-accelerated surveillance
-with intelligent action execution. Clinical-grade engineering.
+with intelligent action execution and transparent co-pilot narration. Clinical-grade engineering.
 
 Author: JARVIS AI System
-Version: 12.0 - Ferrari Engine (GPU-Accelerated Watch & Act)
+Version: 14.0 - Working Out Loud (Transparent Co-Pilot Mode)
 """
 
 from __future__ import annotations
@@ -256,6 +275,150 @@ class VisualMonitorConfig:
     require_confirmation: bool = False  # Ask before executing actions
     auto_switch_to_window: bool = True  # Automatically switch to target window
 
+    # v14.0: "Working Out Loud" - Transparent Co-Pilot Mode
+    # Turns JARVIS from a silent sentinel into an active co-pilot
+    working_out_loud_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_WORKING_OUT_LOUD", "true").lower() == "true"
+    )
+    # Heartbeat: Regular status updates during monitoring
+    heartbeat_narration_interval: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "30"))
+    )
+    # Near-miss: When we see interesting text but not the trigger
+    near_miss_narration_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_NEAR_MISS_NARRATION", "true").lower() == "true"
+    )
+    near_miss_cooldown_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_NEAR_MISS_COOLDOWN", "60"))
+    )
+    # Activity: When significant screen changes are detected
+    activity_narration_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_ACTIVITY_NARRATION", "true").lower() == "true"
+    )
+    activity_cooldown_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_ACTIVITY_COOLDOWN", "15"))
+    )
+    # Verbosity levels: minimal, normal, verbose, debug
+    narration_verbosity: str = field(
+        default_factory=lambda: os.getenv("JARVIS_NARRATION_VERBOSITY", "normal")
+    )
+    # Max narrations per minute (spam protection)
+    max_narrations_per_minute: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_MAX_NARRATIONS_PER_MIN", "6"))
+    )
+
+
+# =============================================================================
+# v14.0: "Working Out Loud" - Narration State Management
+# =============================================================================
+
+@dataclass
+class NarrationState:
+    """
+    Intelligent narration state tracker for "Working Out Loud" feature.
+
+    Prevents spam while ensuring meaningful updates reach the user.
+    Uses adaptive debouncing based on:
+    - Time since last narration
+    - Narration type (heartbeat vs near-miss vs activity)
+    - Content similarity (don't repeat similar messages)
+    - User activity patterns
+    """
+    # Timing state
+    last_heartbeat_time: float = 0.0
+    last_near_miss_time: float = 0.0
+    last_activity_time: float = 0.0
+    last_any_narration_time: float = 0.0
+
+    # Content tracking (to avoid repetition)
+    last_near_miss_text: str = ""
+    last_activity_description: str = ""
+
+    # Rate limiting
+    narrations_this_minute: int = 0
+    minute_start_time: float = 0.0
+
+    # Consecutive tracking (to detect when user might want silence)
+    consecutive_heartbeats: int = 0
+    consecutive_near_misses: int = 0
+
+    # Detection state for intelligent narration
+    frames_since_last_change: int = 0
+    last_ocr_text_hash: int = 0
+    interesting_keywords_seen: List[str] = field(default_factory=list)
+
+    def can_narrate(self, narration_type: str, config: VisualMonitorConfig) -> bool:
+        """
+        Check if narration is allowed based on rate limiting and cooldowns.
+
+        Args:
+            narration_type: "heartbeat", "near_miss", or "activity"
+            config: VisualMonitorConfig with timing parameters
+
+        Returns:
+            True if narration is allowed
+        """
+        import time
+        now = time.time()
+
+        # Reset minute counter if needed
+        if now - self.minute_start_time >= 60:
+            self.narrations_this_minute = 0
+            self.minute_start_time = now
+
+        # Global rate limit
+        if self.narrations_this_minute >= config.max_narrations_per_minute:
+            return False
+
+        # Minimum gap between any narrations (prevents overwhelming user)
+        MIN_GAP_SECONDS = 5.0
+        if now - self.last_any_narration_time < MIN_GAP_SECONDS:
+            return False
+
+        # Type-specific cooldowns
+        if narration_type == "heartbeat":
+            return now - self.last_heartbeat_time >= config.heartbeat_narration_interval
+        elif narration_type == "near_miss":
+            return (config.near_miss_narration_enabled and
+                    now - self.last_near_miss_time >= config.near_miss_cooldown_seconds)
+        elif narration_type == "activity":
+            return (config.activity_narration_enabled and
+                    now - self.last_activity_time >= config.activity_cooldown_seconds)
+
+        return True
+
+    def record_narration(self, narration_type: str, content: str = "") -> None:
+        """Record that a narration was made (for rate limiting)."""
+        import time
+        now = time.time()
+
+        self.last_any_narration_time = now
+        self.narrations_this_minute += 1
+
+        if narration_type == "heartbeat":
+            self.last_heartbeat_time = now
+            self.consecutive_heartbeats += 1
+            self.consecutive_near_misses = 0
+        elif narration_type == "near_miss":
+            self.last_near_miss_time = now
+            self.last_near_miss_text = content
+            self.consecutive_near_misses += 1
+            self.consecutive_heartbeats = 0
+        elif narration_type == "activity":
+            self.last_activity_time = now
+            self.last_activity_description = content
+            self.consecutive_heartbeats = 0
+            self.consecutive_near_misses = 0
+
+    def is_similar_content(self, content: str, narration_type: str) -> bool:
+        """Check if content is too similar to recent narrations (avoid repetition)."""
+        if narration_type == "near_miss":
+            # Simple similarity check - could be enhanced with embeddings
+            return content.lower().strip() == self.last_near_miss_text.lower().strip()
+        elif narration_type == "activity":
+            return content.lower().strip() == self.last_activity_description.lower().strip()
+        return False
+
 
 class VisualMonitorAgent(BaseNeuralMeshAgent):
     """
@@ -296,8 +459,10 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 "autonomous_response",  # v11.0: Act on visual events
                 "ferrari_engine",  # v12.0: GPU-accelerated 60 FPS capture
                 "god_mode_surveillance",  # v12.0: Multi-window parallel monitoring
+                "ghost_hands",  # v13.0: Cross-space actions without focus stealing
+                "working_out_loud",  # v14.0: Real-time narration during monitoring
             },
-            version="12.0",
+            version="14.0",
         )
 
         self.config = config or VisualMonitorConfig()
@@ -333,6 +498,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         # Purple indicator session (for visual feedback that JARVIS is watching)
         self._indicator_session = None
+
+        # v14.0: "Working Out Loud" - Narration state per watcher
+        self._narration_states: Dict[str, NarrationState] = {}
 
     # =========================================================================
     # Helper Methods for Non-Blocking Initialization
@@ -2257,20 +2425,27 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         self,
         watcher: Any,
         trigger_text: str,
-        timeout: float
+        timeout: float,
+        app_name: str = "Unknown"
     ) -> Dict[str, Any]:
         """
-        Ferrari Engine visual detection loop.
+        Ferrari Engine visual detection loop with "Working Out Loud" narration.
 
         Continuously pulls frames from VideoWatcher (Ferrari Engine) and
         runs OCR detection to find trigger text.
 
         This is the v12.0 CORE - where 60 FPS GPU frames meet intelligent OCR.
 
+        v14.0 Enhancement: "Working Out Loud" provides real-time narration:
+        - Heartbeat: Regular status updates ("Still watching Chrome...")
+        - Near-miss: When interesting text is detected ("I see 'Build Started'...")
+        - Activity: When significant screen changes occur
+
         Args:
             watcher: VideoWatcher instance (Ferrari Engine)
             trigger_text: Text to search for (supports case-insensitive fuzzy matching)
             timeout: Max time to wait for detection
+            app_name: Application name for narration
 
         Returns:
             Detection result with confidence and timing
@@ -2280,10 +2455,27 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         frame_count = 0
         ocr_checks = 0
 
+        # v14.0: Get watcher ID for narration state tracking
+        watcher_id = getattr(watcher, 'watcher_id', f"watcher_{id(watcher)}")
+
+        # v14.0: Track last OCR text hash for activity detection
+        narration_state = self._get_narration_state(watcher_id)
+        last_ocr_hash = 0
+        last_all_text = ""
+
         logger.info(
             f"[Ferrari Detection] Starting visual search for '{trigger_text}' "
-            f"(timeout: {timeout}s)"
+            f"(timeout: {timeout}s, Working Out Loud: {self.config.working_out_loud_enabled})"
         )
+
+        # v14.0: Initial narration - announce monitoring start
+        if self.config.working_out_loud_enabled:
+            await self._narrate_working_out_loud(
+                message=f"I'm now watching {app_name} for '{trigger_text}'.",
+                narration_type="activity",
+                watcher_id=watcher_id,
+                priority="normal"
+            )
 
         try:
             while True:
@@ -2294,6 +2486,10 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         f"[Ferrari Detection] Timeout after {elapsed:.1f}s "
                         f"({frame_count} frames, {ocr_checks} OCR checks)"
                     )
+
+                    # v14.0: Cleanup narration state
+                    self._cleanup_narration_state(watcher_id)
+
                     return {
                         'detected': False,
                         'confidence': 0.0,
@@ -2303,6 +2499,17 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         'ocr_checks': ocr_checks,
                         'timeout': True
                     }
+
+                # v14.0: Heartbeat narration at configured intervals
+                if self.config.working_out_loud_enabled:
+                    await self._narrate_heartbeat(
+                        watcher_id=watcher_id,
+                        trigger_text=trigger_text,
+                        app_name=app_name,
+                        elapsed_seconds=elapsed,
+                        frames_checked=frame_count,
+                        ocr_checks=ocr_checks
+                    )
 
                 # Get latest frame from Ferrari Engine
                 frame_data = await watcher.get_latest_frame(timeout=1.0)
@@ -2327,11 +2534,14 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 if frame_count % check_interval == 0:
                     ocr_checks += 1
 
-                    # Run OCR detection
+                    # Run OCR detection with extended results for near-miss detection
                     detected, confidence, detected_text = await self._ocr_detect(
                         frame=frame,
                         trigger_text=trigger_text
                     )
+
+                    # v14.0: Get all OCR text for activity/near-miss detection
+                    all_text = await self._ocr_get_all_text(frame)
 
                     if detected:
                         detection_time = time.time() - start_time
@@ -2340,6 +2550,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             f"Time: {detection_time:.2f}s, Confidence: {confidence:.2f}, "
                             f"Frames: {frame_count}, OCR checks: {ocr_checks}"
                         )
+
+                        # v14.0: Cleanup narration state
+                        self._cleanup_narration_state(watcher_id)
 
                         return {
                             'detected': True,
@@ -2350,6 +2563,43 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             'ocr_checks': ocr_checks,
                             'method': frame_data.get('method', 'screencapturekit')
                         }
+
+                    # v14.0: Near-miss detection - found interesting text but not the trigger
+                    if self.config.working_out_loud_enabled and all_text:
+                        # Check for near-miss (similar but not matching text)
+                        similarity = self._calculate_text_similarity(trigger_text, all_text)
+                        if 0.3 <= similarity < 0.8:  # Similar but not a match
+                            # Extract the most relevant portion of detected text
+                            near_miss_text = self._extract_near_miss_text(all_text, trigger_text)
+                            if near_miss_text:
+                                await self._narrate_near_miss(
+                                    watcher_id=watcher_id,
+                                    trigger_text=trigger_text,
+                                    detected_text=near_miss_text,
+                                    app_name=app_name,
+                                    similarity=similarity
+                                )
+
+                        # v14.0: Activity detection - significant screen change
+                        current_hash = hash(all_text)
+                        if last_ocr_hash != 0 and current_hash != last_ocr_hash:
+                            # Text changed - detect type of change
+                            text_change_ratio = self._calculate_text_change_ratio(
+                                last_all_text, all_text
+                            )
+                            if text_change_ratio > 0.5:  # More than 50% change
+                                activity_desc = self._describe_activity(
+                                    last_all_text, all_text, text_change_ratio
+                                )
+                                if activity_desc:
+                                    await self._narrate_activity(
+                                        watcher_id=watcher_id,
+                                        activity_description=activity_desc,
+                                        app_name=app_name
+                                    )
+
+                        last_ocr_hash = current_hash
+                        last_all_text = all_text
 
                     # Log periodic progress
                     if ocr_checks % 10 == 0:
@@ -2363,6 +2613,10 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         except Exception as e:
             logger.exception(f"[Ferrari Detection] Error: {e}")
+
+            # v14.0: Cleanup narration state
+            self._cleanup_narration_state(watcher_id)
+
             return {
                 'detected': False,
                 'confidence': 0.0,
@@ -2370,6 +2624,112 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 'frames_checked': frame_count,
                 'ocr_checks': ocr_checks
             }
+
+    async def _ocr_get_all_text(self, frame: Any) -> str:
+        """
+        Extract all text from a frame for activity/near-miss detection.
+
+        Args:
+            frame: Numpy array (RGB)
+
+        Returns:
+            All detected text concatenated, or empty string if failed
+        """
+        try:
+            if not self._detector:
+                return ""
+
+            # Try to get all text from the detector
+            if hasattr(self._detector, 'get_all_text'):
+                return await self._detector.get_all_text(frame)
+            elif hasattr(self._detector, 'detect_all_text'):
+                result = await self._detector.detect_all_text(frame)
+                return result.get('text', '') if result else ''
+
+            return ""
+        except Exception as e:
+            logger.debug(f"[OCR] All text extraction failed: {e}")
+            return ""
+
+    def _extract_near_miss_text(self, all_text: str, trigger_text: str) -> Optional[str]:
+        """
+        Extract the portion of all_text most similar to trigger_text.
+
+        Returns the most relevant near-miss phrase, or None if not found.
+        """
+        if not all_text or not trigger_text:
+            return None
+
+        # Split into lines/sentences and find the most similar
+        lines = [line.strip() for line in all_text.split('\n') if line.strip()]
+
+        best_match = None
+        best_similarity = 0.0
+
+        for line in lines[:20]:  # Limit to first 20 lines for performance
+            similarity = self._calculate_text_similarity(trigger_text, line)
+            if similarity > best_similarity and similarity < 0.8:  # Near miss, not match
+                best_similarity = similarity
+                best_match = line
+
+        return best_match if best_similarity > 0.3 else None
+
+    def _calculate_text_change_ratio(self, old_text: str, new_text: str) -> float:
+        """
+        Calculate how much the text has changed between frames.
+
+        Returns value between 0.0 (no change) and 1.0 (completely different).
+        """
+        if not old_text and not new_text:
+            return 0.0
+        if not old_text or not new_text:
+            return 1.0
+
+        old_words = set(old_text.lower().split())
+        new_words = set(new_text.lower().split())
+
+        if not old_words and not new_words:
+            return 0.0
+
+        union = old_words | new_words
+        if not union:
+            return 0.0
+
+        changed = len(old_words ^ new_words)  # Symmetric difference
+        return changed / len(union)
+
+    def _describe_activity(
+        self,
+        old_text: str,
+        new_text: str,
+        change_ratio: float
+    ) -> Optional[str]:
+        """
+        Generate a human-readable description of detected activity.
+
+        Returns a description like "Content is changing rapidly" or None.
+        """
+        if change_ratio > 0.8:
+            return "Content changed dramatically"
+        elif change_ratio > 0.5:
+            return "Significant activity detected"
+        elif change_ratio > 0.3:
+            return "Screen content is updating"
+
+        # Try to detect specific patterns
+        new_lower = new_text.lower()
+        old_lower = old_text.lower()
+
+        if 'loading' in new_lower and 'loading' not in old_lower:
+            return "Loading indicator appeared"
+        elif 'error' in new_lower and 'error' not in old_lower:
+            return "An error message appeared"
+        elif 'success' in new_lower and 'success' not in old_lower:
+            return "A success message appeared"
+        elif 'complete' in new_lower and 'complete' not in old_lower:
+            return "Something completed"
+
+        return None
 
     async def _ocr_detect(
         self,
@@ -2566,10 +2926,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 )
 
             # v12.0: Ferrari Engine frame monitoring with OCR detection
+            # v14.0: Pass app_name for "Working Out Loud" narration
             result = await self._ferrari_visual_detection(
                 watcher=watcher,
                 trigger_text=trigger_text,
-                timeout=self.config.default_timeout
+                timeout=self.config.default_timeout,
+                app_name=app_name
             )
 
             if result.get('detected', False):
@@ -2874,6 +3236,251 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         }
 
         logger.info(f"[Detection] Event logged: {json.dumps(detection_event, indent=2)}")
+
+    # =========================================================================
+    # v14.0: "Working Out Loud" - Narration Methods
+    # =========================================================================
+
+    def _get_narration_state(self, watcher_id: str) -> NarrationState:
+        """Get or create narration state for a watcher."""
+        if watcher_id not in self._narration_states:
+            self._narration_states[watcher_id] = NarrationState()
+        return self._narration_states[watcher_id]
+
+    def _cleanup_narration_state(self, watcher_id: str) -> None:
+        """Cleanup narration state when watcher stops."""
+        self._narration_states.pop(watcher_id, None)
+
+    async def _narrate_working_out_loud(
+        self,
+        message: str,
+        narration_type: str,
+        watcher_id: str,
+        priority: str = "low"
+    ) -> bool:
+        """
+        Send a "Working Out Loud" narration via TTS.
+
+        Uses UnifiedVoiceOrchestrator for consistent voice output.
+        Falls back to legacy TTS callback if orchestrator unavailable.
+
+        Args:
+            message: The narration message
+            narration_type: "heartbeat", "near_miss", or "activity"
+            watcher_id: Watcher this narration is for
+            priority: Voice priority (low, normal, high)
+
+        Returns:
+            True if narration was sent, False otherwise
+        """
+        if not self.config.working_out_loud_enabled:
+            return False
+
+        state = self._get_narration_state(watcher_id)
+
+        # Check rate limits and cooldowns
+        if not state.can_narrate(narration_type, self.config):
+            logger.debug(
+                f"[Working Out Loud] Skipping {narration_type} narration - rate limited"
+            )
+            return False
+
+        # Check content similarity (avoid repetition)
+        if state.is_similar_content(message, narration_type):
+            logger.debug(
+                f"[Working Out Loud] Skipping {narration_type} - similar content"
+            )
+            return False
+
+        # Attempt narration via UnifiedVoiceOrchestrator (preferred)
+        narrated = False
+        try:
+            if VOICE_ORCHESTRATOR_AVAILABLE:
+                orchestrator = await get_voice_orchestrator()
+                if orchestrator:
+                    # Map priority to VoicePriority
+                    voice_priority = VoicePriority.LOW
+                    if priority == "normal":
+                        voice_priority = VoicePriority.NORMAL
+                    elif priority == "high":
+                        voice_priority = VoicePriority.HIGH
+
+                    await orchestrator.speak_async(
+                        text=message,
+                        priority=voice_priority,
+                        source=VoiceSource.VISION,
+                        topic=SpeechTopic.STATUS_UPDATE,
+                    )
+                    narrated = True
+                    logger.debug(f"[Working Out Loud] {narration_type}: {message}")
+        except Exception as e:
+            logger.debug(f"[Working Out Loud] Voice orchestrator failed: {e}")
+
+        # Fallback to legacy TTS callback
+        if not narrated and self._tts_callback:
+            try:
+                await self._tts_callback(message)
+                narrated = True
+                logger.debug(f"[Working Out Loud] (legacy) {narration_type}: {message}")
+            except Exception as e:
+                logger.debug(f"[Working Out Loud] Legacy TTS failed: {e}")
+
+        # Record the narration for rate limiting
+        if narrated:
+            state.record_narration(narration_type, message)
+
+        return narrated
+
+    async def _narrate_heartbeat(
+        self,
+        watcher_id: str,
+        trigger_text: str,
+        app_name: str,
+        elapsed_seconds: float,
+        frames_checked: int,
+        ocr_checks: int
+    ) -> bool:
+        """
+        Narrate heartbeat status update during monitoring.
+
+        Examples:
+        - "Still watching Chrome for 'Build Complete'. 45 seconds in."
+        - "Monitoring Terminal for 'Error'. So far so good, 2 minutes elapsed."
+        """
+        # Format elapsed time naturally
+        if elapsed_seconds < 60:
+            time_str = f"{int(elapsed_seconds)} seconds"
+        elif elapsed_seconds < 3600:
+            minutes = int(elapsed_seconds // 60)
+            time_str = f"{minutes} minute{'s' if minutes != 1 else ''}"
+        else:
+            hours = int(elapsed_seconds // 3600)
+            minutes = int((elapsed_seconds % 3600) // 60)
+            time_str = f"{hours} hour{'s' if hours != 1 else ''} and {minutes} minutes"
+
+        # Vary the message based on verbosity and consecutive heartbeats
+        state = self._get_narration_state(watcher_id)
+
+        if self.config.narration_verbosity == "minimal":
+            message = f"Still watching {app_name}. {time_str} elapsed."
+        elif self.config.narration_verbosity == "verbose":
+            message = (
+                f"Still monitoring {app_name} for '{trigger_text}'. "
+                f"{time_str} elapsed. Checked {ocr_checks} frames so far."
+            )
+        elif self.config.narration_verbosity == "debug":
+            message = (
+                f"Heartbeat: {app_name}, trigger='{trigger_text}', "
+                f"elapsed={elapsed_seconds:.1f}s, frames={frames_checked}, OCR={ocr_checks}"
+            )
+        else:  # normal
+            # Vary messages to avoid monotony
+            variants = [
+                f"Still watching {app_name} for '{trigger_text}'. {time_str} in.",
+                f"Monitoring {app_name}. {time_str} elapsed, still looking.",
+                f"Keeping an eye on {app_name} for '{trigger_text}'.",
+            ]
+            import random
+            message = random.choice(variants)
+
+        return await self._narrate_working_out_loud(
+            message=message,
+            narration_type="heartbeat",
+            watcher_id=watcher_id,
+            priority="low"
+        )
+
+    async def _narrate_near_miss(
+        self,
+        watcher_id: str,
+        trigger_text: str,
+        detected_text: str,
+        app_name: str,
+        similarity: float = 0.0
+    ) -> bool:
+        """
+        Narrate when we detect text that's close to but not the trigger.
+
+        Examples:
+        - "I see 'Build Started' but waiting for 'Build Complete'."
+        - "Detected 'Error loading' - close but not quite 'Error: Failed'."
+        """
+        # Extract key differences for context
+        if len(detected_text) > 50:
+            detected_short = detected_text[:47] + "..."
+        else:
+            detected_short = detected_text
+
+        if self.config.narration_verbosity == "minimal":
+            message = f"Saw something on {app_name}, but not the trigger yet."
+        elif self.config.narration_verbosity == "verbose":
+            message = (
+                f"Near miss on {app_name}: Detected '{detected_short}' "
+                f"but waiting for '{trigger_text}'. Similarity: {similarity:.0%}"
+            )
+        else:  # normal
+            message = f"I see '{detected_short}' on {app_name}, but still waiting for '{trigger_text}'."
+
+        return await self._narrate_working_out_loud(
+            message=message,
+            narration_type="near_miss",
+            watcher_id=watcher_id,
+            priority="low"
+        )
+
+    async def _narrate_activity(
+        self,
+        watcher_id: str,
+        activity_description: str,
+        app_name: str
+    ) -> bool:
+        """
+        Narrate significant activity detected on the monitored window.
+
+        Examples:
+        - "Activity detected on Chrome - the page is loading."
+        - "Terminal output is scrolling rapidly."
+        """
+        message = f"{activity_description} on {app_name}."
+
+        return await self._narrate_working_out_loud(
+            message=message,
+            narration_type="activity",
+            watcher_id=watcher_id,
+            priority="low"
+        )
+
+    def _calculate_text_similarity(self, text1: str, text2: str) -> float:
+        """
+        Calculate similarity between two text strings.
+
+        Uses a simple character-level comparison for speed.
+        Returns value between 0.0 (no match) and 1.0 (exact match).
+        """
+        if not text1 or not text2:
+            return 0.0
+
+        t1 = text1.lower().strip()
+        t2 = text2.lower().strip()
+
+        if t1 == t2:
+            return 1.0
+
+        # Check for substring match
+        if t1 in t2 or t2 in t1:
+            return 0.8
+
+        # Simple character overlap
+        set1 = set(t1.split())
+        set2 = set(t2.split())
+
+        if not set1 or not set2:
+            return 0.0
+
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+
+        return intersection / union if union > 0 else 0.0
 
     async def _send_alert(
         self,
