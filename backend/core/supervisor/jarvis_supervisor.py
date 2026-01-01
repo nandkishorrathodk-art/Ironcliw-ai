@@ -1030,46 +1030,121 @@ class JARVISSupervisor:
         slow_startup_announced = False
         last_progress_update = start_time
         
-        # Create a shared session for connection pooling
-        connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300)
+        # === ROBUST SESSION MANAGEMENT ===
+        # Session and connector are managed together - if one fails, recreate both
         session: Optional[aiohttp.ClientSession] = None
-        
+        session_creation_count = 0
+        max_session_recreates = 50  # Prevent infinite recreation loops
+
+        async def get_or_create_session(timeout: float) -> Optional[aiohttp.ClientSession]:
+            """Get existing session or create a fresh one with new connector."""
+            nonlocal session, session_creation_count
+
+            # Check if existing session is usable
+            if session is not None and not session.closed:
+                return session
+
+            # Limit session recreation to prevent resource leaks
+            if session_creation_count >= max_session_recreates:
+                logger.warning("Max session recreations reached, reusing existing")
+                if session and not session.closed:
+                    return session
+                # Reset counter and create new session
+                session_creation_count = 0
+
+            # Close old session if exists
+            if session is not None:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
+
+            # Create FRESH connector and session each time
+            # This ensures we don't have stale connection pool issues
+            try:
+                connector = aiohttp.TCPConnector(
+                    limit=5,           # Lower limit for faster failure detection
+                    ttl_dns_cache=60,  # Shorter DNS cache
+                    force_close=True,  # Don't keep connections alive between requests
+                    enable_cleanup_closed=True,  # Clean up closed connections
+                )
+                session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=aiohttp.ClientTimeout(
+                        total=timeout,
+                        connect=min(timeout, 2.0),  # Fast connect timeout
+                        sock_read=timeout,
+                    ),
+                )
+                session_creation_count += 1
+                return session
+            except Exception as e:
+                logger.debug(f"Failed to create session: {e}")
+                return None
+
         # === PARALLEL HEALTH CHECK FUNCTIONS ===
         async def check_endpoint_smart(
             url: str,
             state: HealthCheckState,
             timeout: float = health_check_timeout
         ) -> bool:
-            """Smart health check with circuit breaker and retry logic."""
-            nonlocal session
-            
+            """
+            Smart health check with circuit breaker, retry logic, and connection recovery.
+
+            Key improvements:
+            - Fresh session on connection errors (avoids stale pool issues)
+            - Multiple retry attempts with exponential backoff
+            - Fast failure detection with shorter connect timeout
+            - Proper cleanup of failed connections
+            """
             if not state.should_check():
                 return state.is_ready
-            
-            try:
-                if session is None or session.closed:
-                    session = aiohttp.ClientSession(
-                        connector=connector,
-                        timeout=aiohttp.ClientTimeout(total=timeout)
-                    )
-                
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        state.record_success()
-                        return True
-                    else:
+
+            max_retries = 3
+            retry_delay = 0.5
+
+            for attempt in range(max_retries):
+                try:
+                    current_session = await get_or_create_session(timeout)
+                    if current_session is None:
                         state.record_failure()
                         return False
-            except asyncio.TimeoutError:
-                state.record_failure()
-                return False
-            except aiohttp.ClientError:
-                state.record_failure()
-                return False
-            except Exception as e:
-                logger.debug(f"Health check error for {url}: {e}")
-                state.record_failure()
-                return False
+
+                    async with current_session.get(url) as resp:
+                        if resp.status == 200:
+                            state.record_success()
+                            return True
+                        else:
+                            # Non-200 status - don't retry, it's a real response
+                            logger.debug(f"Health check {url} returned status {resp.status}")
+                            state.record_failure()
+                            return False
+
+                except asyncio.TimeoutError:
+                    logger.debug(f"Health check timeout for {url} (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    continue
+
+                except aiohttp.ClientConnectorError as e:
+                    # Connection refused/reset - server might not be ready yet
+                    logger.debug(f"Connection error for {url}: {e} (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    continue
+
+                except aiohttp.ClientError as e:
+                    logger.debug(f"Client error for {url}: {e}")
+                    break  # Don't retry on other client errors
+
+                except Exception as e:
+                    logger.debug(f"Health check error for {url}: {e}")
+                    break  # Don't retry on unexpected errors
+
+            state.record_failure()
+            return False
         
         async def check_system_status() -> dict:
             """
@@ -1081,12 +1156,13 @@ class JARVISSupervisor:
 
             Returns a normalized dict with consistent field names for subsystem tracking.
             """
-            try:
-                if session is None or session.closed:
-                    return {}
+            current_session = await get_or_create_session(health_check_timeout)
+            if current_session is None:
+                return {}
 
+            try:
                 # Primary: Poll /health/startup for detailed progress from progress bridge
-                async with session.get(
+                async with current_session.get(
                     f"{backend_url}/health/startup",
                     timeout=aiohttp.ClientTimeout(total=health_check_timeout)
                 ) as resp:
@@ -1124,10 +1200,11 @@ class JARVISSupervisor:
 
             # Fallback: Try /health/ready for operational status
             try:
-                if session is None or session.closed:
+                current_session = await get_or_create_session(health_check_timeout)
+                if current_session is None:
                     return {}
 
-                async with session.get(
+                async with current_session.get(
                     f"{backend_url}/health/ready",
                     timeout=aiohttp.ClientTimeout(total=health_check_timeout)
                 ) as resp:
