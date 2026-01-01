@@ -74,51 +74,67 @@ try:
         if threading.current_thread() is threading.main_thread():
             print("[whisper_audio_fix] ⚠️ numba partial import detected - using JIT disabled mode")
     else:
-        # Import the centralized numba preloader with v11.0 corruption handling
-        # NOTE: Just importing numba_preload will set NUMBA_DISABLE_JIT=1 at
-        # module load time, BEFORE any numba imports occur. This is the KEY FIX.
+        # Import the centralized numba preloader with v12.0 compatibility checking
+        # NOTE: Just importing numba_preload will:
+        # 1. Check version compatibility FIRST (v12.0)
+        # 2. Set NUMBA_DISABLE_JIT=1 if incompatible or at module load time
+        # 3. Skip numba entirely if version incompatible (no import attempts)
         from core.numba_preload import (
             ensure_numba_safe_for_whisper,
             is_numba_ready,
             get_numba_status,
             is_numba_corrupted,
             clear_corrupted_numba_modules,
+            is_numba_skipped,  # v12.0: New function
+            get_numba_skip_reason,  # v12.0: New function
         )
 
-        # v11.0: Use the new safe initialization that handles corruption
-        # This is the RECOMMENDED approach - it handles all edge cases
-        safety_result = ensure_numba_safe_for_whisper()
-
-        _numba_ready = safety_result.get('numba_available', False)
-        _numba_jit_disabled = safety_result.get('jit_disabled', False)
-        _numba_retry_count = safety_result.get('retry_count', 0)
-        _numba_cleared_modules = safety_result.get('cleared_modules', 0)
-
-        if _numba_ready:
-            status = get_numba_status()
-            _numba_version = status.get('version')
+        # v12.0: Check if numba is being skipped due to version incompatibility
+        if is_numba_skipped():
+            skip_reason = get_numba_skip_reason()
             if threading.current_thread() is threading.main_thread():
-                jit_status = "JIT disabled" if _numba_jit_disabled else "JIT enabled"
-                print(f"[whisper_audio_fix] ✅ numba {_numba_version} ready ({jit_status})")
-        elif _numba_jit_disabled:
-            # JIT disabled due to corruption or failure - this is OK
-            if threading.current_thread() is threading.main_thread():
-                reason = safety_result.get('reason', 'unknown')
-                extra = ""
-                if _numba_retry_count > 0:
-                    extra = f", retries: {_numba_retry_count}"
-                if _numba_cleared_modules > 0:
-                    extra += f", cleared: {_numba_cleared_modules} modules"
-                print(f"[whisper_audio_fix] ⚠️ numba JIT disabled: {reason}{extra}")
-                print("[whisper_audio_fix] Whisper will work but without numba optimization")
+                print(f"[whisper_audio_fix] ℹ️ numba skipped: {skip_reason}")
+                print("[whisper_audio_fix] ✅ Whisper will work fine without numba")
+            _numba_ready = False
+            _numba_jit_disabled = True
+            _numba_retry_count = 0
+            _numba_cleared_modules = 0
+            # No need to check further - numba is skipped
         else:
-            # numba not installed or other benign state
-            if threading.current_thread() is threading.main_thread():
-                reason = safety_result.get('reason', 'unknown')
-                if 'not_installed' in reason:
-                    print("[whisper_audio_fix] numba not installed (optional)")
-                else:
-                    print(f"[whisper_audio_fix] numba status: {reason}")
+            # v11.0: Use the new safe initialization that handles corruption
+            # This is the RECOMMENDED approach - it handles all edge cases
+            safety_result = ensure_numba_safe_for_whisper()
+
+            _numba_ready = safety_result.get('numba_available', False)
+            _numba_jit_disabled = safety_result.get('jit_disabled', False)
+            _numba_retry_count = safety_result.get('retry_count', 0)
+            _numba_cleared_modules = safety_result.get('cleared_modules', 0)
+
+            if _numba_ready:
+                status = get_numba_status()
+                _numba_version = status.get('version')
+                if threading.current_thread() is threading.main_thread():
+                    jit_status = "JIT disabled" if _numba_jit_disabled else "JIT enabled"
+                    print(f"[whisper_audio_fix] ✅ numba {_numba_version} ready ({jit_status})")
+            elif _numba_jit_disabled:
+                # JIT disabled due to corruption or failure - this is OK
+                if threading.current_thread() is threading.main_thread():
+                    reason = safety_result.get('reason', 'unknown')
+                    extra = ""
+                    if _numba_retry_count > 0:
+                        extra = f", retries: {_numba_retry_count}"
+                    if _numba_cleared_modules > 0:
+                        extra += f", cleared: {_numba_cleared_modules} modules"
+                    print(f"[whisper_audio_fix] ⚠️ numba JIT disabled: {reason}{extra}")
+                    print("[whisper_audio_fix] Whisper will work but without numba optimization")
+            else:
+                # numba not installed or other benign state
+                if threading.current_thread() is threading.main_thread():
+                    reason = safety_result.get('reason', 'unknown')
+                    if 'not_installed' in reason:
+                        print("[whisper_audio_fix] numba not installed (optional)")
+                    else:
+                        print(f"[whisper_audio_fix] numba status: {reason}")
 
 except ImportError as e:
     # numba_preload module doesn't exist OR circular import occurred

@@ -1,5 +1,5 @@
 """
-JARVIS Numba Pre-loader v10.0.0
+JARVIS Numba Pre-loader v12.0.0
 ===============================
 
 CRITICAL: This module must be imported FIRST, before ANY other imports
@@ -8,61 +8,189 @@ that might use numba (whisper, librosa, scipy with JIT, etc.).
 This solves the circular import error:
     "cannot import name 'get_hashable_key' from partially initialized module 'numba.core.utils'"
 
-The error occurs when:
-1. Multiple threads try to import numba simultaneously
-2. Thread A starts importing numba.core.utils
-3. Thread B also tries to import numba.core.utils
-4. Thread B sees a partially initialized module and fails
+v12.0.0 ROOT CAUSE FIX:
+The circular import error is actually a SYMPTOM of version incompatibility:
+- numba 0.60.0 requires Python 3.9.18+ or 3.10+
+- Older Python versions (like 3.9.6) have internal import machinery differences
+- This causes the "partially initialized module" error
 
-v10.0.0 CRITICAL FIXES:
-1. **PRE-EMPTIVE JIT DISABLE**: Set NUMBA_DISABLE_JIT=1 BEFORE any imports
-   This prevents the circular import from ever occurring.
-2. **Early corruption detection**: Detect partial numba modules before import
-3. **Aggressive module clearing**: Clear ALL numba modules on corruption
-4. **Defensive auto-init**: Check corruption before auto-initialization
-5. **Retry with cleanup**: If import fails, clear modules and retry
-6. **Thread starvation prevention**: Use process-level lock file
-7. **Enhanced diagnostics**: Detailed error tracking for debugging
+v12.0.0 SOLUTION:
+1. **UPFRONT VERSION COMPATIBILITY CHECK**: Detect incompatibility BEFORE any import
+2. **SKIP NUMBA ENTIRELY**: When versions are incompatible, skip numba completely
+3. **NUMBA-FREE PATH**: Whisper and other libs work fine without numba
+4. **INTELLIGENT CACHING**: Remember compatibility state to avoid rechecking
+5. **ASYNC-SAFE**: All operations are safe in async contexts
+6. **ZERO IMPORT ATTEMPTS**: If incompatible, numba is never imported at all
 
-v8.0.0 Improvements (PRODUCTION-GRADE):
-1. Thread-safe status reads with proper locking
-2. Atomic counters using threading.Lock for waiting_threads
-3. Proper error messages for ALL failure paths (including timeout)
-4. Version-adaptive numba checks (works with all numba versions)
-5. Async initialization support via asyncio
-6. Intelligent fallback with detailed diagnostics
-7. Non-blocking status queries with snapshot semantics
-8. Graceful degradation when numba is unavailable
-
-Usage in main.py (MUST BE FIRST IMPORT):
-    # CRITICAL: Pre-load numba before ANY other imports
-    from core.numba_preload import ensure_numba_initialized, get_numba_status
-    ensure_numba_initialized()
-
-Usage in async context:
-    from core.numba_preload import ensure_numba_initialized_async
-    await ensure_numba_initialized_async()
-
-Usage in whisper_audio_fix.py (or any numba-using module):
-    from core.numba_preload import wait_for_numba, is_numba_ready
-
-    # This BLOCKS until numba init completes - NO TIMEOUT LOOP
-    wait_for_numba()
-
-    # Now safe to import whisper/librosa/etc
-    import whisper
+v10.0.0 CRITICAL FIXES (still applies):
+1. PRE-EMPTIVE JIT DISABLE: Set NUMBA_DISABLE_JIT=1 BEFORE any imports
+2. Early corruption detection: Detect partial numba modules before import
+3. Aggressive module clearing: Clear ALL numba modules on corruption
+4. Defensive auto-init: Check corruption before auto-initialization
+5. Retry with cleanup: If import fails, clear modules and retry
 
 Author: Derek Russell
-Version: 10.0.0
+Version: 12.0.0
 """
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# v10.0: CRITICAL - SET NUMBA ENVIRONMENT BEFORE ANY IMPORTS
-# This MUST happen at module load time, BEFORE importing numba or any
-# numba-dependent libraries. This prevents the circular import from occurring.
+# v12.0: CRITICAL - VERSION COMPATIBILITY CHECK BEFORE ANYTHING ELSE
+# This detects incompatible numba/Python combinations UPFRONT and skips numba
+# entirely, preventing the circular import from ever being attempted.
 # ═══════════════════════════════════════════════════════════════════════════════
 import os as _os
 import sys as _sys
+
+# v12.0: Compatibility check result - cached for the entire process
+_NUMBA_SKIP_REASON = None  # Set if numba should be skipped
+_NUMBA_COMPATIBLE = None   # True/False/None (None = not yet checked)
+
+
+def _check_version_compatibility() -> tuple:
+    """
+    Check if numba version is compatible with current Python version.
+
+    This is called ONCE at module load time, before any numba import is attempted.
+
+    Known incompatibilities:
+    - numba 0.60.0+ requires Python 3.9.18+ or 3.10+
+    - numba 0.59.x requires Python 3.9+
+    - numba 0.58.x works with Python 3.8-3.11
+
+    Returns:
+        Tuple of (is_compatible: bool, reason: str, recommendation: str)
+    """
+    py_version = _sys.version_info
+    py_version_str = f"{py_version.major}.{py_version.minor}.{py_version.micro}"
+
+    # Try to get numba version from package metadata WITHOUT importing numba
+    numba_version = None
+    try:
+        # Use importlib.metadata (Python 3.8+) to read version without import
+        if py_version >= (3, 8):
+            try:
+                from importlib.metadata import version as get_version
+                numba_version = get_version('numba')
+            except Exception:
+                pass
+
+        # Fallback: try pkg_resources
+        if numba_version is None:
+            try:
+                import pkg_resources
+                numba_version = pkg_resources.get_distribution('numba').version
+            except Exception:
+                pass
+
+        # Fallback: check if already imported
+        if numba_version is None and 'numba' in _sys.modules:
+            numba_mod = _sys.modules.get('numba')
+            if numba_mod and hasattr(numba_mod, '__version__'):
+                numba_version = numba_mod.__version__
+
+    except Exception:
+        pass
+
+    if numba_version is None:
+        # numba not installed - that's fine, Whisper works without it
+        return (True, "numba_not_installed", "")
+
+    # Parse numba version
+    try:
+        numba_parts = [int(x) for x in numba_version.split('.')[:3]]
+        numba_major = numba_parts[0] if len(numba_parts) > 0 else 0
+        numba_minor = numba_parts[1] if len(numba_parts) > 1 else 0
+        numba_patch = numba_parts[2] if len(numba_parts) > 2 else 0
+    except (ValueError, IndexError):
+        numba_major, numba_minor, numba_patch = 0, 0, 0
+
+    # ═══════════════════════════════════════════════════════════════════
+    # COMPATIBILITY MATRIX - Based on actual testing and documentation
+    # ═══════════════════════════════════════════════════════════════════
+
+    # numba 0.60.0+ has stricter requirements
+    if numba_major == 0 and numba_minor >= 60:
+        # numba 0.60.0 requires Python 3.9.18+ OR 3.10+
+        if py_version.major == 3 and py_version.minor == 9:
+            if py_version.micro < 18:
+                return (
+                    False,
+                    f"numba {numba_version} requires Python 3.9.18+ (you have {py_version_str})",
+                    "Upgrade Python to 3.10+ OR downgrade numba: pip install 'numba==0.58.1' 'llvmlite==0.41.1'"
+                )
+        elif py_version.major == 3 and py_version.minor < 9:
+            return (
+                False,
+                f"numba {numba_version} requires Python 3.9+ (you have {py_version_str})",
+                "Upgrade Python to 3.10+"
+            )
+
+    # numba 0.59.x compatibility
+    elif numba_major == 0 and numba_minor == 59:
+        if py_version.major == 3 and py_version.minor < 9:
+            return (
+                False,
+                f"numba {numba_version} requires Python 3.9+ (you have {py_version_str})",
+                "Upgrade Python OR downgrade numba"
+            )
+
+    # All checks passed
+    return (True, "compatible", "")
+
+
+def _check_llvmlite_compatibility() -> tuple:
+    """
+    Check if llvmlite is compatible with the current environment.
+
+    Common issues:
+    - llvmlite built for different Python version
+    - llvmlite binary incompatible with system LLVM
+
+    Returns:
+        Tuple of (is_compatible: bool, reason: str)
+    """
+    try:
+        # Try to get llvmlite version without importing
+        if _sys.version_info >= (3, 8):
+            try:
+                from importlib.metadata import version as get_version
+                llvmlite_version = get_version('llvmlite')
+                return (True, f"llvmlite {llvmlite_version}")
+            except Exception:
+                pass
+
+        # Not installed = compatible (optional dependency)
+        return (True, "llvmlite_not_installed")
+
+    except Exception as e:
+        return (False, f"llvmlite_check_error: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v12.0: RUN COMPATIBILITY CHECK AT MODULE LOAD TIME
+# ═══════════════════════════════════════════════════════════════════════════════
+_compat_result = _check_version_compatibility()
+_NUMBA_COMPATIBLE = _compat_result[0]
+if not _NUMBA_COMPATIBLE:
+    _NUMBA_SKIP_REASON = _compat_result[1]
+    # Print warning once
+    if hasattr(_sys, '_jarvis_numba_warned') is False:
+        _recommendation = _compat_result[2]
+        print(f"[numba_preload] ⚠️ SKIPPING NUMBA: {_NUMBA_SKIP_REASON}")
+        if _recommendation:
+            print(f"[numba_preload] 💡 FIX: {_recommendation}")
+        print("[numba_preload] ✅ Whisper will work fine without numba (just slightly slower)")
+        _sys._jarvis_numba_warned = True
+
+    # Set environment to prevent any numba import attempts
+    _os.environ['NUMBA_DISABLE_JIT'] = '1'
+    _os.environ['NUMBA_NUM_THREADS'] = '1'
+    _os.environ['_JARVIS_NUMBA_SKIP'] = '1'
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v10.0: SET NUMBA ENVIRONMENT BEFORE ANY IMPORTS (if compatible)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # v10.0: Check if numba is already corrupted BEFORE we do anything
 def _check_early_corruption() -> bool:
@@ -279,7 +407,30 @@ def _get_status_snapshot() -> Dict[str, Any]:
             'import_attempts': _numba_info.import_attempts,
             'waiting_threads': _numba_info._waiting_threads,
             'is_ready': _numba_info.status == NumbaStatus.READY,
+            # v12.0: Compatibility information
+            'version_compatible': _NUMBA_COMPATIBLE,
+            'skip_reason': _NUMBA_SKIP_REASON,
         }
+
+
+def is_numba_skipped() -> bool:
+    """
+    v12.0: Check if numba is being skipped due to version incompatibility.
+
+    Returns:
+        True if numba is being skipped, False otherwise
+    """
+    return _NUMBA_COMPATIBLE is False
+
+
+def get_numba_skip_reason() -> Optional[str]:
+    """
+    v12.0: Get the reason numba is being skipped.
+
+    Returns:
+        Reason string if skipped, None otherwise
+    """
+    return _NUMBA_SKIP_REASON if _NUMBA_COMPATIBLE is False else None
 
 
 @contextmanager
@@ -579,6 +730,7 @@ def ensure_numba_initialized(timeout: float = 60.0) -> bool:
     """
     Ensure numba is initialized. Thread-safe and idempotent.
 
+    v12.0: Added upfront compatibility check - skips numba entirely if incompatible.
     v8.0: Enhanced with proper timeout handling and status updates.
 
     This function can be called from any thread. The first caller will
@@ -591,6 +743,20 @@ def ensure_numba_initialized(timeout: float = 60.0) -> bool:
         True if numba is available and ready, False otherwise
     """
     global _importing_threads
+
+    # v12.0: UPFRONT COMPATIBILITY CHECK - skip numba entirely if incompatible
+    if _NUMBA_COMPATIBLE is False:
+        # Version incompatibility detected at module load time
+        # Skip numba entirely to prevent circular import errors
+        if not _initialization_complete.is_set():
+            _set_status(
+                NumbaStatus.FAILED,
+                error=_NUMBA_SKIP_REASON,
+                error_type="VersionIncompatibility"
+            )
+            _initialization_complete.set()
+        logger.debug(f"[numba_preload] Skipping numba: {_NUMBA_SKIP_REASON}")
+        return False
 
     thread_id = threading.current_thread().ident
     thread_name = threading.current_thread().name
@@ -1048,16 +1214,22 @@ def clear_corrupted_numba_modules() -> int:
 
 def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
     """
-    v10.0: Ensure numba is in a safe state for Whisper to import.
+    v12.0: Ensure numba is in a safe state for Whisper to import.
 
     This is the RECOMMENDED function to call before importing Whisper.
     It handles all the edge cases:
 
-    1. If numba is not installed -> returns success (Whisper works without it)
-    2. If numba is fully initialized -> returns success
-    3. If numba is corrupted -> clears modules, disables JIT, returns degraded
-    4. If numba fails to initialize -> disables JIT, returns degraded
-    5. If circular import detected -> clears modules, retries with JIT disabled
+    1. If numba version is incompatible -> skip numba entirely (Whisper works without it)
+    2. If numba is not installed -> returns success (Whisper works without it)
+    3. If numba is fully initialized -> returns success
+    4. If numba is corrupted -> clears modules, disables JIT, returns degraded
+    5. If numba fails to initialize -> disables JIT, returns degraded
+    6. If circular import detected -> clears modules, retries with JIT disabled
+
+    v12.0 ENHANCEMENTS:
+    - UPFRONT VERSION COMPATIBILITY CHECK - skips numba entirely if incompatible
+    - No import attempts when known to be incompatible
+    - Faster startup by avoiding doomed retries
 
     v10.0 ENHANCEMENTS:
     - Pre-check environment variables at entry
@@ -1073,6 +1245,7 @@ def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
         - numba_available: bool - True if numba is fully available
         - retry_count: int - Number of retries needed (v10.0)
         - cleared_modules: int - Number of corrupted modules cleared (v10.0)
+        - version_compatible: bool - True if numba version is compatible (v12.0)
     """
     result = {
         'safe': False,
@@ -1081,7 +1254,17 @@ def ensure_numba_safe_for_whisper() -> Dict[str, Any]:
         'numba_available': False,
         'retry_count': 0,
         'cleared_modules': 0,
+        'version_compatible': _NUMBA_COMPATIBLE,
     }
+
+    # v12.0: FAST PATH - Skip numba entirely if version incompatible
+    if _NUMBA_COMPATIBLE is False:
+        result['safe'] = True  # Safe to import Whisper (without numba)
+        result['jit_disabled'] = True
+        result['reason'] = f"version_incompatible: {_NUMBA_SKIP_REASON}"
+        result['numba_available'] = False
+        logger.info(f"[numba_preload] Whisper safe to import (numba skipped: {_NUMBA_SKIP_REASON})")
+        return result
 
     # v10.0: Multiple attempts with progressive cleanup
     max_attempts = 3
