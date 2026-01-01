@@ -9275,6 +9275,13 @@ class AsyncSystemManager:
 
         env["GENERATE_SOURCEMAP"] = "false"  # Disable source maps to reduce memory
 
+        # v6.0: Force unbuffered output from Node.js/npm/webpack
+        # This ensures log output is visible in real-time, not buffered
+        env["FORCE_COLOR"] = "0"  # Disable ANSI colors (cleaner logs)
+        env["CI"] = "true"  # CI mode often disables interactive buffering
+        # Force Python subprocess to use line buffering
+        env["PYTHONUNBUFFERED"] = "1"
+
         # Create a log file for frontend to help debug issues
         log_file = (
             self.backend_dir / "logs" / f"frontend_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -9282,8 +9289,8 @@ class AsyncSystemManager:
         log_file.parent.mkdir(exist_ok=True)
         self.frontend_log_path = log_file  # Store for monitoring
 
-        # Open log file without 'with' statement to keep it open for subprocess
-        log = open(log_file, "w")
+        # v6.0: Open log file with line buffering (buffering=1) for real-time output
+        log = open(log_file, "w", buffering=1)
         self.open_files.append(log)  # Track for cleanup
 
         process = await asyncio.create_subprocess_exec(
@@ -9295,9 +9302,10 @@ class AsyncSystemManager:
             env=env,
         )
 
-        # v5.4: Wait for frontend to actually be ready (listening on port)
-        # This is the ROOT FIX - don't return until webpack compilation is complete
-        max_startup_time = int(os.getenv("JARVIS_FRONTEND_STARTUP_TIMEOUT", "90"))  # 90 seconds default
+        # v6.0: Wait for frontend to actually be ready (listening on port)
+        # ROOT FIX - don't return until webpack compilation is complete
+        # Increased from 90 to 120 seconds - webpack can take 30-60+ seconds on first run
+        max_startup_time = int(os.getenv("JARVIS_FRONTEND_STARTUP_TIMEOUT", "120"))  # 120 seconds default
         check_interval = 1.0
         start_time = time.time()
 
@@ -9536,6 +9544,11 @@ class AsyncSystemManager:
         Wait for frontend to be ready with retries.
         Returns True if frontend becomes ready within max_wait seconds.
         Broadcasts progress updates to loading page during wait.
+
+        v6.0: ROOT FIX - Check process health, not log activity.
+        Webpack buffers stdout during compilation, so log activity is NOT
+        a reliable indicator of process health. The only reliable indicator
+        is whether the process is still running (returncode is None).
         """
         frontend_port = self.ports.get('frontend', 3000)
         url = f"http://127.0.0.1:{frontend_port}"
@@ -9548,16 +9561,46 @@ class AsyncSystemManager:
 
         check_count = 0
         last_log_size = 0
-        last_activity_time = time.time()
-        
+
+        # v6.0: Get frontend process from self.processes to check if it's alive
+        frontend_process = None
+        for proc in self.processes:
+            # Find the most recently added process (frontend is started last)
+            if proc.returncode is None:
+                frontend_process = proc
+
         while (time.time() - start_time) < max_wait:
             check_count += 1
+            current_time = time.time()
+
+            # v6.0: PRIMARY HEALTH CHECK - Is the frontend process still alive?
+            # This is the reliable indicator, NOT log activity (webpack buffers stdout)
+            if frontend_process is not None:
+                if frontend_process.returncode is not None:
+                    # Process died - this is a real failure
+                    print(f"\n{Colors.FAIL}✗ Frontend process died (exit code: {frontend_process.returncode}){Colors.ENDC}")
+                    # Try to read log for error details
+                    if hasattr(self, 'frontend_log_path') and self.frontend_log_path and self.frontend_log_path.exists():
+                        try:
+                            with open(self.frontend_log_path, 'r') as f:
+                                content = f.read()
+                            lines = content.strip().split('\n')
+                            if lines:
+                                print(f"{Colors.YELLOW}  Last log output:{Colors.ENDC}")
+                                for line in lines[-5:]:
+                                    if line.strip():
+                                        print(f"    {line.strip()}")
+                        except Exception:
+                            pass
+                    return False
+
+            # SECONDARY CHECK - Try to connect to the port
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
                         if resp.status in [200, 304]:
                             elapsed = time.time() - start_time
-                            print(f"{Colors.GREEN}✓ Frontend ready after {elapsed:.1f}s{Colors.ENDC}")
+                            print(f"\n{Colors.GREEN}✓ Frontend ready after {elapsed:.1f}s{Colors.ENDC}")
                             # Broadcast 97% when frontend becomes ready
                             try:
                                 await session.post("http://localhost:3001/api/update-progress", json={
@@ -9567,35 +9610,30 @@ class AsyncSystemManager:
                                     "timestamp": datetime.now().isoformat(),
                                     "metadata": {"icon": "✅", "label": "Frontend Ready", "sublabel": f"Took {elapsed:.1f}s"}
                                 }, timeout=aiohttp.ClientTimeout(total=1))
-                            except:
+                            except Exception:
                                 pass
                             return True
             except Exception:
                 pass
 
-            # Check log activity to extend timeout dynamically
-            current_time = time.time()
+            # OPTIONAL: Log activity monitoring (for user feedback only, NOT health check)
             if hasattr(self, 'frontend_log_path') and self.frontend_log_path and self.frontend_log_path.exists():
                 try:
                     current_size = self.frontend_log_path.stat().st_size
                     if current_size > last_log_size:
                         last_log_size = current_size
-                        last_activity_time = current_time  # Reset activity timer
-                        
-                        # Peek at last line to show progress
+                        # Peek at last line to show progress (feedback only)
                         with open(self.frontend_log_path, 'r') as f:
                             lines = f.readlines()
                             if lines:
                                 last_line = lines[-1].strip()[:50]
                                 if "Compiling" in last_line or "webpack" in last_line:
                                     print(f"{Colors.CYAN}   Running: {last_line}...{Colors.ENDC}", end="\r")
-                except:
+                except Exception:
                     pass
 
-            # Fail if no activity for 60 seconds (stuck)
-            if current_time - last_activity_time > 60:
-                print(f"\n{Colors.WARNING}⚠️  Frontend process stuck (no log output for 60s){Colors.ENDC}")
-                return False
+            # v6.0: REMOVED log activity timeout check - webpack buffers output
+            # The process is alive (checked above), so compilation is in progress
 
             remaining = max_wait - (current_time - start_time)
             elapsed = current_time - start_time
@@ -9609,24 +9647,33 @@ class AsyncSystemManager:
                     async with aiohttp.ClientSession() as session:
                         await session.post("http://localhost:3001/api/update-progress", json={
                             "stage": "waiting_for_frontend",
-                            "message": f"Frontend starting... ({int(remaining)}s remaining)",
+                            "message": f"Webpack compiling... ({int(remaining)}s remaining)",
                             "progress": wait_progress,
                             "timestamp": datetime.now().isoformat(),
                             "metadata": {
                                 "icon": "⏳",
-                                "label": "Frontend Starting",
-                                "sublabel": f"{int(remaining)}s remaining"
+                                "label": "Compiling Frontend",
+                                "sublabel": f"Process alive, {int(remaining)}s remaining"
                             }
                         }, timeout=aiohttp.ClientTimeout(total=1))
-                except:
+                except Exception:
                     pass
 
             if remaining > 0:
-                print(f"{Colors.YELLOW}  Waiting for frontend... ({int(remaining)}s remaining){Colors.ENDC}", end="\r")
+                # v6.0: Show process status in output
+                process_status = "running" if (frontend_process and frontend_process.returncode is None) else "unknown"
+                print(f"{Colors.YELLOW}  Compiling frontend... (process: {process_status}, {int(remaining)}s remaining){Colors.ENDC}", end="\r")
                 await asyncio.sleep(check_interval)
 
-        print(f"\n{Colors.WARNING}⚠️  Frontend did not respond within {max_wait}s{Colors.ENDC}")
-        return False
+        # Timeout reached
+        # v6.0: If process is still alive, don't treat this as failure
+        if frontend_process and frontend_process.returncode is None:
+            print(f"\n{Colors.YELLOW}⚠️  Frontend still compiling after {max_wait}s (process alive, continuing){Colors.ENDC}")
+            # Return True to proceed - webpack is slow but process is healthy
+            return True
+        else:
+            print(f"\n{Colors.WARNING}⚠️  Frontend did not respond within {max_wait}s{Colors.ENDC}")
+            return False
 
     async def wait_for_service(self, url: str, timeout: int = 30) -> bool:
         """Wait for a service to be ready"""

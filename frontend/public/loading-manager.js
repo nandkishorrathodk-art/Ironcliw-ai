@@ -55,7 +55,8 @@ class JARVISLoadingManager {
             // This is set dynamically from supervisor or via URL parameter
             frontendOptional: this.getFrontendOptionalFromURL(),
             // Maximum time to wait for frontend before falling back to backend-only mode
-            frontendWaitTimeoutMs: 90000, // 90 seconds
+            // v6.0: Increased from 90s to 120s - webpack compilation can take 30-60+ seconds
+            frontendWaitTimeoutMs: 120000, // 120 seconds
             // After this many seconds of waiting for frontend, show helpful message
             frontendSlowThresholdSecs: 30,
             reconnect: {
@@ -3421,12 +3422,15 @@ class JARVISLoadingManager {
          * - Clear status updates to the user
          * - v5.2: Graceful fallback with user options when frontend unavailable
          */
+        // v6.0: Increased timeout and improved messages
+        // Webpack compilation can take 30-60+ seconds on first run
         const config = {
-            maxWaitTime: this.config.frontendWaitTimeoutMs || 90000, // 90 seconds max
+            maxWaitTime: this.config.frontendWaitTimeoutMs || 120000, // 120 seconds max (v6.0: increased from 90s)
             initialDelay: 500,          // Start with 500ms between checks
             maxDelay: 3000,             // Cap delay at 3 seconds
             backoffMultiplier: 1.5,     // Increase delay by 50% each attempt
-            slowThreshold: this.config.frontendSlowThresholdSecs || 30, // Show warning after 30s
+            slowThreshold: this.config.frontendSlowThresholdSecs || 30, // Show webpack message after 30s
+            webpackCompilePhrase: 45,   // v6.0: Show "webpack compiling" message after 45s
         };
 
         const startTime = Date.now();
@@ -3457,6 +3461,7 @@ class JARVISLoadingManager {
             }
 
             // Update user-facing status
+            // v6.0: More accurate messaging about webpack compilation phases
             if (elapsed < 10) {
                 if (this.elements.statusMessage) {
                     this.elements.statusMessage.textContent = 'Starting user interface...';
@@ -3466,14 +3471,20 @@ class JARVISLoadingManager {
                     this.elements.statusMessage.textContent = 'Frontend is initializing...';
                 }
                 this.updateStatusText('Starting frontend...', 'loading');
-            } else {
-                // v5.2: After slow threshold, show more helpful message
+            } else if (elapsed < config.webpackCompilePhrase) {
+                // v6.0: Show webpack message after slow threshold
                 if (this.elements.statusMessage) {
-                    this.elements.statusMessage.textContent = `Still waiting for frontend (${elapsed}s)...`;
+                    this.elements.statusMessage.textContent = `Webpack compiling (${elapsed}s)...`;
                 }
-                this.updateStatusText('Frontend slow to start...', 'warning');
+                this.updateStatusText('Compiling frontend...', 'loading');
+            } else {
+                // v6.0: After webpackCompilePhrase, show more helpful message
+                if (this.elements.statusMessage) {
+                    this.elements.statusMessage.textContent = `Still compiling frontend (${elapsed}s)...`;
+                }
+                this.updateStatusText('Compilation in progress...', 'loading');
 
-                // v5.2: Show the fallback button early (after slowThreshold)
+                // v5.2: Show the fallback button (after slowThreshold)
                 // so user can proceed to backend if they want
                 this.showBackendFallbackButton();
             }
