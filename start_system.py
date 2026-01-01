@@ -9269,56 +9269,92 @@ class AsyncSystemManager:
             env=env,
         )
 
-        # Give frontend a moment to start and check if it crashes immediately
-        await asyncio.sleep(2)
-        if process.returncode is not None:
-            # v5.3: Enhanced error detection
-            print(
-                f"{Colors.WARNING}Frontend process exited immediately with code {process.returncode}{Colors.ENDC}"
-            )
+        # v5.4: Wait for frontend to actually be ready (listening on port)
+        # This is the ROOT FIX - don't return until webpack compilation is complete
+        max_startup_time = int(os.getenv("JARVIS_FRONTEND_STARTUP_TIMEOUT", "90"))  # 90 seconds default
+        check_interval = 1.0
+        start_time = time.time()
 
-            # Read log to detect specific errors
+        print(f"{Colors.CYAN}  Waiting for frontend to compile (up to {max_startup_time}s)...{Colors.ENDC}")
+
+        while time.time() - start_time < max_startup_time:
+            # Check if process died
+            if process.returncode is not None:
+                elapsed = int(time.time() - start_time)
+                print(f"{Colors.FAIL}✗ Frontend process died after {elapsed}s (exit code: {process.returncode}){Colors.ENDC}")
+
+                # Read log to detect specific errors
+                try:
+                    log.flush()
+                    with open(log_file, "r") as f:
+                        log_content = f.read()
+
+                    # Detect common startup failures
+                    if "Something is already running on port" in log_content:
+                        print(f"{Colors.FAIL}  Port conflict - another process grabbed port {frontend_port}{Colors.ENDC}")
+                    elif "ENOSPC" in log_content:
+                        print(f"{Colors.FAIL}  System out of disk space or watchers{Colors.ENDC}")
+                    elif "ENOMEM" in log_content or "heap" in log_content.lower():
+                        print(f"{Colors.FAIL}  Out of memory during compilation{Colors.ENDC}")
+                    elif "Module not found" in log_content:
+                        print(f"{Colors.FAIL}  Missing npm dependency - run: cd frontend && npm install{Colors.ENDC}")
+                    else:
+                        # Show last few lines for unknown errors
+                        lines = log_content.strip().split('\n')
+                        if lines:
+                            print(f"{Colors.YELLOW}  Last log entries:{Colors.ENDC}")
+                            for line in lines[-5:]:
+                                if line.strip():
+                                    print(f"    {line.strip()}")
+                except Exception:
+                    pass
+
+                print(f"{Colors.YELLOW}  Full log: {log_file}{Colors.ENDC}")
+                return None
+
+            # Check if frontend is now listening on port
             try:
-                log.flush()
-                with open(log_file, "r") as f:
-                    log_content = f.read()
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("127.0.0.1", frontend_port),
+                    timeout=1.0
+                )
+                writer.close()
+                await writer.wait_closed()
 
-                # Detect common startup failures
-                if "Something is already running on port" in log_content:
-                    print(f"{Colors.FAIL}✗ Port conflict detected (process started after our check){Colors.ENDC}")
-                    print(f"{Colors.YELLOW}  This is a race condition - another process grabbed port {frontend_port}{Colors.ENDC}")
-                elif "ENOSPC" in log_content:
-                    print(f"{Colors.FAIL}✗ System out of disk space or watchers{Colors.ENDC}")
-                    print(f"{Colors.YELLOW}  Try: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf{Colors.ENDC}")
-                elif "ENOMEM" in log_content or "heap" in log_content.lower():
-                    print(f"{Colors.FAIL}✗ Out of memory during frontend compilation{Colors.ENDC}")
-                    print(f"{Colors.YELLOW}  Try: export JARVIS_FRONTEND_MEMORY_MB=2048{Colors.ENDC}")
-                elif "Module not found" in log_content:
-                    print(f"{Colors.FAIL}✗ Missing npm dependency{Colors.ENDC}")
-                    print(f"{Colors.YELLOW}  Try: cd frontend && npm install{Colors.ENDC}")
-                else:
-                    # Show last few lines for unknown errors
-                    lines = log_content.strip().split('\n')
-                    if lines:
-                        print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
-                        for line in lines[-5:]:
-                            print(f"  {line.strip()}")
-            except Exception:
+                # Port is listening! Frontend is ready
+                elapsed = int(time.time() - start_time)
+                print(f"{Colors.GREEN}✓ Frontend compiled and ready in {elapsed}s (port {frontend_port}){Colors.ENDC}")
+
+                self.processes.append(process)
+                return process
+
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+                # Not ready yet, keep waiting
                 pass
 
-            print(f"{Colors.YELLOW}Full log: {log_file}{Colors.ENDC}")
+            # Show progress every 10 seconds
+            elapsed = int(time.time() - start_time)
+            if elapsed > 0 and elapsed % 10 == 0:
+                print(f"{Colors.CYAN}  Still compiling... ({elapsed}s){Colors.ENDC}")
+
+            await asyncio.sleep(check_interval)
+
+        # Timeout reached - frontend still not listening
+        elapsed = int(time.time() - start_time)
+        print(f"{Colors.FAIL}✗ Frontend startup timeout after {elapsed}s{Colors.ENDC}")
+
+        # Check if process is still running
+        if process.returncode is None:
+            print(f"{Colors.YELLOW}  Process is running but not responding - may be stuck{Colors.ENDC}")
+            # Keep process running, maybe it will eventually start
+            self.processes.append(process)
+
+            # Start background monitor to detect if it eventually comes up
+            asyncio.create_task(self._monitor_frontend_startup(process, log_file, frontend_port))
+            return process
+        else:
+            print(f"{Colors.FAIL}  Process exited with code {process.returncode}{Colors.ENDC}")
             return None
-
-        # v5.3: Monitor for delayed crash (happens after initial startup)
-        # This catches cases where frontend starts but crashes during compilation
-        asyncio.create_task(self._monitor_frontend_startup(process, log_file, frontend_port))
-
-        self.processes.append(process)
-        print(
-            f"{Colors.GREEN}✓ Frontend starting on port {frontend_port} (PID: {process.pid}){Colors.ENDC}"
-        )
-
-        return process
 
     async def _monitor_frontend_startup(
         self,
@@ -9445,11 +9481,11 @@ class AsyncSystemManager:
     async def _verify_frontend_ready(self) -> bool:
         """
         Quick check if frontend is responding.
-        This is the ROOT FIX for the loading page completing too early.
+        v5.4: Enhanced with better error messages.
         """
         frontend_port = self.ports.get('frontend', 3000)
         url = f"http://127.0.0.1:{frontend_port}"
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
@@ -9458,8 +9494,15 @@ class AsyncSystemManager:
                     if is_ready:
                         print(f"{Colors.GREEN}✓ Frontend verified at port {frontend_port}{Colors.ENDC}")
                     return is_ready
+        except aiohttp.ClientConnectorError:
+            print(f"{Colors.YELLOW}Frontend not ready: connection refused on port {frontend_port}{Colors.ENDC}")
+            return False
+        except asyncio.TimeoutError:
+            print(f"{Colors.YELLOW}Frontend not ready: connection timeout on port {frontend_port}{Colors.ENDC}")
+            return False
         except Exception as e:
-            print(f"{Colors.YELLOW}Frontend not ready yet: {e}{Colors.ENDC}")
+            error_msg = str(e) if str(e) else type(e).__name__
+            print(f"{Colors.YELLOW}Frontend not ready: {error_msg}{Colors.ENDC}")
             return False
 
     async def _wait_for_frontend_ready(self, max_wait: int = 30) -> bool:
