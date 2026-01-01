@@ -1399,8 +1399,23 @@ async def parallel_lifespan(app: FastAPI):
     logger.info("")
 
     try:
+        # =================================================================
+        # PERFORMANCE OPTIMIZER: Attach to app state for lifecycle management
+        # =================================================================
+        if PERFORMANCE_OPTIMIZER_AVAILABLE:
+            try:
+                from core.performance_optimizer import get_optimizer
+                optimizer = get_optimizer()
+                app.state.performance_optimizer = optimizer
+                logger.info("📊 Performance Optimizer initialized and attached to app.state")
+            except Exception as e:
+                logger.debug(f"Could not attach Performance Optimizer to app.state: {e}")
+                app.state.performance_optimizer = None
+        else:
+            app.state.performance_optimizer = None
+
         yield
-        
+
         # =====================================================================
         # v4.0: Run deferred debug tasks in background AFTER server is serving
         # =====================================================================
@@ -1433,6 +1448,18 @@ async def parallel_lifespan(app: FastAPI):
     finally:
         # Shutdown
         logger.info("Shutting down parallel startup...")
+
+        # =================================================================
+        # PERFORMANCE OPTIMIZER: Graceful shutdown
+        # =================================================================
+        if hasattr(app.state, 'performance_optimizer') and app.state.performance_optimizer:
+            try:
+                logger.info("📊 Shutting down Performance Optimizer...")
+                await app.state.performance_optimizer.shutdown()
+                logger.info("📊 Performance Optimizer shutdown complete")
+            except Exception as e:
+                logger.debug(f"Performance Optimizer shutdown error (non-critical): {e}")
+
         await initializer.shutdown()
 
         # Clean up any remaining state
@@ -3059,10 +3086,36 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         app.state.db_adapter = None
         app.state.voice_verification = None
 
+    # =================================================================
+    # PERFORMANCE OPTIMIZER: Attach to app state for lifecycle management
+    # =================================================================
+    if PERFORMANCE_OPTIMIZER_AVAILABLE:
+        try:
+            from core.performance_optimizer import get_optimizer
+            optimizer = get_optimizer()
+            app.state.performance_optimizer = optimizer
+            logger.info("📊 Performance Optimizer initialized and attached to app.state")
+        except Exception as e:
+            logger.debug(f"Could not attach Performance Optimizer to app.state: {e}")
+            app.state.performance_optimizer = None
+    else:
+        app.state.performance_optimizer = None
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # =================================================================
+    # PERFORMANCE OPTIMIZER: Graceful shutdown
+    # =================================================================
+    if hasattr(app.state, 'performance_optimizer') and app.state.performance_optimizer:
+        try:
+            logger.info("📊 Shutting down Performance Optimizer...")
+            await app.state.performance_optimizer.shutdown()
+            logger.info("📊 Performance Optimizer shutdown complete")
+        except Exception as e:
+            logger.debug(f"Performance Optimizer shutdown error (non-critical): {e}")
 
     # Stop event loop watchdog
     try:
@@ -4007,6 +4060,109 @@ except Exception as e:
 
 
 # ═══════════════════════════════════════════════════════════════
+# PERFORMANCE PROFILING MIDDLEWARE - Request latency tracking
+# ═══════════════════════════════════════════════════════════════
+# Light integration: Only profiling/metrics, no replacement of existing
+# Connection Orchestrator or FAISS caching systems
+# ═══════════════════════════════════════════════════════════════
+PERFORMANCE_OPTIMIZER_AVAILABLE = False
+try:
+    from core.performance_optimizer import (
+        get_optimizer,
+        get_config,
+        get_profiler,
+        ProfileSample,
+    )
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from starlette.responses import Response
+    import time as _perf_time
+
+    class PerformanceProfilingMiddleware(BaseHTTPMiddleware):
+        """
+        FastAPI middleware for request latency tracking and profiling.
+
+        Features:
+        - Non-blocking request timing
+        - Automatic slow request detection
+        - Error rate tracking
+        - Zero impact on existing DB/Cache systems
+
+        Logs format: [PERF] GET /health took 12ms
+        """
+
+        async def dispatch(self, request: Request, call_next) -> Response:
+            config = get_config()
+            profiler = get_profiler()
+
+            start_time = _perf_time.time()
+            path = request.url.path
+            method = request.method
+
+            success = True
+            error_msg = None
+            status_code = 200
+
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+                success = status_code < 400
+                if not success:
+                    error_msg = f"HTTP {status_code}"
+                return response
+
+            except Exception as e:
+                success = False
+                error_msg = str(e)
+                raise
+
+            finally:
+                end_time = _perf_time.time()
+                duration_ms = (end_time - start_time) * 1000
+
+                # Record profile sample (non-blocking)
+                sample = ProfileSample(
+                    name=f"HTTP:{method}:{path}",
+                    start_time=start_time,
+                    end_time=end_time,
+                    duration_ms=duration_ms,
+                    success=success,
+                    error=error_msg,
+                )
+
+                # Fire-and-forget recording to avoid blocking the response
+                try:
+                    asyncio.create_task(profiler.record(sample))
+                except Exception:
+                    pass  # Never block on profiling
+
+                # Log performance (always log, threshold checked in profiler)
+                if config.profile_enabled:
+                    if duration_ms > config.profile_slow_threshold_ms:
+                        logger.warning(f"[PERF] {method} {path} took {duration_ms:.1f}ms (SLOW)")
+                    else:
+                        logger.debug(f"[PERF] {method} {path} took {duration_ms:.1f}ms")
+
+    # Add middleware to app
+    app.add_middleware(PerformanceProfilingMiddleware)
+    PERFORMANCE_OPTIMIZER_AVAILABLE = True
+
+    # Log config status
+    _perf_config = get_config()
+    _profile_status = "ENABLED" if _perf_config.profile_enabled else "disabled (set JARVIS_PROFILE_ENABLED=true to enable)"
+    _cache_status = "ENABLED" if _perf_config.cache_enabled else "disabled"
+    logger.info(f"✅ Performance Optimizer attached (Profiling Mode)")
+    logger.info(f"   Profiling: {_profile_status}")
+    logger.info(f"   Caching: {_cache_status} (L2 Redis: {'enabled' if _perf_config.cache_l2_enabled else 'disabled'})")
+    logger.info(f"   Slow threshold: {_perf_config.profile_slow_threshold_ms}ms")
+
+except ImportError as e:
+    logger.debug(f"Performance Optimizer not available: {e}")
+except Exception as e:
+    logger.warning(f"⚠️  Performance Optimizer initialization failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 # VOICE UNLOCK API - Mount at module level for proper route registration
 # ═══════════════════════════════════════════════════════════════
 # Routes must be registered BEFORE the server starts, NOT during lifespan
@@ -4570,6 +4726,59 @@ async def health_busy():
         "safe_to_update": not is_busy,
         "timestamp": datetime.now().isoformat(),
     }
+
+
+# ============================================================================
+# Performance Optimizer Stats Endpoint
+# ============================================================================
+
+@app.get("/health/performance")
+async def health_performance():
+    """
+    Get performance profiling statistics.
+
+    Returns latency tracking, cache stats, and connection pool metrics.
+    Enable detailed profiling with: JARVIS_PROFILE_ENABLED=true
+
+    Returns:
+        cache: Cache hit rates and eviction stats
+        pools: Connection pool usage stats
+        profiler: Request latency percentiles (if enabled)
+        config: Current performance configuration
+    """
+    if not PERFORMANCE_OPTIMIZER_AVAILABLE:
+        return {
+            "status": "unavailable",
+            "message": "Performance Optimizer not loaded",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    try:
+        from core.performance_optimizer import get_optimizer, get_config
+
+        optimizer = get_optimizer()
+        config = get_config()
+        stats = optimizer.get_stats()
+
+        return {
+            "status": "ok",
+            "cache": stats.get("cache", {}),
+            "pools": stats.get("pools", {}),
+            "profiler": stats.get("profiler", {}),
+            "config": {
+                "profile_enabled": config.profile_enabled,
+                "cache_enabled": config.cache_enabled,
+                "cache_l2_enabled": config.cache_l2_enabled,
+                "slow_threshold_ms": config.profile_slow_threshold_ms,
+            },
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat(),
+        }
 
 
 @app.get("/hybrid/status")

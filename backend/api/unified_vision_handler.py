@@ -38,7 +38,7 @@ except ImportError:
     NaturalResponseGenerator = None
 
 try:
-    from vision.performance_optimizer import PerformanceOptimizer
+    from core.performance_optimizer import PerformanceOptimizer
 except ImportError:
     PerformanceOptimizer = None
 
