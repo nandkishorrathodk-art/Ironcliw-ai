@@ -138,6 +138,21 @@ except ImportError as e:
     GHOST_MANAGER_AVAILABLE = False
     logger.warning(f"[VisualMonitor] GhostDisplayManager not available: {e}")
 
+# v27.0: Adaptive Resource Governor for FPS throttling under load
+try:
+    from backend.neural_mesh.agents.adaptive_resource_governor import (
+        AdaptiveResourceGovernor,
+        get_resource_governor,
+        WatcherPriority,
+        ThrottleLevel,
+        ThrottleState,
+    )
+    RESOURCE_GOVERNOR_AVAILABLE = True
+    logger.info("[VisualMonitor] ✅ AdaptiveResourceGovernor available for FPS throttling")
+except ImportError as e:
+    RESOURCE_GOVERNOR_AVAILABLE = False
+    logger.warning(f"[VisualMonitor] AdaptiveResourceGovernor not available: {e}")
+
 
 # =============================================================================
 # Action Configuration - "Watch & Act" Capabilities (v11.0)
@@ -765,6 +780,16 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # SOLUTION: Dynamic timeout + event-based registration + optimistic ack
         # =====================================================================
         self._progressive_startup_manager: Optional[ProgressiveStartupManager] = None
+
+        # v27.0: Adaptive Resource Governor - Dynamic FPS Throttling Under Load
+        # =====================================================================
+        # FIXES "MELTDOWN" RISK:
+        # When watching 11 windows at 60 FPS during heavy CPU load, system
+        # can become unresponsive. AdaptiveResourceGovernor monitors CPU/memory
+        # and dynamically throttles watcher FPS to prevent system overload.
+        # =====================================================================
+        self._resource_governor: Optional[AdaptiveResourceGovernor] = None
+        self._governor_started: bool = False
 
         # Lazy-loaded components - Action Execution (v11.0)
         self._computer_use_connector = None  # For executing actions
@@ -2060,6 +2085,26 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         watcher_tasks = []
         watcher_metadata = []
 
+        # v27.0: Initialize Resource Governor for FPS throttling under load
+        # =====================================================================
+        # FIXES "MELTDOWN" RISK:
+        # When watching 11 windows at 60 FPS during heavy CPU load, the system
+        # can become unresponsive. AdaptiveResourceGovernor monitors CPU/memory
+        # and dynamically throttles watcher FPS to prevent system overload.
+        # =====================================================================
+        if RESOURCE_GOVERNOR_AVAILABLE and not self._governor_started:
+            try:
+                self._resource_governor = get_resource_governor(
+                    throttle_callback=self._handle_throttle_change
+                )
+                await self._resource_governor.start_monitoring()
+                self._governor_started = True
+                logger.info(
+                    f"[God Mode] 🎮 Resource Governor started for {len(windows)} watchers"
+                )
+            except Exception as e:
+                logger.warning(f"[God Mode] Resource Governor init failed: {e}")
+
         for window in windows:
             # Create unique watcher ID
             watcher_id = f"{app_name}_space{window['space_id']}_win{window['window_id']}"
@@ -2086,6 +2131,20 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             )
 
             watcher_tasks.append(watcher_task)
+
+            # v27.0: Register watcher with Resource Governor for FPS allocation
+            if self._resource_governor:
+                try:
+                    allocation = await self._resource_governor.register_watcher(
+                        watcher_id=watcher_id,
+                        priority=WatcherPriority.NORMAL,
+                        base_fps=self.config.ferrari_fps  # Default 60 FPS
+                    )
+                    logger.debug(
+                        f"[God Mode] Registered watcher {watcher_id}: FPS={allocation.allocated_fps}"
+                    )
+                except Exception as e:
+                    logger.debug(f"[God Mode] Watcher registration failed: {e}")
 
         logger.info(f"🚀 Spawned {len(watcher_tasks)} parallel Ferrari Engine watchers")
 
@@ -3061,6 +3120,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         if hasattr(self, '_active_video_watchers'):
             for watcher_id, watcher in self._active_video_watchers.items():
                 try:
+                    # v27.0: Unregister from Resource Governor first
+                    if self._resource_governor:
+                        try:
+                            await self._resource_governor.unregister_watcher(watcher_id)
+                        except Exception:
+                            pass
+
                     if hasattr(watcher, 'stop'):
                         await watcher.stop()
                     logger.debug(f"✓ Stopped watcher: {watcher_id}")
@@ -3074,6 +3140,81 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             self._watcher_lifecycle.clear()
 
         logger.info("✅ All watchers stopped")
+
+        # v27.0: Stop resource governor when all watchers are stopped
+        if self._resource_governor and self._governor_started:
+            try:
+                await self._resource_governor.stop_monitoring()
+                self._governor_started = False
+                logger.debug("[God Mode] Resource Governor stopped")
+            except Exception as e:
+                logger.debug(f"[God Mode] Resource Governor stop failed: {e}")
+
+    # =========================================================================
+    # v27.0: Resource Governor Throttle Callback
+    # =========================================================================
+
+    async def _handle_throttle_change(self, throttle_state: ThrottleState) -> None:
+        """
+        Handle FPS throttle changes from the AdaptiveResourceGovernor.
+
+        Called when system load triggers a throttle level change. This method
+        applies the new FPS allocation to all active VideoWatchers.
+
+        Args:
+            throttle_state: New throttle state with target FPS and reason
+        """
+        try:
+            level_name = throttle_state.level.name
+            target_fps = throttle_state.target_fps
+            reason = throttle_state.reason
+
+            logger.info(
+                f"[ResourceGovernor] 🎮 Throttle changed: {level_name} → {target_fps} FPS ({reason})"
+            )
+
+            # Narrate significant throttle changes
+            if self.config.working_out_loud_enabled and throttle_state.level.value >= 2:  # MODERATE or higher
+                try:
+                    await self._narrate_working_out_loud(
+                        message=f"System is under heavy load. Reducing capture rate to {target_fps} FPS to prevent slowdown.",
+                        narration_type="status",
+                        watcher_id="resource_governor",
+                        priority="normal"
+                    )
+                except Exception:
+                    pass
+
+            # Apply FPS change to all active VideoWatchers
+            if not hasattr(self, '_active_video_watchers'):
+                return
+
+            for watcher_id, watcher in self._active_video_watchers.items():
+                try:
+                    # Get watcher-specific allocation
+                    if self._resource_governor:
+                        allocation = self._resource_governor.get_allocation(watcher_id)
+                        if allocation:
+                            fps_to_apply = allocation.allocated_fps
+                        else:
+                            fps_to_apply = target_fps
+                    else:
+                        fps_to_apply = target_fps
+
+                    # Apply FPS to VideoWatcher if it has a set_fps method
+                    if hasattr(watcher, 'set_fps'):
+                        watcher.set_fps(fps_to_apply)
+                        logger.debug(
+                            f"[ResourceGovernor] Applied {fps_to_apply} FPS to watcher {watcher_id}"
+                        )
+                    elif hasattr(watcher, 'fps'):
+                        watcher.fps = fps_to_apply
+
+                except Exception as e:
+                    logger.debug(f"[ResourceGovernor] Failed to apply FPS to {watcher_id}: {e}")
+
+        except Exception as e:
+            logger.warning(f"[ResourceGovernor] Throttle callback error: {e}")
 
     async def watch(
         self,
@@ -3796,6 +3937,29 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         health_check_interval = float(os.getenv('JARVIS_HEALTH_CHECK_INTERVAL', '10.0'))
         watcher_health_verified = True  # Assume healthy initially
 
+        # =====================================================================
+        # v18.0: ADAPTIVE RESOURCE GOVERNOR - Memory-Aware Throttling
+        # =====================================================================
+        # Integrates Defcon-level system for 16GB M1 Mac memory management
+        # GREEN: Full operations, YELLOW: Throttled, RED: Emergency abort
+        # =====================================================================
+        resource_governor = None
+        last_defcon_level = None
+        try:
+            from backend.core.resource_governor import (
+                get_resource_governor_sync,
+                DefconLevel
+            )
+            resource_governor = get_resource_governor_sync()
+            if resource_governor:
+                last_defcon_level = resource_governor.current_level
+                logger.info(
+                    f"[Ferrari Detection] Resource Governor active: "
+                    f"{resource_governor.current_level.emoji} DEFCON {resource_governor.current_level.name}"
+                )
+        except ImportError:
+            logger.debug("[Ferrari Detection] Resource Governor not available")
+
         # v14.0: Initial narration - announce monitoring start (now uses "startup" type)
         if self.config.working_out_loud_enabled:
             await self._narrate_working_out_loud(
@@ -3827,6 +3991,54 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         'ocr_checks': ocr_checks,
                         'timeout': True
                     }
+
+                # =====================================================================
+                # v18.0: Resource Governor - Defcon Level Check
+                # =====================================================================
+                # Check memory pressure and abort if critical (DEFCON RED)
+                # =====================================================================
+                if resource_governor:
+                    current_defcon = resource_governor.current_level
+
+                    # Check for level change and log
+                    if current_defcon != last_defcon_level:
+                        logger.warning(
+                            f"[Ferrari Detection] {current_defcon.emoji} DEFCON LEVEL CHANGE: "
+                            f"{last_defcon_level.name if last_defcon_level else 'INIT'} → {current_defcon.name}"
+                        )
+                        last_defcon_level = current_defcon
+
+                    # DEFCON RED: Abort monitoring to prevent system slowdown
+                    should_abort, abort_reason = resource_governor.should_abort_monitoring()
+                    if should_abort:
+                        logger.error(
+                            f"[Ferrari Detection] 🔴 EMERGENCY ABORT: {abort_reason}"
+                        )
+
+                        # Narrate the emergency abort
+                        if self.config.working_out_loud_enabled:
+                            try:
+                                await self._narrate_working_out_loud(
+                                    message="Suspending visual monitoring due to critical memory pressure. "
+                                            "I'll resume when memory frees up.",
+                                    narration_type="error",
+                                    watcher_id=watcher_id,
+                                    priority="high"
+                                )
+                            except Exception:
+                                pass
+
+                        # Cleanup and return
+                        self._cleanup_narration_state(watcher_id)
+                        return {
+                            'detected': False,
+                            'confidence': 0.0,
+                            'error': abort_reason,
+                            'frames_checked': frame_count,
+                            'ocr_checks': ocr_checks,
+                            'memory_abort': True,
+                            'defcon_level': current_defcon.name
+                        }
 
                 # v14.0: Heartbeat narration at configured intervals
                 if self.config.working_out_loud_enabled:
@@ -3924,7 +4136,14 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # For 5 FPS: check every frame
                 # For 30 FPS: check every 3-5 frames to reduce OCR load
                 fps = frame_data.get('fps', 5)
-                check_interval = max(1, int(fps / 5))  # ~5 OCR checks per second
+                base_check_interval = max(1, int(fps / 5))  # ~5 OCR checks per second
+
+                # v18.0: Apply Resource Governor throttle multiplier
+                # GREEN: 1x (5 checks/sec), YELLOW: 5x (1 check/sec), RED: suspended
+                if resource_governor:
+                    check_interval = resource_governor.get_adjusted_check_interval(base_check_interval)
+                else:
+                    check_interval = base_check_interval
 
                 if frame_count % check_interval == 0:
                     ocr_checks += 1

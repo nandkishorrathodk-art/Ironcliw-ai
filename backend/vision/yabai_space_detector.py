@@ -31,6 +31,16 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+# Import GhostPersistenceManager for crash recovery
+try:
+    from backend.vision.ghost_persistence_manager import (
+        GhostPersistenceManager,
+        get_persistence_manager,
+    )
+    _HAS_GHOST_PERSISTENCE = True
+except ImportError:
+    _HAS_GHOST_PERSISTENCE = False
+
 # Import managed executor for clean shutdown
 try:
     from core.thread_manager import ManagedThreadPoolExecutor
@@ -1147,6 +1157,16 @@ class GhostDisplayManager:
         self._z_order_cache: Dict[int, int] = {}  # window_id -> z_order
         self._focused_window_before_teleport: Optional[int] = None
 
+        # v27.0: Crash Recovery - Persistence Manager Integration
+        # =========================================================================
+        # FIXES "AMNESIA" RISK:
+        # If JARVIS crashes while windows are on Ghost Display, the in-memory
+        # geometry cache is lost. GhostPersistenceManager persists state to disk
+        # BEFORE teleportation, enabling recovery on restart.
+        # =========================================================================
+        self._persistence_manager: Optional[GhostPersistenceManager] = None
+        self._persistence_initialized: bool = False
+
     @property
     def status(self) -> GhostDisplayStatus:
         return self._status
@@ -1835,6 +1855,10 @@ class GhostDisplayManager:
                             f"on Display {self._ghost_info.display_id} "
                             f"({self._ghost_info.width}x{self._ghost_info.height})"
                         )
+
+                        # v27.0: Initialize persistence manager for crash recovery
+                        await self._initialize_persistence(yabai_detector)
+
                         return True
 
             # No Ghost Display - try fallback
@@ -1873,6 +1897,74 @@ class GhostDisplayManager:
 
         logger.error("[GhostManager] ❌ No fallback available")
         return False
+
+    # =========================================================================
+    # v27.0: Crash Recovery Integration
+    # =========================================================================
+
+    async def _initialize_persistence(
+        self,
+        yabai_detector: 'YabaiSpaceDetector',
+        narrate_callback: Optional[Callable] = None
+    ) -> None:
+        """
+        Initialize the persistence manager and audit for stranded windows.
+
+        This is called during GhostDisplayManager initialization to:
+        1. Load any persisted state from a previous session
+        2. Detect windows stranded on Ghost Display after a crash
+        3. Optionally repatriate stranded windows to their original spaces
+
+        Args:
+            yabai_detector: YabaiSpaceDetector for window operations
+            narrate_callback: Optional async callback for voice narration
+        """
+        if not _HAS_GHOST_PERSISTENCE:
+            logger.debug("[GhostManager] Ghost persistence not available - skipping crash recovery")
+            return
+
+        if self._persistence_initialized:
+            return
+
+        try:
+            # Get or create persistence manager
+            self._persistence_manager = get_persistence_manager()
+
+            # Start up and audit for stranded windows
+            stranded_windows = await self._persistence_manager.startup()
+
+            if stranded_windows:
+                logger.info(
+                    f"[GhostManager] 🆘 Found {len(stranded_windows)} stranded windows from previous session"
+                )
+
+                # Repatriate stranded windows
+                result = await self._persistence_manager.repatriate_stranded_windows(
+                    stranded=stranded_windows,
+                    narrate_callback=narrate_callback
+                )
+
+                logger.info(
+                    f"[GhostManager] 🏠 Crash recovery complete: "
+                    f"{result['success']} returned, {result['failed']} failed"
+                )
+            else:
+                logger.debug("[GhostManager] No stranded windows found - clean startup")
+
+            self._persistence_initialized = True
+
+        except Exception as e:
+            logger.warning(f"[GhostManager] Persistence initialization failed: {e}")
+            # Non-fatal - continue without crash recovery
+
+    async def shutdown_persistence(self) -> None:
+        """Shutdown persistence manager gracefully."""
+        if self._persistence_manager:
+            try:
+                await self._persistence_manager.shutdown()
+                logger.debug("[GhostManager] Persistence manager shutdown complete")
+            except Exception as e:
+                logger.warning(f"[GhostManager] Persistence shutdown error: {e}")
 
     async def start_health_monitoring(self, yabai_detector: 'YabaiSpaceDetector'):
         """Start background health monitoring for Ghost Display."""
@@ -2165,6 +2257,29 @@ class GhostDisplayManager:
             # Track focused window
             if was_focused:
                 self._focused_window_before_teleport = window_id
+
+            # v27.0: Persist to disk BEFORE teleportation for crash recovery
+            # This ensures if JARVIS crashes mid-teleport, we know where to return windows
+            if self._persistence_manager:
+                try:
+                    ghost_space_id = self.ghost_space or 0
+                    await self._persistence_manager.record_teleportation(
+                        window_id=window_id,
+                        app_name=geometry.app_name,
+                        original_space=original_space,
+                        original_x=geometry.x,
+                        original_y=geometry.y,
+                        original_width=geometry.width,
+                        original_height=geometry.height,
+                        ghost_space=ghost_space_id,
+                        z_order=window_z_order,
+                        original_display=original_display,
+                        was_minimized=geometry.is_minimized,
+                        was_fullscreen=geometry.is_fullscreen,
+                    )
+                except Exception as e:
+                    # Non-fatal - log and continue
+                    logger.debug(f"[GhostManager] Persistence record failed: {e}")
 
             logger.debug(
                 f"[GhostManager] 📐 Preserved geometry for window {window_id}: "
@@ -2571,6 +2686,15 @@ class GhostDisplayManager:
 
         # Clean up tracking
         await self.track_window_return(window_id)
+
+        # v27.0: Clear from persistence AFTER successful return
+        # This ensures crash recovery won't try to return an already-returned window
+        if self._persistence_manager:
+            try:
+                await self._persistence_manager.record_return(window_id)
+            except Exception as e:
+                # Non-fatal - log and continue
+                logger.debug(f"[GhostManager] Persistence clear failed: {e}")
 
         # v26.0: Clean up z-order cache
         if window_id in self._z_order_cache:
