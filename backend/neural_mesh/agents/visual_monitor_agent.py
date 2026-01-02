@@ -4419,34 +4419,111 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     logger.debug(f"[Validation] Yabai query failed for window {window_id}: {e}")
                     # Continue without yabai checks
 
-            # Check 5: Test actual frame capture (final boss check)
+            # =====================================================================
+            # v28.4: MULTI-SIGNAL HANDSHAKE - Three-Phase Lock Algorithm
+            # =====================================================================
+            # Phase 1: Logical Truth (Yabai) - Already checked above ✓
+            # Phase 2: Compositor Truth (CoreGraphics) - Check kCGWindowIsOnscreen
+            # Phase 3: Visual Truth (Frame Capture) - Only if Phase 2 passes
+            #
+            # This algorithm implements Eventual Consistency Synchronization:
+            # We wait for the compositor to confirm the window is onscreen
+            # BEFORE attempting expensive frame capture operations.
+            # =====================================================================
+
+            # Phase 2: Compositor Truth Check (Fast - ~5ms)
+            compositor_verified = False
+            compositor_alpha = None
+            compositor_error = None
+
+            try:
+                is_onscreen, compositor_alpha, compositor_error, compositor_details = \
+                    await self._check_compositor_onscreen(window_id, timeout=1.0)
+
+                validation_details['compositor_details'] = compositor_details
+
+                if is_onscreen:
+                    compositor_verified = True
+                    validation_details['checks_passed'].append('compositor_onscreen')
+                    logger.debug(
+                        f"[Validation] ✅ Phase 2 (Compositor Truth): Window {window_id} "
+                        f"is onscreen (alpha={compositor_alpha:.2f})"
+                    )
+                else:
+                    # Compositor says window not ready - wait with backoff
+                    if attempt < max_retries - 1:
+                        logger.debug(
+                            f"[Validation] ⏳ Phase 2 (Compositor Truth): Window {window_id} "
+                            f"not yet onscreen - {compositor_error}. "
+                            f"Waiting {current_delay_ms:.0f}ms before retry {attempt + 2}/{max_retries}"
+                        )
+                        await asyncio.sleep(current_delay_ms / 1000.0)
+                        total_wait_time_ms += current_delay_ms
+                        validation_details['backoff_sequence'].append(current_delay_ms)
+                        current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
+                        continue
+                    else:
+                        validation_details['checks_failed'].append('compositor_not_onscreen')
+                        # Don't return yet - still try frame capture as last resort
+
+            except Exception as e:
+                logger.debug(f"[Validation] Compositor check failed: {e} - will try frame capture")
+                # Optimistic: proceed to frame capture if compositor check fails
+                compositor_verified = True
+                validation_details['compositor_check_error'] = str(e)
+
+            # Phase 3: Visual Truth - Frame Capture Test (Only if compositor verified OR fallback)
             if self._fast_capture_engine:
                 try:
+                    # Progressive timeout: compositor-verified windows should capture faster
+                    capture_timeout = 2.0 if compositor_verified else 3.0
+
                     test_frame = await asyncio.wait_for(
                         asyncio.to_thread(
                             self._fast_capture_engine.capture_window_by_id,
                             window_id
                         ),
-                        timeout=2.0
+                        timeout=capture_timeout
                     )
 
-                    if test_frame is not None and len(test_frame) > 0:
+                    # Validate frame data
+                    frame_valid = False
+                    if test_frame is not None:
+                        if isinstance(test_frame, (list, tuple, bytes)):
+                            frame_valid = len(test_frame) > 0
+                        elif hasattr(test_frame, '__len__'):
+                            frame_valid = len(test_frame) > 0
+                        else:
+                            frame_valid = True  # Assume valid if not None
+
+                    if frame_valid:
                         validation_details['checks_passed'].append('frame_capture')
                         validation_details['total_wait_time_ms'] = total_wait_time_ms
-                        # v28.3: Log successful hydration time for telemetry
+                        validation_details['validation_strategy'] = 'multi_signal_handshake_v28.4'
+
+                        # Log successful hydration time for telemetry
                         hydration_time_ms = (time.time() - validation_start_time) * 1000
+
                         logger.info(
-                            f"[Validation] ✅ Window {window_id} hydrated successfully "
-                            f"after {hydration_time_ms:.0f}ms (attempt {attempt + 1}/{max_retries})"
+                            f"[Validation] ✅ Multi-Signal Handshake SUCCESS: Window {window_id} "
+                            f"validated after {hydration_time_ms:.0f}ms "
+                            f"(Logical: ✓, Compositor: {'✓' if compositor_verified else '?'}, Visual: ✓)"
                         )
-                        return True, f"Window validated as capturable (hydrated in {hydration_time_ms:.0f}ms)", validation_details
+
+                        return (
+                            True,
+                            f"Window validated via Multi-Signal Handshake v28.4 "
+                            f"(hydrated in {hydration_time_ms:.0f}ms)",
+                            validation_details
+                        )
                     else:
+                        # Frame returned but empty - compositor said ready but pixels not there yet
                         if attempt < max_retries - 1:
                             logger.debug(
                                 f"[Validation] Frame capture returned empty for window {window_id} "
-                                f"(not hydrated yet) - waiting {current_delay_ms:.0f}ms before retry {attempt + 2}/{max_retries}"
+                                f"(compositor={compositor_verified}, frame=empty) - "
+                                f"waiting {current_delay_ms:.0f}ms before retry {attempt + 2}/{max_retries}"
                             )
-                            # v28.3: Exponential backoff sleep
                             await asyncio.sleep(current_delay_ms / 1000.0)
                             total_wait_time_ms += current_delay_ms
                             validation_details['backoff_sequence'].append(current_delay_ms)
@@ -4457,9 +4534,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     if attempt < max_retries - 1:
                         logger.debug(
                             f"[Validation] Frame capture timed out for window {window_id} "
-                            f"- waiting {current_delay_ms:.0f}ms before retry"
+                            f"(compositor={compositor_verified}) - "
+                            f"waiting {current_delay_ms:.0f}ms before retry"
                         )
-                        # v28.3: Exponential backoff sleep
                         await asyncio.sleep(current_delay_ms / 1000.0)
                         total_wait_time_ms += current_delay_ms
                         validation_details['backoff_sequence'].append(current_delay_ms)
@@ -4467,17 +4544,22 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         continue
 
                 except Exception as e:
-                    logger.debug(f"[Validation] Test capture failed: {e}")
+                    logger.debug(f"[Validation] Frame capture failed: {e}")
                     if attempt < max_retries - 1:
-                        # v28.3: Exponential backoff sleep
                         await asyncio.sleep(current_delay_ms / 1000.0)
                         total_wait_time_ms += current_delay_ms
                         validation_details['backoff_sequence'].append(current_delay_ms)
                         current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                         continue
 
-            # If we get here without frame capture engine, assume capturable
+            # If we get here without frame capture engine, check compositor result
             if not self._fast_capture_engine:
+                if compositor_verified:
+                    return (
+                        True,
+                        "Window verified by compositor (no frame engine available)",
+                        validation_details
+                    )
                 return True, "No frame capture engine - assuming capturable", validation_details
 
         # All retries exhausted
@@ -4489,6 +4571,244 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             f"Window {window_id} failed frame capture test after {max_retries} attempts "
             f"over {total_time_ms:.0f}ms (window may need more time to hydrate on Ghost Display)",
             validation_details
+        )
+
+    # =========================================================================
+    # v28.4: COMPOSITOR TRUTH CHECK - CoreGraphics Window State
+    # =========================================================================
+
+    async def _check_compositor_onscreen(
+        self,
+        window_id: int,
+        timeout: float = 1.0
+    ) -> Tuple[bool, Optional[float], Optional[str], Dict[str, Any]]:
+        """
+        v28.4: Check if window is actually onscreen via CoreGraphics compositor.
+
+        This is the "Compositor Truth" check - the critical missing signal that
+        verifies the GPU compositor has finished rendering the window.
+
+        =====================================================================
+        WHY THIS MATTERS (Eventual Consistency)
+        =====================================================================
+        macOS Window Server operates as a distributed system with TWO states:
+
+        1. LOGICAL STATE (Yabai/WindowServer metadata)
+           - Updates INSTANTLY when window is moved
+           - Tells you WHERE the window SHOULD be
+
+        2. PHYSICAL STATE (GPU Compositor)
+           - Updates AFTER rendering completes (200-600ms delay)
+           - Tells you WHERE the window ACTUALLY IS (can be captured)
+
+        The `kCGWindowIsOnscreen` flag is the compositor's signal that:
+        - The window has been assigned a display
+        - The compositor has allocated GPU resources
+        - The window is actively being composited (rendered)
+        - ScreenCaptureKit CAN capture it
+
+        This check is FAST (~5ms) compared to frame capture (~50ms).
+        =====================================================================
+
+        Args:
+            window_id: The CGWindowID to check
+            timeout: Maximum time to wait for CoreGraphics query
+
+        Returns:
+            Tuple of (is_onscreen, alpha_value, error_message, details_dict)
+        """
+        details: Dict[str, Any] = {
+            'window_id': window_id,
+            'compositor_query_attempted': False,
+            'quartz_available': False
+        }
+
+        try:
+            # Import Quartz (pyobjc-framework-Quartz)
+            from Quartz import (
+                CGWindowListCopyWindowInfo,
+                kCGWindowListOptionIncludingWindow,
+                kCGWindowIsOnscreen,
+                kCGWindowAlpha,
+                kCGWindowLayer,
+                kCGWindowBounds,
+                kCGWindowOwnerName,
+                kCGWindowName,
+            )
+            details['quartz_available'] = True
+
+            # Run CoreGraphics query in thread pool with timeout
+            def _query_compositor():
+                return CGWindowListCopyWindowInfo(
+                    kCGWindowListOptionIncludingWindow,
+                    window_id
+                )
+
+            details['compositor_query_attempted'] = True
+
+            window_list = await asyncio.wait_for(
+                asyncio.to_thread(_query_compositor),
+                timeout=timeout
+            )
+
+            if not window_list or len(window_list) == 0:
+                details['window_found'] = False
+                return (
+                    False,
+                    None,
+                    f"Window {window_id} not found in CoreGraphics compositor",
+                    details
+                )
+
+            # Parse window info from compositor
+            window_dict = window_list[0]
+            details['window_found'] = True
+
+            # Extract compositor state
+            is_onscreen = bool(window_dict.get(kCGWindowIsOnscreen, False))
+            alpha = float(window_dict.get(kCGWindowAlpha, 0.0))
+            layer = int(window_dict.get(kCGWindowLayer, 0))
+            bounds = window_dict.get(kCGWindowBounds, {})
+            owner_name = window_dict.get(kCGWindowOwnerName, 'Unknown')
+            window_name = window_dict.get(kCGWindowName, '')
+
+            details['is_onscreen'] = is_onscreen
+            details['alpha'] = alpha
+            details['layer'] = layer
+            details['bounds'] = dict(bounds) if bounds else {}
+            details['owner_name'] = owner_name
+            details['window_name'] = window_name
+
+            # Validate onscreen status
+            # Window must be onscreen AND have non-zero alpha to be capturable
+            if is_onscreen and alpha > 0.01:
+                return (
+                    True,
+                    alpha,
+                    None,
+                    details
+                )
+            elif is_onscreen and alpha <= 0.01:
+                return (
+                    False,
+                    alpha,
+                    f"Window {window_id} is onscreen but has zero alpha ({alpha:.3f})",
+                    details
+                )
+            else:
+                return (
+                    False,
+                    alpha,
+                    f"Window {window_id} not yet rendered by compositor (is_onscreen={is_onscreen})",
+                    details
+                )
+
+        except ImportError as e:
+            details['error'] = f"Quartz not available: {e}"
+            return (
+                False,
+                None,
+                "Quartz framework not available (install pyobjc-framework-Quartz)",
+                details
+            )
+
+        except asyncio.TimeoutError:
+            details['error'] = f"Compositor query timed out after {timeout}s"
+            return (
+                False,
+                None,
+                f"CoreGraphics query timed out after {timeout}s",
+                details
+            )
+
+        except Exception as e:
+            details['error'] = str(e)
+            return (
+                False,
+                None,
+                f"Compositor check failed: {e}",
+                details
+            )
+
+    async def _wait_for_compositor_onscreen(
+        self,
+        window_id: int,
+        max_wait_ms: float = 3000.0,
+        check_interval_ms: float = 100.0,
+        backoff_multiplier: float = 1.3
+    ) -> Tuple[bool, float, str, Dict[str, Any]]:
+        """
+        v28.4: Wait for window to become onscreen in compositor with adaptive polling.
+
+        This implements the "Eventual Consistency Synchronization" pattern:
+        Poll the compositor state with exponential backoff until the window
+        is confirmed onscreen or timeout is reached.
+
+        Args:
+            window_id: The CGWindowID to wait for
+            max_wait_ms: Maximum time to wait in milliseconds
+            check_interval_ms: Initial polling interval in milliseconds
+            backoff_multiplier: Multiplier for exponential backoff
+
+        Returns:
+            Tuple of (success, wait_time_ms, message, details)
+        """
+        import time
+        start_time = time.time()
+        current_interval = check_interval_ms
+        total_wait = 0.0
+        attempts = 0
+
+        details: Dict[str, Any] = {
+            'window_id': window_id,
+            'max_wait_ms': max_wait_ms,
+            'attempts': 0,
+            'intervals': []
+        }
+
+        while total_wait < max_wait_ms:
+            attempts += 1
+            details['attempts'] = attempts
+
+            # Check compositor state
+            is_onscreen, alpha, error, check_details = await self._check_compositor_onscreen(
+                window_id, timeout=1.0
+            )
+
+            if is_onscreen:
+                elapsed_ms = (time.time() - start_time) * 1000
+                details['success'] = True
+                details['final_alpha'] = alpha
+                details['compositor_details'] = check_details
+                logger.debug(
+                    f"[Compositor] ✅ Window {window_id} became onscreen after "
+                    f"{elapsed_ms:.0f}ms ({attempts} checks)"
+                )
+                return (
+                    True,
+                    elapsed_ms,
+                    f"Window became onscreen after {elapsed_ms:.0f}ms",
+                    details
+                )
+
+            # Not yet onscreen - wait with backoff
+            if total_wait + current_interval < max_wait_ms:
+                details['intervals'].append(current_interval)
+                await asyncio.sleep(current_interval / 1000.0)
+                total_wait += current_interval
+                current_interval = min(current_interval * backoff_multiplier, 500.0)  # Cap at 500ms
+            else:
+                break
+
+        # Timeout reached
+        elapsed_ms = (time.time() - start_time) * 1000
+        details['success'] = False
+        details['timeout'] = True
+        return (
+            False,
+            elapsed_ms,
+            f"Window {window_id} did not become onscreen within {max_wait_ms:.0f}ms",
+            details
         )
 
     async def _refresh_yabai_windows_cache(self, force: bool = False) -> bool:
