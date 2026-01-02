@@ -124,6 +124,20 @@ except ImportError:
     MULTI_SPACE_AVAILABLE = False
     logger.warning("MultiSpaceWindowDetector not available - multi-space watching disabled")
 
+# v25.0: Ghost Display Manager for Shadow Monitor infrastructure
+try:
+    from backend.vision.yabai_space_detector import (
+        GhostDisplayManager,
+        GhostDisplayStatus,
+        WindowLayoutStyle,
+        get_ghost_manager,
+    )
+    GHOST_MANAGER_AVAILABLE = True
+    logger.info("[VisualMonitor] ✅ GhostDisplayManager available for Shadow Monitor")
+except ImportError as e:
+    GHOST_MANAGER_AVAILABLE = False
+    logger.warning(f"[VisualMonitor] GhostDisplayManager not available: {e}")
+
 
 # =============================================================================
 # Action Configuration - "Watch & Act" Capabilities (v11.0)
@@ -1546,6 +1560,39 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             if "app_name" not in w:
                                 w["app_name"] = w.get("app", app_name)
 
+                        # =========================================================
+                        # v25.0: GHOST DISPLAY MANAGER INTEGRATION
+                        # =========================================================
+                        # Initialize Ghost Display Manager for:
+                        # - Health monitoring with auto-recovery
+                        # - Window geometry preservation
+                        # - Intelligent layout management
+                        # - Window return policy
+                        # =========================================================
+                        ghost_manager = None
+                        if GHOST_MANAGER_AVAILABLE:
+                            try:
+                                ghost_manager = get_ghost_manager()
+                                await ghost_manager.initialize(yabai)
+
+                                # Start health monitoring
+                                await ghost_manager.start_health_monitoring(yabai)
+
+                                # v25.0: Preserve window geometry before teleportation
+                                for w in windows_to_teleport:
+                                    window_id = w.get("window_id")
+                                    await ghost_manager.preserve_window_geometry(
+                                        window_id=window_id,
+                                        yabai_detector=yabai,
+                                        app_name=w.get("app_name", app_name)
+                                    )
+
+                                logger.info(
+                                    f"[God Mode] 📐 Preserved geometry for {len(windows_to_teleport)} windows"
+                                )
+                            except Exception as e:
+                                logger.debug(f"[God Mode] Ghost Manager init failed: {e}")
+
                         # Narrate the action
                         if self.config.working_out_loud_enabled:
                             try:
@@ -1621,6 +1668,48 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                                 f"[God Mode] ✅ AUTO-HANDOFF complete: "
                                 f"{len(teleported_windows)}/{len(windows_to_teleport)} windows moved to Ghost Display"
                             )
+
+                            # =========================================================
+                            # v25.0: TRACK TELEPORTED WINDOWS & APPLY LAYOUT
+                            # =========================================================
+                            if ghost_manager is not None:
+                                try:
+                                    # Track each teleported window
+                                    for w in teleported_windows:
+                                        window_id = w.get("window_id")
+                                        await ghost_manager.track_window_teleport(
+                                            window_id=window_id,
+                                            to_space=ghost_space
+                                        )
+
+                                    # Apply intelligent layout to windows on Ghost Display
+                                    teleported_window_ids = [
+                                        w.get("window_id") for w in teleported_windows
+                                    ]
+                                    layout_result = await ghost_manager.apply_layout(
+                                        window_ids=teleported_window_ids,
+                                        yabai_detector=yabai
+                                    )
+
+                                    if layout_result.get("success"):
+                                        logger.info(
+                                            f"[God Mode] 📐 Layout applied to {len(teleported_window_ids)} windows "
+                                            f"on Ghost Display"
+                                        )
+                                    else:
+                                        logger.debug(
+                                            f"[God Mode] Layout partially applied: "
+                                            f"{len(layout_result.get('applied', []))} succeeded"
+                                        )
+
+                                    # Store reference for window return policy
+                                    # This enables returning windows after monitoring ends
+                                    if not hasattr(self, '_ghost_managers'):
+                                        self._ghost_managers = {}
+                                    self._ghost_managers[app_name] = ghost_manager
+
+                                except Exception as e:
+                                    logger.debug(f"[God Mode] Ghost Manager tracking/layout failed: {e}")
 
                             # Narrate success with rescue stats
                             if self.config.working_out_loud_enabled:
@@ -2967,10 +3056,57 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         if total_active == 0:
             await self._stop_purple_indicator()
 
+        # =====================================================================
+        # v25.0: WINDOW RETURN POLICY
+        # =====================================================================
+        # Return windows to their original spaces after monitoring ends
+        # (if configured via JARVIS_RETURN_WINDOWS=true)
+        # =====================================================================
+        windows_returned = 0
+        if GHOST_MANAGER_AVAILABLE and hasattr(self, '_ghost_managers') and app_name:
+            try:
+                ghost_manager = self._ghost_managers.get(app_name)
+                if ghost_manager and ghost_manager.config.return_windows_after_monitoring:
+                    logger.info(f"[God Mode] 🏠 Returning windows to original spaces for {app_name}...")
+
+                    from backend.vision.yabai_space_detector import get_yabai_detector
+                    yabai = get_yabai_detector()
+
+                    return_result = await ghost_manager.return_all_windows(
+                        yabai_detector=yabai,
+                        restore_geometry=ghost_manager.config.preserve_geometry_on_return
+                    )
+
+                    windows_returned = len(return_result.get("returned", []))
+
+                    if windows_returned > 0:
+                        logger.info(
+                            f"[God Mode] 🏠 Returned {windows_returned} windows to original spaces"
+                        )
+
+                        # Narrate the return
+                        if self.config.working_out_loud_enabled:
+                            await self._narrate_working_out_loud(
+                                message=f"Monitoring complete. I've returned {windows_returned} {app_name} windows to their original positions.",
+                                narration_type="success",
+                                watcher_id=f"return_{app_name}",
+                                priority="medium"
+                            )
+
+                    # Stop health monitoring
+                    await ghost_manager.stop_health_monitoring()
+
+                    # Clean up
+                    del self._ghost_managers[app_name]
+
+            except Exception as e:
+                logger.debug(f"[God Mode] Window return failed: {e}")
+
         return {
             "success": True,
             "stopped_count": stopped_count,
-            "message": f"Stopped {stopped_count} watcher(s)"
+            "windows_returned": windows_returned,
+            "message": f"Stopped {stopped_count} watcher(s)" + (f", returned {windows_returned} windows" if windows_returned > 0 else "")
         }
 
     async def list_watchers(self) -> Dict[str, Any]:

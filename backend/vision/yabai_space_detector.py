@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 # Import managed executor for clean shutdown
 try:
@@ -618,6 +618,749 @@ def reset_rescue_telemetry() -> None:
     """Reset the global rescue telemetry (for testing)."""
     global _RESCUE_TELEMETRY
     _RESCUE_TELEMETRY = None
+
+
+# =============================================================================
+# v25.0.0: SHADOW MONITOR INFRASTRUCTURE
+# =============================================================================
+# Comprehensive Ghost Display management with:
+# - Health monitoring and auto-recovery
+# - Window geometry preservation and restoration
+# - Intelligent window layout management
+# - Window return policy for post-monitoring cleanup
+# - Fallback strategies when Ghost Display unavailable
+# - Multi-window coordination with smart throttling
+# =============================================================================
+
+class WindowLayoutStyle(Enum):
+    """Layout styles for arranging windows on Ghost Display."""
+    SIDE_BY_SIDE = "side_by_side"      # Windows arranged horizontally
+    STACKED = "stacked"                 # Windows arranged vertically
+    GRID = "grid"                       # Windows in a grid pattern
+    CASCADE = "cascade"                 # Cascaded windows (overlapping)
+    MAXIMIZE = "maximize"               # Each window maximized (for single window)
+    PRESERVE = "preserve"               # Keep original positions
+
+
+class GhostDisplayStatus(Enum):
+    """Status of the Ghost Display."""
+    AVAILABLE = "available"             # Ghost Display is ready
+    UNAVAILABLE = "unavailable"         # No Ghost Display found
+    DISCONNECTED = "disconnected"       # Was available, now gone
+    RECONNECTING = "reconnecting"       # Attempting to reconnect
+    FALLBACK = "fallback"               # Using fallback strategy
+
+
+@dataclass
+class WindowGeometry:
+    """Preserved window geometry for restoration."""
+    window_id: int
+    app_name: str
+    original_space: int
+    original_display: int
+    x: int
+    y: int
+    width: int
+    height: int
+    is_minimized: bool = False
+    is_fullscreen: bool = False
+    is_floating: bool = False
+    teleported_at: Optional[datetime] = None
+    current_space: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "window_id": self.window_id,
+            "app_name": self.app_name,
+            "original_space": self.original_space,
+            "original_display": self.original_display,
+            "bounds": {"x": self.x, "y": self.y, "width": self.width, "height": self.height},
+            "is_minimized": self.is_minimized,
+            "is_fullscreen": self.is_fullscreen,
+            "teleported_at": self.teleported_at.isoformat() if self.teleported_at else None,
+        }
+
+
+@dataclass
+class GhostDisplayInfo:
+    """Information about the Ghost Display."""
+    space_id: int
+    display_id: int
+    display_name: str
+    width: int
+    height: int
+    is_virtual: bool
+    window_count: int
+    last_health_check: Optional[datetime] = None
+    consecutive_failures: int = 0
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if Ghost Display is healthy based on recent checks."""
+        if self.consecutive_failures >= 3:
+            return False
+        if self.last_health_check is None:
+            return True  # No data, assume healthy
+        age = (datetime.now() - self.last_health_check).total_seconds()
+        return age < 60  # Consider unhealthy if not checked in 60s
+
+
+@dataclass
+class GhostDisplayManagerConfig:
+    """Configuration for Ghost Display management."""
+    # Health monitoring
+    health_check_interval_seconds: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_HEALTH_INTERVAL", "30"))
+    )
+    max_consecutive_failures: int = 3
+    auto_recovery_enabled: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_RECOVERY", "true").lower() == "true"
+    )
+
+    # Window layout
+    default_layout_style: WindowLayoutStyle = field(
+        default_factory=lambda: WindowLayoutStyle(
+            os.environ.get("JARVIS_GHOST_LAYOUT", "side_by_side")
+        ) if os.environ.get("JARVIS_GHOST_LAYOUT") else WindowLayoutStyle.SIDE_BY_SIDE
+    )
+    layout_padding: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_PADDING", "10"))
+    )
+    max_windows_per_row: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MAX_PER_ROW", "3"))
+    )
+
+    # Window return policy
+    return_windows_after_monitoring: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_RETURN_WINDOWS", "false").lower() == "true"
+    )
+    preserve_geometry_on_return: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_PRESERVE_GEOMETRY", "true").lower() == "true"
+    )
+
+    # Fallback strategy
+    fallback_enabled: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_FALLBACK", "true").lower() == "true"
+    )
+    fallback_create_space: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_CREATE_SPACE", "false").lower() == "true"
+    )
+
+    # Multi-window coordination
+    max_windows_on_ghost: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MAX_WINDOWS", "10"))
+    )
+    throttle_teleports: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_THROTTLE_TELEPORTS", "true").lower() == "true"
+    )
+    teleport_delay_ms: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_TELEPORT_DELAY_MS", "50"))
+    )
+
+
+class GhostDisplayManager:
+    """
+    Comprehensive Ghost Display lifecycle management.
+
+    Features:
+    - Health monitoring with auto-recovery
+    - Window geometry preservation
+    - Intelligent layout management
+    - Window return policy
+    - Fallback strategies
+    - Multi-window coordination
+    """
+
+    def __init__(self, config: Optional[GhostDisplayManagerConfig] = None):
+        self.config = config or GhostDisplayManagerConfig()
+        self._ghost_info: Optional[GhostDisplayInfo] = None
+        self._status: GhostDisplayStatus = GhostDisplayStatus.UNAVAILABLE
+        self._geometry_cache: Dict[int, WindowGeometry] = {}  # window_id -> geometry
+        self._monitoring_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+        self._windows_on_ghost: Set[int] = set()
+        self._fallback_space: Optional[int] = None
+        self._last_layout_time: float = 0.0
+
+    @property
+    def status(self) -> GhostDisplayStatus:
+        return self._status
+
+    @property
+    def ghost_space(self) -> Optional[int]:
+        if self._ghost_info:
+            return self._ghost_info.space_id
+        return self._fallback_space
+
+    @property
+    def windows_on_ghost(self) -> Set[int]:
+        return self._windows_on_ghost.copy()
+
+    @property
+    def window_count(self) -> int:
+        return len(self._windows_on_ghost)
+
+    def get_preserved_geometry(self, window_id: int) -> Optional[WindowGeometry]:
+        """Get preserved geometry for a window."""
+        return self._geometry_cache.get(window_id)
+
+    def get_all_preserved_geometries(self) -> List[WindowGeometry]:
+        """Get all preserved window geometries."""
+        return list(self._geometry_cache.values())
+
+    async def initialize(self, yabai_detector: 'YabaiSpaceDetector') -> bool:
+        """
+        Initialize the Ghost Display Manager.
+
+        Args:
+            yabai_detector: YabaiSpaceDetector instance for querying spaces
+
+        Returns:
+            True if Ghost Display is available (or fallback activated)
+        """
+        async with self._lock:
+            # Detect Ghost Display
+            ghost_space = yabai_detector.get_ghost_display_space()
+
+            if ghost_space is not None:
+                # Get display info
+                spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+                for space in spaces:
+                    if space.get("space_id") == ghost_space:
+                        self._ghost_info = GhostDisplayInfo(
+                            space_id=ghost_space,
+                            display_id=space.get("display", 2),
+                            display_name=f"Display {space.get('display', 2)}",
+                            width=space.get("width", 1920),
+                            height=space.get("height", 1080),
+                            is_virtual=space.get("display", 1) > 1,
+                            window_count=space.get("window_count", 0),
+                            last_health_check=datetime.now()
+                        )
+                        self._status = GhostDisplayStatus.AVAILABLE
+                        logger.info(
+                            f"[GhostManager] ✅ Initialized: Space {ghost_space} "
+                            f"on Display {self._ghost_info.display_id} "
+                            f"({self._ghost_info.width}x{self._ghost_info.height})"
+                        )
+                        return True
+
+            # No Ghost Display - try fallback
+            if self.config.fallback_enabled:
+                return await self._activate_fallback(yabai_detector)
+
+            self._status = GhostDisplayStatus.UNAVAILABLE
+            logger.warning("[GhostManager] ❌ No Ghost Display available and fallback disabled")
+            return False
+
+    async def _activate_fallback(self, yabai_detector: 'YabaiSpaceDetector') -> bool:
+        """Activate fallback strategy when Ghost Display unavailable."""
+        self._status = GhostDisplayStatus.FALLBACK
+
+        # Strategy 1: Find any visible space that's not current
+        spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+        current_space = yabai_detector.get_current_user_space()
+
+        for space in spaces:
+            if space.get("is_visible") and space.get("space_id") != current_space:
+                self._fallback_space = space.get("space_id")
+                logger.info(
+                    f"[GhostManager] 🔄 FALLBACK: Using Space {self._fallback_space} "
+                    f"as substitute Ghost Display"
+                )
+                return True
+
+        # Strategy 2: Use current space (last resort - will be visible to user)
+        if current_space:
+            self._fallback_space = current_space
+            logger.warning(
+                f"[GhostManager] ⚠️ FALLBACK: Using current Space {current_space} "
+                f"(windows will be visible to user)"
+            )
+            return True
+
+        logger.error("[GhostManager] ❌ No fallback available")
+        return False
+
+    async def start_health_monitoring(self, yabai_detector: 'YabaiSpaceDetector'):
+        """Start background health monitoring for Ghost Display."""
+        if self._monitoring_task is not None:
+            return  # Already running
+
+        async def monitor_loop():
+            while True:
+                try:
+                    await asyncio.sleep(self.config.health_check_interval_seconds)
+                    await self._health_check(yabai_detector)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.debug(f"[GhostManager] Health check error: {e}")
+
+        self._monitoring_task = asyncio.create_task(monitor_loop())
+        logger.debug("[GhostManager] 🏥 Health monitoring started")
+
+    async def stop_health_monitoring(self):
+        """Stop health monitoring."""
+        if self._monitoring_task:
+            self._monitoring_task.cancel()
+            try:
+                await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+            self._monitoring_task = None
+            logger.debug("[GhostManager] 🏥 Health monitoring stopped")
+
+    async def _health_check(self, yabai_detector: 'YabaiSpaceDetector'):
+        """Perform health check on Ghost Display."""
+        if self._ghost_info is None:
+            return
+
+        async with self._lock:
+            # Verify Ghost Display is still available
+            current_ghost = yabai_detector.get_ghost_display_space()
+
+            if current_ghost == self._ghost_info.space_id:
+                # Still available
+                self._ghost_info.last_health_check = datetime.now()
+                self._ghost_info.consecutive_failures = 0
+                self._status = GhostDisplayStatus.AVAILABLE
+            else:
+                # Ghost Display changed or disappeared
+                self._ghost_info.consecutive_failures += 1
+                logger.warning(
+                    f"[GhostManager] ⚠️ Health check failed "
+                    f"({self._ghost_info.consecutive_failures}/{self.config.max_consecutive_failures})"
+                )
+
+                if self._ghost_info.consecutive_failures >= self.config.max_consecutive_failures:
+                    self._status = GhostDisplayStatus.DISCONNECTED
+
+                    if self.config.auto_recovery_enabled:
+                        await self._attempt_recovery(yabai_detector)
+
+    async def _attempt_recovery(self, yabai_detector: 'YabaiSpaceDetector'):
+        """Attempt to recover Ghost Display connection."""
+        self._status = GhostDisplayStatus.RECONNECTING
+        logger.info("[GhostManager] 🔄 Attempting Ghost Display recovery...")
+
+        # Try to find new Ghost Display
+        new_ghost = yabai_detector.get_ghost_display_space()
+
+        if new_ghost is not None:
+            # Found new Ghost Display
+            spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+            for space in spaces:
+                if space.get("space_id") == new_ghost:
+                    self._ghost_info = GhostDisplayInfo(
+                        space_id=new_ghost,
+                        display_id=space.get("display", 2),
+                        display_name=f"Display {space.get('display', 2)}",
+                        width=space.get("width", 1920),
+                        height=space.get("height", 1080),
+                        is_virtual=space.get("display", 1) > 1,
+                        window_count=space.get("window_count", 0),
+                        last_health_check=datetime.now()
+                    )
+                    self._status = GhostDisplayStatus.AVAILABLE
+                    logger.info(f"[GhostManager] ✅ Recovery successful: Space {new_ghost}")
+
+                    # Re-teleport windows if any were on old Ghost Display
+                    if self._windows_on_ghost:
+                        logger.info(
+                            f"[GhostManager] 🚑 Re-teleporting {len(self._windows_on_ghost)} "
+                            f"windows to new Ghost Display"
+                        )
+                        # Windows will need to be re-teleported by caller
+                    return
+
+        # Recovery failed - activate fallback
+        if self.config.fallback_enabled:
+            await self._activate_fallback(yabai_detector)
+        else:
+            self._status = GhostDisplayStatus.UNAVAILABLE
+            logger.error("[GhostManager] ❌ Recovery failed, Ghost Display unavailable")
+
+    async def preserve_window_geometry(
+        self,
+        window_id: int,
+        yabai_detector: 'YabaiSpaceDetector',
+        app_name: Optional[str] = None
+    ) -> Optional[WindowGeometry]:
+        """
+        Preserve window geometry before teleportation.
+
+        Args:
+            window_id: Window to preserve geometry for
+            yabai_detector: YabaiSpaceDetector for querying
+            app_name: Optional app name for tracking
+
+        Returns:
+            WindowGeometry if successful
+        """
+        try:
+            # Get window info from yabai
+            windows = yabai_detector.get_all_windows()
+            window_info = None
+            for w in windows:
+                if w.get("id") == window_id:
+                    window_info = w
+                    break
+
+            if window_info is None:
+                logger.debug(f"[GhostManager] Window {window_id} not found for geometry preservation")
+                return None
+
+            frame = window_info.get("frame", {})
+            geometry = WindowGeometry(
+                window_id=window_id,
+                app_name=app_name or window_info.get("app", "Unknown"),
+                original_space=window_info.get("space", 1),
+                original_display=window_info.get("display", 1),
+                x=int(frame.get("x", 0)),
+                y=int(frame.get("y", 0)),
+                width=int(frame.get("w", 800)),
+                height=int(frame.get("h", 600)),
+                is_minimized=window_info.get("is-minimized", False),
+                is_fullscreen=window_info.get("is-native-fullscreen", False),
+                is_floating=window_info.get("is-floating", False),
+                teleported_at=datetime.now()
+            )
+
+            self._geometry_cache[window_id] = geometry
+            logger.debug(
+                f"[GhostManager] 📐 Preserved geometry for window {window_id}: "
+                f"{geometry.width}x{geometry.height} at ({geometry.x}, {geometry.y})"
+            )
+            return geometry
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Failed to preserve geometry: {e}")
+            return None
+
+    async def track_window_teleport(self, window_id: int, to_space: int):
+        """Track a window being teleported to Ghost Display."""
+        self._windows_on_ghost.add(window_id)
+        if window_id in self._geometry_cache:
+            self._geometry_cache[window_id].current_space = to_space
+
+    async def track_window_return(self, window_id: int):
+        """Track a window being returned from Ghost Display."""
+        self._windows_on_ghost.discard(window_id)
+
+    def calculate_layout(
+        self,
+        window_count: int,
+        style: Optional[WindowLayoutStyle] = None
+    ) -> List[Dict[str, int]]:
+        """
+        Calculate window positions for a given layout style.
+
+        Args:
+            window_count: Number of windows to lay out
+            style: Layout style (uses config default if None)
+
+        Returns:
+            List of position dicts: [{"x": int, "y": int, "width": int, "height": int}, ...]
+        """
+        style = style or self.config.default_layout_style
+        padding = self.config.layout_padding
+
+        if self._ghost_info is None:
+            # Use reasonable defaults
+            screen_width, screen_height = 1920, 1080
+        else:
+            screen_width = self._ghost_info.width
+            screen_height = self._ghost_info.height
+
+        # Account for menu bar and dock
+        usable_y = 25  # Menu bar
+        usable_height = screen_height - usable_y - 50  # Dock
+        usable_width = screen_width
+
+        positions = []
+
+        if style == WindowLayoutStyle.MAXIMIZE or window_count == 1:
+            # Single window or maximize: fill the screen
+            positions.append({
+                "x": padding,
+                "y": usable_y + padding,
+                "width": usable_width - 2 * padding,
+                "height": usable_height - 2 * padding
+            })
+            # Duplicate for additional windows if needed
+            for _ in range(1, window_count):
+                positions.append(positions[0].copy())
+
+        elif style == WindowLayoutStyle.SIDE_BY_SIDE:
+            # Horizontal arrangement
+            window_width = (usable_width - (window_count + 1) * padding) // window_count
+            for i in range(window_count):
+                positions.append({
+                    "x": padding + i * (window_width + padding),
+                    "y": usable_y + padding,
+                    "width": window_width,
+                    "height": usable_height - 2 * padding
+                })
+
+        elif style == WindowLayoutStyle.STACKED:
+            # Vertical arrangement
+            window_height = (usable_height - (window_count + 1) * padding) // window_count
+            for i in range(window_count):
+                positions.append({
+                    "x": padding,
+                    "y": usable_y + padding + i * (window_height + padding),
+                    "width": usable_width - 2 * padding,
+                    "height": window_height
+                })
+
+        elif style == WindowLayoutStyle.GRID:
+            # Grid arrangement
+            max_per_row = self.config.max_windows_per_row
+            rows = (window_count + max_per_row - 1) // max_per_row
+            cols = min(window_count, max_per_row)
+
+            window_width = (usable_width - (cols + 1) * padding) // cols
+            window_height = (usable_height - (rows + 1) * padding) // rows
+
+            for i in range(window_count):
+                row = i // cols
+                col = i % cols
+                positions.append({
+                    "x": padding + col * (window_width + padding),
+                    "y": usable_y + padding + row * (window_height + padding),
+                    "width": window_width,
+                    "height": window_height
+                })
+
+        elif style == WindowLayoutStyle.CASCADE:
+            # Cascaded arrangement
+            cascade_offset = 30
+            window_width = usable_width - (window_count - 1) * cascade_offset - 2 * padding
+            window_height = usable_height - (window_count - 1) * cascade_offset - 2 * padding
+
+            for i in range(window_count):
+                positions.append({
+                    "x": padding + i * cascade_offset,
+                    "y": usable_y + padding + i * cascade_offset,
+                    "width": window_width,
+                    "height": window_height
+                })
+
+        else:  # PRESERVE - return empty positions (don't move windows)
+            for _ in range(window_count):
+                positions.append({"x": -1, "y": -1, "width": -1, "height": -1})
+
+        return positions
+
+    async def apply_layout(
+        self,
+        window_ids: List[int],
+        yabai_detector: 'YabaiSpaceDetector',
+        style: Optional[WindowLayoutStyle] = None
+    ) -> Dict[str, Any]:
+        """
+        Apply layout to windows on Ghost Display.
+
+        Args:
+            window_ids: Windows to arrange
+            yabai_detector: YabaiSpaceDetector for moving/resizing
+            style: Layout style (uses config default if None)
+
+        Returns:
+            Result dict with success/failure info
+        """
+        style = style or self.config.default_layout_style
+
+        if style == WindowLayoutStyle.PRESERVE:
+            return {"success": True, "message": "Layout preserved (no changes)"}
+
+        positions = self.calculate_layout(len(window_ids), style)
+
+        results = {"success": True, "applied": [], "failed": []}
+
+        for i, window_id in enumerate(window_ids):
+            pos = positions[i]
+            if pos["x"] == -1:
+                continue  # Skip if preserve
+
+            try:
+                # Use yabai to resize and move window
+                yabai_path = yabai_detector._health.yabai_path or "yabai"
+
+                # Move window
+                move_result = subprocess.run(
+                    [yabai_path, "-m", "window", str(window_id), "--move", f"abs:{pos['x']}:{pos['y']}"],
+                    capture_output=True,
+                    timeout=2.0
+                )
+
+                # Resize window
+                resize_result = subprocess.run(
+                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{pos['width']}:{pos['height']}"],
+                    capture_output=True,
+                    timeout=2.0
+                )
+
+                if move_result.returncode == 0 or resize_result.returncode == 0:
+                    results["applied"].append(window_id)
+                else:
+                    results["failed"].append(window_id)
+
+            except Exception as e:
+                logger.debug(f"[GhostManager] Layout apply failed for {window_id}: {e}")
+                results["failed"].append(window_id)
+
+        results["success"] = len(results["failed"]) == 0
+        self._last_layout_time = time.time()
+
+        logger.info(
+            f"[GhostManager] 📐 Layout applied ({style.value}): "
+            f"{len(results['applied'])} succeeded, {len(results['failed'])} failed"
+        )
+
+        return results
+
+    async def return_window_to_original(
+        self,
+        window_id: int,
+        yabai_detector: 'YabaiSpaceDetector',
+        restore_geometry: bool = True
+    ) -> bool:
+        """
+        Return a window to its original space and optionally restore geometry.
+
+        Args:
+            window_id: Window to return
+            yabai_detector: YabaiSpaceDetector for moving
+            restore_geometry: Whether to restore original position/size
+
+        Returns:
+            True if successful
+        """
+        geometry = self._geometry_cache.get(window_id)
+        if geometry is None:
+            logger.warning(f"[GhostManager] No preserved geometry for window {window_id}")
+            return False
+
+        # Move back to original space
+        success, method = yabai_detector.move_window_to_space_with_rescue(
+            window_id=window_id,
+            target_space=geometry.original_space,
+            source_space=geometry.current_space,
+            app_name=geometry.app_name
+        )
+
+        if not success:
+            logger.warning(f"[GhostManager] Failed to return window {window_id} to Space {geometry.original_space}")
+            return False
+
+        # Restore geometry if requested
+        if restore_geometry and self.config.preserve_geometry_on_return:
+            try:
+                yabai_path = yabai_detector._health.yabai_path or "yabai"
+
+                # Move to original position
+                subprocess.run(
+                    [yabai_path, "-m", "window", str(window_id), "--move", f"abs:{geometry.x}:{geometry.y}"],
+                    capture_output=True,
+                    timeout=2.0
+                )
+
+                # Resize to original size
+                subprocess.run(
+                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{geometry.width}:{geometry.height}"],
+                    capture_output=True,
+                    timeout=2.0
+                )
+
+                logger.debug(f"[GhostManager] 📐 Restored geometry for window {window_id}")
+
+            except Exception as e:
+                logger.debug(f"[GhostManager] Geometry restore failed: {e}")
+
+        # Clean up tracking
+        await self.track_window_return(window_id)
+        del self._geometry_cache[window_id]
+
+        logger.info(f"[GhostManager] 🏠 Window {window_id} returned to Space {geometry.original_space}")
+        return True
+
+    async def return_all_windows(
+        self,
+        yabai_detector: 'YabaiSpaceDetector',
+        restore_geometry: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Return all windows from Ghost Display to their original spaces.
+
+        Args:
+            yabai_detector: YabaiSpaceDetector for moving
+            restore_geometry: Whether to restore original positions
+
+        Returns:
+            Result dict with success/failure counts
+        """
+        results = {"success": True, "returned": [], "failed": []}
+
+        window_ids = list(self._windows_on_ghost)
+        for window_id in window_ids:
+            if await self.return_window_to_original(window_id, yabai_detector, restore_geometry):
+                results["returned"].append(window_id)
+            else:
+                results["failed"].append(window_id)
+
+        results["success"] = len(results["failed"]) == 0
+
+        logger.info(
+            f"[GhostManager] 🏠 Return complete: "
+            f"{len(results['returned'])} returned, {len(results['failed'])} failed"
+        )
+
+        return results
+
+    def can_accept_more_windows(self) -> bool:
+        """Check if Ghost Display can accept more windows."""
+        return len(self._windows_on_ghost) < self.config.max_windows_on_ghost
+
+    def get_status_report(self) -> Dict[str, Any]:
+        """Get comprehensive status report."""
+        return {
+            "status": self._status.value,
+            "ghost_space": self.ghost_space,
+            "ghost_info": {
+                "space_id": self._ghost_info.space_id if self._ghost_info else None,
+                "display_id": self._ghost_info.display_id if self._ghost_info else None,
+                "is_virtual": self._ghost_info.is_virtual if self._ghost_info else None,
+                "is_healthy": self._ghost_info.is_healthy if self._ghost_info else False,
+                "dimensions": f"{self._ghost_info.width}x{self._ghost_info.height}" if self._ghost_info else None,
+            },
+            "windows_on_ghost": len(self._windows_on_ghost),
+            "windows_tracked": list(self._windows_on_ghost),
+            "preserved_geometries": len(self._geometry_cache),
+            "can_accept_more": self.can_accept_more_windows(),
+            "fallback_active": self._status == GhostDisplayStatus.FALLBACK,
+            "fallback_space": self._fallback_space,
+        }
+
+
+# Global Ghost Display Manager instance
+_GHOST_MANAGER: Optional[GhostDisplayManager] = None
+
+
+def get_ghost_manager() -> GhostDisplayManager:
+    """Get or create the global Ghost Display Manager."""
+    global _GHOST_MANAGER
+    if _GHOST_MANAGER is None:
+        _GHOST_MANAGER = GhostDisplayManager()
+    return _GHOST_MANAGER
+
+
+def reset_ghost_manager() -> None:
+    """Reset the global Ghost Display Manager (for testing)."""
+    global _GHOST_MANAGER
+    _GHOST_MANAGER = None
+
 
 # Thread pool for subprocess operations (avoids blocking event loop)
 _yabai_executor: Optional[ThreadPoolExecutor] = None
@@ -3119,6 +3862,15 @@ __all__ = [
     "RescueResult",
     "get_rescue_telemetry",
     "reset_rescue_telemetry",
+    # v25.0 Shadow Monitor Infrastructure
+    "GhostDisplayManager",
+    "GhostDisplayManagerConfig",
+    "GhostDisplayStatus",
+    "GhostDisplayInfo",
+    "WindowGeometry",
+    "WindowLayoutStyle",
+    "get_ghost_manager",
+    "reset_ghost_manager",
     # Factory and utilities
     "get_yabai_detector",
     "reset_yabai_detector",
