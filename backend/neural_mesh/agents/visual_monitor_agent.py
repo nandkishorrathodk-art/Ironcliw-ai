@@ -1471,14 +1471,100 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 'timeout': True
             }
 
+        # =====================================================================
+        # v22.0.0: MULTI-MONITOR VISIBILITY FILTER
+        # =====================================================================
+        # PROBLEM: Trying to capture windows on hidden spaces fails with
+        # "frame_production_failed" because ScreenCaptureKit and
+        # CGWindowListCreateImage cannot capture off-screen windows.
+        #
+        # SOLUTION: Only spawn watchers for windows on VISIBLE spaces.
+        # - Single monitor: Only 1 space is visible at a time
+        # - Multi-monitor: Multiple spaces visible (one per display)
+        # - Virtual monitor (BetterDisplay): Additional visible space!
+        #
+        # This enables "Ghost Mode" - JARVIS watches Display 2 while
+        # user works on Display 1.
+        # =====================================================================
+        skipped_windows = []  # Track windows filtered out (for error messaging)
+
+        if windows and MULTI_SPACE_AVAILABLE:
+            try:
+                from backend.vision.multi_space_window_detector import MultiSpaceWindowDetector
+                detector = MultiSpaceWindowDetector()
+                visible_space_ids = await detector.get_all_visible_spaces()
+
+                if visible_space_ids:
+                    original_count = len(windows)
+                    capturable_windows = []
+                    skipped_windows = []
+
+                    for w in windows:
+                        window_space = w.get('space_id')
+                        if window_space in visible_space_ids:
+                            capturable_windows.append(w)
+                        else:
+                            skipped_windows.append(w)
+                            logger.debug(
+                                f"⚠️  Skipping Window {w['window_id']} (Space {window_space}) - "
+                                f"not on visible space. Visible spaces: {visible_space_ids}"
+                            )
+
+                    # Log the filtering results
+                    if skipped_windows:
+                        logger.info(
+                            f"[God Mode] 👀 Multi-Monitor Filter: "
+                            f"{len(capturable_windows)}/{original_count} windows on visible spaces "
+                            f"(skipped {len(skipped_windows)} on hidden spaces)"
+                        )
+                        logger.info(f"[God Mode] 👀 Visible spaces: {visible_space_ids}")
+
+                    # Narrate if we skipped windows
+                    if skipped_windows and self.config.working_out_loud_enabled:
+                        try:
+                            await self._narrate_working_out_loud(
+                                message=f"I found {original_count} {app_name} windows, but "
+                                        f"{len(skipped_windows)} are on hidden spaces. "
+                                        f"I'll watch the {len(capturable_windows)} visible ones.",
+                                narration_type="info",
+                                watcher_id=f"filter_{app_name}",
+                                priority="low"
+                            )
+                        except Exception:
+                            pass  # Non-critical narration
+
+                    windows = capturable_windows
+                else:
+                    logger.warning(
+                        "[God Mode] ⚠️  Could not determine visible spaces - proceeding with all windows"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[God Mode] Multi-monitor visibility filter failed: {e} - proceeding with all windows")
+
         if not windows or len(windows) == 0:
-            logger.warning(f"⚠️  No windows found for {app_name}")
+            # v22.0.0: Check if windows were filtered out due to being on hidden spaces
+            # This helps users understand why no windows were found when they exist
+            all_on_hidden_spaces = len(skipped_windows) > 0
+
+            if all_on_hidden_spaces:
+                logger.warning(
+                    f"⚠️  Found {len(skipped_windows)} {app_name} windows but ALL are on hidden spaces! "
+                    f"Move a window to a visible space or add a virtual monitor."
+                )
+                error_msg = (
+                    f"All {len(skipped_windows)} {app_name} windows are on hidden spaces. "
+                    f"Move one to your current space or use a virtual monitor (BetterDisplay)."
+                )
+            else:
+                logger.warning(f"⚠️  No windows found for {app_name}")
+                error_msg = f"I don't see any {app_name} windows open. Please open {app_name} and try again."
 
             # v15.0: ERROR NARRATION - User should know when no windows found
             if self.config.working_out_loud_enabled:
                 try:
                     await self._narrate_working_out_loud(
-                        message=f"I don't see any {app_name} windows open. Please open {app_name} and try again.",
+                        message=error_msg,
                         narration_type="error",
                         watcher_id=f"discovery_{app_name}",
                         priority="high"
@@ -1488,8 +1574,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
             return {
                 'status': 'error',
-                'error': f"No windows found for {app_name}",
-                'total_watchers': 0
+                'error': error_msg,
+                'total_watchers': 0,
+                'windows_on_hidden_spaces': len(skipped_windows) if all_on_hidden_spaces else 0
             }
 
         logger.info(f"✅ Found {len(windows)} {app_name} windows:")

@@ -318,6 +318,136 @@ class MultiSpaceWindowDetector:
 
         return result
 
+    async def get_all_visible_spaces(self) -> List[int]:
+        """
+        v22.0.0: Multi-Monitor Visibility Support
+
+        Get ALL visible space IDs across ALL displays (not just the current/focused space).
+
+        WHY THIS MATTERS:
+        =================
+        - Single monitor: Only 1 space is visible at a time
+        - Multi-monitor: MULTIPLE spaces can be visible simultaneously (one per display)
+        - Virtual monitors (BetterDisplay): Additional visible spaces for background capture
+
+        EXAMPLE:
+        ========
+        - Display 1 (Main): Space 1 visible (where you're working)
+        - Display 2 (Virtual): Space 4 visible (where JARVIS can watch)
+        - Spaces 2, 3, 5: Hidden (not visible on any display)
+
+        JARVIS should only try to capture windows on Space 1 and Space 4,
+        not Spaces 2, 3, or 5 (which would fail with frame_production_failed).
+
+        Returns:
+            List of space IDs where is_visible == True
+        """
+        visible_space_ids = []
+
+        try:
+            from .yabai_space_detector import get_yabai_detector
+
+            yabai_detector = get_yabai_detector()
+            if yabai_detector.is_available():
+                # Use async version if available, fall back to sync
+                if hasattr(yabai_detector, 'enumerate_all_spaces_async'):
+                    spaces = await yabai_detector.enumerate_all_spaces_async(include_display_info=True)
+                else:
+                    # Run sync version in executor to avoid blocking
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    spaces = await loop.run_in_executor(
+                        None,
+                        lambda: yabai_detector.enumerate_all_spaces(include_display_info=True)
+                    )
+
+                for space in spaces:
+                    if space.get('is_visible', False):
+                        space_id = space.get('space_id')
+                        display_id = space.get('display', 'unknown')
+                        if space_id:
+                            visible_space_ids.append(space_id)
+                            logger.debug(
+                                f"[MULTI-MONITOR] Space {space_id} visible on Display {display_id}"
+                            )
+
+                logger.info(
+                    f"[MULTI-MONITOR] Found {len(visible_space_ids)} visible spaces: {visible_space_ids}"
+                )
+
+        except Exception as e:
+            logger.warning(f"[MULTI-MONITOR] Failed to get visible spaces: {e}")
+            # Fallback: Return current space only
+            if self.current_space_id:
+                visible_space_ids = [self.current_space_id]
+                logger.info(f"[MULTI-MONITOR] Fallback to current space: {self.current_space_id}")
+
+        return visible_space_ids
+
+    def get_all_visible_spaces_sync(self) -> List[int]:
+        """
+        Synchronous version of get_all_visible_spaces for non-async contexts.
+        """
+        visible_space_ids = []
+
+        try:
+            from .yabai_space_detector import get_yabai_detector
+
+            yabai_detector = get_yabai_detector()
+            if yabai_detector.is_available():
+                spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+
+                for space in spaces:
+                    if space.get('is_visible', False):
+                        space_id = space.get('space_id')
+                        if space_id:
+                            visible_space_ids.append(space_id)
+
+                logger.info(
+                    f"[MULTI-MONITOR] Found {len(visible_space_ids)} visible spaces: {visible_space_ids}"
+                )
+
+        except Exception as e:
+            logger.warning(f"[MULTI-MONITOR] Failed to get visible spaces: {e}")
+            if self.current_space_id:
+                visible_space_ids = [self.current_space_id]
+
+        return visible_space_ids
+
+    def get_display_info(self) -> Dict[int, Dict[str, Any]]:
+        """
+        v22.0.0: Get information about all displays and their visible spaces.
+
+        Returns:
+            Dict mapping display_id -> {space_id, is_main, etc.}
+        """
+        displays = {}
+
+        try:
+            from .yabai_space_detector import get_yabai_detector
+
+            yabai_detector = get_yabai_detector()
+            if yabai_detector.is_available():
+                spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+
+                for space in spaces:
+                    if space.get('is_visible', False):
+                        display_id = space.get('display', 1)
+                        displays[display_id] = {
+                            'space_id': space.get('space_id'),
+                            'space_name': space.get('space_name'),
+                            'window_count': space.get('window_count', 0),
+                            'is_current': space.get('is_current', False),
+                            'is_fullscreen': space.get('is_fullscreen', False),
+                        }
+
+                logger.debug(f"[MULTI-MONITOR] Display info: {displays}")
+
+        except Exception as e:
+            logger.warning(f"[MULTI-MONITOR] Failed to get display info: {e}")
+
+        return displays
+
     def _determine_workspace_name(
         self, primary_app: str, applications: List[str], windows: List
     ) -> str:
