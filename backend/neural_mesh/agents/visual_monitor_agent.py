@@ -4189,14 +4189,35 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         self,
         window: Dict[str, Any],
         ghost_space: Optional[int] = None,
-        max_retries: int = 3,
-        retry_delay_ms: float = 100.0
+        max_retries: Optional[int] = None,
+        retry_delay_ms: Optional[float] = None
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
-        v28.1: Validate that a window can actually be captured by ScreenCaptureKit.
+        v28.3: Validate that a window can actually be captured by ScreenCaptureKit.
 
-        This method performs multiple checks with retry logic to handle race
-        conditions where windows are still being rendered on Ghost Display.
+        This method performs multiple checks with EXPONENTIAL BACKOFF to handle
+        race conditions where windows are still being "hydrated" (rendered) on
+        Ghost Display after teleportation.
+
+        =====================================================================
+        v28.3 ROOT CAUSE FIX: "Ghost Lag" - Window Hydration Time
+        =====================================================================
+        PROBLEM: When macOS moves a window to a virtual display, it destroys
+        the window on Screen 1 and reconstructs it on Screen 2. This process
+        can take 500ms-2s depending on system load and memory pressure.
+
+        OLD BEHAVIOR: 3 retries × 100ms = 300ms total → FAILS before hydration
+        NEW BEHAVIOR: Exponential backoff (200ms → 300ms → 450ms → ...) up to
+                      ~5 seconds total, succeeding as soon as window is ready.
+
+        Backoff sequence (default):
+          Attempt 1: immediate
+          Attempt 2: 200ms delay (total: 200ms)
+          Attempt 3: 300ms delay (total: 500ms)
+          Attempt 4: 450ms delay (total: 950ms)
+          Attempt 5: 675ms delay (total: 1625ms)
+          Attempt 6: 1012ms delay (total: 2637ms)
+        =====================================================================
 
         Checks performed:
         1. Window exists and has valid ID
@@ -4208,21 +4229,41 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         Args:
             window: Window dictionary with window_id, space_id, etc.
             ghost_space: Optional Ghost Display space ID for validation
-            max_retries: Number of retries for race condition handling
-            retry_delay_ms: Delay between retries in milliseconds
+            max_retries: Number of retries (default from env or 6)
+            retry_delay_ms: Initial delay in ms (default from env or 200)
 
         Returns:
             Tuple of (is_capturable, reason, updated_window_info)
         """
+        import time  # v28.3: For hydration time tracking
+
+        # =====================================================================
+        # v28.3: Configurable Exponential Backoff Parameters
+        # =====================================================================
+        # Read from environment for flexibility without code changes
+        if max_retries is None:
+            max_retries = int(os.getenv('JARVIS_VALIDATION_MAX_RETRIES', '6'))
+        if retry_delay_ms is None:
+            retry_delay_ms = float(os.getenv('JARVIS_VALIDATION_INITIAL_DELAY_MS', '200'))
+
+        # Backoff multiplier: each retry waits multiplier × previous delay
+        backoff_multiplier = float(os.getenv('JARVIS_VALIDATION_BACKOFF_MULTIPLIER', '1.5'))
+        # Maximum single delay cap (prevents waiting forever on one attempt)
+        max_single_delay_ms = float(os.getenv('JARVIS_VALIDATION_MAX_DELAY_MS', '2000'))
+
         window_id = window.get('window_id')
         if not window_id:
             return False, "Missing window_id", window
+
+        validation_start_time = time.time()
 
         validation_details = {
             'window_id': window_id,
             'checks_passed': [],
             'checks_failed': [],
-            'retries_used': 0
+            'retries_used': 0,
+            'total_wait_time_ms': 0,
+            'backoff_sequence': []
         }
 
         # Import helpers
@@ -4256,9 +4297,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except Exception as e:
                 logger.debug(f"[Validation] Permission check failed: {e} (continuing)")
 
-        # Retry loop for race condition handling
+        # =====================================================================
+        # v28.3: Exponential Backoff Retry Loop
+        # =====================================================================
+        current_delay_ms = retry_delay_ms  # Start with initial delay
+        total_wait_time_ms = 0
+
         for attempt in range(max_retries):
-            validation_details['retries_used'] = attempt
+            validation_details['retries_used'] = attempt + 1
+
+            # v28.3: Log backoff progress for debugging hydration time
+            if attempt > 0:
+                logger.debug(
+                    f"[Validation] Window {window_id} - Attempt {attempt + 1}/{max_retries} "
+                    f"(waited {total_wait_time_ms:.0f}ms so far)"
+                )
 
             # Check 2: Window exists and get current state
             current_space = None
@@ -4329,16 +4382,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                                 if attempt < max_retries - 1:
                                     logger.debug(
                                         f"[Validation] Window {window_id} on space {current_space}, "
-                                        f"expected {ghost_space} - retry {attempt + 1}/{max_retries}"
+                                        f"expected {ghost_space} - waiting {current_delay_ms:.0f}ms before retry"
                                     )
-                                    await asyncio.sleep(retry_delay_ms / 1000.0)
+                                    # v28.3: Exponential backoff sleep
+                                    await asyncio.sleep(current_delay_ms / 1000.0)
+                                    total_wait_time_ms += current_delay_ms
+                                    validation_details['backoff_sequence'].append(current_delay_ms)
+                                    current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                                     continue
 
                                 validation_details['checks_failed'].append('on_visible_space')
+                                validation_details['total_wait_time_ms'] = total_wait_time_ms
                                 return (
                                     False,
                                     f"Window {window_id} still on space {current_space} "
-                                    f"(expected Ghost Display space {ghost_space}) - teleportation may have failed",
+                                    f"(expected Ghost Display space {ghost_space}) after {total_wait_time_ms:.0f}ms - teleportation may have failed",
                                     validation_details
                                 )
 
@@ -4350,7 +4408,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 except asyncio.TimeoutError:
                     logger.debug(f"[Validation] Yabai query timed out for window {window_id}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        # v28.3: Exponential backoff sleep
+                        await asyncio.sleep(current_delay_ms / 1000.0)
+                        total_wait_time_ms += current_delay_ms
+                        validation_details['backoff_sequence'].append(current_delay_ms)
+                        current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                         continue
 
                 except Exception as e:
@@ -4370,26 +4432,48 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                     if test_frame is not None and len(test_frame) > 0:
                         validation_details['checks_passed'].append('frame_capture')
-                        # Success! Window is capturable
-                        return True, "Window validated as capturable", validation_details
+                        validation_details['total_wait_time_ms'] = total_wait_time_ms
+                        # v28.3: Log successful hydration time for telemetry
+                        hydration_time_ms = (time.time() - validation_start_time) * 1000
+                        logger.info(
+                            f"[Validation] ✅ Window {window_id} hydrated successfully "
+                            f"after {hydration_time_ms:.0f}ms (attempt {attempt + 1}/{max_retries})"
+                        )
+                        return True, f"Window validated as capturable (hydrated in {hydration_time_ms:.0f}ms)", validation_details
                     else:
                         if attempt < max_retries - 1:
                             logger.debug(
                                 f"[Validation] Frame capture returned empty for window {window_id} "
-                                f"- retry {attempt + 1}/{max_retries}"
+                                f"(not hydrated yet) - waiting {current_delay_ms:.0f}ms before retry {attempt + 2}/{max_retries}"
                             )
-                            await asyncio.sleep(retry_delay_ms / 1000.0)
+                            # v28.3: Exponential backoff sleep
+                            await asyncio.sleep(current_delay_ms / 1000.0)
+                            total_wait_time_ms += current_delay_ms
+                            validation_details['backoff_sequence'].append(current_delay_ms)
+                            current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                             continue
 
                 except asyncio.TimeoutError:
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        logger.debug(
+                            f"[Validation] Frame capture timed out for window {window_id} "
+                            f"- waiting {current_delay_ms:.0f}ms before retry"
+                        )
+                        # v28.3: Exponential backoff sleep
+                        await asyncio.sleep(current_delay_ms / 1000.0)
+                        total_wait_time_ms += current_delay_ms
+                        validation_details['backoff_sequence'].append(current_delay_ms)
+                        current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                         continue
 
                 except Exception as e:
                     logger.debug(f"[Validation] Test capture failed: {e}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        # v28.3: Exponential backoff sleep
+                        await asyncio.sleep(current_delay_ms / 1000.0)
+                        total_wait_time_ms += current_delay_ms
+                        validation_details['backoff_sequence'].append(current_delay_ms)
+                        current_delay_ms = min(current_delay_ms * backoff_multiplier, max_single_delay_ms)
                         continue
 
             # If we get here without frame capture engine, assume capturable
@@ -4398,10 +4482,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         # All retries exhausted
         validation_details['checks_failed'].append('frame_capture')
+        validation_details['total_wait_time_ms'] = total_wait_time_ms
+        total_time_ms = (time.time() - validation_start_time) * 1000
         return (
             False,
             f"Window {window_id} failed frame capture test after {max_retries} attempts "
-            f"(window may not be fully rendered yet)",
+            f"over {total_time_ms:.0f}ms (window may need more time to hydrate on Ghost Display)",
             validation_details
         )
 
