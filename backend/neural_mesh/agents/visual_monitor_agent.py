@@ -73,11 +73,12 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ..base.base_neural_mesh_agent import BaseNeuralMeshAgent
 from ..data_models import (
@@ -2228,6 +2229,98 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             logger.warning(f"⚠️  Found {len(windows)} windows, limiting to {max_watchers} for safety")
             windows = windows[:max_watchers]
 
+        # =====================================================================
+        # v28.1: PRE-CAPTURE VALIDATION - Verify Windows Are Actually Capturable
+        # =====================================================================
+        # ROOT CAUSE FIX: "frame_production_failed" errors occur because we
+        # spawn watchers for windows that ScreenCaptureKit cannot capture:
+        # - Minimized windows
+        # - Windows still on hidden spaces (teleportation failed)
+        # - Windows without Screen Recording permission
+        # - Windows not yet rendered on Ghost Display (race condition)
+        #
+        # SOLUTION: Validate each window BEFORE spawning watcher
+        # =====================================================================
+        validation_enabled = os.getenv('JARVIS_PRECAPTURE_VALIDATION', '1') == '1'
+
+        if validation_enabled and windows:
+            logger.info(f"[God Mode] 🔍 Pre-capture validation for {len(windows)} windows...")
+
+            # Determine ghost_space for validation (if available from earlier teleportation)
+            validation_ghost_space = None
+            if 'ghost_space' in dir() and ghost_space:
+                validation_ghost_space = ghost_space
+
+            # Run batch validation in parallel
+            try:
+                valid_windows, invalid_windows = await self._validate_windows_batch(
+                    windows,
+                    ghost_space=validation_ghost_space,
+                    max_concurrent=int(os.getenv('JARVIS_VALIDATION_CONCURRENCY', '5'))
+                )
+
+                # Log validation results
+                if invalid_windows:
+                    for inv in invalid_windows:
+                        inv_window = inv['window']
+                        inv_reason = inv['reason']
+                        logger.warning(
+                            f"⚠️  Window {inv_window.get('window_id')} ({inv_window.get('app_name', 'unknown')}) "
+                            f"NOT capturable: {inv_reason}"
+                        )
+
+                        # Narrate validation failure if significant
+                        if self.config.working_out_loud_enabled and 'permission' in inv_reason.lower():
+                            try:
+                                await self._narrate_working_out_loud(
+                                    message=f"I need Screen Recording permission to watch {app_name}. "
+                                            f"Please grant it in System Settings.",
+                                    narration_type="error",
+                                    watcher_id=f"validation_{app_name}",
+                                    priority="high"
+                                )
+                            except Exception:
+                                pass
+
+                    logger.info(
+                        f"[God Mode] ✅ Pre-capture validation: "
+                        f"{len(valid_windows)}/{len(windows)} windows passed "
+                        f"({len(invalid_windows)} failed)"
+                    )
+
+                # Update windows to only include valid ones
+                if valid_windows:
+                    windows = valid_windows
+                else:
+                    # All windows failed validation
+                    error_msg = (
+                        f"All {len(windows)} {app_name} windows failed pre-capture validation. "
+                        f"Reasons: {', '.join(set(inv['reason'][:50] for inv in invalid_windows))}"
+                    )
+                    logger.error(f"[God Mode] ❌ {error_msg}")
+
+                    if self.config.working_out_loud_enabled:
+                        try:
+                            await self._narrate_working_out_loud(
+                                message=f"I couldn't capture any {app_name} windows. "
+                                        f"They may be minimized or on hidden spaces.",
+                                narration_type="error",
+                                watcher_id=f"validation_failed_{app_name}",
+                                priority="high"
+                            )
+                        except Exception:
+                            pass
+
+                    return {
+                        'status': 'error',
+                        'error': error_msg,
+                        'total_watchers': 0,
+                        'validation_failures': len(invalid_windows)
+                    }
+
+            except Exception as e:
+                logger.warning(f"[God Mode] Pre-capture validation failed: {e} - proceeding without validation")
+
         # ===== STEP 2: Spawn Parallel Ferrari Watchers =====
         watcher_tasks = []
         watcher_metadata = []
@@ -4058,6 +4151,306 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             'method': 'legacy_estimation',
             'warning': 'Using estimated window ID - may be inaccurate'
         }
+
+    # =========================================================================
+    # v28.1: PRE-CAPTURE VALIDATION SYSTEM
+    # =========================================================================
+    # ROOT CAUSE FIX: "frame_production_failed" errors occur because we
+    # spawn watchers for windows that ScreenCaptureKit cannot capture:
+    # - Minimized windows
+    # - Windows still on hidden spaces (teleportation failed)
+    # - Windows without Screen Recording permission
+    # - Windows not yet rendered on Ghost Display (race condition)
+    #
+    # SOLUTION: Validate each window before spawning watcher, with retry
+    # =========================================================================
+
+    async def _validate_window_capturable(
+        self,
+        window: Dict[str, Any],
+        ghost_space: Optional[int] = None,
+        max_retries: int = 3,
+        retry_delay_ms: float = 100.0
+    ) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        v28.1: Validate that a window can actually be captured by ScreenCaptureKit.
+
+        This method performs multiple checks with retry logic to handle race
+        conditions where windows are still being rendered on Ghost Display.
+
+        Checks performed:
+        1. Window exists and has valid ID
+        2. Window is on a visible space (or Ghost Display)
+        3. Window is not minimized
+        4. Screen Recording permission is granted
+        5. Window is actually renderable (frame test)
+
+        Args:
+            window: Window dictionary with window_id, space_id, etc.
+            ghost_space: Optional Ghost Display space ID for validation
+            max_retries: Number of retries for race condition handling
+            retry_delay_ms: Delay between retries in milliseconds
+
+        Returns:
+            Tuple of (is_capturable, reason, updated_window_info)
+        """
+        window_id = window.get('window_id')
+        if not window_id:
+            return False, "Missing window_id", window
+
+        validation_details = {
+            'window_id': window_id,
+            'checks_passed': [],
+            'checks_failed': [],
+            'retries_used': 0
+        }
+
+        # Import helpers
+        try:
+            from backend.vision.swift_video_bridge import check_screen_recording_permission
+            has_permission_check = True
+        except ImportError:
+            has_permission_check = False
+
+        try:
+            from backend.vision.yabai_space_detector import get_yabai_detector
+            yabai = get_yabai_detector()
+            has_yabai = True
+        except Exception:
+            has_yabai = False
+            yabai = None
+
+        # Check 1: Screen Recording Permission (only check once, not per-retry)
+        if has_permission_check:
+            try:
+                has_permission = await check_screen_recording_permission()
+                if not has_permission:
+                    validation_details['checks_failed'].append('screen_recording_permission')
+                    return (
+                        False,
+                        "Screen Recording permission not granted. "
+                        "Go to System Settings → Privacy & Security → Screen Recording",
+                        validation_details
+                    )
+                validation_details['checks_passed'].append('screen_recording_permission')
+            except Exception as e:
+                logger.debug(f"[Validation] Permission check failed: {e} (continuing)")
+
+        # Retry loop for race condition handling
+        for attempt in range(max_retries):
+            validation_details['retries_used'] = attempt
+
+            # Check 2: Window exists and get current state
+            current_space = None
+            is_minimized = False
+
+            if has_yabai and yabai:
+                try:
+                    # Query window info directly from yabai
+                    window_info = await self._query_window_info_async(window_id)
+
+                    if window_info is None:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay_ms / 1000.0)
+                            continue
+                        validation_details['checks_failed'].append('window_exists')
+                        return (
+                            False,
+                            f"Window {window_id} not found (may have been closed)",
+                            validation_details
+                        )
+
+                    current_space = window_info.get('space')
+                    is_minimized = window_info.get('is-minimized', False)
+
+                    # Check 3: Is window minimized?
+                    if is_minimized:
+                        # Try to unminimize
+                        try:
+                            unminimize_result = await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    lambda: os.system(f'/opt/homebrew/bin/yabai -m window {window_id} --deminimize')
+                                ),
+                                timeout=2.0
+                            )
+                            # Re-check after unminimize
+                            await asyncio.sleep(0.1)
+                            window_info = await self._query_window_info_async(window_id)
+                            is_minimized = window_info.get('is-minimized', False) if window_info else True
+                        except Exception as e:
+                            logger.debug(f"[Validation] Unminimize failed: {e}")
+
+                        if is_minimized:
+                            validation_details['checks_failed'].append('not_minimized')
+                            return (
+                                False,
+                                f"Window {window_id} is minimized (ScreenCaptureKit cannot capture minimized windows)",
+                                validation_details
+                            )
+
+                    validation_details['checks_passed'].append('not_minimized')
+
+                    # Check 4: Is window on visible space?
+                    if ghost_space is not None:
+                        if current_space != ghost_space:
+                            # Window not on Ghost Display - may still be moving
+                            if attempt < max_retries - 1:
+                                logger.debug(
+                                    f"[Validation] Window {window_id} on space {current_space}, "
+                                    f"expected {ghost_space} - retry {attempt + 1}/{max_retries}"
+                                )
+                                await asyncio.sleep(retry_delay_ms / 1000.0)
+                                continue
+
+                            validation_details['checks_failed'].append('on_visible_space')
+                            return (
+                                False,
+                                f"Window {window_id} still on space {current_space} "
+                                f"(expected Ghost Display space {ghost_space}) - teleportation may have failed",
+                                validation_details
+                            )
+
+                    validation_details['checks_passed'].append('on_visible_space')
+
+                except asyncio.TimeoutError:
+                    logger.debug(f"[Validation] Yabai query timed out for window {window_id}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        continue
+
+                except Exception as e:
+                    logger.debug(f"[Validation] Yabai query failed for window {window_id}: {e}")
+                    # Continue without yabai checks
+
+            # Check 5: Test actual frame capture (final boss check)
+            if self._fast_capture_engine:
+                try:
+                    test_frame = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self._fast_capture_engine.capture_window_by_id,
+                            window_id
+                        ),
+                        timeout=2.0
+                    )
+
+                    if test_frame is not None and len(test_frame) > 0:
+                        validation_details['checks_passed'].append('frame_capture')
+                        # Success! Window is capturable
+                        return True, "Window validated as capturable", validation_details
+                    else:
+                        if attempt < max_retries - 1:
+                            logger.debug(
+                                f"[Validation] Frame capture returned empty for window {window_id} "
+                                f"- retry {attempt + 1}/{max_retries}"
+                            )
+                            await asyncio.sleep(retry_delay_ms / 1000.0)
+                            continue
+
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        continue
+
+                except Exception as e:
+                    logger.debug(f"[Validation] Test capture failed: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay_ms / 1000.0)
+                        continue
+
+            # If we get here without frame capture engine, assume capturable
+            if not self._fast_capture_engine:
+                return True, "No frame capture engine - assuming capturable", validation_details
+
+        # All retries exhausted
+        validation_details['checks_failed'].append('frame_capture')
+        return (
+            False,
+            f"Window {window_id} failed frame capture test after {max_retries} attempts "
+            f"(window may not be fully rendered yet)",
+            validation_details
+        )
+
+    async def _query_window_info_async(self, window_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Query window info from yabai asynchronously.
+
+        Args:
+            window_id: Window ID to query
+
+        Returns:
+            Window info dict or None if not found
+        """
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: subprocess.run(
+                        ['/opt/homebrew/bin/yabai', '-m', 'query', '--windows', '--window', str(window_id)],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                ),
+                timeout=3.0
+            )
+
+            if result.returncode == 0 and result.stdout:
+                return json.loads(result.stdout)
+            return None
+
+        except Exception as e:
+            logger.debug(f"[Validation] Window query failed: {e}")
+            return None
+
+    async def _validate_windows_batch(
+        self,
+        windows: List[Dict[str, Any]],
+        ghost_space: Optional[int] = None,
+        max_concurrent: int = 5
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        v28.1: Validate a batch of windows concurrently.
+
+        Args:
+            windows: List of windows to validate
+            ghost_space: Ghost Display space ID
+            max_concurrent: Maximum concurrent validations
+
+        Returns:
+            Tuple of (valid_windows, invalid_windows_with_reasons)
+        """
+        valid_windows = []
+        invalid_windows = []
+
+        # Use semaphore to limit concurrent validations
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def validate_one(window: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+            async with semaphore:
+                is_valid, reason, details = await self._validate_window_capturable(
+                    window,
+                    ghost_space=ghost_space
+                )
+                return window, is_valid, reason
+
+        # Run validations in parallel
+        tasks = [validate_one(w) for w in windows]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"[Validation] Batch validation error: {result}")
+                continue
+
+            window, is_valid, reason = result
+            if is_valid:
+                valid_windows.append(window)
+            else:
+                invalid_windows.append({
+                    'window': window,
+                    'reason': reason
+                })
+
+        return valid_windows, invalid_windows
 
     def _normalize_window_data(
         self,
