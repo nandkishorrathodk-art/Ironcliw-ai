@@ -287,7 +287,7 @@ class IntelligentContinuousScraper:
                 ScoutConfig(
                     work_dir=self.config.reactor_core_path / "work",
                     max_pages_per_topic=self.config.max_pages_per_topic,
-                    max_concurrent_requests=self.config.max_concurrent_requests,
+                    url_concurrency=self.config.max_concurrent_requests,
                 )
             )
             logger.info("[ContinuousScraper] SafeScout initialized")
