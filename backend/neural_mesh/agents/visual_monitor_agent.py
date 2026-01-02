@@ -1542,6 +1542,104 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except Exception as e:
                 logger.warning(f"[God Mode] Multi-monitor visibility filter failed: {e} - proceeding with all windows")
 
+        # =====================================================================
+        # v22.0.0: AUTO-HANDOFF - Autonomous Window Teleportation
+        # =====================================================================
+        # PROBLEM: Target windows are either:
+        #   A) On hidden spaces (can't capture - Yabai can't see them)
+        #   B) On user's current space (CAN capture, but blocks user's view)
+        #
+        # SOLUTION: If Ghost Display exists, teleport windows there automatically!
+        # - For windows on CURRENT space: Move to Ghost so user isn't disturbed
+        # - For windows on HIDDEN spaces: Can't move (Yabai can't see them)
+        #
+        # This transforms JARVIS from a "Passive Observer" into an "Active
+        # Window Manager" that autonomously sets up its own workspace.
+        # =====================================================================
+        teleported_windows = []
+        auto_handoff_enabled = bool(os.getenv('JARVIS_AUTO_HANDOFF', '1') == '1')
+
+        if windows and auto_handoff_enabled and MULTI_SPACE_AVAILABLE:
+            # We have capturable windows - check if we should teleport them
+            try:
+                from backend.vision.yabai_space_detector import get_yabai_detector
+
+                yabai = get_yabai_detector()
+                ghost_space = yabai.get_ghost_display_space()
+                current_user_space = yabai.get_current_user_space()
+
+                if ghost_space is not None and current_user_space is not None:
+                    # Find windows on user's current space (these block their view)
+                    windows_to_teleport = [
+                        w for w in windows
+                        if w.get('space_id') == current_user_space
+                    ]
+
+                    if windows_to_teleport:
+                        logger.info(
+                            f"[God Mode] 👻 AUTO-HANDOFF: {len(windows_to_teleport)} windows on your screen. "
+                            f"Teleporting to Ghost Display (Space {ghost_space}) so I don't block you."
+                        )
+
+                        # Narrate the action
+                        if self.config.working_out_loud_enabled:
+                            try:
+                                await self._narrate_working_out_loud(
+                                    message=f"I see {app_name} on your screen. "
+                                            f"Moving it to my Ghost Display so I can watch without blocking you.",
+                                    narration_type="action",
+                                    watcher_id=f"teleport_{app_name}",
+                                    priority="high"
+                                )
+                            except Exception:
+                                pass
+
+                        # Teleport each window from user's space to ghost
+                        for w in windows_to_teleport:
+                            window_id = w.get('window_id')
+                            if window_id:
+                                success = await yabai.move_window_to_space_async(window_id, ghost_space)
+                                if success:
+                                    original_space = w.get('space_id')
+                                    w['space_id'] = ghost_space
+                                    w['teleported'] = True
+                                    w['original_space'] = original_space
+                                    teleported_windows.append(w)
+                                    logger.info(
+                                        f"[God Mode] 👻 Teleported window {window_id} "
+                                        f"from Space {original_space} to Ghost (Space {ghost_space})"
+                                    )
+                                else:
+                                    logger.warning(f"[God Mode] Failed to teleport window {window_id}")
+
+                        if teleported_windows:
+                            # Update windows list - teleported windows now have new space_id
+                            logger.info(
+                                f"[God Mode] ✅ AUTO-HANDOFF complete: "
+                                f"{len(teleported_windows)} windows moved to Ghost Display"
+                            )
+
+                            # Narrate success
+                            if self.config.working_out_loud_enabled:
+                                try:
+                                    await self._narrate_working_out_loud(
+                                        message=f"Done! I've moved the {app_name} window to my Ghost Display. "
+                                                f"You can keep working while I watch.",
+                                        narration_type="success",
+                                        watcher_id=f"teleport_done_{app_name}",
+                                        priority="medium"
+                                    )
+                                except Exception:
+                                    pass
+                    else:
+                        # Windows already on ghost display or other visible space
+                        logger.debug(
+                            f"[God Mode] No windows on user's space {current_user_space} - no teleport needed"
+                        )
+
+            except Exception as e:
+                logger.warning(f"[God Mode] Auto-handoff failed: {e}")
+
         if not windows or len(windows) == 0:
             # v22.0.0: Check if windows were filtered out due to being on hidden spaces
             # This helps users understand why no windows were found when they exist

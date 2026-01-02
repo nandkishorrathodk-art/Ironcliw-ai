@@ -1087,6 +1087,274 @@ class YabaiSpaceDetector:
             return space_info.get("windows", [])
         return []
 
+    # =========================================================================
+    # v22.0.0: WINDOW TELEPORTATION - Autonomous Window Management
+    # =========================================================================
+    # These methods enable JARVIS to move windows between spaces automatically.
+    # Key use case: Move windows to Ghost Display for background monitoring
+    # without disturbing the user's current workspace.
+    # =========================================================================
+
+    def move_window_to_space(
+        self,
+        window_id: int,
+        target_space: int,
+        follow: bool = False
+    ) -> bool:
+        """
+        Teleport a window to a different space using Yabai.
+
+        Args:
+            window_id: The window ID to move
+            target_space: The target space index (1-based)
+            follow: If True, also switch focus to that space
+
+        Returns:
+            True if successful, False otherwise
+
+        Example:
+            # Move Chrome window 12345 to Ghost Display (Space 10)
+            yabai.move_window_to_space(12345, 10)
+        """
+        if not self.is_available():
+            logger.warning("[YABAI] Cannot move window - Yabai not available")
+            return False
+
+        try:
+            yabai_path = self._health.yabai_path or "yabai"
+
+            # Execute the window move command
+            result = subprocess.run(
+                [yabai_path, "-m", "window", str(window_id), "--space", str(target_space)],
+                capture_output=True,
+                text=True,
+                timeout=self.config.query_timeout_seconds,
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                logger.error(f"[YABAI] Failed to move window {window_id}: {error_msg}")
+                return False
+
+            logger.info(f"[YABAI] ✅ Teleported window {window_id} to Space {target_space}")
+
+            # Optionally follow the window
+            if follow:
+                subprocess.run(
+                    [yabai_path, "-m", "space", "--focus", str(target_space)],
+                    capture_output=True,
+                    timeout=self.config.query_timeout_seconds,
+                )
+
+            self._health.record_success(0)
+            return True
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"[YABAI] Window move timed out for window {window_id}")
+            self._health.record_failure("Timeout during window move")
+            return False
+        except Exception as e:
+            logger.error(f"[YABAI] Window move failed: {e}")
+            self._health.record_failure(str(e))
+            return False
+
+    async def move_window_to_space_async(
+        self,
+        window_id: int,
+        target_space: int,
+        follow: bool = False
+    ) -> bool:
+        """Async version of move_window_to_space."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.move_window_to_space(window_id, target_space, follow)
+        )
+
+    def get_ghost_display_space(self) -> Optional[int]:
+        """
+        Find the Ghost Display space (virtual display for background monitoring).
+
+        The Ghost Display is identified as:
+        1. A visible space that is NOT the current/focused space
+        2. Typically on Display 2+ (virtual displays)
+
+        Returns:
+            Space ID of the Ghost Display, or None if not available
+
+        Example:
+            ghost_space = yabai.get_ghost_display_space()
+            if ghost_space:
+                yabai.move_window_to_space(window_id, ghost_space)
+        """
+        spaces = self.enumerate_all_spaces(include_display_info=True)
+
+        # Find visible spaces that are NOT the current space
+        ghost_candidates = []
+        current_space_id = None
+
+        for space in spaces:
+            if space.get("is_current"):
+                current_space_id = space.get("space_id")
+            elif space.get("is_visible"):
+                # This is a visible space but not current = Ghost Display candidate
+                ghost_candidates.append({
+                    "space_id": space.get("space_id"),
+                    "display": space.get("display", 1),
+                    "window_count": space.get("window_count", 0)
+                })
+
+        if not ghost_candidates:
+            logger.debug("[YABAI] No Ghost Display found (only one visible space)")
+            return None
+
+        # Prefer Display 2+ (virtual displays) over Display 1 spaces
+        # Sort by display number (higher = more likely virtual), then by fewer windows
+        ghost_candidates.sort(key=lambda x: (-x["display"], x["window_count"]))
+
+        ghost_space = ghost_candidates[0]["space_id"]
+        logger.info(
+            f"[YABAI] 👻 Ghost Display found: Space {ghost_space} "
+            f"(Display {ghost_candidates[0]['display']})"
+        )
+
+        return ghost_space
+
+    async def get_ghost_display_space_async(self) -> Optional[int]:
+        """Async version of get_ghost_display_space."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_ghost_display_space)
+
+    def teleport_window_to_ghost(self, window_id: int) -> Tuple[bool, Optional[int]]:
+        """
+        High-level method to teleport a window to the Ghost Display.
+
+        This is the main entry point for autonomous window management.
+        It finds the Ghost Display and moves the window there.
+
+        Args:
+            window_id: The window to teleport
+
+        Returns:
+            Tuple of (success: bool, ghost_space_id: Optional[int])
+
+        Example:
+            success, ghost_space = yabai.teleport_window_to_ghost(12345)
+            if success:
+                print(f"Window moved to Space {ghost_space}")
+        """
+        ghost_space = self.get_ghost_display_space()
+
+        if ghost_space is None:
+            logger.warning(
+                "[YABAI] 👻 No Ghost Display available - "
+                "create a virtual display with BetterDisplay"
+            )
+            return False, None
+
+        success = self.move_window_to_space(window_id, ghost_space)
+        return success, ghost_space if success else None
+
+    async def teleport_window_to_ghost_async(
+        self,
+        window_id: int
+    ) -> Tuple[bool, Optional[int]]:
+        """Async version of teleport_window_to_ghost."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.teleport_window_to_ghost(window_id)
+        )
+
+    def teleport_windows_to_ghost(
+        self,
+        window_ids: List[int],
+        max_windows: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Batch teleport multiple windows to the Ghost Display.
+
+        Args:
+            window_ids: List of window IDs to teleport
+            max_windows: Maximum windows to move (safety limit)
+
+        Returns:
+            Dict with results: {
+                'success': bool,
+                'ghost_space': int,
+                'moved': [list of moved window IDs],
+                'failed': [list of failed window IDs]
+            }
+        """
+        ghost_space = self.get_ghost_display_space()
+
+        if ghost_space is None:
+            return {
+                'success': False,
+                'ghost_space': None,
+                'moved': [],
+                'failed': window_ids,
+                'error': 'No Ghost Display available'
+            }
+
+        # Limit for safety
+        windows_to_move = window_ids[:max_windows]
+        if len(window_ids) > max_windows:
+            logger.warning(
+                f"[YABAI] Limiting teleport to {max_windows} windows "
+                f"(requested: {len(window_ids)})"
+            )
+
+        moved = []
+        failed = []
+
+        for wid in windows_to_move:
+            if self.move_window_to_space(wid, ghost_space):
+                moved.append(wid)
+            else:
+                failed.append(wid)
+
+        success = len(moved) > 0
+        logger.info(
+            f"[YABAI] 👻 Batch teleport complete: "
+            f"{len(moved)} moved, {len(failed)} failed"
+        )
+
+        return {
+            'success': success,
+            'ghost_space': ghost_space,
+            'moved': moved,
+            'failed': failed
+        }
+
+    async def teleport_windows_to_ghost_async(
+        self,
+        window_ids: List[int],
+        max_windows: int = 5
+    ) -> Dict[str, Any]:
+        """Async version of teleport_windows_to_ghost."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.teleport_windows_to_ghost(window_ids, max_windows)
+        )
+
+    def get_current_user_space(self) -> Optional[int]:
+        """Get the space ID where the user is currently working."""
+        spaces = self.enumerate_all_spaces()
+        for space in spaces:
+            if space.get("is_current"):
+                return space.get("space_id")
+        return None
+
+    # =========================================================================
+    # END: Window Teleportation Methods
+    # =========================================================================
+
     def get_workspace_summary(self) -> Dict[str, Any]:
         """Get a comprehensive summary of the entire workspace"""
         spaces = self.enumerate_all_spaces()
