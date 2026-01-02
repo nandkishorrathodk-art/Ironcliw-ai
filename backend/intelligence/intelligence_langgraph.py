@@ -1153,13 +1153,30 @@ def create_enhanced_cai(base_cai: Optional[Any] = None) -> EnhancedCAI:
 def create_unified_orchestrator(
     uae: Optional[Any] = None,
     sai: Optional[EnhancedSAI] = None,
-    cai: Optional[EnhancedCAI] = None
+    cai: Optional[EnhancedCAI] = None,
+    # v21.0.0: Accept enhanced_* naming convention for compatibility
+    enhanced_uae: Optional[Any] = None,
+    enhanced_sai: Optional[EnhancedSAI] = None,
+    enhanced_cai: Optional[EnhancedCAI] = None
 ) -> UnifiedIntelligenceOrchestrator:
-    """Create unified intelligence orchestrator."""
+    """
+    Create unified intelligence orchestrator.
+
+    Accepts both naming conventions for flexibility:
+    - uae/sai/cai (original)
+    - enhanced_uae/enhanced_sai/enhanced_cai (v21.0.0)
+
+    The enhanced_* parameters take precedence if both are provided.
+    """
+    # Use enhanced_* if provided, otherwise fall back to original names
+    final_uae = enhanced_uae if enhanced_uae is not None else uae
+    final_sai = enhanced_sai if enhanced_sai is not None else sai
+    final_cai = enhanced_cai if enhanced_cai is not None else cai
+
     return UnifiedIntelligenceOrchestrator(
-        enhanced_uae=uae,
-        enhanced_sai=sai,
-        enhanced_cai=cai
+        enhanced_uae=final_uae,
+        enhanced_sai=final_sai,
+        enhanced_cai=final_cai
     )
 
 

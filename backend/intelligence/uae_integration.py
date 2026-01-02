@@ -361,7 +361,8 @@ async def initialize_uae(
             try:
                 from intelligence.intelligence_langgraph import create_unified_orchestrator
 
-                unified_orchestrator = await create_unified_orchestrator(
+                # v21.0.0: create_unified_orchestrator is sync (no await needed)
+                unified_orchestrator = create_unified_orchestrator(
                     enhanced_uae=enhanced_uae,
                     enhanced_sai=enhanced_sai,
                     enhanced_cai=enhanced_cai
