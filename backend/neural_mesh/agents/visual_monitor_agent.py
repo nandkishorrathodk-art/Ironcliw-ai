@@ -1748,9 +1748,50 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 yabai = get_yabai_detector()
                 detector = MultiSpaceWindowDetector()
 
-                ghost_space = yabai.get_ghost_display_space()
-                current_user_space = yabai.get_current_user_space()
-                visible_space_ids = await detector.get_all_visible_spaces()
+                # =====================================================================
+                # v19.0: TIMEOUT PROTECTION for ALL Yabai Operations
+                # =====================================================================
+                # ROOT CAUSE FIX: These operations were hanging without timeout,
+                # causing "Processing..." freeze when Yabai is slow/unresponsive.
+                # SOLUTION: Wrap each operation in asyncio.wait_for with 3s timeout.
+                # =====================================================================
+                yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '3.0'))
+
+                try:
+                    ghost_space = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, yabai.get_ghost_display_space
+                        ),
+                        timeout=yabai_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"[God Mode] ⚠️ get_ghost_display_space timed out after {yabai_timeout}s")
+                    ghost_space = None
+
+                try:
+                    current_user_space = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, yabai.get_current_user_space
+                        ),
+                        timeout=yabai_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"[God Mode] ⚠️ get_current_user_space timed out after {yabai_timeout}s")
+                    current_user_space = None
+
+                try:
+                    visible_space_ids = await asyncio.wait_for(
+                        detector.get_all_visible_spaces(),
+                        timeout=yabai_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"[God Mode] ⚠️ get_all_visible_spaces timed out after {yabai_timeout}s")
+                    visible_space_ids = set()
+
+                # Continue only if we have basic space info (graceful degradation)
+                if ghost_space is None and current_user_space is None:
+                    logger.warning("[God Mode] ⚠️ Could not determine spaces - skipping auto-handoff")
+                    raise Exception("Yabai space detection unavailable")
 
                 if ghost_space is not None:
                     # =========================================================
@@ -1810,24 +1851,53 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         ghost_manager = None
                         if GHOST_MANAGER_AVAILABLE:
                             try:
+                                # v19.0: Timeout protection for Ghost Manager operations
+                                ghost_mgr_timeout = float(os.getenv('JARVIS_GHOST_MANAGER_TIMEOUT', '5.0'))
+
                                 ghost_manager = get_ghost_manager()
-                                await ghost_manager.initialize(yabai)
 
-                                # Start health monitoring
-                                await ghost_manager.start_health_monitoring(yabai)
-
-                                # v25.0: Preserve window geometry before teleportation
-                                for w in windows_to_teleport:
-                                    window_id = w.get("window_id")
-                                    await ghost_manager.preserve_window_geometry(
-                                        window_id=window_id,
-                                        yabai_detector=yabai,
-                                        app_name=w.get("app_name", app_name)
+                                # Initialize with timeout
+                                try:
+                                    await asyncio.wait_for(
+                                        ghost_manager.initialize(yabai),
+                                        timeout=ghost_mgr_timeout
                                     )
+                                except asyncio.TimeoutError:
+                                    logger.warning(f"[God Mode] ⚠️ Ghost Manager init timed out after {ghost_mgr_timeout}s")
+                                    ghost_manager = None
 
-                                logger.info(
-                                    f"[God Mode] 📐 Preserved geometry for {len(windows_to_teleport)} windows"
-                                )
+                                if ghost_manager:
+                                    # Start health monitoring with timeout
+                                    try:
+                                        await asyncio.wait_for(
+                                            ghost_manager.start_health_monitoring(yabai),
+                                            timeout=ghost_mgr_timeout
+                                        )
+                                    except asyncio.TimeoutError:
+                                        logger.warning(f"[God Mode] ⚠️ Health monitoring start timed out")
+
+                                    # v25.0: Preserve window geometry before teleportation (with timeout per window)
+                                    geometry_timeout = float(os.getenv('JARVIS_GEOMETRY_TIMEOUT', '2.0'))
+                                    preserved_count = 0
+                                    for w in windows_to_teleport:
+                                        window_id = w.get("window_id")
+                                        try:
+                                            await asyncio.wait_for(
+                                                ghost_manager.preserve_window_geometry(
+                                                    window_id=window_id,
+                                                    yabai_detector=yabai,
+                                                    app_name=w.get("app_name", app_name)
+                                                ),
+                                                timeout=geometry_timeout
+                                            )
+                                            preserved_count += 1
+                                        except asyncio.TimeoutError:
+                                            logger.debug(f"[God Mode] Geometry preservation timed out for window {window_id}")
+
+                                    if preserved_count > 0:
+                                        logger.info(
+                                            f"[God Mode] 📐 Preserved geometry for {preserved_count}/{len(windows_to_teleport)} windows"
+                                        )
                             except Exception as e:
                                 logger.debug(f"[God Mode] Ghost Manager init failed: {e}")
 
@@ -1857,12 +1927,26 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         # - Retry with exponential backoff
                         # - Root cause detection for failures
                         # - Comprehensive telemetry tracking
+                        #
+                        # v19.0: Added timeout protection to prevent "Processing..." hang
                         # =========================================================
-                        rescue_result = await yabai.rescue_windows_to_ghost_async(
-                            windows=windows_to_teleport,
-                            ghost_space=ghost_space,
-                            max_parallel=5  # Limit concurrent operations
-                        )
+                        rescue_timeout = float(os.getenv('JARVIS_RESCUE_TIMEOUT', '15.0'))
+
+                        try:
+                            rescue_result = await asyncio.wait_for(
+                                yabai.rescue_windows_to_ghost_async(
+                                    windows=windows_to_teleport,
+                                    ghost_space=ghost_space,
+                                    max_parallel=5  # Limit concurrent operations
+                                ),
+                                timeout=rescue_timeout
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"[God Mode] ⚠️ Rescue operation timed out after {rescue_timeout}s "
+                                f"- proceeding with available windows"
+                            )
+                            rescue_result = {"success": False, "error": "timeout"}
 
                         # Process results with v24.0 telemetry
                         if rescue_result.get("success"):
