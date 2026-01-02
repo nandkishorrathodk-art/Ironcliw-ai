@@ -653,7 +653,17 @@ class GhostDisplayStatus(Enum):
 
 @dataclass
 class WindowGeometry:
-    """Preserved window geometry for restoration."""
+    """
+    Preserved window geometry for restoration with display-aware scaling.
+
+    v26.0: Enhanced with:
+    - Display scaling/Retina coordinate handling
+    - Space UUID for stability across space reordering
+    - Focus state tracking
+    - Z-order (layer) information
+    - Min/max size constraints
+    - Animation timing data
+    """
     window_id: int
     app_name: str
     original_space: int
@@ -668,6 +678,88 @@ class WindowGeometry:
     teleported_at: Optional[datetime] = None
     current_space: Optional[int] = None
 
+    # v26.0: Display scaling support
+    source_display_scale: float = 1.0  # Retina scale factor of original display
+    source_display_width: int = 1920   # Original display resolution
+    source_display_height: int = 1080
+    ghost_display_scale: float = 1.0   # Scale factor of Ghost Display
+    ghost_display_width: int = 1920
+    ghost_display_height: int = 1080
+
+    # v26.0: Space stability
+    original_space_uuid: Optional[str] = None  # More stable than space ID
+    original_space_label: Optional[str] = None  # Space label if available
+
+    # v26.0: Focus and z-order
+    was_focused: bool = False  # Was this window focused before teleport?
+    z_order: int = 0           # Layer order (higher = more in front)
+    is_split_view: bool = False  # Window in split view
+    is_picture_in_picture: bool = False  # PiP mode
+
+    # v26.0: Window constraints
+    min_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_width: Optional[int] = None
+    max_height: Optional[int] = None
+    has_constraints: bool = False
+
+    # v26.0: Animation timing
+    move_animation_duration_ms: float = 250.0  # macOS animation duration
+    last_position_stable_at: Optional[datetime] = None
+
+    def convert_for_display(
+        self,
+        target_scale: float,
+        target_width: int,
+        target_height: int
+    ) -> Tuple[int, int, int, int]:
+        """
+        Convert geometry coordinates for a different display.
+
+        Handles Retina scaling and different resolutions.
+
+        Args:
+            target_scale: Scale factor of target display
+            target_width: Width of target display
+            target_height: Height of target display
+
+        Returns:
+            Tuple of (x, y, width, height) adjusted for target display
+        """
+        # Scale ratio between displays
+        scale_ratio = target_scale / self.source_display_scale if self.source_display_scale > 0 else 1.0
+
+        # Resolution ratio (for positioning)
+        width_ratio = target_width / self.source_display_width if self.source_display_width > 0 else 1.0
+        height_ratio = target_height / self.source_display_height if self.source_display_height > 0 else 1.0
+
+        # Convert position (scaled by resolution ratio)
+        new_x = int(self.x * width_ratio)
+        new_y = int(self.y * height_ratio)
+
+        # Convert size (scaled by scale ratio for Retina)
+        new_width = int(self.width * scale_ratio)
+        new_height = int(self.height * scale_ratio)
+
+        # Apply constraints if available
+        if self.has_constraints:
+            if self.min_width is not None:
+                new_width = max(new_width, int(self.min_width * scale_ratio))
+            if self.min_height is not None:
+                new_height = max(new_height, int(self.min_height * scale_ratio))
+            if self.max_width is not None:
+                new_width = min(new_width, int(self.max_width * scale_ratio))
+            if self.max_height is not None:
+                new_height = min(new_height, int(self.max_height * scale_ratio))
+
+        # Ensure window fits on target display
+        new_x = min(new_x, target_width - new_width)
+        new_y = min(new_y, target_height - new_height)
+        new_x = max(0, new_x)
+        new_y = max(25, new_y)  # Account for menu bar
+
+        return new_x, new_y, new_width, new_height
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "window_id": self.window_id,
@@ -677,13 +769,54 @@ class WindowGeometry:
             "bounds": {"x": self.x, "y": self.y, "width": self.width, "height": self.height},
             "is_minimized": self.is_minimized,
             "is_fullscreen": self.is_fullscreen,
+            "is_floating": self.is_floating,
             "teleported_at": self.teleported_at.isoformat() if self.teleported_at else None,
+            "display_scaling": {
+                "source_scale": self.source_display_scale,
+                "ghost_scale": self.ghost_display_scale,
+                "source_resolution": f"{self.source_display_width}x{self.source_display_height}",
+                "ghost_resolution": f"{self.ghost_display_width}x{self.ghost_display_height}",
+            },
+            "state": {
+                "was_focused": self.was_focused,
+                "z_order": self.z_order,
+                "is_split_view": self.is_split_view,
+                "is_picture_in_picture": self.is_picture_in_picture,
+            },
+            "constraints": {
+                "has_constraints": self.has_constraints,
+                "min_size": f"{self.min_width}x{self.min_height}" if self.min_width else None,
+                "max_size": f"{self.max_width}x{self.max_height}" if self.max_width else None,
+            },
         }
+
+
+class SystemEventType(Enum):
+    """System events that affect monitoring."""
+    DISPLAY_CONNECTED = "display_connected"
+    DISPLAY_DISCONNECTED = "display_disconnected"
+    DISPLAY_RESOLUTION_CHANGED = "display_resolution_changed"
+    DISPLAY_ARRANGEMENT_CHANGED = "display_arrangement_changed"
+    SYSTEM_SLEEP = "system_sleep"
+    SYSTEM_WAKE = "system_wake"
+    SPACE_CREATED = "space_created"
+    SPACE_DESTROYED = "space_destroyed"
+    USER_SWITCHED_TO_GHOST = "user_switched_to_ghost"
+    YABAI_RESTARTED = "yabai_restarted"
+    PERMISSIONS_CHANGED = "permissions_changed"
 
 
 @dataclass
 class GhostDisplayInfo:
-    """Information about the Ghost Display."""
+    """
+    Information about the Ghost Display with comprehensive tracking.
+
+    v26.0: Enhanced with:
+    - Display scale factor for Retina support
+    - Resolution change detection
+    - User presence tracking
+    - Animation timing information
+    """
     space_id: int
     display_id: int
     display_name: str
@@ -694,20 +827,130 @@ class GhostDisplayInfo:
     last_health_check: Optional[datetime] = None
     consecutive_failures: int = 0
 
+    # v26.0: Display scaling
+    scale_factor: float = 1.0  # Retina scale (1.0 = standard, 2.0 = Retina)
+    physical_width: int = 0    # Physical pixels (width * scale_factor)
+    physical_height: int = 0
+
+    # v26.0: Resolution tracking
+    initial_width: int = 0     # Width at initialization
+    initial_height: int = 0    # Height at initialization
+    resolution_changed: bool = False
+    last_resolution_check: Optional[datetime] = None
+
+    # v26.0: User presence
+    user_last_seen_on_ghost: Optional[datetime] = None
+    user_currently_on_ghost: bool = False
+    user_visit_count: int = 0
+
+    # v26.0: Space stability
+    space_uuid: Optional[str] = None  # More stable than space_id
+    space_label: Optional[str] = None
+    space_index: int = 0  # Position in space list
+
+    # v26.0: System state
+    is_system_sleeping: bool = False
+    last_sleep_time: Optional[datetime] = None
+    last_wake_time: Optional[datetime] = None
+
+    # v26.0: Animation timing
+    animation_complete: bool = True
+    animation_started_at: Optional[datetime] = None
+    standard_animation_duration_ms: float = 250.0
+
+    def __post_init__(self):
+        """Initialize computed fields."""
+        if self.initial_width == 0:
+            self.initial_width = self.width
+        if self.initial_height == 0:
+            self.initial_height = self.height
+        if self.physical_width == 0:
+            self.physical_width = int(self.width * self.scale_factor)
+        if self.physical_height == 0:
+            self.physical_height = int(self.height * self.scale_factor)
+
     @property
     def is_healthy(self) -> bool:
         """Check if Ghost Display is healthy based on recent checks."""
         if self.consecutive_failures >= 3:
             return False
+        if self.is_system_sleeping:
+            return False  # Not healthy during sleep
         if self.last_health_check is None:
             return True  # No data, assume healthy
         age = (datetime.now() - self.last_health_check).total_seconds()
         return age < 60  # Consider unhealthy if not checked in 60s
 
+    @property
+    def resolution_changed_since_init(self) -> bool:
+        """Check if resolution changed since initialization."""
+        return self.width != self.initial_width or self.height != self.initial_height
+
+    @property
+    def animation_in_progress(self) -> bool:
+        """Check if an animation is still in progress."""
+        if self.animation_complete or self.animation_started_at is None:
+            return False
+        elapsed = (datetime.now() - self.animation_started_at).total_seconds() * 1000
+        return elapsed < self.standard_animation_duration_ms
+
+    def mark_animation_start(self):
+        """Mark that a window animation has started."""
+        self.animation_complete = False
+        self.animation_started_at = datetime.now()
+
+    def mark_animation_complete(self):
+        """Mark that animations are complete."""
+        self.animation_complete = True
+        self.animation_started_at = None
+
+    async def wait_for_animation(self, extra_buffer_ms: float = 50.0):
+        """Wait for any in-progress animation to complete."""
+        if self.animation_in_progress:
+            remaining = self.standard_animation_duration_ms
+            if self.animation_started_at:
+                elapsed = (datetime.now() - self.animation_started_at).total_seconds() * 1000
+                remaining = max(0, self.standard_animation_duration_ms - elapsed)
+            await asyncio.sleep((remaining + extra_buffer_ms) / 1000.0)
+        self.mark_animation_complete()
+
+    def update_resolution(self, new_width: int, new_height: int):
+        """Update resolution and track changes."""
+        if new_width != self.width or new_height != self.height:
+            self.resolution_changed = True
+            self.width = new_width
+            self.height = new_height
+            self.physical_width = int(new_width * self.scale_factor)
+            self.physical_height = int(new_height * self.scale_factor)
+            self.last_resolution_check = datetime.now()
+
+    def record_user_presence(self, is_present: bool):
+        """Record user presence on Ghost Display."""
+        if is_present and not self.user_currently_on_ghost:
+            self.user_last_seen_on_ghost = datetime.now()
+            self.user_visit_count += 1
+        self.user_currently_on_ghost = is_present
+
+    def record_system_sleep(self):
+        """Record system entering sleep."""
+        self.is_system_sleeping = True
+        self.last_sleep_time = datetime.now()
+
+    def record_system_wake(self):
+        """Record system waking from sleep."""
+        self.is_system_sleeping = False
+        self.last_wake_time = datetime.now()
+        # Reset health check after wake
+        self.consecutive_failures = 0
+
 
 @dataclass
 class GhostDisplayManagerConfig:
-    """Configuration for Ghost Display management."""
+    """
+    Configuration for Ghost Display management.
+
+    v26.0: Enhanced with edge case handling configuration.
+    """
     # Health monitoring
     health_check_interval_seconds: float = field(
         default_factory=lambda: float(os.environ.get("JARVIS_GHOST_HEALTH_INTERVAL", "30"))
@@ -757,6 +1000,91 @@ class GhostDisplayManagerConfig:
         default_factory=lambda: float(os.environ.get("JARVIS_TELEPORT_DELAY_MS", "50"))
     )
 
+    # v26.0: Display scaling configuration
+    enable_retina_scaling: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_RETINA_SCALING", "true").lower() == "true"
+    )
+    auto_detect_display_scale: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_SCALE", "true").lower() == "true"
+    )
+    default_display_scale: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_DEFAULT_SCALE", "1.0"))
+    )
+
+    # v26.0: Resolution change handling
+    monitor_resolution_changes: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_MONITOR_RESOLUTION", "true").lower() == "true"
+    )
+    resolution_check_interval_seconds: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_RESOLUTION_INTERVAL", "10"))
+    )
+    auto_relayout_on_resolution_change: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_RELAYOUT", "true").lower() == "true"
+    )
+
+    # v26.0: System sleep/wake handling
+    handle_sleep_wake_events: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_HANDLE_SLEEP", "true").lower() == "true"
+    )
+    post_wake_delay_ms: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_WAKE_DELAY_MS", "500"))
+    )
+    post_wake_health_check: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_WAKE_HEALTH_CHECK", "true").lower() == "true"
+    )
+
+    # v26.0: User presence detection
+    detect_user_on_ghost_display: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_DETECT_USER", "true").lower() == "true"
+    )
+    pause_operations_when_user_present: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_PAUSE_ON_USER", "true").lower() == "true"
+    )
+    user_presence_cooldown_seconds: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_USER_COOLDOWN", "5.0"))
+    )
+
+    # v26.0: Animation timing
+    wait_for_animations: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_WAIT_ANIMATIONS", "true").lower() == "true"
+    )
+    standard_animation_duration_ms: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_ANIMATION_MS", "250"))
+    )
+    animation_buffer_ms: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_ANIMATION_BUFFER_MS", "50"))
+    )
+
+    # v26.0: Space stability
+    use_space_uuid: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_USE_SPACE_UUID", "true").lower() == "true"
+    )
+    verify_space_before_move: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_VERIFY_SPACE", "true").lower() == "true"
+    )
+
+    # v26.0: Window z-order management
+    preserve_z_order: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_PRESERVE_ZORDER", "true").lower() == "true"
+    )
+    restore_focus_on_return: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_RESTORE_FOCUS", "true").lower() == "true"
+    )
+
+    # v26.0: Window constraints
+    respect_window_constraints: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_RESPECT_CONSTRAINTS", "true").lower() == "true"
+    )
+    enforce_minimum_window_size: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_GHOST_ENFORCE_MIN_SIZE", "true").lower() == "true"
+    )
+    minimum_window_width: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MIN_WIDTH", "200"))
+    )
+    minimum_window_height: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MIN_HEIGHT", "150"))
+    )
+
 
 class GhostDisplayManager:
     """
@@ -769,6 +1097,15 @@ class GhostDisplayManager:
     - Window return policy
     - Fallback strategies
     - Multi-window coordination
+
+    v26.0 Edge Case Handling:
+    - Display scaling/Retina coordinate translation
+    - Resolution change detection and recovery
+    - System sleep/wake event handling
+    - User presence detection on Ghost Display
+    - Window z-order/layer management
+    - Animation-aware timing
+    - Space UUID stability verification
     """
 
     def __init__(self, config: Optional[GhostDisplayManagerConfig] = None):
@@ -781,6 +1118,34 @@ class GhostDisplayManager:
         self._windows_on_ghost: Set[int] = set()
         self._fallback_space: Optional[int] = None
         self._last_layout_time: float = 0.0
+
+        # v26.0: Display scaling state
+        self._display_scale_cache: Dict[int, float] = {}  # display_id -> scale factor
+        self._display_resolution_cache: Dict[int, Tuple[int, int]] = {}  # display_id -> (width, height)
+
+        # v26.0: System sleep/wake state
+        self._is_system_sleeping: bool = False
+        self._last_sleep_time: Optional[datetime] = None
+        self._last_wake_time: Optional[datetime] = None
+        self._pending_post_wake_check: bool = False
+
+        # v26.0: User presence tracking
+        self._user_on_ghost_display: bool = False
+        self._last_user_presence_check: Optional[datetime] = None
+        self._user_visit_history: List[datetime] = []  # Track when user visits ghost display
+        self._operations_paused: bool = False
+
+        # v26.0: Animation tracking
+        self._pending_animations: Dict[int, datetime] = {}  # window_id -> animation_start_time
+        self._global_animation_lock: bool = False
+
+        # v26.0: Space UUID tracking
+        self._space_uuid_cache: Dict[int, str] = {}  # space_id -> uuid
+        self._space_label_cache: Dict[int, str] = {}  # space_id -> label
+
+        # v26.0: Window z-order tracking
+        self._z_order_cache: Dict[int, int] = {}  # window_id -> z_order
+        self._focused_window_before_teleport: Optional[int] = None
 
     @property
     def status(self) -> GhostDisplayStatus:
@@ -807,6 +1172,633 @@ class GhostDisplayManager:
     def get_all_preserved_geometries(self) -> List[WindowGeometry]:
         """Get all preserved window geometries."""
         return list(self._geometry_cache.values())
+
+    # =========================================================================
+    # v26.0: New Properties for Edge Case State
+    # =========================================================================
+
+    @property
+    def is_system_sleeping(self) -> bool:
+        """Check if system is currently sleeping."""
+        return self._is_system_sleeping
+
+    @property
+    def is_user_on_ghost_display(self) -> bool:
+        """Check if user is currently on Ghost Display."""
+        return self._user_on_ghost_display
+
+    @property
+    def are_operations_paused(self) -> bool:
+        """Check if operations are paused due to user presence."""
+        return self._operations_paused
+
+    @property
+    def has_pending_animations(self) -> bool:
+        """Check if there are pending window animations."""
+        if not self._pending_animations:
+            return False
+        # Check if any animation is still in progress
+        now = datetime.now()
+        animation_duration = timedelta(milliseconds=self.config.standard_animation_duration_ms)
+        for window_id, start_time in list(self._pending_animations.items()):
+            if now - start_time < animation_duration:
+                return True
+            else:
+                # Animation complete, remove from pending
+                del self._pending_animations[window_id]
+        return False
+
+    @property
+    def ghost_display_scale(self) -> float:
+        """Get the scale factor of the Ghost Display."""
+        if self._ghost_info:
+            return self._ghost_info.scale_factor
+        return self.config.default_display_scale
+
+    # =========================================================================
+    # v26.0: Display Scaling Detection
+    # =========================================================================
+
+    async def detect_display_scale(
+        self,
+        display_id: int,
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> float:
+        """
+        Detect the scale factor of a display (for Retina support).
+
+        Args:
+            display_id: Display to check
+            yabai_detector: YabaiSpaceDetector for querying
+
+        Returns:
+            Scale factor (1.0 for standard, 2.0 for Retina)
+        """
+        if not self.config.auto_detect_display_scale:
+            return self.config.default_display_scale
+
+        # Check cache first
+        if display_id in self._display_scale_cache:
+            return self._display_scale_cache[display_id]
+
+        try:
+            # Query display info using system_profiler or displayplacer if available
+            # For now, use a heuristic based on display resolution
+            displays = yabai_detector.enumerate_all_spaces(include_display_info=True)
+
+            for space_info in displays:
+                if space_info.get("display") == display_id:
+                    width = space_info.get("width", 1920)
+                    height = space_info.get("height", 1080)
+
+                    # Heuristic: High resolution displays are likely Retina
+                    # MacBook Pro Retina: 2560x1600 or higher (scaled to 1440x900, etc.)
+                    # iMac Retina: 4096x2304 or 5120x2880
+                    if width >= 2560 and height >= 1440:
+                        scale = 2.0
+                    elif width >= 1920 and height >= 1080:
+                        scale = 1.0
+                    else:
+                        scale = 1.0
+
+                    self._display_scale_cache[display_id] = scale
+                    self._display_resolution_cache[display_id] = (width, height)
+
+                    logger.debug(
+                        f"[GhostManager] 📏 Display {display_id} scale detected: "
+                        f"{scale}x ({width}x{height})"
+                    )
+                    return scale
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Scale detection failed: {e}")
+
+        return self.config.default_display_scale
+
+    def get_display_resolution(self, display_id: int) -> Tuple[int, int]:
+        """Get cached resolution for a display."""
+        return self._display_resolution_cache.get(display_id, (1920, 1080))
+
+    # =========================================================================
+    # v26.0: Resolution Change Detection
+    # =========================================================================
+
+    async def check_resolution_changes(
+        self,
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if Ghost Display resolution has changed.
+
+        Returns:
+            Dict with change info if resolution changed, None otherwise
+        """
+        if not self.config.monitor_resolution_changes or self._ghost_info is None:
+            return None
+
+        try:
+            spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+
+            for space_info in spaces:
+                if space_info.get("space_id") == self._ghost_info.space_id:
+                    new_width = space_info.get("width", self._ghost_info.width)
+                    new_height = space_info.get("height", self._ghost_info.height)
+
+                    if (new_width != self._ghost_info.width or
+                        new_height != self._ghost_info.height):
+
+                        old_width = self._ghost_info.width
+                        old_height = self._ghost_info.height
+
+                        # Update ghost info
+                        self._ghost_info.update_resolution(new_width, new_height)
+
+                        change_info = {
+                            "old_width": old_width,
+                            "old_height": old_height,
+                            "new_width": new_width,
+                            "new_height": new_height,
+                            "display_id": self._ghost_info.display_id,
+                            "detected_at": datetime.now()
+                        }
+
+                        logger.warning(
+                            f"[GhostManager] 🔄 Resolution change detected: "
+                            f"{old_width}x{old_height} → {new_width}x{new_height}"
+                        )
+
+                        return change_info
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Resolution check failed: {e}")
+
+        return None
+
+    async def handle_resolution_change(
+        self,
+        change_info: Dict[str, Any],
+        yabai_detector: 'YabaiSpaceDetector'
+    ):
+        """
+        Handle a resolution change by optionally re-laying out windows.
+
+        Args:
+            change_info: Resolution change information
+            yabai_detector: YabaiSpaceDetector for window operations
+        """
+        if not self.config.auto_relayout_on_resolution_change:
+            return
+
+        if self._windows_on_ghost:
+            logger.info(
+                f"[GhostManager] 📐 Re-laying out {len(self._windows_on_ghost)} windows "
+                f"after resolution change"
+            )
+            await self.apply_layout(
+                list(self._windows_on_ghost),
+                yabai_detector,
+                self.config.default_layout_style
+            )
+
+    # =========================================================================
+    # v26.0: System Sleep/Wake Handling
+    # =========================================================================
+
+    def record_system_sleep(self):
+        """
+        Record that the system is entering sleep mode.
+
+        Call this when system sleep is detected.
+        """
+        if not self.config.handle_sleep_wake_events:
+            return
+
+        self._is_system_sleeping = True
+        self._last_sleep_time = datetime.now()
+
+        if self._ghost_info:
+            self._ghost_info.record_system_sleep()
+
+        logger.info("[GhostManager] 😴 System entering sleep - pausing operations")
+
+    def record_system_wake(self):
+        """
+        Record that the system has woken from sleep.
+
+        Call this when system wake is detected.
+        """
+        if not self.config.handle_sleep_wake_events:
+            return
+
+        self._is_system_sleeping = False
+        self._last_wake_time = datetime.now()
+        self._pending_post_wake_check = self.config.post_wake_health_check
+
+        if self._ghost_info:
+            self._ghost_info.record_system_wake()
+
+        logger.info("[GhostManager] ☀️ System waking from sleep - resuming operations")
+
+    async def wait_for_post_wake_stability(self):
+        """
+        Wait for system stability after wake from sleep.
+
+        This allows displays, window server, and yabai to stabilize.
+        """
+        if not self.config.handle_sleep_wake_events:
+            return
+
+        if self._last_wake_time:
+            time_since_wake = (datetime.now() - self._last_wake_time).total_seconds() * 1000
+            if time_since_wake < self.config.post_wake_delay_ms:
+                wait_time = (self.config.post_wake_delay_ms - time_since_wake) / 1000.0
+                logger.debug(f"[GhostManager] Waiting {wait_time:.2f}s for post-wake stability")
+                await asyncio.sleep(wait_time)
+
+    # =========================================================================
+    # v26.0: User Presence Detection
+    # =========================================================================
+
+    async def detect_user_presence(
+        self,
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> bool:
+        """
+        Detect if user is currently viewing the Ghost Display.
+
+        Args:
+            yabai_detector: YabaiSpaceDetector for space queries
+
+        Returns:
+            True if user is on Ghost Display
+        """
+        if not self.config.detect_user_on_ghost_display or self._ghost_info is None:
+            return False
+
+        try:
+            # Get current focused space
+            current_space = yabai_detector.get_current_user_space()
+
+            is_on_ghost = current_space == self._ghost_info.space_id
+
+            # Update tracking
+            was_on_ghost = self._user_on_ghost_display
+            self._user_on_ghost_display = is_on_ghost
+            self._last_user_presence_check = datetime.now()
+
+            # Record presence in ghost info
+            self._ghost_info.record_user_presence(is_on_ghost)
+
+            # Track visits
+            if is_on_ghost and not was_on_ghost:
+                self._user_visit_history.append(datetime.now())
+                # Keep only last 100 visits
+                if len(self._user_visit_history) > 100:
+                    self._user_visit_history = self._user_visit_history[-100:]
+                logger.debug("[GhostManager] 👤 User arrived on Ghost Display")
+
+            elif not is_on_ghost and was_on_ghost:
+                logger.debug("[GhostManager] 👤 User left Ghost Display")
+
+            return is_on_ghost
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] User presence detection failed: {e}")
+            return False
+
+    def should_pause_operations(self) -> bool:
+        """
+        Check if operations should be paused due to user presence.
+
+        Returns:
+            True if operations should be paused
+        """
+        if not self.config.pause_operations_when_user_present:
+            return False
+
+        if not self._user_on_ghost_display:
+            return False
+
+        # Check cooldown
+        if self._last_user_presence_check:
+            time_since_check = (datetime.now() - self._last_user_presence_check).total_seconds()
+            if time_since_check > self.config.user_presence_cooldown_seconds:
+                # Cooldown expired, need to recheck
+                return True
+
+        return self._user_on_ghost_display
+
+    async def wait_for_user_to_leave(
+        self,
+        yabai_detector: 'YabaiSpaceDetector',
+        timeout_seconds: float = 30.0
+    ) -> bool:
+        """
+        Wait for user to leave Ghost Display before proceeding.
+
+        Args:
+            yabai_detector: YabaiSpaceDetector for space queries
+            timeout_seconds: Maximum time to wait
+
+        Returns:
+            True if user left, False if timeout
+        """
+        start_time = time.time()
+        check_interval = 0.5  # Check every 500ms
+
+        while time.time() - start_time < timeout_seconds:
+            is_present = await self.detect_user_presence(yabai_detector)
+            if not is_present:
+                return True
+            await asyncio.sleep(check_interval)
+
+        logger.warning(f"[GhostManager] Timeout waiting for user to leave Ghost Display")
+        return False
+
+    # =========================================================================
+    # v26.0: Animation Timing
+    # =========================================================================
+
+    def mark_animation_start(self, window_id: int):
+        """Mark that a window animation has started."""
+        self._pending_animations[window_id] = datetime.now()
+        if self._ghost_info:
+            self._ghost_info.mark_animation_start()
+
+    def mark_animation_complete(self, window_id: int):
+        """Mark that a window animation has completed."""
+        if window_id in self._pending_animations:
+            del self._pending_animations[window_id]
+        if not self._pending_animations and self._ghost_info:
+            self._ghost_info.mark_animation_complete()
+
+    async def wait_for_animation(
+        self,
+        window_id: Optional[int] = None,
+        extra_buffer_ms: Optional[float] = None
+    ):
+        """
+        Wait for window animation(s) to complete.
+
+        Args:
+            window_id: Specific window to wait for, or None for all
+            extra_buffer_ms: Extra time to wait after animation
+        """
+        if not self.config.wait_for_animations:
+            return
+
+        buffer = extra_buffer_ms or self.config.animation_buffer_ms
+        duration = self.config.standard_animation_duration_ms
+
+        if window_id is not None:
+            # Wait for specific window
+            if window_id in self._pending_animations:
+                start_time = self._pending_animations[window_id]
+                elapsed = (datetime.now() - start_time).total_seconds() * 1000
+                remaining = max(0, duration - elapsed + buffer)
+                if remaining > 0:
+                    await asyncio.sleep(remaining / 1000.0)
+                self.mark_animation_complete(window_id)
+        else:
+            # Wait for all animations
+            if self._pending_animations:
+                # Find the most recent animation start
+                latest_start = max(self._pending_animations.values())
+                elapsed = (datetime.now() - latest_start).total_seconds() * 1000
+                remaining = max(0, duration - elapsed + buffer)
+                if remaining > 0:
+                    await asyncio.sleep(remaining / 1000.0)
+                # Clear all pending
+                self._pending_animations.clear()
+                if self._ghost_info:
+                    self._ghost_info.mark_animation_complete()
+
+    # =========================================================================
+    # v26.0: Space UUID Stability
+    # =========================================================================
+
+    async def get_space_uuid(
+        self,
+        space_id: int,
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> Optional[str]:
+        """
+        Get the UUID for a space (more stable than space ID).
+
+        Args:
+            space_id: Space ID to look up
+            yabai_detector: YabaiSpaceDetector for queries
+
+        Returns:
+            Space UUID if available
+        """
+        if not self.config.use_space_uuid:
+            return None
+
+        # Check cache first
+        if space_id in self._space_uuid_cache:
+            return self._space_uuid_cache[space_id]
+
+        try:
+            spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+            for space_info in spaces:
+                if space_info.get("space_id") == space_id:
+                    uuid = space_info.get("uuid")
+                    label = space_info.get("label")
+                    if uuid:
+                        self._space_uuid_cache[space_id] = uuid
+                    if label:
+                        self._space_label_cache[space_id] = label
+                    return uuid
+        except Exception as e:
+            logger.debug(f"[GhostManager] Space UUID lookup failed: {e}")
+
+        return None
+
+    async def find_space_by_uuid(
+        self,
+        uuid: str,
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> Optional[int]:
+        """
+        Find a space ID by its UUID.
+
+        Args:
+            uuid: Space UUID to find
+            yabai_detector: YabaiSpaceDetector for queries
+
+        Returns:
+            Space ID if found
+        """
+        if not self.config.use_space_uuid:
+            return None
+
+        # Check if we have a cached mapping
+        for space_id, cached_uuid in self._space_uuid_cache.items():
+            if cached_uuid == uuid:
+                return space_id
+
+        try:
+            spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
+            for space_info in spaces:
+                if space_info.get("uuid") == uuid:
+                    space_id = space_info.get("space_id")
+                    self._space_uuid_cache[space_id] = uuid
+                    return space_id
+        except Exception as e:
+            logger.debug(f"[GhostManager] Space lookup by UUID failed: {e}")
+
+        return None
+
+    async def verify_space_still_valid(
+        self,
+        space_id: int,
+        expected_uuid: Optional[str],
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> Tuple[bool, Optional[int]]:
+        """
+        Verify a space is still valid (hasn't been reordered or deleted).
+
+        Args:
+            space_id: Space ID to verify
+            expected_uuid: Expected UUID for the space
+            yabai_detector: YabaiSpaceDetector for queries
+
+        Returns:
+            Tuple of (is_valid, new_space_id_if_changed)
+        """
+        if not self.config.verify_space_before_move:
+            return True, None
+
+        try:
+            current_uuid = await self.get_space_uuid(space_id, yabai_detector)
+
+            if expected_uuid is None:
+                # No UUID to compare, assume valid
+                return True, None
+
+            if current_uuid == expected_uuid:
+                return True, None
+
+            # UUID mismatch - space may have been reordered
+            # Try to find the new space ID by UUID
+            new_space_id = await self.find_space_by_uuid(expected_uuid, yabai_detector)
+            if new_space_id:
+                logger.warning(
+                    f"[GhostManager] ⚠️ Space reordered: {space_id} → {new_space_id}"
+                )
+                return False, new_space_id
+
+            logger.warning(f"[GhostManager] ⚠️ Space {space_id} no longer exists (UUID mismatch)")
+            return False, None
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Space verification failed: {e}")
+            return True, None  # Assume valid on error
+
+    # =========================================================================
+    # v26.0: Z-Order/Layer Management
+    # =========================================================================
+
+    async def capture_z_order(
+        self,
+        window_ids: List[int],
+        yabai_detector: 'YabaiSpaceDetector'
+    ) -> Dict[int, int]:
+        """
+        Capture the z-order (layer) of windows before teleportation.
+
+        Args:
+            window_ids: Windows to capture z-order for
+            yabai_detector: YabaiSpaceDetector for queries
+
+        Returns:
+            Dict mapping window_id to z_order
+        """
+        if not self.config.preserve_z_order:
+            return {}
+
+        z_orders = {}
+        try:
+            # Get all windows to determine relative ordering
+            all_windows = yabai_detector.get_all_windows()
+
+            # Windows are returned in z-order (front to back typically)
+            window_set = set(window_ids)
+            z_order = 0
+
+            for window in all_windows:
+                wid = window.get("id")
+                if wid in window_set:
+                    z_orders[wid] = z_order
+                    self._z_order_cache[wid] = z_order
+                    z_order += 1
+
+            # Also capture which window was focused
+            focused_window = yabai_detector.get_focused_window()
+            if focused_window and focused_window in window_set:
+                self._focused_window_before_teleport = focused_window
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Z-order capture failed: {e}")
+
+        return z_orders
+
+    async def restore_z_order(
+        self,
+        window_ids: List[int],
+        yabai_detector: 'YabaiSpaceDetector'
+    ):
+        """
+        Restore the z-order of windows after returning from Ghost Display.
+
+        Args:
+            window_ids: Windows to restore z-order for
+            yabai_detector: YabaiSpaceDetector for operations
+        """
+        if not self.config.preserve_z_order:
+            return
+
+        try:
+            yabai_path = yabai_detector._health.yabai_path or "yabai"
+
+            # Sort windows by their original z-order (back to front)
+            sorted_windows = sorted(
+                [(wid, self._z_order_cache.get(wid, 0)) for wid in window_ids],
+                key=lambda x: -x[1]  # Reverse order so we can bring each to front
+            )
+
+            for window_id, z_order in sorted_windows:
+                try:
+                    # Focus the window to bring it forward
+                    subprocess.run(
+                        [yabai_path, "-m", "window", str(window_id), "--focus"],
+                        capture_output=True,
+                        timeout=1.0
+                    )
+                    await asyncio.sleep(0.05)  # Small delay between focus operations
+                except Exception:
+                    pass
+
+            # Restore focus to originally focused window
+            if (self.config.restore_focus_on_return and
+                self._focused_window_before_teleport and
+                self._focused_window_before_teleport in window_ids):
+
+                try:
+                    subprocess.run(
+                        [yabai_path, "-m", "window",
+                         str(self._focused_window_before_teleport), "--focus"],
+                        capture_output=True,
+                        timeout=1.0
+                    )
+                except Exception:
+                    pass
+
+            logger.debug(f"[GhostManager] 📚 Restored z-order for {len(window_ids)} windows")
+
+        except Exception as e:
+            logger.debug(f"[GhostManager] Z-order restore failed: {e}")
 
     async def initialize(self, yabai_detector: 'YabaiSpaceDetector') -> bool:
         """
@@ -912,11 +1904,55 @@ class GhostDisplayManager:
             logger.debug("[GhostManager] 🏥 Health monitoring stopped")
 
     async def _health_check(self, yabai_detector: 'YabaiSpaceDetector'):
-        """Perform health check on Ghost Display."""
+        """
+        Perform health check on Ghost Display.
+
+        v26.0: Enhanced with edge case handling:
+        - Skip during system sleep
+        - Check for post-wake stability
+        - Detect resolution changes
+        - Detect user presence
+        - Check space UUID stability
+        """
         if self._ghost_info is None:
             return
 
+        # v26.0: Skip health checks during system sleep
+        if self._is_system_sleeping:
+            logger.debug("[GhostManager] Health check skipped - system sleeping")
+            return
+
         async with self._lock:
+            # v26.0: Wait for post-wake stability if needed
+            if self._pending_post_wake_check:
+                await self.wait_for_post_wake_stability()
+                self._pending_post_wake_check = False
+
+            # v26.0: Check for resolution changes
+            if self.config.monitor_resolution_changes:
+                resolution_change = await self.check_resolution_changes(yabai_detector)
+                if resolution_change:
+                    await self.handle_resolution_change(resolution_change, yabai_detector)
+
+            # v26.0: Detect user presence on Ghost Display
+            if self.config.detect_user_on_ghost_display:
+                await self.detect_user_presence(yabai_detector)
+
+            # v26.0: Verify space UUID stability
+            if self.config.use_space_uuid and self._ghost_info.space_uuid:
+                is_valid, new_space_id = await self.verify_space_still_valid(
+                    self._ghost_info.space_id,
+                    self._ghost_info.space_uuid,
+                    yabai_detector
+                )
+                if not is_valid and new_space_id:
+                    # Space was reordered, update our tracking
+                    logger.info(
+                        f"[GhostManager] 🔄 Ghost Display space reordered: "
+                        f"{self._ghost_info.space_id} → {new_space_id}"
+                    )
+                    self._ghost_info.space_id = new_space_id
+
             # Verify Ghost Display is still available
             current_ghost = yabai_detector.get_ghost_display_space()
 
@@ -925,6 +1961,20 @@ class GhostDisplayManager:
                 self._ghost_info.last_health_check = datetime.now()
                 self._ghost_info.consecutive_failures = 0
                 self._status = GhostDisplayStatus.AVAILABLE
+
+                # v26.0: Update display scale if auto-detection enabled
+                if self.config.auto_detect_display_scale:
+                    scale = await self.detect_display_scale(
+                        self._ghost_info.display_id,
+                        yabai_detector
+                    )
+                    if scale != self._ghost_info.scale_factor:
+                        logger.debug(
+                            f"[GhostManager] Display scale changed: "
+                            f"{self._ghost_info.scale_factor} → {scale}"
+                        )
+                        self._ghost_info.scale_factor = scale
+
             else:
                 # Ghost Display changed or disappeared
                 self._ghost_info.consecutive_failures += 1
@@ -990,6 +2040,13 @@ class GhostDisplayManager:
         """
         Preserve window geometry before teleportation.
 
+        v26.0: Enhanced with:
+        - Display scale factor capture
+        - Space UUID for stability
+        - Focus state and z-order
+        - Window constraints (min/max size)
+        - Split view and PiP detection
+
         Args:
             window_id: Window to preserve geometry for
             yabai_detector: YabaiSpaceDetector for querying
@@ -1002,9 +2059,13 @@ class GhostDisplayManager:
             # Get window info from yabai
             windows = yabai_detector.get_all_windows()
             window_info = None
-            for w in windows:
+            window_z_order = 0
+
+            # Find window and determine z-order from position in list
+            for idx, w in enumerate(windows):
                 if w.get("id") == window_id:
                     window_info = w
+                    window_z_order = idx
                     break
 
             if window_info is None:
@@ -1012,11 +2073,57 @@ class GhostDisplayManager:
                 return None
 
             frame = window_info.get("frame", {})
+            original_space = window_info.get("space", 1)
+            original_display = window_info.get("display", 1)
+
+            # v26.0: Get display scale factor
+            source_scale = self.config.default_display_scale
+            source_width, source_height = 1920, 1080
+            if self.config.enable_retina_scaling:
+                source_scale = await self.detect_display_scale(original_display, yabai_detector)
+                source_width, source_height = self.get_display_resolution(original_display)
+
+            # v26.0: Get Ghost Display scale
+            ghost_scale = self.ghost_display_scale
+            ghost_width = self._ghost_info.width if self._ghost_info else 1920
+            ghost_height = self._ghost_info.height if self._ghost_info else 1080
+
+            # v26.0: Get space UUID for stability
+            space_uuid = None
+            space_label = None
+            if self.config.use_space_uuid:
+                space_uuid = await self.get_space_uuid(original_space, yabai_detector)
+                space_label = self._space_label_cache.get(original_space)
+
+            # v26.0: Check if window is focused
+            focused_window = yabai_detector.get_focused_window()
+            was_focused = focused_window == window_id
+
+            # v26.0: Detect split view and PiP
+            # Note: yabai may not directly expose these, but we can infer from window properties
+            is_split_view = window_info.get("is-sticky", False) and not window_info.get("is-floating", False)
+            is_pip = window_info.get("is-sticky", False) and window_info.get("is-floating", False)
+
+            # v26.0: Get window constraints (if available from accessibility APIs)
+            # These would need AppleScript or accessibility framework to get accurately
+            # For now, use heuristics based on window type
+            min_width = None
+            min_height = None
+            max_width = None
+            max_height = None
+            has_constraints = False
+
+            # Apply minimum size constraints from config
+            if self.config.enforce_minimum_window_size:
+                min_width = self.config.minimum_window_width
+                min_height = self.config.minimum_window_height
+                has_constraints = True
+
             geometry = WindowGeometry(
                 window_id=window_id,
                 app_name=app_name or window_info.get("app", "Unknown"),
-                original_space=window_info.get("space", 1),
-                original_display=window_info.get("display", 1),
+                original_space=original_space,
+                original_display=original_display,
                 x=int(frame.get("x", 0)),
                 y=int(frame.get("y", 0)),
                 width=int(frame.get("w", 800)),
@@ -1024,13 +2131,45 @@ class GhostDisplayManager:
                 is_minimized=window_info.get("is-minimized", False),
                 is_fullscreen=window_info.get("is-native-fullscreen", False),
                 is_floating=window_info.get("is-floating", False),
-                teleported_at=datetime.now()
+                teleported_at=datetime.now(),
+                # v26.0: Display scaling
+                source_display_scale=source_scale,
+                source_display_width=source_width,
+                source_display_height=source_height,
+                ghost_display_scale=ghost_scale,
+                ghost_display_width=ghost_width,
+                ghost_display_height=ghost_height,
+                # v26.0: Space stability
+                original_space_uuid=space_uuid,
+                original_space_label=space_label,
+                # v26.0: Focus and z-order
+                was_focused=was_focused,
+                z_order=window_z_order,
+                is_split_view=is_split_view,
+                is_picture_in_picture=is_pip,
+                # v26.0: Window constraints
+                min_width=min_width,
+                min_height=min_height,
+                max_width=max_width,
+                max_height=max_height,
+                has_constraints=has_constraints,
+                # v26.0: Animation timing
+                move_animation_duration_ms=self.config.standard_animation_duration_ms,
+                last_position_stable_at=datetime.now()
             )
 
+            # Cache geometry and z-order
             self._geometry_cache[window_id] = geometry
+            self._z_order_cache[window_id] = window_z_order
+
+            # Track focused window
+            if was_focused:
+                self._focused_window_before_teleport = window_id
+
             logger.debug(
                 f"[GhostManager] 📐 Preserved geometry for window {window_id}: "
-                f"{geometry.width}x{geometry.height} at ({geometry.x}, {geometry.y})"
+                f"{geometry.width}x{geometry.height} at ({geometry.x}, {geometry.y}) "
+                f"[scale={source_scale}, z={window_z_order}, focused={was_focused}]"
             )
             return geometry
 
@@ -1162,6 +2301,13 @@ class GhostDisplayManager:
         """
         Apply layout to windows on Ghost Display.
 
+        v26.0: Enhanced with:
+        - Wait for pending animations before applying layout
+        - User presence check (pause if user on Ghost Display)
+        - Animation tracking for each window movement
+        - Window constraints enforcement
+        - Display scaling awareness
+
         Args:
             window_ids: Windows to arrange
             yabai_detector: YabaiSpaceDetector for moving/resizing
@@ -1175,18 +2321,71 @@ class GhostDisplayManager:
         if style == WindowLayoutStyle.PRESERVE:
             return {"success": True, "message": "Layout preserved (no changes)"}
 
-        positions = self.calculate_layout(len(window_ids), style)
+        results = {
+            "success": True,
+            "applied": [],
+            "failed": [],
+            "skipped": [],
+            "paused_for_user": False
+        }
 
-        results = {"success": True, "applied": [], "failed": []}
+        # v26.0: Check if operations are paused due to user presence
+        if self.config.pause_operations_when_user_present:
+            is_user_present = await self.detect_user_presence(yabai_detector)
+            if is_user_present:
+                logger.info("[GhostManager] 👤 User on Ghost Display - waiting for them to leave")
+                results["paused_for_user"] = True
+
+                # Wait for user to leave (with timeout)
+                user_left = await self.wait_for_user_to_leave(
+                    yabai_detector,
+                    timeout_seconds=10.0  # Short timeout for layout operations
+                )
+                if not user_left:
+                    # User didn't leave, skip layout to avoid disruption
+                    results["success"] = True
+                    results["message"] = "Skipped layout - user present on Ghost Display"
+                    return results
+
+        # v26.0: Wait for any pending animations to complete
+        if self.config.wait_for_animations and self.has_pending_animations:
+            logger.debug("[GhostManager] Waiting for pending animations before layout")
+            await self.wait_for_animation()
+
+        positions = self.calculate_layout(len(window_ids), style)
 
         for i, window_id in enumerate(window_ids):
             pos = positions[i]
             if pos["x"] == -1:
+                results["skipped"].append(window_id)
                 continue  # Skip if preserve
 
             try:
+                # v26.0: Apply window constraints from cached geometry
+                geometry = self._geometry_cache.get(window_id)
+                target_width = pos["width"]
+                target_height = pos["height"]
+
+                if geometry and geometry.has_constraints and self.config.respect_window_constraints:
+                    if geometry.min_width and target_width < geometry.min_width:
+                        target_width = geometry.min_width
+                    if geometry.min_height and target_height < geometry.min_height:
+                        target_height = geometry.min_height
+                    if geometry.max_width and target_width > geometry.max_width:
+                        target_width = geometry.max_width
+                    if geometry.max_height and target_height > geometry.max_height:
+                        target_height = geometry.max_height
+
+                # v26.0: Apply minimum window size from config
+                if self.config.enforce_minimum_window_size:
+                    target_width = max(target_width, self.config.minimum_window_width)
+                    target_height = max(target_height, self.config.minimum_window_height)
+
                 # Use yabai to resize and move window
                 yabai_path = yabai_detector._health.yabai_path or "yabai"
+
+                # v26.0: Mark animation start for this window
+                self.mark_animation_start(window_id)
 
                 # Move window
                 move_result = subprocess.run(
@@ -1197,7 +2396,7 @@ class GhostDisplayManager:
 
                 # Resize window
                 resize_result = subprocess.run(
-                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{pos['width']}:{pos['height']}"],
+                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{target_width}:{target_height}"],
                     capture_output=True,
                     timeout=2.0
                 )
@@ -1206,10 +2405,20 @@ class GhostDisplayManager:
                     results["applied"].append(window_id)
                 else:
                     results["failed"].append(window_id)
+                    self.mark_animation_complete(window_id)  # Clear animation tracking on failure
+
+                # v26.0: Add throttle delay between teleports if configured
+                if self.config.throttle_teleports and i < len(window_ids) - 1:
+                    await asyncio.sleep(self.config.teleport_delay_ms / 1000.0)
 
             except Exception as e:
                 logger.debug(f"[GhostManager] Layout apply failed for {window_id}: {e}")
                 results["failed"].append(window_id)
+                self.mark_animation_complete(window_id)
+
+        # v26.0: Wait for all animations to complete before returning
+        if self.config.wait_for_animations and results["applied"]:
+            await self.wait_for_animation()
 
         results["success"] = len(results["failed"]) == 0
         self._last_layout_time = time.time()
@@ -1217,6 +2426,7 @@ class GhostDisplayManager:
         logger.info(
             f"[GhostManager] 📐 Layout applied ({style.value}): "
             f"{len(results['applied'])} succeeded, {len(results['failed'])} failed"
+            + (f", {len(results['skipped'])} skipped" if results["skipped"] else "")
         )
 
         return results
@@ -1229,6 +2439,13 @@ class GhostDisplayManager:
     ) -> bool:
         """
         Return a window to its original space and optionally restore geometry.
+
+        v26.0: Enhanced with:
+        - Space UUID verification (handle space reordering)
+        - Display scaling during geometry restore
+        - Animation tracking for the return move
+        - Focus restoration if window was focused
+        - Z-order cleanup
 
         Args:
             window_id: Window to return
@@ -1243,16 +2460,42 @@ class GhostDisplayManager:
             logger.warning(f"[GhostManager] No preserved geometry for window {window_id}")
             return False
 
+        # v26.0: Verify original space is still valid (handle space reordering)
+        target_space = geometry.original_space
+        if self.config.use_space_uuid and geometry.original_space_uuid:
+            is_valid, new_space_id = await self.verify_space_still_valid(
+                geometry.original_space,
+                geometry.original_space_uuid,
+                yabai_detector
+            )
+            if not is_valid:
+                if new_space_id:
+                    logger.info(
+                        f"[GhostManager] Original space was reordered: "
+                        f"{geometry.original_space} → {new_space_id}"
+                    )
+                    target_space = new_space_id
+                else:
+                    logger.warning(
+                        f"[GhostManager] Original space {geometry.original_space} no longer exists, "
+                        f"returning to current user space instead"
+                    )
+                    target_space = yabai_detector.get_current_user_space() or geometry.original_space
+
+        # v26.0: Mark animation start
+        self.mark_animation_start(window_id)
+
         # Move back to original space
         success, method = yabai_detector.move_window_to_space_with_rescue(
             window_id=window_id,
-            target_space=geometry.original_space,
+            target_space=target_space,
             source_space=geometry.current_space,
             app_name=geometry.app_name
         )
 
         if not success:
-            logger.warning(f"[GhostManager] Failed to return window {window_id} to Space {geometry.original_space}")
+            logger.warning(f"[GhostManager] Failed to return window {window_id} to Space {target_space}")
+            self.mark_animation_complete(window_id)
             return False
 
         # Restore geometry if requested
@@ -1260,16 +2503,43 @@ class GhostDisplayManager:
             try:
                 yabai_path = yabai_detector._health.yabai_path or "yabai"
 
+                # v26.0: Calculate restored position accounting for display scale differences
+                restore_x = geometry.x
+                restore_y = geometry.y
+                restore_width = geometry.width
+                restore_height = geometry.height
+
+                # If display scales differ, adjust coordinates
+                if (self.config.enable_retina_scaling and
+                    geometry.source_display_scale != geometry.ghost_display_scale):
+
+                    # Get current target display scale
+                    current_scale = await self.detect_display_scale(
+                        geometry.original_display,
+                        yabai_detector
+                    )
+
+                    if current_scale != geometry.source_display_scale:
+                        # Display scale changed since window was captured
+                        scale_ratio = current_scale / geometry.source_display_scale
+                        restore_x = int(restore_x * scale_ratio)
+                        restore_y = int(restore_y * scale_ratio)
+                        # Size typically doesn't need scaling, only position
+                        logger.debug(
+                            f"[GhostManager] Adjusted geometry for scale change: "
+                            f"{geometry.source_display_scale} → {current_scale}"
+                        )
+
                 # Move to original position
                 subprocess.run(
-                    [yabai_path, "-m", "window", str(window_id), "--move", f"abs:{geometry.x}:{geometry.y}"],
+                    [yabai_path, "-m", "window", str(window_id), "--move", f"abs:{restore_x}:{restore_y}"],
                     capture_output=True,
                     timeout=2.0
                 )
 
                 # Resize to original size
                 subprocess.run(
-                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{geometry.width}:{geometry.height}"],
+                    [yabai_path, "-m", "window", str(window_id), "--resize", f"abs:{restore_width}:{restore_height}"],
                     capture_output=True,
                     timeout=2.0
                 )
@@ -1279,11 +2549,40 @@ class GhostDisplayManager:
             except Exception as e:
                 logger.debug(f"[GhostManager] Geometry restore failed: {e}")
 
+        # v26.0: Wait for animation to complete
+        if self.config.wait_for_animations:
+            await self.wait_for_animation(window_id)
+
+        # v26.0: Restore focus if this window was focused before teleport
+        if (self.config.restore_focus_on_return and
+            geometry.was_focused and
+            self._focused_window_before_teleport == window_id):
+
+            try:
+                yabai_path = yabai_detector._health.yabai_path or "yabai"
+                subprocess.run(
+                    [yabai_path, "-m", "window", str(window_id), "--focus"],
+                    capture_output=True,
+                    timeout=1.0
+                )
+                logger.debug(f"[GhostManager] 🎯 Restored focus to window {window_id}")
+            except Exception:
+                pass
+
         # Clean up tracking
         await self.track_window_return(window_id)
+
+        # v26.0: Clean up z-order cache
+        if window_id in self._z_order_cache:
+            del self._z_order_cache[window_id]
+
+        # Clean up focused window tracker if this was the focused window
+        if self._focused_window_before_teleport == window_id:
+            self._focused_window_before_teleport = None
+
         del self._geometry_cache[window_id]
 
-        logger.info(f"[GhostManager] 🏠 Window {window_id} returned to Space {geometry.original_space}")
+        logger.info(f"[GhostManager] 🏠 Window {window_id} returned to Space {target_space}")
         return True
 
     async def return_all_windows(
