@@ -1724,6 +1724,57 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             }
 
         # =====================================================================
+        # v28.0: TYPE-SAFE WINDOW VALIDATION (Fixes TypeError crash)
+        # =====================================================================
+        # ROOT CAUSE: _find_window(find_all=True) can return:
+        #   - List[Dict]: Success (multiple windows found)
+        #   - Dict: Fallback mode (single window, or error dict)
+        #   - None/[]: No windows found
+        #
+        # BUG: If a Dict is returned, `for w in windows:` iterates over
+        # dict KEYS (strings), then `w.get('space_id')` fails with:
+        # "TypeError: string indices must be integers"
+        #
+        # FIX: Normalize all return types to List[Dict] before iteration
+        # =====================================================================
+        validated_windows: List[Dict[str, Any]] = []
+
+        if windows is None:
+            logger.warning(f"⚠️ [v28.0] _find_window returned None for '{app_name}'")
+            validated_windows = []
+        elif isinstance(windows, list):
+            # Expected: List of window dicts
+            validated_windows = [w for w in windows if isinstance(w, dict) and w.get('window_id')]
+            logger.debug(f"[v28.0] Validated {len(validated_windows)} windows from list of {len(windows)}")
+        elif isinstance(windows, dict):
+            # Fallback mode returned a single dict - normalize to list
+            if windows.get('found') and windows.get('window_id'):
+                validated_windows = [windows]
+                logger.info(f"[v28.0] Normalized single window dict to list for '{app_name}'")
+            elif windows.get('status') == 'error':
+                logger.warning(f"⚠️ [v28.0] _find_window returned error: {windows.get('error', 'unknown')}")
+                validated_windows = []
+            else:
+                logger.warning(f"⚠️ [v28.0] Unexpected dict format: {list(windows.keys())}")
+                validated_windows = []
+        else:
+            logger.error(f"❌ [v28.0] Invalid window type: {type(windows).__name__}")
+            validated_windows = []
+
+        # Replace windows with validated list
+        windows = validated_windows
+
+        if not windows:
+            logger.warning(f"⚠️ [v28.0] No valid windows found for '{app_name}' after validation")
+            return {
+                'status': 'error',
+                'error': f"No valid windows found for '{app_name}'",
+                'total_watchers': 0
+            }
+
+        logger.info(f"✅ [v28.0] Validated {len(windows)} windows for '{app_name}'")
+
+        # =====================================================================
         # v22.0.0: AUTO-HANDOFF FIRST - Teleport Before Filter!
         # =====================================================================
         # CRITICAL ORDER OF OPERATIONS:
@@ -2864,13 +2915,66 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # Use adaptive FPS based on config
             fps = self.config.ferrari_fps
 
-            # Create Ferrari Engine VideoWatcher
-            watcher = await self._spawn_ferrari_watcher(
-                window_id=window_id,
-                fps=fps,
-                app_name=app_name,
-                space_id=space_id
-            )
+            # =====================================================================
+            # v28.0: TIMEOUT PROTECTION for Ferrari Engine Spawn
+            # =====================================================================
+            # ROOT CAUSE FIX: _spawn_ferrari_watcher can hang indefinitely if:
+            # - macOS ScreenCaptureKit is slow (permission dialogs)
+            # - Memory pressure causes GPU init to freeze
+            # - Window is inaccessible or locked
+            #
+            # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
+            # =====================================================================
+            ferrari_spawn_timeout = float(os.getenv('JARVIS_FERRARI_SPAWN_TIMEOUT', '8.0'))
+
+            try:
+                watcher = await asyncio.wait_for(
+                    self._spawn_ferrari_watcher(
+                        window_id=window_id,
+                        fps=fps,
+                        app_name=app_name,
+                        space_id=space_id
+                    ),
+                    timeout=ferrari_spawn_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"❌ [v28.0] [{watcher_id}] Ferrari Engine spawn TIMED OUT after {ferrari_spawn_timeout}s "
+                    f"(possible memory pressure or GPU hang)"
+                )
+
+                # Register failure with startup manager if available
+                if self._progressive_startup_manager is not None:
+                    try:
+                        await self._progressive_startup_manager.register_watcher_ready(
+                            watcher_id=watcher_id,
+                            success=False,
+                            error=f"Ferrari Engine timeout ({ferrari_spawn_timeout}s)"
+                        )
+                    except Exception as reg_err:
+                        logger.warning(f"Failed to register watcher failure: {reg_err}")
+
+                # v15.0: ERROR NARRATION
+                if self.config.working_out_loud_enabled:
+                    try:
+                        await self._narrate_working_out_loud(
+                            message=f"Timed out connecting to {app_name}. The system may be under memory pressure.",
+                            narration_type="error",
+                            watcher_id=watcher_id,
+                            priority="high"
+                        )
+                    except Exception:
+                        pass
+
+                return {
+                    'status': 'error',
+                    'error': f'Ferrari Engine spawn timeout ({ferrari_spawn_timeout}s)',
+                    'watcher_id': watcher_id,
+                    'space_id': space_id,
+                    'window_id': window_id,
+                    'trigger_detected': False,
+                    'timeout': True
+                }
 
             if not watcher:
                 # Ferrari Engine unavailable - fallback to error
