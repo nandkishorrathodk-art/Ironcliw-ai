@@ -4562,14 +4562,105 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     )
                 return True, "No frame capture engine - assuming capturable", validation_details
 
-        # All retries exhausted
+        # All retries exhausted - BUT check for Optimistic Validation override
         validation_details['checks_failed'].append('frame_capture')
         validation_details['total_wait_time_ms'] = total_wait_time_ms
         total_time_ms = (time.time() - validation_start_time) * 1000
+
+        # =====================================================================
+        # v28.5: OPTIMISTIC VALIDATION - Trust the Kernel
+        # =====================================================================
+        # ROOT CAUSE: CGWindowListCreateImage (Snapshot API) fails on virtual
+        # displays even when the window IS capturable by ScreenCaptureKit (Video API).
+        #
+        # THE MISMATCH:
+        # - Snapshot API (CGWindowListCreateImage): Older, struggles with virtual displays
+        # - Video API (ScreenCaptureKit): Newer, designed for modern display setups
+        #
+        # SOLUTION: If the Compositor confirmed the window is onscreen
+        # (kCGWindowIsOnscreen == True), we TRUST the OS Kernel and proceed
+        # to the Ferrari Engine anyway. The video stream will work even if
+        # the static snapshot failed.
+        #
+        # This implements "Optimistic Validation": trust the authoritative
+        # source (GPU Compositor) over the flaky test (Snapshot).
+        # =====================================================================
+
+        # Check if compositor previously verified this window
+        compositor_was_verified = 'compositor_onscreen' in validation_details.get('checks_passed', [])
+        compositor_alpha_valid = validation_details.get('compositor_details', {}).get('alpha', 0) > 0.01
+
+        # v28.5: Optimistic override - trust compositor over snapshot
+        if compositor_was_verified or compositor_alpha_valid:
+            # Re-verify compositor state one final time before override
+            try:
+                final_onscreen, final_alpha, final_error, final_details = \
+                    await self._check_compositor_onscreen(window_id, timeout=1.0)
+
+                if final_onscreen and final_alpha and final_alpha > 0.01:
+                    validation_details['validation_strategy'] = 'optimistic_compositor_trust_v28.5'
+                    validation_details['optimistic_override'] = True
+                    validation_details['final_compositor_state'] = final_details
+
+                    logger.info(
+                        f"[Validation] ⚡ v28.5 OPTIMISTIC OVERRIDE: Window {window_id} "
+                        f"passed Compositor check (alpha={final_alpha:.2f}) but failed "
+                        f"Snapshot test. Trusting Kernel - launching Ferrari Engine anyway. "
+                        f"(Snapshot API struggles with virtual displays; ScreenCaptureKit will work)"
+                    )
+
+                    return (
+                        True,
+                        f"Window validated via Optimistic Compositor Trust v28.5 "
+                        f"(Kernel confirmed onscreen, alpha={final_alpha:.2f})",
+                        validation_details
+                    )
+                else:
+                    logger.debug(
+                        f"[Validation] Final compositor re-check failed: "
+                        f"onscreen={final_onscreen}, alpha={final_alpha}, error={final_error}"
+                    )
+
+            except Exception as e:
+                logger.debug(f"[Validation] Final compositor check failed: {e}")
+
+        # v28.5: Additional fallback - check if window is in compositor list at all
+        # Even if previous checks failed, do one more compositor query
+        if not compositor_was_verified:
+            try:
+                fallback_onscreen, fallback_alpha, fallback_error, fallback_details = \
+                    await self._check_compositor_onscreen(window_id, timeout=1.0)
+
+                if fallback_onscreen and fallback_alpha and fallback_alpha > 0.5:
+                    validation_details['validation_strategy'] = 'optimistic_fallback_v28.5'
+                    validation_details['fallback_compositor_check'] = True
+                    validation_details['fallback_details'] = fallback_details
+
+                    logger.info(
+                        f"[Validation] ⚡ v28.5 OPTIMISTIC FALLBACK: Window {window_id} "
+                        f"was not in compositor during retries, but IS NOW onscreen "
+                        f"(alpha={fallback_alpha:.2f}). Window hydrated late - proceeding."
+                    )
+
+                    return (
+                        True,
+                        f"Window validated via late Compositor confirmation v28.5 "
+                        f"(hydrated after retries, alpha={fallback_alpha:.2f})",
+                        validation_details
+                    )
+
+            except Exception as e:
+                logger.debug(f"[Validation] Fallback compositor check failed: {e}")
+
+        # Truly failed - neither snapshot nor compositor verification worked
+        validation_details['optimistic_override_attempted'] = True
+        validation_details['optimistic_override_failed'] = True
+
         return (
             False,
-            f"Window {window_id} failed frame capture test after {max_retries} attempts "
-            f"over {total_time_ms:.0f}ms (window may need more time to hydrate on Ghost Display)",
+            f"Window {window_id} failed ALL validation checks after {max_retries} attempts "
+            f"over {total_time_ms:.0f}ms (Snapshot: ✗, Compositor: ✗). "
+            f"Window may be minimized, on hidden space, or closed.",
             validation_details
         )
 
