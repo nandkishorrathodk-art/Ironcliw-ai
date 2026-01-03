@@ -6224,16 +6224,36 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             )
 
             # Get full OCR text for context extraction and fallback matching
+            # Handle both dataclass (TextDetectionResult) and dict responses
             full_ocr_text = ""
-            if hasattr(self._detector, 'last_ocr_text'):
+            if hasattr(result, 'all_text') and result.all_text:
+                # TextDetectionResult dataclass
+                full_ocr_text = result.all_text
+            elif hasattr(self._detector, 'last_ocr_text'):
                 full_ocr_text = self._detector.last_ocr_text or ""
-            elif result and isinstance(result, dict):
-                full_ocr_text = result.get('raw_text', result.get('text', ''))
+            elif isinstance(result, dict):
+                full_ocr_text = result.get('raw_text', result.get('text', result.get('all_text', '')))
             
             # TIER 1: Check if detector already found a match
-            if result and result.get('found', False):
-                confidence = result.get('confidence', 0.9)
-                matched_text = result.get('text', trigger_text)
+            # Handle both dataclass and dict response types
+            result_detected = False
+            result_confidence = 0.0
+            result_text = ""
+            
+            if hasattr(result, 'detected'):
+                # TextDetectionResult dataclass
+                result_detected = result.detected
+                result_confidence = result.confidence
+                result_text = result.text_found or trigger_text
+            elif isinstance(result, dict):
+                # Legacy dict response
+                result_detected = result.get('found', result.get('detected', False))
+                result_confidence = result.get('confidence', 0.9)
+                result_text = result.get('text', result.get('text_found', trigger_text))
+            
+            if result_detected:
+                confidence = result_confidence
+                matched_text = result_text
                 
                 # Extract context (numbers, values)
                 context = self._extract_ocr_context(full_ocr_text, trigger_text, matched_text)
