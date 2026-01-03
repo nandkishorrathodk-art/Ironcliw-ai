@@ -97,6 +97,25 @@ except ImportError:
     except ImportError as e:
         logger.warning(f"IntelligentErrorReporter not available: {e}")
 
+# v32.6: Import GhostPersistenceManager for "bring back windows" command
+GhostPersistenceManager = None
+GHOST_PERSISTENCE_AVAILABLE = False
+try:
+    from vision.ghost_persistence_manager import (
+        GhostPersistenceManager,
+        get_persistence_manager,
+    )
+    GHOST_PERSISTENCE_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.vision.ghost_persistence_manager import (
+            GhostPersistenceManager,
+            get_persistence_manager,
+        )
+        GHOST_PERSISTENCE_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"GhostPersistenceManager not available: {e}")
+
 class ResponseStyle(Enum):
     """
     Response style variations based on time of day and context.
@@ -609,6 +628,227 @@ class IntelligentCommandHandler:
                    f"god_mode={all_spaces}, confidence={base_confidence:.2f}, method={extraction_method}")
 
         return result
+
+    def _parse_bring_back_command(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        v32.6: Parse "bring back windows" / "return windows from ghost display" commands.
+        
+        Detects variations like:
+        - "bring back the Chrome windows"
+        - "return my windows from ghost display"
+        - "bring windows back to main display"
+        - "return all windows"
+        - "move windows back from ghost"
+        
+        Returns:
+            Dict with app_name (optional) and action details, or None if not a match
+        """
+        text_lower = text.lower()
+        
+        # =====================================================================
+        # PATTERN DETECTION - Natural language variations for window return
+        # =====================================================================
+        
+        # Core action verbs for returning windows
+        return_verbs = [
+            'bring back', 'return', 'move back', 'get back', 
+            'restore', 'retrieve', 'recover', 'repatriate'
+        ]
+        
+        # Context words that indicate this is about the Ghost Display
+        ghost_context = [
+            'ghost', 'ghost display', 'ghost mode', 'ghost screen',
+            'hidden', 'background', 'other space', 'other monitor'
+        ]
+        
+        # Target words
+        window_words = ['window', 'windows', 'app', 'apps', 'chrome', 'terminal', 'safari']
+        
+        # Destination words  
+        destination_words = ['main', 'back', 'primary', 'current', 'my screen', 'my display', 'visible']
+        
+        # Check if this is a return windows command
+        has_return_verb = any(verb in text_lower for verb in return_verbs)
+        has_window_ref = any(word in text_lower for word in window_words)
+        has_ghost_ref = any(ctx in text_lower for ctx in ghost_context)
+        has_destination = any(dest in text_lower for dest in destination_words)
+        
+        # Must have a return verb + either (window ref or ghost ref)
+        is_return_command = has_return_verb and (has_window_ref or has_ghost_ref or has_destination)
+        
+        if not is_return_command:
+            return None
+        
+        # =====================================================================
+        # EXTRACT APP NAME (Optional - if specified, return only that app's windows)
+        # =====================================================================
+        app_name = None
+        
+        # Common app names to look for
+        app_patterns = [
+            r'(?:bring|return|move|get|restore)\s+(?:back\s+)?(?:the\s+)?(\w+)\s+window',
+            r'(\w+)\s+windows?\s+(?:back|from)',
+            r'(?:my\s+)?(\w+)\s+(?:app|application)s?',
+        ]
+        
+        for pattern in app_patterns:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                potential_app = match.group(1).strip()
+                # Filter out non-app words
+                if potential_app.lower() not in ['the', 'my', 'all', 'any', 'some', 'back', 'ghost']:
+                    app_name = potential_app.title()
+                    break
+        
+        # =====================================================================
+        # CONFIDENCE CALCULATION
+        # =====================================================================
+        confidence = 0.5  # Base confidence
+        
+        if has_return_verb:
+            confidence += 0.2
+        if has_ghost_ref:
+            confidence += 0.2  # Explicit ghost reference = higher confidence
+        if has_destination:
+            confidence += 0.1
+        
+        logger.info(
+            f"📥 Bring Back command detected: app='{app_name or 'ALL'}', "
+            f"confidence={confidence:.2f}, ghost_ref={has_ghost_ref}"
+        )
+        
+        return {
+            'action': 'bring_back_windows',
+            'app_name': app_name,  # None = all windows
+            'confidence': confidence,
+            'has_ghost_reference': has_ghost_ref,
+            'original_command': text,
+        }
+
+    async def _execute_bring_back_command(self, params: Dict[str, Any]) -> str:
+        """
+        v32.6: Execute the "bring back windows from Ghost Display" command.
+        
+        Uses GhostPersistenceManager to repatriate windows to their original spaces.
+        """
+        import random
+        
+        app_name = params.get('app_name')
+        
+        if not GHOST_PERSISTENCE_AVAILABLE:
+            return (
+                f"I apologize, {self.user_name}, but the window recovery system isn't available. "
+                f"You may need to manually move the windows back."
+            )
+        
+        try:
+            # Get the persistence manager
+            persistence_manager = get_persistence_manager()
+            
+            # Get all persisted window states
+            all_states = await persistence_manager.get_all_window_states()
+            
+            if not all_states:
+                return random.choice([
+                    f"I don't have any windows tracked on the Ghost Display, {self.user_name}.",
+                    f"All windows appear to be in their normal locations already, {self.user_name}.",
+                    f"There are no windows to bring back from the Ghost Display.",
+                ])
+            
+            # Filter by app name if specified
+            if app_name:
+                filtered_states = {
+                    k: v for k, v in all_states.items()
+                    if v.app_name.lower() == app_name.lower()
+                }
+                if not filtered_states:
+                    return (
+                        f"I don't have any {app_name} windows on the Ghost Display, {self.user_name}. "
+                        f"I do have {len(all_states)} other windows I could bring back."
+                    )
+                all_states = filtered_states
+            
+            # Build list of stranded windows for repatriation
+            from backend.vision.ghost_persistence_manager import StrandedWindowInfo
+            
+            windows_to_return = []
+            for window_id, state in all_states.items():
+                # Check if window still exists
+                exists, current_space = await persistence_manager._check_window_location(
+                    state.window_id
+                )
+                
+                if exists:
+                    windows_to_return.append(StrandedWindowInfo(
+                        window_id=state.window_id,
+                        app_name=state.app_name,
+                        original_space=state.original_space,
+                        original_geometry=(
+                            state.original_x,
+                            state.original_y,
+                            state.original_width,
+                            state.original_height,
+                        ),
+                        time_stranded=state.teleported_at,
+                        still_exists=True,
+                        still_on_ghost=current_space == state.ghost_space,
+                        repatriation_possible=True,
+                    ))
+            
+            if not windows_to_return:
+                return (
+                    f"The windows I moved earlier are no longer on the Ghost Display, {self.user_name}. "
+                    f"They may have been closed or moved manually."
+                )
+            
+            # Narration callback for voice feedback
+            async def narrate(message: str):
+                if self._visual_monitor_agent and hasattr(self._visual_monitor_agent, '_narrate_working_out_loud'):
+                    try:
+                        await self._visual_monitor_agent._narrate_working_out_loud(
+                            message=message,
+                            narration_type="action",
+                            watcher_id="bring_back_windows",
+                            priority="high"
+                        )
+                    except Exception:
+                        pass
+            
+            # Perform repatriation
+            result = await persistence_manager.repatriate_stranded_windows(
+                windows_to_return,
+                narrate_callback=narrate
+            )
+            
+            # Build response
+            success = result.get('success', 0)
+            failed = result.get('failed', 0)
+            total = result.get('total', 0)
+            
+            if success > 0 and failed == 0:
+                app_suffix = f" {app_name}" if app_name else ""
+                return random.choice([
+                    f"Done, {self.user_name}! I've brought back {success}{app_suffix} window{'s' if success > 1 else ''} to their original spaces.",
+                    f"All {success}{app_suffix} window{'s' if success > 1 else ''} have been returned to your main display{'s' if success > 1 else ''}, {self.user_name}.",
+                    f"Search and rescue complete! {success} window{'s' if success > 1 else ''} safely returned.",
+                ])
+            elif success > 0 and failed > 0:
+                return (
+                    f"Partial success, {self.user_name}. I brought back {success} windows, "
+                    f"but {failed} couldn't be moved - they may have been closed."
+                )
+            else:
+                return (
+                    f"I couldn't move the windows back, {self.user_name}. "
+                    f"They may have been closed or the spaces changed."
+                )
+        
+        except Exception as e:
+            logger.error(f"Error in bring_back_command: {e}", exc_info=True)
+            return (
+                f"I encountered an error trying to bring back the windows, {self.user_name}. "
+                f"Error: {str(e)[:100]}"
+            )
 
     def _build_surveillance_start_message(
         self,
@@ -2096,7 +2336,16 @@ class IntelligentCommandHandler:
             }
 
             # ===================================================================
-            # PRIORITY 1: Check for God Mode surveillance commands FIRST
+            # PRIORITY 0: Check for "bring back windows" commands FIRST
+            # v32.6: Return windows from Ghost Display to main display
+            # ===================================================================
+            bring_back_params = self._parse_bring_back_command(text)
+            if bring_back_params:
+                logger.info(f"📥 Bring back windows command detected: {bring_back_params}")
+                return await self._execute_bring_back_command(bring_back_params)
+
+            # ===================================================================
+            # PRIORITY 1: Check for God Mode surveillance commands
             # ===================================================================
             watch_params = self._parse_watch_command(text)
             if watch_params:
