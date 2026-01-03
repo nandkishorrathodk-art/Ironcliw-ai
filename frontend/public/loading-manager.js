@@ -1432,6 +1432,10 @@ class JARVISLoadingManager {
         await this.connectWebSocket();
         this.startPolling();
         this.startHealthMonitoring();
+
+        // CRITICAL: Start backend health polling for stuck detection & fallback
+        // This enables automatic redirect when system is already running but loading server is down
+        this.startBackendHealthPolling();
         
         // NOTE: No independent health polling - we trust the loading server
         // The loading server has a watchdog for edge cases
@@ -1712,6 +1716,15 @@ class JARVISLoadingManager {
     async connectWebSocket() {
         if (this.state.reconnectAttempts >= this.config.reconnect.maxAttempts) {
             console.warn('[WebSocket] Max reconnection attempts reached');
+            // CRITICAL: Check if system is already running before giving up
+            // This handles the case where loading server shut down but system is healthy
+            const systemReady = await this.checkFullSystemReady();
+            if (systemReady) {
+                console.log('[WebSocket] ✅ System already running - redirecting');
+                this.quickRedirectToApp();
+            } else {
+                console.warn('[WebSocket] System not ready - will rely on health polling fallback');
+            }
             return;
         }
 
@@ -1778,6 +1791,18 @@ class JARVISLoadingManager {
             ),
             this.config.reconnect.maxDelay
         );
+
+        // EARLY SYSTEM CHECK: After 3 failed attempts, check if system is already running
+        // This provides faster recovery when loading server is down but system is healthy
+        if (this.state.reconnectAttempts === 3) {
+            console.log('[WebSocket] 3 attempts failed - checking if system already running...');
+            this.checkFullSystemReady().then(ready => {
+                if (ready && !this.state.redirecting) {
+                    console.log('[WebSocket] ✅ System already running (early check) - redirecting');
+                    this.quickRedirectToApp();
+                }
+            });
+        }
 
         console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${this.state.reconnectAttempts})...`);
         setTimeout(() => this.connectWebSocket(), delay);
