@@ -1411,12 +1411,12 @@ class UnifiedWebSocketManager:
                                 ]
                             else:
                                 progress_stages = [
-                                    {"stage": "analyzing", "message": "🧠 Analyzing your request..."},
-                                    {"stage": "processing", "message": "⚙️ Processing command..."},
-                                    {"stage": "vision_init", "message": "👁️ Initializing vision..."},
-                                    {"stage": "api_call", "message": "📡 Connecting to AI..."},
-                                    {"stage": "generating", "message": "✨ Generating response..."},
-                                ]
+                                {"stage": "analyzing", "message": "🧠 Analyzing your request..."},
+                                {"stage": "processing", "message": "⚙️ Processing command..."},
+                                {"stage": "vision_init", "message": "👁️ Initializing vision..."},
+                                {"stage": "api_call", "message": "📡 Connecting to AI..."},
+                                {"stage": "generating", "message": "✨ Generating response..."},
+                            ]
 
                             async def send_progress_updates():
                                 """
@@ -1551,13 +1551,13 @@ class UnifiedWebSocketManager:
                                             # ═══════════════════════════════════════════════════
                                             poll_interval = 0.1 if is_surveillance_command else 0.5
                                             
-                                            try:
-                                                await asyncio.wait_for(
-                                                    progress_cancelled.wait(),
+                                        try:
+                                            await asyncio.wait_for(
+                                                progress_cancelled.wait(),
                                                     timeout=poll_interval
-                                                )
-                                                break  # Cancelled
-                                            except asyncio.TimeoutError:
+                                            )
+                                            break  # Cancelled
+                                        except asyncio.TimeoutError:
                                                 pass  # Continue polling
                                                 
                                     finally:

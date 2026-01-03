@@ -1,6 +1,6 @@
 """
-JARVIS Neural Mesh - Visual Monitor Agent v14.0 (v33.0 Catch & Release Protocol)
-=================================================================================
+JARVIS Neural Mesh - Visual Monitor Agent v14.0 (v28.2 Window Validation)
+==========================================================================
 
 The "Watcher & Actor" of Video Multi-Space Intelligence (VMSI) - Ferrari Engine Edition.
 
@@ -16,24 +16,6 @@ This agent provides GPU-ACCELERATED visual surveillance capabilities:
 - Share state across repos (JARVIS ↔ JARVIS Prime ↔ Reactor Core)
 - 👻 Ghost Hands: Cross-space actions without focus stealing (v13.0)
 - 🗣️ Working Out Loud: Real-time narration during monitoring (v14.0)
-- 🎣 Catch & Release: Intelligent window return after scan (v33.0)
-
-v33.0 CATCH & RELEASE PROTOCOL - DRAGNET WINDOW MANAGEMENT:
-- ROOT CAUSE FIX: "Stuck at Teleport Complete" hang
-- PROBLEM: Schrödinger's Window - can't know which window has the bouncing ball
-  until we move ALL of them, causing innocent windows to clutter Ghost Display
-- SOLUTION: Catch & Release Protocol with force_start
-  1. DRAGNET: Teleport ALL app windows to Ghost Display
-  2. FORCE-START: Skip expensive validation, launch Ferrari Engine immediately
-  3. INTERROGATE: Scan all windows for trigger detection (10s default)
-  4. VERDICT: Check which watchers detected triggers
-  5. RELEASE: Return "innocent" windows back to their original spaces
-- Environment variables:
-  - JARVIS_CATCH_RELEASE=1: Enable Catch & Release (default: enabled)
-  - JARVIS_CATCH_RELEASE_DELAY=10.0: Max seconds to wait before release decision
-  - JARVIS_CATCH_RELEASE_POLL_MS=500: Polling interval for early detection (ms)
-  - JARVIS_CATCH_RELEASE_MIN_SCAN=3.0: Minimum scan time before early release
-  - JARVIS_MAX_PARALLEL_RELEASES=5: Max concurrent window release operations
 
 v28.2 SMART WINDOW CACHE - ROBUST YABAI VALIDATION:
 - ROOT CAUSE FIX: "Window not found" validation failure
@@ -931,25 +913,6 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         self._yabai_cache_timestamp: float = 0.0  # When cache was last populated
         self._yabai_cache_ttl: float = 2.0  # Cache TTL in seconds (windows change fast)
         self._yabai_cache_lock: Optional[asyncio.Lock] = None  # Thread-safe cache updates
-
-        # =====================================================================
-        # v33.0: CATCH & RELEASE PROTOCOL - Dragnet Window Management
-        # =====================================================================
-        # PROBLEM: "Schrödinger's Window" - Can't see which window has the trigger
-        # until we teleport ALL of them, but then innocent windows clutter Ghost Display.
-        #
-        # SOLUTION: Catch & Release Protocol
-        # 1. DRAGNET: Teleport ALL app windows to Ghost Display
-        # 2. INTERROGATE: Spawn watchers with force_start=True (skip slow validation)
-        # 3. VERDICT: After scan period, check which watchers detected trigger
-        # 4. RELEASE: Return innocent windows to their original spaces
-        #
-        # This enables watching windows from any space without permanently
-        # cluttering the Ghost Display with non-target windows.
-        # =====================================================================
-        self._teleported_windows_registry: Dict[str, Dict[int, Dict[str, Any]]] = {}  # app_name -> {window_id -> window_info}
-        self._catch_release_tasks: Dict[str, asyncio.Task] = {}  # app_name -> cleanup task
-        self._watcher_trigger_detected: Dict[str, bool] = {}  # watcher_id -> trigger_detected flag
 
     # =========================================================================
     # Helper Methods for Non-Blocking Initialization
@@ -2679,23 +2642,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # - Windows not yet rendered on Ghost Display (race condition)
         #
         # SOLUTION: Validate each window BEFORE spawning watcher
-        #
-        # v33.0: FORCE-START OVERRIDE - Skip validation for teleported windows
-        # When windows were just teleported, they may be "hydrating" (still rendering).
-        # Validation would cause the "Stuck at Teleport Complete" hang.
-        # Instead, we use force_start=True to launch Ferrari Engine immediately.
         # =====================================================================
         validation_enabled = os.getenv('JARVIS_PRECAPTURE_VALIDATION', '1') == '1'
-        catch_release_enabled = os.getenv('JARVIS_CATCH_RELEASE', '1') == '1'
-
-        # v33.0: Skip validation when teleported windows exist (use force_start instead)
-        has_teleported_windows = len(teleported_windows) > 0
-        if has_teleported_windows and catch_release_enabled:
-            logger.info(
-                f"[God Mode v33.0] ⚡ FORCE-START: Skipping pre-capture validation "
-                f"({len(teleported_windows)} teleported windows - may still be hydrating)"
-            )
-            validation_enabled = False
 
         if validation_enabled and windows:
             logger.info(f"[God Mode] 🔍 Pre-capture validation for {len(windows)} windows...")
@@ -2829,56 +2777,19 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except Exception as e:
                 logger.warning(f"[God Mode] Resource Governor init failed: {e}")
 
-        # =====================================================================
-        # v33.0: CATCH & RELEASE - Determine if force_start should be enabled
-        # =====================================================================
-        # When windows were teleported from hidden spaces, they may still be
-        # "hydrating" (rendering) on the Ghost Display. force_start=True skips
-        # the expensive pre-capture validation that causes "Stuck at Teleport" hang.
-        #
-        # DRAGNET MODE: When force_start is True, we teleport ALL windows,
-        # spawn watchers immediately, and then release innocent windows later.
-        # =====================================================================
-        catch_release_enabled = bool(os.getenv('JARVIS_CATCH_RELEASE', '1') == '1')
-        force_start_enabled = len(teleported_windows) > 0 or catch_release_enabled
-        catch_release_delay = float(os.getenv('JARVIS_CATCH_RELEASE_DELAY', '10.0'))
-
-        if force_start_enabled:
-            logger.info(
-                f"[God Mode v33.0] 🎯 DRAGNET MODE: force_start enabled "
-                f"({len(teleported_windows)} teleported windows, catch_release={catch_release_enabled})"
-            )
-
         for window in windows:
             # Create unique watcher ID
             watcher_id = f"{app_name}_space{window['space_id']}_win{window['window_id']}"
 
-            # v33.0: Get original_space for Catch & Release tracking
-            original_space = window.get('original_space')
-
-            # Store metadata for later correlation (including original_space for Catch & Release)
+            # Store metadata for later correlation
             watcher_metadata.append({
                 'watcher_id': watcher_id,
                 'window_id': window['window_id'],
                 'space_id': window['space_id'],
-                'app_name': window['app_name'],
-                'original_space': original_space,  # v33.0: For Catch & Release cleanup
-                'teleported': window.get('teleported', False)
+                'app_name': window['app_name']
             })
 
-            # v33.0: Register window in teleported windows registry for Catch & Release
-            if original_space is not None:
-                if app_name not in self._teleported_windows_registry:
-                    self._teleported_windows_registry[app_name] = {}
-                self._teleported_windows_registry[app_name][window['window_id']] = {
-                    'original_space': original_space,
-                    'current_space': window['space_id'],
-                    'watcher_id': watcher_id,
-                    'teleported': True
-                }
-
             # Spawn Ferrari Engine watcher
-            # v33.0: Use force_start=True for teleported windows (skip validation hang)
             watcher_task = asyncio.create_task(
                 self._spawn_multi_space_watcher(
                     watcher_id=watcher_id,
@@ -2887,9 +2798,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     trigger_text=trigger_text,
                     action_config=action_config,
                     alert_config=alert_config,
-                    app_name=window.get('app_name', app_name),  # v13.0: Pass app_name for Ferrari Engine
-                    force_start=force_start_enabled,  # v33.0: Skip validation if teleported
-                    original_space=original_space  # v33.0: For Catch & Release cleanup
+                    app_name=window.get('app_name', app_name)  # v13.0: Pass app_name for Ferrari Engine
                 )
             )
 
@@ -3492,40 +3401,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 except Exception as e:
                     logger.warning(f"[God Mode] Startup narration failed: {e}")
 
-            # =====================================================================
-            # v33.0: CATCH & RELEASE CLEANUP SCHEDULING
-            # =====================================================================
-            # Schedule the cleanup task to run after the scan period. This will:
-            # 1. Wait for initial trigger detection (configurable delay)
-            # 2. Check which watchers detected triggers
-            # 3. Return "innocent" windows back to their original spaces
-            # 4. Keep windows with triggers on Ghost Display for continued surveillance
-            # =====================================================================
-            catch_release_task_id = None
-            teleported_count = len([m for m in watcher_metadata if m.get('teleported', False)])
-
-            if catch_release_enabled and teleported_count > 0:
-                logger.info(
-                    f"[God Mode v33.0] 🎣 Scheduling Catch & Release cleanup "
-                    f"(delay={catch_release_delay}s, {teleported_count} teleported windows)"
-                )
-
-                # Schedule the cleanup task
-                catch_release_task = await self._schedule_catch_release(
-                    app_name=app_name,
-                    delay_seconds=catch_release_delay,
-                    max_attempts=3,  # Retry up to 3 times for trigger detection
-                    retry_interval=5.0  # 5 seconds between retries
-                )
-
-                catch_release_task_id = f"catch_release_{app_name}_{int(datetime.now().timestamp())}"
-                logger.info(
-                    f"[God Mode v33.0] ✅ Catch & Release task scheduled: {catch_release_task_id}"
-                )
-
             # Return immediately with acknowledgment
             # Use ACTUAL watcher count - not expected count
-            result = {
+            return {
                 'success': True,
                 'status': 'monitoring',
                 'god_mode_task_id': god_mode_task_id,
@@ -3537,17 +3415,6 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 'startup_time_seconds': (datetime.now() - start_wait_time).total_seconds(),
                 'message': f"Monitoring {new_watchers_active} {app_name} windows for '{trigger_text}'"
             }
-
-            # v33.0: Add Catch & Release info to response
-            if catch_release_enabled and teleported_count > 0:
-                result['catch_release'] = {
-                    'enabled': True,
-                    'teleported_windows': teleported_count,
-                    'cleanup_delay_seconds': catch_release_delay,
-                    'task_id': catch_release_task_id
-                }
-
-            return result
 
     async def _coordinate_watchers(
         self,
@@ -3652,21 +3519,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         trigger_text: str,
         action_config: Optional[Dict[str, Any]] = None,
         alert_config: Optional[Dict[str, Any]] = None,
-        app_name: Optional[str] = None,
-        force_start: bool = False,
-        original_space: Optional[int] = None
+        app_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Spawn a single Ferrari Engine watcher for a specific window.
 
         v13.0 GOD MODE: Real Ferrari Engine integration with 60 FPS ScreenCaptureKit.
         This is the critical connection between multi-space discovery and actual video capture.
-
-        v33.0 CATCH & RELEASE:
-        - force_start=True: Skip expensive pre-capture validation, launch immediately.
-          Use when windows were just teleported and may still be "hydrating".
-        - original_space: Tracked for Catch & Release cleanup - return innocent windows
-          to their original space after monitoring completes.
 
         Args:
             watcher_id: Unique watcher identifier
@@ -3676,16 +3535,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             action_config: Optional action to execute on detection
             alert_config: Optional alert configuration
             app_name: Application name (extracted from watcher_id if not provided)
-            force_start: If True, skip _validate_window_capturable and launch Ferrari
-                         Engine immediately. Fixes "Stuck at Teleport Complete" hang.
-            original_space: Original space ID before teleportation (for Catch & Release)
 
         Returns:
             Detection result dict with trigger status and metadata
         """
         logger.debug(
             f"🏁 Spawning Ferrari watcher {watcher_id} for window {window_id} "
-            f"on space {space_id} (force_start={force_start}, original_space={original_space})"
+            f"on space {space_id}"
         )
 
         # Extract app name from watcher_id if not provided
@@ -3695,32 +3551,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         start_time = datetime.now()
 
-        # v33.0: Track original_space for Catch & Release cleanup
-        if original_space is not None:
-            self._watcher_lifecycle[watcher_id] = {
-                'status': 'starting',
-                'original_space': original_space,
-                'window_id': window_id,
-                'app_name': app_name,
-                'force_start': force_start,
-                'created_at': start_time.isoformat()
-            }
-
-        # v33.0: Initialize trigger detection flag for Catch & Release
-        self._watcher_trigger_detected[watcher_id] = False
-
         try:
             # ===== STEP 1: Spawn Real Ferrari Engine VideoWatcher =====
-            # v33.0: When force_start=True, skip validation and launch immediately
-            if force_start:
-                logger.info(
-                    f"🏎️⚡ [{watcher_id}] FORCE-START: Spawning Ferrari Engine immediately "
-                    f"(skipping validation for window {window_id})"
-                )
-            else:
-                logger.info(
-                    f"🏎️  [{watcher_id}] Spawning Ferrari Engine for window {window_id} ({app_name})"
-                )
+            logger.info(
+                f"🏎️  [{watcher_id}] Spawning Ferrari Engine for window {window_id} ({app_name})"
+            )
 
             # Use adaptive FPS based on config
             fps = self.config.ferrari_fps
@@ -3954,12 +3789,6 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     f"Confidence: {confidence:.2f}"
                 )
 
-                # v33.0: Mark trigger detected for Catch & Release
-                self._watcher_trigger_detected[watcher_id] = True
-                if watcher_id in self._watcher_lifecycle:
-                    self._watcher_lifecycle[watcher_id]['trigger_detected'] = True
-                    self._watcher_lifecycle[watcher_id]['trigger_confidence'] = confidence
-
                 # Stop watcher after detection (God Mode: first trigger wins)
                 await watcher.stop()
 
@@ -3974,17 +3803,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     'detection_time': detection_result.get('detection_time', 0.0),
                     'timestamp': start_time.isoformat(),
                     'action_result': detection_result.get('action_result'),
-                    'original_space': original_space,  # v33.0: Include for Catch & Release
                     'status': 'success'
                 }
             else:
                 # No trigger detected (timeout or error)
                 logger.info(f"⏱️  [{watcher_id}] No trigger detected (timeout or stopped)")
-
-                # v33.0: Ensure trigger flag stays False for Catch & Release
-                self._watcher_trigger_detected[watcher_id] = False
-                if watcher_id in self._watcher_lifecycle:
-                    self._watcher_lifecycle[watcher_id]['trigger_detected'] = False
 
                 # Stop watcher
                 await watcher.stop()
@@ -3995,7 +3818,6 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     'window_id': window_id,
                     'trigger_detected': False,
                     'timestamp': start_time.isoformat(),
-                    'original_space': original_space,  # v33.0: Include for Catch & Release
                     'status': 'no_trigger'
                 }
 
@@ -5599,407 +5421,6 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             f"Window {window_id} did not become onscreen within {max_wait_ms:.0f}ms",
             details
         )
-
-    # =========================================================================
-    # v33.0: CATCH & RELEASE PROTOCOL - Return Innocent Windows
-    # =========================================================================
-
-    async def _return_innocent_windows(
-        self,
-        app_name: str,
-        scan_duration_seconds: float = 10.0,
-        narrate: bool = True
-    ) -> Dict[str, Any]:
-        """
-        v33.0: Catch & Release - Return windows that didn't trigger to their original spaces.
-
-        After the initial scan period, this method checks which watchers detected
-        the trigger and returns "innocent" windows (no trigger detected) back to
-        their original spaces.
-
-        THE SCHRÖDINGER'S WINDOW SOLUTION:
-        - We can't know which window has the bouncing ball until we move ALL of them
-        - After moving and scanning, we RELEASE the innocent windows back
-        - Only the window with the detected trigger stays on Ghost Display
-
-        Args:
-            app_name: The application name to process
-            scan_duration_seconds: How long to wait for initial scan (default 10s)
-            narrate: Whether to narrate progress via TTS
-
-        Returns:
-            Dict with:
-                - released_count: Number of windows returned to original spaces
-                - kept_count: Number of windows kept on Ghost Display (trigger detected)
-                - released_windows: List of released window details
-                - kept_windows: List of kept window details
-                - errors: List of any errors during release
-        """
-        result = {
-            'released_count': 0,
-            'kept_count': 0,
-            'released_windows': [],
-            'kept_windows': [],
-            'errors': [],
-            'scan_duration': scan_duration_seconds
-        }
-
-        logger.info(
-            f"[Catch & Release] 🔍 Starting interrogation phase for {app_name} "
-            f"(scan duration: {scan_duration_seconds}s)"
-        )
-
-        # Wait for initial scan period
-        await asyncio.sleep(scan_duration_seconds)
-
-        # Get yabai detector for window operations
-        try:
-            from backend.vision.yabai_space_detector import get_yabai_detector
-            yabai = get_yabai_detector()
-        except ImportError as e:
-            logger.error(f"[Catch & Release] ❌ Cannot import yabai detector: {e}")
-            result['errors'].append(f"yabai detector unavailable: {e}")
-            return result
-
-        # Process each watcher for this app
-        windows_to_release = []
-        windows_to_keep = []
-
-        for watcher_id, lifecycle_info in self._watcher_lifecycle.items():
-            # Filter to watchers for this app
-            watcher_app_name = lifecycle_info.get('app_name', '')
-            if not watcher_app_name.lower().startswith(app_name.lower()):
-                continue
-
-            window_id = lifecycle_info.get('window_id')
-            original_space = lifecycle_info.get('original_space')
-            trigger_detected = self._watcher_trigger_detected.get(watcher_id, False)
-
-            if window_id is None:
-                continue
-
-            window_info = {
-                'watcher_id': watcher_id,
-                'window_id': window_id,
-                'original_space': original_space,
-                'trigger_detected': trigger_detected
-            }
-
-            if trigger_detected:
-                # TARGET CONFIRMED - Keep on Ghost Display
-                windows_to_keep.append(window_info)
-                logger.info(
-                    f"[Catch & Release] 🎯 TARGET: Window {window_id} confirmed trigger - "
-                    f"keeping on Ghost Display for surveillance"
-                )
-            elif original_space is not None:
-                # INNOCENT - Schedule for release
-                windows_to_release.append(window_info)
-                logger.info(
-                    f"[Catch & Release] 🧹 INNOCENT: Window {window_id} - no trigger detected, "
-                    f"scheduling return to Space {original_space}"
-                )
-
-        # Release innocent windows back to their original spaces
-        # v33.0: Use parallel release for maximum speed
-        yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '5.0'))
-        max_parallel_releases = int(os.getenv('JARVIS_MAX_PARALLEL_RELEASES', '5'))
-
-        async def release_single_window(window_info: Dict[str, Any]) -> Dict[str, Any]:
-            """Release a single window back to its original space."""
-            window_id = window_info['window_id']
-            original_space = window_info['original_space']
-
-            try:
-                logger.info(
-                    f"[Catch & Release] ↩️  Releasing window {window_id} "
-                    f"back to Space {original_space}..."
-                )
-
-                # v33.0: Use async version with built-in verification and retry
-                move_result = await asyncio.wait_for(
-                    yabai.move_window_to_space_async(
-                        window_id=window_id,
-                        target_space=original_space,
-                        follow=False,
-                        verify=True,  # Verify the window actually moved
-                        max_retries=3  # Retry up to 3 times if verification fails
-                    ),
-                    timeout=yabai_timeout
-                )
-
-                if move_result:
-                    window_info['release_status'] = 'success'
-                    logger.info(
-                        f"[Catch & Release] ✅ Window {window_id} returned to Space {original_space}"
-                    )
-                else:
-                    window_info['release_status'] = 'failed'
-                    window_info['error'] = 'move_window_to_space_async returned False'
-
-            except asyncio.TimeoutError:
-                logger.warning(
-                    f"[Catch & Release] ⏱️ Timeout releasing window {window_id} - "
-                    f"may need manual intervention"
-                )
-                window_info['release_status'] = 'timeout'
-                window_info['error'] = f'operation timed out after {yabai_timeout}s'
-
-            except Exception as e:
-                logger.error(
-                    f"[Catch & Release] ❌ Failed to release window {window_id}: {e}"
-                )
-                window_info['release_status'] = 'error'
-                window_info['error'] = str(e)
-
-            return window_info
-
-        # v33.0: Release windows in parallel batches for speed
-        release_semaphore = asyncio.Semaphore(max_parallel_releases)
-
-        async def release_with_semaphore(window_info: Dict[str, Any]) -> Dict[str, Any]:
-            async with release_semaphore:
-                return await release_single_window(window_info)
-
-        # Execute parallel releases
-        if windows_to_release:
-            logger.info(
-                f"[Catch & Release] 🚀 Parallel release: {len(windows_to_release)} windows "
-                f"(max {max_parallel_releases} concurrent)"
-            )
-            release_tasks = [
-                release_with_semaphore(window_info)
-                for window_info in windows_to_release
-            ]
-            release_results = await asyncio.gather(*release_tasks, return_exceptions=True)
-
-            # Process results
-            for i, res in enumerate(release_results):
-                if isinstance(res, Exception):
-                    windows_to_release[i]['release_status'] = 'exception'
-                    windows_to_release[i]['error'] = str(res)
-                    result['errors'].append(f"Window release exception: {res}")
-                elif isinstance(res, dict):
-                    if res.get('release_status') == 'success':
-                        result['released_count'] += 1
-                        result['released_windows'].append(res)
-                    else:
-                        result['errors'].append(
-                            f"Window {res.get('window_id')}: {res.get('error', 'unknown error')}"
-                        )
-
-        # Track kept windows
-        for window_info in windows_to_keep:
-            result['kept_count'] += 1
-            result['kept_windows'].append(window_info)
-
-        # Narrate results
-        if narrate and self.config.working_out_loud_enabled:
-            try:
-                if result['released_count'] > 0 and result['kept_count'] > 0:
-                    msg = (
-                        f"Found the target window! Keeping it on the Ghost Display for monitoring. "
-                        f"I've returned {result['released_count']} other {app_name} windows "
-                        f"back to their original spaces."
-                    )
-                elif result['released_count'] > 0:
-                    msg = (
-                        f"No trigger detected in any window yet. "
-                        f"Returned {result['released_count']} {app_name} windows to their original spaces."
-                    )
-                elif result['kept_count'] > 0:
-                    msg = f"Target found in {result['kept_count']} {app_name} windows. Continuing surveillance."
-                else:
-                    msg = f"No {app_name} windows to process."
-
-                await self._narrate_working_out_loud(
-                    message=msg,
-                    narration_type="progress",
-                    watcher_id=f"catch_release_{app_name}",
-                    priority="normal"
-                )
-            except Exception as e:
-                logger.warning(f"[Catch & Release] Narration failed: {e}")
-
-        # Log summary
-        logger.info(
-            f"[Catch & Release] 📊 Summary for {app_name}: "
-            f"Released {result['released_count']} innocent windows, "
-            f"Kept {result['kept_count']} target windows, "
-            f"Errors: {len(result['errors'])}"
-        )
-
-        return result
-
-    async def _schedule_catch_release(
-        self,
-        app_name: str,
-        delay_seconds: float = 10.0,
-        max_attempts: int = 3,
-        retry_interval: float = 5.0
-    ) -> asyncio.Task:
-        """
-        v33.0: Schedule a Catch & Release cleanup task with intelligent early detection.
-
-        This creates a background task that:
-        1. Uses adaptive polling to detect triggers early (before full delay)
-        2. Releases innocent windows as soon as a trigger is confirmed
-        3. Falls back to releasing all windows if no trigger detected
-
-        INTELLIGENT FEATURES:
-        - Early Detection: Polls every 500ms to detect triggers ASAP
-        - Adaptive Timeout: Reduces wait time once first frame is captured
-        - Parallel Release: Uses asyncio.gather for concurrent window moves
-        - Graceful Degradation: Returns all windows if no trigger after max attempts
-
-        Args:
-            app_name: Application to process
-            delay_seconds: Maximum wait before first release attempt
-            max_attempts: Maximum retry attempts for trigger detection
-            retry_interval: Seconds between retry attempts
-
-        Returns:
-            The asyncio Task for the cleanup operation
-        """
-        async def _catch_release_worker():
-            """Background worker for intelligent Catch & Release cleanup."""
-            import time
-            start_time = time.time()
-
-            logger.info(
-                f"[Catch & Release] 🚀 Intelligent worker started for {app_name} "
-                f"(max_delay={delay_seconds}s, max_attempts={max_attempts})"
-            )
-
-            # v33.0: Early detection polling - check every 500ms for faster response
-            early_poll_interval = float(os.getenv('JARVIS_CATCH_RELEASE_POLL_MS', '500')) / 1000.0
-            minimum_scan_time = float(os.getenv('JARVIS_CATCH_RELEASE_MIN_SCAN', '3.0'))
-
-            attempt = 0
-            while attempt < max_attempts:
-                attempt += 1
-                attempt_start = time.time()
-
-                # Determine wait time for this attempt
-                max_wait = delay_seconds if attempt == 1 else retry_interval
-                elapsed_in_attempt = 0.0
-
-                logger.info(
-                    f"[Catch & Release] 🔍 Attempt {attempt}/{max_attempts}: "
-                    f"Scanning for up to {max_wait}s (poll every {early_poll_interval*1000:.0f}ms)"
-                )
-
-                # v33.0: Intelligent early detection loop
-                while elapsed_in_attempt < max_wait:
-                    # Check if any triggers were detected
-                    trigger_found = False
-                    trigger_watcher_id = None
-                    trigger_window_id = None
-
-                    for watcher_id, detected in self._watcher_trigger_detected.items():
-                        lifecycle = self._watcher_lifecycle.get(watcher_id, {})
-                        watcher_app = lifecycle.get('app_name', '')
-                        if watcher_app.lower().startswith(app_name.lower()):
-                            if detected:
-                                trigger_found = True
-                                trigger_watcher_id = watcher_id
-                                trigger_window_id = lifecycle.get('window_id')
-                                break
-
-                    if trigger_found:
-                        total_elapsed = time.time() - start_time
-
-                        # v33.0: Early detection success!
-                        # Wait minimum scan time to ensure accuracy
-                        if elapsed_in_attempt < minimum_scan_time:
-                            remaining = minimum_scan_time - elapsed_in_attempt
-                            logger.info(
-                                f"[Catch & Release] ⚡ Early detection! Trigger found in {elapsed_in_attempt:.1f}s. "
-                                f"Waiting {remaining:.1f}s more to confirm..."
-                            )
-                            await asyncio.sleep(remaining)
-
-                        logger.info(
-                            f"[Catch & Release] 🎯 TARGET CONFIRMED in {total_elapsed:.1f}s! "
-                            f"Window {trigger_window_id} (watcher: {trigger_watcher_id})"
-                        )
-
-                        # Release innocent windows
-                        result = await self._return_innocent_windows(
-                            app_name=app_name,
-                            scan_duration_seconds=0.0,  # Already waited
-                            narrate=True
-                        )
-                        result['early_detection'] = True
-                        result['detection_time_seconds'] = total_elapsed
-                        result['trigger_window_id'] = trigger_window_id
-                        return result
-
-                    # No trigger yet - poll again
-                    await asyncio.sleep(early_poll_interval)
-                    elapsed_in_attempt = time.time() - attempt_start
-
-                # End of attempt - no trigger found
-                if attempt < max_attempts:
-                    logger.info(
-                        f"[Catch & Release] ⏳ No trigger in attempt {attempt} "
-                        f"(waited {elapsed_in_attempt:.1f}s). Retrying..."
-                    )
-                else:
-                    total_elapsed = time.time() - start_time
-                    logger.info(
-                        f"[Catch & Release] 📋 Max attempts ({max_attempts}) reached "
-                        f"after {total_elapsed:.1f}s. Releasing all windows."
-                    )
-
-            # No trigger found after all attempts - release all windows
-            result = await self._return_innocent_windows(
-                app_name=app_name,
-                scan_duration_seconds=0.0,
-                narrate=True
-            )
-            result['early_detection'] = False
-            result['max_attempts_reached'] = True
-            return result
-
-        # Create and store the task
-        task = asyncio.create_task(_catch_release_worker())
-        self._catch_release_tasks[app_name] = task
-        return task
-
-    async def _on_trigger_detected_callback(
-        self,
-        watcher_id: str,
-        window_id: int,
-        trigger_text: str,
-        confidence: float
-    ) -> None:
-        """
-        v33.0: Callback invoked when a trigger is detected.
-
-        This allows immediate notification and can trigger early release
-        of innocent windows without waiting for the full scan period.
-
-        Args:
-            watcher_id: The watcher that detected the trigger
-            window_id: The window ID where trigger was found
-            trigger_text: The text that was detected
-            confidence: Detection confidence (0.0 - 1.0)
-        """
-        logger.info(
-            f"[Catch & Release] 🎯 TRIGGER CALLBACK: {watcher_id} detected "
-            f"'{trigger_text}' in window {window_id} (confidence: {confidence:.2%})"
-        )
-
-        # Update trigger detection flag
-        self._watcher_trigger_detected[watcher_id] = True
-
-        # Update lifecycle
-        if watcher_id in self._watcher_lifecycle:
-            self._watcher_lifecycle[watcher_id]['trigger_detected'] = True
-            self._watcher_lifecycle[watcher_id]['trigger_text'] = trigger_text
-            self._watcher_lifecycle[watcher_id]['trigger_confidence'] = confidence
-            self._watcher_lifecycle[watcher_id]['trigger_time'] = datetime.now().isoformat()
 
     async def _refresh_yabai_windows_cache(self, force: bool = False) -> bool:
         """

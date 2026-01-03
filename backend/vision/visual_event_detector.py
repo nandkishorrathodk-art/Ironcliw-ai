@@ -569,7 +569,7 @@ class VisualEventDetector:
         2. Word stemming (bouncing → bounce)
         3. Multi-strategy fuzzy matching (partial_ratio, token_set_ratio)
         4. Root word detection
-        
+
         Returns:
             (detected, confidence, fuzzy_score)
         """
@@ -622,11 +622,11 @@ class VisualEventDetector:
         # ═══════════════════════════════════════════════════════════════════
         if fuzzy and self._fuzzy_available:
             max_ratio = 0.0
-            
+
             # 3a. Partial ratio - good for substrings
             ratio = fuzz.partial_ratio(search_text, target) / 100.0
             max_ratio = max(max_ratio, ratio)
-            
+
             # 3b. Token set ratio - ignores word order, good for "bouncing ball" vs "ball bouncing"
             try:
                 token_ratio = fuzz.token_set_ratio(search_text, target) / 100.0
@@ -654,7 +654,7 @@ class VisualEventDetector:
                 if best_word_ratio >= word_match_threshold:
                     matched_words += 1
                 max_ratio = max(max_ratio, best_word_ratio)
-            
+
             # If we matched enough words, consider it a detection
             if target_words and matched_words >= len(target_words) * 0.5:
                 combined_ratio = (max_ratio + matched_words / len(target_words)) / 2

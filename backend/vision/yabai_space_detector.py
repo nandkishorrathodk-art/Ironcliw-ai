@@ -3596,24 +3596,42 @@ class YabaiSpaceDetector:
         max_retries: int = 3
     ) -> bool:
         """
-        Async version of move_window_to_space with POST-MOVE VERIFICATION.
-        
-        v32.8 FIX: Yabai sometimes reports success but the window doesn't actually move.
-        This version VERIFIES the window moved and retries with different strategies if not.
-        
-        Strategies:
-        1. Direct move (fast path)
-        2. Focus window first, then move
-        3. Switch to source space, focus, move, return
+        v33.0 FIRE AND CONFIRM PROTOCOL: Async move with progressive verification.
+
+        ROOT CAUSE FIX: Strategy 1 (Direct Move) was failing because:
+        1. Premature Verification: Checking at 0.3s when hydration takes 500ms-2000ms
+        2. Silent Failure: Not checking yabai's exit code/stderr
+        3. Race Condition: Validation started before physics completed
+
+        SOLUTION: Fire and Confirm Protocol
+        1. FIRE: Execute move command, check exit code immediately
+        2. WAIT: Progressive hydration delays (0.3s → 0.8s → 1.5s → 2.5s)
+        3. CONFIRM: Verify window actually moved at each checkpoint
+        4. RETRY: Use different strategy only after physics has had time to work
+
+        Strategies (tried in order):
+        1. Direct move with progressive verification (now patient!)
+        2. Wake space first (AppleScript), then direct move
+        3. Focus window first, then move
+        4. Full switch-grab-return with space switching
         """
         import asyncio
-        
+
         if not self.is_available():
             logger.warning("[YABAI] Cannot move window - Yabai not available")
             return False
-        
+
         yabai_path = self._health.yabai_path or "yabai"
-        
+
+        # v33.0: Configurable hydration timing
+        # These values are based on macOS Window Server behavior analysis
+        hydration_checkpoints = [
+            float(x) for x in os.getenv(
+                'JARVIS_HYDRATION_CHECKPOINTS', '0.3,0.8,1.5,2.5'
+            ).split(',')
+        ]
+        max_hydration_time = float(os.getenv('JARVIS_MAX_HYDRATION_TIME', '3.0'))
+
         # Helper to check current window space
         async def get_window_space() -> Optional[int]:
             try:
@@ -3630,113 +3648,246 @@ class YabaiSpaceDetector:
             except Exception as e:
                 logger.debug(f"[YABAI] Could not query window space: {e}")
             return None
-        
+
+        # v33.0: Progressive verification with hydration-aware timing
+        async def verify_move_with_patience(expected_space: int, strategy_name: str) -> bool:
+            """
+            FIRE AND CONFIRM: Wait for physics to catch up.
+
+            macOS window movement is NOT instant. When moving to a virtual display:
+            1. Window Server tears down texture on source GPU
+            2. Compositor deallocates resources
+            3. Window Server rebuilds texture on target GPU
+            4. Compositor re-renders and hydrates
+
+            This can take 500ms-2000ms depending on system load.
+            """
+            total_waited = 0.0
+
+            for checkpoint_delay in hydration_checkpoints:
+                await asyncio.sleep(checkpoint_delay)
+                total_waited += checkpoint_delay
+
+                current_space = await get_window_space()
+
+                if current_space == expected_space:
+                    logger.info(
+                        f"[YABAI] ✅ FIRE AND CONFIRM SUCCESS: Window {window_id} → Space {expected_space} "
+                        f"(verified at {total_waited:.1f}s, strategy: {strategy_name})"
+                    )
+                    return True
+                elif current_space is None:
+                    # Window in transit (dehydrated) - keep waiting
+                    logger.debug(
+                        f"[YABAI] ⏳ Window {window_id} in transit (checkpoint {total_waited:.1f}s)..."
+                    )
+                else:
+                    # Window on unexpected space - might still be moving
+                    logger.debug(
+                        f"[YABAI] 🔄 Window {window_id} on space {current_space} "
+                        f"(expected {expected_space}, checkpoint {total_waited:.1f}s)"
+                    )
+
+                if total_waited >= max_hydration_time:
+                    break
+
+            # Final check after all checkpoints
+            final_space = await get_window_space()
+            if final_space == expected_space:
+                logger.info(
+                    f"[YABAI] ✅ FIRE AND CONFIRM SUCCESS (late): Window {window_id} → Space {expected_space} "
+                    f"(verified at {total_waited:.1f}s, strategy: {strategy_name})"
+                )
+                return True
+
+            logger.warning(
+                f"[YABAI] ⚠️ FIRE AND CONFIRM FAILED: Window {window_id} still on space {final_space} "
+                f"(expected {expected_space}) after {total_waited:.1f}s (strategy: {strategy_name})"
+            )
+            return False
+
+        # v33.0: Execute yabai command with exit code checking
+        async def execute_yabai_move(window_id: int, target_space: int) -> Tuple[bool, str]:
+            """
+            Execute move command and check exit code immediately.
+
+            Returns (success, error_message)
+            - success=True: Command accepted by yabai (may still need hydration)
+            - success=False: Command rejected (window not found, space invalid, etc.)
+            """
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                if proc.returncode != 0:
+                    error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                    return False, error_msg
+
+                return True, ""
+
+            except asyncio.TimeoutError:
+                return False, "Command timed out"
+            except Exception as e:
+                return False, str(e)
+
         # Check initial state
         initial_space = await get_window_space()
         if initial_space == target_space:
             logger.info(f"[YABAI] Window {window_id} already on target space {target_space}")
             return True
-        
+
         original_user_space = self.get_current_user_space()
-        
-        for attempt in range(max_retries):
-            strategy = ["direct", "focus_first", "switch_grab_return"][min(attempt, 2)]
-            logger.info(f"[YABAI] Move attempt {attempt + 1}/{max_retries} for window {window_id} "
-                       f"(strategy: {strategy}, target: Space {target_space})")
-            
+
+        # v33.0: Strategy definitions with progressive fallback
+        strategies = [
+            ("direct_fire_confirm", "Direct move with progressive verification"),
+            ("wake_then_move", "Wake space via AppleScript, then direct move"),
+            ("focus_first", "Focus window first, then move"),
+            ("switch_grab_return", "Full space switch, focus, move, return"),
+        ]
+
+        for attempt, (strategy, description) in enumerate(strategies[:max_retries]):
+            logger.info(
+                f"[YABAI] 🚀 Strategy {attempt + 1}/{min(max_retries, len(strategies))}: {description} "
+                f"(window {window_id} → Space {target_space})"
+            )
+
             try:
-                if strategy == "direct":
-                    # Strategy 1: Direct move
-                    proc = await asyncio.create_subprocess_exec(
-                        yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                    
+                if strategy == "direct_fire_confirm":
+                    # =============================================================
+                    # STRATEGY 1: FIRE AND CONFIRM (Patient Direct Move)
+                    # =============================================================
+                    # The key fix: Fire the command, then wait patiently for physics
+                    # =============================================================
+                    cmd_success, error_msg = await execute_yabai_move(window_id, target_space)
+
+                    if not cmd_success:
+                        # Command was REJECTED by yabai - don't wait, fail fast
+                        logger.warning(
+                            f"[YABAI] ❌ Strategy 1 REJECTED: {error_msg} "
+                            f"(window {window_id}, target {target_space})"
+                        )
+                        # Check if it's a "window not found" error (dehydrated window)
+                        if "could not locate" in error_msg.lower():
+                            logger.info("[YABAI] Window appears dehydrated - will try wake strategy")
+                        continue  # Try next strategy immediately
+
+                    # Command ACCEPTED - now wait for physics with progressive verification
+                    if verify:
+                        if await verify_move_with_patience(target_space, strategy):
+                            self._health.record_success(0)
+                            return True
+                        # Verification failed after patient waiting - try next strategy
+                    else:
+                        # No verification - trust that command acceptance means success
+                        self._health.record_success(0)
+                        return True
+
+                elif strategy == "wake_then_move":
+                    # =============================================================
+                    # STRATEGY 2: WAKE SPACE FIRST (AppleScript), THEN DIRECT MOVE
+                    # =============================================================
+                    # This wakes up dehydrated windows without requiring SA
+                    # =============================================================
+                    source_space = initial_space or await get_window_space()
+
+                    if source_space and source_space != target_space:
+                        logger.info(f"[YABAI] 🌅 Waking space {source_space} via AppleScript...")
+
+                        # Use our new AppleScript-based space switching
+                        wake_success = self._switch_to_space_applescript(source_space)
+
+                        if wake_success:
+                            logger.info(f"[YABAI] ✅ Space {source_space} awakened")
+                            # Wait for hydration after space wake
+                            await asyncio.sleep(0.5)
+                        else:
+                            logger.debug(f"[YABAI] AppleScript wake failed, trying move anyway")
+
+                    # Now try direct move (window should be awake)
+                    cmd_success, error_msg = await execute_yabai_move(window_id, target_space)
+
+                    if cmd_success and verify:
+                        if await verify_move_with_patience(target_space, strategy):
+                            # Return user to original space
+                            if original_user_space and original_user_space != target_space:
+                                self._switch_to_space_applescript(original_user_space)
+                            self._health.record_success(0)
+                            return True
+
                 elif strategy == "focus_first":
-                    # Strategy 2: Focus window first, then move
+                    # =============================================================
+                    # STRATEGY 3: FOCUS WINDOW FIRST, THEN MOVE
+                    # =============================================================
+                    # Focusing a window can wake it and make it movable
+                    # =============================================================
                     proc = await asyncio.create_subprocess_exec(
                         yabai_path, "-m", "window", "--focus", str(window_id),
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
                     await asyncio.wait_for(proc.communicate(), timeout=3.0)
-                    await asyncio.sleep(0.2)  # Brief pause for focus
-                    
-                    proc = await asyncio.create_subprocess_exec(
-                        yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                    
+                    await asyncio.sleep(0.3)  # Let focus complete
+
+                    cmd_success, error_msg = await execute_yabai_move(window_id, target_space)
+
+                    if cmd_success and verify:
+                        if await verify_move_with_patience(target_space, strategy):
+                            self._health.record_success(0)
+                            return True
+
                 elif strategy == "switch_grab_return":
-                    # Strategy 3: Switch to window's space, focus, move, return
+                    # =============================================================
+                    # STRATEGY 4: FULL SWITCH-GRAB-RETURN
+                    # =============================================================
+                    # Most reliable but causes screen flash - use as last resort
+                    # =============================================================
                     source_space = initial_space or await get_window_space()
+
                     if source_space:
-                        # Switch to source space (wakes up dehydrated windows)
-                        proc = await asyncio.create_subprocess_exec(
-                            yabai_path, "-m", "space", "--focus", str(source_space),
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await asyncio.wait_for(proc.communicate(), timeout=3.0)
-                        await asyncio.sleep(0.3)  # Let space switch complete
-                        
-                        # Focus the window
-                        proc = await asyncio.create_subprocess_exec(
-                            yabai_path, "-m", "window", "--focus", str(window_id),
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await asyncio.wait_for(proc.communicate(), timeout=3.0)
-                        await asyncio.sleep(0.2)
-                        
-                        # Move to target
-                        proc = await asyncio.create_subprocess_exec(
-                            yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                        await asyncio.sleep(0.2)
-                        
-                        # Return user to original space
-                        if original_user_space and original_user_space != target_space:
+                        # Switch to source space using multi-strategy switching
+                        logger.info(f"[YABAI] 🔄 Full space switch to {source_space}...")
+                        switch_success = self._switch_to_space(source_space)
+
+                        if switch_success:
+                            await asyncio.sleep(0.5)  # Let space switch + hydration complete
+
+                            # Focus the window
                             proc = await asyncio.create_subprocess_exec(
-                                yabai_path, "-m", "space", "--focus", str(original_user_space),
+                                yabai_path, "-m", "window", "--focus", str(window_id),
                                 stdout=asyncio.subprocess.PIPE,
                                 stderr=asyncio.subprocess.PIPE
                             )
                             await asyncio.wait_for(proc.communicate(), timeout=3.0)
-                
-                # VERIFICATION: Check if window actually moved
-                if verify:
-                    await asyncio.sleep(0.3)  # Brief pause for move to complete
-                    current_space = await get_window_space()
-                    
-                    if current_space == target_space:
-                        logger.info(f"[YABAI] ✅ VERIFIED: Window {window_id} successfully moved to Space {target_space} "
-                                   f"(strategy: {strategy}, attempt: {attempt + 1})")
-                        self._health.record_success(0)
-                        return True
-                    else:
-                        logger.warning(f"[YABAI] ⚠️ Move NOT verified: Window {window_id} still on Space {current_space} "
-                                      f"(expected: {target_space}, strategy: {strategy})")
-                else:
-                    # No verification requested - trust yabai
-                    self._health.record_success(0)
-                    return True
-                    
+                            await asyncio.sleep(0.2)
+
+                            # Move to target
+                            cmd_success, error_msg = await execute_yabai_move(window_id, target_space)
+
+                            if cmd_success and verify:
+                                if await verify_move_with_patience(target_space, strategy):
+                                    # Return user to original space
+                                    if original_user_space and original_user_space != target_space:
+                                        self._switch_to_space(original_user_space)
+                                    self._health.record_success(0)
+                                    return True
+
+                            # Return user to original space even on failure
+                            if original_user_space:
+                                self._switch_to_space(original_user_space)
+
             except asyncio.TimeoutError:
-                logger.warning(f"[YABAI] Move attempt {attempt + 1} timed out for window {window_id}")
+                logger.warning(f"[YABAI] Strategy {strategy} timed out for window {window_id}")
             except Exception as e:
-                logger.warning(f"[YABAI] Move attempt {attempt + 1} failed: {e}")
-            
-            # Brief pause before retry
-            if attempt < max_retries - 1:
-                await asyncio.sleep(0.5)
+                logger.warning(f"[YABAI] Strategy {strategy} failed: {e}")
+
+            # Brief pause before trying next strategy
+            if attempt < min(max_retries, len(strategies)) - 1:
+                await asyncio.sleep(0.3)
         
         # All retries exhausted
         logger.error(f"[YABAI] ❌ FAILED to move window {window_id} to Space {target_space} after {max_retries} attempts")
