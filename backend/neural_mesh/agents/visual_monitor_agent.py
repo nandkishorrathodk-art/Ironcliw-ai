@@ -5975,12 +5975,51 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         last_ocr_hash = current_hash
                         last_all_text = all_text
 
-                    # Log periodic progress
+                    # ═══════════════════════════════════════════════════════════════
+                    # v32.3: ACTIVE MONITORING COMMUNICATION
+                    # User needs to know JARVIS is actively scanning
+                    # ═══════════════════════════════════════════════════════════════
+                    
+                    # Log periodic progress with detected text
                     if ocr_checks % 10 == 0:
-                        logger.debug(
-                            f"[Ferrari Detection] Progress: {ocr_checks} OCR checks, "
+                        logger.info(
+                            f"[Ferrari Detection] 👁️ Scanning: {ocr_checks} OCR checks, "
                             f"{frame_count} frames, {elapsed:.1f}s elapsed"
                         )
+                        
+                        # Log what text was actually detected (for debugging)
+                        if all_text:
+                            text_preview = all_text[:100].replace('\n', ' ').strip()
+                            logger.info(f"[Ferrari Detection] 📄 Detected text: '{text_preview}...'")
+                    
+                    # v32.3: Emit heartbeat progress event every 30 OCR checks (~6 seconds)
+                    if ocr_checks % 30 == 0 and PROGRESS_STREAM_AVAILABLE:
+                        try:
+                            await emit_surveillance_progress(
+                                stage=SurveillanceStage.MONITORING_ACTIVE,
+                                message=f"👁️ Actively scanning {app_name} for '{trigger_text}' ({ocr_checks} checks, {elapsed:.0f}s)",
+                                progress_current=ocr_checks,
+                                progress_total=0,  # Unknown
+                                app_name=app_name,
+                                trigger_text=trigger_text,
+                                window_id=watcher.window_id if hasattr(watcher, 'window_id') else None,
+                                details={'ocr_checks': ocr_checks, 'frames': frame_count, 'elapsed': elapsed}
+                            )
+                        except Exception as e:
+                            logger.debug(f"[v32.3] Heartbeat emit failed: {e}")
+                    
+                    # v32.3: Narrate heartbeat every 60 OCR checks (~12 seconds) if enabled
+                    if ocr_checks % 60 == 0 and self.config.working_out_loud_enabled:
+                        try:
+                            await self._narrate_working_out_loud(
+                                message=f"Still watching {app_name}. {ocr_checks} scans so far, "
+                                        f"no '{trigger_text}' detected yet.",
+                                narration_type="heartbeat",
+                                watcher_id=watcher_id,
+                                priority="low"
+                            )
+                        except Exception as e:
+                            logger.debug(f"[v32.3] Heartbeat narration failed: {e}")
 
                 # Small sleep to prevent busy-wait
                 await asyncio.sleep(0.05)

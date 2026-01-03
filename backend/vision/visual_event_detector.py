@@ -562,8 +562,14 @@ class VisualEventDetector:
         fuzzy: bool = True
     ) -> Tuple[bool, float, Optional[float]]:
         """
-        Match target text in OCR results.
-
+        v32.3: Enhanced text matching with word stemming and multi-strategy fuzzy matching.
+        
+        Matches "bouncing ball" to "BOUNCE COUNT" by:
+        1. Exact substring match
+        2. Word stemming (bouncing → bounce)
+        3. Multi-strategy fuzzy matching (partial_ratio, token_set_ratio)
+        4. Root word detection
+        
         Returns:
             (detected, confidence, fuzzy_score)
         """
@@ -574,29 +580,88 @@ class VisualEventDetector:
         search_text = ocr_text if case_sensitive else ocr_text.lower()
         target = target_text if case_sensitive else target_text.lower()
 
-        # Exact match (highest confidence)
+        # ═══════════════════════════════════════════════════════════════════
+        # STRATEGY 1: Exact substring match (highest confidence)
+        # ═══════════════════════════════════════════════════════════════════
         if target in search_text:
             return (True, 1.0, 1.0 if fuzzy else None)
 
-        # Fuzzy match (if enabled)
+        # ═══════════════════════════════════════════════════════════════════
+        # STRATEGY 2: Word stemming - reduce words to roots
+        # "bouncing" → "bounc", "bounce" → "bounc" → MATCH!
+        # ═══════════════════════════════════════════════════════════════════
+        def simple_stem(word: str) -> str:
+            """Simple English word stemmer - removes common suffixes."""
+            suffixes = ['ing', 'ed', 'es', 's', 'ly', 'er', 'est', 'ment', 'ness', 'tion', 'sion']
+            word = word.lower()
+            for suffix in suffixes:
+                if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                    return word[:-len(suffix)]
+            return word
+        
+        # Stem all words
+        target_words = re.findall(r'\b\w+\b', target)
+        ocr_words = re.findall(r'\b\w+\b', search_text)
+        
+        stemmed_target = set(simple_stem(w) for w in target_words)
+        stemmed_ocr = set(simple_stem(w) for w in ocr_words)
+        
+        # Check if all target word stems appear in OCR text
+        if stemmed_target and stemmed_target.issubset(stemmed_ocr):
+            return (True, 0.90, 0.90)
+        
+        # Check if any target word stem matches any OCR word stem
+        stem_matches = stemmed_target & stemmed_ocr
+        if stem_matches:
+            match_ratio = len(stem_matches) / len(stemmed_target)
+            if match_ratio >= 0.5:  # At least half the words match
+                return (True, 0.80 * match_ratio, 0.80 * match_ratio)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # STRATEGY 3: Multi-strategy fuzzy matching (if enabled)
+        # ═══════════════════════════════════════════════════════════════════
         if fuzzy and self._fuzzy_available:
-            # Split OCR text into words
-            words = re.findall(r'\b\w+\b', search_text)
-            target_words = re.findall(r'\b\w+\b', target)
-
-            # Try fuzzy matching on word combinations
             max_ratio = 0.0
-
-            # Check full phrase first
+            
+            # 3a. Partial ratio - good for substrings
             ratio = fuzz.partial_ratio(search_text, target) / 100.0
             max_ratio = max(max_ratio, ratio)
-
-            # Check individual target words
+            
+            # 3b. Token set ratio - ignores word order, good for "bouncing ball" vs "ball bouncing"
+            try:
+                token_ratio = fuzz.token_set_ratio(search_text, target) / 100.0
+                max_ratio = max(max_ratio, token_ratio)
+            except Exception:
+                pass
+            
+            # 3c. Individual word matching with lower threshold
+            word_match_threshold = 0.65  # Lower than config for individual words
+            matched_words = 0
+            
             for target_word in target_words:
-                for ocr_word in words:
+                best_word_ratio = 0.0
+                for ocr_word in ocr_words:
+                    # Direct ratio
                     word_ratio = fuzz.ratio(ocr_word, target_word) / 100.0
-                    max_ratio = max(max_ratio, word_ratio)
+                    best_word_ratio = max(best_word_ratio, word_ratio)
+                    
+                    # Also check stemmed versions
+                    stemmed_ocr_word = simple_stem(ocr_word)
+                    stemmed_target_word = simple_stem(target_word)
+                    stem_ratio = fuzz.ratio(stemmed_ocr_word, stemmed_target_word) / 100.0
+                    best_word_ratio = max(best_word_ratio, stem_ratio)
+                
+                if best_word_ratio >= word_match_threshold:
+                    matched_words += 1
+                max_ratio = max(max_ratio, best_word_ratio)
+            
+            # If we matched enough words, consider it a detection
+            if target_words and matched_words >= len(target_words) * 0.5:
+                combined_ratio = (max_ratio + matched_words / len(target_words)) / 2
+                if combined_ratio >= 0.60:  # Lower combined threshold
+                    return (True, combined_ratio, max_ratio)
 
+            # Original threshold check
             if max_ratio >= self.config.fuzzy_match_ratio:
                 return (True, max_ratio, max_ratio)
 
