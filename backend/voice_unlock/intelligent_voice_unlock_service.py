@@ -4891,36 +4891,319 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             if temp_out and os.path.exists(temp_out.name):
                 os.unlink(temp_out.name)
 
-    # 🆕 NEW Strategy: Try to synthesize a valid WebM header for headerless chunks
-    def _try_webm_header_synthesis():
+    # ==========================================================================
+    # 🧠 INTELLIGENT AUDIO ANALYSIS HELPERS
+    # ==========================================================================
+
+    def _detect_audio_codec_from_bytes() -> Tuple[str, float]:
         """
-        For concatenated MediaRecorder chunks missing EBML header, try to synthesize one.
-        MediaRecorder WebM uses Opus codec - we synthesize minimal EBML + Segment headers.
+        Intelligently detect the audio codec from raw bytes using pattern matching.
+        Returns (codec_name, confidence_score 0.0-1.0)
         """
+        if len(raw) < 20:
+            return "unknown", 0.0
+
+        # Check for Opus TOC byte patterns (first byte of Opus frame)
+        # Opus TOC: config (5 bits) + s (1 bit) + c (2 bits)
+        # Common patterns for voice: 0x08-0x0F (SILK), 0x60-0x6F (Hybrid), 0xF8-0xFF (CELT)
+        first_byte = raw[0]
+        opus_confidence = 0.0
+
+        # Opus SILK mode (voice optimized) - common for MediaRecorder
+        if 0x08 <= first_byte <= 0x0F:
+            opus_confidence = 0.7
+        # Opus Hybrid mode
+        elif 0x60 <= first_byte <= 0x6F:
+            opus_confidence = 0.6
+        # Opus CELT mode (music optimized)
+        elif 0xF8 <= first_byte <= 0xFF:
+            opus_confidence = 0.5
+        # Check for Opus packet size patterns (typically 10-120ms frames)
+        elif first_byte in [0x00, 0x01, 0x02, 0x03]:
+            # Possible Opus continuation packet
+            opus_confidence = 0.3
+
+        # Check for Vorbis patterns
+        if raw[:7] == b'\x01vorbis':
+            return "vorbis", 0.95
+
+        # Check for AAC patterns (ADTS header)
+        if len(raw) >= 2 and raw[0] == 0xFF and (raw[1] & 0xF0) == 0xF0:
+            return "aac", 0.85
+
+        # Check for MP3 frame sync
+        if len(raw) >= 2 and raw[0] == 0xFF and (raw[1] & 0xE0) == 0xE0:
+            return "mp3", 0.85
+
+        if opus_confidence > 0:
+            return "opus", opus_confidence
+
+        return "unknown", 0.0
+
+    def _estimate_sample_rate_from_opus() -> int:
+        """
+        Estimate sample rate from Opus TOC byte.
+        Opus supports: 8000, 12000, 16000, 24000, 48000 Hz
+        MediaRecorder typically uses 48000 Hz.
+        """
+        if len(raw) < 1:
+            return 48000  # Default for WebM/Opus
+
+        toc = raw[0]
+        config = (toc >> 3) & 0x1F  # Extract config bits
+
+        # Opus bandwidth/sample rate mapping from config
+        if config <= 3:  # NB (narrowband) - 8kHz
+            return 8000
+        elif config <= 7:  # MB (medium band) - 12kHz
+            return 12000
+        elif config <= 11:  # WB (wideband) - 16kHz
+            return 16000
+        elif config <= 13:  # SWB (super wideband) - 24kHz
+            return 24000
+        else:  # FB (fullband) - 48kHz
+            return 48000
+
+    async def _webm_header_synthesis_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """
+        🧠 INTELLIGENT WebM Header Synthesis for headerless/truncated chunks.
+
+        MediaRecorder from browsers outputs WebM chunks where only the first chunk
+        has the full EBML header. Subsequent chunks are headerless Opus frames.
+
+        This function:
+        1. Detects if data looks like raw Opus frames (no container)
+        2. Synthesizes a minimal but valid WebM/EBML header
+        3. Wraps the raw data in a proper container
+        4. Converts to WAV using FFmpeg
+
+        This is particularly useful for:
+        - Concatenated MediaRecorder chunks
+        - Truncated WebM files
+        - Raw Opus packet streams
+        """
+        temp_in = None
+        temp_out = None
         try:
-            # Check if data looks like Opus frames (common for MediaRecorder chunks)
-            # Opus TOC byte often has specific patterns
             if len(raw) < 10:
                 return None, "Data too short for header synthesis"
 
-            # Minimal WebM header with Opus audio
-            # This is a simplified EBML header that FFmpeg can parse
-            webm_header = bytes([
-                # EBML Header
-                0x1a, 0x45, 0xdf, 0xa3,  # EBML ID
-                0x93,  # Size (19 bytes follow)
+            # Detect codec and confidence
+            detected_codec, confidence = _detect_audio_codec_from_bytes()
+            estimated_sr = _estimate_sample_rate_from_opus() if detected_codec == "opus" else 48000
+
+            logger.info(f"[HEADER-SYNTH] Detected codec: {detected_codec} (confidence: {confidence:.1%}), estimated SR: {estimated_sr}")
+
+            # Only attempt synthesis if we have reasonable confidence it's Opus
+            if detected_codec != "opus" or confidence < 0.3:
+                return None, f"Low confidence codec detection: {detected_codec} ({confidence:.1%})"
+
+            # =================================================================
+            # SYNTHESIZE MINIMAL WEBM/EBML HEADER FOR OPUS
+            # =================================================================
+            # WebM is a subset of Matroska. We create a minimal valid container:
+            # - EBML Header (declares WebM format)
+            # - Segment (contains all data)
+            # - Tracks (declares Opus audio track)
+            # - Cluster (contains actual audio frames)
+            # =================================================================
+
+            # EBML Header - declares this is a WebM file
+            ebml_header = bytes([
+                0x1A, 0x45, 0xDF, 0xA3,  # EBML ID
+                0xA3,  # Size: 35 bytes (variable-length encoded)
+                # EBML elements
                 0x42, 0x86, 0x81, 0x01,  # EBMLVersion = 1
-                0x42, 0xf7, 0x81, 0x01,  # EBMLReadVersion = 1
-                0x42, 0xf2, 0x81, 0x04,  # EBMLMaxIDLength = 4
-                0x42, 0xf3, 0x81, 0x08,  # EBMLMaxSizeLength = 8
-                0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d,  # DocType = "webm"
-                0x42, 0x87, 0x81, 0x02,  # DocTypeVersion = 2
+                0x42, 0xF7, 0x81, 0x01,  # EBMLReadVersion = 1
+                0x42, 0xF2, 0x81, 0x04,  # EBMLMaxIDLength = 4
+                0x42, 0xF3, 0x81, 0x08,  # EBMLMaxSizeLength = 8
+                0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D,  # DocType = "webm"
+                0x42, 0x87, 0x81, 0x04,  # DocTypeVersion = 4
                 0x42, 0x85, 0x81, 0x02,  # DocTypeReadVersion = 2
             ])
 
-            # For complex synthesis, just return None and let other strategies handle it
-            # Full WebM synthesis is complex - prefer FFmpeg's format guessing
-            return None, "Full WebM synthesis not implemented - using fallback"
+            # Segment header (contains all content) - unknown size (streaming)
+            segment_header = bytes([
+                0x18, 0x53, 0x80, 0x67,  # Segment ID
+                0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  # Unknown size (streaming)
+            ])
+
+            # SeekHead is optional for our use case - skip it
+
+            # Info element (segment information)
+            info_element = bytes([
+                0x15, 0x49, 0xA9, 0x66,  # Info ID
+                0x99,  # Size
+                # TimecodeScale = 1000000 (1ms)
+                0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40,
+                # MuxingApp
+                0x4D, 0x80, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "JARVIS-AI"
+                # WritingApp
+                0x57, 0x41, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "JARVIS-AI"
+            ])
+
+            # Tracks element (declares our audio track)
+            # This is simplified - FFmpeg should still parse it
+            tracks_element = bytes([
+                0x16, 0x54, 0xAE, 0x6B,  # Tracks ID
+                0xBF,  # Size (large, will be computed)
+                # TrackEntry
+                0xAE, 0xBC,  # TrackEntry ID + size
+                0xD7, 0x81, 0x01,  # TrackNumber = 1
+                0x73, 0xC5, 0x88, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,  # TrackUID
+                0x83, 0x81, 0x02,  # TrackType = 2 (audio)
+                0x86, 0x86, 0x41, 0x5F, 0x4F, 0x50, 0x55, 0x53,  # CodecID = "A_OPUS"
+                # Audio element
+                0xE1, 0x8A,  # Audio ID + size
+                0xB5, 0x84, 0x47, 0x7A, 0x00, 0x00,  # SamplingFrequency = 48000.0
+                0x9F, 0x81, 0x02,  # Channels = 2 (stereo, common for WebRTC)
+            ])
+
+            # Cluster with the raw data as a SimpleBlock
+            # SimpleBlock format: track number (1 byte) + timecode (2 bytes) + flags (1 byte) + data
+            timecode = 0
+            simple_block_header = bytes([
+                0x81,  # Track number 1 (EBML-encoded)
+                (timecode >> 8) & 0xFF, timecode & 0xFF,  # Timecode (16-bit)
+                0x80,  # Flags: keyframe, no lacing
+            ])
+
+            # Cluster element
+            cluster_data = simple_block_header + raw
+            cluster_size = len(cluster_data) + 4  # +4 for SimpleBlock element ID + size
+
+            cluster_element = bytes([
+                0x1F, 0x43, 0xB6, 0x75,  # Cluster ID
+            ])
+            # Variable-length size encoding for cluster
+            if cluster_size < 127:
+                cluster_element += bytes([0x80 | cluster_size])
+            else:
+                # Use 2-byte size
+                cluster_element += bytes([0x40 | ((cluster_size >> 8) & 0x3F), cluster_size & 0xFF])
+
+            # Timecode element in cluster
+            cluster_element += bytes([0xE7, 0x81, 0x00])  # Timecode = 0
+
+            # SimpleBlock element
+            simple_block_size = len(simple_block_header) + len(raw)
+            cluster_element += bytes([0xA3])  # SimpleBlock ID
+            if simple_block_size < 127:
+                cluster_element += bytes([0x80 | simple_block_size])
+            else:
+                cluster_element += bytes([0x40 | ((simple_block_size >> 8) & 0x3F), simple_block_size & 0xFF])
+            cluster_element += simple_block_header + raw
+
+            # Combine all elements
+            synthesized_webm = ebml_header + segment_header + info_element + tracks_element + cluster_element
+
+            logger.info(f"[HEADER-SYNTH] Synthesized WebM container: {len(synthesized_webm)} bytes (original: {len(raw)} bytes)")
+
+            # Write to temp file and convert with FFmpeg
+            temp_in = tempfile.NamedTemporaryFile(suffix='.webm', delete=False)
+            temp_out = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_in.write(synthesized_webm)
+            temp_in.close()
+            temp_out.close()
+
+            # Try conversion with synthesized container
+            cmd = [
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                '-err_detect', 'ignore_err',
+                '-i', temp_in.name,
+                '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                temp_out.name
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            if proc.returncode == 0 and os.path.exists(temp_out.name):
+                wav_data = open(temp_out.name, 'rb').read()
+                if len(wav_data) > 44:
+                    logger.info(f"[HEADER-SYNTH] ✅ Header synthesis SUCCESS: {len(wav_data)} bytes WAV")
+                    return wav_data, None
+
+            return None, f"FFmpeg conversion failed: {stderr.decode('utf-8', errors='ignore')[:200]}"
+
+        except asyncio.TimeoutError:
+            return None, "Header synthesis FFmpeg timeout"
+        except Exception as e:
+            logger.warning(f"[HEADER-SYNTH] Error: {e}")
+            return None, str(e)
+        finally:
+            if temp_in and os.path.exists(temp_in.name):
+                try:
+                    os.unlink(temp_in.name)
+                except:
+                    pass
+            if temp_out and os.path.exists(temp_out.name):
+                try:
+                    os.unlink(temp_out.name)
+                except:
+                    pass
+
+    async def _raw_pcm_extraction_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """
+        🔧 Last-resort raw PCM extraction for when all else fails.
+
+        Attempts to interpret the raw bytes directly as PCM audio
+        and convert to proper WAV format.
+        """
+        try:
+            # Try interpreting as raw PCM with common formats
+            pcm_formats = [
+                ('s16le', 16000, 1),   # 16-bit signed LE mono 16kHz
+                ('s16le', 48000, 1),   # 16-bit signed LE mono 48kHz
+                ('s16le', 44100, 1),   # 16-bit signed LE mono 44.1kHz
+                ('f32le', 16000, 1),   # 32-bit float LE mono 16kHz
+                ('f32le', 48000, 1),   # 32-bit float LE mono 48kHz
+            ]
+
+            for pcm_format, sample_rate, channels in pcm_formats:
+                try:
+                    cmd = [
+                        'ffmpeg', '-hide_banner', '-loglevel', 'error',
+                        '-f', pcm_format,
+                        '-ar', str(sample_rate),
+                        '-ac', str(channels),
+                        '-i', 'pipe:0',
+                        '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                        'pipe:1'
+                    ]
+
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    wav_out, _ = await asyncio.wait_for(
+                        proc.communicate(input=raw),
+                        timeout=5.0
+                    )
+
+                    if proc.returncode == 0 and len(wav_out) > 44:
+                        # Validate the output isn't just silence/noise
+                        # Check if the audio has reasonable amplitude variance
+                        import struct
+                        samples = struct.unpack(f'<{(len(wav_out)-44)//2}h', wav_out[44:])
+                        if len(samples) > 100:
+                            variance = sum((s - sum(samples)/len(samples))**2 for s in samples[:1000]) / min(len(samples), 1000)
+                            if variance > 1000:  # Non-trivial audio
+                                logger.info(f"[RAW-PCM] ✅ Raw PCM extraction SUCCESS ({pcm_format}@{sample_rate}Hz): {len(wav_out)} bytes")
+                                return wav_out, None
+
+                except asyncio.TimeoutError:
+                    pass
+                except Exception:
+                    pass
+
+            return None, "Raw PCM extraction failed for all formats"
 
         except Exception as e:
             return None, str(e)
@@ -5061,135 +5344,182 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
         return None, "All format guesses failed"
 
     # ==========================================================================
-    # FORK-SAFE: Call async FFmpeg functions directly (no run_in_executor)
+    # 🚀 INTELLIGENT PARALLEL AUDIO CONVERSION STRATEGY ENGINE
     # ==========================================================================
-    # Using async subprocess calls directly avoids the thread + fork combination
-    # that causes "multi-threaded process forked" crashes on macOS.
+    # Uses a tiered approach with parallel execution for maximum robustness:
+    #
+    # TIER 1 (PARALLEL - FAST): Try multiple fast strategies simultaneously
+    #   - FFmpeg pipe conversion (auto-detect)
+    #   - WebM header synthesis (for headerless chunks)
+    #   - Format hint conversion
+    #
+    # TIER 2 (PARALLEL - RECOVERY): File-based and recovery strategies
+    #   - Broken WebM recovery (multiple FFmpeg strategies)
+    #   - Matroska demuxer
+    #   - FFmpeg file conversion
+    #
+    # TIER 3 (SEQUENTIAL - EXHAUSTIVE): Last-resort strategies
+    #   - Multi-format guessing
+    #   - Raw Opus decode
+    #   - Raw PCM extraction
+    #
+    # All strategies use asyncio.create_subprocess_exec() (posix_spawn) to
+    # avoid the "multi-threaded process forked" crash on macOS.
     # ==========================================================================
 
-    # Strategy 0a: Try broken WebM recovery FIRST for any WebM-like data
+    async def _run_strategy_with_name(name: str, coro, timeout: float) -> Tuple[str, Optional[bytes], Optional[str]]:
+        """Wrapper to run a strategy and return its name with the result."""
+        try:
+            result, err = await asyncio.wait_for(coro, timeout=timeout)
+            return name, result, err
+        except asyncio.TimeoutError:
+            return name, None, f"{name} timeout after {timeout}s"
+        except Exception as e:
+            return name, None, f"{name} error: {e}"
+
+    # Log detected format info
+    detected_codec, codec_confidence = _detect_audio_codec_from_bytes()
+    logger.info(f"[ROBUST-AUDIO] 🧠 Intelligent codec detection: {detected_codec} (confidence: {codec_confidence:.1%})")
+
+    # ==========================================================================
+    # TIER 1: PARALLEL FAST STRATEGIES
+    # ==========================================================================
+    # Run multiple fast strategies in parallel, return first success
+    logger.info("[ROBUST-AUDIO] 🚀 TIER 1: Running parallel fast strategies...")
+
+    tier1_strategies = [
+        ("FFmpeg-Pipe", _ffmpeg_pipe_convert_async(), 8.0),
+    ]
+
+    # Add format-specific strategies based on detection
+    if ffmpeg_format:
+        tier1_strategies.append(
+            ("Format-Hint", _ffmpeg_format_hint_convert_async(ffmpeg_format), 8.0)
+        )
+
+    # Add header synthesis for potential headerless Opus
+    if detected_codec == "opus" or format_hint in ['opus_chunks', 'unknown']:
+        tier1_strategies.append(
+            ("Header-Synth", _webm_header_synthesis_async(), 10.0)
+        )
+
+    # Run tier 1 strategies in parallel
+    tier1_tasks = [
+        asyncio.create_task(_run_strategy_with_name(name, coro, timeout))
+        for name, coro, timeout in tier1_strategies
+    ]
+
+    # Wait for first successful result or all failures
+    for completed in asyncio.as_completed(tier1_tasks):
+        name, result, err = await completed
+        if result and len(result) > 44:
+            logger.info(f"[ROBUST-AUDIO] ✅ TIER 1 SUCCESS ({name}): {len(result)} bytes WAV")
+            # Cancel remaining tasks
+            for task in tier1_tasks:
+                if not task.done():
+                    task.cancel()
+            return result
+        else:
+            logger.debug(f"[ROBUST-AUDIO] TIER 1 {name} failed: {err}")
+
+    logger.info("[ROBUST-AUDIO] TIER 1 exhausted, moving to TIER 2...")
+
+    # ==========================================================================
+    # TIER 2: PARALLEL RECOVERY STRATEGIES
+    # ==========================================================================
+    logger.info("[ROBUST-AUDIO] 🔧 TIER 2: Running parallel recovery strategies...")
+
+    tier2_strategies = [
+        ("FFmpeg-File", _ffmpeg_file_convert_async(), 12.0),
+        ("Matroska-Demux", _ffmpeg_matroska_demux_async(), 12.0),
+    ]
+
+    # Add broken WebM recovery for WebM-like content
     if 'webm' in mime_type.lower() or format_hint in ['webm', 'opus_chunks', 'unknown']:
-        try:
-            logger.info("[ROBUST-AUDIO] 🔧 Trying broken WebM recovery (best for MediaRecorder chunks)...")
-            wav_data, err = await asyncio.wait_for(
-                _ffmpeg_broken_webm_recovery_async(),
-                timeout=20.0
-            )
-            if wav_data:
-                logger.info(f"[ROBUST-AUDIO] ✅ Broken WebM recovery SUCCESS: {len(wav_data)} bytes WAV")
-                return wav_data
-            else:
-                logger.warning(f"[ROBUST-AUDIO] Broken WebM recovery failed: {err}")
-        except asyncio.TimeoutError:
-            logger.warning("[ROBUST-AUDIO] Broken WebM recovery timeout")
-        except Exception as e:
-            logger.warning(f"[ROBUST-AUDIO] Broken WebM recovery error: {e}")
-
-    # Strategy 0b: If format_hint indicates concatenated chunks, try explicit format first
-    if format_hint == "opus_chunks" and ffmpeg_format:
-        try:
-            logger.info(f"[ROBUST-AUDIO] Trying FFmpeg with explicit format hint: {ffmpeg_format}")
-            wav_data, err = await asyncio.wait_for(
-                _ffmpeg_format_hint_convert_async(ffmpeg_format),
-                timeout=10.0
-            )
-            if wav_data:
-                logger.info(f"[ROBUST-AUDIO] FFmpeg format hint SUCCESS: {len(wav_data)} bytes WAV")
-                return wav_data
-            else:
-                logger.warning(f"[ROBUST-AUDIO] FFmpeg format hint failed: {err}")
-        except asyncio.TimeoutError:
-            logger.warning("[ROBUST-AUDIO] FFmpeg format hint timeout")
-        except Exception as e:
-            logger.warning(f"[ROBUST-AUDIO] FFmpeg format hint error: {e}")
-
-        # Try matroska demuxer for WebM chunks
-        try:
-            logger.info("[ROBUST-AUDIO] Trying Matroska demuxer with error tolerance...")
-            wav_data, err = await asyncio.wait_for(
-                _ffmpeg_matroska_demux_async(),
-                timeout=12.0
-            )
-            if wav_data:
-                logger.info(f"[ROBUST-AUDIO] Matroska demux SUCCESS: {len(wav_data)} bytes WAV")
-                return wav_data
-            else:
-                logger.warning(f"[ROBUST-AUDIO] Matroska demux failed: {err}")
-        except asyncio.TimeoutError:
-            logger.warning("[ROBUST-AUDIO] Matroska demux timeout")
-        except Exception as e:
-            logger.warning(f"[ROBUST-AUDIO] Matroska demux error: {e}")
-
-    # Strategy 1: FFmpeg pipe (fast, auto-detect)
-    try:
-        logger.info("[ROBUST-AUDIO] Trying FFmpeg pipe conversion...")
-        wav_data, err = await asyncio.wait_for(
-            _ffmpeg_pipe_convert_async(),
-            timeout=10.0
+        tier2_strategies.append(
+            ("Broken-WebM", _ffmpeg_broken_webm_recovery_async(), 20.0)
         )
-        if wav_data:
-            logger.info(f"[ROBUST-AUDIO] FFmpeg pipe SUCCESS: {len(wav_data)} bytes WAV")
-            return wav_data
-        else:
-            logger.warning(f"[ROBUST-AUDIO] FFmpeg pipe failed: {err}")
-    except asyncio.TimeoutError:
-        logger.warning("[ROBUST-AUDIO] FFmpeg pipe timeout")
-    except Exception as e:
-        logger.warning(f"[ROBUST-AUDIO] FFmpeg pipe error: {e}")
 
-    # Strategy 2: FFmpeg file (more compatible)
-    try:
-        logger.info("[ROBUST-AUDIO] Trying FFmpeg file conversion...")
-        wav_data, err = await asyncio.wait_for(
-            _ffmpeg_file_convert_async(),
-            timeout=12.0
-        )
-        if wav_data:
-            logger.info(f"[ROBUST-AUDIO] FFmpeg file SUCCESS: {len(wav_data)} bytes WAV")
-            return wav_data
-        else:
-            logger.warning(f"[ROBUST-AUDIO] FFmpeg file failed: {err}")
-    except asyncio.TimeoutError:
-        logger.warning("[ROBUST-AUDIO] FFmpeg file timeout")
-    except Exception as e:
-        logger.warning(f"[ROBUST-AUDIO] FFmpeg file error: {e}")
+    tier2_tasks = [
+        asyncio.create_task(_run_strategy_with_name(name, coro, timeout))
+        for name, coro, timeout in tier2_strategies
+    ]
 
-    # Strategy 3: Try multiple format hints
+    for completed in asyncio.as_completed(tier2_tasks):
+        name, result, err = await completed
+        if result and len(result) > 44:
+            logger.info(f"[ROBUST-AUDIO] ✅ TIER 2 SUCCESS ({name}): {len(result)} bytes WAV")
+            for task in tier2_tasks:
+                if not task.done():
+                    task.cancel()
+            return result
+        else:
+            logger.debug(f"[ROBUST-AUDIO] TIER 2 {name} failed: {err}")
+
+    logger.info("[ROBUST-AUDIO] TIER 2 exhausted, moving to TIER 3 (exhaustive)...")
+
+    # ==========================================================================
+    # TIER 3: SEQUENTIAL EXHAUSTIVE STRATEGIES
+    # ==========================================================================
+    # These are slower/more resource-intensive, run sequentially
+    logger.info("[ROBUST-AUDIO] 🔍 TIER 3: Running exhaustive sequential strategies...")
+
+    # Strategy 3a: Multi-format guessing
     try:
-        logger.info("[ROBUST-AUDIO] Trying multiple format guesses...")
+        logger.info("[ROBUST-AUDIO] TIER 3a: Trying multi-format guessing...")
         wav_data, err = await asyncio.wait_for(
             _try_multiple_formats_async(),
             timeout=30.0
         )
-        if wav_data:
-            logger.info(f"[ROBUST-AUDIO] Multi-format guess SUCCESS: {len(wav_data)} bytes WAV")
+        if wav_data and len(wav_data) > 44:
+            logger.info(f"[ROBUST-AUDIO] ✅ TIER 3a SUCCESS (Multi-Format): {len(wav_data)} bytes WAV")
             return wav_data
         else:
-            logger.warning(f"[ROBUST-AUDIO] Multi-format guess failed: {err}")
+            logger.debug(f"[ROBUST-AUDIO] TIER 3a Multi-Format failed: {err}")
     except asyncio.TimeoutError:
-        logger.warning("[ROBUST-AUDIO] Multi-format guess timeout")
+        logger.debug("[ROBUST-AUDIO] TIER 3a Multi-Format timeout")
     except Exception as e:
-        logger.warning(f"[ROBUST-AUDIO] Multi-format guess error: {e}")
+        logger.debug(f"[ROBUST-AUDIO] TIER 3a Multi-Format error: {e}")
 
-    # Strategy 4: Raw Opus decode
+    # Strategy 3b: Raw Opus decode
     try:
-        logger.info("[ROBUST-AUDIO] Trying raw Opus decode...")
+        logger.info("[ROBUST-AUDIO] TIER 3b: Trying raw Opus decode...")
         wav_data, err = await asyncio.wait_for(
             _opus_decode_raw_async(),
             timeout=10.0
         )
-        if wav_data:
-            logger.info(f"[ROBUST-AUDIO] Raw Opus decode SUCCESS: {len(wav_data)} bytes WAV")
+        if wav_data and len(wav_data) > 44:
+            logger.info(f"[ROBUST-AUDIO] ✅ TIER 3b SUCCESS (Raw-Opus): {len(wav_data)} bytes WAV")
             return wav_data
         else:
-            logger.warning(f"[ROBUST-AUDIO] Raw Opus decode failed: {err}")
+            logger.debug(f"[ROBUST-AUDIO] TIER 3b Raw-Opus failed: {err}")
     except asyncio.TimeoutError:
-        logger.warning("[ROBUST-AUDIO] Raw Opus timeout")
+        logger.debug("[ROBUST-AUDIO] TIER 3b Raw-Opus timeout")
     except Exception as e:
-        logger.warning(f"[ROBUST-AUDIO] Raw Opus error: {e}")
+        logger.debug(f"[ROBUST-AUDIO] TIER 3b Raw-Opus error: {e}")
 
-    # Strategy 5: Return raw for torchaudio to handle
-    logger.warning(f"[ROBUST-AUDIO] All conversions failed, returning raw {len(raw)} bytes for torchaudio")
+    # Strategy 3c: Raw PCM extraction (last resort)
+    try:
+        logger.info("[ROBUST-AUDIO] TIER 3c: Trying raw PCM extraction (last resort)...")
+        wav_data, err = await asyncio.wait_for(
+            _raw_pcm_extraction_async(),
+            timeout=15.0
+        )
+        if wav_data and len(wav_data) > 44:
+            logger.info(f"[ROBUST-AUDIO] ✅ TIER 3c SUCCESS (Raw-PCM): {len(wav_data)} bytes WAV")
+            return wav_data
+        else:
+            logger.debug(f"[ROBUST-AUDIO] TIER 3c Raw-PCM failed: {err}")
+    except asyncio.TimeoutError:
+        logger.debug("[ROBUST-AUDIO] TIER 3c Raw-PCM timeout")
+    except Exception as e:
+        logger.debug(f"[ROBUST-AUDIO] TIER 3c Raw-PCM error: {e}")
+
+    # ==========================================================================
+    # FALLBACK: Return raw for torchaudio
+    # ==========================================================================
+    logger.warning(f"[ROBUST-AUDIO] ⚠️ All 3 tiers exhausted! Returning raw {len(raw)} bytes for torchaudio to handle")
+    logger.warning(f"[ROBUST-AUDIO] Format info: mime={mime_type}, hint={format_hint}, codec={detected_codec}")
     return raw
 
 
