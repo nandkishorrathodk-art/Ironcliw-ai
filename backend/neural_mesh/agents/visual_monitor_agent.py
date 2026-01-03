@@ -1933,6 +1933,20 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # ===== STEP 1: Discover All Windows Across All Spaces (with timeout) =====
         logger.info(f"🔍 Discovering all {app_name} windows across spaces...")
 
+        # v32.0: Generate correlation ID early for tracking entire surveillance session
+        _surveillance_correlation_id = f"surv_{app_name}_{int(datetime.now().timestamp())}"
+
+        # v32.0: Emit discovery START to UI progress stream
+        if PROGRESS_STREAM_AVAILABLE:
+            try:
+                await emit_discovery_start(
+                    app_name=app_name,
+                    trigger_text=trigger_text,
+                    correlation_id=_surveillance_correlation_id
+                )
+            except Exception as e:
+                logger.debug(f"[v32.0] Progress stream emit failed: {e}")
+
         # v31.0: TRANSPARENT PROGRESS NARRATION - Keep user informed during startup
         # Users should never be left wondering "is it working?"
         if self.config.working_out_loud_enabled:
@@ -1970,6 +1984,19 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     )
                 except Exception as e:
                     logger.warning(f"Error narration failed: {e}")
+
+            # v32.0: Emit error to UI progress stream
+            if PROGRESS_STREAM_AVAILABLE:
+                try:
+                    await emit_error(
+                        message=f"Window discovery timed out after {find_window_timeout}s",
+                        app_name=app_name,
+                        trigger_text=trigger_text,
+                        details={"timeout": find_window_timeout, "reason": "yabai_unresponsive"},
+                        correlation_id=_surveillance_correlation_id
+                    )
+                except Exception as e:
+                    logger.debug(f"[v32.0] Error emit failed: {e}")
 
             return {
                 'status': 'error',
@@ -2021,6 +2048,20 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         if not windows:
             logger.warning(f"⚠️ [v28.0] No valid windows found for '{app_name}' after validation")
+            
+            # v32.0: Emit error to UI progress stream
+            if PROGRESS_STREAM_AVAILABLE:
+                try:
+                    await emit_error(
+                        message=f"No {app_name} windows found",
+                        app_name=app_name,
+                        trigger_text=trigger_text,
+                        details={"reason": "no_windows_found"},
+                        correlation_id=_surveillance_correlation_id
+                    )
+                except Exception as e:
+                    logger.debug(f"[v32.0] Error emit failed: {e}")
+            
             return {
                 'status': 'error',
                 'error': f"No valid windows found for '{app_name}'",
@@ -2030,9 +2071,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         logger.info(f"✅ [v28.0] Validated {len(windows)} windows for '{app_name}'")
 
         # v32.0: Emit discovery complete to UI progress stream
-        # Generate correlation ID for this surveillance session
-        _surveillance_correlation_id = f"surv_{app_name}_{int(datetime.now().timestamp())}"
-        
+        # NOTE: _surveillance_correlation_id was already generated at discovery start
         if PROGRESS_STREAM_AVAILABLE:
             try:
                 # Count unique spaces
@@ -2326,7 +2365,10 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             telemetry_data = rescue_result.get("telemetry", {})
 
                             # Update window objects with teleport info
+                            teleport_progress_idx = 0
+                            total_details = len(rescue_result.get("details", []))
                             for detail in rescue_result.get("details", []):
+                                teleport_progress_idx += 1
                                 if detail.get("success"):
                                     # Find the original window and update it
                                     for w in windows_to_teleport:
@@ -2338,6 +2380,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                                             w["rescue_strategy"] = detail.get("strategy")
                                             w["rescue_duration_ms"] = detail.get("duration_ms")
                                             teleported_windows.append(w)
+                                            
+                                            # v32.0: Emit progress for each teleported window
+                                            if PROGRESS_STREAM_AVAILABLE:
+                                                try:
+                                                    await emit_teleport_progress(
+                                                        current=teleport_progress_idx,
+                                                        total=total_details,
+                                                        window_id=w.get("window_id"),
+                                                        from_space=detail.get("source_space", 0),
+                                                        to_space=ghost_space,
+                                                        app_name=app_name,
+                                                        correlation_id=_surveillance_correlation_id
+                                                    )
+                                                except Exception as e:
+                                                    logger.debug(f"[v32.0] Teleport progress emit failed: {e}")
                                             break
 
                             # v24.0: Enhanced logging with telemetry
@@ -6379,6 +6436,24 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     watcher_id=watcher_id,
                     success=True,
                 )
+                
+                # v32.0: Emit watcher spawned to UI progress stream
+                if PROGRESS_STREAM_AVAILABLE:
+                    try:
+                        # Get current ready count from startup manager
+                        ready_count = self._progressive_startup_manager._ready_count
+                        expected_count = self._progressive_startup_manager._expected_count
+                        await emit_watcher_spawned(
+                            current=ready_count,
+                            total=expected_count,
+                            watcher_id=watcher_id,
+                            window_id=window_id,
+                            space_id=space_id,
+                            app_name=app_name,
+                            correlation_id=""  # Not available here but still useful
+                        )
+                    except Exception as e:
+                        logger.debug(f"[v32.0] Watcher spawned emit failed: {e}")
 
             logger.info(
                 f"✅ Ferrari Engine watcher started and verified: {watcher_id} "
@@ -6643,6 +6718,22 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             f"[Detection] 📢 Notifying user: '{trigger_text}' detected in {app_name} "
             f"(Space {space_id}, confidence: {confidence:.2%})"
         )
+
+        # =====================================================================
+        # v32.0: EMIT DETECTION TO UI PROGRESS STREAM - INSTANT FEEDBACK!
+        # =====================================================================
+        if PROGRESS_STREAM_AVAILABLE:
+            try:
+                await emit_detection(
+                    trigger_text=trigger_text,
+                    window_id=window_id if window_id else 0,
+                    space_id=space_id,
+                    app_name=app_name,
+                    confidence=confidence,
+                    correlation_id=""  # Not available here but still useful
+                )
+            except Exception as e:
+                logger.debug(f"[v32.0] Detection emit failed: {e}")
 
         # =====================================================================
         # 1. TTS VOICE NOTIFICATION (UnifiedVoiceOrchestrator)
