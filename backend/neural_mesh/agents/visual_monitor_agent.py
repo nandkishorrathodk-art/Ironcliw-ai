@@ -151,6 +151,7 @@ try:
         emit_monitoring_active,
         emit_detection,
         emit_error,
+        emit_complete,  # v32.4: Added for proper UI completion signal
     )
     PROGRESS_STREAM_AVAILABLE = True
     logger.info("[VisualMonitor] ✅ SurveillanceProgressStream available for real-time UI updates")
@@ -7120,17 +7121,35 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         # =====================================================================
         # v32.0: EMIT DETECTION TO UI PROGRESS STREAM - INSTANT FEEDBACK!
+        # v32.4: Also emit COMPLETE to signal UI to show 100% and clear progress
         # =====================================================================
         if PROGRESS_STREAM_AVAILABLE:
             try:
+                # First emit detection event (shows celebration)
                 await emit_detection(
                     trigger_text=trigger_text,
                     window_id=window_id if window_id else 0,
                     space_id=space_id,
                     app_name=app_name,
                     confidence=confidence,
-                    correlation_id=""  # Not available here but still useful
+                    correlation_id=""
                 )
+                
+                # v32.4: CRITICAL - Emit completion to clear UI progress bar!
+                # Without this, UI stays stuck at "VALIDATION 85%"
+                await emit_complete(
+                    app_name=app_name,
+                    trigger_text=trigger_text,
+                    detected=True,
+                    details={
+                        "confidence": confidence,
+                        "window_id": window_id,
+                        "space_id": space_id,
+                    },
+                    correlation_id=""
+                )
+                logger.info(f"[v32.4] ✅ Emitted detection + complete events to UI")
+                
             except Exception as e:
                 logger.debug(f"[v32.0] Detection emit failed: {e}")
 

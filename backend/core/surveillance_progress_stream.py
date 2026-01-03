@@ -458,3 +458,36 @@ async def emit_error(
         correlation_id=correlation_id,
     )
 
+
+async def emit_complete(
+    app_name: str = "",
+    trigger_text: str = "",
+    detected: bool = True,
+    details: Optional[Dict[str, Any]] = None,
+    correlation_id: str = ""
+) -> None:
+    """
+    Emit completion event - CRITICAL for UI to show 100% and clear progress bar.
+    
+    This must be called after emit_detection() to properly end the surveillance session.
+    """
+    if detected:
+        message = f"✅ Surveillance complete - '{trigger_text}' found in {app_name}!"
+    else:
+        message = f"🏁 Surveillance ended for {app_name}"
+    
+    await emit_surveillance_progress(
+        stage=SurveillanceStage.COMPLETE,
+        message=message,
+        progress_current=1,
+        progress_total=1,
+        app_name=app_name,
+        trigger_text=trigger_text,
+        details=details or {"detected": detected},
+        correlation_id=correlation_id,
+    )
+    
+    # Clear the stream state
+    stream = get_progress_stream()
+    await stream.clear()
+
