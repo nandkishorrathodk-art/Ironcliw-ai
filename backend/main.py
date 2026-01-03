@@ -210,12 +210,46 @@ if _sys.version_info < (3, 10):
     except Exception:
         pass  # Silently fail if we can't patch
 
-# CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports
-# This prevents segmentation faults from semaphore leaks on macOS
+# =============================================================================
+# CRITICAL: Fork-Safety Configuration - MUST BE FIRST
+# =============================================================================
+# On macOS, fork() in a multi-threaded process causes crashes:
+#   "multi-threaded process forked"
+#   "BUG IN CLIENT OF LIBDISPATCH: trying to lock recursively"
+#
+# Root cause: fork() only copies the calling thread, but locks from other
+# threads are copied in a locked state, causing deadlock in the child process.
+#
+# Solution:
+# 1. Set multiprocessing to use 'spawn' instead of 'fork' (uses posix_spawn)
+# 2. Set environment variable to disable Objective-C fork safety checks
+# 3. Use asyncio.create_subprocess_exec() instead of subprocess.Popen
+#    (asyncio uses posix_spawn which is fork-safe)
+#
+# This MUST happen before ANY other imports that might spawn threads or processes.
+# =============================================================================
 import multiprocessing
 import os
-import subprocess
 import sys
+
+# Set spawn mode IMMEDIATELY - before anything else can start threads/processes
+if sys.platform == "darwin":
+    # Must be called before any other multiprocessing usage
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Already set
+
+    # Additional fork-safety environment variables for macOS
+    os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+
+    # Disable various library threading that can cause fork issues
+    os.environ["OMP_NUM_THREADS"] = "1"  # OpenMP
+    os.environ["MKL_NUM_THREADS"] = "1"  # Intel MKL
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"  # OpenBLAS
+    os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate
+
+import subprocess
 
 # =============================================================================
 # CRITICAL: NUMBA JIT DISABLE - MUST BE FIRST BEFORE ANY OTHER IMPORTS
@@ -237,9 +271,9 @@ os.environ["NUMBA_DISABLE_JIT"] = "1"
 os.environ["NUMBA_NUM_THREADS"] = "1"
 os.environ["NUMBA_THREADING_LAYER"] = "workqueue"
 
-# Set critical environment variables FIRST
+# Set additional platform-specific environment variables
 if sys.platform == "darwin":  # macOS specific
-    os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+    # Note: OBJC_DISABLE_INITIALIZE_FORK_SAFETY already set in fork-safety section above
     os.environ["PYTHONUNBUFFERED"] = "1"
 
 # Enable HuggingFace/Transformers offline mode to prevent network timeouts
@@ -375,14 +409,16 @@ if sys.platform == "darwin":  # macOS specific
     except Exception as e:
         print(f"[STARTUP] Semaphore cleanup warning: {e}")
 
-    # Set spawn mode - MUST be before any other multiprocessing usage
+    # Verify spawn mode is set (already configured at module level above)
     try:
-        multiprocessing.set_start_method("spawn", force=True)
-        print("[STARTUP] Set multiprocessing to spawn mode")
-    except RuntimeError as e:
-        # Already set, that's fine
-        if "context has already been set" not in str(e):
-            print(f"[STARTUP] Multiprocessing warning: {e}")
+        current_method = multiprocessing.get_start_method()
+        if current_method == "spawn":
+            print("[STARTUP] ✅ Fork-safe multiprocessing mode: spawn")
+        else:
+            print(f"[STARTUP] ⚠️ Unexpected multiprocessing mode: {current_method}")
+            multiprocessing.set_start_method("spawn", force=True)
+    except Exception as e:
+        print(f"[STARTUP] Multiprocessing check: {e}")
 
 # Now continue with other imports
 import asyncio

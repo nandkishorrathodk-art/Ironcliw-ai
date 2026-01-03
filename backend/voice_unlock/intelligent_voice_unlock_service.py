@@ -25,13 +25,33 @@ import asyncio
 import hashlib
 import logging
 import os
-import subprocess
 import threading
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
+
+# =============================================================================
+# CRITICAL: Fork-Safe Subprocess Import
+# =============================================================================
+# On macOS, subprocess.Popen/run() uses fork() which is NOT safe in multi-threaded
+# contexts. This causes crashes: "BUG IN CLIENT OF LIBDISPATCH: trying to lock recursively"
+#
+# Solution: Use fork_safe_subprocess which uses posix_spawn() via asyncio
+# =============================================================================
+try:
+    from backend.utils.fork_safe_subprocess import (
+        run_subprocess_async,
+        run_ffmpeg_async,
+        get_fork_safe_executor,
+        ForkSafeExecutor,
+    )
+    FORK_SAFE_AVAILABLE = True
+except ImportError:
+    # Fallback for when the module isn't available (e.g., testing)
+    FORK_SAFE_AVAILABLE = False
+    import subprocess  # Legacy fallback
 
 logger = logging.getLogger(__name__)
 
@@ -145,15 +165,28 @@ class DynamicTimeoutManager:
 
         try:
             # Check memory pressure on macOS using vm_stat
-            result = subprocess.run(
-                ["vm_stat"],
-                capture_output=True,
-                text=True,
-                timeout=2
-            )
-
-            if result.returncode == 0:
+            # FORK-SAFE: Use fork-safe subprocess to prevent deadlock in multi-threaded context
+            if FORK_SAFE_AVAILABLE:
+                from backend.utils.fork_safe_subprocess import run_subprocess_sync
+                result = run_subprocess_sync(
+                    ["vm_stat"],
+                    capture_output=True,
+                    timeout=2
+                )
+                returncode = result.returncode
+                output = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
+            else:
+                import subprocess
+                result = subprocess.run(
+                    ["vm_stat"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                returncode = result.returncode
                 output = result.stdout
+
+            if returncode == 0:
                 # Parse free pages
                 import re
                 page_size = 16384  # macOS default
@@ -4653,42 +4686,62 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
 
     logger.info(f"[ROBUST-AUDIO] Detected format: {format_hint}, ffmpeg_format: {ffmpeg_format}")
 
-    # 🆕 NEW Strategy: FFmpeg with explicit input format hint for concatenated WebM chunks
-    def _ffmpeg_format_hint_convert(input_format: str):
-        """Convert using explicit input format hint - critical for concatenated MediaRecorder chunks."""
+    # ==========================================================================
+    # FORK-SAFE FFmpeg Helper Functions
+    # ==========================================================================
+    # These use asyncio.create_subprocess_exec() (posix_spawn on macOS) to avoid
+    # the "multi-threaded process forked" crash that occurs with subprocess.Popen
+    # in multi-threaded contexts.
+    # ==========================================================================
+
+    async def _ffmpeg_format_hint_convert_async(input_format: str) -> Tuple[Optional[bytes], Optional[str]]:
+        """Convert using explicit input format hint - fork-safe async version."""
         try:
-            # Use explicit format flag (-f) to tell FFmpeg what the input format is
-            # Also use -err_detect ignore_err to handle broken containers
-            cmd = [
-                'ffmpeg', '-hide_banner', '-loglevel', 'warning',
-                '-err_detect', 'ignore_err',  # Ignore container errors
-                '-f', input_format,  # Explicit input format
-                '-i', 'pipe:0',
-                '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                'pipe:1'
-            ]
-            logger.debug(f"[ROBUST-AUDIO] FFmpeg format hint cmd: {' '.join(cmd)}")
-
-            proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            wav_out, stderr = proc.communicate(input=raw, timeout=10.0)
-
-            if proc.returncode == 0 and len(wav_out) > 44:
-                return wav_out, None
+            if FORK_SAFE_AVAILABLE:
+                wav_out, err = await run_ffmpeg_async(
+                    raw,
+                    input_format=input_format,
+                    output_format='wav',
+                    sample_rate=16000,
+                    channels=1,
+                    codec='pcm_s16le',
+                    timeout=10.0,
+                    error_handling='ignore_err',
+                )
+                return wav_out, err
             else:
-                return None, stderr.decode('utf-8', errors='ignore')
-        except subprocess.TimeoutExpired:
-            proc.kill()
+                # Legacy fallback for non-fork-safe systems (not macOS)
+                import subprocess
+                cmd = [
+                    'ffmpeg', '-hide_banner', '-loglevel', 'warning',
+                    '-err_detect', 'ignore_err',
+                    '-f', input_format,
+                    '-i', 'pipe:0',
+                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    'pipe:1'
+                ]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                wav_out, stderr = await asyncio.wait_for(
+                    proc.communicate(input=raw),
+                    timeout=10.0
+                )
+                if proc.returncode == 0 and len(wav_out) > 44:
+                    return wav_out, None
+                else:
+                    return None, stderr.decode('utf-8', errors='ignore')
+        except asyncio.TimeoutError:
             return None, f"FFmpeg {input_format} format hint timeout"
         except Exception as e:
             return None, str(e)
 
-    # 🆕 NEW Strategy: FFmpeg with aggressive error recovery for broken WebM
-    def _ffmpeg_broken_webm_recovery():
+    async def _ffmpeg_broken_webm_recovery_async() -> Tuple[Optional[bytes], Optional[str]]:
         """
-        Handle broken/incomplete WebM containers from MediaRecorder chunk concatenation.
+        Handle broken/incomplete WebM containers - fork-safe async version.
         Uses multiple FFmpeg strategies to extract audio data.
         """
         temp_in = None
@@ -4701,63 +4754,37 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             temp_out.close()
 
             strategies = [
-                # Strategy A: Generic with error tolerance
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-err_detect', 'ignore_err',
-                    '-fflags', '+discardcorrupt+genpts',
-                    '-i', temp_in.name,
-                    '-vn',
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                # Strategy B: Force WebM format
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-err_detect', 'ignore_err',
-                    '-f', 'webm',
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                # Strategy C: Force Matroska format
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-err_detect', 'ignore_err',
-                    '-f', 'matroska',
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                # Strategy D: Force Ogg format (Opus often in Ogg)
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-err_detect', 'ignore_err',
-                    '-f', 'ogg',
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                # Strategy E: Raw Opus stream assumption (48kHz default)
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-f', 'opus',
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
+                ('generic', ['-err_detect', 'ignore_err', '-fflags', '+discardcorrupt+genpts', '-vn']),
+                ('webm', ['-err_detect', 'ignore_err', '-f', 'webm']),
+                ('matroska', ['-err_detect', 'ignore_err', '-f', 'matroska']),
+                ('ogg', ['-err_detect', 'ignore_err', '-f', 'ogg']),
+                ('opus', ['-f', 'opus']),
             ]
 
-            for i, cmd in enumerate(strategies):
-                strategy_name = ['generic', 'webm', 'matroska', 'ogg', 'opus'][i]
+            for strategy_name, extra_args in strategies:
                 try:
-                    result = subprocess.run(cmd, capture_output=True, timeout=10.0)
-                    if result.returncode == 0 and os.path.exists(temp_out.name):
+                    cmd = [
+                        'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                        *extra_args,
+                        '-i', temp_in.name,
+                        '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                        temp_out.name
+                    ]
+
+                    # Use asyncio subprocess (posix_spawn) - fork-safe
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+                    if proc.returncode == 0 and os.path.exists(temp_out.name):
                         wav_data = open(temp_out.name, 'rb').read()
                         if len(wav_data) > 44:
                             logger.info(f"[ROBUST-AUDIO] Broken WebM recovery ({strategy_name}) succeeded: {len(wav_data)} bytes")
                             return wav_data, None
-                except subprocess.TimeoutExpired:
+                except asyncio.TimeoutError:
                     pass
                 except Exception:
                     pass
@@ -4772,38 +4799,49 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             if temp_out and os.path.exists(temp_out.name):
                 os.unlink(temp_out.name)
 
-    # Step 3: Try FFmpeg pipe conversion (auto-detect format)
-    def _ffmpeg_pipe_convert():
-        """Convert via stdin/stdout pipe."""
+    async def _ffmpeg_pipe_convert_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """Convert via stdin/stdout pipe - fork-safe async version."""
         try:
-            proc = subprocess.Popen(
-                [
+            if FORK_SAFE_AVAILABLE:
+                return await run_ffmpeg_async(
+                    raw,
+                    output_format='wav',
+                    sample_rate=16000,
+                    channels=1,
+                    codec='pcm_s16le',
+                    timeout=8.0,
+                )
+            else:
+                cmd = [
                     'ffmpeg', '-hide_banner', '-loglevel', 'error',
                     '-i', 'pipe:0',
                     '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
                     'pipe:1'
-                ],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            wav_out, stderr = proc.communicate(input=raw, timeout=8.0)
-
-            if proc.returncode == 0 and len(wav_out) > 44:
-                return wav_out, None
-            else:
-                return None, stderr.decode('utf-8', errors='ignore')
-        except subprocess.TimeoutExpired:
-            proc.kill()
+                ]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                wav_out, stderr = await asyncio.wait_for(
+                    proc.communicate(input=raw),
+                    timeout=8.0
+                )
+                if proc.returncode == 0 and len(wav_out) > 44:
+                    return wav_out, None
+                else:
+                    return None, stderr.decode('utf-8', errors='ignore')
+        except asyncio.TimeoutError:
             return None, "FFmpeg pipe timeout"
         except Exception as e:
             return None, str(e)
 
-    # Step 4: Try FFmpeg temp file conversion (more compatible)
-    def _ffmpeg_file_convert():
-        """Convert via temp files for better format support."""
+    async def _ffmpeg_file_convert_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """Convert via temp files for better format support - fork-safe async version."""
         temp_in = None
         temp_out = None
         try:
-            # Determine input extension from mime type
             ext_map = {
                 'audio/webm': '.webm',
                 'audio/ogg': '.ogg',
@@ -4814,38 +4852,40 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             }
             in_ext = ext_map.get(mime_type.split(';')[0], '.webm')
 
-            # Create temp files
             temp_in = tempfile.NamedTemporaryFile(suffix=in_ext, delete=False)
             temp_out = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
             temp_in.write(raw)
             temp_in.close()
             temp_out.close()
 
-            # Run FFmpeg with file I/O
-            result = subprocess.run(
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                capture_output=True, timeout=10.0
-            )
+            cmd = [
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
+                '-i', temp_in.name,
+                '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                temp_out.name
+            ]
 
-            if result.returncode == 0 and os.path.exists(temp_out.name):
+            # Use asyncio subprocess (posix_spawn) - fork-safe
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            if proc.returncode == 0 and os.path.exists(temp_out.name):
                 with open(temp_out.name, 'rb') as f:
                     wav_data = f.read()
                 if len(wav_data) > 44:
                     return wav_data, None
 
-            return None, result.stderr.decode('utf-8', errors='ignore')
+            return None, stderr.decode('utf-8', errors='ignore')
 
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             return None, "FFmpeg file timeout"
         except Exception as e:
             return None, str(e)
         finally:
-            # Cleanup temp files
             if temp_in and os.path.exists(temp_in.name):
                 os.unlink(temp_in.name)
             if temp_out and os.path.exists(temp_out.name):
@@ -4885,9 +4925,8 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
         except Exception as e:
             return None, str(e)
 
-    # 🆕 NEW Strategy: Create a proper WebM file with reconstructed container
-    def _ffmpeg_matroska_demux():
-        """Try Matroska demuxer explicitly for WebM-like content."""
+    async def _ffmpeg_matroska_demux_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """Try Matroska demuxer explicitly - fork-safe async version."""
         temp_in = None
         temp_out = None
         try:
@@ -4897,28 +4936,31 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             temp_in.close()
             temp_out.close()
 
-            # Try with matroska demuxer and error tolerance
-            result = subprocess.run(
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-err_detect', 'ignore_err',  # Ignore demux errors
-                    '-f', 'matroska',  # Explicit matroska format
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                capture_output=True, timeout=10.0
-            )
+            cmd = [
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                '-err_detect', 'ignore_err',
+                '-f', 'matroska',
+                '-i', temp_in.name,
+                '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                temp_out.name
+            ]
 
-            if result.returncode == 0 and os.path.exists(temp_out.name):
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            if proc.returncode == 0 and os.path.exists(temp_out.name):
                 with open(temp_out.name, 'rb') as f:
                     wav_data = f.read()
                 if len(wav_data) > 44:
                     return wav_data, None
 
-            return None, result.stderr.decode('utf-8', errors='ignore')
+            return None, stderr.decode('utf-8', errors='ignore')
 
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             return None, "FFmpeg matroska timeout"
         except Exception as e:
             return None, str(e)
@@ -4928,9 +4970,8 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             if temp_out and os.path.exists(temp_out.name):
                 os.unlink(temp_out.name)
 
-    # 🆕 NEW Strategy: Raw Opus to WAV using libopus
-    def _opus_decode_raw():
-        """Try to decode raw Opus packets using ffmpeg's opus decoder."""
+    async def _opus_decode_raw_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """Try to decode raw Opus packets - fork-safe async version."""
         temp_in = None
         temp_out = None
         try:
@@ -4940,27 +4981,30 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             temp_in.close()
             temp_out.close()
 
-            # Try Ogg container (Opus is often in Ogg)
-            result = subprocess.run(
-                [
-                    'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
-                    '-acodec', 'libopus',  # Opus decoder
-                    '-i', temp_in.name,
-                    '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_out.name
-                ],
-                capture_output=True, timeout=10.0
-            )
+            cmd = [
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'warning',
+                '-acodec', 'libopus',
+                '-i', temp_in.name,
+                '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                temp_out.name
+            ]
 
-            if result.returncode == 0 and os.path.exists(temp_out.name):
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            if proc.returncode == 0 and os.path.exists(temp_out.name):
                 with open(temp_out.name, 'rb') as f:
                     wav_data = f.read()
                 if len(wav_data) > 44:
                     return wav_data, None
 
-            return None, result.stderr.decode('utf-8', errors='ignore')
+            return None, stderr.decode('utf-8', errors='ignore')
 
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             return None, "FFmpeg opus timeout"
         except Exception as e:
             return None, str(e)
@@ -4970,45 +5014,65 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
             if temp_out and os.path.exists(temp_out.name):
                 os.unlink(temp_out.name)
 
-    # 🆕 NEW Strategy: Try multiple format hints in sequence
-    def _try_multiple_formats():
-        """Try multiple format guesses for unrecognized data."""
+    async def _try_multiple_formats_async() -> Tuple[Optional[bytes], Optional[str]]:
+        """Try multiple format guesses - fork-safe async version."""
         formats_to_try = ['webm', 'matroska', 'ogg', 'opus', 'data']
         for fmt in formats_to_try:
             try:
-                proc = subprocess.Popen(
-                    [
+                if FORK_SAFE_AVAILABLE:
+                    wav_out, err = await run_ffmpeg_async(
+                        raw,
+                        input_format=fmt,
+                        output_format='wav',
+                        sample_rate=16000,
+                        channels=1,
+                        codec='pcm_s16le',
+                        timeout=5.0,
+                    )
+                    if wav_out and len(wav_out) > 44:
+                        logger.info(f"[ROBUST-AUDIO] Format {fmt} worked!")
+                        return wav_out, None
+                else:
+                    cmd = [
                         'ffmpeg', '-hide_banner', '-loglevel', 'warning',
                         '-f', fmt,
                         '-i', 'pipe:0',
                         '-f', 'wav', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
                         'pipe:1'
-                    ],
-                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                wav_out, stderr = proc.communicate(input=raw, timeout=5.0)
-
-                if proc.returncode == 0 and len(wav_out) > 44:
-                    logger.info(f"[ROBUST-AUDIO] Format {fmt} worked!")
-                    return wav_out, None
-            except subprocess.TimeoutExpired:
-                if proc:
-                    proc.kill()
+                    ]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    wav_out, _ = await asyncio.wait_for(
+                        proc.communicate(input=raw),
+                        timeout=5.0
+                    )
+                    if proc.returncode == 0 and len(wav_out) > 44:
+                        logger.info(f"[ROBUST-AUDIO] Format {fmt} worked!")
+                        return wav_out, None
+            except asyncio.TimeoutError:
+                pass
             except Exception:
                 pass
 
         return None, "All format guesses failed"
 
-    # Try strategies in order
-    loop = asyncio.get_event_loop()
+    # ==========================================================================
+    # FORK-SAFE: Call async FFmpeg functions directly (no run_in_executor)
+    # ==========================================================================
+    # Using async subprocess calls directly avoids the thread + fork combination
+    # that causes "multi-threaded process forked" crashes on macOS.
+    # ==========================================================================
 
-    # 🆕 Strategy 0a: Try broken WebM recovery FIRST for any WebM-like data
-    # This is the most robust approach for MediaRecorder chunk concatenation
+    # Strategy 0a: Try broken WebM recovery FIRST for any WebM-like data
     if 'webm' in mime_type.lower() or format_hint in ['webm', 'opus_chunks', 'unknown']:
         try:
             logger.info("[ROBUST-AUDIO] 🔧 Trying broken WebM recovery (best for MediaRecorder chunks)...")
             wav_data, err = await asyncio.wait_for(
-                loop.run_in_executor(None, _ffmpeg_broken_webm_recovery),
+                _ffmpeg_broken_webm_recovery_async(),
                 timeout=20.0
             )
             if wav_data:
@@ -5021,12 +5085,12 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
         except Exception as e:
             logger.warning(f"[ROBUST-AUDIO] Broken WebM recovery error: {e}")
 
-    # 🆕 Strategy 0b: If format_hint indicates concatenated chunks, try explicit format first
+    # Strategy 0b: If format_hint indicates concatenated chunks, try explicit format first
     if format_hint == "opus_chunks" and ffmpeg_format:
         try:
             logger.info(f"[ROBUST-AUDIO] Trying FFmpeg with explicit format hint: {ffmpeg_format}")
             wav_data, err = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: _ffmpeg_format_hint_convert(ffmpeg_format)),
+                _ffmpeg_format_hint_convert_async(ffmpeg_format),
                 timeout=10.0
             )
             if wav_data:
@@ -5043,7 +5107,7 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
         try:
             logger.info("[ROBUST-AUDIO] Trying Matroska demuxer with error tolerance...")
             wav_data, err = await asyncio.wait_for(
-                loop.run_in_executor(None, _ffmpeg_matroska_demux),
+                _ffmpeg_matroska_demux_async(),
                 timeout=12.0
             )
             if wav_data:
@@ -5060,7 +5124,7 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
     try:
         logger.info("[ROBUST-AUDIO] Trying FFmpeg pipe conversion...")
         wav_data, err = await asyncio.wait_for(
-            loop.run_in_executor(None, _ffmpeg_pipe_convert),
+            _ffmpeg_pipe_convert_async(),
             timeout=10.0
         )
         if wav_data:
@@ -5077,7 +5141,7 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
     try:
         logger.info("[ROBUST-AUDIO] Trying FFmpeg file conversion...")
         wav_data, err = await asyncio.wait_for(
-            loop.run_in_executor(None, _ffmpeg_file_convert),
+            _ffmpeg_file_convert_async(),
             timeout=12.0
         )
         if wav_data:
@@ -5094,7 +5158,7 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
     try:
         logger.info("[ROBUST-AUDIO] Trying multiple format guesses...")
         wav_data, err = await asyncio.wait_for(
-            loop.run_in_executor(None, _try_multiple_formats),
+            _try_multiple_formats_async(),
             timeout=30.0
         )
         if wav_data:
@@ -5111,7 +5175,7 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
     try:
         logger.info("[ROBUST-AUDIO] Trying raw Opus decode...")
         wav_data, err = await asyncio.wait_for(
-            loop.run_in_executor(None, _opus_decode_raw),
+            _opus_decode_raw_async(),
             timeout=10.0
         )
         if wav_data:
