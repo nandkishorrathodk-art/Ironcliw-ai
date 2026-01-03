@@ -1419,14 +1419,23 @@ class UnifiedWebSocketManager:
                                 ]
 
                             async def send_progress_updates():
-                                """Send periodic progress updates to keep frontend informed"""
+                                """
+                                v32.1: REAL-TIME SURVEILLANCE PROGRESS STREAMING
+                                
+                                Architecture:
+                                - For surveillance: Use event-driven stream (100ms polling)
+                                - For regular commands: Use fallback stages (2s interval)
+                                - Only send fallback if no real events received recently
+                                """
                                 try:
                                     stage_index = 0
-                                    # Surveillance needs slower progress (more stages, longer waits)
-                                    update_interval = 3.0 if is_surveillance_command else 2.0
+                                    last_real_event_time = 0
+                                    events_sent = 0
                                     
-                                    # v32.0: For surveillance commands, subscribe to real progress stream
+                                    # v32.1: For surveillance commands, subscribe to real progress stream
                                     surveillance_subscriber_id = None
+                                    progress_stream = None
+                                    
                                     if is_surveillance_command:
                                         try:
                                             from backend.core.surveillance_progress_stream import get_progress_stream
@@ -1440,54 +1449,87 @@ class UnifiedWebSocketManager:
                                     
                                     try:
                                         while not progress_cancelled.is_set():
-                                            # v32.0: For surveillance, prefer real progress events
-                                            if surveillance_subscriber_id and is_surveillance_command:
+                                            sent_real_event = False
+                                            
+                                            # ═══════════════════════════════════════════════════
+                                            # v32.1: REAL-TIME EVENT STREAMING (100ms polling)
+                                            # ═══════════════════════════════════════════════════
+                                            if surveillance_subscriber_id and progress_stream:
                                                 try:
-                                                    # Check for real surveillance progress events (non-blocking)
-                                                    progress_stream = get_progress_stream()
                                                     queue = progress_stream._subscribers.get(surveillance_subscriber_id)
-                                                    if queue and not queue.empty():
-                                                        # Send all queued real progress events
+                                                    if queue:
+                                                        # Drain all queued events immediately
                                                         while not queue.empty():
-                                                            real_event = await asyncio.wait_for(queue.get(), timeout=0.1)
-                                                            await websocket.send_json(real_event)
-                                                            logger.debug(f"[WS] 📡 Sent surveillance progress: {real_event.get('stage')}")
+                                                            try:
+                                                                real_event = queue.get_nowait()
+                                                                await websocket.send_json(real_event)
+                                                                last_real_event_time = time.time()
+                                                                events_sent += 1
+                                                                sent_real_event = True
+                                                                
+                                                                stage_name = real_event.get('stage', 'unknown')
+                                                                logger.info(f"[WS] 📡 Real-time progress: {stage_name} ({events_sent} events sent)")
+                                                            except asyncio.QueueEmpty:
+                                                                break
+                                                            except Exception as e:
+                                                                logger.debug(f"[WS] Error sending event: {e}")
                                                 except Exception as e:
                                                     logger.debug(f"[WS] Error reading progress queue: {e}")
                                             
-                                            # Fallback: Send generic progress if no real events
-                                            if stage_index < len(progress_stages):
-                                                stage = progress_stages[stage_index]
-                                            else:
-                                                stage = progress_stages[-1]  # Stay on last stage
+                                            # ═══════════════════════════════════════════════════
+                                            # FALLBACK: Only send if no real events recently
+                                            # ═══════════════════════════════════════════════════
+                                            time_since_real_event = time.time() - last_real_event_time
+                                            
+                                            # Only send fallback if:
+                                            # 1. No real event was sent this iteration, AND
+                                            # 2. No real events in the last 3 seconds (for surveillance) or 2 seconds (regular)
+                                            fallback_interval = 3.0 if is_surveillance_command else 2.0
+                                            should_send_fallback = (
+                                                not sent_real_event and 
+                                                (last_real_event_time == 0 or time_since_real_event > fallback_interval)
+                                            )
+                                            
+                                            if should_send_fallback:
+                                                if stage_index < len(progress_stages):
+                                                    stage = progress_stages[stage_index]
+                                                else:
+                                                    stage = progress_stages[-1]
 
-                                            await websocket.send_json({
-                                                "type": "processing_progress",
-                                                "stage": stage["stage"],
-                                                "message": stage["message"],
-                                                "stage_index": min(stage_index, len(progress_stages) - 1),
-                                                "total_stages": len(progress_stages),
-                                                "is_surveillance": is_surveillance_command,
-                                                "timeout_seconds": base_timeout,
-                                                "timestamp": time.time(),
-                                            })
+                                                await websocket.send_json({
+                                                    "type": "processing_progress",
+                                                    "stage": stage["stage"],
+                                                    "message": stage["message"],
+                                                    "stage_index": min(stage_index, len(progress_stages) - 1),
+                                                    "total_stages": len(progress_stages),
+                                                    "is_surveillance": is_surveillance_command,
+                                                    "timeout_seconds": base_timeout,
+                                                    "timestamp": time.time(),
+                                                    "is_fallback": True,  # Signal this is synthetic
+                                                })
+                                                stage_index += 1
+                                                last_real_event_time = time.time()  # Reset to avoid rapid fallbacks
 
-                                            # Wait between updates, or until cancelled
+                                            # ═══════════════════════════════════════════════════
+                                            # POLL INTERVAL: Fast for real-time, slow for fallback
+                                            # ═══════════════════════════════════════════════════
+                                            poll_interval = 0.1 if is_surveillance_command else 0.5
+                                            
                                             try:
                                                 await asyncio.wait_for(
                                                     progress_cancelled.wait(),
-                                                    timeout=update_interval
+                                                    timeout=poll_interval
                                                 )
                                                 break  # Cancelled
                                             except asyncio.TimeoutError:
-                                                stage_index += 1
+                                                pass  # Continue polling
+                                                
                                     finally:
-                                        # v32.0: Cleanup surveillance subscription
-                                        if surveillance_subscriber_id:
+                                        # v32.1: Cleanup surveillance subscription
+                                        if surveillance_subscriber_id and progress_stream:
                                             try:
-                                                progress_stream = get_progress_stream()
                                                 await progress_stream.unsubscribe(surveillance_subscriber_id)
-                                                logger.debug(f"[WS] Unsubscribed from surveillance progress: {surveillance_subscriber_id}")
+                                                logger.debug(f"[WS] Unsubscribed from surveillance progress: {surveillance_subscriber_id} (sent {events_sent} events)")
                                             except Exception:
                                                 pass
                                 except Exception as e:

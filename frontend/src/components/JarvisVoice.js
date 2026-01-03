@@ -2248,75 +2248,161 @@ const JarvisVoice = () => {
         break;
 
       // ═══════════════════════════════════════════════════════════════════
-      // v32.0: SURVEILLANCE PROGRESS - Real-time God Mode tracking
+      // v32.1: SURVEILLANCE PROGRESS - Real-time God Mode tracking
+      // Enhanced with intelligent event handling and progress estimation
       // ═══════════════════════════════════════════════════════════════════
       case 'surveillance_progress':
       case 'processing_progress': {
         // Handle real-time surveillance/processing progress updates
         const stage = data.stage || 'processing';
         const message = data.message || '';
-        const progress = data.progress || { current: 0, total: 0, percent: 0 };
+        const rawProgress = data.progress || {};
         const context = data.context || {};
         const isSurveillance = data.is_surveillance || data.type === 'surveillance_progress';
+        const isFallback = data.is_fallback === true;
+        const isRealEvent = data.type === 'surveillance_progress' && !isFallback;
         
-        console.log('%c[Surveillance Progress]', 'color: #00ff88; font-weight: bold',
-          `${stage} - ${message} (${progress.percent || 0}%)`);
+        // v32.1: Log differently for real vs fallback events
+        if (isRealEvent) {
+          console.log('%c[🎯 REAL Surveillance Event]', 'color: #00ff88; font-weight: bold; background: #003322; padding: 2px 6px;',
+            `${stage}: ${message}`);
+        } else {
+          console.log('%c[Fallback Progress]', 'color: #888',
+            `${stage}: ${message}`);
+        }
 
-        // Get stage icon based on stage
-        const getSurveillanceIcon = (stage) => {
+        // ═══════════════════════════════════════════════════════════════════
+        // STAGE ICON MAPPING - Comprehensive coverage
+        // ═══════════════════════════════════════════════════════════════════
+        const getSurveillanceIcon = (stageName) => {
           const icons = {
-            'starting': '⚙️',
+            // Startup stages
+            'starting': '🚀',
+            'permission_check': '🔐',
+            'analyzing': '🧠',
+            
+            // Discovery stages
             'discovery': '🔍',
+            'discovery_start': '🔍',
+            'discovery_complete': '✅',
+            
+            // Teleportation stages
             'teleport_start': '👻',
             'teleport_progress': '👻',
-            'teleport_complete': '✅',
+            'teleport_complete': '✨',
+            
+            // Watcher stages
             'watcher_start': '👁️',
             'watcher_progress': '👁️',
             'watcher_ready': '✓',
-            'watcher_failed': '❌',
+            'watcher_failed': '⚠️',
+            'watchers': '👁️',
+            
+            // Validation/Monitoring stages
             'validation': '🔄',
+            'monitoring': '🎯',
             'monitoring_active': '🎯',
+            
+            // Detection & completion
             'detection': '🎉',
-            'error': '❌',
             'complete': '✅',
+            'error': '❌',
+            
+            // Fallback stages
             'processing': '⚙️',
+            'vision_init': '👁️',
+            'api_call': '📡',
+            'generating': '✨',
+            'teleport': '👻',
           };
-          return icons[stage] || '🔧';
+          return icons[stageName] || '🔧';
         };
 
-        // Update surveillance progress state
-        setSurveillanceProgress({
-          stage,
-          stageIcon: getSurveillanceIcon(stage),
-          message,
-          progress: {
-            current: progress.current || 0,
-            total: progress.total || 0,
-            percent: progress.percent || 0,
-          },
-          context: {
-            appName: context.app_name || data.app_name || '',
-            triggerText: context.trigger_text || data.trigger_text || '',
-            windowId: context.window_id || data.window_id,
-            spaceId: context.space_id || data.space_id,
-            watcherId: context.watcher_id || data.watcher_id,
-          },
-          details: data.details || {},
-          timestamp: data.timestamp || Date.now(),
-          isSurveillance,
-        });
+        // ═══════════════════════════════════════════════════════════════════
+        // PROGRESS CALCULATION - Estimate progress for stages without explicit values
+        // ═══════════════════════════════════════════════════════════════════
+        const stageWeights = {
+          'starting': 5,
+          'permission_check': 10,
+          'discovery': 20,
+          'teleport_start': 30,
+          'teleport_progress': 45,
+          'teleport_complete': 50,
+          'watcher_start': 55,
+          'watcher_progress': 70,
+          'watcher_ready': 80,
+          'validation': 85,
+          'monitoring_active': 95,
+          'detection': 100,
+          'complete': 100,
+          'error': 100,
+        };
+        
+        // Calculate estimated percent if not provided
+        let progressPercent = rawProgress.percent || 0;
+        if (progressPercent === 0 && stageWeights[stage]) {
+          progressPercent = stageWeights[stage];
+        }
+        
+        const progress = {
+          current: rawProgress.current || 0,
+          total: rawProgress.total || 0,
+          percent: progressPercent,
+        };
 
-        // Update response to show progress (keep user informed)
-        if (message && stage !== 'complete') {
-          setResponse(message);
+        // ═══════════════════════════════════════════════════════════════════
+        // STATE UPDATE - Only update if this is meaningful data
+        // ═══════════════════════════════════════════════════════════════════
+        // Skip fallback events if we've received a real event recently
+        const shouldUpdate = isRealEvent || !surveillanceProgress || 
+          (Date.now() - (surveillanceProgress?.timestamp || 0)) > 2000;
+        
+        if (shouldUpdate) {
+          setSurveillanceProgress({
+            stage,
+            stageIcon: getSurveillanceIcon(stage),
+            message,
+            progress,
+            context: {
+              appName: context.app_name || data.app_name || '',
+              triggerText: context.trigger_text || data.trigger_text || '',
+              windowId: context.window_id || data.window_id,
+              spaceId: context.space_id || data.space_id,
+              watcherId: context.watcher_id || data.watcher_id,
+            },
+            details: data.details || {},
+            timestamp: Date.now(),
+            isSurveillance,
+            isRealEvent,
+            correlationId: data.correlation_id || '',
+          });
+
+          // Update response to show progress (keep user informed)
+          if (message && stage !== 'complete' && isRealEvent) {
+            setResponse(message);
+          }
         }
 
-        // Add significant stages to history
-        const significantStages = ['discovery', 'teleport_complete', 'watcher_ready', 'monitoring_active', 'detection', 'error'];
-        if (significantStages.includes(stage)) {
+        // ═══════════════════════════════════════════════════════════════════
+        // HISTORY TRACKING - Track significant real events only
+        // ═══════════════════════════════════════════════════════════════════
+        const significantStages = [
+          'discovery', 'discovery_complete',
+          'teleport_complete', 
+          'watcher_ready', 'watcher_failed',
+          'monitoring_active', 
+          'detection', 
+          'error'
+        ];
+        
+        if (significantStages.includes(stage) && isRealEvent) {
           setSurveillanceHistory(prev => {
-            // Avoid duplicates
-            if (prev.some(s => s.stage === stage && s.message === message)) {
+            // Avoid duplicates (same stage + similar message)
+            const isDuplicate = prev.some(s => 
+              s.stage === stage && 
+              (s.message === message || Math.abs(s.timestamp - Date.now()) < 1000)
+            );
+            if (isDuplicate) {
               return prev;
             }
             return [...prev.slice(-9), { // Keep last 10 entries
@@ -2329,34 +2415,49 @@ const JarvisVoice = () => {
           });
         }
 
-        // Handle detection success - this is a major event!
+        // ═══════════════════════════════════════════════════════════════════
+        // DETECTION SUCCESS - Major event handling
+        // ═══════════════════════════════════════════════════════════════════
         if (stage === 'detection') {
-          // Show detection in response area prominently
-          const detectionMessage = message || `Detected in ${context.app_name || 'window'}!`;
+          // Show detection prominently
+          const detectionMessage = message || `🎉 Detected in ${context.app_name || 'window'}!`;
           setResponse(detectionMessage);
           
-          // Auto-clear progress after detection
+          // Auto-clear progress after detection (longer delay)
           if (surveillanceTimeoutRef.current) {
             clearTimeout(surveillanceTimeoutRef.current);
           }
           surveillanceTimeoutRef.current = setTimeout(() => {
             setSurveillanceProgress(null);
             setSurveillanceHistory([]);
-          }, 10000); // Keep visible longer for detection
+          }, 15000); // Keep visible 15s for detection celebration
         }
 
-        // Handle completion/error - auto-clear after delay
+        // ═══════════════════════════════════════════════════════════════════
+        // MONITORING ACTIVE - User needs to know it's running
+        // ═══════════════════════════════════════════════════════════════════
+        if (stage === 'monitoring_active') {
+          // Don't auto-clear when monitoring is active - user needs to see it
+          if (surveillanceTimeoutRef.current) {
+            clearTimeout(surveillanceTimeoutRef.current);
+            surveillanceTimeoutRef.current = null;
+          }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // COMPLETION/ERROR - Auto-clear with appropriate delay
+        // ═══════════════════════════════════════════════════════════════════
         if (stage === 'complete' || stage === 'error') {
           if (surveillanceTimeoutRef.current) {
             clearTimeout(surveillanceTimeoutRef.current);
           }
           surveillanceTimeoutRef.current = setTimeout(() => {
             setSurveillanceProgress(null);
-            // Keep history for error review
+            // Keep history for error review, clear for success
             if (stage === 'complete') {
               setSurveillanceHistory([]);
             }
-          }, 5000);
+          }, stage === 'error' ? 10000 : 5000);
         }
         break;
       }
@@ -5578,93 +5679,152 @@ const JarvisVoice = () => {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* v32.0: SURVEILLANCE PROGRESS DISPLAY - Real-time God Mode tracking */}
+      {/* v32.1: SURVEILLANCE PROGRESS DISPLAY - Real-time God Mode tracking */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {surveillanceProgress && (
         <div className="surveillance-progress-container" style={{
-          background: 'linear-gradient(135deg, rgba(0, 50, 30, 0.95), rgba(0, 30, 20, 0.95))',
-          border: '1px solid rgba(0, 255, 100, 0.3)',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          margin: '10px 0',
-          color: '#00ff65',
+          background: surveillanceProgress.stage === 'detection'
+            ? 'linear-gradient(135deg, rgba(0, 80, 40, 0.98), rgba(0, 50, 25, 0.98))'
+            : surveillanceProgress.stage === 'error'
+            ? 'linear-gradient(135deg, rgba(80, 20, 20, 0.98), rgba(50, 10, 10, 0.98))'
+            : surveillanceProgress.stage === 'monitoring_active'
+            ? 'linear-gradient(135deg, rgba(20, 60, 80, 0.98), rgba(10, 40, 60, 0.98))'
+            : 'linear-gradient(135deg, rgba(0, 50, 30, 0.95), rgba(0, 30, 20, 0.95))',
+          border: surveillanceProgress.stage === 'detection'
+            ? '2px solid rgba(0, 255, 100, 0.6)'
+            : surveillanceProgress.stage === 'error'
+            ? '2px solid rgba(255, 100, 100, 0.6)'
+            : surveillanceProgress.stage === 'monitoring_active'
+            ? '2px solid rgba(100, 200, 255, 0.6)'
+            : '1px solid rgba(0, 255, 100, 0.3)',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          margin: '12px 0',
+          color: surveillanceProgress.stage === 'error' ? '#ff8888' : '#00ff65',
           fontFamily: 'monospace',
+          boxShadow: surveillanceProgress.stage === 'detection'
+            ? '0 0 20px rgba(0, 255, 100, 0.3)'
+            : surveillanceProgress.stage === 'monitoring_active'
+            ? '0 0 15px rgba(100, 200, 255, 0.2)'
+            : '0 4px 12px rgba(0, 0, 0, 0.3)',
+          animation: surveillanceProgress.stage === 'detection' 
+            ? 'surveillance-pulse 1s ease-in-out infinite' 
+            : surveillanceProgress.stage === 'monitoring_active'
+            ? 'surveillance-glow 2s ease-in-out infinite'
+            : 'none',
         }}>
-          {/* Header with stage icon and message */}
+          {/* Header with stage icon and name */}
           <div className="surveillance-header" style={{ 
             display: 'flex', 
             alignItems: 'center', 
             gap: '10px',
-            marginBottom: '8px',
+            marginBottom: '10px',
           }}>
-            <span style={{ fontSize: '1.3em' }}>{surveillanceProgress.stageIcon}</span>
             <span style={{ 
-              fontWeight: 'bold', 
-              fontSize: '0.95em',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
+              fontSize: '1.5em',
+              animation: surveillanceProgress.stage === 'detection' ? 'bounce 0.5s ease infinite' : 'none',
             }}>
-              {surveillanceProgress.stage.replace(/_/g, ' ')}
+              {surveillanceProgress.stageIcon}
             </span>
+            <div style={{ flex: 1 }}>
+              <span style={{ 
+                fontWeight: 'bold', 
+                fontSize: '1em',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                color: surveillanceProgress.stage === 'detection' ? '#44ffaa' 
+                  : surveillanceProgress.stage === 'error' ? '#ff6666'
+                  : surveillanceProgress.stage === 'monitoring_active' ? '#66ccff'
+                  : '#00ff88',
+              }}>
+                {surveillanceProgress.stage === 'monitoring_active' ? '👁️ ACTIVELY WATCHING' 
+                  : surveillanceProgress.stage === 'detection' ? '🎉 TARGET FOUND!'
+                  : surveillanceProgress.stage.replace(/_/g, ' ')}
+              </span>
+              {surveillanceProgress.isRealEvent && (
+                <span style={{ 
+                  marginLeft: '8px',
+                  fontSize: '0.7em',
+                  background: 'rgba(0, 255, 100, 0.2)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  color: '#00cc66',
+                }}>
+                  LIVE
+                </span>
+              )}
+            </div>
             {surveillanceProgress.progress?.percent > 0 && (
               <span style={{ 
-                marginLeft: 'auto', 
-                color: '#00ff88',
+                color: surveillanceProgress.stage === 'detection' ? '#44ffaa' : '#00ff88',
                 fontWeight: 'bold',
+                fontSize: '1.1em',
               }}>
                 {surveillanceProgress.progress.percent.toFixed(0)}%
               </span>
             )}
           </div>
 
-          {/* Progress bar */}
-          {surveillanceProgress.progress?.total > 0 && (
+          {/* Progress bar - always show for stages with estimated progress */}
+          {surveillanceProgress.progress?.percent > 0 && (
             <div style={{
-              background: 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '4px',
-              height: '6px',
-              marginBottom: '8px',
+              background: 'rgba(0, 0, 0, 0.4)',
+              borderRadius: '6px',
+              height: '8px',
+              marginBottom: '10px',
               overflow: 'hidden',
             }}>
               <div style={{
                 background: surveillanceProgress.stage === 'error' 
                   ? 'linear-gradient(90deg, #ff4444, #ff6666)'
                   : surveillanceProgress.stage === 'detection'
-                  ? 'linear-gradient(90deg, #00ff88, #44ffaa)'
+                  ? 'linear-gradient(90deg, #00ff88, #44ffaa, #00ff88)'
+                  : surveillanceProgress.stage === 'monitoring_active'
+                  ? 'linear-gradient(90deg, #4488ff, #66ccff)'
                   : 'linear-gradient(90deg, #00ff65, #00cc55)',
                 height: '100%',
                 width: `${surveillanceProgress.progress.percent}%`,
-                transition: 'width 0.3s ease',
-                borderRadius: '4px',
+                transition: 'width 0.3s ease-out',
+                borderRadius: '6px',
+                boxShadow: '0 0 8px currentColor',
               }} />
             </div>
           )}
 
           {/* Message */}
           <div style={{ 
-            fontSize: '0.9em', 
-            opacity: 0.9,
-            lineHeight: 1.4,
+            fontSize: '0.95em', 
+            opacity: 0.95,
+            lineHeight: 1.5,
+            marginBottom: '8px',
           }}>
             {surveillanceProgress.message}
           </div>
 
-          {/* Context info */}
-          {surveillanceProgress.context?.appName && (
+          {/* Context info - App, Target, Space */}
+          {(surveillanceProgress.context?.appName || surveillanceProgress.context?.triggerText) && (
             <div style={{ 
-              fontSize: '0.8em', 
-              opacity: 0.7, 
-              marginTop: '6px',
+              fontSize: '0.85em', 
+              opacity: 0.8, 
+              marginTop: '8px',
               display: 'flex',
-              gap: '15px',
+              gap: '16px',
               flexWrap: 'wrap',
+              background: 'rgba(0, 0, 0, 0.2)',
+              padding: '8px 12px',
+              borderRadius: '6px',
             }}>
-              <span>📱 {surveillanceProgress.context.appName}</span>
+              {surveillanceProgress.context.appName && (
+                <span>📱 {surveillanceProgress.context.appName}</span>
+              )}
               {surveillanceProgress.context.triggerText && (
                 <span>🎯 "{surveillanceProgress.context.triggerText}"</span>
               )}
               {surveillanceProgress.context.spaceId && (
                 <span>🖥️ Space {surveillanceProgress.context.spaceId}</span>
+              )}
+              {surveillanceProgress.context.windowId && (
+                <span style={{ opacity: 0.6 }}>🪟 {surveillanceProgress.context.windowId}</span>
               )}
             </div>
           )}
@@ -5672,27 +5832,53 @@ const JarvisVoice = () => {
           {/* History trail for significant events */}
           {surveillanceHistory.length > 0 && (
             <div style={{ 
-              marginTop: '10px', 
-              paddingTop: '8px', 
-              borderTop: '1px solid rgba(0, 255, 100, 0.2)',
-              fontSize: '0.75em',
-              opacity: 0.7,
+              marginTop: '12px', 
+              paddingTop: '10px', 
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              fontSize: '0.8em',
             }}>
-              {surveillanceHistory.slice(-3).map((event, idx) => (
+              <div style={{ 
+                opacity: 0.5, 
+                marginBottom: '6px',
+                fontSize: '0.85em',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                Recent Activity
+              </div>
+              {surveillanceHistory.slice(-4).map((event, idx) => (
                 <div key={idx} style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
-                  gap: '6px',
-                  marginBottom: '2px',
+                  gap: '8px',
+                  marginBottom: '4px',
+                  opacity: 0.7 + (idx * 0.1),
+                  paddingLeft: '4px',
                 }}>
-                  <span>{event.stageIcon}</span>
-                  <span>{event.message}</span>
+                  <span style={{ width: '20px', textAlign: 'center' }}>{event.stageIcon}</span>
+                  <span style={{ flex: 1 }}>{event.message}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {/* CSS Animation Keyframes (injected once) */}
+      <style>{`
+        @keyframes surveillance-pulse {
+          0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 100, 0.3); }
+          50% { box-shadow: 0 0 40px rgba(0, 255, 100, 0.5); }
+        }
+        @keyframes surveillance-glow {
+          0%, 100% { box-shadow: 0 0 15px rgba(100, 200, 255, 0.2); }
+          50% { box-shadow: 0 0 25px rgba(100, 200, 255, 0.4); }
+        }
+        @keyframes bounce {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.2); }
+        }
+      `}</style>
 
       {/* Transcript Display - Always visible when there's activity */}
       {(transcript || response || isProcessing || isJarvisSpeaking) && (
