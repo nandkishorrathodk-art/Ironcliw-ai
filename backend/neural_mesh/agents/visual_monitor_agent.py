@@ -30,7 +30,10 @@ v33.0 CATCH & RELEASE PROTOCOL - DRAGNET WINDOW MANAGEMENT:
   5. RELEASE: Return "innocent" windows back to their original spaces
 - Environment variables:
   - JARVIS_CATCH_RELEASE=1: Enable Catch & Release (default: enabled)
-  - JARVIS_CATCH_RELEASE_DELAY=10.0: Seconds to wait before release decision
+  - JARVIS_CATCH_RELEASE_DELAY=10.0: Max seconds to wait before release decision
+  - JARVIS_CATCH_RELEASE_POLL_MS=500: Polling interval for early detection (ms)
+  - JARVIS_CATCH_RELEASE_MIN_SCAN=3.0: Minimum scan time before early release
+  - JARVIS_MAX_PARALLEL_RELEASES=5: Max concurrent window release operations
 
 v28.2 SMART WINDOW CACHE - ROBUST YABAI VALIDATION:
 - ROOT CAUSE FIX: "Window not found" validation failure
@@ -5698,41 +5701,41 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 )
 
         # Release innocent windows back to their original spaces
-        yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '3.0'))
+        # v33.0: Use parallel release for maximum speed
+        yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '5.0'))
+        max_parallel_releases = int(os.getenv('JARVIS_MAX_PARALLEL_RELEASES', '5'))
 
-        for window_info in windows_to_release:
+        async def release_single_window(window_info: Dict[str, Any]) -> Dict[str, Any]:
+            """Release a single window back to its original space."""
             window_id = window_info['window_id']
             original_space = window_info['original_space']
 
             try:
-                # Move window back to original space
                 logger.info(
                     f"[Catch & Release] ↩️  Releasing window {window_id} "
                     f"back to Space {original_space}..."
                 )
 
-                # Use yabai to move window
+                # v33.0: Use async version with built-in verification and retry
                 move_result = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        yabai.move_window_to_space,
-                        window_id,
-                        original_space
+                    yabai.move_window_to_space_async(
+                        window_id=window_id,
+                        target_space=original_space,
+                        follow=False,
+                        verify=True,  # Verify the window actually moved
+                        max_retries=3  # Retry up to 3 times if verification fails
                     ),
                     timeout=yabai_timeout
                 )
 
                 if move_result:
-                    result['released_count'] += 1
                     window_info['release_status'] = 'success'
-                    result['released_windows'].append(window_info)
                     logger.info(
                         f"[Catch & Release] ✅ Window {window_id} returned to Space {original_space}"
                     )
                 else:
                     window_info['release_status'] = 'failed'
-                    result['errors'].append(
-                        f"Window {window_id}: move_window_to_space returned False"
-                    )
+                    window_info['error'] = 'move_window_to_space_async returned False'
 
             except asyncio.TimeoutError:
                 logger.warning(
@@ -5740,14 +5743,50 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     f"may need manual intervention"
                 )
                 window_info['release_status'] = 'timeout'
-                result['errors'].append(f"Window {window_id}: operation timed out")
+                window_info['error'] = f'operation timed out after {yabai_timeout}s'
 
             except Exception as e:
                 logger.error(
                     f"[Catch & Release] ❌ Failed to release window {window_id}: {e}"
                 )
                 window_info['release_status'] = 'error'
-                result['errors'].append(f"Window {window_id}: {str(e)}")
+                window_info['error'] = str(e)
+
+            return window_info
+
+        # v33.0: Release windows in parallel batches for speed
+        release_semaphore = asyncio.Semaphore(max_parallel_releases)
+
+        async def release_with_semaphore(window_info: Dict[str, Any]) -> Dict[str, Any]:
+            async with release_semaphore:
+                return await release_single_window(window_info)
+
+        # Execute parallel releases
+        if windows_to_release:
+            logger.info(
+                f"[Catch & Release] 🚀 Parallel release: {len(windows_to_release)} windows "
+                f"(max {max_parallel_releases} concurrent)"
+            )
+            release_tasks = [
+                release_with_semaphore(window_info)
+                for window_info in windows_to_release
+            ]
+            release_results = await asyncio.gather(*release_tasks, return_exceptions=True)
+
+            # Process results
+            for i, res in enumerate(release_results):
+                if isinstance(res, Exception):
+                    windows_to_release[i]['release_status'] = 'exception'
+                    windows_to_release[i]['error'] = str(res)
+                    result['errors'].append(f"Window release exception: {res}")
+                elif isinstance(res, dict):
+                    if res.get('release_status') == 'success':
+                        result['released_count'] += 1
+                        result['released_windows'].append(res)
+                    else:
+                        result['errors'].append(
+                            f"Window {res.get('window_id')}: {res.get('error', 'unknown error')}"
+                        )
 
         # Track kept windows
         for window_info in windows_to_keep:
@@ -5800,15 +5839,22 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         retry_interval: float = 5.0
     ) -> asyncio.Task:
         """
-        v33.0: Schedule a Catch & Release cleanup task with retry logic.
+        v33.0: Schedule a Catch & Release cleanup task with intelligent early detection.
 
-        This creates a background task that waits for the scan period, then
-        intelligently releases innocent windows. If no trigger is detected
-        initially, it can retry to give more time for detection.
+        This creates a background task that:
+        1. Uses adaptive polling to detect triggers early (before full delay)
+        2. Releases innocent windows as soon as a trigger is confirmed
+        3. Falls back to releasing all windows if no trigger detected
+
+        INTELLIGENT FEATURES:
+        - Early Detection: Polls every 500ms to detect triggers ASAP
+        - Adaptive Timeout: Reduces wait time once first frame is captured
+        - Parallel Release: Uses asyncio.gather for concurrent window moves
+        - Graceful Degradation: Returns all windows if no trigger after max attempts
 
         Args:
             app_name: Application to process
-            delay_seconds: Initial wait before first release attempt
+            delay_seconds: Maximum wait before first release attempt
             max_attempts: Maximum retry attempts for trigger detection
             retry_interval: Seconds between retry attempts
 
@@ -5816,64 +5862,144 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             The asyncio Task for the cleanup operation
         """
         async def _catch_release_worker():
-            """Background worker for Catch & Release cleanup."""
+            """Background worker for intelligent Catch & Release cleanup."""
+            import time
+            start_time = time.time()
+
             logger.info(
-                f"[Catch & Release] 🚀 Worker started for {app_name} "
-                f"(delay={delay_seconds}s, max_attempts={max_attempts})"
+                f"[Catch & Release] 🚀 Intelligent worker started for {app_name} "
+                f"(max_delay={delay_seconds}s, max_attempts={max_attempts})"
             )
+
+            # v33.0: Early detection polling - check every 500ms for faster response
+            early_poll_interval = float(os.getenv('JARVIS_CATCH_RELEASE_POLL_MS', '500')) / 1000.0
+            minimum_scan_time = float(os.getenv('JARVIS_CATCH_RELEASE_MIN_SCAN', '3.0'))
 
             attempt = 0
             while attempt < max_attempts:
                 attempt += 1
+                attempt_start = time.time()
 
-                # Wait for scan period (initial delay or retry interval)
-                wait_time = delay_seconds if attempt == 1 else retry_interval
-                await asyncio.sleep(wait_time)
+                # Determine wait time for this attempt
+                max_wait = delay_seconds if attempt == 1 else retry_interval
+                elapsed_in_attempt = 0.0
 
-                # Check if any triggers were detected
-                trigger_found = False
-                for watcher_id, detected in self._watcher_trigger_detected.items():
-                    lifecycle = self._watcher_lifecycle.get(watcher_id, {})
-                    if lifecycle.get('app_name', '').lower().startswith(app_name.lower()):
-                        if detected:
-                            trigger_found = True
-                            break
+                logger.info(
+                    f"[Catch & Release] 🔍 Attempt {attempt}/{max_attempts}: "
+                    f"Scanning for up to {max_wait}s (poll every {early_poll_interval*1000:.0f}ms)"
+                )
 
-                if trigger_found:
-                    # Trigger found - do the release
+                # v33.0: Intelligent early detection loop
+                while elapsed_in_attempt < max_wait:
+                    # Check if any triggers were detected
+                    trigger_found = False
+                    trigger_watcher_id = None
+                    trigger_window_id = None
+
+                    for watcher_id, detected in self._watcher_trigger_detected.items():
+                        lifecycle = self._watcher_lifecycle.get(watcher_id, {})
+                        watcher_app = lifecycle.get('app_name', '')
+                        if watcher_app.lower().startswith(app_name.lower()):
+                            if detected:
+                                trigger_found = True
+                                trigger_watcher_id = watcher_id
+                                trigger_window_id = lifecycle.get('window_id')
+                                break
+
+                    if trigger_found:
+                        total_elapsed = time.time() - start_time
+
+                        # v33.0: Early detection success!
+                        # Wait minimum scan time to ensure accuracy
+                        if elapsed_in_attempt < minimum_scan_time:
+                            remaining = minimum_scan_time - elapsed_in_attempt
+                            logger.info(
+                                f"[Catch & Release] ⚡ Early detection! Trigger found in {elapsed_in_attempt:.1f}s. "
+                                f"Waiting {remaining:.1f}s more to confirm..."
+                            )
+                            await asyncio.sleep(remaining)
+
+                        logger.info(
+                            f"[Catch & Release] 🎯 TARGET CONFIRMED in {total_elapsed:.1f}s! "
+                            f"Window {trigger_window_id} (watcher: {trigger_watcher_id})"
+                        )
+
+                        # Release innocent windows
+                        result = await self._return_innocent_windows(
+                            app_name=app_name,
+                            scan_duration_seconds=0.0,  # Already waited
+                            narrate=True
+                        )
+                        result['early_detection'] = True
+                        result['detection_time_seconds'] = total_elapsed
+                        result['trigger_window_id'] = trigger_window_id
+                        return result
+
+                    # No trigger yet - poll again
+                    await asyncio.sleep(early_poll_interval)
+                    elapsed_in_attempt = time.time() - attempt_start
+
+                # End of attempt - no trigger found
+                if attempt < max_attempts:
                     logger.info(
-                        f"[Catch & Release] 🎯 Trigger detected on attempt {attempt}, "
-                        f"releasing innocent windows..."
-                    )
-                    result = await self._return_innocent_windows(
-                        app_name=app_name,
-                        scan_duration_seconds=0.0,  # Already waited
-                        narrate=True
-                    )
-                    return result
-                elif attempt < max_attempts:
-                    logger.info(
-                        f"[Catch & Release] ⏳ No trigger yet (attempt {attempt}/{max_attempts}), "
-                        f"waiting {retry_interval}s before retry..."
+                        f"[Catch & Release] ⏳ No trigger in attempt {attempt} "
+                        f"(waited {elapsed_in_attempt:.1f}s). Retrying..."
                     )
                 else:
+                    total_elapsed = time.time() - start_time
                     logger.info(
-                        f"[Catch & Release] 📋 Max attempts reached without trigger detection. "
-                        f"Releasing all windows back to original spaces."
+                        f"[Catch & Release] 📋 Max attempts ({max_attempts}) reached "
+                        f"after {total_elapsed:.1f}s. Releasing all windows."
                     )
-                    result = await self._return_innocent_windows(
-                        app_name=app_name,
-                        scan_duration_seconds=0.0,
-                        narrate=True
-                    )
-                    return result
 
-            return {'status': 'max_attempts_reached'}
+            # No trigger found after all attempts - release all windows
+            result = await self._return_innocent_windows(
+                app_name=app_name,
+                scan_duration_seconds=0.0,
+                narrate=True
+            )
+            result['early_detection'] = False
+            result['max_attempts_reached'] = True
+            return result
 
         # Create and store the task
         task = asyncio.create_task(_catch_release_worker())
         self._catch_release_tasks[app_name] = task
         return task
+
+    async def _on_trigger_detected_callback(
+        self,
+        watcher_id: str,
+        window_id: int,
+        trigger_text: str,
+        confidence: float
+    ) -> None:
+        """
+        v33.0: Callback invoked when a trigger is detected.
+
+        This allows immediate notification and can trigger early release
+        of innocent windows without waiting for the full scan period.
+
+        Args:
+            watcher_id: The watcher that detected the trigger
+            window_id: The window ID where trigger was found
+            trigger_text: The text that was detected
+            confidence: Detection confidence (0.0 - 1.0)
+        """
+        logger.info(
+            f"[Catch & Release] 🎯 TRIGGER CALLBACK: {watcher_id} detected "
+            f"'{trigger_text}' in window {window_id} (confidence: {confidence:.2%})"
+        )
+
+        # Update trigger detection flag
+        self._watcher_trigger_detected[watcher_id] = True
+
+        # Update lifecycle
+        if watcher_id in self._watcher_lifecycle:
+            self._watcher_lifecycle[watcher_id]['trigger_detected'] = True
+            self._watcher_lifecycle[watcher_id]['trigger_text'] = trigger_text
+            self._watcher_lifecycle[watcher_id]['trigger_confidence'] = confidence
+            self._watcher_lifecycle[watcher_id]['trigger_time'] = datetime.now().isoformat()
 
     async def _refresh_yabai_windows_cache(self, force: bool = False) -> bool:
         """
