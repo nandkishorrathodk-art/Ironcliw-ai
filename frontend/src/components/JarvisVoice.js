@@ -1684,10 +1684,9 @@ const JarvisVoice = () => {
           speakResponse(data.message, false);
         }
         break;
-      case 'processing':
-        setIsProcessing(true);
-        // Don't cancel speech here - it might cancel the wake word response
-        break;
+
+      // NOTE: 'processing' case is handled later in the switch (line ~2132)
+      // with more comprehensive logging, message display, and speech
 
       case 'vbi_progress':
         // Handle real-time VBI (Voice Biometric Intelligence) progress updates
