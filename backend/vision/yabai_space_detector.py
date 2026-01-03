@@ -3591,15 +3591,157 @@ class YabaiSpaceDetector:
         self,
         window_id: int,
         target_space: int,
-        follow: bool = False
+        follow: bool = False,
+        verify: bool = True,
+        max_retries: int = 3
     ) -> bool:
-        """Async version of move_window_to_space."""
+        """
+        Async version of move_window_to_space with POST-MOVE VERIFICATION.
+        
+        v32.8 FIX: Yabai sometimes reports success but the window doesn't actually move.
+        This version VERIFIES the window moved and retries with different strategies if not.
+        
+        Strategies:
+        1. Direct move (fast path)
+        2. Focus window first, then move
+        3. Switch to source space, focus, move, return
+        """
         import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.move_window_to_space(window_id, target_space, follow)
-        )
+        
+        if not self.is_available():
+            logger.warning("[YABAI] Cannot move window - Yabai not available")
+            return False
+        
+        yabai_path = self._health.yabai_path or "yabai"
+        
+        # Helper to check current window space
+        async def get_window_space() -> Optional[int]:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    yabai_path, "-m", "query", "--windows", "--window", str(window_id),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                if proc.returncode == 0 and stdout:
+                    import json
+                    data = json.loads(stdout.decode())
+                    return data.get("space")
+            except Exception as e:
+                logger.debug(f"[YABAI] Could not query window space: {e}")
+            return None
+        
+        # Check initial state
+        initial_space = await get_window_space()
+        if initial_space == target_space:
+            logger.info(f"[YABAI] Window {window_id} already on target space {target_space}")
+            return True
+        
+        original_user_space = self.get_current_user_space()
+        
+        for attempt in range(max_retries):
+            strategy = ["direct", "focus_first", "switch_grab_return"][min(attempt, 2)]
+            logger.info(f"[YABAI] Move attempt {attempt + 1}/{max_retries} for window {window_id} "
+                       f"(strategy: {strategy}, target: Space {target_space})")
+            
+            try:
+                if strategy == "direct":
+                    # Strategy 1: Direct move
+                    proc = await asyncio.create_subprocess_exec(
+                        yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                    
+                elif strategy == "focus_first":
+                    # Strategy 2: Focus window first, then move
+                    proc = await asyncio.create_subprocess_exec(
+                        yabai_path, "-m", "window", "--focus", str(window_id),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                    await asyncio.sleep(0.2)  # Brief pause for focus
+                    
+                    proc = await asyncio.create_subprocess_exec(
+                        yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                    
+                elif strategy == "switch_grab_return":
+                    # Strategy 3: Switch to window's space, focus, move, return
+                    source_space = initial_space or await get_window_space()
+                    if source_space:
+                        # Switch to source space (wakes up dehydrated windows)
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "space", "--focus", str(source_space),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                        await asyncio.sleep(0.3)  # Let space switch complete
+                        
+                        # Focus the window
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "window", "--focus", str(window_id),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                        await asyncio.sleep(0.2)
+                        
+                        # Move to target
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "window", str(window_id), "--space", str(target_space),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                        await asyncio.sleep(0.2)
+                        
+                        # Return user to original space
+                        if original_user_space and original_user_space != target_space:
+                            proc = await asyncio.create_subprocess_exec(
+                                yabai_path, "-m", "space", "--focus", str(original_user_space),
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE
+                            )
+                            await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                
+                # VERIFICATION: Check if window actually moved
+                if verify:
+                    await asyncio.sleep(0.3)  # Brief pause for move to complete
+                    current_space = await get_window_space()
+                    
+                    if current_space == target_space:
+                        logger.info(f"[YABAI] ✅ VERIFIED: Window {window_id} successfully moved to Space {target_space} "
+                                   f"(strategy: {strategy}, attempt: {attempt + 1})")
+                        self._health.record_success(0)
+                        return True
+                    else:
+                        logger.warning(f"[YABAI] ⚠️ Move NOT verified: Window {window_id} still on Space {current_space} "
+                                      f"(expected: {target_space}, strategy: {strategy})")
+                else:
+                    # No verification requested - trust yabai
+                    self._health.record_success(0)
+                    return True
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"[YABAI] Move attempt {attempt + 1} timed out for window {window_id}")
+            except Exception as e:
+                logger.warning(f"[YABAI] Move attempt {attempt + 1} failed: {e}")
+            
+            # Brief pause before retry
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5)
+        
+        # All retries exhausted
+        logger.error(f"[YABAI] ❌ FAILED to move window {window_id} to Space {target_space} after {max_retries} attempts")
+        self._health.record_failure(f"Window {window_id} failed to move after {max_retries} attempts")
+        return False
 
     # =========================================================================
     # SEARCH & RESCUE PROTOCOL v23.0.0
