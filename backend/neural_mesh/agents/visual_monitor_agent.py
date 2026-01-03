@@ -2648,6 +2648,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         if validation_enabled and windows:
             logger.info(f"[God Mode] 🔍 Pre-capture validation for {len(windows)} windows...")
 
+            # v32.7: Emit VALIDATION stage to UI progress stream
+            if PROGRESS_STREAM_AVAILABLE:
+                try:
+                    await emit_surveillance_progress(
+                        stage=SurveillanceStage.VALIDATION,
+                        message=f"🔍 Validating {len(windows)} windows for capture...",
+                        progress_current=0,
+                        progress_total=len(windows),
+                        app_name=app_name,
+                        trigger_text=trigger_text,
+                        correlation_id=_surveillance_correlation_id
+                    )
+                except Exception as e:
+                    logger.debug(f"[v32.7] Validation progress emit failed: {e}")
+
             # Determine ghost_space for validation (if available from earlier teleportation)
             validation_ghost_space = None
             if 'ghost_space' in dir() and ghost_space:
@@ -2726,6 +2741,21 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # ===== STEP 2: Spawn Parallel Ferrari Watchers =====
         watcher_tasks = []
         watcher_metadata = []
+
+        # v32.7: Emit WATCHER_START stage to UI progress stream
+        if PROGRESS_STREAM_AVAILABLE:
+            try:
+                await emit_surveillance_progress(
+                    stage=SurveillanceStage.WATCHER_START,
+                    message=f"🚀 Spawning {len(windows)} video watchers...",
+                    progress_current=0,
+                    progress_total=len(windows),
+                    app_name=app_name,
+                    trigger_text=trigger_text,
+                    correlation_id=_surveillance_correlation_id
+                )
+            except Exception as e:
+                logger.debug(f"[v32.7] Watcher start progress emit failed: {e}")
 
         # v27.0: Initialize Resource Governor for FPS throttling under load
         # =====================================================================
