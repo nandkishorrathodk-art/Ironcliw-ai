@@ -116,6 +116,18 @@ except ImportError:
     except ImportError as e:
         logger.warning(f"GhostPersistenceManager not available: {e}")
 
+# v66.0: Import rapidfuzz for intelligent app name matching
+# Allows "Chrome" to match "Google Chrome", "Terminal" to match "Terminal.app", etc.
+RAPIDFUZZ_AVAILABLE = False
+try:
+    from rapidfuzz import fuzz as rapidfuzz_fuzz
+    from rapidfuzz import process as rapidfuzz_process
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Rapidfuzz not available for fuzzy matching: {e}")
+    rapidfuzz_fuzz = None
+    rapidfuzz_process = None
+
 class ResponseStyle(Enum):
     """
     Response style variations based on time of day and context.
@@ -629,6 +641,179 @@ class IntelligentCommandHandler:
 
         return result
 
+    # =========================================================================
+    # v66.0: FUZZY APP NAME MATCHING - Intelligent Natural Language Parsing
+    # =========================================================================
+
+    # Common app name aliases - maps user input to registered app names
+    # This is dynamically extensible, not hardcoded behavior
+    _APP_ALIASES: Dict[str, List[str]] = {
+        'chrome': ['google chrome', 'chrome.app', 'chrome browser'],
+        'safari': ['safari.app', 'safari browser', 'apple safari'],
+        'firefox': ['mozilla firefox', 'firefox.app', 'firefox browser'],
+        'terminal': ['terminal.app', 'apple terminal', 'macos terminal'],
+        'code': ['visual studio code', 'vscode', 'vs code', 'code.app'],
+        'slack': ['slack.app', 'slack technologies'],
+        'discord': ['discord.app', 'discord client'],
+        'figma': ['figma.app', 'figma design'],
+        'spotify': ['spotify.app', 'spotify music'],
+        'notion': ['notion.app', 'notion so'],
+        'zoom': ['zoom.us', 'zoom.app', 'zoom client'],
+        'teams': ['microsoft teams', 'teams.app', 'ms teams'],
+        'outlook': ['microsoft outlook', 'outlook.app', 'ms outlook'],
+        'word': ['microsoft word', 'word.app', 'ms word'],
+        'excel': ['microsoft excel', 'excel.app', 'ms excel'],
+        'finder': ['finder.app', 'apple finder'],
+        'preview': ['preview.app', 'apple preview'],
+        'notes': ['notes.app', 'apple notes'],
+        'messages': ['messages.app', 'imessage', 'apple messages'],
+        'mail': ['mail.app', 'apple mail'],
+        'calendar': ['calendar.app', 'apple calendar'],
+        'photos': ['photos.app', 'apple photos'],
+        'music': ['music.app', 'apple music', 'itunes'],
+        'arc': ['arc.app', 'arc browser', 'the browser company'],
+        'brave': ['brave.app', 'brave browser'],
+        'edge': ['microsoft edge', 'edge.app', 'ms edge'],
+        'postman': ['postman.app', 'postman api'],
+        'docker': ['docker.app', 'docker desktop'],
+        'iterm': ['iterm.app', 'iterm2', 'iterm 2'],
+        'warp': ['warp.app', 'warp terminal'],
+        'cursor': ['cursor.app', 'cursor ide'],
+    }
+
+    def _fuzzy_match_app_name(
+        self,
+        user_input: str,
+        registered_app: str,
+        threshold: float = 0.75
+    ) -> Tuple[bool, float]:
+        """
+        v66.0: Intelligent fuzzy matching for app names.
+
+        Handles common variations like:
+        - "Chrome" matches "Google Chrome"
+        - "Terminal" matches "Terminal.app"
+        - "VS Code" matches "Visual Studio Code"
+        - Typos like "Chorme" match "Chrome"
+
+        Args:
+            user_input: What the user said (e.g., "Chrome")
+            registered_app: The actual app name from system (e.g., "Google Chrome")
+            threshold: Minimum match ratio (0.0 to 1.0)
+
+        Returns:
+            Tuple of (is_match: bool, confidence: float)
+        """
+        if not user_input or not registered_app:
+            return False, 0.0
+
+        # Normalize both strings
+        norm_user = user_input.lower().strip()
+        norm_reg = registered_app.lower().strip()
+
+        # Remove common suffixes/prefixes for cleaner matching
+        for suffix in ['.app', ' app', ' browser', ' client']:
+            norm_reg = norm_reg.replace(suffix, '')
+            norm_user = norm_user.replace(suffix, '')
+
+        for prefix in ['google ', 'apple ', 'microsoft ', 'mozilla ', 'the ']:
+            norm_reg = norm_reg.replace(prefix, '') if norm_reg.startswith(prefix) else norm_reg
+            norm_user = norm_user.replace(prefix, '') if norm_user.startswith(prefix) else norm_user
+
+        # =====================================================================
+        # FAST PATH: Exact or substring match (no fuzzy needed)
+        # =====================================================================
+        if norm_user == norm_reg:
+            return True, 1.0
+
+        if norm_user in norm_reg or norm_reg in norm_user:
+            return True, 0.95
+
+        # =====================================================================
+        # ALIAS MATCHING: Check known aliases
+        # =====================================================================
+        # Check if user_input is an alias for the registered app
+        for canonical, aliases in self._APP_ALIASES.items():
+            # If user said a canonical name or alias
+            user_matches_canonical = (norm_user == canonical or
+                                      any(norm_user in alias or alias in norm_user for alias in aliases))
+
+            # If registered app matches canonical or alias
+            reg_matches_canonical = (canonical in norm_reg or
+                                     norm_reg == canonical or
+                                     any(alias in norm_reg for alias in aliases))
+
+            if user_matches_canonical and reg_matches_canonical:
+                return True, 0.92
+
+        # =====================================================================
+        # FUZZY MATCHING: Use rapidfuzz for typos and variations
+        # =====================================================================
+        if RAPIDFUZZ_AVAILABLE and rapidfuzz_fuzz:
+            # Try multiple fuzzy matching strategies
+            ratios = [
+                rapidfuzz_fuzz.ratio(norm_user, norm_reg) / 100.0,
+                rapidfuzz_fuzz.partial_ratio(norm_user, norm_reg) / 100.0,
+                rapidfuzz_fuzz.token_sort_ratio(norm_user, norm_reg) / 100.0,
+                rapidfuzz_fuzz.token_set_ratio(norm_user, norm_reg) / 100.0,
+            ]
+
+            # Take the best match
+            best_ratio = max(ratios)
+
+            if best_ratio >= threshold:
+                return True, best_ratio
+
+        # =====================================================================
+        # FALLBACK: Simple character overlap for basic matching
+        # =====================================================================
+        # Count matching characters (for when rapidfuzz is unavailable)
+        matching_chars = sum(1 for c in norm_user if c in norm_reg)
+        overlap_ratio = matching_chars / max(len(norm_user), 1)
+
+        if overlap_ratio >= threshold:
+            return True, overlap_ratio
+
+        return False, 0.0
+
+    def _find_best_app_match(
+        self,
+        user_input: str,
+        available_apps: List[str],
+        threshold: float = 0.75
+    ) -> Optional[Tuple[str, float]]:
+        """
+        v66.0: Find the best matching app from a list of available apps.
+
+        Args:
+            user_input: What the user said (e.g., "Chrome")
+            available_apps: List of app names to search through
+            threshold: Minimum match ratio
+
+        Returns:
+            Tuple of (best_app_name, confidence) or None if no match
+        """
+        if not user_input or not available_apps:
+            return None
+
+        best_match = None
+        best_confidence = 0.0
+
+        for app in available_apps:
+            is_match, confidence = self._fuzzy_match_app_name(user_input, app, threshold)
+            if is_match and confidence > best_confidence:
+                best_match = app
+                best_confidence = confidence
+
+        if best_match:
+            logger.debug(
+                f"[v66.0] Fuzzy match: '{user_input}' → '{best_match}' "
+                f"(confidence: {best_confidence:.2f})"
+            )
+            return best_match, best_confidence
+
+        return None
+
     def _parse_bring_back_command(self, text: str) -> Optional[Dict[str, Any]]:
         """
         v32.6: Parse "bring back windows" / "return windows from ghost display" commands.
@@ -975,12 +1160,31 @@ class IntelligentCommandHandler:
                     f"There are no hidden windows to bring back.",
                 ])
 
-            # Filter by app if specified
+            # Filter by app if specified - using v66.0 FUZZY MATCHING
             if app_name:
-                windows_on_ghost = [
-                    w for w in windows_on_ghost
-                    if w.get('app', '').lower() == app_name.lower()
-                ]
+                # Collect all unique app names from windows
+                available_apps = list(set(w.get('app', '') for w in windows_on_ghost if w.get('app')))
+
+                # Find best fuzzy match for user's app_name
+                best_match_result = self._find_best_app_match(app_name, available_apps, threshold=0.7)
+
+                if best_match_result:
+                    matched_app, confidence = best_match_result
+                    logger.info(
+                        f"[v66.0] 🎯 Fuzzy match: '{app_name}' → '{matched_app}' "
+                        f"(confidence: {confidence:.2f})"
+                    )
+                    windows_on_ghost = [
+                        w for w in windows_on_ghost
+                        if self._fuzzy_match_app_name(matched_app, w.get('app', ''))[0]
+                    ]
+                else:
+                    # No fuzzy match found - try substring match as fallback
+                    windows_on_ghost = [
+                        w for w in windows_on_ghost
+                        if app_name.lower() in w.get('app', '').lower() or
+                           w.get('app', '').lower() in app_name.lower()
+                    ]
 
                 if not windows_on_ghost:
                     return (

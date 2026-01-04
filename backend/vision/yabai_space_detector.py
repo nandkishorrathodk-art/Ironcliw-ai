@@ -48,7 +48,102 @@ try:
 except ImportError:
     _HAS_MANAGED_EXECUTOR = False
 
+# v66.0: Import rapidfuzz for intelligent app name matching in Boomerang Protocol
+# Allows "Chrome" to match "Google Chrome", etc.
+_HAS_RAPIDFUZZ = False
+try:
+    from rapidfuzz import fuzz as rapidfuzz_fuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    rapidfuzz_fuzz = None
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# v66.0: FUZZY APP NAME MATCHING - Module-level helper for Boomerang Protocol
+# =============================================================================
+# Common app name aliases for natural voice commands
+_APP_ALIASES: Dict[str, List[str]] = {
+    'chrome': ['google chrome', 'chrome.app', 'chrome browser'],
+    'safari': ['safari.app', 'safari browser', 'apple safari'],
+    'firefox': ['mozilla firefox', 'firefox.app', 'firefox browser'],
+    'terminal': ['terminal.app', 'apple terminal', 'macos terminal'],
+    'code': ['visual studio code', 'vscode', 'vs code', 'code.app'],
+    'slack': ['slack.app', 'slack technologies'],
+    'discord': ['discord.app', 'discord client'],
+    'figma': ['figma.app', 'figma design'],
+    'spotify': ['spotify.app', 'spotify music'],
+    'notion': ['notion.app', 'notion so'],
+    'zoom': ['zoom.us', 'zoom.app', 'zoom client'],
+    'teams': ['microsoft teams', 'teams.app', 'ms teams'],
+    'outlook': ['microsoft outlook', 'outlook.app', 'ms outlook'],
+    'arc': ['arc.app', 'arc browser'],
+    'iterm': ['iterm.app', 'iterm2', 'iterm 2'],
+    'warp': ['warp.app', 'warp terminal'],
+    'cursor': ['cursor.app', 'cursor ide'],
+}
+
+
+def _fuzzy_match_app_name(user_input: str, registered_app: str, threshold: float = 0.75) -> Tuple[bool, float]:
+    """
+    v66.0: Module-level fuzzy matching for app names in Boomerang Protocol.
+
+    Handles common variations like:
+    - "Chrome" matches "Google Chrome"
+    - "Terminal" matches "Terminal.app"
+
+    Args:
+        user_input: What the user said (e.g., "Chrome")
+        registered_app: The actual app name from system (e.g., "Google Chrome")
+        threshold: Minimum match ratio (0.0 to 1.0)
+
+    Returns:
+        Tuple of (is_match: bool, confidence: float)
+    """
+    if not user_input or not registered_app:
+        return False, 0.0
+
+    # Normalize both strings
+    norm_user = user_input.lower().strip()
+    norm_reg = registered_app.lower().strip()
+
+    # Remove common suffixes/prefixes
+    for suffix in ['.app', ' app', ' browser', ' client']:
+        norm_reg = norm_reg.replace(suffix, '')
+        norm_user = norm_user.replace(suffix, '')
+
+    for prefix in ['google ', 'apple ', 'microsoft ', 'mozilla ', 'the ']:
+        if norm_reg.startswith(prefix):
+            norm_reg = norm_reg[len(prefix):]
+        if norm_user.startswith(prefix):
+            norm_user = norm_user[len(prefix):]
+
+    # FAST PATH: Exact or substring match
+    if norm_user == norm_reg:
+        return True, 1.0
+    if norm_user in norm_reg or norm_reg in norm_user:
+        return True, 0.95
+
+    # ALIAS MATCHING
+    for canonical, aliases in _APP_ALIASES.items():
+        user_matches = norm_user == canonical or any(norm_user in a or a in norm_user for a in aliases)
+        reg_matches = canonical in norm_reg or norm_reg == canonical or any(a in norm_reg for a in aliases)
+        if user_matches and reg_matches:
+            return True, 0.92
+
+    # FUZZY MATCHING with rapidfuzz
+    if _HAS_RAPIDFUZZ and rapidfuzz_fuzz:
+        ratios = [
+            rapidfuzz_fuzz.ratio(norm_user, norm_reg) / 100.0,
+            rapidfuzz_fuzz.partial_ratio(norm_user, norm_reg) / 100.0,
+            rapidfuzz_fuzz.token_sort_ratio(norm_user, norm_reg) / 100.0,
+        ]
+        best_ratio = max(ratios)
+        if best_ratio >= threshold:
+            return True, best_ratio
+
+    return False, 0.0
 
 
 # =============================================================================
@@ -7538,11 +7633,18 @@ class YabaiSpaceDetector:
                 })
 
         elif app_name is not None:
-            # Return all windows of this app
+            # Return all windows of this app - v66.0: Using FUZZY MATCHING
+            # This allows "Chrome" to match "Google Chrome", etc.
             windows_to_return = [
                 record for record in self._boomerang_exiled_windows.values()
-                if record.get("app_name") == app_name and record.get("status") == "exiled"
+                if _fuzzy_match_app_name(app_name, record.get("app_name", ""))[0]
+                and record.get("status") == "exiled"
             ]
+            if windows_to_return:
+                logger.info(
+                    f"[YABAI v66.0] 🎯 Fuzzy matched '{app_name}' → "
+                    f"{[r.get('app_name') for r in windows_to_return]}"
+                )
 
         else:
             # Return ALL exiled windows
@@ -7696,10 +7798,10 @@ class YabaiSpaceDetector:
             f"[YABAI v63.0] 🎯 BOOMERANG DETECTION TRIGGER: Surveillance complete for {app_name}"
         )
 
-        # Find windows with return_on_detection=True
+        # Find windows with return_on_detection=True - v66.0: Using FUZZY MATCHING
         windows_to_return = [
             record for record in self._boomerang_exiled_windows.values()
-            if record.get("app_name") == app_name
+            if _fuzzy_match_app_name(app_name, record.get("app_name", ""))[0]
             and record.get("status") == "exiled"
             and record.get("return_on_detection", True)
         ]
@@ -7878,18 +7980,41 @@ class YabaiSpaceDetector:
                 "message": "Command not recognized as a window return request"
             }
 
-        # Determine app filter from command if not provided
+        # Determine app filter from command if not provided - v66.0: FUZZY MATCHING
         if not app_filter:
-            # Check for app names in command
+            # Check for app names in command using fuzzy matching
             exiled_apps = set(
                 record.get("app_name") for record in self._boomerang_exiled_windows.values()
-                if record.get("status") == "exiled"
+                if record.get("status") == "exiled" and record.get("app_name")
             )
 
+            best_match = None
+            best_confidence = 0.0
+
             for app in exiled_apps:
-                if app and app.lower() in command_lower:
-                    app_filter = app
-                    break
+                if not app:
+                    continue
+
+                # Extract potential app name from command
+                # Check if app name or common variations appear in command
+                is_match, confidence = _fuzzy_match_app_name(command_lower, app, threshold=0.6)
+
+                # Also check direct substring
+                app_normalized = app.lower().replace('google ', '').replace('.app', '')
+                if app_normalized in command_lower:
+                    is_match = True
+                    confidence = max(confidence, 0.9)
+
+                if is_match and confidence > best_confidence:
+                    best_match = app
+                    best_confidence = confidence
+
+            if best_match:
+                app_filter = best_match
+                logger.info(
+                    f"[YABAI v66.0] 🎯 Fuzzy extracted app from command: '{command}' → '{app_filter}' "
+                    f"(confidence: {best_confidence:.2f})"
+                )
 
         # Trigger the return
         result = await self.boomerang_trigger_return_async(
