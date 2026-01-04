@@ -426,6 +426,30 @@ class VisualMonitorConfig:
         default_factory=lambda: os.getenv("JARVIS_PROGRESSIVE_OPTIMISTIC", "true").lower() == "true"
     )
 
+    # =========================================================================
+    # v38.0: MOSAIC STRATEGY - O(1) Single-Stream Display Capture
+    # =========================================================================
+    # ROOT CAUSE FIX: Per-window surveillance (O(N)) is mathematically wasteful
+    # SOLUTION: Capture entire Ghost Display as ONE stream, analyze mosaic
+    # =========================================================================
+
+    # Enable Mosaic mode (O(1) efficiency instead of O(N))
+    mosaic_mode_enabled: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_MOSAIC_MODE", "true").lower() == "true"
+    )
+    # Minimum window count to trigger Mosaic mode (use per-window for small counts)
+    mosaic_mode_min_windows: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_MOSAIC_MIN_WINDOWS", "3"))
+    )
+    # FPS for Mosaic capture (lower than per-window since single stream)
+    mosaic_fps: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_MOSAIC_FPS", "5"))
+    )
+    # Enable spatial intelligence (map OCR matches back to specific windows)
+    mosaic_spatial_intelligence: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_MOSAIC_SPATIAL", "true").lower() == "true"
+    )
+
 
 # =============================================================================
 # v26.0: Progressive Startup Manager - Event-Based Multi-Window Initialization
@@ -2755,12 +2779,141 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except Exception as e:
                 logger.warning(f"[God Mode] Pre-capture validation failed: {e} - proceeding without validation")
 
-        # ===== STEP 2: Spawn Parallel Ferrari Watchers =====
+        # =========================================================================
+        # v38.0: MOSAIC STRATEGY - O(1) Single-Stream Display Capture
+        # =========================================================================
+        # Instead of spawning N watchers for N windows, spawn ONE MosaicWatcher
+        # that captures the entire Ghost Display where all windows are tiled.
+        # =========================================================================
+        use_mosaic_mode = (
+            self.config.mosaic_mode_enabled and
+            len(windows) >= self.config.mosaic_mode_min_windows
+        )
+
+        if use_mosaic_mode:
+            logger.info(
+                f"[God Mode v38.0] 🧩 MOSAIC MODE: Capturing Ghost Display as single stream "
+                f"(O(1) efficiency - {len(windows)} windows → 1 stream)"
+            )
+
+            # Get Ghost Display info for MosaicWatcher
+            mosaic_config = None
+            if hasattr(self._spatial_agent, '_ghost_manager') and self._spatial_agent._ghost_manager:
+                mosaic_config = self._spatial_agent._ghost_manager.get_mosaic_config()
+
+            if mosaic_config and mosaic_config.get('display_id'):
+                try:
+                    from backend.vision.macos_video_capture_advanced import (
+                        MosaicWatcher,
+                        MosaicWatcherConfig,
+                        WindowTileInfo
+                    )
+
+                    # Build window tile info for spatial intelligence
+                    window_tiles = []
+                    if self.config.mosaic_spatial_intelligence:
+                        ghost_manager = self._spatial_agent._ghost_manager
+                        for window in windows:
+                            window_id = window.get('window_id')
+                            geometry = ghost_manager.get_preserved_geometry(window_id)
+                            if geometry:
+                                tile = WindowTileInfo(
+                                    window_id=window_id,
+                                    app_name=window.get('app_name', app_name),
+                                    window_title=window.get('title', ''),
+                                    x=geometry.x,
+                                    y=geometry.y,
+                                    width=geometry.width,
+                                    height=geometry.height,
+                                    original_space_id=window.get('space_id')
+                                )
+                                window_tiles.append(tile)
+                                logger.debug(
+                                    f"[Mosaic v38.0] Tile: window {window_id} at ({tile.x}, {tile.y})"
+                                )
+
+                    # Create MosaicWatcherConfig
+                    mosaic_watcher_config = MosaicWatcherConfig(
+                        display_id=mosaic_config['display_id'],
+                        display_width=mosaic_config.get('display_width', 1920),
+                        display_height=mosaic_config.get('display_height', 1080),
+                        fps=self.config.mosaic_fps,
+                        window_tiles=window_tiles
+                    )
+
+                    # Create and start MosaicWatcher
+                    mosaic_watcher = MosaicWatcher(mosaic_watcher_config)
+                    success = await mosaic_watcher.start()
+
+                    if success:
+                        logger.info(
+                            f"[Mosaic v38.0] ✅ MosaicWatcher started - "
+                            f"Display {mosaic_config['display_id']}, "
+                            f"{len(window_tiles)} tiles mapped"
+                        )
+
+                        # Store mosaic watcher for later access
+                        self._active_mosaic_watcher = mosaic_watcher
+
+                        # Emit progress
+                        if PROGRESS_STREAM_AVAILABLE:
+                            try:
+                                await emit_surveillance_progress(
+                                    stage=SurveillanceStage.WATCHER_START,
+                                    message=f"🧩 Mosaic mode: Watching {len(windows)} windows with 1 stream (O(1) efficiency)",
+                                    progress_current=1,
+                                    progress_total=1,
+                                    app_name=app_name,
+                                    trigger_text=trigger_text,
+                                    correlation_id=_surveillance_correlation_id
+                                )
+                            except Exception:
+                                pass
+
+                        # Run Mosaic detection loop
+                        mosaic_result = await self._mosaic_visual_detection(
+                            watcher=mosaic_watcher,
+                            trigger_text=trigger_text,
+                            timeout=max_duration or self.config.watcher_coordination_timeout,
+                            app_name=app_name,
+                            windows=windows,
+                            action_config=action_config,
+                            alert_config=alert_config
+                        )
+
+                        return mosaic_result
+
+                    else:
+                        logger.warning(
+                            f"[Mosaic v38.0] MosaicWatcher failed to start - "
+                            f"falling back to per-window mode"
+                        )
+                        use_mosaic_mode = False
+
+                except ImportError as e:
+                    logger.warning(f"[Mosaic v38.0] MosaicWatcher not available: {e} - using per-window mode")
+                    use_mosaic_mode = False
+                except Exception as e:
+                    logger.warning(f"[Mosaic v38.0] MosaicWatcher setup failed: {e} - using per-window mode")
+                    use_mosaic_mode = False
+
+            else:
+                logger.warning(
+                    f"[Mosaic v38.0] Ghost Display info not available - using per-window mode"
+                )
+                use_mosaic_mode = False
+
+        # ===== STEP 2: Spawn Parallel Ferrari Watchers (Legacy O(N) mode) =====
         watcher_tasks = []
         watcher_metadata = []
 
+        if not use_mosaic_mode:
+            logger.info(
+                f"[God Mode] Per-window mode: Spawning {len(windows)} watchers (O(N))"
+            )
+
         # v32.7: Emit WATCHER_START stage to UI progress stream
-        if PROGRESS_STREAM_AVAILABLE:
+        if PROGRESS_STREAM_AVAILABLE and not use_mosaic_mode:
             try:
                 await emit_surveillance_progress(
                     stage=SurveillanceStage.WATCHER_START,
@@ -6532,6 +6685,245 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         except Exception as e:
             logger.debug(f"[OCR] All text extraction failed: {e}")
             return ""
+
+    # =========================================================================
+    # v38.0: MOSAIC VISUAL DETECTION - O(1) Single-Stream Detection
+    # =========================================================================
+
+    async def _mosaic_visual_detection(
+        self,
+        watcher: Any,  # MosaicWatcher
+        trigger_text: str,
+        timeout: float,
+        app_name: str,
+        windows: List[Dict[str, Any]],
+        action_config: Optional[Dict[str, Any]] = None,
+        alert_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        v38.0: Mosaic Strategy detection loop - O(1) efficiency.
+
+        Instead of running N parallel OCR operations on N window streams,
+        we run ONE OCR operation on the Ghost Display mosaic where all
+        windows are tiled.
+
+        Args:
+            watcher: MosaicWatcher instance
+            trigger_text: Text to search for
+            timeout: Max time to wait for detection
+            app_name: Application name for logging
+            windows: List of window info dicts
+            action_config: Optional action to execute on detection
+            alert_config: Optional alert configuration
+
+        Returns:
+            Detection result dict with status, detected window, etc.
+        """
+        import time
+        start_time = time.time()
+        frame_count = 0
+        ocr_checks = 0
+
+        watcher_id = getattr(watcher, 'watcher_id', f"mosaic_{id(watcher)}")
+        window_count = len(windows)
+
+        logger.info(
+            f"[Mosaic Detection] 🧩 Starting O(1) detection for '{trigger_text}' "
+            f"({window_count} windows in mosaic, timeout: {timeout}s)"
+        )
+
+        # Narrate startup
+        if self.config.working_out_loud_enabled:
+            try:
+                await self._narrate_working_out_loud(
+                    message=f"I'm now watching {window_count} {app_name} windows for '{trigger_text}' "
+                            f"using efficient mosaic mode.",
+                    narration_type="startup",
+                    watcher_id=watcher_id,
+                    priority="normal"
+                )
+            except Exception:
+                pass
+
+        try:
+            while True:
+                elapsed = time.time() - start_time
+                if elapsed > timeout:
+                    logger.info(
+                        f"[Mosaic Detection] ⏱️ Timeout after {elapsed:.1f}s "
+                        f"({frame_count} frames, {ocr_checks} OCR checks)"
+                    )
+
+                    # Stop watcher and return
+                    try:
+                        await watcher.stop()
+                    except Exception:
+                        pass
+
+                    return {
+                        'status': 'timeout',
+                        'detected': False,
+                        'trigger_text': trigger_text,
+                        'detection_time': elapsed,
+                        'frames_checked': frame_count,
+                        'ocr_checks': ocr_checks,
+                        'mode': 'mosaic',
+                        'window_count': window_count,
+                        'efficiency': 'O(1)'
+                    }
+
+                # Get frame from mosaic
+                frame_data = await watcher.get_latest_frame(timeout=1.0)
+
+                if not frame_data:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                frame_count += 1
+                frame = frame_data.get('frame')
+
+                if frame is None:
+                    continue
+
+                # Run OCR on mosaic frame
+                ocr_checks += 1
+
+                # Use existing OCR detection
+                detected, confidence, detected_text, ocr_context = await self._ocr_detect(
+                    frame=frame,
+                    trigger_text=trigger_text
+                )
+
+                if detected:
+                    detection_time = time.time() - start_time
+
+                    # v38.0: Spatial Intelligence - Map detection to specific window
+                    matched_window = None
+                    matched_tile = None
+
+                    if self.config.mosaic_spatial_intelligence and hasattr(watcher, 'get_tile_for_ocr_match'):
+                        # Try to get OCR match coordinates from context
+                        if ocr_context and 'match_x' in ocr_context and 'match_y' in ocr_context:
+                            matched_tile = watcher.get_tile_for_ocr_match(
+                                ocr_context['match_x'],
+                                ocr_context['match_y']
+                            )
+                            if matched_tile:
+                                matched_window = {
+                                    'window_id': matched_tile.window_id,
+                                    'app_name': matched_tile.app_name,
+                                    'window_title': matched_tile.window_title,
+                                    'original_space_id': matched_tile.original_space_id
+                                }
+                                logger.info(
+                                    f"[Mosaic Detection] 📍 Spatial match: "
+                                    f"Window {matched_tile.window_id} at ({matched_tile.x}, {matched_tile.y})"
+                                )
+
+                    logger.info(
+                        f"[Mosaic Detection] ✅ FOUND '{trigger_text}'! "
+                        f"Time: {detection_time:.2f}s, Confidence: {confidence:.1%}, "
+                        f"Frames: {frame_count}, OCR checks: {ocr_checks}, "
+                        f"Mode: O(1) Mosaic"
+                    )
+
+                    # Narrate detection
+                    if self.config.working_out_loud_enabled:
+                        try:
+                            if matched_tile:
+                                msg = f"Found '{trigger_text}' in {matched_tile.app_name} window!"
+                            else:
+                                msg = f"Found '{trigger_text}' on the Ghost Display mosaic!"
+                            await self._narrate_working_out_loud(
+                                message=msg,
+                                narration_type="detection",
+                                watcher_id=watcher_id,
+                                priority="high"
+                            )
+                        except Exception:
+                            pass
+
+                    # Stop watcher
+                    try:
+                        await watcher.stop()
+                    except Exception:
+                        pass
+
+                    # Execute action if configured
+                    action_result = None
+                    if action_config:
+                        try:
+                            action_result = await self._execute_action(
+                                action_config=action_config,
+                                context={
+                                    'trigger_text': trigger_text,
+                                    'detected_text': detected_text,
+                                    'confidence': confidence,
+                                    'window': matched_window or windows[0] if windows else None,
+                                    'mode': 'mosaic'
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"[Mosaic Detection] Action execution failed: {e}")
+
+                    # Send alert if configured
+                    if alert_config:
+                        try:
+                            await self._send_alert(
+                                alert_config=alert_config,
+                                context={
+                                    'trigger_text': trigger_text,
+                                    'detected_text': detected_text,
+                                    'confidence': confidence,
+                                    'app_name': app_name,
+                                    'mode': 'mosaic'
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"[Mosaic Detection] Alert failed: {e}")
+
+                    return {
+                        'status': 'detected',
+                        'detected': True,
+                        'trigger_text': trigger_text,
+                        'detected_text': detected_text,
+                        'confidence': confidence,
+                        'detection_time': detection_time,
+                        'frames_checked': frame_count,
+                        'ocr_checks': ocr_checks,
+                        'mode': 'mosaic',
+                        'window_count': window_count,
+                        'matched_window': matched_window,
+                        'action_result': action_result,
+                        'efficiency': 'O(1)',
+                        # v38.0 efficiency stats
+                        'streams_avoided': window_count - 1,
+                        'estimated_ram_saved_mb': (window_count - 1) * 200
+                    }
+
+                # Small delay between frames
+                await asyncio.sleep(0.05)
+
+        except asyncio.CancelledError:
+            logger.info(f"[Mosaic Detection] Cancelled after {time.time() - start_time:.1f}s")
+            try:
+                await watcher.stop()
+            except Exception:
+                pass
+            raise
+
+        except Exception as e:
+            logger.error(f"[Mosaic Detection] Error: {e}", exc_info=True)
+            try:
+                await watcher.stop()
+            except Exception:
+                pass
+            return {
+                'status': 'error',
+                'error': str(e),
+                'detected': False,
+                'mode': 'mosaic'
+            }
 
     def _extract_near_miss_text(self, all_text: str, trigger_text: str) -> Optional[str]:
         """

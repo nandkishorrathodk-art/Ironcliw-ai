@@ -1462,6 +1462,60 @@ class GhostDisplayManager:
     def window_count(self) -> int:
         return len(self._windows_on_ghost)
 
+    # =========================================================================
+    # v38.0: MOSAIC STRATEGY SUPPORT
+    # =========================================================================
+
+    @property
+    def ghost_display_id(self) -> Optional[int]:
+        """
+        v38.0: Get the CGDisplayID of the Ghost Display.
+
+        This is needed for MosaicWatcher to capture the entire Ghost Display
+        as a single stream instead of creating N window watchers.
+
+        Returns:
+            Display ID (CGDisplayID) or None if Ghost Display unavailable
+        """
+        if self._ghost_info:
+            return self._ghost_info.display_id
+        return None
+
+    @property
+    def ghost_display_dimensions(self) -> Tuple[int, int]:
+        """
+        v38.0: Get Ghost Display dimensions (width, height).
+
+        Returns:
+            Tuple of (width, height) or (1920, 1080) as default
+        """
+        if self._ghost_info:
+            return (self._ghost_info.width, self._ghost_info.height)
+        return (1920, 1080)
+
+    def get_mosaic_config(self) -> Optional[Dict[str, Any]]:
+        """
+        v38.0: Get configuration for MosaicWatcher.
+
+        Returns all information needed to set up a single-stream Ghost Display
+        capture, including window tile positions for spatial intelligence.
+
+        Returns:
+            Dict with display_id, dimensions, and window_tiles, or None if unavailable
+        """
+        if not self._ghost_info:
+            return None
+
+        return {
+            'display_id': self._ghost_info.display_id,
+            'display_width': self._ghost_info.width,
+            'display_height': self._ghost_info.height,
+            'space_id': self._ghost_info.space_id,
+            'is_virtual': self._ghost_info.is_virtual,
+            'window_count': self.window_count,
+            'windows_on_ghost': list(self._windows_on_ghost),
+        }
+
     def get_preserved_geometry(self, window_id: int) -> Optional[WindowGeometry]:
         """Get preserved geometry for a window."""
         return self._geometry_cache.get(window_id)
