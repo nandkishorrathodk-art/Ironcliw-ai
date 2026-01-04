@@ -650,9 +650,13 @@ class IntelligentCommandHandler:
         # =====================================================================
         
         # Core action verbs for returning windows
+        # v66.0: Enhanced with more natural language variations
         return_verbs = [
-            'bring back', 'return', 'move back', 'get back', 
-            'restore', 'retrieve', 'recover', 'repatriate'
+            'bring back', 'return', 'move back', 'get back',
+            'restore', 'retrieve', 'recover', 'repatriate',
+            'show me', 'give me back', 'put back', 'take back',
+            'pull back', 'fetch', 'summon', 'recall',
+            'unhide', 'reveal', 'display', 'surface'
         ]
         
         # Context words that indicate this is about the Ghost Display
@@ -716,13 +720,15 @@ class IntelligentCommandHandler:
             f"📥 Bring Back command detected: app='{app_name or 'ALL'}', "
             f"confidence={confidence:.2f}, ghost_ref={has_ghost_ref}"
         )
-        
+
+        # v66.0: Include command_text for Boomerang Protocol integration
         return {
             'action': 'bring_back_windows',
             'app_name': app_name,  # None = all windows
             'confidence': confidence,
             'has_ghost_reference': has_ghost_ref,
             'original_command': text,
+            'command_text': text,  # v66.0: For Boomerang voice command
         }
 
     async def _execute_bring_back_command(self, params: Dict[str, Any]) -> str:
@@ -849,6 +855,177 @@ class IntelligentCommandHandler:
                 f"I encountered an error trying to bring back the windows, {self.user_name}. "
                 f"Error: {str(e)[:100]}"
             )
+
+    # =========================================================================
+    # v66.0 COMMAND & CONTROL PROTOCOL - Enhanced Window Return
+    # =========================================================================
+
+    async def _execute_bring_back_command_v66(self, params: Dict[str, Any]) -> str:
+        """
+        v66.0 COMMAND & CONTROL PROTOCOL: Execute window return with multi-strategy approach.
+
+        This is the definitive "bring back windows" handler that integrates:
+        1. v63 Boomerang Protocol (primary) - async, parallel, intelligent
+        2. v32.6 GhostPersistenceManager (fallback) - legacy support
+        3. Direct yabai space switching (emergency fallback)
+
+        Features:
+        - Parallel window return for speed
+        - Natural language app extraction
+        - Robust error handling with recovery
+        - Voice feedback throughout process
+        - Zero hardcoding - dynamic app detection
+        """
+        import random
+
+        app_name = params.get('app_name')
+        command_text = params.get('command_text', '')
+
+        logger.info(f"[v66.0] 🪃 COMMAND & CONTROL: Executing window return, app_filter={app_name}")
+
+        # =====================================================================
+        # STRATEGY 1: v63 BOOMERANG PROTOCOL (Primary - async, parallel, smart)
+        # =====================================================================
+        try:
+            from backend.vision.yabai_space_detector import get_yabai_detector
+            yabai = get_yabai_detector()
+
+            # Check if Boomerang has any tracked windows
+            if hasattr(yabai, '_boomerang_exiled_windows'):
+                exiled_count = len(yabai._boomerang_exiled_windows)
+                logger.info(f"[v66.0] Boomerang registry has {exiled_count} tracked windows")
+
+                if exiled_count > 0:
+                    # Execute Boomerang voice command
+                    result = await yabai.boomerang_voice_command_async(
+                        command=command_text or f"bring back {app_name or 'all'} windows",
+                        app_filter=app_name
+                    )
+
+                    returned_windows = result.get('returned_windows', [])
+                    returned_count = len(returned_windows)
+                    response_message = result.get('response_message', '')
+
+                    if returned_count > 0:
+                        logger.info(f"[v66.0] ✅ Boomerang returned {returned_count} windows")
+
+                        # Build natural response
+                        if response_message:
+                            return response_message
+                        else:
+                            app_suffix = f" {app_name}" if app_name else ""
+                            return random.choice([
+                                f"Done! I've brought back {returned_count}{app_suffix} window{'s' if returned_count > 1 else ''} from my Ghost Display, {self.user_name}.",
+                                f"All {returned_count}{app_suffix} window{'s' if returned_count > 1 else ''} have been returned to your screen, {self.user_name}.",
+                                f"Search and rescue complete! {returned_count} window{'s' if returned_count > 1 else ''} safely home.",
+                            ])
+
+                    elif result.get('no_matches'):
+                        # Boomerang had windows but none matched filter
+                        logger.info(f"[v66.0] Boomerang has windows but none match filter '{app_name}'")
+                        # Fall through to GhostPersistenceManager
+
+                    else:
+                        # Boomerang had windows but return failed - might need fallback
+                        logger.warning(f"[v66.0] Boomerang return failed: {result}")
+                        # Fall through to GhostPersistenceManager
+
+        except ImportError:
+            logger.debug("[v66.0] Yabai detector not available for Boomerang")
+        except Exception as e:
+            logger.warning(f"[v66.0] Boomerang execution failed: {e}")
+            # Fall through to GhostPersistenceManager
+
+        # =====================================================================
+        # STRATEGY 2: v32.6 GHOST PERSISTENCE MANAGER (Fallback)
+        # =====================================================================
+        logger.info("[v66.0] Trying GhostPersistenceManager fallback...")
+
+        try:
+            result = await self._execute_bring_back_command(params)
+            return result
+        except Exception as e:
+            logger.warning(f"[v66.0] GhostPersistenceManager fallback failed: {e}")
+
+        # =====================================================================
+        # STRATEGY 3: DIRECT SPACE QUERY (Emergency fallback)
+        # =====================================================================
+        # If both strategies fail, try to find windows on Ghost Display directly
+        logger.info("[v66.0] Trying emergency direct space query...")
+
+        try:
+            from backend.vision.yabai_space_detector import get_yabai_detector
+            yabai = get_yabai_detector()
+
+            # Find Ghost Display space
+            ghost_space = yabai.get_ghost_display_space()
+            if ghost_space is None:
+                return (
+                    f"I don't have a Ghost Display configured right now, {self.user_name}. "
+                    f"There are no windows to bring back."
+                )
+
+            # Find windows on Ghost Display
+            windows_on_ghost = await yabai.find_windows_on_space_async(ghost_space)
+
+            if not windows_on_ghost:
+                return random.choice([
+                    f"All windows are already on your main display, {self.user_name}.",
+                    f"I don't have any windows on my Ghost Display right now.",
+                    f"There are no hidden windows to bring back.",
+                ])
+
+            # Filter by app if specified
+            if app_name:
+                windows_on_ghost = [
+                    w for w in windows_on_ghost
+                    if w.get('app', '').lower() == app_name.lower()
+                ]
+
+                if not windows_on_ghost:
+                    return (
+                        f"I don't have any {app_name} windows on my Ghost Display, {self.user_name}. "
+                        f"You might want to try 'bring back all windows'."
+                    )
+
+            # Get current visible space
+            current_space = yabai.get_current_space()
+            if current_space is None:
+                current_space = 1  # Default to space 1
+
+            # Move windows back in parallel
+            moved_count = 0
+            for window in windows_on_ghost:
+                try:
+                    window_id = window.get('window_id') or window.get('id')
+                    if window_id:
+                        await yabai.move_window_to_space_async(window_id, current_space)
+                        moved_count += 1
+                except Exception as move_err:
+                    logger.debug(f"[v66.0] Failed to move window: {move_err}")
+
+            if moved_count > 0:
+                app_suffix = f" {app_name}" if app_name else ""
+                return random.choice([
+                    f"Emergency rescue complete! I brought back {moved_count}{app_suffix} window{'s' if moved_count > 1 else ''}, {self.user_name}.",
+                    f"Done! {moved_count}{app_suffix} window{'s' if moved_count > 1 else ''} returned to Space {current_space}.",
+                ])
+            else:
+                return (
+                    f"I found windows on the Ghost Display but couldn't move them, {self.user_name}. "
+                    f"They may be locked or the space configuration changed."
+                )
+
+        except Exception as e:
+            logger.error(f"[v66.0] Emergency fallback failed: {e}", exc_info=True)
+
+        # =====================================================================
+        # FINAL FALLBACK: Apologetic response
+        # =====================================================================
+        return (
+            f"I apologize, {self.user_name}, but I'm having trouble accessing the window system right now. "
+            f"You may need to manually switch to your other display or space to see the windows."
+        )
 
     def _build_surveillance_start_message(
         self,
@@ -2159,6 +2336,42 @@ class IntelligentCommandHandler:
             # Phase 2: Check for repeated question
             # ===================================================================
             repeated_msg = self._check_repeated_question(text)
+
+            # ===================================================================
+            # PRIORITY -1: WINDOW RETURN COMMANDS (Before EVERYTHING)
+            # ===================================================================
+            # v66.0 COMMAND & CONTROL PROTOCOL:
+            # Check for "bring back windows" commands BEFORE any other processing.
+            # This ensures window return ALWAYS works - no routing confusion.
+            # Integrates with v63 Boomerang Protocol for robust window return.
+            # ===================================================================
+            bring_back_params = self._parse_bring_back_command(text)
+            if bring_back_params:
+                logger.info(f"🪃 PRE-CLASSIFICATION: Window return command detected: {bring_back_params}")
+                response = await self._execute_bring_back_command_v66(bring_back_params)
+                handler_type = 'window_return'
+
+                # Record for learning
+                classification = {
+                    'type': 'window_management',
+                    'intent': 'bring_back_windows',
+                    'confidence': 0.99,
+                    'entities': bring_back_params
+                }
+                self._record_command(text, handler_type, classification, response)
+                success = True
+                self._record_interaction(text, response, handler_type, success)
+
+                # Check for milestone
+                milestone_msg = self._check_interaction_milestone()
+
+                # Build final response with context
+                if long_gap_msg:
+                    response = f"{long_gap_msg} {response}"
+                if milestone_msg:
+                    response += f"\n\n{milestone_msg}"
+
+                return response, handler_type
 
             # ===================================================================
             # PRIORITY 0: GOD MODE SURVEILLANCE CHECK (Before ALL classification)
