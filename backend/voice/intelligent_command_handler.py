@@ -128,6 +128,21 @@ except ImportError as e:
     rapidfuzz_fuzz = None
     rapidfuzz_process = None
 
+# v67.0: Import AppLibrary for dynamic macOS Spotlight integration (CEREBRO PROTOCOL)
+# Replaces hardcoded alias lists with live system queries via mdfind
+APP_LIBRARY_AVAILABLE = False
+AppLibrary = None
+get_app_library = None
+try:
+    from system.app_library import AppLibrary, get_app_library
+    APP_LIBRARY_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.system.app_library import AppLibrary, get_app_library
+        APP_LIBRARY_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"AppLibrary (v67.0 Cerebro) not available: {e}")
+
 class ResponseStyle(Enum):
     """
     Response style variations based on time of day and context.
@@ -814,6 +829,155 @@ class IntelligentCommandHandler:
 
         return None
 
+    # =========================================================================
+    # v67.0: CEREBRO PROTOCOL - Dynamic App Resolution via macOS Spotlight
+    # =========================================================================
+
+    async def _resolve_app_with_cerebro_async(
+        self,
+        user_input: str,
+        check_running: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """
+        v67.0 CEREBRO PROTOCOL: Resolve app name using macOS Spotlight integration.
+
+        This method replaces hardcoded alias lists with dynamic system queries.
+        Benefits:
+        - Install new app → JARVIS knows it instantly
+        - Zero maintenance required
+        - Handles ALL apps, not just ones in our alias list
+        - Detects running vs installed state
+
+        Args:
+            user_input: What the user said (e.g., "Chrome", "VS Code", "Obsidian")
+            check_running: Also check if app is currently running
+
+        Returns:
+            Dict with resolution result or None if not found:
+            {
+                'found': bool,
+                'app_name': str,            # Display name (e.g., "Google Chrome")
+                'bundle_name': str,         # Bundle name (e.g., "Google Chrome.app")
+                'path': str,                # Full path
+                'bundle_id': str,           # CFBundleIdentifier
+                'is_running': bool,
+                'window_count': int,
+                'confidence': float,
+                'resolution_method': str    # 'cache', 'spotlight', 'fuzzy_catalog'
+            }
+        """
+        if not APP_LIBRARY_AVAILABLE or not get_app_library:
+            logger.debug("[v67.0] Cerebro unavailable, skipping Spotlight resolution")
+            return None
+
+        try:
+            library = get_app_library()
+            result = await library.resolve_app_name_async(
+                user_input,
+                include_running_status=check_running
+            )
+
+            if result.found:
+                logger.info(
+                    f"[v67.0] 🧠 CEREBRO: '{user_input}' → '{result.app_name}' "
+                    f"(method: {result.resolution_method}, {result.query_time_ms:.1f}ms)"
+                )
+                return {
+                    'found': True,
+                    'app_name': result.app_name,
+                    'bundle_name': result.bundle_name,
+                    'path': result.path,
+                    'bundle_id': result.bundle_id,
+                    'is_running': result.is_running,
+                    'window_count': result.window_count,
+                    'confidence': result.confidence,
+                    'resolution_method': result.resolution_method
+                }
+            else:
+                logger.debug(f"[v67.0] Cerebro: '{user_input}' not found in Spotlight")
+                return None
+
+        except Exception as e:
+            logger.warning(f"[v67.0] Cerebro resolution error: {e}")
+            return None
+
+    async def _find_best_app_match_async(
+        self,
+        user_input: str,
+        available_apps: Optional[List[str]] = None,
+        threshold: float = 0.75
+    ) -> Optional[Tuple[str, float, Dict[str, Any]]]:
+        """
+        v67.0: Enhanced app matching with Cerebro Protocol integration.
+
+        Resolution order:
+        1. v66 Alias lookup (fastest, in-memory)
+        2. v66 Fuzzy match against available_apps (if provided)
+        3. v67 Cerebro Spotlight query (dynamic, comprehensive)
+
+        Args:
+            user_input: What the user said
+            available_apps: Optional list of known running apps to check first
+            threshold: Minimum match ratio
+
+        Returns:
+            Tuple of (best_app_name, confidence, metadata) or None
+            metadata includes 'is_running', 'path', 'resolution_method'
+        """
+        # =================================================================
+        # STEP 1: Check v66 aliases + fuzzy match (fast, sync)
+        # =================================================================
+        if available_apps:
+            match_result = self._find_best_app_match(user_input, available_apps, threshold)
+            if match_result:
+                app_name, confidence = match_result
+                return app_name, confidence, {
+                    'is_running': True,  # It's in available_apps, so it's running
+                    'resolution_method': 'fuzzy_alias'
+                }
+
+        # =================================================================
+        # STEP 2: Ask Cerebro (macOS Spotlight) for dynamic resolution
+        # =================================================================
+        cerebro_result = await self._resolve_app_with_cerebro_async(user_input)
+
+        if cerebro_result and cerebro_result.get('found'):
+            return (
+                cerebro_result['app_name'],
+                cerebro_result['confidence'],
+                {
+                    'is_running': cerebro_result.get('is_running', False),
+                    'window_count': cerebro_result.get('window_count', 0),
+                    'path': cerebro_result.get('path'),
+                    'bundle_id': cerebro_result.get('bundle_id'),
+                    'resolution_method': cerebro_result['resolution_method']
+                }
+            )
+
+        return None
+
+    def _build_app_not_running_response(
+        self,
+        app_name: str,
+        path: Optional[str] = None
+    ) -> str:
+        """
+        v67.0: Build a helpful response when app is installed but not running.
+
+        This handles the edge case where the user says "bring back Chrome"
+        but Chrome isn't actually open.
+        """
+        import random
+
+        responses = [
+            f"I know {app_name} is installed, but it isn't running right now, {self.user_name}. Would you like me to open it?",
+            f"{app_name} isn't currently open. Shall I launch it for you?",
+            f"I found {app_name} on your system, but it doesn't have any windows open. Want me to start it?",
+            f"Hmm, {app_name} isn't running at the moment. I can open it if you'd like!",
+        ]
+
+        return random.choice(responses)
+
     def _parse_bring_back_command(self, text: str) -> Optional[Dict[str, Any]]:
         """
         v32.6: Parse "bring back windows" / "return windows from ghost display" commands.
@@ -1047,29 +1211,61 @@ class IntelligentCommandHandler:
 
     async def _execute_bring_back_command_v66(self, params: Dict[str, Any]) -> str:
         """
-        v66.0 COMMAND & CONTROL PROTOCOL: Execute window return with multi-strategy approach.
+        v66.0 → v67.0 COMMAND & CONTROL PROTOCOL with CEREBRO Integration.
 
         This is the definitive "bring back windows" handler that integrates:
-        1. v63 Boomerang Protocol (primary) - async, parallel, intelligent
-        2. v32.6 GhostPersistenceManager (fallback) - legacy support
-        3. Direct yabai space switching (emergency fallback)
+        1. v67 Cerebro Protocol (app resolution) - macOS Spotlight integration
+        2. v63 Boomerang Protocol (primary) - async, parallel, intelligent
+        3. v32.6 GhostPersistenceManager (fallback) - legacy support
+        4. Direct yabai space switching (emergency fallback)
 
         Features:
+        - Dynamic app resolution via Spotlight (no hardcoding)
+        - "App installed but not running" edge case handling
         - Parallel window return for speed
         - Natural language app extraction
         - Robust error handling with recovery
         - Voice feedback throughout process
-        - Zero hardcoding - dynamic app detection
         """
         import random
 
         app_name = params.get('app_name')
         command_text = params.get('command_text', '')
 
-        logger.info(f"[v66.0] 🪃 COMMAND & CONTROL: Executing window return, app_filter={app_name}")
+        logger.info(f"[v67.0] 🪃 COMMAND & CONTROL + CEREBRO: Executing window return, app_filter={app_name}")
+
+        # =====================================================================
+        # v67.0: CEREBRO PRE-RESOLUTION - Resolve app name with Spotlight
+        # =====================================================================
+        cerebro_result = None
+        resolved_app_name = app_name
+
+        if app_name:
+            cerebro_result = await self._resolve_app_with_cerebro_async(app_name, check_running=True)
+
+            if cerebro_result and cerebro_result.get('found'):
+                resolved_app_name = cerebro_result['app_name']
+                is_running = cerebro_result.get('is_running', False)
+                window_count = cerebro_result.get('window_count', 0)
+
+                logger.info(
+                    f"[v67.0] Cerebro resolved: '{app_name}' → '{resolved_app_name}' "
+                    f"(running={is_running}, windows={window_count})"
+                )
+
+                # =============================================================
+                # EDGE CASE: App is installed but NOT running
+                # =============================================================
+                if not is_running:
+                    logger.info(f"[v67.0] App '{resolved_app_name}' is installed but not running")
+                    return self._build_app_not_running_response(
+                        resolved_app_name,
+                        cerebro_result.get('path')
+                    )
 
         # =====================================================================
         # STRATEGY 1: v63 BOOMERANG PROTOCOL (Primary - async, parallel, smart)
+        # v67.0: Now uses Cerebro-resolved app name for accurate matching
         # =====================================================================
         try:
             from backend.vision.yabai_space_detector import get_yabai_detector
@@ -1078,13 +1274,17 @@ class IntelligentCommandHandler:
             # Check if Boomerang has any tracked windows
             if hasattr(yabai, '_boomerang_exiled_windows'):
                 exiled_count = len(yabai._boomerang_exiled_windows)
-                logger.info(f"[v66.0] Boomerang registry has {exiled_count} tracked windows")
+                logger.info(f"[v67.0] Boomerang registry has {exiled_count} tracked windows")
 
                 if exiled_count > 0:
+                    # v67.0: Use resolved app name for accurate matching
+                    # "Chrome" → "Google Chrome" for proper window filtering
+                    filter_app = resolved_app_name or app_name
+
                     # Execute Boomerang voice command
                     result = await yabai.boomerang_voice_command_async(
-                        command=command_text or f"bring back {app_name or 'all'} windows",
-                        app_filter=app_name
+                        command=command_text or f"bring back {filter_app or 'all'} windows",
+                        app_filter=filter_app
                     )
 
                     returned_windows = result.get('returned_windows', [])
@@ -1092,13 +1292,14 @@ class IntelligentCommandHandler:
                     response_message = result.get('response_message', '')
 
                     if returned_count > 0:
-                        logger.info(f"[v66.0] ✅ Boomerang returned {returned_count} windows")
+                        logger.info(f"[v67.0] ✅ Boomerang returned {returned_count} windows")
 
-                        # Build natural response
+                        # Build natural response using resolved name for accuracy
+                        display_name = resolved_app_name or app_name
                         if response_message:
                             return response_message
                         else:
-                            app_suffix = f" {app_name}" if app_name else ""
+                            app_suffix = f" {display_name}" if display_name else ""
                             return random.choice([
                                 f"Done! I've brought back {returned_count}{app_suffix} window{'s' if returned_count > 1 else ''} from my Ghost Display, {self.user_name}.",
                                 f"All {returned_count}{app_suffix} window{'s' if returned_count > 1 else ''} have been returned to your screen, {self.user_name}.",
@@ -1107,7 +1308,7 @@ class IntelligentCommandHandler:
 
                     elif result.get('no_matches'):
                         # Boomerang had windows but none matched filter
-                        logger.info(f"[v66.0] Boomerang has windows but none match filter '{app_name}'")
+                        logger.info(f"[v67.0] Boomerang has windows but none match filter '{filter_app}'")
                         # Fall through to GhostPersistenceManager
 
                     else:

@@ -57,6 +57,20 @@ try:
 except ImportError:
     rapidfuzz_fuzz = None
 
+# v67.0: Import AppLibrary for dynamic macOS Spotlight integration (CEREBRO PROTOCOL)
+# Replaces hardcoded alias lists with live system queries via mdfind
+_HAS_APP_LIBRARY = False
+_app_library_instance = None
+try:
+    from system.app_library import get_app_library
+    _HAS_APP_LIBRARY = True
+except ImportError:
+    try:
+        from backend.system.app_library import get_app_library
+        _HAS_APP_LIBRARY = True
+    except ImportError:
+        get_app_library = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +158,64 @@ def _fuzzy_match_app_name(user_input: str, registered_app: str, threshold: float
             return True, best_ratio
 
     return False, 0.0
+
+
+# =============================================================================
+# v67.0: CEREBRO PROTOCOL - Async App Resolution via macOS Spotlight
+# =============================================================================
+
+async def _resolve_app_name_with_cerebro_async(
+    user_input: str,
+    check_running: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    v67.0 CEREBRO PROTOCOL: Resolve app name using macOS Spotlight integration.
+
+    This module-level async function provides Spotlight-based app resolution
+    for the Boomerang Protocol, replacing hardcoded alias lists.
+
+    Args:
+        user_input: What the user said (e.g., "Chrome", "VS Code")
+        check_running: Also check if app is currently running
+
+    Returns:
+        Dict with resolution result or None:
+        {
+            'found': bool,
+            'app_name': str,        # Display name (e.g., "Google Chrome")
+            'is_running': bool,
+            'window_count': int,
+            'confidence': float
+        }
+    """
+    if not _HAS_APP_LIBRARY or not get_app_library:
+        return None
+
+    try:
+        library = get_app_library()
+        result = await library.resolve_app_name_async(
+            user_input,
+            include_running_status=check_running
+        )
+
+        if result.found:
+            logger.debug(
+                f"[v67.0] 🧠 CEREBRO (Boomerang): '{user_input}' → '{result.app_name}' "
+                f"(method: {result.resolution_method})"
+            )
+            return {
+                'found': True,
+                'app_name': result.app_name,
+                'is_running': result.is_running,
+                'window_count': result.window_count,
+                'confidence': result.confidence
+            }
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"[v67.0] Cerebro resolution error in Boomerang: {e}")
+        return None
 
 
 # =============================================================================
@@ -7633,16 +7705,28 @@ class YabaiSpaceDetector:
                 })
 
         elif app_name is not None:
+            # =================================================================
+            # v67.0: CEREBRO PROTOCOL - Dynamic app resolution first
+            # =================================================================
+            resolved_app_name = app_name
+            cerebro_result = await _resolve_app_name_with_cerebro_async(app_name, check_running=False)
+
+            if cerebro_result and cerebro_result.get('found'):
+                resolved_app_name = cerebro_result['app_name']
+                logger.info(
+                    f"[YABAI v67.0] 🧠 CEREBRO: '{app_name}' → '{resolved_app_name}'"
+                )
+
             # Return all windows of this app - v66.0: Using FUZZY MATCHING
-            # This allows "Chrome" to match "Google Chrome", etc.
+            # v67.0: Now uses Cerebro-resolved name for better accuracy
             windows_to_return = [
                 record for record in self._boomerang_exiled_windows.values()
-                if _fuzzy_match_app_name(app_name, record.get("app_name", ""))[0]
+                if _fuzzy_match_app_name(resolved_app_name, record.get("app_name", ""))[0]
                 and record.get("status") == "exiled"
             ]
             if windows_to_return:
                 logger.info(
-                    f"[YABAI v66.0] 🎯 Fuzzy matched '{app_name}' → "
+                    f"[YABAI v67.0] 🎯 Matched '{app_name}' → '{resolved_app_name}' → "
                     f"{[r.get('app_name') for r in windows_to_return]}"
                 )
 
@@ -7980,8 +8064,20 @@ class YabaiSpaceDetector:
                 "message": "Command not recognized as a window return request"
             }
 
+        # =====================================================================
+        # v67.0: CEREBRO PROTOCOL - Try Spotlight resolution first for app_filter
+        # =====================================================================
+        resolved_app_filter = app_filter
+        if app_filter:
+            cerebro_result = await _resolve_app_name_with_cerebro_async(app_filter, check_running=False)
+            if cerebro_result and cerebro_result.get('found'):
+                resolved_app_filter = cerebro_result['app_name']
+                logger.info(
+                    f"[YABAI v67.0] 🧠 CEREBRO: '{app_filter}' → '{resolved_app_filter}'"
+                )
+
         # Determine app filter from command if not provided - v66.0: FUZZY MATCHING
-        if not app_filter:
+        if not resolved_app_filter:
             # Check for app names in command using fuzzy matching
             exiled_apps = set(
                 record.get("app_name") for record in self._boomerang_exiled_windows.values()
@@ -8010,31 +8106,36 @@ class YabaiSpaceDetector:
                     best_confidence = confidence
 
             if best_match:
-                app_filter = best_match
+                resolved_app_filter = best_match
                 logger.info(
-                    f"[YABAI v66.0] 🎯 Fuzzy extracted app from command: '{command}' → '{app_filter}' "
+                    f"[YABAI v67.0] 🎯 Fuzzy extracted app from command: '{command}' → '{resolved_app_filter}' "
                     f"(confidence: {best_confidence:.2f})"
                 )
 
-        # Trigger the return
+        # Trigger the return - v67.0: Use Cerebro-resolved app name
         result = await self.boomerang_trigger_return_async(
-            app_name=app_filter,
+            app_name=resolved_app_filter,
             trigger_reason="voice_command",
             parallel=True,
             focus_after=True
         )
 
-        # Generate response message
+        # Generate response message - v67.0: Use resolved name for accuracy
+        display_name = resolved_app_filter or app_filter
         if result["success"]:
             count = len(result["returned_windows"])
-            if app_filter:
-                message = f"Returned {count} {app_filter} window{'s' if count != 1 else ''} to your screen."
+            if display_name:
+                message = f"Returned {count} {display_name} window{'s' if count != 1 else ''} to your screen."
             else:
                 message = f"Returned {count} window{'s' if count != 1 else ''} to your screen."
         else:
-            message = "No exiled windows found to return."
+            if display_name:
+                message = f"No exiled {display_name} windows found to return."
+            else:
+                message = "No exiled windows found to return."
 
         result["response_message"] = message
+        result["resolved_app_name"] = resolved_app_filter  # v67.0: Include for debugging
         return result
 
     async def _find_window_by_chemical_bond_async(
