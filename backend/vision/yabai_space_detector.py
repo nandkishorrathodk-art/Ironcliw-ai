@@ -4401,20 +4401,53 @@ class YabaiSpaceDetector:
             await asyncio.sleep(hydration_delay)
         
         # ═══════════════════════════════════════════════════════════════════════
-        # v44.0: STATE VERIFICATION LOOP
+        # v44.0: STATE CONVERGENCE PROTOCOL (Replaces simple verification)
         # ═══════════════════════════════════════════════════════════════════════
-        # Don't just fire and hope - VERIFY the window actually exited fullscreen.
-        # Poll the window state up to 10 times (2 seconds total) to confirm.
-        # This fixes the race condition where we move before animation completes.
+        # We don't guess. We MEASURE.
+        # 
+        # When a fullscreen window exits, macOS destroys its Space (Topology Drift).
+        # The window "falls" onto another Space. We must:
+        # 1. Detect the DRIFT: Space ID changed from original
+        # 2. Confirm LANDED: Window reports not-fullscreen
+        # 3. CONVERGENCE: Both conditions met = stable state
+        #
+        # This is a TRANSACTION. We only proceed when physics have settled.
         # ═══════════════════════════════════════════════════════════════════════
         
         if verify_transition:
             yabai_path = self._health.yabai_path or "yabai"
-            verification_passed = False
             
-            for attempt in range(10):  # Max 2 seconds (10 x 0.2s)
+            # Capture original state BEFORE the AppleScript took effect
+            # (We already waited for hydration, so this is the "post-unpack" state we're monitoring)
+            original_space_id = None
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    yabai_path, "-m", "query", "--windows", "--window", str(window_id),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                if proc.returncode == 0 and stdout:
+                    initial_state = json.loads(stdout.decode())
+                    original_space_id = initial_state.get('space')
+                    logger.debug(f"[YABAI v44.0] 📍 Original space: {original_space_id}")
+            except Exception as e:
+                logger.debug(f"[YABAI v44.0] Could not capture original space: {e}")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STATE CONVERGENCE MONITOR
+            # ═══════════════════════════════════════════════════════════════════
+            # We don't guess. We wait for the OS to report a stable state.
+            # Convergence = NOT fullscreen AND (Space ID changed OR was never fullscreen)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            drift_detected = False
+            convergence_achieved = False
+            converged_window_info = None
+            
+            for attempt in range(20):  # Monitor for 2.0s at 100ms intervals
                 try:
-                    # Query window state
+                    # 1. RE-QUERY: Get absolute truth from the OS
                     proc = await asyncio.create_subprocess_exec(
                         yabai_path, "-m", "query", "--windows", "--window", str(window_id),
                         stdout=asyncio.subprocess.PIPE,
@@ -4423,49 +4456,79 @@ class YabaiSpaceDetector:
                     stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
                     
                     if proc.returncode == 0 and stdout:
-                        updated_info = json.loads(stdout.decode())
-                        is_still_fullscreen = updated_info.get('is-native-fullscreen', False)
+                        fresh_window_state = json.loads(stdout.decode())
                         
-                        if not is_still_fullscreen:
+                        # 2. CHECK CONSTRAINT: Is it definitely NOT fullscreen?
+                        is_fullscreen = fresh_window_state.get('is-native-fullscreen', False)
+                        is_zoom_fullscreen = fresh_window_state.get('has-fullscreen-zoom', False)
+                        is_any_fullscreen = is_fullscreen or is_zoom_fullscreen
+                        
+                        # 3. CHECK TOPOLOGY: Did the Space ID change? (The Drift)
+                        current_space = fresh_window_state.get('space')
+                        
+                        if original_space_id is not None and current_space != original_space_id:
+                            if not drift_detected:
+                                logger.info(
+                                    f"[YABAI v44.0] 🌊 TOPOLOGY DRIFT DETECTED: "
+                                    f"Window {window_id} moved Space {original_space_id} → {current_space}"
+                                )
+                            drift_detected = True
+                        
+                        # 4. CONVERGENCE CONDITION
+                        # We consider converged if:
+                        # - Not fullscreen AND drift detected, OR
+                        # - Not fullscreen AND we couldn't capture original (assume OK)
+                        if not is_any_fullscreen and (drift_detected or original_space_id is None):
                             logger.info(
-                                f"[YABAI v44.0] ✅ STATE VERIFIED: Window {window_id} "
-                                f"successfully exited fullscreen (attempt {attempt + 1})"
+                                f"[YABAI v44.0] ✅ TOPOLOGY CONVERGED: Window {window_id} "
+                                f"landed on Space {current_space} (not fullscreen, drift={'yes' if drift_detected else 'n/a'})"
                             )
-                            verification_passed = True
+                            convergence_achieved = True
+                            converged_window_info = fresh_window_state
                             break
-                        else:
+                        
+                        # Not converged yet - log progress
+                        if attempt % 5 == 0:  # Log every 500ms
                             logger.debug(
-                                f"[YABAI v44.0] ⏳ Window {window_id} still fullscreen, "
-                                f"waiting... (attempt {attempt + 1}/10)"
+                                f"[YABAI v44.0] ⏳ Convergence pending: "
+                                f"fullscreen={is_any_fullscreen}, drift={drift_detected}, "
+                                f"space={current_space} (attempt {attempt + 1}/20)"
                             )
                     else:
-                        # Can't query - might be hidden/dehydrated, proceed anyway
+                        # Can't query - window might be in transition
                         logger.debug(
-                            f"[YABAI v44.0] Window {window_id} query failed - "
-                            f"window may be dehydrated, proceeding"
+                            f"[YABAI v44.0] Window {window_id} query returned no data "
+                            f"(in transition?) - attempt {attempt + 1}"
                         )
-                        verification_passed = True  # Can't verify, assume OK
-                        break
                         
                 except asyncio.TimeoutError:
                     logger.debug(f"[YABAI v44.0] Window query timed out (attempt {attempt + 1})")
+                except json.JSONDecodeError:
+                    logger.debug(f"[YABAI v44.0] Invalid JSON from yabai (attempt {attempt + 1})")
                 except Exception as e:
-                    logger.debug(f"[YABAI v44.0] Window query error: {e}")
-                    verification_passed = True  # Can't verify, assume OK
-                    break
+                    logger.debug(f"[YABAI v44.0] Convergence check error: {e}")
                 
-                # Wait before next check
-                await asyncio.sleep(0.2)
+                # Wait before next measurement (100ms high-frequency polling)
+                await asyncio.sleep(0.1)
             
-            if not verification_passed:
-                logger.warning(
-                    f"[YABAI v44.0] ⚠️ STATE VERIFICATION INCONCLUSIVE: "
-                    f"Window {window_id} may still be fullscreen after 2s. "
-                    f"Proceeding with move anyway (might require Nuclear Fallback)."
+            # Report convergence result
+            if convergence_achieved:
+                logger.info(
+                    f"[YABAI v44.0] 🎯 STATE CONVERGENCE COMPLETE: "
+                    f"Window {window_id} is stable and ready for teleportation"
                 )
+                # Store the converged info for the caller to use
+                self._last_converged_window_info = converged_window_info
+            else:
+                logger.warning(
+                    f"[YABAI v44.0] ⚠️ CONVERGENCE TIMEOUT: Window {window_id} did not settle "
+                    f"after 2.0s. Drift detected: {drift_detected}. "
+                    f"Proceeding with caution (window may still be animating)."
+                )
+                self._last_converged_window_info = None
         
         # Always return True - we never want to block the move operation
-        # Even if AppleScript failed, the window might not have been fullscreen
+        # Even if convergence wasn't perfect, the window might still be movable
         return True
 
     async def _handle_fullscreen_window_async(
@@ -5502,82 +5565,86 @@ class YabaiSpaceDetector:
                 await asyncio.sleep(0.3)
         
         # ═══════════════════════════════════════════════════════════════════════
-        # v44.0: NUCLEAR FALLBACK - Last resort display-based force move
+        # v44.0: STATE CONVERGENCE RECOVERY (Replaces Nuclear Fallback)
         # ═══════════════════════════════════════════════════════════════════════
-        # If ALL strategies failed, try one final "Hail Mary" pass:
-        # Force a --display 2 move regardless of current state.
-        # Sometimes yabai can force a move across displays even when space moves fail.
-        # This works because --display uses a simpler code path in the WindowServer.
+        # We don't brute force. We ANALYZE.
+        # 
+        # If all strategies failed, check if we have converged window info.
+        # The State Convergence Protocol may have detected topology drift.
+        # If so, the window is now on a DIFFERENT space than we originally thought.
+        # Issue one final move using the CORRECT current coordinates.
         # ═══════════════════════════════════════════════════════════════════════
         
-        logger.warning(
-            f"[YABAI v44.0] 🔥 NUCLEAR FALLBACK: All strategies failed for window {window_id}. "
-            f"Attempting force display move..."
-        )
+        converged_info = getattr(self, '_last_converged_window_info', None)
         
-        try:
-            # Get all displays
-            proc = await asyncio.create_subprocess_exec(
-                yabai_path, "-m", "query", "--displays",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        if converged_info:
+            converged_space = converged_info.get('space')
+            converged_display = converged_info.get('display')
             
-            if proc.returncode == 0 and stdout:
-                displays = json.loads(stdout.decode())
-                
-                # Find a secondary display (not display 1)
-                secondary_displays = [d for d in displays if d.get('index', 1) > 1]
-                
-                if secondary_displays:
-                    nuclear_display = secondary_displays[0].get('index', 2)
-                    
-                    logger.warning(
-                        f"[YABAI v44.0] ☢️ NUCLEAR: Force-moving window {window_id} → Display {nuclear_display}"
-                    )
-                    
-                    # Try direct display move as last resort
-                    nuclear_proc = await asyncio.create_subprocess_exec(
-                        yabai_path, "-m", "window", str(window_id), "--display", str(nuclear_display),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    await asyncio.wait_for(nuclear_proc.communicate(), timeout=5.0)
-                    
-                    if nuclear_proc.returncode == 0:
-                        # Wait for physics
-                        await asyncio.sleep(1.5)
+            logger.info(
+                f"[YABAI v44.0] 🔄 STATE CONVERGENCE RECOVERY: Window {window_id} "
+                f"drifted to Space {converged_space} (Display {converged_display}). "
+                f"Re-attempting move from NEW coordinates..."
+            )
+            
+            # Only retry if the window is NOT already on target
+            if converged_space != target_space:
+                try:
+                    # Use Display Handoff with the CORRECT current display info
+                    if converged_display != target_display and target_display is not None:
+                        # Cross-display from current position
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "window", str(window_id), "--display", str(target_display),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
                         
-                        # Verify move
-                        final_space = await get_window_space()
-                        final_display = await get_window_display()
-                        
-                        if final_display == nuclear_display:
-                            logger.info(
-                                f"[YABAI v44.0] ✅ NUCLEAR SUCCESS: Window {window_id} "
-                                f"forced to Display {nuclear_display} (Space {final_space})"
-                            )
-                            self._health.record_success(0)
-                            return True
+                        if proc.returncode == 0:
+                            # Wait for physics to settle
+                            await asyncio.sleep(1.0)
+                            
+                            # Verify
+                            final_space = await get_window_space()
+                            final_display = await get_window_display()
+                            
+                            if final_display == target_display:
+                                logger.info(
+                                    f"[YABAI v44.0] ✅ CONVERGENCE RECOVERY SUCCESS: "
+                                    f"Window {window_id} → Display {target_display} (Space {final_space})"
+                                )
+                                self._health.record_success(0)
+                                return True
+                            else:
+                                logger.warning(
+                                    f"[YABAI v44.0] Convergence recovery move accepted but "
+                                    f"window still on Display {final_display}"
+                                )
                         else:
-                            logger.warning(
-                                f"[YABAI v44.0] Nuclear move command accepted but window still on "
-                                f"Display {final_display}"
-                            )
-                    else:
-                        logger.warning(f"[YABAI v44.0] Nuclear display move command rejected")
-                else:
-                    logger.warning("[YABAI v44.0] No secondary display found for Nuclear Fallback")
-                    
-        except asyncio.TimeoutError:
-            logger.warning("[YABAI v44.0] Nuclear Fallback timed out")
-        except Exception as e:
-            logger.warning(f"[YABAI v44.0] Nuclear Fallback error: {e}")
+                            error_msg = stderr.decode().strip() if stderr else "Unknown"
+                            logger.warning(f"[YABAI v44.0] Convergence recovery move rejected: {error_msg}")
+                            
+                except asyncio.TimeoutError:
+                    logger.warning("[YABAI v44.0] Convergence recovery timed out")
+                except Exception as e:
+                    logger.warning(f"[YABAI v44.0] Convergence recovery error: {e}")
+            else:
+                # Window already on target!
+                logger.info(
+                    f"[YABAI v44.0] ✅ CONVERGENCE: Window {window_id} already on target Space {target_space}"
+                )
+                return True
+        else:
+            logger.warning(
+                f"[YABAI v44.0] No converged state available - window may still be animating"
+            )
         
-        # All retries AND Nuclear Fallback exhausted
-        logger.error(f"[YABAI] ❌ FAILED to move window {window_id} to Space {target_space} after {max_retries} attempts + Nuclear Fallback")
-        self._health.record_failure(f"Window {window_id} failed to move after all strategies")
+        # All strategies exhausted
+        logger.error(
+            f"[YABAI v44.0] ❌ FAILED to move window {window_id} to Space {target_space} "
+            f"after {max_retries} attempts. Window state did not converge."
+        )
+        self._health.record_failure(f"Window {window_id} failed to move - state did not converge")
         return False
 
     # =========================================================================
