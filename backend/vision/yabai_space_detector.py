@@ -2187,6 +2187,9 @@ class GhostDisplayManager:
                             f"({self._ghost_info.width}x{self._ghost_info.height})"
                         )
 
+                        # v48.0: Enforce BSP layout to prevent window overlap
+                        await self._enforce_bsp_layout(ghost_space)
+
                         # v27.0: Initialize persistence manager for crash recovery
                         await self._initialize_persistence(yabai_detector)
 
@@ -2228,6 +2231,77 @@ class GhostDisplayManager:
 
         logger.error("[GhostManager] ❌ No fallback available")
         return False
+
+    # =========================================================================
+    # v48.0: BSP LAYOUT ENFORCEMENT ("PILE-UP" NUANCE FIX)
+    # =========================================================================
+    # When multiple windows arrive on Ghost Display, they could stack on top
+    # of each other (overlap). This breaks Mosaic vision which needs to see ALL
+    # windows simultaneously without obstruction.
+    #
+    # Solution: Force BSP (Binary Space Partitioning) layout on Ghost Space.
+    # BSP automatically tiles windows side-by-side, ensuring no overlap.
+    # =========================================================================
+
+    async def _enforce_bsp_layout(self, space_id: int) -> bool:
+        """
+        v48.0: Enforce BSP (tiled) layout on the Ghost Space.
+
+        This prevents the "Pile-Up" nuance where multiple windows stack
+        on top of each other, obstructing Mosaic vision's ability to
+        see all windows simultaneously.
+
+        Args:
+            space_id: The Ghost Space ID to enforce BSP on
+
+        Returns:
+            True if BSP layout was successfully set, False otherwise
+        """
+        try:
+            yabai_path = os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+            # Set BSP layout on the specific space
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "config", "--space", str(space_id), "layout", "bsp",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if proc.returncode == 0:
+                logger.info(
+                    f"[GhostManager v48.0] 🧱 BSP LAYOUT ENFORCED: "
+                    f"Space {space_id} now uses tiled (BSP) layout - no window overlap!"
+                )
+                return True
+            else:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                logger.warning(
+                    f"[GhostManager v48.0] ⚠️ BSP layout enforcement failed: {error_msg}"
+                )
+                return False
+
+        except asyncio.TimeoutError:
+            logger.warning(f"[GhostManager v48.0] ⚠️ BSP layout command timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"[GhostManager v48.0] ⚠️ BSP layout enforcement error: {e}")
+            return False
+
+    async def ensure_bsp_layout(self) -> bool:
+        """
+        v48.0: Public method to ensure BSP layout on Ghost Space.
+
+        Call this after teleporting windows to guarantee no overlap.
+
+        Returns:
+            True if BSP is enforced, False if no Ghost Space or enforcement failed
+        """
+        if self._ghost_info is None:
+            logger.debug("[GhostManager v48.0] No Ghost Space available for BSP enforcement")
+            return False
+
+        return await self._enforce_bsp_layout(self._ghost_info.space_id)
 
     # =========================================================================
     # v27.0: Crash Recovery Integration
@@ -2437,6 +2511,9 @@ class GhostDisplayManager:
                     )
                     self._status = GhostDisplayStatus.AVAILABLE
                     logger.info(f"[GhostManager] ✅ Recovery successful: Space {new_ghost}")
+
+                    # v48.0: Enforce BSP layout on recovered Ghost Space
+                    await self._enforce_bsp_layout(new_ghost)
 
                     # Re-teleport windows if any were on old Ghost Display
                     if self._windows_on_ghost:
@@ -5210,17 +5287,21 @@ class YabaiSpaceDetector:
             app_name: str,
             window_title: str,
             old_window_id: int,
+            original_pid: Optional[int] = None,
             fuzzy_threshold: float = 0.8
         ) -> Optional[int]:
             """
-            v47.0: Find a window by its Chemical Bond (App Name + Window Title).
+            v48.0: Find a window by its Chemical Bond (App Name + Window Title + PID).
 
             Uses fuzzy matching because the title might change slightly after unpack.
+            v48.0 adds PID hardening to disambiguate "Doppelgänger" windows (e.g., two
+            Chrome profiles with same "New Tab" title).
 
             Args:
                 app_name: The application name (e.g., "Google Chrome")
                 window_title: The window title to match
                 old_window_id: The old (dead) window ID to exclude
+                original_pid: The original Process ID (v48.0 PID Hardening)
                 fuzzy_threshold: Minimum similarity ratio (0.0-1.0)
 
             Returns:
@@ -5246,12 +5327,29 @@ class YabaiSpaceDetector:
                 app_name_lower = app_name.lower()
                 title_lower = window_title.lower()
 
-                # Find matching windows
-                candidates = []
+                # ═══════════════════════════════════════════════════════════════
+                # v48.0: PID HARDENING - Disambiguate "Doppelgänger" windows
+                # ═══════════════════════════════════════════════════════════════
+                # Two Chrome profiles might have same "New Tab" title.
+                # PID matching ensures we find the EXACT same process's window.
+                # Priority order:
+                #   1. Exact PID + Exact Title (bulletproof)
+                #   2. Exact PID + Fuzzy Title (same process, title changed)
+                #   3. Same App + Exact Title (fallback if PID unavailable)
+                #   4. Same App + Fuzzy Title (last resort)
+                # ═══════════════════════════════════════════════════════════════
+
+                # Find matching windows - separate by PID match for priority
+                pid_exact_title_matches = []
+                pid_fuzzy_matches = []
+                app_exact_title_matches = []
+                app_fuzzy_matches = []
+
                 for w in windows:
                     w_id = w.get("id")
                     w_app = w.get("app", "").lower()
                     w_title = w.get("title", "")
+                    w_pid = w.get("pid")
 
                     # Skip the old (dead) window ID
                     if w_id == old_window_id:
@@ -5266,41 +5364,70 @@ class YabaiSpaceDetector:
                         continue
 
                     w_title_lower = w_title.lower()
+                    is_pid_match = original_pid is not None and w_pid == original_pid
+                    is_exact_title = w_title_lower == title_lower
 
-                    # Exact match
-                    if w_title_lower == title_lower:
-                        logger.info(
-                            f"[YABAI v47.0] 🔬 EXACT BOND MATCH: '{app_name}' window '{window_title}' "
-                            f"→ New ID {w_id} (was {old_window_id})"
-                        )
-                        return w_id
-
-                    # Fuzzy match using simple ratio
-                    # Calculate similarity as: 2 * common_chars / total_chars
+                    # Calculate fuzzy similarity
                     common = sum(1 for a, b in zip(w_title_lower, title_lower) if a == b)
                     total = len(w_title_lower) + len(title_lower)
                     similarity = (2 * common) / total if total > 0 else 0
 
-                    # Also check substring containment
+                    # Substring containment boost
                     if title_lower in w_title_lower or w_title_lower in title_lower:
-                        similarity = max(similarity, 0.9)  # Boost for substring match
+                        similarity = max(similarity, 0.9)
 
-                    if similarity >= fuzzy_threshold:
-                        candidates.append((w_id, similarity, w_title))
+                    # Categorize by priority
+                    if is_pid_match and is_exact_title:
+                        pid_exact_title_matches.append((w_id, 1.0, w_title, w_pid))
+                    elif is_pid_match and similarity >= fuzzy_threshold:
+                        pid_fuzzy_matches.append((w_id, similarity, w_title, w_pid))
+                    elif is_exact_title:
+                        app_exact_title_matches.append((w_id, 1.0, w_title, w_pid))
+                    elif similarity >= fuzzy_threshold:
+                        app_fuzzy_matches.append((w_id, similarity, w_title, w_pid))
 
-                # Return best match if any
-                if candidates:
-                    candidates.sort(key=lambda x: x[1], reverse=True)
-                    best_id, best_sim, best_title = candidates[0]
+                # Priority 1: Exact PID + Exact Title (bulletproof match)
+                if pid_exact_title_matches:
+                    best = pid_exact_title_matches[0]
                     logger.info(
-                        f"[YABAI v47.0] 🔬 FUZZY BOND MATCH: '{app_name}' window "
-                        f"'{window_title}' → '{best_title}' (sim={best_sim:.0%}) "
-                        f"→ New ID {best_id} (was {old_window_id})"
+                        f"[YABAI v48.0] 🔬⚛️ BULLETPROOF BOND: PID {best[3]} + exact title "
+                        f"'{window_title}' → New ID {best[0]} (was {old_window_id})"
                     )
-                    return best_id
+                    return best[0]
+
+                # Priority 2: Exact PID + Fuzzy Title (same process, title changed slightly)
+                if pid_fuzzy_matches:
+                    pid_fuzzy_matches.sort(key=lambda x: x[1], reverse=True)
+                    best = pid_fuzzy_matches[0]
+                    logger.info(
+                        f"[YABAI v48.0] 🔬⚛️ PID BOND: PID {best[3]} + fuzzy title "
+                        f"'{window_title}' → '{best[2]}' (sim={best[1]:.0%}) "
+                        f"→ New ID {best[0]} (was {old_window_id})"
+                    )
+                    return best[0]
+
+                # Priority 3: Same App + Exact Title (no PID available or no PID match)
+                if app_exact_title_matches:
+                    best = app_exact_title_matches[0]
+                    logger.info(
+                        f"[YABAI v48.0] 🔬 EXACT TITLE BOND: '{app_name}' window "
+                        f"'{window_title}' → New ID {best[0]} (was {old_window_id})"
+                    )
+                    return best[0]
+
+                # Priority 4: Same App + Fuzzy Title (last resort)
+                if app_fuzzy_matches:
+                    app_fuzzy_matches.sort(key=lambda x: x[1], reverse=True)
+                    best = app_fuzzy_matches[0]
+                    logger.info(
+                        f"[YABAI v48.0] 🔬 FUZZY BOND MATCH: '{app_name}' window "
+                        f"'{window_title}' → '{best[2]}' (sim={best[1]:.0%}) "
+                        f"→ New ID {best[0]} (was {old_window_id})"
+                    )
+                    return best[0]
 
             except Exception as e:
-                logger.error(f"[YABAI v47.0] Chemical bond search failed: {e}")
+                logger.error(f"[YABAI v48.0] Chemical bond search failed: {e}")
 
             return None
 
@@ -5313,9 +5440,10 @@ class YabaiSpaceDetector:
 
         window_info = await get_window_info_async()
 
-        # v47.0: Capture Chemical Bond BEFORE unpacking
+        # v48.0: Capture Chemical Bond BEFORE unpacking (App + Title + PID)
         original_app_name = window_info.get("app", "") if window_info else ""
         original_window_title = window_info.get("title", "") if window_info else ""
+        original_pid = window_info.get("pid") if window_info else None  # v48.0 PID Hardening
         original_window_id = window_id  # Save for re-bonding
 
         was_fullscreen, unpack_success = await self._handle_fullscreen_window_async(
@@ -5364,13 +5492,14 @@ class YabaiSpaceDetector:
                         original_app_name,
                         original_window_title,
                         original_window_id,
+                        original_pid=original_pid,  # v48.0 PID Hardening
                         fuzzy_threshold=float(os.getenv("JARVIS_REBOND_FUZZY_THRESHOLD", "0.7"))
                     )
 
                     if new_window_id is not None:
                         logger.info(
-                            f"[YABAI v47.0] ⚛️ RE-BONDING SUCCESS: Window reborn as ID {new_window_id} "
-                            f"(was {original_window_id})"
+                            f"[YABAI v48.0] ⚛️ RE-BONDING SUCCESS: Window reborn as ID {new_window_id} "
+                            f"(was {original_window_id}, PID={original_pid})"
                         )
                         # UPDATE THE WINDOW ID - This is the key!
                         window_id = new_window_id
