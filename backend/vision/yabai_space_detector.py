@@ -6133,33 +6133,44 @@ class YabaiSpaceDetector:
                     except Exception:
                         pass
 
-                telemetry.record_attempt(
-                    success=success,
-                    strategy=strategy,
-                    duration_ms=duration_ms,
-                    app_name=app_name,
-                    wake_delay_used_ms=base_wake_delay_ms
-                )
+                    telemetry.record_attempt(
+                        success=success,
+                        strategy=strategy,
+                        duration_ms=duration_ms,
+                        app_name=app_name,
+                        wake_delay_used_ms=base_wake_delay_ms
+                    )
 
-                return {
-                    "window_id": window_id,
-                    "source_space": space_id,
-                    "success": success,
-                    "method": "rescue" if success else "failed",
-                    "strategy": strategy.value,
-                    "duration_ms": duration_ms,
+                    return {
+                        "window_id": window_id,
+                        "source_space": space_id,
+                        "success": success,
+                        "method": "rescue" if success else "failed",
+                        "strategy": strategy.value,
+                        "duration_ms": duration_ms,
                     "app_name": app_name,
                     "was_fullscreen": is_fullscreen
-                }
+                    }
 
             # Execute rescues in parallel (OUTSIDE rescue_window function)
-            tasks = [rescue_window(w) for w in space_windows]
+                tasks = [rescue_window(w) for w in space_windows]
 
-            if len(tasks) > max_parallel:
-                for i in range(0, len(tasks), max_parallel):
-                    batch = tasks[i:i + max_parallel]
-                    batch_results = await asyncio.gather(*batch, return_exceptions=True)
-                    for r in batch_results:
+                if len(tasks) > max_parallel:
+                    for i in range(0, len(tasks), max_parallel):
+                        batch = tasks[i:i + max_parallel]
+                        batch_results = await asyncio.gather(*batch, return_exceptions=True)
+                        for r in batch_results:
+                            if isinstance(r, Exception):
+                                result["failed_count"] += 1
+                            elif r.get("success"):
+                                result["rescue_count"] += 1
+                                result["details"].append(r)
+                            else:
+                                result["failed_count"] += 1
+                                result["details"].append(r)
+                else:
+                    rescue_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for r in rescue_results:
                         if isinstance(r, Exception):
                             result["failed_count"] += 1
                         elif r.get("success"):
@@ -6168,17 +6179,6 @@ class YabaiSpaceDetector:
                         else:
                             result["failed_count"] += 1
                             result["details"].append(r)
-            else:
-                rescue_results = await asyncio.gather(*tasks, return_exceptions=True)
-                for r in rescue_results:
-                    if isinstance(r, Exception):
-                        result["failed_count"] += 1
-                    elif r.get("success"):
-                        result["rescue_count"] += 1
-                        result["details"].append(r)
-                    else:
-                        result["failed_count"] += 1
-                        result["details"].append(r)
 
         # Return to original space (may fail without SA - that's OK)
         if current_space:

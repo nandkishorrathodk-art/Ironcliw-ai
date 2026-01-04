@@ -39,6 +39,7 @@ Features:
 """
 
 import asyncio
+import ctypes
 import gc
 import logging
 import os
@@ -1256,14 +1257,28 @@ class WindowTileInfo:
     tile_row: int = 0
     tile_col: int = 0
 
+    # v38.5: Z-order for overlapping window resolution
+    # Higher z_order = more on top (visible), lower = behind
+    z_order: int = 0
+
     # Metadata
     original_space_id: Optional[int] = None
     teleported_at: Optional[float] = None
+
+    # v38.5: Window layer info from yabai (normal, above, below)
+    window_layer: str = "normal"  # "normal", "above", "below"
 
     def contains_point(self, px: int, py: int) -> bool:
         """Check if a point (e.g., OCR match location) is within this tile."""
         return (self.x <= px < self.x + self.width and
                 self.y <= py < self.y + self.height)
+
+    def get_overlap_area(self, other: 'WindowTileInfo') -> int:
+        """v38.5: Calculate overlap area with another tile (for z-order decisions)."""
+        # Calculate intersection rectangle
+        x_overlap = max(0, min(self.x + self.width, other.x + other.width) - max(self.x, other.x))
+        y_overlap = max(0, min(self.y + self.height, other.y + other.height) - max(self.y, other.y))
+        return x_overlap * y_overlap
 
 
 @dataclass
@@ -1299,12 +1314,70 @@ class MosaicWatcherConfig:
     # Window tile mapping (populated when windows are teleported)
     window_tiles: List[WindowTileInfo] = field(default_factory=list)
 
+    # v38.5: Enable z-order resolution for overlapping windows
+    enable_zorder_resolution: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_MOSAIC_ZORDER", "true").lower() == "true"
+    )
+
     def get_tile_for_point(self, x: int, y: int) -> Optional[WindowTileInfo]:
-        """Find which window tile contains the given point."""
+        """
+        v38.5: Find which window tile contains the given point.
+
+        When multiple tiles overlap (contain the same point), uses z-order
+        resolution to return the topmost (most visible) window.
+
+        Args:
+            x: X coordinate in yabai points (not pixels)
+            y: Y coordinate in yabai points (not pixels)
+
+        Returns:
+            WindowTileInfo of the topmost tile containing the point, or None
+        """
+        # Collect all tiles that contain this point
+        containing_tiles: List[WindowTileInfo] = []
         for tile in self.window_tiles:
             if tile.contains_point(x, y):
-                return tile
-        return None
+                containing_tiles.append(tile)
+
+        if not containing_tiles:
+            return None
+
+        if len(containing_tiles) == 1:
+            return containing_tiles[0]
+
+        # v38.5: Multiple tiles overlap at this point - use z-order resolution
+        if self.enable_zorder_resolution:
+            # Sort by z_order (highest first = topmost window)
+            # Also consider window_layer as secondary sort (above > normal > below)
+            layer_priority = {"above": 2, "normal": 1, "below": 0}
+            containing_tiles.sort(
+                key=lambda t: (layer_priority.get(t.window_layer, 1), t.z_order),
+                reverse=True
+            )
+
+            topmost = containing_tiles[0]
+            logger.debug(
+                f"[MosaicWatcher v38.5] Z-order resolution: Point ({x}, {y}) in "
+                f"{len(containing_tiles)} overlapping tiles, selected window "
+                f"{topmost.window_id} (z={topmost.z_order}, layer={topmost.window_layer})"
+            )
+            return topmost
+
+        # Fallback: return first match (legacy behavior)
+        return containing_tiles[0]
+
+    def get_all_tiles_for_point(self, x: int, y: int) -> List[WindowTileInfo]:
+        """v38.5: Get all tiles containing a point, sorted by z-order (topmost first)."""
+        containing_tiles = [tile for tile in self.window_tiles if tile.contains_point(x, y)]
+
+        if len(containing_tiles) > 1:
+            layer_priority = {"above": 2, "normal": 1, "below": 0}
+            containing_tiles.sort(
+                key=lambda t: (layer_priority.get(t.window_layer, 1), t.z_order),
+                reverse=True
+            )
+
+        return containing_tiles
 
     def get_tile_for_window(self, window_id: int) -> Optional[WindowTileInfo]:
         """Get tile info for a specific window ID."""
@@ -1312,6 +1385,20 @@ class MosaicWatcherConfig:
             if tile.window_id == window_id:
                 return tile
         return None
+
+    def update_zorder_from_yabai(self, window_stack: List[int]) -> None:
+        """
+        v38.5: Update z-order values from yabai window stack order.
+
+        Args:
+            window_stack: List of window IDs in z-order (topmost first)
+        """
+        # Build z-order map: topmost = highest z_order value
+        zorder_map = {wid: len(window_stack) - idx for idx, wid in enumerate(window_stack)}
+
+        for tile in self.window_tiles:
+            if tile.window_id in zorder_map:
+                tile.z_order = zorder_map[tile.window_id]
 
 
 class MosaicCaptureStatus(Enum):
@@ -2752,12 +2839,368 @@ class MosaicWatcher:
                 asyncio.to_thread(self.frame_queue.get, timeout=timeout),
                 timeout=timeout + 0.5
             )
+
+            # v38.5: Add frame metadata for reliability checks
+            if frame_data and 'frame' in frame_data:
+                frame_data['timestamp'] = time.time()
+                frame_data['frame_id'] = self._frames_captured
+
             return frame_data
         except (asyncio.TimeoutError, queue.Empty):
             return None
         except Exception as e:
             logger.error(f"[MosaicWatcher] Error getting frame: {e}")
             return None
+
+    def is_black_screen(self, frame: np.ndarray, threshold: float = 0.02) -> bool:
+        """
+        v38.5: Detect if frame is a black/sleeping display.
+
+        Ghost Display may sleep or show black when disconnected. This method
+        detects such conditions to avoid false OCR failures.
+
+        Args:
+            frame: Numpy array (RGB or BGRA)
+            threshold: Maximum average brightness to consider "black" (0.0-1.0)
+
+        Returns:
+            True if frame appears to be black/sleeping display
+        """
+        if frame is None or frame.size == 0:
+            return True
+
+        try:
+            # Convert to grayscale for brightness analysis
+            if len(frame.shape) == 3:
+                if frame.shape[2] == 4:  # BGRA
+                    gray = np.mean(frame[:, :, :3], axis=2)
+                else:  # RGB
+                    gray = np.mean(frame, axis=2)
+            else:
+                gray = frame
+
+            # Calculate normalized average brightness (0.0-1.0)
+            avg_brightness = np.mean(gray) / 255.0
+
+            # Also check variance - a real display has variation even when dark
+            brightness_variance = np.var(gray) / (255.0 * 255.0)
+
+            # Black screen: low brightness AND low variance
+            is_black = avg_brightness < threshold and brightness_variance < 0.001
+
+            if is_black:
+                logger.debug(
+                    f"[MosaicWatcher v38.5] Black screen detected: "
+                    f"brightness={avg_brightness:.4f}, variance={brightness_variance:.6f}"
+                )
+
+            return is_black
+
+        except Exception as e:
+            logger.warning(f"[MosaicWatcher v38.5] Black screen detection error: {e}")
+            return False
+
+    def adaptive_upscale_for_ocr(
+        self,
+        frame: np.ndarray,
+        min_height: int = 720,
+        max_scale: float = 2.0
+    ) -> np.ndarray:
+        """
+        v38.5: Adaptively upscale frame for better OCR accuracy.
+
+        Small frames have poor OCR accuracy. This method upscales frames
+        that are below a minimum height threshold.
+
+        Args:
+            frame: Input frame (numpy array)
+            min_height: Minimum height for good OCR (default 720px)
+            max_scale: Maximum upscale factor (default 2.0x)
+
+        Returns:
+            Upscaled frame if needed, otherwise original frame
+        """
+        if frame is None or frame.size == 0:
+            return frame
+
+        try:
+            height = frame.shape[0]
+            width = frame.shape[1]
+
+            if height >= min_height:
+                # Frame already large enough
+                return frame
+
+            # Calculate scale factor needed
+            scale = min(min_height / height, max_scale)
+
+            # Don't upscale if less than 10% needed
+            if scale < 1.1:
+                return frame
+
+            new_height = int(height * scale)
+            new_width = int(width * scale)
+
+            # Use cv2 if available, otherwise use PIL
+            try:
+                import cv2
+                upscaled = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+            except ImportError:
+                from PIL import Image
+                pil_img = Image.fromarray(frame)
+                pil_img = pil_img.resize((new_width, new_height), Image.BICUBIC)
+                upscaled = np.array(pil_img)
+
+            logger.debug(
+                f"[MosaicWatcher v38.5] Adaptive upscale: {width}x{height} → "
+                f"{new_width}x{new_height} ({scale:.2f}x)"
+            )
+
+            return upscaled
+
+        except Exception as e:
+            logger.warning(f"[MosaicWatcher v38.5] Upscale error: {e}")
+            return frame
+
+    def check_frame_freshness(
+        self,
+        frame_data: Dict[str, Any],
+        max_age_seconds: float = 2.0
+    ) -> Tuple[bool, float]:
+        """
+        v38.5: Check if frame is fresh enough for reliable detection.
+
+        Stale frames may not reflect current display state, leading to
+        false positives/negatives.
+
+        Args:
+            frame_data: Frame data dict with 'timestamp' key
+            max_age_seconds: Maximum acceptable frame age
+
+        Returns:
+            (is_fresh, age_seconds) tuple
+        """
+        if not frame_data or 'timestamp' not in frame_data:
+            return False, float('inf')
+
+        frame_time = frame_data.get('timestamp', 0)
+        current_time = time.time()
+        age = current_time - frame_time
+
+        is_fresh = age <= max_age_seconds
+
+        if not is_fresh:
+            logger.warning(
+                f"[MosaicWatcher v38.5] Stale frame detected: age={age:.2f}s > max={max_age_seconds}s"
+            )
+
+        return is_fresh, age
+
+    def get_display_health(self) -> Dict[str, Any]:
+        """
+        v38.5: Get comprehensive display health metrics.
+
+        Returns health indicators for the Ghost Display capture.
+        """
+        uptime = time.time() - self.start_time if self.start_time > 0 else 0
+
+        with self._stats_lock:
+            frames_captured = self._frames_captured
+            frames_dropped = self._frames_dropped
+            last_frame_time = self._last_frame_time
+
+        # Calculate health metrics
+        frame_rate = frames_captured / uptime if uptime > 0 else 0
+        drop_rate = frames_dropped / frames_captured if frames_captured > 0 else 0
+        frame_gap = time.time() - last_frame_time if last_frame_time > 0 else float('inf')
+
+        # Determine health status
+        health_status = "healthy"
+        issues = []
+
+        if frame_gap > 2.0:
+            health_status = "degraded"
+            issues.append(f"No frames in {frame_gap:.1f}s")
+
+        if drop_rate > 0.1:
+            health_status = "degraded"
+            issues.append(f"High drop rate: {drop_rate:.1%}")
+
+        if frame_rate < self.config.fps * 0.5:
+            health_status = "degraded"
+            issues.append(f"Low FPS: {frame_rate:.1f} (target: {self.config.fps})")
+
+        if self.status == MosaicCaptureStatus.ERROR:
+            health_status = "critical"
+            issues.append("Capture session in error state")
+
+        return {
+            'status': health_status,
+            'frame_rate': round(frame_rate, 2),
+            'target_fps': self.config.fps,
+            'drop_rate': round(drop_rate, 4),
+            'last_frame_age': round(frame_gap, 2),
+            'queue_size': self.frame_queue.qsize(),
+            'issues': issues,
+            'display_id': self.config.display_id,
+            'uptime': round(uptime, 2)
+        }
+
+    async def stealth_wake_display(self) -> bool:
+        """
+        v38.5: Wake sleeping Ghost Display without stealing focus.
+
+        Uses caffeinate or a mouse jiggle on the Ghost Display to wake it
+        without bringing it to foreground or stealing keyboard focus.
+
+        Returns:
+            True if wake attempt was made successfully
+        """
+        import subprocess
+
+        try:
+            # Method 1: Use caffeinate to assert display wake
+            # -u = declare user activity (wakes display)
+            # -t 1 = for 1 second only
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ['caffeinate', '-u', '-t', '1'],
+                capture_output=True,
+                timeout=3
+            )
+
+            if result.returncode == 0:
+                logger.info(
+                    f"[MosaicWatcher v38.5] ☕ Stealth wake: caffeinate assertion sent"
+                )
+                return True
+
+            # Method 2: Fallback - use osascript to wake display
+            # This is less stealth but works on all macOS versions
+            wake_script = 'tell application "System Events" to key code 124'  # Right arrow
+            await asyncio.to_thread(
+                subprocess.run,
+                ['osascript', '-e', wake_script],
+                capture_output=True,
+                timeout=2
+            )
+
+            logger.info(f"[MosaicWatcher v38.5] ☕ Stealth wake: osascript fallback")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[MosaicWatcher v38.5] Stealth wake failed: {e}")
+            return False
+
+    async def refresh_window_layout(self) -> bool:
+        """
+        v38.5: Refresh window tile positions from yabai.
+
+        When windows move/resize on Ghost Display, tile positions become stale.
+        This method queries yabai to update tile positions.
+
+        Returns:
+            True if layout was refreshed successfully
+        """
+        import subprocess
+
+        try:
+            # Query yabai for all windows on Ghost Display's space
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ['yabai', '-m', 'query', '--windows', '--space', str(self.config.display_id)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                logger.warning(f"[MosaicWatcher v38.5] yabai query failed: {result.stderr}")
+                return False
+
+            import json
+            windows = json.loads(result.stdout)
+
+            # Update tile positions
+            updated_count = 0
+            for win in windows:
+                window_id = win.get('id')
+                tile = self.config.get_tile_for_window(window_id)
+
+                if tile:
+                    frame = win.get('frame', {})
+                    new_x = int(frame.get('x', tile.x))
+                    new_y = int(frame.get('y', tile.y))
+                    new_w = int(frame.get('w', tile.width))
+                    new_h = int(frame.get('h', tile.height))
+
+                    if (tile.x != new_x or tile.y != new_y or
+                        tile.width != new_w or tile.height != new_h):
+                        tile.x = new_x
+                        tile.y = new_y
+                        tile.width = new_w
+                        tile.height = new_h
+                        updated_count += 1
+
+            if updated_count > 0:
+                logger.info(
+                    f"[MosaicWatcher v38.5] 🔄 Layout refreshed: {updated_count} tiles updated"
+                )
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"[MosaicWatcher v38.5] Layout refresh failed: {e}")
+            return False
+
+    async def check_display_connection(self) -> Tuple[bool, str]:
+        """
+        v38.5: Check if Ghost Display is still connected.
+
+        Virtual displays can disconnect unexpectedly. This checks the
+        display is still available for capture.
+
+        Returns:
+            (is_connected, status_message) tuple
+        """
+        try:
+            from Quartz import CGGetActiveDisplayList, CGDisplayIsActive
+
+            # Get list of active displays
+            max_displays = 16
+            active_displays = (ctypes.c_uint32 * max_displays)()
+            display_count = ctypes.c_uint32()
+
+            # Use CGGetActiveDisplayList via ctypes or pyobjc
+            try:
+                err, displays, count = CGGetActiveDisplayList(max_displays, None, None)
+                display_ids = list(displays)[:count] if displays else []
+            except Exception:
+                # Fallback: assume display is connected if capture is working
+                if self.status == MosaicCaptureStatus.CAPTURING:
+                    with self._stats_lock:
+                        last_frame = self._last_frame_time
+                    if time.time() - last_frame < 2.0:
+                        return True, "Display assumed connected (capture active)"
+                return False, "Cannot verify display connection"
+
+            # Check if our display is in the list
+            is_connected = self.config.display_id in display_ids
+
+            if is_connected:
+                return True, f"Display {self.config.display_id} is connected"
+            else:
+                return False, f"Display {self.config.display_id} not found in active displays"
+
+        except ImportError:
+            # Quartz not available - assume connected if capture working
+            if self.status == MosaicCaptureStatus.CAPTURING:
+                return True, "Display assumed connected (Quartz unavailable)"
+            return False, "Cannot verify - Quartz unavailable"
+
+        except Exception as e:
+            logger.warning(f"[MosaicWatcher v38.5] Display check error: {e}")
+            return False, f"Error checking display: {e}"
 
     def get_tile_for_ocr_match(self, match_x: int, match_y: int) -> Optional[WindowTileInfo]:
         """

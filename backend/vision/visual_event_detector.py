@@ -232,7 +232,8 @@ class VisualEventDetector:
         frame: np.ndarray,
         target_text: str,
         case_sensitive: bool = False,
-        fuzzy: bool = True
+        fuzzy: bool = True,
+        extract_bounding_boxes: bool = False  # v38.5: Enable spatial intelligence
     ) -> TextDetectionResult:
         """
         Detect text in frame using OCR.
@@ -242,9 +243,10 @@ class VisualEventDetector:
             target_text: Text to find
             case_sensitive: Whether to match case
             fuzzy: Enable fuzzy matching for typo tolerance
+            extract_bounding_boxes: v38.5 - Extract bounding box coordinates for Mosaic mode
 
         Returns:
-            TextDetectionResult with detection details
+            TextDetectionResult with detection details (including bounding_box if enabled)
         """
         async with self._get_semaphore():
             self.total_detections += 1
@@ -279,11 +281,24 @@ class VisualEventDetector:
                     raise RuntimeError("PIL Image not available")
                 pil_image = Image.fromarray(processed_frame)
 
-                # Run OCR in thread pool (blocking operation)
-                ocr_text = await asyncio.to_thread(
-                    self._run_ocr,
-                    pil_image
-                )
+                # v38.5: Use bounding box extraction for spatial intelligence
+                matched_bbox = None
+                all_word_boxes = []
+
+                if extract_bounding_boxes:
+                    # Run OCR with bounding box extraction
+                    ocr_text, matched_bbox, all_word_boxes = await asyncio.to_thread(
+                        self._run_ocr_with_boxes,
+                        pil_image,
+                        target_text,
+                        case_sensitive
+                    )
+                else:
+                    # Standard OCR (faster, no coordinates)
+                    ocr_text = await asyncio.to_thread(
+                        self._run_ocr,
+                        pil_image
+                    )
 
                 logger.debug(f"OCR extracted {len(ocr_text) if ocr_text else 0} characters from frame")
 
@@ -311,18 +326,32 @@ class VisualEventDetector:
                     fuzzy=fuzzy
                 )
 
+                # v38.5: Build metadata with bounding box info
+                metadata = {
+                    'ocr_length': len(ocr_text),
+                    'preprocessed': self.config.enable_preprocessing,
+                }
+
+                # v38.5: Add spatial intelligence data
+                if extract_bounding_boxes:
+                    metadata['bounding_box_extracted'] = True
+                    metadata['word_boxes_count'] = len(all_word_boxes)
+                    if matched_bbox:
+                        # Calculate center point for spatial hit-testing
+                        metadata['match_x'] = matched_bbox[0] + matched_bbox[2] // 2
+                        metadata['match_y'] = matched_bbox[1] + matched_bbox[3] // 2
+                        metadata['match_bbox'] = matched_bbox
+
                 result = TextDetectionResult(
                     detected=detected,
                     confidence=confidence,
                     text_found=target_text if detected else "",
                     target_text=target_text,
                     method=DetectionMethod.OCR,
+                    bounding_box=matched_bbox,  # v38.5: Include bounding box
                     fuzzy_score=fuzzy_score,
                     all_text=ocr_text,
-                    metadata={
-                        'ocr_length': len(ocr_text),
-                        'preprocessed': self.config.enable_preprocessing,
-                    }
+                    metadata=metadata
                 )
 
                 if detected:
@@ -512,6 +541,125 @@ class VisualEventDetector:
         except Exception as e:
             logger.error(f"OCR error: {e}")
             return ""
+
+    # =========================================================================
+    # v38.5: OCR WITH BOUNDING BOX EXTRACTION
+    # =========================================================================
+    # ROOT CAUSE FIX: Spatial intelligence needs text coordinates
+    # SOLUTION: Use pytesseract.image_to_data() to get word-level bounding boxes
+    # =========================================================================
+
+    def _run_ocr_with_boxes(
+        self,
+        pil_image: Any,
+        target_text: str,
+        case_sensitive: bool = False
+    ) -> Tuple[str, Optional[Tuple[int, int, int, int]], List[Dict[str, Any]]]:
+        """
+        v38.5: Run OCR on PIL image and extract bounding boxes for matched text.
+
+        Uses pytesseract.image_to_data() to get word-level coordinates,
+        enabling spatial intelligence for Mosaic mode.
+
+        Args:
+            pil_image: PIL Image to OCR
+            target_text: Text to find (for bounding box extraction)
+            case_sensitive: Match case when finding target
+
+        Returns:
+            Tuple of (full_text, matched_bbox, all_word_boxes)
+            - full_text: Complete OCR text
+            - matched_bbox: (x, y, width, height) of matched text, or None
+            - all_word_boxes: List of all word boxes for debugging
+        """
+        try:
+            import pandas as pd
+            config = f'--psm {self.config.ocr_psm} --oem {self.config.ocr_oem}'
+
+            # Get OCR data with bounding boxes
+            data = pytesseract.image_to_data(
+                pil_image,
+                lang=self.config.ocr_lang,
+                config=config,
+                output_type=pytesseract.Output.DICT
+            )
+
+            # Build full text
+            full_text_parts = []
+            all_word_boxes = []
+
+            for i in range(len(data['text'])):
+                word = data['text'][i]
+                if word and word.strip():
+                    full_text_parts.append(word)
+
+                    # Store word box for spatial intelligence
+                    word_box = {
+                        'text': word,
+                        'x': data['left'][i],
+                        'y': data['top'][i],
+                        'width': data['width'][i],
+                        'height': data['height'][i],
+                        'conf': data['conf'][i]
+                    }
+                    all_word_boxes.append(word_box)
+
+            full_text = ' '.join(full_text_parts)
+
+            # Find bounding box for target text
+            matched_bbox = None
+            target_lower = target_text.lower() if not case_sensitive else target_text
+
+            # Strategy 1: Exact word match
+            for box in all_word_boxes:
+                box_text = box['text'].lower() if not case_sensitive else box['text']
+                if target_lower in box_text or box_text in target_lower:
+                    matched_bbox = (box['x'], box['y'], box['width'], box['height'])
+                    break
+
+            # Strategy 2: Multi-word phrase match (find consecutive words)
+            if not matched_bbox and ' ' in target_text:
+                target_words = target_lower.split()
+                for i in range(len(all_word_boxes) - len(target_words) + 1):
+                    phrase_boxes = all_word_boxes[i:i + len(target_words)]
+                    phrase_text = ' '.join(b['text'].lower() if not case_sensitive else b['text']
+                                          for b in phrase_boxes)
+                    if target_lower in phrase_text:
+                        # Calculate bounding box covering all words in phrase
+                        min_x = min(b['x'] for b in phrase_boxes)
+                        min_y = min(b['y'] for b in phrase_boxes)
+                        max_x = max(b['x'] + b['width'] for b in phrase_boxes)
+                        max_y = max(b['y'] + b['height'] for b in phrase_boxes)
+                        matched_bbox = (min_x, min_y, max_x - min_x, max_y - min_y)
+                        break
+
+            # Strategy 3: Fuzzy match - find closest matching word
+            if not matched_bbox and self._fuzzy_available:
+                best_match = None
+                best_score = 0
+                for box in all_word_boxes:
+                    box_text = box['text'].lower() if not case_sensitive else box['text']
+                    try:
+                        score = fuzz.partial_ratio(target_lower, box_text)
+                        if score > best_score and score >= 70:
+                            best_score = score
+                            best_match = box
+                    except Exception:
+                        pass
+                if best_match:
+                    matched_bbox = (best_match['x'], best_match['y'],
+                                   best_match['width'], best_match['height'])
+
+            return full_text, matched_bbox, all_word_boxes
+
+        except ImportError:
+            # pandas not available, fall back to simple OCR
+            logger.debug("[OCR v38.5] pandas not available for image_to_data - falling back")
+            text = self._run_ocr(pil_image)
+            return text, None, []
+        except Exception as e:
+            logger.error(f"[OCR v38.5] OCR with boxes error: {e}")
+            return "", None, []
 
     async def _preprocess_for_ocr(self, frame: np.ndarray) -> np.ndarray:
         """

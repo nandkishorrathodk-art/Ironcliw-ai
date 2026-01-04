@@ -6724,6 +6724,14 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         frame_count = 0
         ocr_checks = 0
 
+        # v38.5: Operational stability counters
+        last_health_check = start_time
+        last_layout_refresh = start_time
+        health_check_interval = float(os.getenv('JARVIS_MOSAIC_HEALTH_INTERVAL', '10.0'))
+        layout_refresh_interval = float(os.getenv('JARVIS_MOSAIC_LAYOUT_INTERVAL', '30.0'))
+        black_screen_count = 0
+        max_black_screen_retries = int(os.getenv('JARVIS_MOSAIC_BLACK_RETRIES', '5'))
+
         watcher_id = getattr(watcher, 'watcher_id', f"mosaic_{id(watcher)}")
         window_count = len(windows)
 
@@ -6785,13 +6793,111 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 if frame is None:
                     continue
 
+                # =========================================================
+                # v38.5: VISION RELIABILITY CHECKS
+                # =========================================================
+
+                current_time = time.time()
+
+                # v38.5: Check frame freshness - stale frames cause false negatives
+                if hasattr(watcher, 'check_frame_freshness'):
+                    is_fresh, frame_age = watcher.check_frame_freshness(frame_data, max_age_seconds=2.0)
+                    if not is_fresh:
+                        logger.debug(f"[Mosaic v38.5] Skipping stale frame (age: {frame_age:.2f}s)")
+                        continue
+
+                # v38.5: Black screen detection - sleeping display
+                if hasattr(watcher, 'is_black_screen'):
+                    if watcher.is_black_screen(frame):
+                        black_screen_count += 1
+                        logger.warning(
+                            f"[Mosaic v38.5] ⚫ Black screen ({black_screen_count}/{max_black_screen_retries})"
+                        )
+
+                        if black_screen_count >= max_black_screen_retries:
+                            # Check display connection after repeated black screens
+                            if hasattr(watcher, 'check_display_connection'):
+                                is_connected, msg = await watcher.check_display_connection()
+                                if not is_connected:
+                                    logger.error(f"[Mosaic v38.5] ❌ Display disconnected: {msg}")
+                            black_screen_count = 0
+
+                        # Stealth wake attempt
+                        if hasattr(watcher, 'stealth_wake_display'):
+                            try:
+                                await watcher.stealth_wake_display()
+                            except Exception:
+                                pass
+                        await asyncio.sleep(0.5)
+                        continue
+                    else:
+                        black_screen_count = 0
+
+                # v38.5: Adaptive upscaling for small frames
+                if hasattr(watcher, 'adaptive_upscale_for_ocr'):
+                    frame = watcher.adaptive_upscale_for_ocr(frame, min_height=720, max_scale=2.0)
+
+                # v38.5: Periodic health check
+                if current_time - last_health_check > health_check_interval:
+                    last_health_check = current_time
+                    if hasattr(watcher, 'get_display_health'):
+                        health = watcher.get_display_health()
+                        if health.get('status') != 'healthy':
+                            logger.warning(
+                                f"[Mosaic v38.5] ⚠️ Display health: {health.get('status')} - "
+                                f"{health.get('issues', [])}"
+                            )
+
+                # v38.5: Periodic layout refresh
+                if current_time - last_layout_refresh > layout_refresh_interval:
+                    last_layout_refresh = current_time
+                    if hasattr(watcher, 'refresh_window_layout'):
+                        try:
+                            await watcher.refresh_window_layout()
+                        except Exception:
+                            pass
+
+                # =========================================================
+                # v38.5: DYNAMIC SCALING FACTOR
+                # =========================================================
+
+                # v38.5: Calculate dynamic scaling factor (frame pixels → yabai points)
+                # Retina displays typically have 2x pixels, yabai uses logical points
+                frame_scale_factor = 1.0
+                if hasattr(frame, 'shape') and len(frame.shape) >= 2:
+                    frame_height, frame_width = frame.shape[:2]
+                    config_width = watcher.config.display_width
+                    config_height = watcher.config.display_height
+
+                    if config_width > 0 and config_height > 0:
+                        # Use the larger ratio to handle potential aspect ratio differences
+                        width_scale = frame_width / config_width
+                        height_scale = frame_height / config_height
+                        # Use average, or max if significantly different (should be ~2.0 for Retina)
+                        frame_scale_factor = (width_scale + height_scale) / 2.0
+
+                        # v38.5: Sanity check - common Retina scales are 1.0, 2.0, 3.0
+                        if frame_scale_factor < 0.5 or frame_scale_factor > 4.0:
+                            logger.warning(
+                                f"[Mosaic v38.5] Unusual scale factor {frame_scale_factor:.2f}, "
+                                f"frame: {frame_width}x{frame_height}, config: {config_width}x{config_height}"
+                            )
+                            frame_scale_factor = 1.0  # Fallback to 1:1
+
+                        logger.debug(
+                            f"[Mosaic v38.5] Dynamic scaling: {frame_scale_factor:.2f}x "
+                            f"(frame: {frame_width}x{frame_height} → config: {config_width}x{config_height})"
+                        )
+
                 # Run OCR on mosaic frame
                 ocr_checks += 1
 
-                # Use existing OCR detection
+                # v38.5: Use Mosaic mode OCR detection with spatial intelligence
                 detected, confidence, detected_text, ocr_context = await self._ocr_detect(
                     frame=frame,
-                    trigger_text=trigger_text
+                    trigger_text=trigger_text,
+                    mosaic_mode=True,  # v38.5: Enable spatial intelligence
+                    frame_scale_factor=frame_scale_factor  # v38.5: Dynamic Retina scaling
                 )
 
                 if detected:
@@ -7008,44 +7114,57 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
     async def _ocr_detect(
         self,
         frame: Any,
-        trigger_text: str
+        trigger_text: str,
+        mosaic_mode: bool = False,  # v38.5: Enable spatial intelligence for Mosaic
+        frame_scale_factor: float = 1.0  # v38.5: Dynamic scaling (e.g., 2.0 for Retina)
     ) -> tuple[bool, float, Optional[str], Optional[Dict[str, Any]]]:
         """
-        v32.3: INTELLIGENT OCR DETECTION with Semantic Fuzzy Matching
-        
+        v38.5: INTELLIGENT OCR DETECTION with Semantic Fuzzy Matching + Spatial Intelligence
+
         Run OCR on frame and check for trigger text using multi-tier matching:
-        
+
         TIER 1: Exact substring match (fastest, 100% confidence)
         TIER 2: Word stemming match ("bouncing" → "bounc" matches "BOUNCE" → "bounc")
         TIER 3: Rapidfuzz partial_ratio (80+ threshold, handles typos/variations)
         TIER 4: Rapidfuzz token_set_ratio (word reordering, 75+ threshold)
-        
+
+        v38.5 ENHANCEMENTS:
+        - mosaic_mode: When True, extracts OCR bounding boxes for spatial hit-testing
+        - frame_scale_factor: Converts frame pixels to yabai points (2.0 for Retina)
+        - Returns match_x/match_y in context for mapping detection to specific windows
+
         Also extracts context values (numbers like bounce counts) from detected text.
 
         Args:
             frame: Numpy array (RGB)
             trigger_text: Text to search for
+            mosaic_mode: v38.5 - Enable bounding box extraction for spatial intelligence
+            frame_scale_factor: v38.5 - Retina scaling factor (frame_pixels / yabai_points)
 
         Returns:
             (detected, confidence, detected_text, context_dict)
             - detected: True if trigger text found
             - confidence: Match confidence (0.0-1.0)
             - detected_text: Actual text that matched
-            - context_dict: Extracted context (numbers, surrounding text, etc.)
+            - context_dict: Extracted context (numbers, surrounding text, match_x, match_y)
         """
         context: Dict[str, Any] = {}
-        
+
         try:
             if not self._detector:
                 # No detector available - fallback
                 return False, 0.0, None, None
+
+            # v38.5: Extract bounding boxes when in Mosaic mode for spatial intelligence
+            extract_boxes = mosaic_mode and self.config.mosaic_spatial_intelligence
 
             # STEP 1: Run OCR to extract all text from frame
             result = await self._detector.detect_text(
                 frame=frame,
                 target_text=trigger_text,
                 case_sensitive=False,
-                fuzzy=True
+                fuzzy=True,
+                extract_bounding_boxes=extract_boxes  # v38.5: Spatial intelligence
             )
 
             # Get full OCR text for context extraction and fallback matching
@@ -7079,15 +7198,55 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             if result_detected:
                 confidence = result_confidence
                 matched_text = result_text
-                
+
                 # Extract context (numbers, values)
                 context = self._extract_ocr_context(full_ocr_text, trigger_text, matched_text)
                 context['match_tier'] = 'exact'
                 context['match_method'] = 'detector_exact_match'
-                
+
+                # v38.5: Propagate spatial coordinates if available (for Mosaic mode)
+                if extract_boxes and hasattr(result, 'metadata') and result.metadata:
+                    metadata = result.metadata
+                    if 'match_x' in metadata and 'match_y' in metadata:
+                        # v38.5: Apply dynamic scaling to convert frame pixels → yabai points
+                        # Frame is typically 2x pixels on Retina, yabai uses points
+                        raw_x = metadata['match_x']
+                        raw_y = metadata['match_y']
+
+                        if frame_scale_factor > 0:
+                            # Convert frame pixels to yabai coordinate space
+                            context['match_x'] = int(raw_x / frame_scale_factor)
+                            context['match_y'] = int(raw_y / frame_scale_factor)
+                            context['match_x_raw'] = raw_x  # Original pixel coordinates
+                            context['match_y_raw'] = raw_y
+                            context['frame_scale_factor'] = frame_scale_factor
+                        else:
+                            context['match_x'] = raw_x
+                            context['match_y'] = raw_y
+
+                        if 'match_bbox' in metadata:
+                            bbox = metadata['match_bbox']
+                            if frame_scale_factor > 0:
+                                # Scale bounding box as well
+                                context['match_bbox'] = (
+                                    int(bbox[0] / frame_scale_factor),
+                                    int(bbox[1] / frame_scale_factor),
+                                    int(bbox[2] / frame_scale_factor),
+                                    int(bbox[3] / frame_scale_factor)
+                                )
+                            else:
+                                context['match_bbox'] = bbox
+
+                        logger.debug(
+                            f"[OCR v38.5] Spatial intelligence: Match at ({context.get('match_x')}, "
+                            f"{context.get('match_y')}) with scale factor {frame_scale_factor}"
+                        )
+
                 logger.info(
-                    f"✅ [OCR v32.3] TIER 1 MATCH: '{trigger_text}' found as '{matched_text}' "
+                    f"✅ [OCR v38.5] TIER 1 MATCH: '{trigger_text}' found as '{matched_text}' "
                     f"(confidence: {confidence:.1%}) | Context: {context.get('extracted_number', 'N/A')}"
+                    + (f" | Pos: ({context.get('match_x', 'N/A')}, {context.get('match_y', 'N/A')})"
+                       if 'match_x' in context else "")
                 )
                 return True, confidence, matched_text, context
 
