@@ -6566,21 +6566,23 @@ class YabaiSpaceDetector:
         max_attempts: int = 3
     ) -> Tuple[bool, str]:
         """
-        v58.0: PATHFINDER PROTOCOL - SIP-Safe space navigation.
+        v59.0: NAVIGATOR PROTOCOL - Relative Space Traversal.
 
         When SIP is enabled, `yabai -m space --focus` is blocked by the kernel.
-        This method provides a fallback using AppleScript keyboard simulation
-        to switch spaces via standard macOS shortcuts (Ctrl+Number).
+        Ctrl+N shortcuts are often disabled by default in macOS.
+
+        This protocol uses RELATIVE TRAVERSAL via Ctrl+Left/Right Arrow keys,
+        which are universally enabled via Mission Control defaults.
 
         The Protocol:
         1. Try yabai focus first (works if SIP is disabled)
-        2. On failure, use AppleScript to simulate Ctrl+N keystroke
-        3. For spaces > 9, use Ctrl+Right/Left Arrow navigation
-        4. Verify the switch actually happened
+        2. On failure, calculate delta between current and target space
+        3. Walk the delta using Ctrl+Arrow (step by step)
+        4. Verify we arrived at the destination
 
         Args:
             target_space_index: The space index to navigate to (1-based)
-            max_attempts: Maximum retry attempts
+            max_attempts: Maximum retry attempts for the entire traversal
 
         Returns:
             Tuple of:
@@ -6590,65 +6592,84 @@ class YabaiSpaceDetector:
         yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
 
         logger.info(
-            f"[YABAI v58.0] 🧭 PATHFINDER: Navigating to Space {target_space_index}..."
+            f"[YABAI v59.0] 🧭 NAVIGATOR: Plotting course to Space {target_space_index}..."
         )
 
         # Get current space first
         current_space = await self._get_active_space_index_async()
 
         if current_space == target_space_index:
-            logger.info(f"[YABAI v58.0] ✅ Already on Space {target_space_index}")
+            logger.info(f"[YABAI v59.0] ✅ Already at destination (Space {target_space_index})")
             return True, "already_on_target"
 
-        for attempt in range(max_attempts):
-            # ═══════════════════════════════════════════════════════════════
-            # ATTEMPT 1: Try yabai direct focus (works if SIP disabled)
-            # ═══════════════════════════════════════════════════════════════
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    yabai_path, "-m", "space", "--focus", str(target_space_index),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        # ═══════════════════════════════════════════════════════════════════
+        # ATTEMPT 1: Try yabai direct focus (works if SIP disabled)
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "space", "--focus", str(target_space_index),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
-                if proc.returncode == 0:
-                    await asyncio.sleep(0.5)  # Wait for animation
-                    # Verify
-                    new_space = await self._get_active_space_index_async()
-                    if new_space == target_space_index:
-                        logger.info(
-                            f"[YABAI v58.0] ✅ PATHFINDER SUCCESS (yabai direct): "
-                            f"Space {current_space} → {target_space_index}"
-                        )
-                        return True, "yabai_direct"
-
-                # Check for SIP block
-                error_msg = stderr.decode().strip() if stderr else ""
-                if "scripting-addition" in error_msg.lower():
+            if proc.returncode == 0:
+                await asyncio.sleep(0.5)  # Wait for animation
+                # Verify
+                new_space = await self._get_active_space_index_async()
+                if new_space == target_space_index:
                     logger.info(
-                        f"[YABAI v58.0] 🔒 SIP BLOCKED yabai focus. "
-                        f"Engaging Pathfinder (Keyboard Simulation)..."
+                        f"[YABAI v59.0] ✅ NAVIGATOR SUCCESS (yabai direct): "
+                        f"Space {current_space} → {target_space_index}"
                     )
-                    # Fall through to AppleScript
+                    return True, "yabai_direct"
 
-            except Exception as e:
-                logger.debug(f"[YABAI v58.0] Yabai focus exception: {e}")
-
-            # ═══════════════════════════════════════════════════════════════
-            # ATTEMPT 2: AppleScript keyboard simulation (SIP-safe)
-            # ═══════════════════════════════════════════════════════════════
-            # macOS key codes: 18='1', 19='2', 20='3', 21='4', 22='5', 23='6', 24='7', 25='8', 26='9'
-            if 1 <= target_space_index <= 9:
-                key_code = 17 + target_space_index  # 18 for '1', 19 for '2', etc.
-
+            # Check for SIP block
+            error_msg = stderr.decode().strip() if stderr else ""
+            if "scripting-addition" in error_msg.lower():
                 logger.info(
-                    f"[YABAI v58.0] ⌨️ Simulating Ctrl+{target_space_index} (key code {key_code})..."
+                    f"[YABAI v59.0] 🔒 SIP BLOCKED. Engaging Navigator (Relative Traversal)..."
                 )
 
+        except Exception as e:
+            logger.debug(f"[YABAI v59.0] Yabai focus exception: {e}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # ATTEMPT 2: v59.0 NAVIGATOR - Relative Traversal via Ctrl+Arrow
+        # ═══════════════════════════════════════════════════════════════════
+        # This uses Mission Control's universal Ctrl+Left/Right shortcuts
+        # No assumption about Ctrl+Number being enabled
+        # ═══════════════════════════════════════════════════════════════════
+
+        for attempt in range(max_attempts):
+            # Recalculate from current position (in case we moved partially)
+            current_space = await self._get_active_space_index_async()
+            delta = target_space_index - current_space
+
+            if delta == 0:
+                logger.info(f"[YABAI v59.0] ✅ Arrived at destination (Space {target_space_index})")
+                return True, "relative_traversal"
+
+            # Determine direction
+            if delta > 0:
+                direction = "right"
+                arrow_key_code = 124  # Right Arrow
+            else:
+                direction = "left"
+                arrow_key_code = 123  # Left Arrow
+
+            steps_needed = abs(delta)
+
+            logger.info(
+                f"[YABAI v59.0] 🚶 TRAVERSAL: Space {current_space} → {target_space_index} "
+                f"({steps_needed} step{'s' if steps_needed > 1 else ''} {direction})"
+            )
+
+            # Walk the path step by step
+            for step in range(steps_needed):
                 applescript = f'''
                 tell application "System Events"
-                    key code {key_code} using {{control down}}
+                    key code {arrow_key_code} using {{control down}}
                 end tell
                 '''
 
@@ -6658,77 +6679,43 @@ class YabaiSpaceDetector:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
-                    await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                    await asyncio.wait_for(proc.communicate(), timeout=3.0)
 
-                    # CRITICAL: Wait for macOS space switch animation
-                    await asyncio.sleep(0.7)
-
-                    # Verify
-                    new_space = await self._get_active_space_index_async()
-                    if new_space == target_space_index:
-                        logger.info(
-                            f"[YABAI v58.0] ✅ PATHFINDER SUCCESS (keyboard): "
-                            f"Space {current_space} → {target_space_index}"
-                        )
-                        return True, "keyboard_shortcut"
+                    # CRITICAL: Wait for macOS space switch animation (each step)
+                    await asyncio.sleep(0.35)
 
                     logger.debug(
-                        f"[YABAI v58.0] Keyboard attempt {attempt + 1}: "
-                        f"Expected Space {target_space_index}, got {new_space}"
+                        f"[YABAI v59.0] Step {step + 1}/{steps_needed} ({direction})"
                     )
 
                 except Exception as e:
-                    logger.warning(f"[YABAI v58.0] Keyboard simulation failed: {e}")
+                    logger.warning(f"[YABAI v59.0] Traversal step failed: {e}")
+                    break
 
-            else:
-                # ═══════════════════════════════════════════════════════════
-                # ATTEMPT 3: Arrow key navigation for spaces > 9
-                # ═══════════════════════════════════════════════════════════
+            # Allow final animation to settle
+            await asyncio.sleep(0.3)
+
+            # Verify final position
+            final_space = await self._get_active_space_index_async()
+            if final_space == target_space_index:
                 logger.info(
-                    f"[YABAI v58.0] ⌨️ Space {target_space_index} > 9, using arrow navigation..."
+                    f"[YABAI v59.0] ✅ NAVIGATOR SUCCESS (relative traversal): "
+                    f"Space {current_space} → {target_space_index}"
                 )
+                return True, "relative_traversal"
 
-                # Calculate direction and steps
-                steps_needed = target_space_index - current_space
-                direction = "right" if steps_needed > 0 else "left"
-                arrow_key_code = 124 if direction == "right" else 123  # Right=124, Left=123
-
-                for step in range(abs(steps_needed)):
-                    applescript = f'''
-                    tell application "System Events"
-                        key code {arrow_key_code} using {{control down}}
-                    end tell
-                    '''
-
-                    try:
-                        proc = await asyncio.create_subprocess_exec(
-                            "osascript", "-e", applescript,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await asyncio.wait_for(proc.communicate(), timeout=3.0)
-                        await asyncio.sleep(0.4)  # Wait for each step
-
-                    except Exception as e:
-                        logger.warning(f"[YABAI v58.0] Arrow step failed: {e}")
-                        break
-
-                # Verify final position
-                new_space = await self._get_active_space_index_async()
-                if new_space == target_space_index:
-                    logger.info(
-                        f"[YABAI v58.0] ✅ PATHFINDER SUCCESS (arrow nav): "
-                        f"Space {current_space} → {target_space_index}"
-                    )
-                    return True, "arrow_navigation"
+            logger.debug(
+                f"[YABAI v59.0] Traversal attempt {attempt + 1}: "
+                f"Expected Space {target_space_index}, landed on {final_space}"
+            )
 
             # Small delay before retry
             if attempt < max_attempts - 1:
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)
 
         logger.warning(
-            f"[YABAI v58.0] ❌ PATHFINDER FAILED: Could not navigate to Space {target_space_index} "
-            f"after {max_attempts} attempts"
+            f"[YABAI v59.0] ❌ NAVIGATOR FAILED: Could not reach Space {target_space_index} "
+            f"after {max_attempts} traversal attempts"
         )
         return False, "navigation_failed"
 
@@ -7098,14 +7085,14 @@ class YabaiSpaceDetector:
             )
 
         # ═══════════════════════════════════════════════════════════════════
-        # v58.0: PATHFINDER - SIP-Safe navigation to Safe Harbor
+        # v59.0: NAVIGATOR - SIP-Safe relative traversal to Safe Harbor
         # ═══════════════════════════════════════════════════════════════════
         # This is CRITICAL: The --display command targets the ACTIVE space.
         # We MUST make the Safe Harbor the active space first.
-        # Uses keyboard simulation if SIP blocks yabai space --focus.
+        # Uses Ctrl+Arrow relative navigation (universally enabled via Mission Control).
         # ═══════════════════════════════════════════════════════════════════
         logger.info(
-            f"[YABAI v58.0] 🎯 PRE-FLIGHT: Navigating to Safe Harbor (Space {safe_landing_space}) "
+            f"[YABAI v59.0] 🎯 PRE-FLIGHT: Navigating to Safe Harbor (Space {safe_landing_space}) "
             f"on Display {dest_display}..."
         )
 
@@ -7116,11 +7103,11 @@ class YabaiSpaceDetector:
 
         if nav_success:
             logger.info(
-                f"[YABAI v58.0] ✅ Safe Harbor reached via {nav_method} (Space {safe_landing_space})"
+                f"[YABAI v59.0] ✅ Safe Harbor reached via {nav_method} (Space {safe_landing_space})"
             )
         else:
             logger.warning(
-                f"[YABAI v58.0] ⚠️ Could not navigate to Safe Harbor - will attempt move anyway"
+                f"[YABAI v59.0] ⚠️ Could not navigate to Safe Harbor - will attempt move anyway"
             )
 
         # Use safe landing space as destination
