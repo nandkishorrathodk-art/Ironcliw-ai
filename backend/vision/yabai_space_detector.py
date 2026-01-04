@@ -6560,6 +6560,167 @@ class YabaiSpaceDetector:
 
         return 1
 
+    async def _get_safe_landing_space_async(
+        self,
+        target_display: int,
+        create_if_needed: bool = True
+    ) -> Tuple[Optional[int], bool]:
+        """
+        v57.2: INTELLIGENT LANDING - Find or create a Safe Harbor on target display.
+
+        The Safe Harbor Finder scans the target display for a non-fullscreen space
+        where windows can safely land. If ALL spaces are fullscreen, it creates
+        a new desktop space (Terraforming).
+
+        Args:
+            target_display: The display index to find/create safe space on
+            create_if_needed: If True, create new space if none found (Terraforming)
+
+        Returns:
+            Tuple of:
+                - safe_space_index: Index of safe landing space (None if failed)
+                - was_created: True if a new space was terraformed
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        logger.info(
+            f"[YABAI v57.2] 🛬 SAFE HARBOR FINDER: Scanning Display {target_display} for landing zone..."
+        )
+
+        try:
+            # Query ALL spaces
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "query", "--spaces",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if proc.returncode != 0 or not stdout:
+                logger.warning(f"[YABAI v57.2] Failed to query spaces")
+                return None, False
+
+            all_spaces = json.loads(stdout.decode())
+
+            # Find spaces on target display
+            display_spaces = [s for s in all_spaces if s.get("display") == target_display]
+
+            if not display_spaces:
+                logger.warning(f"[YABAI v57.2] No spaces found on Display {target_display}")
+                return None, False
+
+            # Find the FIRST non-fullscreen space on this display
+            safe_space = None
+            current_visible_space = None
+
+            for s in display_spaces:
+                space_idx = s.get("index")
+                is_fs = s.get("is-native-fullscreen", False)
+                is_visible = s.get("is-visible", False) or s.get("has-focus", False)
+
+                if is_visible:
+                    current_visible_space = space_idx
+
+                if not is_fs:
+                    safe_space = space_idx
+                    logger.info(
+                        f"[YABAI v57.2] ✅ Found Safe Harbor: Space {space_idx} on Display {target_display}"
+                    )
+                    break
+
+            if safe_space:
+                return safe_space, False
+
+            # ═══════════════════════════════════════════════════════════════════
+            # EDGE CASE: ALL spaces on this display are fullscreen!
+            # We must TERRAFORM - create a new desktop space
+            # ═══════════════════════════════════════════════════════════════════
+            if not safe_space and create_if_needed:
+                logger.warning(
+                    f"[YABAI v57.2] ⚠️ ALL {len(display_spaces)} spaces on Display {target_display} "
+                    f"are FULLSCREEN! Initiating TERRAFORMING..."
+                )
+
+                # To create a space on a specific display, we need to:
+                # 1. First focus any space on that display
+                # 2. Then create a new space (it inherits the display)
+                if current_visible_space:
+                    # Focus the visible space first (even if fullscreen)
+                    try:
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "space", "--focus", str(current_visible_space),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        logger.debug(f"[YABAI v57.2] Pre-focus failed: {e}")
+
+                # Create new space
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        yabai_path, "-m", "space", "--create",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                    if proc.returncode == 0:
+                        # Query to find the newly created space
+                        await asyncio.sleep(0.5)  # Wait for yabai to register the new space
+
+                        proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "query", "--spaces",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        stdout2, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                        if proc.returncode == 0 and stdout2:
+                            new_spaces = json.loads(stdout2.decode())
+
+                            # Find the newest space on this display (highest index)
+                            new_display_spaces = [
+                                s for s in new_spaces
+                                if s.get("display") == target_display
+                            ]
+
+                            if len(new_display_spaces) > len(display_spaces):
+                                # Find the new space (the one that wasn't there before)
+                                old_indices = {s.get("index") for s in display_spaces}
+                                new_space = None
+
+                                for s in new_display_spaces:
+                                    if s.get("index") not in old_indices:
+                                        new_space = s.get("index")
+                                        break
+
+                                if new_space:
+                                    logger.info(
+                                        f"[YABAI v57.2] 🌍 TERRAFORMED: Created new Safe Harbor "
+                                        f"Space {new_space} on Display {target_display}"
+                                    )
+                                    return new_space, True
+
+                        logger.warning("[YABAI v57.2] Terraforming succeeded but couldn't find new space")
+
+                    else:
+                        error_msg = stderr.decode().strip() if stderr else "Unknown"
+                        logger.warning(f"[YABAI v57.2] Terraforming failed: {error_msg}")
+
+                except Exception as e:
+                    logger.warning(f"[YABAI v57.2] Terraforming exception: {e}")
+
+            logger.warning(
+                f"[YABAI v57.2] ❌ No Safe Harbor found or created on Display {target_display}"
+            )
+            return None, False
+
+        except Exception as e:
+            logger.warning(f"[YABAI v57.2] Safe harbor search failed: {e}")
+            return None, False
+
     async def summon_window_from_shadow_realm_async(
         self,
         window_id: Optional[int] = None,
@@ -6738,79 +6899,71 @@ class YabaiSpaceDetector:
         # PHASE 3: TARGET - Get user's active display (no hardcoding)
         # ═══════════════════════════════════════════════════════════════════
         dest_display = await self._get_active_display_index_async()
-        dest_space = await self._get_active_space_index_async()
 
-        # v57.1: Check if target space is fullscreen (can't move windows there)
-        target_is_fullscreen = False
-        fallback_space = None
+        # ═══════════════════════════════════════════════════════════════════
+        # v57.2: INTELLIGENT LANDING - Prepare Safe Harbor BEFORE moving
+        # ═══════════════════════════════════════════════════════════════════
+        # The --display command moves to the ACTIVE space on that display.
+        # If the active space is fullscreen, the move FAILS.
+        # Solution: Find (or create) a Safe Harbor and switch to it FIRST.
+        # ═══════════════════════════════════════════════════════════════════
+        safe_landing_space, was_terraformed = await self._get_safe_landing_space_async(
+            target_display=dest_display,
+            create_if_needed=True  # Enable terraforming if ALL spaces are fullscreen
+        )
+
+        if not safe_landing_space:
+            logger.error(
+                f"[YABAI v57.2] ❌ ABORT: No Safe Harbor available on Display {dest_display}. "
+                f"Cannot summon window."
+            )
+            return False, "no_safe_landing_space", target_window_id
+
+        # Log terraforming if it happened
+        if was_terraformed:
+            logger.info(
+                f"[YABAI v57.2] 🌍 TERRAFORMED new Safe Harbor on Display {dest_display}"
+            )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # v57.2: PRE-FLIGHT - Switch to Safe Harbor BEFORE moving window
+        # ═══════════════════════════════════════════════════════════════════
+        # This is CRITICAL: The --display command targets the ACTIVE space.
+        # We MUST make the Safe Harbor the active space first.
+        # ═══════════════════════════════════════════════════════════════════
+        logger.info(
+            f"[YABAI v57.2] 🎯 PRE-FLIGHT: Activating Safe Harbor (Space {safe_landing_space}) "
+            f"on Display {dest_display}..."
+        )
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                yabai_path, "-m", "query", "--spaces",
+                yabai_path, "-m", "space", "--focus", str(safe_landing_space),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
-            if proc.returncode == 0 and stdout:
-                all_spaces = json.loads(stdout.decode())
-
-                # Check if target space is fullscreen
-                for s in all_spaces:
-                    if s.get("index") == dest_space:
-                        if s.get("is-native-fullscreen", False):
-                            target_is_fullscreen = True
-                            logger.info(
-                                f"[YABAI v57.0] ⚠️ Target space {dest_space} is fullscreen - "
-                                f"finding alternative space on Display {dest_display}"
-                            )
-                        break
-
-                # If fullscreen, find a non-fullscreen space on the same display
-                if target_is_fullscreen:
-                    for s in all_spaces:
-                        if (s.get("display") == dest_display and
-                            not s.get("is-native-fullscreen", False)):
-                            fallback_space = s.get("index")
-                            logger.info(
-                                f"[YABAI v57.0] 🎯 Found fallback space {fallback_space} "
-                                f"on Display {dest_display}"
-                            )
-                            break
+            if proc.returncode == 0:
+                # CRITICAL: Wait for macOS space switch animation to complete
+                await asyncio.sleep(0.5)
+                logger.info(
+                    f"[YABAI v57.2] ✅ Safe Harbor activated (Space {safe_landing_space})"
+                )
+            else:
+                error_msg = stderr.decode().strip() if stderr else "Unknown"
+                logger.warning(f"[YABAI v57.2] Space focus failed: {error_msg}")
 
         except Exception as e:
-            logger.debug(f"[YABAI v57.0] Fullscreen check failed: {e}")
+            logger.warning(f"[YABAI v57.2] Pre-flight space switch failed: {e}")
 
-        # Use fallback space if target is fullscreen
-        if target_is_fullscreen and fallback_space:
-            dest_space = fallback_space
+        # Use safe landing space as destination
+        dest_space = safe_landing_space
 
         logger.info(
-            f"[YABAI v57.0] 🎯 TARGET: Summoning to Display {dest_display}, Space {dest_space}"
-            f"{' (fallback from fullscreen)' if target_is_fullscreen else ''}"
+            f"[YABAI v57.2] 🎯 TARGET: Summoning to Display {dest_display}, Space {dest_space}"
+            f"{' (TERRAFORMED)' if was_terraformed else ' (Safe Harbor)'}"
         )
-
-        # ═══════════════════════════════════════════════════════════════════
-        # v57.1: INTELLIGENT LANDING - Switch user to safe space first
-        # ═══════════════════════════════════════════════════════════════════
-        # If we're diverting to a fallback space, bring the user there first
-        # so they can see the window arrive
-        # ═══════════════════════════════════════════════════════════════════
-        if target_is_fullscreen and fallback_space:
-            logger.info(
-                f"[YABAI v57.1] 🛬 INTELLIGENT LANDING: Switching user to Safe Harbor (Space {fallback_space})..."
-            )
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    yabai_path, "-m", "space", "--focus", str(fallback_space),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                # Wait for space switch animation
-                await asyncio.sleep(0.3)
-            except Exception as e:
-                logger.debug(f"[YABAI v57.1] Space switch failed: {e}")
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 4: MOVE - Transport window to active display
@@ -6835,13 +6988,13 @@ class YabaiSpaceDetector:
                 error_msg = stderr.decode().strip() if stderr else "Unknown"
                 logger.warning(f"[YABAI v57.0] Display move failed: {error_msg}")
 
-                # v57.1: If display move failed due to fullscreen, try space move with fallback
-                if "fullscreen" in error_msg.lower() and fallback_space:
+                # v57.2: If display move failed due to fullscreen, try space move with safe landing zone
+                if "fullscreen" in error_msg.lower() and safe_landing_space:
                     logger.info(
-                        f"[YABAI v57.0] Retrying with fallback space {fallback_space}..."
+                        f"[YABAI v57.2] Retrying with safe landing zone (Space {safe_landing_space})..."
                     )
                     proc = await asyncio.create_subprocess_exec(
-                        yabai_path, "-m", "window", str(target_window_id), "--space", str(fallback_space),
+                        yabai_path, "-m", "window", str(target_window_id), "--space", str(safe_landing_space),
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
@@ -6849,7 +7002,7 @@ class YabaiSpaceDetector:
                     if proc.returncode == 0:
                         move_success = True
                         logger.info(
-                            f"[YABAI v57.0] 🚀 MOVE: Window {target_window_id} → Space {fallback_space} SUCCESS (fallback)"
+                            f"[YABAI v57.2] 🚀 MOVE: Window {target_window_id} → Space {safe_landing_space} SUCCESS (safe landing)"
                         )
 
         except Exception as e:
