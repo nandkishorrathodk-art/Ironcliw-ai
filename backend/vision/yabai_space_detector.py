@@ -5250,11 +5250,14 @@ class YabaiSpaceDetector:
         )
 
         # AX API AppleScript that targets process by PID
+        # v51.1: Enhanced to handle presentation mode (AXFullScreen=false on fullscreen space)
         ax_script = f'''
         tell application "System Events"
             try
                 -- Target process by PID (DNA) - bypasses app name entirely
                 set targetProc to first process whose unix id is {pid}
+                set didFlipAny to false
+                set allAlreadyFalse to true
 
                 tell targetProc
                     -- Wake up from App Nap if sleeping
@@ -5272,11 +5275,35 @@ class YabaiSpaceDetector:
                                 if currentFullscreen is true then
                                     -- FLIP THE SWITCH - Force exit fullscreen at OS level
                                     set value of attribute "AXFullScreen" of targetWin to false
+                                    set didFlipAny to true
+                                    set allAlreadyFalse to false
                                     delay 0.5
                                 end if
                             end if
                         end repeat
-                        return "SUCCESS"
+
+                        if didFlipAny then
+                            return "FLIPPED"
+                        else if allAlreadyFalse then
+                            -- v51.1: PRESENTATION MODE FIX
+                            -- Window claims NOT fullscreen but Space IS fullscreen.
+                            -- This happens with PWAs in "presentation mode" or "kiosk mode".
+                            -- Try sending Escape key to exit presentation mode.
+                            tell application "System Events"
+                                key code 53 -- Escape key
+                            end tell
+                            delay 0.3
+
+                            -- Also try Ctrl+Cmd+F (macOS fullscreen toggle)
+                            tell application "System Events"
+                                keystroke "f" using {{control down, command down}}
+                            end tell
+                            delay 0.5
+
+                            return "ESCAPED"
+                        else
+                            return "NO_ACTION"
+                        end if
                     else
                         return "ERROR: No windows found for PID"
                     end if
@@ -5299,19 +5326,32 @@ class YabaiSpaceDetector:
             result = stdout.decode().strip() if stdout else ""
             error = stderr.decode().strip() if stderr else ""
 
-            if "SUCCESS" in result:
+            # v51.1: Handle different result types
+            if "FLIPPED" in result:
                 logger.info(
-                    f"[YABAI v51.0] ☢️ AX API SUCCESS: Force-flipped AXFullScreen for PID {pid}"
+                    f"[YABAI v51.1] ☢️ AX API FLIPPED: Successfully flipped AXFullScreen for PID {pid}"
                 )
-
                 # Wait for macOS to process the state change
                 sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
                 await asyncio.sleep(sip_delay)
-
                 return True
+            elif "ESCAPED" in result:
+                logger.info(
+                    f"[YABAI v51.1] ☢️ AX API ESCAPED: Sent Escape/Ctrl+Cmd+F to exit presentation mode "
+                    f"for PID {pid} (AXFullScreen was already false)"
+                )
+                # Wait for macOS to process the state change
+                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                await asyncio.sleep(sip_delay)
+                return True
+            elif "NO_ACTION" in result:
+                logger.warning(
+                    f"[YABAI v51.1] AX API NO_ACTION: No fullscreen windows found for PID {pid}"
+                )
+                return False
             else:
                 logger.warning(
-                    f"[YABAI v51.0] AX API result for PID {pid}: {result or error}"
+                    f"[YABAI v51.1] AX API result for PID {pid}: {result or error}"
                 )
                 return False
 
@@ -5714,26 +5754,72 @@ class YabaiSpaceDetector:
                     )
 
                     if ax_api_success:
-                        # v51.0: Verify AX API worked by checking Space again
-                        await asyncio.sleep(1.0)  # Give macOS time to animate
-                        space_still_fullscreen, _ = await self._is_space_native_fullscreen_async(window_space_id)
+                        # ═══════════════════════════════════════════════════════════
+                        # v51.1: CORRECT VERIFICATION - Re-query WINDOW for NEW space
+                        # ═══════════════════════════════════════════════════════════
+                        # BUG FIX: We were checking the OLD space (window_space_id).
+                        # After unpack, the window moves to a DIFFERENT space and the
+                        # old phantom space might be DESTROYED.
+                        #
+                        # SOLUTION: Re-query the window to get its NEW location,
+                        # then verify that new location isn't fullscreen.
+                        # ═══════════════════════════════════════════════════════════
+                        await asyncio.sleep(1.5)  # Give macOS time to animate and settle
 
-                        if not space_still_fullscreen:
-                            logger.info(
-                                f"[YABAI v51.0] ✅ AX API PROTOCOL SUCCESS: Window {window_id} "
-                                f"unpacked via PID {window_pid} - Universal Solvent worked!"
+                        # Re-query window to get its NEW space
+                        yabai_path = self._health.yabai_path or "yabai"
+                        try:
+                            proc = await asyncio.create_subprocess_exec(
+                                yabai_path, "-m", "query", "--windows", "--window", str(window_id),
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE
                             )
-                            unpack_success = True
-                        else:
-                            logger.warning(
-                                f"[YABAI v51.0] ⚠️ AX API returned success but Space still "
-                                f"fullscreen - may need animation time"
-                            )
-                            # Give more time for animation
-                            await asyncio.sleep(2.0)
-                            space_still_fullscreen2, _ = await self._is_space_native_fullscreen_async(window_space_id)
-                            if not space_still_fullscreen2:
-                                logger.info(f"[YABAI v51.0] ✅ AX API succeeded after extended wait")
+                            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                            if proc.returncode == 0 and stdout:
+                                new_window_info = json.loads(stdout.decode())
+                                new_space_id = new_window_info.get("space", -1)
+
+                                # Check if window's NEW space is fullscreen
+                                new_space_fullscreen, _ = await self._is_space_native_fullscreen_async(new_space_id)
+
+                                if not new_space_fullscreen:
+                                    logger.info(
+                                        f"[YABAI v51.1] ✅ AX API PROTOCOL SUCCESS: Window {window_id} "
+                                        f"unpacked via PID {window_pid} - now on Space {new_space_id} "
+                                        f"(was on phantom Space {window_space_id})"
+                                    )
+                                    unpack_success = True
+                                else:
+                                    logger.warning(
+                                        f"[YABAI v51.1] ⚠️ AX API: Window moved to Space {new_space_id} "
+                                        f"but that space is STILL fullscreen - extended wait..."
+                                    )
+                                    # Extended wait and retry
+                                    await asyncio.sleep(2.5)
+                                    final_fullscreen, _ = await self._is_space_native_fullscreen_async(new_space_id)
+                                    if not final_fullscreen:
+                                        logger.info(f"[YABAI v51.1] ✅ AX API succeeded after extended wait")
+                                        unpack_success = True
+                            else:
+                                # Window query failed - might have been destroyed and reborn
+                                logger.warning(
+                                    f"[YABAI v51.1] Window {window_id} query failed after AX API - "
+                                    f"window may have been reborn. Checking old space..."
+                                )
+                                # Fallback: check if old space is gone (indicating success)
+                                old_space_fullscreen, _ = await self._is_space_native_fullscreen_async(window_space_id)
+                                if not old_space_fullscreen:
+                                    logger.info(
+                                        f"[YABAI v51.1] ✅ Old phantom Space {window_space_id} no longer "
+                                        f"fullscreen (likely destroyed) - AX API succeeded"
+                                    )
+                                    unpack_success = True
+                        except Exception as e:
+                            logger.warning(f"[YABAI v51.1] AX API verification error: {e}")
+                            # Fallback: assume success if old space is gone
+                            old_space_fullscreen, _ = await self._is_space_native_fullscreen_async(window_space_id)
+                            if not old_space_fullscreen:
                                 unpack_success = True
                 else:
                     logger.warning(
@@ -6377,12 +6463,39 @@ class YabaiSpaceDetector:
                 except Exception as e:
                     logger.warning(f"[YABAI] Failed to unminimize: {e}")
 
-            if window_info and window_info.get("is-native-fullscreen", False):
-                logger.error(
-                    f"[YABAI] ❌ Window {window_id} re-entered fullscreen after unpacking (double-toggle bug!)"
-                )
-                self._health.record_failure("Window re-entered fullscreen")
-                return False
+            # ═══════════════════════════════════════════════════════════════════
+            # v51.1: SPACE-BASED TRUTH VERIFICATION (not Window claim!)
+            # ═══════════════════════════════════════════════════════════════════
+            # BUG FIX: We were checking window_info.get("is-native-fullscreen")
+            # but Windows LIE about fullscreen status! PWAs like Google Gemini
+            # claim is-native-fullscreen=false even when they're in fullscreen.
+            #
+            # SOLUTION: Query the SPACE to get the truth about fullscreen status.
+            # ═══════════════════════════════════════════════════════════════════
+            if window_info:
+                new_space_id = window_info.get("space", -1)
+                space_is_fullscreen, _ = await self._is_space_native_fullscreen_async(new_space_id)
+                window_claims_fullscreen = window_info.get("is-native-fullscreen", False)
+
+                if space_is_fullscreen:
+                    # Space says fullscreen - this is THE TRUTH
+                    if not window_claims_fullscreen:
+                        logger.warning(
+                            f"[YABAI v51.1] 🔮 LYING WINDOW DETECTED: Window {window_id} claims "
+                            f"is-native-fullscreen=false, but Space {new_space_id} says TRUE!"
+                        )
+                    logger.error(
+                        f"[YABAI v51.1] ❌ Window {window_id} still in fullscreen after unpacking "
+                        f"(Space {new_space_id} confirms - this is the TRUTH)"
+                    )
+                    self._health.record_failure("Window still fullscreen after unpack (Space-verified)")
+                    return False
+                elif window_claims_fullscreen:
+                    # Window claims fullscreen but Space doesn't - Window is lying (or transitioning)
+                    logger.info(
+                        f"[YABAI v51.1] ✅ Window {window_id} claims fullscreen but Space {new_space_id} "
+                        f"says NOT fullscreen - trusting Space (unpack succeeded)"
+                    )
 
             # ═══════════════════════════════════════════════════════════════
             # v35.5: TOPOLOGY REFRESH - Re-calculate target after unpack
