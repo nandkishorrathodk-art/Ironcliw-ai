@@ -58,6 +58,7 @@ class EnhancedWindowInfo:
     # Space info
     space_id: Optional[int] = None
     space_uuid: Optional[str] = None
+    display_id: int = 1  # v60.0 PANOPTICON: Track which display the window is on
     visibility: SpaceWindowVisibility = SpaceWindowVisibility.HIDDEN
 
     # Position and state
@@ -153,6 +154,8 @@ class MultiSpaceWindowDetector:
                         spaces_dict[space_id] = space_info
 
                         # Add windows from this space
+                        # v60.0 PANOPTICON: Extract display_id for Ghost Display tracking
+                        space_display_id = yabai_space.get("display", 1)
                         for window in yabai_space.get("windows", []):
                             window_info = EnhancedWindowInfo(
                                 window_id=window.get("id", 0),
@@ -160,6 +163,7 @@ class MultiSpaceWindowDetector:
                                 window_title=window.get("title", ""),
                                 process_id=0,  # Not available from Yabai
                                 space_id=space_id,
+                                display_id=space_display_id,  # v60.0 PANOPTICON
                                 visibility=(
                                     SpaceWindowVisibility.VISIBLE_CURRENT_SPACE
                                     if yabai_space.get("is_current")
@@ -373,6 +377,8 @@ class MultiSpaceWindowDetector:
                     spaces_dict[space_id] = space_info
 
                     # Add windows from this space
+                    # v60.0 PANOPTICON: Extract display_id for Ghost Display tracking
+                    space_display_id = yabai_space.get("display", 1)
                     for window in yabai_space.get("windows", []):
                         window_info = EnhancedWindowInfo(
                             window_id=window.get("id", 0),
@@ -380,6 +386,7 @@ class MultiSpaceWindowDetector:
                             window_title=window.get("title", ""),
                             process_id=0,
                             space_id=space_id,
+                            display_id=space_display_id,  # v60.0 PANOPTICON
                             visibility=(
                                 SpaceWindowVisibility.VISIBLE_CURRENT_SPACE
                                 if yabai_space.get("is_current")

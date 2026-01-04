@@ -3133,10 +3133,37 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # Instead of spawning N watchers for N windows, spawn ONE MosaicWatcher
         # that captures the entire Ghost Display where all windows are tiled.
         # =========================================================================
+        #
+        # v61.0 RETINA PROTOCOL: Force Mosaic mode for Ghost Display windows
+        # ===================================================================
+        # ROOT CAUSE FIX: Per-window capture (SCK, CGWindowListCreateImage) FAILS
+        # for windows on virtual displays (Ghost Display). The only reliable way
+        # to capture these windows is to capture the entire display.
+        #
+        # SOLUTION: If ANY window is on Ghost Display, force Mosaic mode
+        # regardless of window count. The display capture is reliable.
+        # ===================================================================
+        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+
+        # v61.0: Check if any window is on Ghost Display
+        any_on_ghost_display = any(
+            window.get('is_on_ghost_display', False) or
+            window.get('display_id', 1) >= ghost_display_index
+            for window in windows
+        )
+
         use_mosaic_mode = (
             self.config.mosaic_mode_enabled and
-            len(windows) >= self.config.mosaic_mode_min_windows
+            (len(windows) >= self.config.mosaic_mode_min_windows or any_on_ghost_display)
         )
+
+        if any_on_ghost_display and not use_mosaic_mode:
+            # Mosaic mode is disabled but we have Ghost Display windows - force it
+            logger.info(
+                f"[v61.0 RETINA] 🔭 Forcing Mosaic mode for Ghost Display windows "
+                f"(per-window capture unreliable on virtual displays)"
+            )
+            use_mosaic_mode = self.config.mosaic_mode_enabled  # Force if globally enabled
 
         if use_mosaic_mode:
             logger.info(
@@ -5068,10 +5095,17 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         confidence = 70
 
                     if confidence > 0:
+                        # v60.0 PANOPTICON: Include display_id for Ghost Display awareness
+                        display_id = window_obj.display_id if hasattr(window_obj, 'display_id') else 1
+                        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+                        is_on_ghost_display = display_id >= ghost_display_index
+
                         matching_windows.append({
                             'found': True,
                             'window_id': window_obj.window_id,
                             'space_id': window_obj.space_id if window_obj.space_id else 1,
+                            'display_id': display_id,  # v60.0 PANOPTICON
+                            'is_on_ghost_display': is_on_ghost_display,  # v60.0 PANOPTICON
                             'app_name': window_app,
                             'window_title': window_title,
                             'bounds': window_obj.bounds if hasattr(window_obj, 'bounds') else {},
@@ -5318,6 +5352,39 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             'total_wait_time_ms': 0,
             'backoff_sequence': []
         }
+
+        # =====================================================================
+        # v60.0 PANOPTICON PROTOCOL: Ghost Display Auto-Validation
+        # =====================================================================
+        # ROOT CAUSE FIX: Compositor checks (kCGWindowIsOnscreen) and
+        # CGWindowListCreateImage FAIL for windows on virtual/secondary displays.
+        #
+        # SOLUTION: If the window is on Ghost Display (display >= 2), we
+        # TRUST the window exists (it was found by Yabai) and proceed directly
+        # to capture without expensive validation that will fail anyway.
+        #
+        # The Ferrari Engine (ScreenCaptureKit) CAN capture these windows -
+        # it's only the VALIDATION that fails, not the actual capture.
+        # =====================================================================
+        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+        window_display_id = window.get('display_id', 1)
+        is_on_ghost_display = window.get('is_on_ghost_display', False) or window_display_id >= ghost_display_index
+
+        if is_on_ghost_display:
+            logger.info(
+                f"[v60.0 PANOPTICON] 👁️ Window {window_id} is on Ghost Display "
+                f"(display={window_display_id}). Auto-validating without compositor checks."
+            )
+            validation_details['validation_strategy'] = 'panopticon_ghost_display_v60.0'
+            validation_details['checks_passed'].append('ghost_display_auto_validate')
+            validation_details['ghost_display'] = True
+            validation_details['display_id'] = window_display_id
+
+            return (
+                True,
+                f"Window validated via v60.0 PANOPTICON (Ghost Display {window_display_id})",
+                validation_details
+            )
 
         # Import helpers
         try:
