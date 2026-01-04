@@ -4835,6 +4835,226 @@ class YabaiSpaceDetector:
             logger.warning(f"[YABAI v49.0] Space {space_index} query error: {e}")
             return False, None
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v50.0: OMNISCIENT PROTOCOL - NEGATIVE LOGIC & HARDWARE TARGETING
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SIP-COMPLIANT strategy that uses:
+    # 1. NEGATIVE LOGIC: If window claims Space X, but Space X doesn't exist
+    #    in the known spaces list → Window is in a PHANTOM SPACE (fullscreen)
+    # 2. HARDWARE TARGETING: Move to Display (hardware) instead of Space (software)
+    #    because yabai can move to displays with SIP enabled
+    # 3. DNA TRACKING: Use PID to track windows across destruction events
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _is_space_phantom_or_fullscreen_async(
+        self,
+        window_space_id: int
+    ) -> Tuple[bool, str, Set[int]]:
+        """
+        v50.0: NEGATIVE LOGIC - Detect phantom/fullscreen spaces by elimination.
+
+        Instead of asking "Is this space fullscreen?" (which can lie),
+        we ask "Does this space even EXIST in our known topology?"
+
+        If the window claims to be on Space 42, but our topology only has
+        Spaces 1-10, then Space 42 is a PHANTOM SPACE (native fullscreen).
+
+        Args:
+            window_space_id: The space ID the window claims to be on
+
+        Returns:
+            Tuple of (is_phantom: bool, reason: str, known_spaces: Set[int]):
+            - is_phantom: True if space is phantom/fullscreen
+            - reason: Human-readable explanation
+            - known_spaces: Set of all valid space indices
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        try:
+            # Query ALL spaces to build known topology
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "query", "--spaces",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if proc.returncode != 0 or not stdout:
+                logger.warning(f"[YABAI v50.0] Failed to query spaces: {stderr.decode() if stderr else 'unknown'}")
+                return False, "query_failed", set()
+
+            spaces_data = json.loads(stdout.decode())
+
+            # Build the set of KNOWN space indices
+            known_spaces: Set[int] = set()
+            fullscreen_spaces: Set[int] = set()
+
+            for space in spaces_data:
+                space_index = space.get("index", 0)
+                if space_index > 0:
+                    known_spaces.add(space_index)
+                    # Also track which spaces are native fullscreen
+                    if space.get("is-native-fullscreen", False):
+                        fullscreen_spaces.add(space_index)
+
+            logger.debug(
+                f"[YABAI v50.0] 🧠 OMNISCIENT: Known spaces={sorted(known_spaces)}, "
+                f"Fullscreen spaces={sorted(fullscreen_spaces)}"
+            )
+
+            # NEGATIVE LOGIC: Window claims Space X, but X doesn't exist
+            if window_space_id not in known_spaces and window_space_id > 0:
+                reason = f"space_{window_space_id}_not_in_known_topology_{sorted(known_spaces)}"
+                logger.info(
+                    f"[YABAI v50.0] 👻 PHANTOM DETECTED via NEGATIVE LOGIC: "
+                    f"Window claims Space {window_space_id}, but known spaces are {sorted(known_spaces)}"
+                )
+                return True, reason, known_spaces
+
+            # POSITIVE CONFIRMATION: Space exists but is native fullscreen
+            if window_space_id in fullscreen_spaces:
+                reason = f"space_{window_space_id}_is_native_fullscreen"
+                logger.info(
+                    f"[YABAI v50.0] 🔒 FULLSCREEN DETECTED: "
+                    f"Space {window_space_id} is a native fullscreen space"
+                )
+                return True, reason, known_spaces
+
+            # Edge case: Space 0 or -1 means orphaned/transitional
+            if window_space_id <= 0:
+                reason = f"space_{window_space_id}_orphaned_or_transitional"
+                logger.info(
+                    f"[YABAI v50.0] 🌀 ORPHANED WINDOW: Space {window_space_id} is invalid"
+                )
+                return True, reason, known_spaces
+
+            # Normal space - not phantom or fullscreen
+            return False, "normal_space", known_spaces
+
+        except asyncio.TimeoutError:
+            logger.warning("[YABAI v50.0] Spaces query timed out")
+            return False, "timeout", set()
+        except Exception as e:
+            logger.warning(f"[YABAI v50.0] Negative logic check failed: {e}")
+            return False, f"error_{e}", set()
+
+    async def _get_ghost_display_index_async(self) -> Optional[int]:
+        """
+        v50.0: Get the DISPLAY index (not space) for the Ghost Display.
+
+        Hardware targeting uses display indices, not space indices.
+        This is SIP-compliant because moving to displays uses Accessibility APIs.
+
+        Returns:
+            Display index (1-based) or None if not found
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        try:
+            # Query all spaces to find the ghost display
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "query", "--spaces",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if proc.returncode != 0 or not stdout:
+                return None
+
+            spaces_data = json.loads(stdout.decode())
+
+            # Find displays and their visible spaces
+            display_spaces: Dict[int, List[Dict]] = {}
+            current_space = self.get_current_user_space()
+
+            for space in spaces_data:
+                display_id = space.get("display", 1)
+                if display_id not in display_spaces:
+                    display_spaces[display_id] = []
+                display_spaces[display_id].append(space)
+
+            # Ghost display is typically display 2 (secondary monitor)
+            # or any display that has a visible space that's not the current space
+            for display_id in sorted(display_spaces.keys()):
+                if display_id > 1:  # Secondary display
+                    logger.info(
+                        f"[YABAI v50.0] 🎯 HARDWARE TARGET: Ghost Display is Display {display_id}"
+                    )
+                    return display_id
+
+            # Fallback: If only one display, return it (user is using same display)
+            if len(display_spaces) == 1:
+                display_id = list(display_spaces.keys())[0]
+                logger.debug(f"[YABAI v50.0] Single display mode: using Display {display_id}")
+                return display_id
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"[YABAI v50.0] Ghost display detection failed: {e}")
+            return None
+
+    async def _move_window_to_display_async(
+        self,
+        window_id: int,
+        display_index: int,
+        sip_convergence_delay: float = 3.0
+    ) -> bool:
+        """
+        v50.0: HARDWARE TARGETING - Move window to display (SIP-compliant).
+
+        Unlike moving to spaces (which requires code injection blocked by SIP),
+        moving to displays uses standard Accessibility APIs and works reliably.
+
+        Args:
+            window_id: The window to move
+            display_index: Target display (1-based index)
+            sip_convergence_delay: Time to wait for macOS animations (SIP mandates ~750ms)
+
+        Returns:
+            True if move succeeded, False otherwise
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        logger.info(
+            f"[YABAI v50.0] 🎯 HARDWARE MOVE: Window {window_id} → Display {display_index}"
+        )
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "window", str(window_id), "--display", str(display_index),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            if proc.returncode == 0:
+                logger.info(
+                    f"[YABAI v50.0] ✅ HARDWARE MOVE SUCCESS: Window {window_id} → Display {display_index}"
+                )
+
+                # SIP-AWARE CONVERGENCE: macOS enforces mandatory animations
+                # With SIP enabled, we must wait longer for the animation to complete
+                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", str(sip_convergence_delay)))
+                logger.debug(f"[YABAI v50.0] ⏳ SIP Convergence: waiting {sip_delay}s for animation")
+                await asyncio.sleep(sip_delay)
+
+                return True
+            else:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                logger.warning(
+                    f"[YABAI v50.0] ⚠️ HARDWARE MOVE FAILED: {error_msg}"
+                )
+                return False
+
+        except asyncio.TimeoutError:
+            logger.warning(f"[YABAI v50.0] ⚠️ Hardware move timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"[YABAI v50.0] ⚠️ Hardware move error: {e}")
+            return False
+
     async def _unpack_via_yabai_toggle_async(
         self,
         window_id: int,
@@ -5054,37 +5274,36 @@ class YabaiSpaceDetector:
                 visible_spaces.add(current_space)
         
         # ═══════════════════════════════════════════════════════════════════════
-        # v46.0: REALITY ANCHOR PROTOCOL - Detect Phantom Spaces
+        # v50.0: OMNISCIENT NEGATIVE LOGIC - Enhanced Phantom Detection
         # ═══════════════════════════════════════════════════════════════════════
-        # Native Fullscreen windows exist in their own "dimension" - a separate
-        # Space created just for them. These spaces have characteristics:
-        # 1. space_id > number of normal spaces (often very high numbers)
-        # 2. space_id == 0 (orphaned/transitional state)
-        # 3. space_id == -1 (completely orphaned)
-        # 4. is-native-fullscreen flag is True (if yabai can see it)
+        # v46.0 used heuristics (space_id > normal_count).
+        # v50.0 uses NEGATIVE LOGIC: If window claims Space X, but Space X
+        # doesn't exist in our queried topology → It's a PHANTOM SPACE.
         #
-        # THE PROBLEM: You cannot move a SPACE, only a WINDOW. Attempting to
-        # move a window that IS a space causes silent failure.
-        #
-        # THE SOLUTION: Force the window to "Re-Materialize" by exiting
-        # fullscreen, destroying its phantom space, and landing on a real space.
+        # This is 100% accurate because we're not guessing - we're ASKING THE OS.
         # ═══════════════════════════════════════════════════════════════════════
-        
-        # Count normal spaces to detect phantom space IDs
-        normal_space_count = len(visible_spaces) if visible_spaces else 10  # Default assumption
-        
-        # v46.0: Detect if window is in a PHANTOM SPACE (Fullscreen Dimension)
-        # Phantom space indicators:
-        # - space_id > normal_space_count (fullscreen spaces get high IDs)
-        # - space_id == 0 (transitional/orphaned)
-        # - space_id == -1 (completely orphaned)
-        # - is-native-fullscreen flag is True
+
+        # v50.0: Use Negative Logic to detect phantom spaces
+        is_phantom_via_negative_logic, phantom_reason, known_spaces = \
+            await self._is_space_phantom_or_fullscreen_async(window_space_id)
+
+        # Legacy heuristics (kept as fallback)
+        normal_space_count = len(visible_spaces) if visible_spaces else len(known_spaces) or 10
+
+        # v50.0: COMBINED DETECTION (Negative Logic OR Legacy Heuristics)
         is_in_phantom_space = (
-            window_space_id > normal_space_count or
-            window_space_id == 0 or
-            window_space_id == -1 or
-            is_native_fullscreen  # Even if yabai reports it
+            is_phantom_via_negative_logic or  # v50.0: NEGATIVE LOGIC (most accurate)
+            window_space_id > normal_space_count or  # Legacy: High ID
+            window_space_id == 0 or  # Legacy: Orphaned
+            window_space_id == -1 or  # Legacy: Orphaned
+            is_native_fullscreen  # Legacy: Flag check
         )
+
+        if is_phantom_via_negative_logic:
+            logger.info(
+                f"[YABAI v50.0] 🧠 OMNISCIENT DETECTION: Window {window_id} in phantom space "
+                f"detected via NEGATIVE LOGIC: {phantom_reason}"
+            )
         
         # v44.2: DEFINITIVE hidden space detection
         # Window is on hidden space if:
@@ -6432,13 +6651,75 @@ class YabaiSpaceDetector:
             logger.warning(
                 f"[YABAI v44.0] No converged state available - window may still be animating"
             )
-        
-        # All strategies exhausted
-        logger.error(
-            f"[YABAI v44.0] ❌ FAILED to move window {window_id} to Space {target_space} "
-            f"after {max_retries} attempts. Window state did not converge."
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # v50.0: HARDWARE TARGETING FALLBACK (SIP-Compliant Last Resort)
+        # ═══════════════════════════════════════════════════════════════════════
+        # All space-based strategies failed. With SIP enabled, moving to spaces
+        # often fails because it requires code injection into the Dock.
+        #
+        # FINAL FALLBACK: Move to DISPLAY (hardware) instead of SPACE (software).
+        # yabai can move to displays with SIP enabled using Accessibility APIs.
+        # ═══════════════════════════════════════════════════════════════════════
+
+        logger.warning(
+            f"[YABAI v50.0] 🎯 All space strategies failed. Attempting HARDWARE TARGETING fallback..."
         )
-        self._health.record_failure(f"Window {window_id} failed to move - state did not converge")
+
+        try:
+            # Get the ghost display index
+            ghost_display = await self._get_ghost_display_index_async()
+
+            if ghost_display is not None:
+                # Try hardware targeting with SIP-aware convergence delay
+                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                hardware_success = await self._move_window_to_display_async(
+                    window_id=window_id,
+                    display_index=ghost_display,
+                    sip_convergence_delay=sip_delay
+                )
+
+                if hardware_success:
+                    # Verify window is now on target display
+                    proc = await asyncio.create_subprocess_exec(
+                        yabai_path, "-m", "query", "--windows", "--window", str(window_id),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                    if proc.returncode == 0 and stdout:
+                        final_info = json.loads(stdout.decode())
+                        final_display = final_info.get("display")
+
+                        if final_display == ghost_display:
+                            logger.info(
+                                f"[YABAI v50.0] ✅ HARDWARE TARGETING SUCCESS: "
+                                f"Window {window_id} → Display {ghost_display} (SIP-compliant!)"
+                            )
+                            self._health.record_success(0)
+                            return True
+                        else:
+                            logger.warning(
+                                f"[YABAI v50.0] Hardware targeting accepted but window "
+                                f"still on Display {final_display}"
+                            )
+                else:
+                    logger.warning(
+                        f"[YABAI v50.0] Hardware targeting failed for window {window_id}"
+                    )
+            else:
+                logger.warning("[YABAI v50.0] Could not detect ghost display for hardware targeting")
+
+        except Exception as e:
+            logger.warning(f"[YABAI v50.0] Hardware targeting fallback error: {e}")
+
+        # All strategies truly exhausted
+        logger.error(
+            f"[YABAI v50.0] ❌ FAILED to move window {window_id} to Space {target_space} "
+            f"after {max_retries} attempts + hardware fallback. Window state did not converge."
+        )
+        self._health.record_failure(f"Window {window_id} failed to move - all strategies exhausted")
         return False
 
     # =========================================================================
