@@ -5192,6 +5192,119 @@ class YabaiSpaceDetector:
             return []
 
         # ═══════════════════════════════════════════════════════════════════
+        # v47.0: CHEMICAL BOND RE-BONDING PROTOCOL
+        # ═══════════════════════════════════════════════════════════════════
+        # ROOT CAUSE FIX: When Chrome unpacks from fullscreen, macOS DESTROYS
+        # the window ID and creates a NEW one. JARVIS loses track.
+        #
+        # SOLUTION: The "Chemical Bond" - App Name + Window Title
+        # - Before unpack: Save the window's Chemical Bond
+        # - After unpack: If window ID is dead, search for matching Bond
+        # - Re-Bond: Update to the new window ID and continue
+        #
+        # The probability of two Chrome windows having the exact same
+        # dynamic title (e.g., "HORIZONTAL - Stereos...") is effectively zero.
+        # ═══════════════════════════════════════════════════════════════════
+
+        async def find_window_by_chemical_bond(
+            app_name: str,
+            window_title: str,
+            old_window_id: int,
+            fuzzy_threshold: float = 0.8
+        ) -> Optional[int]:
+            """
+            v47.0: Find a window by its Chemical Bond (App Name + Window Title).
+
+            Uses fuzzy matching because the title might change slightly after unpack.
+
+            Args:
+                app_name: The application name (e.g., "Google Chrome")
+                window_title: The window title to match
+                old_window_id: The old (dead) window ID to exclude
+                fuzzy_threshold: Minimum similarity ratio (0.0-1.0)
+
+            Returns:
+                New window ID if found, None otherwise
+            """
+            if not window_title:
+                logger.debug("[YABAI v47.0] No window title for chemical bond matching")
+                return None
+
+            try:
+                # Query all windows
+                proc = await asyncio.create_subprocess_exec(
+                    yabai_path, "-m", "query", "--windows",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                if proc.returncode != 0 or not stdout:
+                    return None
+
+                windows = json.loads(stdout.decode())
+                app_name_lower = app_name.lower()
+                title_lower = window_title.lower()
+
+                # Find matching windows
+                candidates = []
+                for w in windows:
+                    w_id = w.get("id")
+                    w_app = w.get("app", "").lower()
+                    w_title = w.get("title", "")
+
+                    # Skip the old (dead) window ID
+                    if w_id == old_window_id:
+                        continue
+
+                    # Must match app name
+                    if w_app != app_name_lower:
+                        continue
+
+                    # Calculate title similarity
+                    if not w_title:
+                        continue
+
+                    w_title_lower = w_title.lower()
+
+                    # Exact match
+                    if w_title_lower == title_lower:
+                        logger.info(
+                            f"[YABAI v47.0] 🔬 EXACT BOND MATCH: '{app_name}' window '{window_title}' "
+                            f"→ New ID {w_id} (was {old_window_id})"
+                        )
+                        return w_id
+
+                    # Fuzzy match using simple ratio
+                    # Calculate similarity as: 2 * common_chars / total_chars
+                    common = sum(1 for a, b in zip(w_title_lower, title_lower) if a == b)
+                    total = len(w_title_lower) + len(title_lower)
+                    similarity = (2 * common) / total if total > 0 else 0
+
+                    # Also check substring containment
+                    if title_lower in w_title_lower or w_title_lower in title_lower:
+                        similarity = max(similarity, 0.9)  # Boost for substring match
+
+                    if similarity >= fuzzy_threshold:
+                        candidates.append((w_id, similarity, w_title))
+
+                # Return best match if any
+                if candidates:
+                    candidates.sort(key=lambda x: x[1], reverse=True)
+                    best_id, best_sim, best_title = candidates[0]
+                    logger.info(
+                        f"[YABAI v47.0] 🔬 FUZZY BOND MATCH: '{app_name}' window "
+                        f"'{window_title}' → '{best_title}' (sim={best_sim:.0%}) "
+                        f"→ New ID {best_id} (was {old_window_id})"
+                    )
+                    return best_id
+
+            except Exception as e:
+                logger.error(f"[YABAI v47.0] Chemical bond search failed: {e}")
+
+            return None
+
+        # ═══════════════════════════════════════════════════════════════════
         # v35.0: FULLSCREEN UNPACKING PROTOCOL
         # ═══════════════════════════════════════════════════════════════════
         # macOS treats fullscreen windows as separate Spaces. You cannot move
@@ -5199,6 +5312,12 @@ class YabaiSpaceDetector:
         # ═══════════════════════════════════════════════════════════════════
 
         window_info = await get_window_info_async()
+
+        # v47.0: Capture Chemical Bond BEFORE unpacking
+        original_app_name = window_info.get("app", "") if window_info else ""
+        original_window_title = window_info.get("title", "") if window_info else ""
+        original_window_id = window_id  # Save for re-bonding
+
         was_fullscreen, unpack_success = await self._handle_fullscreen_window_async(
             window_id, window_info
         )
@@ -5226,11 +5345,58 @@ class YabaiSpaceDetector:
             window_info = await get_window_info_async()
 
             if window_info is None:
-                logger.error(
-                    f"[YABAI] ❌ Window {window_id} disappeared after unpacking"
+                # ═══════════════════════════════════════════════════════════
+                # v47.0: RE-BONDING PROTOCOL - Find the reborn window
+                # ═══════════════════════════════════════════════════════════
+                # The window ID died, but the window lives on with a new ID!
+                # Use the Chemical Bond (App + Title) to find it.
+                # ═══════════════════════════════════════════════════════════
+                logger.warning(
+                    f"[YABAI v47.0] 🔬 Window {window_id} disappeared after unpacking - "
+                    f"initiating Chemical Bond re-bonding..."
                 )
-                self._health.record_failure("Window disappeared after unpack")
-                return False
+
+                if original_app_name and original_window_title:
+                    # Give macOS a moment to create the new window
+                    await asyncio.sleep(0.3)
+
+                    new_window_id = await find_window_by_chemical_bond(
+                        original_app_name,
+                        original_window_title,
+                        original_window_id,
+                        fuzzy_threshold=float(os.getenv("JARVIS_REBOND_FUZZY_THRESHOLD", "0.7"))
+                    )
+
+                    if new_window_id is not None:
+                        logger.info(
+                            f"[YABAI v47.0] ⚛️ RE-BONDING SUCCESS: Window reborn as ID {new_window_id} "
+                            f"(was {original_window_id})"
+                        )
+                        # UPDATE THE WINDOW ID - This is the key!
+                        window_id = new_window_id
+                        # Refresh window info with the new ID
+                        window_info = await get_window_info_async()
+
+                        if window_info is None:
+                            logger.error(
+                                f"[YABAI v47.0] ❌ Re-bonded window {new_window_id} is also gone"
+                            )
+                            self._health.record_failure("Re-bonded window disappeared")
+                            return False
+                    else:
+                        logger.error(
+                            f"[YABAI v47.0] ❌ RE-BONDING FAILED: Could not find window matching "
+                            f"'{original_app_name}' / '{original_window_title}'"
+                        )
+                        self._health.record_failure("Chemical bond re-bonding failed")
+                        return False
+                else:
+                    logger.error(
+                        f"[YABAI] ❌ Window {window_id} disappeared after unpacking "
+                        f"(no Chemical Bond available for re-bonding)"
+                    )
+                    self._health.record_failure("Window disappeared after unpack")
+                    return False
 
             # Check for problematic states after unpack
             if window_info.get("is-minimized", False):
