@@ -6860,6 +6860,373 @@ class YabaiSpaceDetector:
 
 
 # =============================================================================
+# v40.0.0: ROBUST PARALLEL ASYNC WORKSPACE QUERY WITH CIRCUIT BREAKER
+# =============================================================================
+# ROOT CAUSE FIX: Window discovery timeout due to cascading timeout conflicts
+#
+# PROBLEM:
+# - Outer timeout: 5s in watch_app_across_all_spaces
+# - Inner timeouts: 5s each for spaces + windows queries = 10s minimum
+# - Auto-start delays: Can add 10-20s more
+# - Result: Guaranteed timeout, "Yabai/MultiSpaceDetector unresponsive"
+#
+# SOLUTION:
+# 1. PARALLEL QUERIES: Run spaces + windows simultaneously with asyncio.gather
+# 2. INTELLIGENT TIMEOUTS: Inner timeouts must be fraction of outer (40% each)
+# 3. CIRCUIT BREAKER: After repeated failures, skip expensive operations
+# 4. CACHE-FIRST: Return stale data quickly, refresh in background
+# 5. CONFIGURABLE: All timeouts via environment variables, no hardcoding
+# =============================================================================
+
+# Module-level workspace cache for fast fallback
+_WORKSPACE_CACHE = {
+    "data": None,
+    "timestamp": None,
+    "ttl_seconds": 5.0,  # Cache valid for 5 seconds
+    "background_refresh_pending": False,
+}
+
+# Circuit breaker state for repeated failures
+_CIRCUIT_BREAKER = {
+    "consecutive_failures": 0,
+    "last_failure": None,
+    "is_open": False,
+    "reset_after_seconds": 30.0,  # Try again after 30 seconds
+    "failure_threshold": 3,  # Open circuit after 3 consecutive failures
+}
+
+
+def _is_workspace_cache_valid() -> bool:
+    """Check if workspace cache is still valid."""
+    if _WORKSPACE_CACHE["data"] is None:
+        return False
+    if _WORKSPACE_CACHE["timestamp"] is None:
+        return False
+    age = (datetime.now() - _WORKSPACE_CACHE["timestamp"]).total_seconds()
+    return age < _WORKSPACE_CACHE["ttl_seconds"]
+
+
+def _update_workspace_cache(data: Dict[str, Any]) -> None:
+    """Update the workspace cache with fresh data."""
+    _WORKSPACE_CACHE["data"] = data
+    _WORKSPACE_CACHE["timestamp"] = datetime.now()
+
+
+def _check_circuit_breaker() -> bool:
+    """Check if circuit breaker allows operations. Returns True if allowed."""
+    global _CIRCUIT_BREAKER
+
+    if not _CIRCUIT_BREAKER["is_open"]:
+        return True
+
+    # Check if enough time has passed to try again
+    if _CIRCUIT_BREAKER["last_failure"]:
+        elapsed = (datetime.now() - _CIRCUIT_BREAKER["last_failure"]).total_seconds()
+        if elapsed > _CIRCUIT_BREAKER["reset_after_seconds"]:
+            # Half-open state - allow one attempt
+            logger.info("[YABAI] Circuit breaker: Half-open, allowing retry attempt")
+            return True
+
+    logger.debug("[YABAI] Circuit breaker: OPEN, skipping yabai query")
+    return False
+
+
+def _record_circuit_breaker_success() -> None:
+    """Record a successful operation, reset circuit breaker."""
+    global _CIRCUIT_BREAKER
+    _CIRCUIT_BREAKER["consecutive_failures"] = 0
+    _CIRCUIT_BREAKER["is_open"] = False
+    _CIRCUIT_BREAKER["last_failure"] = None
+
+
+def _record_circuit_breaker_failure() -> None:
+    """Record a failed operation, potentially open circuit breaker."""
+    global _CIRCUIT_BREAKER
+    _CIRCUIT_BREAKER["consecutive_failures"] += 1
+    _CIRCUIT_BREAKER["last_failure"] = datetime.now()
+
+    if _CIRCUIT_BREAKER["consecutive_failures"] >= _CIRCUIT_BREAKER["failure_threshold"]:
+        _CIRCUIT_BREAKER["is_open"] = True
+        logger.warning(
+            f"[YABAI] Circuit breaker: OPEN after {_CIRCUIT_BREAKER['consecutive_failures']} "
+            f"consecutive failures. Will retry in {_CIRCUIT_BREAKER['reset_after_seconds']}s"
+        )
+
+
+async def parallel_workspace_query_async(
+    timeout_seconds: Optional[float] = None,
+    use_cache: bool = True,
+    skip_auto_start: bool = True,
+) -> Dict[str, Any]:
+    """
+    v40.0.0: Robust parallel async workspace query with all safety mechanisms.
+
+    This function is designed to NEVER block for more than timeout_seconds,
+    even when yabai is unresponsive or starting up.
+
+    Args:
+        timeout_seconds: Maximum time to wait (default: from env or 3.0s)
+        use_cache: If True, return cached data when available
+        skip_auto_start: If True, don't attempt to start yabai (faster)
+
+    Returns:
+        Workspace summary dict, possibly from cache if live query fails
+
+    Features:
+        - PARALLEL: Runs spaces + windows queries simultaneously
+        - CACHED: Returns stale data quickly when live fails
+        - CIRCUIT BREAKER: Skips expensive operations after repeated failures
+        - TIMEOUT SAFE: Inner timeouts are fractions of outer timeout
+    """
+    # Get configurable timeout
+    if timeout_seconds is None:
+        timeout_seconds = float(os.getenv("JARVIS_WORKSPACE_QUERY_TIMEOUT", "3.0"))
+
+    start_time = time.time()
+
+    # =========================================================================
+    # STEP 1: Cache-first for instant response
+    # =========================================================================
+    if use_cache and _is_workspace_cache_valid():
+        logger.debug("[YABAI] Returning cached workspace data (instant)")
+        return _WORKSPACE_CACHE["data"]
+
+    # =========================================================================
+    # STEP 2: Circuit breaker check
+    # =========================================================================
+    if not _check_circuit_breaker():
+        # Circuit is open - return cached data or empty result
+        if _WORKSPACE_CACHE["data"]:
+            logger.debug("[YABAI] Circuit open, returning stale cache")
+            return _WORKSPACE_CACHE["data"]
+        return _empty_workspace_result("Circuit breaker open")
+
+    # =========================================================================
+    # STEP 3: Quick yabai availability check (non-blocking, cached)
+    # =========================================================================
+    quick_check_timeout = min(0.5, timeout_seconds * 0.15)  # 15% of total timeout
+
+    try:
+        is_available, yabai_path = await asyncio.wait_for(
+            async_quick_yabai_check(),
+            timeout=quick_check_timeout
+        )
+
+        if not is_available:
+            logger.debug("[YABAI] Yabai not available")
+            _record_circuit_breaker_failure()
+            if _WORKSPACE_CACHE["data"]:
+                return _WORKSPACE_CACHE["data"]
+            return _empty_workspace_result("Yabai not available")
+
+    except asyncio.TimeoutError:
+        logger.warning(f"[YABAI] Availability check timed out ({quick_check_timeout}s)")
+        _record_circuit_breaker_failure()
+        if _WORKSPACE_CACHE["data"]:
+            return _WORKSPACE_CACHE["data"]
+        return _empty_workspace_result("Availability check timeout")
+
+    # =========================================================================
+    # STEP 4: PARALLEL queries for spaces and windows
+    # =========================================================================
+    # Use 40% of remaining timeout for each query (allows for overhead)
+    elapsed = time.time() - start_time
+    remaining = timeout_seconds - elapsed
+    query_timeout = max(0.5, remaining * 0.4)  # 40% each, 20% overhead
+
+    if not yabai_path:
+        yabai_path = "yabai"
+
+    try:
+        # Create PARALLEL query tasks
+        spaces_task = _async_yabai_query(
+            [yabai_path, "-m", "query", "--spaces"],
+            timeout=query_timeout
+        )
+        windows_task = _async_yabai_query(
+            [yabai_path, "-m", "query", "--windows"],
+            timeout=query_timeout
+        )
+
+        # Run BOTH queries simultaneously
+        results = await asyncio.gather(
+            spaces_task,
+            windows_task,
+            return_exceptions=True
+        )
+
+        spaces_result, windows_result = results
+
+        # Check for exceptions
+        if isinstance(spaces_result, Exception):
+            raise spaces_result
+
+        # Parse results
+        spaces_data = json.loads(spaces_result) if spaces_result else []
+        windows_data = json.loads(windows_result) if windows_result and not isinstance(windows_result, Exception) else []
+
+        # Build workspace summary
+        result = _build_workspace_summary(spaces_data, windows_data)
+
+        # Update cache and circuit breaker
+        _update_workspace_cache(result)
+        _record_circuit_breaker_success()
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(f"[YABAI] Parallel workspace query completed in {elapsed_ms:.0f}ms")
+
+        return result
+
+    except asyncio.TimeoutError:
+        logger.warning(f"[YABAI] Parallel query timed out after {timeout_seconds}s")
+        _record_circuit_breaker_failure()
+        if _WORKSPACE_CACHE["data"]:
+            logger.debug("[YABAI] Returning stale cache after timeout")
+            return _WORKSPACE_CACHE["data"]
+        return _empty_workspace_result("Query timeout")
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[YABAI] Failed to parse yabai output: {e}")
+        _record_circuit_breaker_failure()
+        if _WORKSPACE_CACHE["data"]:
+            return _WORKSPACE_CACHE["data"]
+        return _empty_workspace_result(f"Parse error: {e}")
+
+    except Exception as e:
+        logger.error(f"[YABAI] Parallel query failed: {e}")
+        _record_circuit_breaker_failure()
+        if _WORKSPACE_CACHE["data"]:
+            return _WORKSPACE_CACHE["data"]
+        return _empty_workspace_result(f"Error: {e}")
+
+
+async def _async_yabai_query(args: List[str], timeout: float) -> Optional[str]:
+    """
+    Execute a yabai query using TRUE async subprocess (not thread pool).
+
+    Uses asyncio.create_subprocess_exec for fully non-blocking execution.
+    """
+    try:
+        process = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            ),
+            timeout=timeout * 0.3  # 30% for process creation
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout * 0.7  # 70% for execution
+        )
+
+        if process.returncode != 0:
+            logger.debug(f"[YABAI] Query failed: {stderr.decode()}")
+            return None
+
+        return stdout.decode()
+
+    except asyncio.TimeoutError:
+        logger.debug(f"[YABAI] Query timed out: {' '.join(args)}")
+        raise
+    except Exception as e:
+        logger.debug(f"[YABAI] Query error: {e}")
+        return None
+
+
+def _build_workspace_summary(spaces_data: List[Dict], windows_data: List[Dict]) -> Dict[str, Any]:
+    """Build workspace summary from raw yabai data."""
+    spaces = []
+    current_space = None
+
+    for space in spaces_data:
+        space_id = space.get("index", 1)
+        space_windows = [w for w in windows_data if w.get("space") == space_id]
+        applications = list(set(w.get("app", "Unknown") for w in space_windows))
+
+        if not space_windows:
+            primary_activity = "Empty"
+        elif len(applications) == 1:
+            primary_activity = applications[0]
+        else:
+            primary_activity = f"{applications[0]} and {len(applications)-1} others"
+
+        space_info = {
+            "space_id": space_id,
+            "space_name": f"Desktop {space_id}",
+            "is_current": space.get("has-focus", False),
+            "is_visible": space.get("is-visible", False),
+            "is_fullscreen": space.get("is-native-fullscreen", False),
+            "window_count": len(space_windows),
+            "window_ids": space.get("windows", []),
+            "applications": applications,
+            "primary_activity": primary_activity,
+            "type": space.get("type", "unknown"),
+            "display": space.get("display", 1),
+            "uuid": space.get("uuid", ""),
+            "windows": [
+                {
+                    "app": w.get("app", "Unknown"),
+                    "title": w.get("title", ""),
+                    "id": w.get("id"),
+                    "minimized": w.get("is-minimized", False),
+                    "hidden": w.get("is-hidden", False),
+                    "is-native-fullscreen": w.get("is-native-fullscreen", False),
+                    "is_fullscreen": w.get("is-native-fullscreen", False),
+                    "can-move": w.get("can-move", True),
+                }
+                for w in space_windows
+            ],
+        }
+        spaces.append(space_info)
+
+        if space.get("has-focus"):
+            current_space = space_info
+
+    # Calculate totals
+    total_windows = sum(s.get("window_count", 0) for s in spaces)
+    all_apps = set()
+    for s in spaces:
+        all_apps.update(s.get("applications", []))
+
+    # Determine primary activity
+    app_counts = {}
+    for s in spaces:
+        for app in s.get("applications", []):
+            app_counts[app] = app_counts.get(app, 0) + 1
+    primary_app = max(app_counts.keys(), key=app_counts.get) if app_counts else "Empty"
+
+    return {
+        "total_spaces": len(spaces),
+        "total_windows": total_windows,
+        "total_applications": len(all_apps),
+        "spaces": spaces,
+        "current_space": current_space,
+        "primary_activity": primary_app,
+        "all_applications": list(all_apps),
+        "query_method": "parallel_async",
+        "cached": False,
+    }
+
+
+def _empty_workspace_result(reason: str) -> Dict[str, Any]:
+    """Return an empty workspace result with error reason."""
+    return {
+        "total_spaces": 0,
+        "total_windows": 0,
+        "total_applications": 0,
+        "spaces": [],
+        "current_space": None,
+        "primary_activity": "No spaces detected",
+        "all_applications": [],
+        "error": reason,
+        "query_method": "fallback",
+        "cached": False,
+    }
+
+
+# =============================================================================
 # GLOBAL INSTANCE & HELPER FUNCTIONS
 # =============================================================================
 

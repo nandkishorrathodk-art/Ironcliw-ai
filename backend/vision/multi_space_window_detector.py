@@ -318,6 +318,155 @@ class MultiSpaceWindowDetector:
 
         return result
 
+    async def get_all_windows_across_spaces_async(
+        self,
+        timeout_seconds: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        v40.0.0: Async version using parallel workspace query.
+
+        This is the RECOMMENDED method for async contexts as it:
+        - Runs spaces + windows queries in parallel
+        - Has intelligent timeout management
+        - Uses circuit breaker for resilience
+        - Returns cached data on failure
+
+        Args:
+            timeout_seconds: Maximum time to wait (default: from env or 3.0s)
+
+        Returns:
+            Comprehensive window information across all spaces
+        """
+        try:
+            from .yabai_space_detector import parallel_workspace_query_async
+
+            # Use the new parallel async query
+            yabai_summary = await parallel_workspace_query_async(
+                timeout_seconds=timeout_seconds
+            )
+
+            if yabai_summary and yabai_summary.get("total_spaces", 0) > 0:
+                # Convert Yabai data to our format
+                enhanced_spaces = []
+                spaces_dict = {}
+                windows = []
+
+                for yabai_space in yabai_summary.get("spaces", []):
+                    space_id = yabai_space.get("space_id", 1)
+
+                    # Create space info
+                    space_info = {
+                        "space_id": space_id,
+                        "space_name": yabai_space.get(
+                            "space_name", f"Desktop {space_id}"
+                        ),
+                        "primary_app": yabai_space.get("primary_activity", "Empty"),
+                        "applications": yabai_space.get("applications", []),
+                        "window_count": yabai_space.get("window_count", 0),
+                        "is_current": yabai_space.get("is_current", False),
+                        "is_fullscreen": yabai_space.get("is_fullscreen", False),
+                        "windows": yabai_space.get("windows", []),
+                    }
+
+                    enhanced_spaces.append(space_info)
+                    spaces_dict[space_id] = space_info
+
+                    # Add windows from this space
+                    for window in yabai_space.get("windows", []):
+                        window_info = EnhancedWindowInfo(
+                            window_id=window.get("id", 0),
+                            app_name=window.get("app", "Unknown"),
+                            window_title=window.get("title", ""),
+                            process_id=0,
+                            space_id=space_id,
+                            visibility=(
+                                SpaceWindowVisibility.VISIBLE_CURRENT_SPACE
+                                if yabai_space.get("is_current")
+                                else SpaceWindowVisibility.VISIBLE_OTHER_SPACE
+                            ),
+                        )
+                        windows.append(window_info)
+
+                # Update caches
+                self.windows_cache = {w.window_id: w for w in windows}
+                current_space = yabai_summary.get("current_space")
+                self.current_space_id = (
+                    current_space.get("space_id", 1) if current_space else 1
+                )
+                self.last_update = time.time()
+
+                logger.info(
+                    f"[MULTI-SPACE] Async parallel query: {len(enhanced_spaces)} spaces, "
+                    f"{len(windows)} windows ({yabai_summary.get('query_method', 'unknown')})"
+                )
+
+                # Calculate totals for response generation
+                all_applications = set()
+                for space in enhanced_spaces:
+                    all_applications.update(space.get("applications", []))
+
+                return {
+                    "current_space": {
+                        "id": self.current_space_id,
+                        "uuid": self.current_space_uuid or "",
+                        "window_count": len(
+                            [w for w in windows if w.space_id == self.current_space_id]
+                        ),
+                    },
+                    "spaces": spaces_dict,
+                    "spaces_list": enhanced_spaces,
+                    "space_details": enhanced_spaces,
+                    "windows": windows,
+                    "space_window_map": {
+                        space_id: [w.window_id for w in windows if w.space_id == space_id]
+                        for space_id in spaces_dict.keys()
+                    },
+                    "total_spaces": len(enhanced_spaces),
+                    "total_windows": len(windows),
+                    "total_applications": len(all_applications),
+                    "total_apps": len(all_applications),
+                    "timestamp": datetime.now().isoformat(),
+                    "query_method": yabai_summary.get("query_method", "async"),
+                }
+
+            # Return error info if available
+            error = yabai_summary.get("error", "No spaces found")
+            logger.warning(f"[MULTI-SPACE] Async query returned no data: {error}")
+
+            return {
+                "current_space": {"id": 1, "uuid": "", "window_count": 0},
+                "spaces": {},
+                "spaces_list": [],
+                "space_details": [],
+                "windows": [],
+                "space_window_map": {},
+                "total_spaces": 0,
+                "total_windows": 0,
+                "total_applications": 0,
+                "total_apps": 0,
+                "timestamp": datetime.now().isoformat(),
+                "error": error,
+                "query_method": "fallback",
+            }
+
+        except Exception as e:
+            logger.error(f"[MULTI-SPACE] Async parallel query failed: {e}")
+            return {
+                "current_space": {"id": 1, "uuid": "", "window_count": 0},
+                "spaces": {},
+                "spaces_list": [],
+                "space_details": [],
+                "windows": [],
+                "space_window_map": {},
+                "total_spaces": 0,
+                "total_windows": 0,
+                "total_applications": 0,
+                "total_apps": 0,
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "query_method": "error",
+            }
+
     async def get_all_visible_spaces(self) -> List[int]:
         """
         v22.0.0: Multi-Monitor Visibility Support

@@ -2016,7 +2016,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except Exception:
                 pass  # Don't fail on narration errors
 
-        find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "5"))
+        # =========================================================================
+        # v40.0.0: Robust Timeout Configuration
+        # =========================================================================
+        # OUTER timeout must be > INNER timeout to prevent cascade failures
+        # Inner: JARVIS_WORKSPACE_QUERY_TIMEOUT (default 4s) - parallel yabai query
+        # Outer: JARVIS_FIND_WINDOW_TIMEOUT (default 6s) - overall window discovery
+        # The parallel query uses circuit breaker + cache, so failures are graceful
+        # =========================================================================
+        find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "6"))
 
         try:
             windows = await asyncio.wait_for(
@@ -2026,7 +2034,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         except asyncio.TimeoutError:
             logger.error(
                 f"🚨 God Mode window discovery timed out after {find_window_timeout}s for '{app_name}'. "
-                f"MultiSpaceWindowDetector or Yabai may be unresponsive."
+                f"The parallel workspace query may have exceeded timeout. "
+                f"Circuit breaker will prevent repeated slow queries."
             )
 
             # v15.0: ERROR NARRATION - User should know when window discovery fails
@@ -4635,53 +4644,28 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 logger.info(f"🔍 God Mode: Searching for ALL '{app_name}' windows across ALL spaces...")
 
                 # =====================================================================
-                # ROOT CAUSE FIX v11.0.0: Non-Blocking Yabai Queries with Cache
+                # ROOT CAUSE FIX v40.0.0: Parallel Async Workspace Query
                 # =====================================================================
-                # PROBLEM: MultiSpaceWindowDetector makes synchronous subprocess.run() calls
-                # - Blocks entire event loop while waiting for Yabai
-                # - asyncio.wait_for timeout doesn't work on blocking calls
-                # - User stuck at "Processing..." forever
+                # PROBLEM: Previous implementation had cascading timeout conflicts:
+                # - Outer timeout: 5s in watch_app_across_all_spaces
+                # - Inner timeouts: 5s each for spaces + windows queries = 10s minimum
+                # - Result: Guaranteed timeout, "Yabai/MultiSpaceDetector unresponsive"
                 #
-                # SOLUTION: Use module-level cached check + thread pool execution
-                # - Cache avoids repeated blocking checks
-                # - Short timeout (1s) prevents hang
-                # - Thread pool execution for detector queries
+                # SOLUTION: Use new parallel async query with intelligent timeouts
+                # - Runs spaces + windows queries in parallel (not sequential)
+                # - Uses circuit breaker to skip after repeated failures
+                # - Returns cached data on failure for graceful degradation
+                # - Timeout is fraction of outer timeout, not hardcoded
                 # =====================================================================
 
-                # Fast-fail check: Use cached yabai availability
-                yabai_check_timeout = float(os.getenv("JARVIS_YABAI_CHECK_TIMEOUT", "2"))
-
-                try:
-                    # Import the async cached check from yabai_space_detector
-                    from vision.yabai_space_detector import async_quick_yabai_check
-
-                    yabai_available, yabai_path = await asyncio.wait_for(
-                        async_quick_yabai_check(),
-                        timeout=yabai_check_timeout
-                    )
-
-                    if not yabai_available:
-                        logger.warning(
-                            f"⚠️  Yabai not available (cached check) - skipping multi-space detection for '{app_name}'"
-                        )
-                        # Fall through to single-window detection
-                        raise Exception("Yabai not available")
-
-                    logger.debug(f"[GOD MODE] Yabai available at {yabai_path}")
-
-                except asyncio.TimeoutError:
-                    logger.warning(f"⚠️  Yabai availability check timed out after {yabai_check_timeout}s")
-                    raise Exception("Yabai check timeout")
-                except ImportError:
-                    # Fallback to inline check if module not available
-                    logger.warning("⚠️  async_quick_yabai_check not available, using fallback")
-                    raise Exception("Yabai check module not available")
+                # Get configurable timeout from environment (default 4s, must fit within outer 5s)
+                workspace_query_timeout = float(os.getenv("JARVIS_WORKSPACE_QUERY_TIMEOUT", "4.0"))
 
                 detector = MultiSpaceWindowDetector()
 
-                # Run blocking Yabai query in thread pool (non-blocking)
-                result = await asyncio.to_thread(
-                    detector.get_all_windows_across_spaces
+                # Use the new async parallel method (no thread pool needed!)
+                result = await detector.get_all_windows_across_spaces_async(
+                    timeout_seconds=workspace_query_timeout
                 )
 
                 # Extract windows list from result dict
