@@ -5173,6 +5173,7 @@ class YabaiSpaceDetector:
                 )
 
                 # Query all windows and find by ID
+                window_found = False
                 try:
                     all_proc = await asyncio.create_subprocess_exec(
                         yabai_path, "-m", "query", "--windows",
@@ -5189,12 +5190,102 @@ class YabaiSpaceDetector:
                                 window_display = w.get("display", -1)
                                 pid = pid or w.get("pid")
                                 has_ax_reference = w.get("has-ax-reference", True)
+                                window_found = True
                                 logger.info(
                                     f"[YABAI v53.0] 📋 Found window {window_id} in full query: "
                                     f"space={window_space}, display={window_display}, "
                                     f"fullscreen={is_fullscreen}, ax_ref={has_ax_reference}"
                                 )
                                 break
+
+                        # v54.1: Check if window exists but has no AX reference (zombie)
+                        if window_found and not has_ax_reference:
+                            logger.warning(
+                                f"[YABAI v54.1] ⚠️ Window {window_id} has NO AX REFERENCE - "
+                                "initiating Lazarus Trigger to restore AX reference..."
+                            )
+                            # Run Lazarus Trigger to restore AX reference
+                            lazarus_success = await self._reflash_ax_reference_async(
+                                app_name=app_name,
+                                pid=pid,
+                                window_id=window_id
+                            )
+                            if lazarus_success:
+                                # Re-check if window now has AX reference
+                                for w in all_windows:
+                                    if w.get("id") == window_id:
+                                        has_ax_reference = w.get("has-ax-reference", False)
+                                        break
+                                # Re-query to get fresh state after Lazarus
+                                try:
+                                    refresh_proc = await asyncio.create_subprocess_exec(
+                                        yabai_path, "-m", "query", "--windows",
+                                        stdout=asyncio.subprocess.PIPE,
+                                        stderr=asyncio.subprocess.PIPE
+                                    )
+                                    refresh_stdout, _ = await asyncio.wait_for(
+                                        refresh_proc.communicate(), timeout=5.0
+                                    )
+                                    if refresh_proc.returncode == 0 and refresh_stdout:
+                                        refreshed = json.loads(refresh_stdout.decode())
+                                        for w in refreshed:
+                                            if w.get("id") == window_id:
+                                                has_ax_reference = w.get("has-ax-reference", False)
+                                                is_fullscreen = w.get("is-native-fullscreen", False)
+                                                window_space = w.get("space", window_space)
+                                                window_display = w.get("display", window_display)
+                                                logger.info(
+                                                    f"[YABAI v54.1] Post-Lazarus: ax_ref={has_ax_reference}, "
+                                                    f"fullscreen={is_fullscreen}"
+                                                )
+                                                break
+                                except Exception:
+                                    pass
+
+                            if not has_ax_reference:
+                                logger.warning(
+                                    f"[YABAI v54.1] Lazarus failed - window still has no AX reference. "
+                                    "Returning as unmovable."
+                                )
+                                return False, "ax_reference_lost_lazarus_failed"
+
+                        # v54.0: PHOENIX PROTOCOL - If window ID is truly dead, regenerate it
+                        # Only run Phoenix if window NOT found AND we have a title to match
+                        # (empty titles can match wrong windows with same PID)
+                        if not window_found and app_name and window_title:
+                            logger.warning(
+                                f"[YABAI v54.0] ⚠️ Window ID {window_id} is dead! "
+                                "Initiating Phoenix Protocol..."
+                            )
+                            new_id = await self._regenerate_window_id_async(
+                                app_name=app_name,
+                                target_title=window_title,
+                                old_id=window_id,
+                                pid=pid,
+                                fuzzy_threshold=0.5
+                            )
+                            if new_id:
+                                logger.info(
+                                    f"[YABAI v54.0] 🔥 Phoenix: Re-bonded {window_id} → {new_id}"
+                                )
+                                window_id = new_id
+
+                                for w in all_windows:
+                                    if w.get("id") == new_id:
+                                        is_fullscreen = w.get("is-native-fullscreen", False)
+                                        window_space = w.get("space", -1)
+                                        window_display = w.get("display", -1)
+                                        pid = w.get("pid")
+                                        window_found = True
+                                        break
+                        elif not window_found:
+                            if not window_title:
+                                logger.warning(
+                                    f"[YABAI v54.0] Cannot regenerate ID for window with empty title - "
+                                    "returning unmovable"
+                                )
+                                return False, "window_dead_empty_title"
+                            await self._flush_yabai_cache_async(3)
                 except Exception as e2:
                     logger.warning(f"[YABAI v53.0] Full query also failed: {e2}")
 
@@ -5399,6 +5490,28 @@ class YabaiSpaceDetector:
             sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "2.0"))
             await asyncio.sleep(sip_delay)
 
+            # ═══════════════════════════════════════════════════════════════
+            # v54.0: POST-UNPACK PHOENIX VERIFICATION
+            # ═══════════════════════════════════════════════════════════════
+            # After unpack, the window ID may have changed. Try to find the
+            # new window and update our reference before exile.
+            # ═══════════════════════════════════════════════════════════════
+            if app_name:
+                new_id = await self._regenerate_window_id_async(
+                    app_name=app_name,
+                    target_title=window_title,
+                    old_id=window_id,
+                    pid=pid,
+                    fuzzy_threshold=0.3  # Very low for empty titles
+                )
+                if new_id and new_id != window_id:
+                    logger.info(
+                        f"[YABAI v54.0] 🔥 POST-UNPACK Phoenix: Window ID changed "
+                        f"{window_id} → {new_id}"
+                    )
+                    window_id = new_id
+                    unpack_method = f"{unpack_method}_rebonded"
+
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 3: EXILE - Move to Shadow Realm using Hardware Targeting
         # ═══════════════════════════════════════════════════════════════════
@@ -5412,18 +5525,53 @@ class YabaiSpaceDetector:
 
         if not exile_success:
             # Try with fresh window ID (in case of re-bonding)
-            if window_title and app_name:
-                new_window_id = await self._find_window_by_chemical_bond_async(
-                    app_name, window_title, window_id, pid
+            if app_name:
+                new_window_id = await self._regenerate_window_id_async(
+                    app_name=app_name,
+                    target_title=window_title,
+                    old_id=window_id,
+                    pid=pid,
+                    fuzzy_threshold=0.3
                 )
                 if new_window_id and new_window_id != window_id:
                     logger.info(
-                        f"[YABAI v53.0] 🔗 RE-BONDED: Window {window_id} → {new_window_id}"
+                        f"[YABAI v54.0] 🔥 EXILE-PHASE Phoenix: Re-bonded {window_id} → {new_window_id}"
                     )
                     exile_success = await self._move_window_to_display_async(
                         new_window_id, shadow_display, sip_convergence_delay=2.0
                     )
-                    window_id = new_window_id
+                    if exile_success:
+                        window_id = new_window_id
+
+        # v54.0: If yabai move failed, try AppleScript move
+        if not exile_success and pid:
+            logger.info(f"[YABAI v54.0] 🔧 Trying AppleScript window move as fallback...")
+            try:
+                # Use AppleScript to set window bounds on target display
+                move_script = f'''
+                tell application "System Events"
+                    tell process id {pid}
+                        set frontmost to true
+                        delay 0.3
+                    end tell
+                end tell
+                '''
+                proc = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", move_script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                await asyncio.sleep(0.5)
+
+                # Try yabai move again after activation
+                exile_success = await self._move_window_to_display_async(
+                    window_id, shadow_display, sip_convergence_delay=1.0
+                )
+                if exile_success:
+                    logger.info(f"[YABAI v54.0] AppleScript + yabai move succeeded!")
+            except Exception as e:
+                logger.warning(f"[YABAI v54.0] AppleScript move fallback failed: {e}")
 
         if not exile_success:
             logger.error(
@@ -5471,6 +5619,292 @@ class YabaiSpaceDetector:
             return True, f"exile_assumed_success_unpack_{unpack_method}"
 
         return False, "exile_unknown_failure"
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v54.0: PHOENIX PROTOCOL - Dynamic Window ID Regeneration
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ROOT CAUSE FIX: macOS/Chrome can destroy and recreate windows during
+    # fullscreen transitions, giving them new IDs. This leaves JARVIS holding
+    # a "dead phone number" - the old ID that no longer exists.
+    #
+    # SOLUTION: When an ID fails, immediately scan all windows to find the
+    # new one that matches the original by App Name + Title + PID.
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _regenerate_window_id_async(
+        self,
+        app_name: str,
+        target_title: str,
+        old_id: int,
+        pid: Optional[int] = None,
+        fuzzy_threshold: float = 0.6
+    ) -> Optional[int]:
+        """
+        v54.0: PHOENIX PROTOCOL - Find the new window ID after ID death.
+
+        When a window ID "dies" (window destroyed and recreated), this method
+        scans all windows to find the new one matching by:
+        1. App name (exact match)
+        2. PID (exact match if available)
+        3. Title (fuzzy match)
+
+        Args:
+            app_name: App name to match (e.g., "Google Chrome")
+            target_title: Original window title (may have changed slightly)
+            old_id: The dead window ID we're replacing
+            pid: Process ID (for disambiguation)
+            fuzzy_threshold: Minimum title similarity ratio (0.0-1.0)
+
+        Returns:
+            New window ID if found, None otherwise
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        logger.info(
+            f"[YABAI v54.0] 🔥 PHOENIX PROTOCOL: Regenerating ID for dead window {old_id} "
+            f"({app_name}: {target_title[:40] if target_title else 'untitled'})"
+        )
+
+        try:
+            # Query all windows
+            proc = await asyncio.create_subprocess_exec(
+                yabai_path, "-m", "query", "--windows",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if proc.returncode != 0 or not stdout:
+                logger.warning("[YABAI v54.0] Failed to query windows for Phoenix Protocol")
+                return None
+
+            all_windows = json.loads(stdout.decode())
+
+            # Filter by app name
+            candidates = [w for w in all_windows if w.get("app") == app_name]
+
+            if not candidates:
+                logger.warning(f"[YABAI v54.0] No {app_name} windows found")
+                return None
+
+            # If we have PID, filter by it
+            if pid:
+                pid_matches = [w for w in candidates if w.get("pid") == pid]
+                if pid_matches:
+                    candidates = pid_matches
+
+            # Remove the old dead ID from candidates (if it somehow still appears)
+            candidates = [w for w in candidates if w.get("id") != old_id]
+
+            if not candidates:
+                logger.warning(f"[YABAI v54.0] No new candidates found after filtering")
+                return None
+
+            # If no title to match, just return the first candidate
+            if not target_title:
+                new_id = candidates[0].get("id")
+                logger.info(
+                    f"[YABAI v54.0] 🔥 Phoenix: Re-bonded (no title) {old_id} → {new_id}"
+                )
+                return new_id
+
+            # Fuzzy match by title
+            best_match = None
+            best_ratio = 0.0
+
+            for w in candidates:
+                w_title = w.get("title", "")
+                if not w_title:
+                    continue
+
+                # Calculate similarity ratio
+                # Simple approach: check substring containment and length ratio
+                if target_title == w_title:
+                    # Exact match
+                    best_match = w
+                    best_ratio = 1.0
+                    break
+                elif target_title in w_title or w_title in target_title:
+                    # Substring match
+                    min_len = min(len(target_title), len(w_title))
+                    max_len = max(len(target_title), len(w_title))
+                    ratio = min_len / max_len if max_len > 0 else 0
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = w
+                else:
+                    # Character-level similarity
+                    common = sum(1 for c in target_title if c in w_title)
+                    ratio = common / len(target_title) if target_title else 0
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = w
+
+            if best_match and best_ratio >= fuzzy_threshold:
+                new_id = best_match.get("id")
+                logger.info(
+                    f"[YABAI v54.0] 🔥 Phoenix: Re-bonded {old_id} → {new_id} "
+                    f"(title match: {best_ratio:.1%})"
+                )
+                return new_id
+
+            # If fuzzy match failed, try PID-only match as fallback
+            if pid:
+                for w in candidates:
+                    if w.get("pid") == pid:
+                        new_id = w.get("id")
+                        logger.info(
+                            f"[YABAI v54.0] 🔥 Phoenix: Re-bonded (PID-only) {old_id} → {new_id}"
+                        )
+                        return new_id
+
+            logger.warning(
+                f"[YABAI v54.0] Phoenix Protocol failed: No matching window found "
+                f"(best ratio: {best_ratio:.1%}, threshold: {fuzzy_threshold:.1%})"
+            )
+            return None
+
+        except Exception as e:
+            logger.warning(f"[YABAI v54.0] Phoenix Protocol exception: {e}")
+            return None
+
+    async def _flush_yabai_cache_async(self, iterations: int = 3) -> None:
+        """
+        v54.0: Force Yabai to refresh its internal state cache.
+
+        Sometimes Yabai's internal state becomes stale. Rapid read queries
+        can force it to refresh.
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        logger.debug(f"[YABAI v54.0] Flushing Yabai cache ({iterations} iterations)...")
+
+        for i in range(iterations):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    yabai_path, "-m", "query", "--windows",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v54.1: LAZARUS TRIGGER - Restore AX Reference for Zombie Windows
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ROOT CAUSE FIX: When a window has `has-ax-reference: false`, it's in a
+    # "zombie state" - it exists but yabai cannot interact with it. The only
+    # way to restore the AX reference is to force macOS to rebuild it by
+    # hiding and unhiding the application.
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _reflash_ax_reference_async(
+        self,
+        app_name: str,
+        pid: Optional[int] = None,
+        window_id: Optional[int] = None
+    ) -> bool:
+        """
+        v54.1: LAZARUS TRIGGER - Force macOS to rebuild AX reference for zombie windows.
+
+        This uses the Hide/Unhide technique to force WindowServer to rebuild
+        the Accessibility object for windows that have lost their AX reference.
+
+        Args:
+            app_name: Application name (e.g., "Google Chrome")
+            pid: Process ID (optional, for more targeted activation)
+            window_id: Window ID to verify after reflash (optional)
+
+        Returns:
+            True if AX reference was successfully restored
+        """
+        yabai_path = self._health.yabai_path or os.getenv("YABAI_PATH", "/opt/homebrew/bin/yabai")
+
+        logger.info(
+            f"[YABAI v54.1] 👻→🧟 LAZARUS TRIGGER: Attempting to restore AX reference for {app_name}..."
+        )
+
+        try:
+            # Lazarus Protocol: Hide -> Wait -> Unhide
+            lazarus_script = f'''
+            -- v54.1 Lazarus Trigger: Force AX reference rebuild
+            tell application "System Events"
+                try
+                    set targetProc to first process whose name is "{app_name}"
+
+                    -- Step 1: Hide the app (forces WindowServer to release AX objects)
+                    set visible of targetProc to false
+                    delay 0.5
+
+                    -- Step 2: Unhide the app (forces WindowServer to rebuild AX objects)
+                    set visible of targetProc to true
+                    delay 0.5
+
+                    -- Step 3: Bring to front to ensure AX is active
+                    set frontmost of targetProc to true
+                    delay 0.3
+
+                    return "REFLASHED"
+                on error errMsg
+                    return "ERROR: " & errMsg
+                end try
+            end tell
+            '''
+
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", lazarus_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+
+            result = stdout.decode().strip() if stdout else ""
+
+            if "REFLASHED" in result:
+                logger.info(f"[YABAI v54.1] ✅ Lazarus Trigger completed for {app_name}")
+
+                # Wait for WindowServer to stabilize
+                await asyncio.sleep(0.5)
+
+                # Verify AX reference was restored (if window_id provided)
+                if window_id:
+                    try:
+                        verify_proc = await asyncio.create_subprocess_exec(
+                            yabai_path, "-m", "query", "--windows",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        verify_stdout, _ = await asyncio.wait_for(
+                            verify_proc.communicate(), timeout=5.0
+                        )
+                        if verify_proc.returncode == 0 and verify_stdout:
+                            windows = json.loads(verify_stdout.decode())
+                            for w in windows:
+                                if w.get("id") == window_id:
+                                    if w.get("has-ax-reference", False):
+                                        logger.info(
+                                            f"[YABAI v54.1] 🎉 Window {window_id} AX reference RESTORED!"
+                                        )
+                                        return True
+                                    else:
+                                        logger.warning(
+                                            f"[YABAI v54.1] Window {window_id} still has no AX reference"
+                                        )
+                                        return False
+                    except Exception:
+                        pass
+
+                return True
+            else:
+                error_msg = result if result else stderr.decode().strip() if stderr else "Unknown"
+                logger.warning(f"[YABAI v54.1] Lazarus Trigger failed: {error_msg}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"[YABAI v54.1] Lazarus Trigger exception: {e}")
+            return False
 
     async def _maximize_window_async(self, window_id: int) -> bool:
         """Maximize window to fill its current display using yabai grid."""
