@@ -914,6 +914,23 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         self._yabai_cache_ttl: float = 2.0  # Cache TTL in seconds (windows change fast)
         self._yabai_cache_lock: Optional[asyncio.Lock] = None  # Thread-safe cache updates
 
+        # v37.0: OCR CONCURRENCY LIMITING - Prevent Resource Exhaustion
+        # =====================================================================
+        # ROOT CAUSE FIX: Multiple watchers running OCR simultaneously
+        # PROBLEM: With 11 windows at high FPS, OCR operations can pile up:
+        # - Each OCR call allocates 10-50MB for image processing
+        # - Tesseract/Vision framework has internal parallelism
+        # - Concurrent OCRs can spike memory to 4GB+ and thrash CPU
+        # - 16GB M1 Mac becomes unresponsive
+        #
+        # SOLUTION: Global semaphore limits concurrent OCR operations
+        # - Default: 2 concurrent OCRs (configurable via env)
+        # - Watchers queue up and wait their turn
+        # - Prevents memory explosion during multi-window surveillance
+        # =====================================================================
+        self._ocr_max_concurrent = int(os.getenv('JARVIS_OCR_MAX_CONCURRENT', '2'))
+        self._ocr_semaphore: Optional[asyncio.Semaphore] = None  # Lazy-init in async context
+
     # =========================================================================
     # Helper Methods for Non-Blocking Initialization
     # =========================================================================
@@ -5595,6 +5612,186 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         return results
 
+    # =========================================================================
+    # v37.0: WINDOW HEALTH MONITORING HELPERS
+    # =========================================================================
+    # ROOT CAUSE FIX: Runtime window invalidation during monitoring
+    # =========================================================================
+    # PROBLEM: Windows can become invalid during monitoring due to:
+    # - User closes the window
+    # - App crashes and restarts (new window ID)
+    # - Window moves to different space (yabai context lost)
+    # - macOS recycles CGWindowID after window destruction
+    #
+    # SOLUTION: Runtime health checks with intelligent recovery:
+    # 1. _check_window_still_valid_async: Verify window exists via yabai
+    # 2. _find_replacement_window: Find window by app name if ID changed
+    # =========================================================================
+
+    async def _check_window_still_valid_async(self, window_id: int) -> bool:
+        """
+        v37.0: Check if a window ID is still valid (exists in yabai/compositor).
+
+        This performs a lightweight check to determine if a window still exists,
+        without expensive frame capture operations.
+
+        Args:
+            window_id: The CGWindowID to validate
+
+        Returns:
+            True if window exists, False if it has been closed/destroyed
+        """
+        if not window_id:
+            return False
+
+        # Strategy 1: Check yabai cache first (fastest)
+        if window_id in self._yabai_windows_cache:
+            import time
+            if (time.time() - self._yabai_cache_timestamp) < self._yabai_cache_ttl:
+                # Cache is fresh - window exists
+                return True
+
+        # Strategy 2: Direct yabai query with short timeout
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: subprocess.run(
+                        ['/opt/homebrew/bin/yabai', '-m', 'query', '--windows', '--window', str(window_id)],
+                        capture_output=True,
+                        text=True,
+                        timeout=1
+                    )
+                ),
+                timeout=2.0
+            )
+
+            if result.returncode == 0 and result.stdout:
+                # Window exists in yabai
+                try:
+                    window_info = json.loads(result.stdout)
+                    # Update cache with fresh data
+                    self._yabai_windows_cache[window_id] = window_info
+                    return True
+                except json.JSONDecodeError:
+                    pass
+
+        except asyncio.TimeoutError:
+            logger.debug(f"[WindowHealth] Yabai query timeout for window {window_id}")
+        except subprocess.TimeoutExpired:
+            logger.debug(f"[WindowHealth] Subprocess timeout for window {window_id}")
+        except Exception as e:
+            logger.debug(f"[WindowHealth] Yabai query failed for window {window_id}: {e}")
+
+        # Strategy 3: Check CGWindowListCopyWindowInfo via ScreenCaptureKit
+        # This catches windows yabai doesn't manage (e.g., system dialogs)
+        try:
+            from backend.vision.macos_video_capture_advanced import fast_capture
+            if hasattr(fast_capture, 'window_exists'):
+                exists = await asyncio.to_thread(fast_capture.window_exists, window_id)
+                return exists
+        except Exception as e:
+            logger.debug(f"[WindowHealth] ScreenCaptureKit check failed: {e}")
+
+        # Strategy 4: Refresh full cache and check
+        if await self._refresh_yabai_windows_cache(force=True):
+            return window_id in self._yabai_windows_cache
+
+        # Window not found in any source
+        logger.warning(f"[WindowHealth] Window {window_id} not found - likely closed or destroyed")
+        return False
+
+    async def _find_replacement_window(
+        self,
+        app_name: str,
+        original_window_id: int,
+        prefer_same_space: bool = True
+    ) -> Optional[int]:
+        """
+        v37.0: Find a replacement window by app name when original ID is invalid.
+
+        When an app crashes and restarts, or when macOS recycles a window ID,
+        this method attempts to find a new window belonging to the same app.
+
+        Args:
+            app_name: Application name to search for (e.g., "Chrome", "Terminal")
+            original_window_id: The original window ID that is no longer valid
+            prefer_same_space: If True, prefer windows on the same space
+
+        Returns:
+            New window_id if found, None otherwise
+        """
+        if not app_name:
+            return None
+
+        logger.info(
+            f"[WindowHealth] 🔍 Searching for replacement window for '{app_name}' "
+            f"(original ID: {original_window_id})"
+        )
+
+        try:
+            # Use _find_window with find_all=True to get all matching windows
+            find_timeout = float(os.getenv('JARVIS_FIND_REPLACEMENT_TIMEOUT', '5'))
+
+            matching_windows = await asyncio.wait_for(
+                self._find_window(app_name, find_all=True),
+                timeout=find_timeout
+            )
+
+            if not matching_windows:
+                logger.warning(f"[WindowHealth] No windows found for '{app_name}'")
+                return None
+
+            # Filter out the original (now invalid) window ID
+            candidates = [
+                w for w in matching_windows
+                if w.get('window_id') != original_window_id
+            ]
+
+            if not candidates:
+                logger.warning(
+                    f"[WindowHealth] No replacement candidates for '{app_name}' "
+                    f"(only original window found)"
+                )
+                return None
+
+            # Sort by priority: confidence, then visible, then space match
+            def priority_score(window: Dict[str, Any]) -> int:
+                score = 0
+                # Higher confidence = better
+                score += window.get('confidence', 0) * 10
+                # Visible windows preferred
+                if window.get('is_visible', False):
+                    score += 50
+                # Non-minimized preferred
+                if not window.get('is_minimized', False):
+                    score += 30
+                return score
+
+            candidates.sort(key=priority_score, reverse=True)
+
+            # Select best candidate
+            best = candidates[0]
+            new_window_id = best.get('window_id')
+
+            logger.info(
+                f"[WindowHealth] ✅ Found replacement window for '{app_name}': "
+                f"{original_window_id} → {new_window_id} "
+                f"(confidence: {best.get('confidence', 'unknown')}%, "
+                f"space: {best.get('space_id', 'unknown')})"
+            )
+
+            return new_window_id
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[WindowHealth] Replacement search timed out for '{app_name}' "
+                f"(timeout: {find_timeout}s)"
+            )
+        except Exception as e:
+            logger.warning(f"[WindowHealth] Replacement search failed for '{app_name}': {e}")
+
+        return None
+
     async def _validate_windows_batch(
         self,
         windows: List[Dict[str, Any]],
@@ -5950,6 +6147,51 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         except ImportError:
                             pass
 
+                        # ═══════════════════════════════════════════════════════════════
+                        # v37.0: RUNTIME PERMISSION CHECK
+                        # ═══════════════════════════════════════════════════════════════
+                        # Check if Screen Recording permission is still granted
+                        # User may revoke permission during long monitoring sessions
+                        # ═══════════════════════════════════════════════════════════════
+                        try:
+                            from backend.vision.swift_video_bridge import check_screen_recording_permission
+                            permission_still_granted = await check_screen_recording_permission()
+
+                            if not permission_still_granted:
+                                logger.error(
+                                    f"[Ferrari Detection] ❌ Screen Recording permission REVOKED! "
+                                    f"Cannot continue monitoring."
+                                )
+
+                                # Narrate permission loss to user
+                                if self.config.working_out_loud_enabled:
+                                    try:
+                                        await self._narrate_working_out_loud(
+                                            message="I've lost permission to see the screen. "
+                                                    "Please go to System Settings → Privacy & Security → "
+                                                    "Screen Recording and re-enable access for this application.",
+                                            narration_type="error",
+                                            watcher_id=watcher_id,
+                                            priority="critical"
+                                        )
+                                    except Exception:
+                                        pass
+
+                                # Cleanup and return error
+                                self._cleanup_narration_state(watcher_id)
+                                return {
+                                    'detected': False,
+                                    'confidence': 0.0,
+                                    'error': 'Screen Recording permission revoked',
+                                    'frames_checked': frame_count,
+                                    'ocr_checks': ocr_checks,
+                                    'permission_revoked': True
+                                }
+                        except ImportError:
+                            pass  # Swift bridge not available
+                        except Exception as e:
+                            logger.debug(f"[Ferrari Detection] Permission check failed: {e}")
+
                     # Check for too many consecutive failures
                     if consecutive_frame_failures >= max_consecutive_failures:
                         logger.error(
@@ -5957,12 +6199,84 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             f"consecutive frame failures (threshold: {max_consecutive_failures})"
                         )
 
+                        # ═══════════════════════════════════════════════════════════════
+                        # v37.0: AUTO-RECOVERY - Attempt to restart watcher before giving up
+                        # ═══════════════════════════════════════════════════════════════
+                        # Instead of immediately failing, try to recover:
+                        # 1. Check if window is still valid
+                        # 2. Attempt stream reconnection
+                        # 3. Only fail if recovery fails
+                        # ═══════════════════════════════════════════════════════════════
+                        recovery_attempted = False
+                        recovery_success = False
+                        window_id = getattr(watcher, 'window_id', None)
+
+                        if window_id and hasattr(watcher, 'restart'):
+                            recovery_attempted = True
+                            logger.info(
+                                f"[Ferrari Detection] 🔄 Attempting auto-recovery for window {window_id}..."
+                            )
+
+                            try:
+                                # Check if window still exists
+                                window_valid = await self._check_window_still_valid_async(window_id)
+
+                                if not window_valid:
+                                    logger.warning(
+                                        f"[Ferrari Detection] Window {window_id} no longer valid - "
+                                        f"trying to find replacement by app name"
+                                    )
+                                    # Try to find window by app name
+                                    replacement = await self._find_replacement_window(app_name, window_id)
+                                    if replacement:
+                                        window_id = replacement
+                                        logger.info(
+                                            f"[Ferrari Detection] Found replacement window: {window_id}"
+                                        )
+
+                                # Attempt stream reconnection
+                                if hasattr(watcher, 'restart'):
+                                    restart_result = await watcher.restart(window_id=window_id)
+                                    if restart_result:
+                                        recovery_success = True
+                                        consecutive_frame_failures = 0
+                                        logger.info(
+                                            f"[Ferrari Detection] ✅ Auto-recovery SUCCESS - "
+                                            f"stream reconnected for window {window_id}"
+                                        )
+
+                                        # Narrate recovery
+                                        if self.config.working_out_loud_enabled:
+                                            try:
+                                                await self._narrate_working_out_loud(
+                                                    message=f"I temporarily lost the video stream for {app_name}, "
+                                                            f"but I've reconnected and am continuing to watch.",
+                                                    narration_type="activity",
+                                                    watcher_id=watcher_id,
+                                                    priority="normal"
+                                                )
+                                            except Exception:
+                                                pass
+
+                                        # Continue monitoring loop
+                                        continue
+
+                            except Exception as e:
+                                logger.warning(f"[Ferrari Detection] Auto-recovery failed: {e}")
+
+                        # Recovery failed or not attempted - give up
+                        if recovery_attempted and not recovery_success:
+                            error_msg = "Auto-recovery failed - watcher could not be restarted"
+                        else:
+                            error_msg = "Watcher crashed - no frames received"
+
                         # Narrate the crash to user
                         if self.config.working_out_loud_enabled:
                             try:
                                 await self._narrate_working_out_loud(
                                     message=f"I lost connection to {app_name}. "
                                             f"The video stream stopped unexpectedly. "
+                                            f"{'I tried to recover but failed. ' if recovery_attempted else ''}"
                                             f"Please check that the window is still visible.",
                                     narration_type="error",
                                     watcher_id=watcher_id,
@@ -5976,11 +6290,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         return {
                             'detected': False,
                             'confidence': 0.0,
-                            'error': 'Watcher crashed - no frames received',
+                            'error': error_msg,
                             'frames_checked': frame_count,
                             'ocr_checks': ocr_checks,
                             'watcher_crashed': True,
-                            'consecutive_failures': consecutive_frame_failures
+                            'consecutive_failures': consecutive_frame_failures,
+                            'recovery_attempted': recovery_attempted,
+                            'recovery_success': recovery_success
                         }
 
                     # Log warning every 10 failures
@@ -6018,14 +6334,35 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 if frame_count % check_interval == 0:
                     ocr_checks += 1
 
-                    # v32.3: Run OCR detection with intelligent fuzzy matching and context extraction
-                    detected, confidence, detected_text, ocr_context = await self._ocr_detect(
-                        frame=frame,
-                        trigger_text=trigger_text
-                    )
+                    # ═══════════════════════════════════════════════════════════════
+                    # v37.0: OCR CONCURRENCY LIMITING
+                    # ═══════════════════════════════════════════════════════════════
+                    # Acquire semaphore before OCR to prevent memory exhaustion
+                    # when multiple watchers run OCR simultaneously
+                    # ═══════════════════════════════════════════════════════════════
+                    if self._ocr_semaphore is None:
+                        self._ocr_semaphore = asyncio.Semaphore(self._ocr_max_concurrent)
 
-                    # v14.0: Get all OCR text for activity/near-miss detection
-                    all_text = await self._ocr_get_all_text(frame)
+                    try:
+                        # Wait for OCR slot with timeout to prevent deadlock
+                        ocr_timeout = float(os.getenv('JARVIS_OCR_ACQUIRE_TIMEOUT', '5.0'))
+                        async with asyncio.timeout(ocr_timeout):
+                            async with self._ocr_semaphore:
+                                # v32.3: Run OCR detection with intelligent fuzzy matching and context extraction
+                                detected, confidence, detected_text, ocr_context = await self._ocr_detect(
+                                    frame=frame,
+                                    trigger_text=trigger_text
+                                )
+
+                                # v14.0: Get all OCR text for activity/near-miss detection
+                                all_text = await self._ocr_get_all_text(frame)
+                    except asyncio.TimeoutError:
+                        # OCR slot not available - skip this frame
+                        logger.debug(
+                            f"[Ferrari Detection] OCR skipped - semaphore timeout "
+                            f"({self._ocr_max_concurrent} concurrent limit)"
+                        )
+                        continue
 
                     if detected:
                         detection_time = time.time() - start_time

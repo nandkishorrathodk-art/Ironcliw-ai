@@ -1991,6 +1991,208 @@ class VideoWatcher:
             f"Events: {self.events_detected}"
         )
 
+    # =========================================================================
+    # v37.0: STREAM RECONNECTION PROTOCOL
+    # =========================================================================
+    # ROOT CAUSE FIX: ScreenCaptureKit stream disconnections
+    # =========================================================================
+    # PROBLEM: SCK streams can disconnect due to:
+    # - Window moves to different space (stream context lost)
+    # - macOS power management (display sleep/wake)
+    # - GPU driver issues (Metal/shader compilation failures)
+    # - ScreenRecording permission changes at runtime
+    # - WindowServer restart (rare but happens)
+    #
+    # SOLUTION: Smart reconnection with optional window_id update:
+    # 1. Gracefully stop current stream
+    # 2. Optionally update window_id if app restarted
+    # 3. Re-initialize SCK stream
+    # 4. Resume frame capture with stats preserved
+    # =========================================================================
+
+    async def restart(
+        self,
+        window_id: Optional[int] = None,
+        preserve_stats: bool = True
+    ) -> bool:
+        """
+        v37.0: Restart the video watcher stream, optionally for a different window.
+
+        This enables recovery from:
+        - ScreenCaptureKit disconnections
+        - Window ID changes (app restart)
+        - Display configuration changes
+        - Power management events
+
+        Args:
+            window_id: Optional new window ID (if app restarted with new window)
+            preserve_stats: If True, preserve frame counts and events detected
+
+        Returns:
+            True if restart succeeded, False otherwise
+        """
+        original_window_id = self.config.window_id
+        restart_timeout = float(os.getenv('JARVIS_WATCHER_RESTART_TIMEOUT', '10.0'))
+
+        logger.info(
+            f"[Watcher {self.watcher_id}] 🔄 Initiating stream restart "
+            f"(window: {original_window_id}{f' → {window_id}' if window_id and window_id != original_window_id else ''})"
+        )
+
+        # Save stats if preserving
+        if preserve_stats:
+            with self._stats_lock:
+                saved_frames = self._frames_captured
+                saved_analyzed = self._frames_analyzed
+                saved_dropped = self._frames_dropped
+            saved_events = self.events_detected
+            saved_app_name = self.app_name
+            saved_space_id = self.space_id
+        else:
+            saved_frames = saved_analyzed = saved_dropped = saved_events = 0
+            saved_app_name = self.app_name
+            saved_space_id = self.space_id
+
+        try:
+            # ===================================================================
+            # PHASE 1: Graceful Stop (don't wait forever)
+            # ===================================================================
+            stop_timeout = float(os.getenv('JARVIS_WATCHER_STOP_TIMEOUT', '3.0'))
+            try:
+                await asyncio.wait_for(self.stop(), timeout=stop_timeout)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[Watcher {self.watcher_id}] Stop timed out after {stop_timeout}s, "
+                    f"forcing cleanup..."
+                )
+                # Force cleanup
+                self._stop_event.set()
+                self.status = WatcherStatus.STOPPED
+                if self._sck_stream:
+                    try:
+                        # Try sync stop as last resort
+                        if hasattr(self._sck_stream, 'force_stop'):
+                            await asyncio.to_thread(self._sck_stream.force_stop)
+                    except Exception:
+                        pass
+                self._sck_stream = None
+
+            # ===================================================================
+            # PHASE 2: Update Configuration
+            # ===================================================================
+            if window_id and window_id != original_window_id:
+                self.config = WatcherConfig(
+                    window_id=window_id,
+                    fps=self.config.fps,
+                    max_buffer_size=self.config.max_buffer_size
+                )
+                logger.info(
+                    f"[Watcher {self.watcher_id}] Window ID updated: "
+                    f"{original_window_id} → {window_id}"
+                )
+
+            # ===================================================================
+            # PHASE 3: Re-initialize Stream
+            # ===================================================================
+            # Reset state
+            self.status = WatcherStatus.IDLE
+            self._stop_event.clear()
+            self._capture_thread = None
+            self._frame_loop_task = None
+
+            # Clear queue
+            with self._queue_lock:
+                while not self.frame_queue.empty():
+                    try:
+                        self.frame_queue.get_nowait()
+                    except queue.Empty:
+                        break
+
+            # ===================================================================
+            # PHASE 4: Start with Timeout
+            # ===================================================================
+            try:
+                success = await asyncio.wait_for(
+                    self.start(),
+                    timeout=restart_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"[Watcher {self.watcher_id}] Restart start() timed out "
+                    f"after {restart_timeout}s"
+                )
+                self.status = WatcherStatus.ERROR
+                return False
+
+            if success:
+                # Restore preserved stats
+                if preserve_stats:
+                    with self._stats_lock:
+                        self._frames_captured = saved_frames
+                        self._frames_analyzed = saved_analyzed
+                        self._frames_dropped = saved_dropped
+                    self.events_detected = saved_events
+                    self.app_name = saved_app_name
+                    self.space_id = saved_space_id
+
+                logger.info(
+                    f"[Watcher {self.watcher_id}] ✅ Stream restart SUCCESSFUL "
+                    f"(window: {self.config.window_id}, "
+                    f"preserved: {saved_frames} frames, {saved_events} events)"
+                )
+                return True
+            else:
+                logger.error(
+                    f"[Watcher {self.watcher_id}] ❌ Stream restart FAILED - "
+                    f"start() returned False"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"[Watcher {self.watcher_id}] ❌ Stream restart FAILED with exception: {e}"
+            )
+            self.status = WatcherStatus.ERROR
+            return False
+
+    async def is_stream_healthy(self) -> bool:
+        """
+        v37.0: Check if the SCK stream is still healthy and producing frames.
+
+        Returns:
+            True if stream appears healthy, False if reconnection may be needed
+        """
+        if self.status != WatcherStatus.WATCHING:
+            return False
+
+        # Check 1: Recent frame activity
+        with self._stats_lock:
+            last_frame = self._last_frame_time
+        time_since_frame = time.time() - last_frame if last_frame > 0 else float('inf')
+
+        # If no frame in 5 seconds, stream may be unhealthy
+        frame_timeout = float(os.getenv('JARVIS_STREAM_HEALTH_TIMEOUT', '5.0'))
+        if time_since_frame > frame_timeout:
+            logger.warning(
+                f"[Watcher {self.watcher_id}] Stream unhealthy: "
+                f"no frames for {time_since_frame:.1f}s"
+            )
+            return False
+
+        # Check 2: SCK stream status (if using Ferrari Engine)
+        if self._sck_stream and hasattr(self._sck_stream, 'is_running'):
+            try:
+                if not self._sck_stream.is_running:
+                    logger.warning(
+                        f"[Watcher {self.watcher_id}] Stream unhealthy: "
+                        f"SCK stream not running"
+                    )
+                    return False
+            except Exception as e:
+                logger.debug(f"[Watcher {self.watcher_id}] SCK status check failed: {e}")
+
+        return True
+
     def get_stats(self) -> Dict[str, Any]:
         """Get watcher statistics (thread-safe)."""
         uptime = time.time() - self.start_time if self.start_time > 0 else 0
