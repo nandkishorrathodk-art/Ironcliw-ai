@@ -31,6 +31,8 @@ import time
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
+import pytest
+
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -55,6 +57,7 @@ def print_header(title: str):
     print("=" * 60)
 
 
+@pytest.mark.asyncio
 async def test_trinity_directories() -> bool:
     """Test 1: Verify Trinity directory structure."""
     print_header("TEST 1: Trinity Directory Structure")
@@ -80,6 +83,7 @@ async def test_trinity_directories() -> bool:
     return all_exist
 
 
+@pytest.mark.asyncio
 async def test_component_state_files() -> bool:
     """Test 2: Verify component state file creation."""
     print_header("TEST 2: Component State Files")
@@ -148,6 +152,7 @@ async def test_component_state_files() -> bool:
     return True
 
 
+@pytest.mark.asyncio
 async def test_ghost_display_status() -> bool:
     """Test 3: Verify Ghost Display status function."""
     print_header("TEST 3: Ghost Display Status Function")
@@ -184,6 +189,7 @@ async def test_ghost_display_status() -> bool:
         return False
 
 
+@pytest.mark.asyncio
 async def test_trinity_initializer() -> bool:
     """Test 4: Verify Trinity initializer module."""
     print_header("TEST 4: Trinity Initializer Module")
@@ -219,6 +225,7 @@ async def test_trinity_initializer() -> bool:
         return False
 
 
+@pytest.mark.asyncio
 async def test_trinity_initialization() -> bool:
     """Test 5: Test actual Trinity initialization."""
     print_header("TEST 5: Trinity Initialization Flow")
@@ -267,6 +274,7 @@ async def test_trinity_initialization() -> bool:
         return False
 
 
+@pytest.mark.asyncio
 async def test_cross_repo_communication() -> bool:
     """Test 6: Verify cross-repo file-based communication."""
     print_header("TEST 6: Cross-Repo Communication")
@@ -351,6 +359,7 @@ async def test_cross_repo_communication() -> bool:
     return True
 
 
+@pytest.mark.asyncio
 async def test_trinity_handlers() -> bool:
     """Test 7: Verify Trinity command handlers."""
     print_header("TEST 7: Trinity Command Handlers")
@@ -379,6 +388,7 @@ async def test_trinity_handlers() -> bool:
         return False
 
 
+@pytest.mark.asyncio
 async def test_trinity_auto_launch_config() -> bool:
     """Test 8: Verify v72.0 Trinity Auto-Launch configuration."""
     print_header("TEST 8: Trinity Auto-Launch Configuration (v72.0)")

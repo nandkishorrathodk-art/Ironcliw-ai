@@ -36,15 +36,187 @@ Or use the context manager:
 """
 
 import asyncio
+import json
 import logging
 import os
+import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# v73.0: ATOMIC FILE I/O - Diamond-Hard Protocol
+# =============================================================================
+
+class AtomicTrinityIO:
+    """
+    v73.0: Ensures zero-corruption file operations via Atomic Renames.
+
+    The Problem:
+        Standard file writing (`open('w').write()`) takes non-zero time (e.g., 5ms).
+        If JARVIS tries to read the file during those 5ms, it reads incomplete JSON
+        and crashes with JSONDecodeError.
+
+    The Solution:
+        Write to a temporary file first, then perform an OS-level atomic rename
+        (`os.replace`) to the final filename. This guarantees the file is either
+        *missing* or *perfect*, never partial.
+
+    Features:
+        - Atomic writes with fsync for durability
+        - Safe reads with automatic retry on corruption
+        - Lock-free design for high concurrency
+        - Works across all platforms (macOS, Linux, Windows)
+    """
+
+    @staticmethod
+    def write_json_atomic(filepath: Union[str, Path], data: Dict[str, Any]) -> bool:
+        """
+        Write JSON data atomically to prevent partial reads.
+
+        Args:
+            filepath: Target file path
+            data: JSON-serializable dictionary
+
+        Returns:
+            True if write succeeded, False otherwise
+        """
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        tmp_fd = None
+        tmp_name = None
+
+        try:
+            # 1. Create temp file in same directory (required for atomic rename)
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                dir=filepath.parent,
+                prefix=f".{filepath.stem}.",
+                suffix=".tmp"
+            )
+
+            # 2. Write data to temp file
+            with os.fdopen(tmp_fd, 'w') as tmp_file:
+                tmp_fd = None  # os.fdopen takes ownership
+                json.dump(data, tmp_file, indent=2)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())  # Force write to physical disk
+
+            # 3. Atomic swap (OS guarantees this is instantaneous)
+            os.replace(tmp_name, filepath)
+            return True
+
+        except Exception as e:
+            logger.debug(f"[AtomicIO] Write failed: {e}")
+            # Cleanup temp file on failure
+            if tmp_name and os.path.exists(tmp_name):
+                try:
+                    os.remove(tmp_name)
+                except OSError:
+                    pass
+            return False
+
+        finally:
+            # Ensure fd is closed if not transferred to fdopen
+            if tmp_fd is not None:
+                try:
+                    os.close(tmp_fd)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def read_json_safe(
+        filepath: Union[str, Path],
+        default: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3,
+        retry_delay: float = 0.05
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Read JSON with automatic retry on corruption.
+
+        This handles the rare case where we catch a file mid-rename
+        (between unlink and rename on some filesystems).
+
+        Args:
+            filepath: File to read
+            default: Value to return if file doesn't exist
+            max_retries: Maximum read attempts
+            retry_delay: Delay between retries in seconds
+
+        Returns:
+            Parsed JSON or default value
+        """
+        filepath = Path(filepath)
+
+        for attempt in range(max_retries):
+            try:
+                if not filepath.exists():
+                    return default
+
+                with open(filepath, 'r') as f:
+                    return json.load(f)
+
+            except json.JSONDecodeError as e:
+                if attempt < max_retries - 1:
+                    logger.debug(f"[AtomicIO] JSON decode retry {attempt + 1}: {e}")
+                    time.sleep(retry_delay)
+                else:
+                    logger.warning(f"[AtomicIO] JSON decode failed after {max_retries} retries: {e}")
+                    return default
+
+            except Exception as e:
+                logger.debug(f"[AtomicIO] Read failed: {e}")
+                return default
+
+        return default
+
+    @staticmethod
+    def cleanup_temp_files(directory: Union[str, Path], prefix: str = ".") -> int:
+        """
+        Clean up orphaned temp files from failed atomic writes.
+
+        Args:
+            directory: Directory to clean
+            prefix: Temp file prefix to match
+
+        Returns:
+            Number of files cleaned
+        """
+        directory = Path(directory)
+        cleaned = 0
+
+        try:
+            for f in directory.glob(f"{prefix}*.tmp"):
+                try:
+                    # Only remove if older than 1 minute (avoid race with active writes)
+                    if time.time() - f.stat().st_mtime > 60:
+                        f.unlink()
+                        cleaned += 1
+                except OSError:
+                    pass
+        except Exception:
+            pass
+
+        return cleaned
+
+
+# Convenience function for module-level access
+def write_json_atomic(filepath: Union[str, Path], data: Dict[str, Any]) -> bool:
+    """Write JSON atomically. See AtomicTrinityIO.write_json_atomic."""
+    return AtomicTrinityIO.write_json_atomic(filepath, data)
+
+
+def read_json_safe(
+    filepath: Union[str, Path],
+    default: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    """Read JSON safely. See AtomicTrinityIO.read_json_safe."""
+    return AtomicTrinityIO.read_json_safe(filepath, default)
 
 
 # =============================================================================
@@ -340,21 +512,27 @@ async def _gather_jarvis_state() -> Dict[str, Any]:
 
 
 async def _write_state_to_orchestrator(state: Dict[str, Any]) -> None:
-    """Write state to orchestrator's component directory."""
-    import json
+    """
+    Write state to orchestrator's component directory.
 
+    v73.0: Uses atomic writes to prevent partial read race conditions.
+    """
     try:
         components_dir = Path.home() / ".jarvis" / "trinity" / "components"
         components_dir.mkdir(parents=True, exist_ok=True)
 
         state_file = components_dir / "jarvis_body.json"
-        with open(state_file, "w") as f:
-            json.dump({
-                "component_type": "jarvis_body",
-                "instance_id": JARVIS_INSTANCE_ID,
-                "timestamp": time.time(),
-                "metrics": state,
-            }, f, indent=2)
+
+        # v73.0: Atomic write - prevents JSONDecodeError from partial reads
+        data = {
+            "component_type": "jarvis_body",
+            "instance_id": JARVIS_INSTANCE_ID,
+            "timestamp": time.time(),
+            "metrics": state,
+        }
+
+        if not write_json_atomic(state_file, data):
+            logger.debug("[Trinity] Atomic write failed, state may be stale")
 
     except Exception as e:
         logger.debug(f"[Trinity] Could not write state: {e}")

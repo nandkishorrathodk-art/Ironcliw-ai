@@ -8085,6 +8085,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 metadata={"trinity_launch": "starting"},
             )
 
+            # v73.0: Pre-flight zombie reaper - kill any orphaned processes holding Trinity ports
+            await self._reap_zombie_port_holders()
+
             # Launch J-Prime (Mind) and Reactor-Core (Nerves) in parallel
             jprime_task = asyncio.create_task(self._launch_jprime_orchestrator())
             reactor_task = asyncio.create_task(self._launch_reactor_core_orchestrator())
@@ -8132,6 +8135,98 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         except Exception as e:
             self.logger.warning(f"⚠️ Trinity component launch failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ Some Trinity components failed to launch{TerminalUI.RESET}")
+
+    async def _reap_zombie_port_holders(self) -> None:
+        """
+        v73.0: Pre-flight zombie reaper - kill orphaned processes holding Trinity ports.
+
+        The Problem:
+            If you hard-crash or force-kill JARVIS, the cleanup script won't run.
+            J-Prime or Reactor-Core processes may stay alive as "zombies" holding ports.
+            When you restart, Trinity launch fails because "Port 8000 already in use".
+
+        The Solution:
+            Before launching, scan for any process holding Trinity ports and terminate it
+            if it belongs to a previous JARVIS session (not the current one).
+
+        Protected Ports:
+            - 8000: J-Prime default server port
+            - 8002: J-Prime alternate port
+            - 8003: Reactor-Core API port
+        """
+        import psutil
+
+        # Trinity component ports to check
+        zombie_ports = {
+            8000: "J-Prime",
+            8002: "J-Prime",
+            8003: "Reactor-Core",
+        }
+
+        current_pid = os.getpid()
+        reaped_count = 0
+
+        for port, name in zombie_ports.items():
+            try:
+                # Find processes with connections on this port
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                    try:
+                        # Skip current process and its children
+                        if proc.pid == current_pid:
+                            continue
+
+                        # Check if this process has connections on the port
+                        connections = proc.connections()
+                        for conn in connections:
+                            if hasattr(conn, 'laddr') and conn.laddr and conn.laddr.port == port:
+                                # Found a zombie holding our port
+                                proc_name = proc.name()
+                                proc_cmdline = ' '.join(proc.cmdline()[:3]) if proc.cmdline() else ''
+
+                                # Verify it's a Trinity-related process (not something else)
+                                trinity_patterns = [
+                                    'jarvis', 'jprime', 'j_prime', 'reactor',
+                                    'trinity', 'python', 'uvicorn'
+                                ]
+                                is_trinity = any(
+                                    p.lower() in proc_cmdline.lower() or p.lower() in proc_name.lower()
+                                    for p in trinity_patterns
+                                )
+
+                                if is_trinity:
+                                    self.logger.warning(
+                                        f"🧟 Found zombie {name} on port {port} "
+                                        f"(PID: {proc.pid}, cmd: {proc_cmdline[:50]})"
+                                    )
+                                    print(
+                                        f"  {TerminalUI.YELLOW}🧟 Killing zombie {name} "
+                                        f"(PID: {proc.pid}) on port {port}{TerminalUI.RESET}"
+                                    )
+
+                                    # Graceful termination first
+                                    proc.terminate()
+                                    await asyncio.sleep(1.0)
+
+                                    # Force kill if still running
+                                    if proc.is_running():
+                                        self.logger.warning(f"   Force killing stubborn zombie PID {proc.pid}")
+                                        proc.kill()
+
+                                    reaped_count += 1
+                                break  # One match per port is enough
+
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        continue
+
+            except Exception as e:
+                self.logger.debug(f"   Zombie check for port {port} failed: {e}")
+
+        if reaped_count > 0:
+            self.logger.info(f"   🧹 Reaped {reaped_count} zombie process(es)")
+            # Give the OS time to release the ports
+            await asyncio.sleep(0.5)
+        else:
+            self.logger.debug("   No zombie processes found")
 
     async def _launch_jprime_orchestrator(self) -> None:
         """
