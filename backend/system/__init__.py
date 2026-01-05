@@ -47,6 +47,11 @@ from .reactor_bridge import (
     HeartbeatPayload,
 )
 
+# PROJECT TRINITY: Command Handlers
+from .trinity_handlers import (
+    register_trinity_handlers,
+)
+
 __all__ = [
     # v67.0 Cerebro
     'AppLibrary',
@@ -75,4 +80,5 @@ __all__ = [
     'TrinityIntent',
     'TrinitySource',
     'HeartbeatPayload',
+    'register_trinity_handlers',
 ]
