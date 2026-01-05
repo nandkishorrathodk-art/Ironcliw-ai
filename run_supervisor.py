@@ -2253,6 +2253,11 @@ class SupervisorBootstrapper:
 
         # v10.0: Reactor-Core API Server (Training Pipeline)
         self._reactor_core_process = None
+
+        # v11.0: PROJECT TRINITY - Unified Cognitive Architecture
+        self._trinity_initialized = False
+        self._trinity_instance_id: Optional[str] = None
+        self._trinity_enabled = os.getenv("TRINITY_ENABLED", "true").lower() == "true"
         self._reactor_core_enabled = os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
         self._reactor_core_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
 
@@ -2644,6 +2649,17 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             if self._reactor_core_enabled:
                 await self._initialize_reactor_core_api()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v11.0: PROJECT TRINITY - Unified Cognitive Architecture
+            # ═══════════════════════════════════════════════════════════════════
+            # This initializes the Trinity network connecting:
+            # - JARVIS Body (execution layer) ↔ J-Prime (cognitive mind) ↔ Reactor Core (nerves)
+            # - Enables distributed AI reasoning and cross-repo command execution
+            # - Provides file-based message passing with heartbeat monitoring
+            # ═══════════════════════════════════════════════════════════════════
+            if self._trinity_enabled:
+                await self._initialize_trinity()
 
             # ═══════════════════════════════════════════════════════════════════
             # v10.6: Start Real-Time Log Monitor with Voice Narrator Integration
@@ -7779,6 +7795,191 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self.logger.info("   ✅ Reactor-Core API stopped")
             except Exception as e:
                 self.logger.debug(f"   Reactor-Core shutdown error: {e}")
+
+    async def _initialize_trinity(self) -> None:
+        """
+        v11.0: Initialize PROJECT TRINITY - Unified Cognitive Architecture.
+
+        This connects JARVIS Body to the Trinity network, enabling:
+        - Cross-repo communication (JARVIS ↔ J-Prime ↔ Reactor Core)
+        - Distributed AI reasoning and plan execution
+        - Heartbeat monitoring for component liveness
+        - File-based message passing for reliability
+
+        The Trinity architecture models:
+        - JARVIS Body = Execution layer (Computer Use, Vision, Actions)
+        - J-Prime = Cognitive layer (Reasoning, Planning, Decisions)
+        - Reactor Core = Neural layer (Training, Learning, Optimization)
+        """
+        from pathlib import Path
+        import json
+
+        try:
+            self.logger.info("=" * 60)
+            self.logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection")
+            self.logger.info("=" * 60)
+
+            print(f"  {TerminalUI.CYAN}🔗 PROJECT TRINITY: Connecting distributed architecture...{TerminalUI.RESET}")
+
+            # Ensure Trinity directories exist
+            trinity_dir = Path.home() / ".jarvis" / "trinity"
+            (trinity_dir / "commands").mkdir(parents=True, exist_ok=True)
+            (trinity_dir / "heartbeats").mkdir(parents=True, exist_ok=True)
+            (trinity_dir / "components").mkdir(parents=True, exist_ok=True)
+
+            # Generate instance ID
+            import time
+            import os
+            self._trinity_instance_id = f"jarvis-{os.getpid()}-{int(time.time())}"
+
+            # Check for connected components
+            jprime_online = False
+            reactor_online = False
+
+            # Check J-Prime heartbeat
+            jprime_state_file = trinity_dir / "components" / "j_prime.json"
+            if jprime_state_file.exists():
+                try:
+                    with open(jprime_state_file) as f:
+                        jprime_state = json.load(f)
+                    age = time.time() - jprime_state.get("timestamp", 0)
+                    if age < 30:  # Consider online if heartbeat < 30s old
+                        jprime_online = True
+                        self.logger.info("   🧠 J-Prime (Mind): ONLINE")
+                except Exception:
+                    pass
+
+            # Check Reactor Core
+            reactor_state_file = trinity_dir / "components" / "reactor_core.json"
+            if reactor_state_file.exists():
+                try:
+                    with open(reactor_state_file) as f:
+                        reactor_state = json.load(f)
+                    age = time.time() - reactor_state.get("timestamp", 0)
+                    if age < 30:
+                        reactor_online = True
+                        self.logger.info("   ⚡ Reactor Core (Nerves): ONLINE")
+                except Exception:
+                    pass
+
+            # Write JARVIS Body component state
+            jarvis_state = {
+                "component_type": "jarvis_body",
+                "instance_id": self._trinity_instance_id,
+                "timestamp": time.time(),
+                "metrics": {
+                    "uptime_seconds": 0,
+                    "surveillance_active": False,
+                    "ghost_display_available": False,
+                },
+            }
+
+            with open(trinity_dir / "components" / "jarvis_body.json", "w") as f:
+                json.dump(jarvis_state, f, indent=2)
+
+            self._trinity_initialized = True
+
+            # Status summary
+            components_online = 1 + (1 if jprime_online else 0) + (1 if reactor_online else 0)
+
+            if components_online == 3:
+                self.logger.info("=" * 60)
+                self.logger.info("PROJECT TRINITY: FULL DISTRIBUTED MODE")
+                self.logger.info("   Mind ↔ Body ↔ Nerves: All connected")
+                self.logger.info("=" * 60)
+                print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: Full distributed mode (3/3 components){TerminalUI.RESET}")
+
+                # Voice announcement for full Trinity
+                await self.narrator.speak(
+                    "PROJECT TRINITY connected. Distributed cognitive architecture active.",
+                    wait=False,
+                )
+            else:
+                status_parts = ["Body ✓"]
+                if jprime_online:
+                    status_parts.append("Mind ✓")
+                if reactor_online:
+                    status_parts.append("Nerves ✓")
+
+                self.logger.info(f"   Trinity components: {', '.join(status_parts)}")
+                print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: {components_online}/3 components online{TerminalUI.RESET}")
+
+            # Broadcast Trinity status to loading server
+            await self._broadcast_trinity_status()
+
+        except Exception as e:
+            self.logger.warning(f"   ⚠️ PROJECT TRINITY initialization failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ PROJECT TRINITY: Running in standalone mode ({e}){TerminalUI.RESET}")
+            self._trinity_initialized = False
+
+    async def _broadcast_trinity_status(self) -> bool:
+        """
+        Broadcast PROJECT TRINITY status to the loading server.
+
+        This updates the frontend loading page with the current Trinity state,
+        showing which components are online and the connection status.
+        """
+        if not self._loading_server_process:
+            return False
+
+        try:
+            from pathlib import Path
+            import json
+            import time
+
+            trinity_dir = Path.home() / ".jarvis" / "trinity"
+
+            # Gather component states
+            jprime_online = False
+            reactor_online = False
+
+            jprime_file = trinity_dir / "components" / "j_prime.json"
+            if jprime_file.exists():
+                try:
+                    with open(jprime_file) as f:
+                        state = json.load(f)
+                    if time.time() - state.get("timestamp", 0) < 30:
+                        jprime_online = True
+                except Exception:
+                    pass
+
+            reactor_file = trinity_dir / "components" / "reactor_core.json"
+            if reactor_file.exists():
+                try:
+                    with open(reactor_file) as f:
+                        state = json.load(f)
+                    if time.time() - state.get("timestamp", 0) < 30:
+                        reactor_online = True
+                except Exception:
+                    pass
+
+            # Build status
+            components_online = 1 + (1 if jprime_online else 0) + (1 if reactor_online else 0)
+
+            trinity_status = {
+                "initialized": self._trinity_initialized,
+                "instance_id": self._trinity_instance_id,
+                "components": {
+                    "jarvis_body": {"online": True, "role": "Execution"},
+                    "j_prime": {"online": jprime_online, "role": "Cognition"},
+                    "reactor_core": {"online": reactor_online, "role": "Learning"},
+                },
+                "components_online": components_online,
+                "total_components": 3,
+                "mode": "distributed" if components_online == 3 else "partial" if components_online > 1 else "standalone",
+            }
+
+            # Broadcast
+            return await self._broadcast_startup_progress(
+                stage="trinity_status",
+                message=f"PROJECT TRINITY: {components_online}/3 components online",
+                progress=90 if self._trinity_initialized else 85,
+                metadata={"trinity": trinity_status},
+            )
+
+        except Exception as e:
+            self.logger.debug(f"Trinity status broadcast failed: {e}")
+            return False
 
     async def _connect_training_status_hub(self) -> None:
         """

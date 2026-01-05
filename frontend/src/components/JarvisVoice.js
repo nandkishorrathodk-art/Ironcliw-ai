@@ -713,6 +713,19 @@ const JarvisVoice = () => {
   const [surveillanceHistory, setSurveillanceHistory] = useState([]);
   const surveillanceTimeoutRef = useRef(null);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // v11.0: PROJECT TRINITY STATUS - Distributed Architecture Monitoring
+  // ═══════════════════════════════════════════════════════════════════
+  // Shows connection status of the Trinity architecture:
+  // - JARVIS Body (Execution) - J-Prime (Mind) - Reactor Core (Nerves)
+  // ═══════════════════════════════════════════════════════════════════
+  const [trinityStatus, setTrinityStatus] = useState(null);
+  // { initialized, mode, components: { jarvis_body, j_prime, reactor_core }, components_online }
+
+  // Ghost Display Status (from Trinity integration)
+  const [ghostDisplayStatus, setGhostDisplayStatus] = useState(null);
+  // { available, status, window_count, apps, resolution }
+
   const typingTimeoutRef = useRef(null);
 
   const wsRef = useRef(null);
@@ -1290,6 +1303,20 @@ const JarvisVoice = () => {
 
       if (state.phase === 'ready' && jarvisStatus !== 'online') {
         setJarvisStatus('online');
+      }
+
+      // v11.0: PROJECT TRINITY status handling
+      if (state.metadata?.trinity) {
+        const trinity = state.metadata.trinity;
+        console.log('[JarvisVoice] Trinity status update:', trinity);
+        setTrinityStatus(trinity);
+      }
+
+      // Ghost Display status handling
+      if (state.metadata?.ghost_display) {
+        const ghostDisplay = state.metadata.ghost_display;
+        console.log('[JarvisVoice] Ghost Display status:', ghostDisplay);
+        setGhostDisplayStatus(ghostDisplay);
       }
     };
 
@@ -5726,6 +5753,75 @@ const JarvisVoice = () => {
           </div>
         )}
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* v11.0: PROJECT TRINITY STATUS - Distributed Architecture Monitoring */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {trinityStatus && trinityStatus.initialized && (
+        <div className="trinity-status-bar" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '8px 16px',
+          background: trinityStatus.mode === 'distributed'
+            ? 'linear-gradient(90deg, rgba(0, 150, 100, 0.15), rgba(0, 100, 150, 0.15))'
+            : 'linear-gradient(90deg, rgba(100, 100, 0, 0.15), rgba(80, 80, 0, 0.15))',
+          borderRadius: '8px',
+          border: trinityStatus.mode === 'distributed'
+            ? '1px solid rgba(0, 255, 150, 0.3)'
+            : '1px solid rgba(200, 200, 0, 0.3)',
+          fontSize: '12px',
+          fontFamily: 'monospace',
+          marginBottom: '8px',
+        }}>
+          <span style={{ color: '#00ff99', fontWeight: 'bold' }}>🔗 TRINITY</span>
+          <div style={{ display: 'flex', gap: '8px', color: '#aaa' }}>
+            <span style={{ color: trinityStatus.components?.jarvis_body?.online ? '#00ff65' : '#666' }}>
+              ◉ Body
+            </span>
+            <span style={{ color: trinityStatus.components?.j_prime?.online ? '#00ff65' : '#666' }}>
+              ◉ Mind
+            </span>
+            <span style={{ color: trinityStatus.components?.reactor_core?.online ? '#00ff65' : '#666' }}>
+              ◉ Nerves
+            </span>
+          </div>
+          <span style={{ marginLeft: 'auto', color: '#888', fontSize: '11px' }}>
+            {trinityStatus.components_online || 1}/3
+          </span>
+        </div>
+      )}
+
+      {/* Ghost Display Status Panel */}
+      {ghostDisplayStatus && ghostDisplayStatus.available && (
+        <div className="ghost-display-status" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '6px 14px',
+          background: 'linear-gradient(90deg, rgba(80, 0, 120, 0.15), rgba(60, 0, 90, 0.15))',
+          borderRadius: '6px',
+          border: '1px solid rgba(180, 100, 255, 0.3)',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          marginBottom: '8px',
+        }}>
+          <span style={{ color: '#cc88ff' }}>👻 Ghost Display</span>
+          <span style={{ color: '#888' }}>
+            {ghostDisplayStatus.window_count || 0} window{ghostDisplayStatus.window_count !== 1 ? 's' : ''}
+          </span>
+          {ghostDisplayStatus.apps && ghostDisplayStatus.apps.length > 0 && (
+            <span style={{ color: '#666', fontSize: '10px' }}>
+              ({ghostDisplayStatus.apps.slice(0, 3).join(', ')}{ghostDisplayStatus.apps.length > 3 ? '...' : ''})
+            </span>
+          )}
+          {ghostDisplayStatus.resolution && (
+            <span style={{ marginLeft: 'auto', color: '#666', fontSize: '10px' }}>
+              {ghostDisplayStatus.resolution}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (

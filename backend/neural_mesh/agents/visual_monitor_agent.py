@@ -8982,21 +8982,42 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                 # =====================================================================
                 # v65.0: GHOST DISPLAY CONTEXTUAL AWARENESS
+                # v11.0: PROJECT TRINITY INTEGRATION - Cross-repo surveillance support
                 # =====================================================================
                 # If the detection occurred on the Ghost Display, inform the user:
                 # 1. The window is on the Ghost Display (invisible to them)
                 # 2. Offer to bring it back with a voice command
+                # 3. Mention Trinity if the command came from J-Prime (cognitive layer)
                 # This prevents user confusion: "I found it but I can't see it!"
                 # =====================================================================
                 if is_on_ghost_display:
-                    ghost_context_msg = (
-                        f" Note: I found this on my Ghost Display, which means you can't see it. "
-                        f"Say 'bring back my windows' or 'bring back {app_name}' if you want to see it."
-                    )
+                    # Check if this surveillance was initiated via Trinity (J-Prime)
+                    trinity_initiated = False
+                    try:
+                        from backend.system.trinity_initializer import is_trinity_initialized
+                        trinity_initiated = is_trinity_initialized()
+                    except ImportError:
+                        try:
+                            from system.trinity_initializer import is_trinity_initialized
+                            trinity_initiated = is_trinity_initialized()
+                        except ImportError:
+                            pass
+
+                    if trinity_initiated:
+                        # Trinity-aware message: Emphasize the distributed architecture
+                        ghost_context_msg = (
+                            f" I found this on my Ghost Display during distributed surveillance. "
+                            f"Say 'bring back {app_name}' to move it to your main screen."
+                        )
+                    else:
+                        ghost_context_msg = (
+                            f" Note: I found this on my Ghost Display, which means you can't see it. "
+                            f"Say 'bring back my windows' or 'bring back {app_name}' if you want to see it."
+                        )
                     tts_message += ghost_context_msg
                     logger.info(
                         f"[v65.0] 👻 Detection on Ghost Display (Space {ghost_display_space}): "
-                        f"Added contextual guidance for user"
+                        f"Added contextual guidance for user (Trinity: {trinity_initiated})"
                     )
 
                 # Get voice orchestrator and speak

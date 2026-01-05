@@ -3196,10 +3196,69 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         logger.warning(f"AI Loader initialization failed: {e}")
         app.state.ai_manager = None
 
+    # =================================================================
+    # PROJECT TRINITY: Unified Cognitive Architecture Integration
+    # =================================================================
+    # Trinity connects JARVIS (Body) ↔ J-Prime (Mind) ↔ Reactor Core (Nerves)
+    # This enables distributed AI reasoning, surveillance, and action execution
+    # across all three repositories with file-based message passing.
+    # =================================================================
+    trinity_initialized = False
+    try:
+        from system.trinity_initializer import (
+            initialize_trinity,
+            is_trinity_initialized,
+            get_trinity_status,
+            JARVIS_INSTANCE_ID,
+        )
+
+        logger.info("=" * 60)
+        logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection")
+        logger.info("=" * 60)
+
+        trinity_initialized = await initialize_trinity(app)
+
+        if trinity_initialized:
+            app.state.trinity_initialized = True
+            app.state.trinity_instance_id = JARVIS_INSTANCE_ID
+
+            status = get_trinity_status()
+            logger.info("✅ PROJECT TRINITY: JARVIS Body Online")
+            logger.info(f"   • Instance ID: {JARVIS_INSTANCE_ID[:16]}...")
+            logger.info(f"   • Connected: {status.get('connected', False)}")
+            logger.info(f"   • Heartbeat: {status.get('heartbeat_interval', 5.0)}s")
+            logger.info("   • Mind ↔ Body ↔ Nerves: Distributed architecture active")
+        else:
+            logger.warning("⚠️ PROJECT TRINITY: Running in standalone mode")
+            app.state.trinity_initialized = False
+
+    except ImportError as e:
+        logger.debug(f"Trinity initializer not available: {e}")
+        app.state.trinity_initialized = False
+    except Exception as e:
+        logger.warning(f"⚠️ PROJECT TRINITY initialization failed: {e}")
+        logger.warning("   → JARVIS will operate in standalone mode")
+        app.state.trinity_initialized = False
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # =================================================================
+    # PROJECT TRINITY: Graceful shutdown
+    # =================================================================
+    if hasattr(app.state, 'trinity_initialized') and app.state.trinity_initialized:
+        try:
+            from system.trinity_initializer import shutdown_trinity
+
+            logger.info("🔗 Shutting down PROJECT TRINITY...")
+            await shutdown_trinity()
+            logger.info("✅ PROJECT TRINITY shutdown complete")
+        except ImportError:
+            pass  # Trinity not available
+        except Exception as e:
+            logger.debug(f"Trinity shutdown error (non-critical): {e}")
 
     # =================================================================
     # HYPER-SPEED AI LOADER: Graceful shutdown

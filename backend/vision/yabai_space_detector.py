@@ -3388,6 +3388,99 @@ def reset_ghost_manager() -> None:
     _GHOST_MANAGER = None
 
 
+def get_ghost_display_status() -> Dict[str, Any]:
+    """
+    Get comprehensive Ghost Display status for Trinity integration.
+
+    Returns a dictionary with:
+    - available: Whether Ghost Display is available
+    - status: Current status (available, unavailable, fallback, etc.)
+    - window_count: Number of windows on Ghost Display
+    - apps: List of app names on Ghost Display
+    - resolution: Ghost Display resolution
+    - scale: Display scale factor
+    - space_index: Yabai space index of Ghost Display
+
+    This is used by PROJECT TRINITY to report Ghost Display state
+    to J-Prime and the frontend loading screen.
+    """
+    result: Dict[str, Any] = {
+        "available": False,
+        "status": "unavailable",
+        "window_count": 0,
+        "apps": [],
+        "resolution": None,
+        "scale": 1.0,
+        "space_index": None,
+    }
+
+    try:
+        manager = get_ghost_manager()
+
+        if manager.status == GhostDisplayStatus.AVAILABLE:
+            result["available"] = True
+            result["status"] = "available"
+        elif manager.status == GhostDisplayStatus.FALLBACK:
+            result["available"] = True
+            result["status"] = "fallback"
+        elif manager.status == GhostDisplayStatus.RECONNECTING:
+            result["status"] = "reconnecting"
+        elif manager.status == GhostDisplayStatus.DISCONNECTED:
+            result["status"] = "disconnected"
+        else:
+            result["status"] = "unavailable"
+
+        # Get dimensions
+        width, height = manager.ghost_display_dimensions
+        result["resolution"] = f"{width}x{height}"
+        result["scale"] = manager.ghost_display_scale
+
+        # Get Ghost Display space index
+        if manager._ghost_info:
+            result["space_index"] = manager._ghost_info.space_index
+
+        # Get windows on Ghost Display
+        if result["available"]:
+            try:
+                detector = get_yabai_detector(auto_start=False)
+                ghost_space = detector.get_ghost_display_space()
+
+                if ghost_space:
+                    result["space_index"] = ghost_space
+                    windows = detector.get_windows_on_space(ghost_space)
+                    result["window_count"] = len(windows)
+
+                    # Collect unique app names
+                    apps = set()
+                    for window in windows:
+                        app_name = window.get("app", "")
+                        if app_name:
+                            apps.add(app_name)
+                    result["apps"] = sorted(list(apps))
+
+            except Exception as e:
+                logger.debug(f"[GhostDisplay] Could not get window details: {e}")
+
+        # Add frozen apps count (from Cryostasis)
+        if _HAS_CRYOSTASIS and get_cryostasis_manager:
+            try:
+                cryo = get_cryostasis_manager()
+                result["frozen_apps"] = cryo.get_frozen_app_names()
+                result["frozen_count"] = len(result["frozen_apps"])
+            except Exception:
+                result["frozen_apps"] = []
+                result["frozen_count"] = 0
+        else:
+            result["frozen_apps"] = []
+            result["frozen_count"] = 0
+
+    except Exception as e:
+        logger.debug(f"[GhostDisplay] Status check failed: {e}")
+        result["error"] = str(e)
+
+    return result
+
+
 # Thread pool for subprocess operations (avoids blocking event loop)
 _yabai_executor: Optional[ThreadPoolExecutor] = None
 
@@ -14287,6 +14380,7 @@ __all__ = [
     "WindowGeometry",
     "WindowLayoutStyle",
     "get_ghost_manager",
+    "get_ghost_display_status",
     "reset_ghost_manager",
     # Factory and utilities
     "get_yabai_detector",
