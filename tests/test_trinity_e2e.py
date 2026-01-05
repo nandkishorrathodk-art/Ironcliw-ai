@@ -379,6 +379,61 @@ async def test_trinity_handlers() -> bool:
         return False
 
 
+async def test_trinity_auto_launch_config() -> bool:
+    """Test 8: Verify v72.0 Trinity Auto-Launch configuration."""
+    print_header("TEST 8: Trinity Auto-Launch Configuration (v72.0)")
+
+    # Check environment variable defaults
+    trinity_enabled = os.getenv("TRINITY_ENABLED", "true").lower() == "true"
+    log_test("TRINITY_ENABLED default", True, f"Value: {trinity_enabled}")
+
+    auto_launch_enabled = os.getenv("TRINITY_AUTO_LAUNCH", "true").lower() == "true"
+    log_test("TRINITY_AUTO_LAUNCH default", True, f"Value: {auto_launch_enabled}")
+
+    # Check repo paths
+    jprime_path = Path(os.getenv(
+        "JARVIS_PRIME_PATH",
+        str(Path.home() / "Documents" / "repos" / "jarvis-prime")
+    ))
+    reactor_path = Path(os.getenv(
+        "REACTOR_CORE_PATH",
+        str(Path.home() / "Documents" / "repos" / "reactor-core")
+    ))
+
+    log_test("J-Prime repo path configured", True, str(jprime_path))
+    log_test("Reactor-Core repo path configured", True, str(reactor_path))
+
+    # Check if repos exist
+    jprime_exists = jprime_path.exists()
+    reactor_exists = reactor_path.exists()
+
+    log_test("J-Prime repo exists", jprime_exists,
+             "Found" if jprime_exists else "Not found (expected on some systems)")
+    log_test("Reactor-Core repo exists", reactor_exists,
+             "Found" if reactor_exists else "Not found (expected on some systems)")
+
+    # Check for Trinity bridge in J-Prime
+    if jprime_exists:
+        trinity_bridge = jprime_path / "jarvis_prime" / "core" / "trinity_bridge.py"
+        bridge_exists = trinity_bridge.exists()
+        log_test("J-Prime Trinity bridge", bridge_exists,
+                 "Found" if bridge_exists else "Not found")
+
+    # Check for Trinity orchestrator in Reactor-Core
+    if reactor_exists:
+        orchestrator = reactor_path / "reactor_core" / "orchestration" / "trinity_orchestrator.py"
+        orch_exists = orchestrator.exists()
+        log_test("Reactor-Core Trinity orchestrator", orch_exists,
+                 "Found" if orch_exists else "Not found")
+
+    # Check log directory
+    log_dir = Path.home() / ".jarvis" / "logs" / "services"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_test("Service log directory", log_dir.exists(), str(log_dir))
+
+    return True
+
+
 async def run_all_tests():
     """Run all Trinity end-to-end tests."""
     print()
@@ -398,6 +453,7 @@ async def run_all_tests():
         ("Trinity Initialization Flow", test_trinity_initialization),
         ("Cross-Repo Communication", test_cross_repo_communication),
         ("Trinity Command Handlers", test_trinity_handlers),
+        ("Trinity Auto-Launch Config", test_trinity_auto_launch_config),
     ]
 
     all_passed = True

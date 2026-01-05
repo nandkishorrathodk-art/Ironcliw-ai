@@ -2261,6 +2261,20 @@ class SupervisorBootstrapper:
         self._reactor_core_enabled = os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
         self._reactor_core_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
 
+        # v72.0: Trinity Component Auto-Launch (One-Command Startup)
+        # These track subprocesses for J-Prime and Reactor-Core launched by this supervisor
+        self._jprime_orchestrator_process: Optional[asyncio.subprocess.Process] = None
+        self._reactor_core_orchestrator_process: Optional[asyncio.subprocess.Process] = None
+        self._trinity_auto_launch_enabled = os.getenv("TRINITY_AUTO_LAUNCH", "true").lower() == "true"
+        self._jprime_repo_path = Path(os.getenv(
+            "JARVIS_PRIME_PATH",
+            str(Path.home() / "Documents" / "repos" / "jarvis-prime")
+        ))
+        self._reactor_core_repo_path = Path(os.getenv(
+            "REACTOR_CORE_PATH",
+            str(Path.home() / "Documents" / "repos" / "reactor-core")
+        ))
+
         # v10.3: Unified Progress Hub (Cross-component progress synchronization)
         self._progress_hub = None
 
@@ -2660,6 +2674,18 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             if self._trinity_enabled:
                 await self._initialize_trinity()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v72.0: Auto-Launch Trinity Components (J-Prime + Reactor-Core)
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables "one-command" startup - running run_supervisor.py
+            # automatically launches all three Trinity repos as subprocesses.
+            # - JARVIS Body: Already running (this process)
+            # - J-Prime Mind: Launched as subprocess (trinity_bridge.py)
+            # - Reactor-Core Nerves: Launched as subprocess (trinity_orchestrator.py)
+            # ═══════════════════════════════════════════════════════════════════
+            if self._trinity_enabled and self._trinity_auto_launch_enabled:
+                await self._launch_trinity_components()
 
             # ═══════════════════════════════════════════════════════════════════
             # v10.6: Start Real-Time Log Monitor with Voice Narrator Integration
@@ -4358,6 +4384,9 @@ class SupervisorBootstrapper:
             await self._shutdown_reactor_core()
         except Exception as e:
             self.logger.warning(f"⚠️ Reactor-Core cleanup error: {e}")
+
+        # v72.0: Cleanup Trinity component subprocesses
+        await self._shutdown_trinity_components()
 
         # Cleanup GCP resources
         try:
@@ -7980,6 +8009,410 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         except Exception as e:
             self.logger.debug(f"Trinity status broadcast failed: {e}")
             return False
+
+    # =========================================================================
+    # v72.0: UNIFIED TRINITY LAUNCH PROTOCOL
+    # =========================================================================
+    # These methods enable "one-command" startup of all three Trinity repos.
+    # Running `python3 run_supervisor.py` automatically launches:
+    #   - JARVIS Body (this process)
+    #   - J-Prime Mind (subprocess)
+    #   - Reactor-Core Nerves (subprocess)
+    # =========================================================================
+
+    async def _launch_trinity_components(self) -> None:
+        """
+        v72.0: Launch all Trinity components (J-Prime + Reactor-Core) as subprocesses.
+
+        This enables true "one-command" startup:
+        python3 run_supervisor.py → Launches all 3 repos automatically
+
+        Architecture:
+        - JARVIS Body: Already running (this process)
+        - J-Prime Mind: Launched as subprocess (trinity_bridge.py or server.py)
+        - Reactor-Core Nerves: Launched as subprocess (trinity_orchestrator.py)
+
+        Features:
+        - Automatic repo path detection via env vars or defaults
+        - Heartbeat-based already-running detection (skip if running)
+        - Graceful fallback if repos not found
+        - Log output redirection to ~/.jarvis/logs/services/
+        - Voice narration of launch status
+        """
+        if not self._trinity_enabled:
+            self.logger.info("ℹ️ Trinity disabled - skipping component launch")
+            return
+
+        if not self._trinity_auto_launch_enabled:
+            self.logger.info("ℹ️ Trinity auto-launch disabled - components must be started manually")
+            return
+
+        try:
+            self.logger.info("=" * 60)
+            self.logger.info("PROJECT TRINITY: Launching Distributed Components")
+            self.logger.info("=" * 60)
+
+            print(f"  {TerminalUI.CYAN}🚀 Launching Trinity components...{TerminalUI.RESET}")
+
+            # Broadcast launch start
+            await self._broadcast_startup_progress(
+                stage="trinity_launch",
+                message="Launching Trinity distributed components...",
+                progress=88,
+                metadata={"trinity_launch": "starting"},
+            )
+
+            # Launch J-Prime (Mind) and Reactor-Core (Nerves) in parallel
+            jprime_task = asyncio.create_task(self._launch_jprime_orchestrator())
+            reactor_task = asyncio.create_task(self._launch_reactor_core_orchestrator())
+
+            # Wait for both launches to complete
+            await asyncio.gather(jprime_task, reactor_task, return_exceptions=True)
+
+            # Give components time to register their heartbeats
+            self.logger.info("   ⏳ Waiting for component registration...")
+            await asyncio.sleep(3.0)
+
+            # Re-check Trinity status to update component states
+            await self._broadcast_trinity_status()
+
+            # Count launched components
+            components_launched = 0
+            if self._jprime_orchestrator_process is not None:
+                components_launched += 1
+            if self._reactor_core_orchestrator_process is not None:
+                components_launched += 1
+
+            # Voice announcement based on launch success
+            if self.config.voice_enabled and components_launched > 0:
+                if components_launched == 2:
+                    await self.narrator.speak(
+                        "Trinity components launched. Mind, Body, and Nerves synchronizing.",
+                        wait=False,
+                    )
+                else:
+                    await self.narrator.speak(
+                        f"Trinity launch complete. {components_launched + 1} of 3 components online.",
+                        wait=False,
+                    )
+
+            self.logger.info(f"✅ Trinity component launch complete ({components_launched} launched)")
+
+            # Broadcast launch complete
+            await self._broadcast_startup_progress(
+                stage="trinity_launch_complete",
+                message=f"Trinity components launched: {components_launched + 1}/3 online",
+                progress=89,
+                metadata={"trinity_launch": "complete", "components_launched": components_launched},
+            )
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Trinity component launch failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Some Trinity components failed to launch{TerminalUI.RESET}")
+
+    async def _launch_jprime_orchestrator(self) -> None:
+        """
+        v72.0: Launch J-Prime orchestrator (Mind component).
+
+        Attempts to launch in order of preference:
+        1. jarvis_prime/server.py (full FastAPI server)
+        2. jarvis_prime/core/trinity_bridge.py (Trinity bridge module)
+
+        The launched process will:
+        - Initialize Trinity connection
+        - Start heartbeat broadcasting to ~/.jarvis/trinity/
+        - Enable cognitive commands to JARVIS Body
+
+        Features:
+        - Skips launch if heartbeat detected (already running)
+        - Uses repo's venv if available, falls back to system Python
+        - Logs to ~/.jarvis/logs/services/jprime_*.log
+        - Runs with PYTHONPATH set to repo root
+        """
+        if not self._jprime_repo_path.exists():
+            self.logger.warning(f"⚠️ J-Prime repo not found: {self._jprime_repo_path}")
+            print(f"  {TerminalUI.YELLOW}⚠️ J-Prime: Repo not found{TerminalUI.RESET}")
+            return
+
+        # Check if already running (via heartbeat)
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+        jprime_state_file = trinity_dir / "components" / "j_prime.json"
+
+        if jprime_state_file.exists():
+            try:
+                import json
+                import time as time_module
+                with open(jprime_state_file) as f:
+                    state = json.load(f)
+                heartbeat_age = time_module.time() - state.get("timestamp", 0)
+                if heartbeat_age < 30:
+                    self.logger.info("   🧠 J-Prime already running (heartbeat detected)")
+                    print(f"  {TerminalUI.GREEN}✓ J-Prime: Already running (heartbeat: {heartbeat_age:.1f}s ago){TerminalUI.RESET}")
+                    return
+            except Exception as e:
+                self.logger.debug(f"   Could not read J-Prime state: {e}")
+
+        # Find Python executable (prefer venv)
+        venv_python = self._jprime_repo_path / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = self._jprime_repo_path / "venv" / "bin" / "python"
+        python_cmd = str(venv_python) if venv_python.exists() else sys.executable
+
+        # Define launch scripts in order of preference
+        launch_scripts = [
+            ("jarvis_prime/server.py", "FastAPI Server"),
+            ("run_server.py", "Server Runner"),
+            ("jarvis_prime/core/trinity_bridge.py", "Trinity Bridge"),
+        ]
+
+        # Try each launch script
+        launched = False
+        for script_rel, description in launch_scripts:
+            script_path = self._jprime_repo_path / script_rel
+            if script_path.exists():
+                self.logger.info(f"   🚀 Launching J-Prime ({description})...")
+                print(f"  {TerminalUI.CYAN}🚀 Launching J-Prime ({description})...{TerminalUI.RESET}")
+
+                # Create log directory
+                log_dir = Path.home() / ".jarvis" / "logs" / "services"
+                log_dir.mkdir(parents=True, exist_ok=True)
+                stdout_log = log_dir / "jprime_stdout.log"
+                stderr_log = log_dir / "jprime_stderr.log"
+
+                try:
+                    # Build environment with PYTHONPATH
+                    env = os.environ.copy()
+                    env["PYTHONPATH"] = str(self._jprime_repo_path)
+                    env["TRINITY_ENABLED"] = "true"
+
+                    # Open log files
+                    stdout_file = open(stdout_log, "w")
+                    stderr_file = open(stderr_log, "w")
+
+                    # Launch subprocess
+                    self._jprime_orchestrator_process = await asyncio.create_subprocess_exec(
+                        python_cmd,
+                        str(script_path),
+                        cwd=str(self._jprime_repo_path),
+                        env=env,
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        start_new_session=True,  # Detach from parent process group
+                    )
+
+                    self.logger.info(f"   ✅ J-Prime launched (PID: {self._jprime_orchestrator_process.pid})")
+                    self.logger.info(f"   📄 Logs: {stdout_log}")
+                    print(f"  {TerminalUI.GREEN}✓ J-Prime launched (PID: {self._jprime_orchestrator_process.pid}){TerminalUI.RESET}")
+
+                    launched = True
+                    break
+
+                except Exception as e:
+                    self.logger.warning(f"   Failed to launch J-Prime: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️ J-Prime launch failed: {e}{TerminalUI.RESET}")
+
+        if not launched:
+            self.logger.warning(f"   ⚠️ No J-Prime launch script found in {self._jprime_repo_path}")
+            print(f"  {TerminalUI.YELLOW}⚠️ J-Prime: No launch script found{TerminalUI.RESET}")
+
+    async def _launch_reactor_core_orchestrator(self) -> None:
+        """
+        v72.0: Launch Reactor-Core orchestrator (Nerves component).
+
+        Attempts to launch in order of preference:
+        1. reactor_core/orchestration/trinity_orchestrator.py (Trinity orchestrator)
+        2. A standalone runner script
+
+        The launched process will:
+        - Initialize the Trinity Orchestrator singleton
+        - Start health monitoring and command processing
+        - Enable cross-repo command routing
+
+        Features:
+        - Skips launch if heartbeat detected (already running)
+        - Uses repo's venv if available, falls back to system Python
+        - Logs to ~/.jarvis/logs/services/reactor_core_*.log
+        - Runs with PYTHONPATH set to repo root
+        """
+        if not self._reactor_core_repo_path.exists():
+            self.logger.warning(f"⚠️ Reactor-Core repo not found: {self._reactor_core_repo_path}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Repo not found{TerminalUI.RESET}")
+            return
+
+        # Check if already running (via heartbeat)
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+        reactor_state_file = trinity_dir / "components" / "reactor_core.json"
+
+        if reactor_state_file.exists():
+            try:
+                import json
+                import time as time_module
+                with open(reactor_state_file) as f:
+                    state = json.load(f)
+                heartbeat_age = time_module.time() - state.get("timestamp", 0)
+                if heartbeat_age < 30:
+                    self.logger.info("   ⚡ Reactor-Core already running (heartbeat detected)")
+                    print(f"  {TerminalUI.GREEN}✓ Reactor-Core: Already running (heartbeat: {heartbeat_age:.1f}s ago){TerminalUI.RESET}")
+                    return
+            except Exception as e:
+                self.logger.debug(f"   Could not read Reactor-Core state: {e}")
+
+        # Find Python executable (prefer venv)
+        venv_python = self._reactor_core_repo_path / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = self._reactor_core_repo_path / "venv" / "bin" / "python"
+        python_cmd = str(venv_python) if venv_python.exists() else sys.executable
+
+        # Define launch approach - we need to create a runner script or launch module
+        # Since trinity_orchestrator.py is a module, we need to run it properly
+        orchestrator_module = self._reactor_core_repo_path / "reactor_core" / "orchestration" / "trinity_orchestrator.py"
+
+        if orchestrator_module.exists():
+            self.logger.info("   🚀 Launching Reactor-Core orchestrator...")
+            print(f"  {TerminalUI.CYAN}🚀 Launching Reactor-Core orchestrator...{TerminalUI.RESET}")
+
+            # Create log directory
+            log_dir = Path.home() / ".jarvis" / "logs" / "services"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            stdout_log = log_dir / "reactor_core_orchestrator_stdout.log"
+            stderr_log = log_dir / "reactor_core_orchestrator_stderr.log"
+
+            try:
+                # Build environment with PYTHONPATH
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(self._reactor_core_repo_path)
+                env["TRINITY_ENABLED"] = "true"
+
+                # Open log files
+                stdout_file = open(stdout_log, "w")
+                stderr_file = open(stderr_log, "w")
+
+                # Create a runner script inline that starts the orchestrator
+                # This is needed because the module doesn't have a __main__ block
+                runner_code = '''
+import asyncio
+import signal
+import sys
+sys.path.insert(0, "{repo_path}")
+
+from reactor_core.orchestration.trinity_orchestrator import (
+    initialize_orchestrator,
+    shutdown_orchestrator,
+)
+
+async def main():
+    print("Reactor-Core Trinity Orchestrator starting...")
+    orchestrator = await initialize_orchestrator()
+    print(f"Orchestrator running: {{orchestrator.is_running()}}")
+
+    # Keep running until interrupted
+    stop_event = asyncio.Event()
+
+    def signal_handler():
+        print("\\nShutdown signal received...")
+        stop_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    try:
+        await stop_event.wait()
+    finally:
+        await shutdown_orchestrator()
+        print("Orchestrator shutdown complete")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+'''.format(repo_path=str(self._reactor_core_repo_path))
+
+                # Write runner script to temp location
+                runner_script = log_dir / "reactor_core_runner.py"
+                with open(runner_script, "w") as f:
+                    f.write(runner_code)
+
+                # Launch subprocess
+                self._reactor_core_orchestrator_process = await asyncio.create_subprocess_exec(
+                    python_cmd,
+                    str(runner_script),
+                    cwd=str(self._reactor_core_repo_path),
+                    env=env,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    start_new_session=True,  # Detach from parent process group
+                )
+
+                self.logger.info(f"   ✅ Reactor-Core launched (PID: {self._reactor_core_orchestrator_process.pid})")
+                self.logger.info(f"   📄 Logs: {stdout_log}")
+                print(f"  {TerminalUI.GREEN}✓ Reactor-Core launched (PID: {self._reactor_core_orchestrator_process.pid}){TerminalUI.RESET}")
+
+            except Exception as e:
+                self.logger.warning(f"   Failed to launch Reactor-Core: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core launch failed: {e}{TerminalUI.RESET}")
+        else:
+            self.logger.warning(f"   ⚠️ Reactor-Core orchestrator not found: {orchestrator_module}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Orchestrator module not found{TerminalUI.RESET}")
+
+    async def _shutdown_trinity_components(self) -> None:
+        """
+        v72.0: Gracefully shutdown Trinity component subprocesses.
+
+        This is called during cleanup_resources() to ensure all subprocess
+        launched by this supervisor are properly terminated.
+
+        Shutdown sequence:
+        1. Send SIGTERM to each process
+        2. Wait up to 5 seconds for graceful shutdown
+        3. Send SIGKILL if process doesn't respond
+        4. Clean up process references
+        """
+        self.logger.info("🔗 Shutting down Trinity components...")
+
+        # Shutdown J-Prime orchestrator
+        if self._jprime_orchestrator_process is not None:
+            try:
+                self.logger.info("   Stopping J-Prime orchestrator...")
+                self._jprime_orchestrator_process.terminate()
+                try:
+                    await asyncio.wait_for(
+                        self._jprime_orchestrator_process.wait(),
+                        timeout=5.0
+                    )
+                    self.logger.info("   ✅ J-Prime orchestrator stopped gracefully")
+                except asyncio.TimeoutError:
+                    self.logger.warning("   ⚠️ J-Prime didn't stop gracefully, killing...")
+                    self._jprime_orchestrator_process.kill()
+                    await self._jprime_orchestrator_process.wait()
+            except ProcessLookupError:
+                self.logger.debug("   J-Prime process already terminated")
+            except Exception as e:
+                self.logger.debug(f"   J-Prime shutdown error: {e}")
+            finally:
+                self._jprime_orchestrator_process = None
+
+        # Shutdown Reactor-Core orchestrator
+        if self._reactor_core_orchestrator_process is not None:
+            try:
+                self.logger.info("   Stopping Reactor-Core orchestrator...")
+                self._reactor_core_orchestrator_process.terminate()
+                try:
+                    await asyncio.wait_for(
+                        self._reactor_core_orchestrator_process.wait(),
+                        timeout=5.0
+                    )
+                    self.logger.info("   ✅ Reactor-Core orchestrator stopped gracefully")
+                except asyncio.TimeoutError:
+                    self.logger.warning("   ⚠️ Reactor-Core didn't stop gracefully, killing...")
+                    self._reactor_core_orchestrator_process.kill()
+                    await self._reactor_core_orchestrator_process.wait()
+            except ProcessLookupError:
+                self.logger.debug("   Reactor-Core process already terminated")
+            except Exception as e:
+                self.logger.debug(f"   Reactor-Core shutdown error: {e}")
+            finally:
+                self._reactor_core_orchestrator_process = None
+
+        self.logger.info("✅ Trinity component shutdown complete")
 
     async def _connect_training_status_hub(self) -> None:
         """
