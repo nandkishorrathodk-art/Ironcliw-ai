@@ -2266,6 +2266,9 @@ class SupervisorBootstrapper:
         self._jprime_orchestrator_process: Optional[asyncio.subprocess.Process] = None
         self._reactor_core_orchestrator_process: Optional[asyncio.subprocess.Process] = None
         self._trinity_auto_launch_enabled = os.getenv("TRINITY_AUTO_LAUNCH", "true").lower() == "true"
+
+        # v75.0: Trinity Health Monitor for crash detection & auto-recovery
+        self._trinity_health_monitor = None
         self._jprime_repo_path = Path(os.getenv(
             "JARVIS_PRIME_PATH",
             str(Path.home() / "Documents" / "repos" / "jarvis-prime")
@@ -8132,6 +8135,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 metadata={"trinity_launch": "complete", "components_launched": components_launched},
             )
 
+            # v75.0: Start Trinity Health Monitor for crash detection & auto-recovery
+            await self._start_trinity_health_monitor()
+
         except Exception as e:
             self.logger.warning(f"⚠️ Trinity component launch failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ Some Trinity components failed to launch{TerminalUI.RESET}")
@@ -8428,6 +8434,122 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             self.logger.warning(f"   ⚠️ Reactor-Core orchestrator not found: {orchestrator_module}")
             print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Orchestrator module not found{TerminalUI.RESET}")
 
+    async def _start_trinity_health_monitor(self) -> None:
+        """
+        v75.0: Start Trinity Health Monitor for crash detection and auto-recovery.
+
+        Features:
+            - Monitors heartbeat files for all Trinity components
+            - Detects stale heartbeats (>15s = component dead)
+            - Verifies process liveness via PID
+            - Auto-restarts crashed components with circuit breaker
+            - Dead letter queue for failed commands
+        """
+        try:
+            from backend.system.trinity_initializer import (
+                start_health_monitor,
+                get_health_monitor,
+            )
+
+            # Start the global health monitor
+            health_monitor = await start_health_monitor()
+
+            # Register restart callbacks for J-Prime and Reactor-Core
+            health_monitor.register_restart_callback(
+                "j_prime",
+                self._restart_jprime_on_crash,
+            )
+            health_monitor.register_restart_callback(
+                "reactor_core",
+                self._restart_reactor_core_on_crash,
+            )
+
+            self._trinity_health_monitor = health_monitor
+            self.logger.info("✅ Trinity Health Monitor v75.0 started")
+            print(f"  {TerminalUI.GREEN}✓ Health Monitor: Crash detection active{TerminalUI.RESET}")
+
+        except ImportError as e:
+            self.logger.warning(f"⚠️ Trinity Health Monitor not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to start Trinity Health Monitor: {e}")
+
+    async def _stop_trinity_health_monitor(self) -> None:
+        """v75.0: Stop Trinity Health Monitor."""
+        try:
+            from backend.system.trinity_initializer import stop_health_monitor
+            await stop_health_monitor()
+            self.logger.info("✅ Trinity Health Monitor stopped")
+        except Exception as e:
+            self.logger.debug(f"Health Monitor stop error: {e}")
+
+    async def _restart_jprime_on_crash(self, reason: str) -> None:
+        """
+        v75.0: Callback to restart J-Prime when crash detected.
+
+        Called by TrinityHealthMonitor when J-Prime heartbeat goes stale
+        or process is detected as dead.
+        """
+        self.logger.warning(f"🔄 [Trinity] Restarting J-Prime (reason: {reason})")
+
+        # Cleanup old process
+        if self._jprime_orchestrator_process is not None:
+            try:
+                self._jprime_orchestrator_process.kill()
+                await self._jprime_orchestrator_process.wait()
+            except Exception:
+                pass
+            self._jprime_orchestrator_process = None
+
+        # Wait a moment before restart
+        await asyncio.sleep(2.0)
+
+        # Relaunch
+        await self._launch_jprime_orchestrator()
+
+        if self._jprime_orchestrator_process is not None:
+            self.logger.info(f"✅ [Trinity] J-Prime restarted (PID: {self._jprime_orchestrator_process.pid})")
+
+            # Voice announcement if enabled
+            if hasattr(self, 'narrator') and self.config.voice_enabled:
+                await self.narrator.speak(
+                    "J-Prime recovered from crash. Mind component back online.",
+                    wait=False,
+                )
+
+    async def _restart_reactor_core_on_crash(self, reason: str) -> None:
+        """
+        v75.0: Callback to restart Reactor-Core when crash detected.
+
+        Called by TrinityHealthMonitor when Reactor-Core heartbeat goes stale
+        or process is detected as dead.
+        """
+        self.logger.warning(f"🔄 [Trinity] Restarting Reactor-Core (reason: {reason})")
+
+        # Cleanup old process
+        if self._reactor_core_orchestrator_process is not None:
+            try:
+                self._reactor_core_orchestrator_process.kill()
+                await self._reactor_core_orchestrator_process.wait()
+            except Exception:
+                pass
+            self._reactor_core_orchestrator_process = None
+
+        # Wait a moment before restart
+        await asyncio.sleep(2.0)
+
+        # Relaunch
+        await self._launch_reactor_core_orchestrator()
+
+        if self._reactor_core_orchestrator_process is not None:
+            self.logger.info(f"✅ [Trinity] Reactor-Core restarted (PID: {self._reactor_core_orchestrator_process.pid})")
+
+            # Voice announcement if enabled
+            if hasattr(self, 'narrator') and self.config.voice_enabled:
+                await self.narrator.speak(
+                    "Reactor Core recovered from crash. Nerves component back online.",
+                    wait=False,
+                )
+
     async def _shutdown_trinity_components(self) -> None:
         """
         v72.0: Gracefully shutdown Trinity component subprocesses.
@@ -8486,6 +8608,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self.logger.debug(f"   Reactor-Core shutdown error: {e}")
             finally:
                 self._reactor_core_orchestrator_process = None
+
+        # v75.0: Stop Trinity Health Monitor
+        await self._stop_trinity_health_monitor()
 
         self.logger.info("✅ Trinity component shutdown complete")
 
