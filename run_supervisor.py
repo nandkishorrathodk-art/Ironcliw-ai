@@ -7984,6 +7984,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Build status
             components_online = 1 + (1 if jprime_online else 0) + (1 if reactor_online else 0)
+            mode = "distributed" if components_online == 3 else "partial" if components_online > 1 else "standalone"
 
             trinity_status = {
                 "initialized": self._trinity_initialized,
@@ -7995,8 +7996,30 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 },
                 "components_online": components_online,
                 "total_components": 3,
-                "mode": "distributed" if components_online == 3 else "partial" if components_online > 1 else "standalone",
+                "mode": mode,
             }
+
+            # v72.0: Enhanced voice narration based on Trinity mode
+            if self.config.voice_enabled and self._trinity_initialized:
+                if components_online == 3:
+                    # Full distributed mode - all three components online
+                    await self.narrator.speak(
+                        "PROJECT TRINITY fully connected. Mind, Body, and Nerves synchronized.",
+                        wait=False,
+                    )
+                elif components_online == 2:
+                    # Partial mode - determine which component is missing
+                    missing = []
+                    if not jprime_online:
+                        missing.append("Mind")
+                    if not reactor_online:
+                        missing.append("Nerves")
+                    await self.narrator.speak(
+                        f"PROJECT TRINITY partially connected. {components_online} of 3 components online. "
+                        f"Missing: {', '.join(missing)}.",
+                        wait=False,
+                    )
+                # Note: If only 1 component (standalone mode), the initial Trinity announcement is sufficient
 
             # Broadcast
             return await self._broadcast_startup_progress(

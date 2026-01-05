@@ -2532,6 +2532,20 @@ class ProcessCleanupManager:
                 "vision_websocket",
                 "vision_manager",
             ],
+            # v72.0: PROJECT TRINITY - Protected subprocess patterns
+            # These are the components launched by run_supervisor.py Trinity auto-launch
+            "trinity_protected_patterns": [
+                "trinity_bridge",         # J-Prime Trinity bridge
+                "trinity_orchestrator",   # Reactor-Core orchestrator
+                "trinity_connector",      # Reactor-Core Trinity connector
+                "jarvis_prime",           # J-Prime main module
+                "jarvis-prime",           # J-Prime repo name
+                "reactor_core",           # Reactor-Core module
+                "reactor-core",           # Reactor-Core repo name
+                "jprime",                 # J-Prime shorthand
+                "j_prime",                # J-Prime component ID
+                "reactor_core_runner",    # Reactor-Core dynamic runner script
+            ],
             "jarvis_excluded_patterns": [
                 # Exclude IDE/editor processes that may contain "jarvis" in path
                 "vscode",
@@ -4853,6 +4867,7 @@ class ProcessCleanupManager:
             # Skip protected processes - check both exact match and substring
             should_skip = False
             candidate_name_lower = candidate["name"].lower()
+            candidate_cmdline_lower = candidate.get("cmdline", "").lower()
 
             # Exact match check
             if candidate["name"] in self.config["system_critical"]:
@@ -4866,6 +4881,22 @@ class ProcessCleanupManager:
                 ):
                     should_skip = True
                     break
+
+            # v72.0: PROJECT TRINITY subprocess protection
+            # Protect Trinity component processes launched by run_supervisor.py
+            if not should_skip:
+                for trinity_pattern in self.config.get("trinity_protected_patterns", []):
+                    pattern_lower = trinity_pattern.lower()
+                    if (
+                        pattern_lower in candidate_name_lower
+                        or pattern_lower in candidate_cmdline_lower
+                    ):
+                        logger.debug(
+                            f"Skipping Trinity-protected process: {candidate['name']} "
+                            f"(PID {candidate['pid']}, pattern: {trinity_pattern})"
+                        )
+                        should_skip = True
+                        break
 
             if should_skip:
                 continue
