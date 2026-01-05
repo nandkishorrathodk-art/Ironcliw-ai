@@ -157,6 +157,22 @@ except ImportError:
     except ImportError as e:
         logger.debug(f"CryostasisManager (v69.0) not available: {e}")
 
+# PROJECT TRINITY: Import ReactorCoreBridge for cross-repo communication
+# Enables J-Prime (Mind) -> Reactor Core (Nerves) -> JARVIS (Body) command flow
+TRINITY_AVAILABLE = False
+get_reactor_bridge = None
+TrinityIntent = None
+TrinitySource = None
+try:
+    from system.reactor_bridge import get_reactor_bridge, TrinityIntent, TrinitySource
+    TRINITY_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.system.reactor_bridge import get_reactor_bridge, TrinityIntent, TrinitySource
+        TRINITY_AVAILABLE = True
+    except ImportError as e:
+        logger.debug(f"ReactorCoreBridge (Project Trinity) not available: {e}")
+
 class ResponseStyle(Enum):
     """
     Response style variations based on time of day and context.
@@ -1247,6 +1263,25 @@ class IntelligentCommandHandler:
         command_text = params.get('command_text', '')
 
         logger.info(f"[v67.0] 🪃 COMMAND & CONTROL + CEREBRO: Executing window return, app_filter={app_name}")
+
+        # PROJECT TRINITY: Publish BRING_BACK_WINDOW event to Reactor Core
+        # This notifies J-Prime (Mind) that window return operation is starting
+        if TRINITY_AVAILABLE and get_reactor_bridge:
+            try:
+                bridge = get_reactor_bridge()
+                if bridge.is_connected():
+                    await bridge.publish_command_async(
+                        intent=TrinityIntent.BRING_BACK_WINDOW,
+                        payload={
+                            "app_name": app_name,
+                            "command_text": command_text,
+                            "operation": "start",
+                        },
+                        target=TrinitySource.J_PRIME,
+                    )
+                    logger.debug(f"[Trinity] Published BRING_BACK_WINDOW for {app_name or 'all'}")
+            except Exception as e:
+                logger.debug(f"[Trinity] Event publish failed (non-blocking): {e}")
 
         # =====================================================================
         # v67.0: CEREBRO PRE-RESOLUTION - Resolve app name with Spotlight
@@ -2614,6 +2649,26 @@ class IntelligentCommandHandler:
 
             logger.info(f"🏎️  Activating God Mode: app={app_name}, trigger='{trigger_text}', "
                        f"all_spaces={all_spaces}, duration={max_duration}")
+
+            # PROJECT TRINITY: Publish START_SURVEILLANCE event to Reactor Core
+            # This notifies J-Prime (Mind) that surveillance is starting
+            if TRINITY_AVAILABLE and get_reactor_bridge:
+                try:
+                    bridge = get_reactor_bridge()
+                    if bridge.is_connected():
+                        await bridge.publish_command_async(
+                            intent=TrinityIntent.START_SURVEILLANCE,
+                            payload={
+                                "app_name": app_name,
+                                "trigger_text": trigger_text,
+                                "all_spaces": all_spaces,
+                                "max_duration": max_duration,
+                            },
+                            target=TrinitySource.J_PRIME,
+                        )
+                        logger.debug(f"[Trinity] Published START_SURVEILLANCE for {app_name}")
+                except Exception as e:
+                    logger.debug(f"[Trinity] Event publish failed (non-blocking): {e}")
 
             # Prepare action config for when trigger is detected
             action_config = {
