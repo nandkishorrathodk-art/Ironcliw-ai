@@ -150,7 +150,24 @@ async def initialize_uae(
     global _unified_orchestrator_instance, _uae_mode
 
     if _uae_initialized and _uae_instance is not None:
-        logger.info("[UAE-INIT] UAE already initialized")
+        # v75.0: Allow late-start of Proactive Intelligence if it wasn't enabled initially
+        if enable_proactive_intelligence and _proactive_intelligence_instance is None:
+            logger.info("[UAE-INIT] UAE already initialized - starting Proactive Intelligence (late-start)")
+            try:
+                proactive_intelligence = await initialize_proactive_intelligence(
+                    learning_db=_learning_db_instance,
+                    pattern_learner=_pattern_learner_instance,
+                    yabai_intelligence=_yabai_instance,
+                    uae_engine=_uae_instance,
+                    voice_callback=voice_callback,
+                    notification_callback=notification_callback
+                )
+                _proactive_intelligence_instance = proactive_intelligence
+                logger.info("[UAE-INIT] ✅ Proactive Intelligence Engine late-started successfully")
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Proactive Intelligence late-start failed: {e}")
+        else:
+            logger.info("[UAE-INIT] UAE already initialized")
         return _uae_instance
 
     logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

@@ -2691,6 +2691,31 @@ class SupervisorBootstrapper:
                 await self._launch_trinity_components()
 
             # ═══════════════════════════════════════════════════════════════════
+            # v77.0: Initialize Unified Coding Council (Self-Evolution Framework)
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables JARVIS self-evolution capabilities:
+            # - MetaGPT for multi-agent planning
+            # - RepoMaster for codebase analysis
+            # - Aider for direct code editing
+            # - OpenHands for sandboxed execution
+            # - Continue for IDE integration
+            # ═══════════════════════════════════════════════════════════════════
+            if os.getenv("CODING_COUNCIL_ENABLED", "true").lower() == "true":
+                try:
+                    from core.coding_council.startup import coding_council_startup_hook
+                    await coding_council_startup_hook(
+                        bootstrapper=self,
+                        phase="supervisor_init"
+                    )
+                    print(f"  {TerminalUI.GREEN}✓ Coding Council: Self-evolution framework active{TerminalUI.RESET}")
+                except ImportError as e:
+                    self.logger.info(f"[CodingCouncil] Not available: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Not available{TerminalUI.RESET}")
+                except Exception as e:
+                    self.logger.warning(f"[CodingCouncil] Initialization failed: {e}")
+                    print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Failed ({e}){TerminalUI.RESET}")
+
+            # ═══════════════════════════════════════════════════════════════════
             # v10.6: Start Real-Time Log Monitor with Voice Narrator Integration
             # ═══════════════════════════════════════════════════════════════════
             if self._log_monitor_enabled:
@@ -4387,6 +4412,16 @@ class SupervisorBootstrapper:
             await self._shutdown_reactor_core()
         except Exception as e:
             self.logger.warning(f"⚠️ Reactor-Core cleanup error: {e}")
+
+        # v77.0: Shutdown Coding Council
+        try:
+            from core.coding_council.startup import coding_council_shutdown_hook
+            await coding_council_shutdown_hook(bootstrapper=self)
+            self.logger.info("✅ Coding Council shutdown complete")
+        except ImportError:
+            pass  # Coding Council not available
+        except Exception as e:
+            self.logger.warning(f"⚠️ Coding Council cleanup error: {e}")
 
         # v72.0: Cleanup Trinity component subprocesses
         await self._shutdown_trinity_components()

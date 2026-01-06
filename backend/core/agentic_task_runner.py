@@ -682,7 +682,7 @@ class AgenticTaskRunner:
                                 enable_auto_start=True,
                                 enable_learning_db=True,
                                 enable_yabai=True,
-                                enable_proactive_intelligence=False,  # Don't start proactive in lazy mode
+                                enable_proactive_intelligence=True,  # v75.0: Enable proactive intelligence for natural communication
                                 enable_chain_of_thought=True,
                                 enable_unified_orchestrator=True,
                             )
