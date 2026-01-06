@@ -1477,6 +1477,38 @@ async def parallel_lifespan(app: FastAPI):
             logger.warning(f"AI Loader initialization failed: {e}")
             app.state.ai_manager = None
 
+        # =================================================================
+        # v77.4 UNIFIED CODING COUNCIL: Background initialization
+        # =================================================================
+        # In parallel mode, start Coding Council initialization as background task
+        # to avoid blocking server startup while keeping self-evolution ready
+        async def _init_coding_council_background():
+            """Initialize Coding Council in background for parallel startup."""
+            try:
+                from core.coding_council.startup import (
+                    initialize_coding_council_startup,
+                    is_initialized as is_coding_council_initialized,
+                )
+
+                logger.info("🧬 Coding Council: Starting background initialization...")
+                success = await initialize_coding_council_startup()
+
+                if success:
+                    app.state.coding_council_initialized = True
+                    logger.info("✅ Coding Council online (background init)")
+                else:
+                    app.state.coding_council_initialized = False
+                    logger.warning("⚠️ Coding Council: Background init incomplete")
+            except ImportError as e:
+                logger.debug(f"Coding Council not available: {e}")
+                app.state.coding_council_initialized = False
+            except Exception as e:
+                logger.warning(f"⚠️ Coding Council background init failed: {e}")
+                app.state.coding_council_initialized = False
+
+        # Launch Coding Council initialization in background
+        asyncio.create_task(_init_coding_council_background(), name="coding_council_init")
+
         yield
 
         # =====================================================================
@@ -1511,6 +1543,21 @@ async def parallel_lifespan(app: FastAPI):
     finally:
         # Shutdown
         logger.info("Shutting down parallel startup...")
+
+        # =================================================================
+        # v77.4 UNIFIED CODING COUNCIL: Graceful shutdown
+        # =================================================================
+        if hasattr(app.state, 'coding_council_initialized') and app.state.coding_council_initialized:
+            try:
+                from core.coding_council.startup import shutdown_coding_council_startup
+
+                logger.info("🧬 Shutting down Coding Council...")
+                await shutdown_coding_council_startup()
+                logger.info("✅ Coding Council shutdown complete")
+            except ImportError:
+                pass  # Coding Council not available
+            except Exception as e:
+                logger.debug(f"Coding Council shutdown error (non-critical): {e}")
 
         # =================================================================
         # HYPER-SPEED AI LOADER: Graceful shutdown
@@ -3197,6 +3244,49 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         app.state.ai_manager = None
 
     # =================================================================
+    # v77.4 UNIFIED CODING COUNCIL: Self-Evolution + IDE Integration
+    # =================================================================
+    # Coding Council enables AI-powered code evolution across Trinity repos:
+    # - Anthropic Claude engine (Aider/MetaGPT-style operations)
+    # - Cross-repo Trinity synchronization
+    # - IDE bridge with LSP server and WebSocket handler
+    # - ARM64 NEON SIMD acceleration (40-50x faster)
+    # - Adaptive framework selection with Thompson sampling
+    # =================================================================
+    coding_council_initialized = False
+    try:
+        from core.coding_council.startup import (
+            initialize_coding_council_startup,
+            shutdown_coding_council_startup,
+            is_initialized as is_coding_council_initialized,
+        )
+
+        logger.info("=" * 60)
+        logger.info("v77.4 UNIFIED CODING COUNCIL: Initializing")
+        logger.info("=" * 60)
+
+        coding_council_initialized = await initialize_coding_council_startup()
+
+        if coding_council_initialized:
+            app.state.coding_council_initialized = True
+            logger.info("✅ Coding Council online - Self-evolution capabilities active")
+            logger.info("   • Anthropic Engine: Claude API for code changes")
+            logger.info("   • IDE Bridge: LSP + WebSocket integration")
+            logger.info("   • Trinity Sync: Cross-repo file synchronization")
+            logger.info("   • ARM64 Acceleration: NEON SIMD enabled")
+        else:
+            logger.warning("⚠️ Coding Council: Running in limited mode")
+            app.state.coding_council_initialized = False
+
+    except ImportError as e:
+        logger.debug(f"Coding Council not available: {e}")
+        app.state.coding_council_initialized = False
+    except Exception as e:
+        logger.warning(f"⚠️ Coding Council initialization failed: {e}")
+        logger.warning("   → Code evolution features will be disabled")
+        app.state.coding_council_initialized = False
+
+    # =================================================================
     # PROJECT TRINITY: Unified Cognitive Architecture Integration
     # =================================================================
     # Trinity connects JARVIS (Body) ↔ J-Prime (Mind) ↔ Reactor Core (Nerves)
@@ -3244,6 +3334,21 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # =================================================================
+    # v77.4 UNIFIED CODING COUNCIL: Graceful shutdown
+    # =================================================================
+    if hasattr(app.state, 'coding_council_initialized') and app.state.coding_council_initialized:
+        try:
+            from core.coding_council.startup import shutdown_coding_council_startup
+
+            logger.info("🧬 Shutting down Coding Council...")
+            await shutdown_coding_council_startup()
+            logger.info("✅ Coding Council shutdown complete")
+        except ImportError:
+            pass  # Coding Council not available
+        except Exception as e:
+            logger.debug(f"Coding Council shutdown error (non-critical): {e}")
 
     # =================================================================
     # PROJECT TRINITY: Graceful shutdown
