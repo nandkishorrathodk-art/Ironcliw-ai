@@ -29,19 +29,50 @@ Version: 1.0.0
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Coroutine, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .orchestrator import UnifiedCodingCouncil
     from .types import EvolutionResult, EvolutionTask
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Trinity Module Imports (v77.0 Enhanced)
+# =============================================================================
+
+TRINITY_MODULE_AVAILABLE = False
+try:
+    from .trinity import (
+        MultiTransport,
+        TransportType,
+        TransportStatus,
+        TransportMessage,
+        PersistentMessageQueue,
+        QueueMessage,
+        MessagePriority,
+        HeartbeatValidator,
+        HeartbeatStatus,
+        ComponentHealth,
+        CrossRepoSync,
+        RepoState,
+        SyncStatus,
+    )
+    TRINITY_MODULE_AVAILABLE = True
+except ImportError as e:
+    logger.debug(f"Trinity module not available: {e}")
+    # Stub classes for graceful degradation
+    MultiTransport = None
+    PersistentMessageQueue = None
+    HeartbeatValidator = None
+    CrossRepoSync = None
 
 
 # =============================================================================
@@ -178,13 +209,26 @@ class CodingCouncilTrinityBridge:
         self._reactor_bridge = None
         self._initialized = False
         self._status_task: Optional[asyncio.Task] = None
+        self._message_processor_task: Optional[asyncio.Task] = None
         self._command_handlers: Dict[str, Callable] = {}
         self._active_evolutions: Dict[str, "EvolutionTask"] = {}
+
+        # v77.0 Trinity Module Instances
+        self._multi_transport: Optional[MultiTransport] = None
+        self._message_queue: Optional[PersistentMessageQueue] = None
+        self._heartbeat_validator: Optional[HeartbeatValidator] = None
+        self._cross_repo_sync: Optional[CrossRepoSync] = None
+
+        # Message subscriptions
+        self._message_callbacks: List[Callable[[Dict[str, Any]], Coroutine]] = []
 
         # Metrics
         self._total_commands_received = 0
         self._total_evolutions_completed = 0
         self._total_evolutions_failed = 0
+        self._total_messages_sent = 0
+        self._total_messages_received = 0
+        self._heartbeat_failures = 0
 
     async def initialize(self, council: "UnifiedCodingCouncil") -> bool:
         """
@@ -223,13 +267,19 @@ class CodingCouncilTrinityBridge:
             # Step 3: Ensure Trinity directories exist
             self._ensure_directories()
 
-            # Step 4: Write initial state
+            # Step 4: Initialize v77.0 Trinity Modules
+            await self._initialize_trinity_modules()
+
+            # Step 5: Write initial state
             await self._write_state()
 
-            # Step 5: Start status broadcast loop
+            # Step 6: Start status broadcast loop
             self._status_task = asyncio.create_task(self._status_broadcast_loop())
 
-            # Step 6: Register with Reactor Bridge if available
+            # Step 7: Start message processor
+            self._message_processor_task = asyncio.create_task(self._message_processor_loop())
+
+            # Step 8: Register with Reactor Bridge if available
             if self._reactor_bridge:
                 await self._register_with_reactor()
 
@@ -239,6 +289,7 @@ class CodingCouncilTrinityBridge:
             logger.info("CODING COUNCIL: Trinity Bridge Online")
             logger.info(f"  Cross-Repo: {CODING_COUNCIL_CROSS_REPO}")
             logger.info(f"  Auto-Approve: {CODING_COUNCIL_AUTO_APPROVE}")
+            logger.info(f"  Trinity Modules: {TRINITY_MODULE_AVAILABLE}")
             logger.info("=" * 60)
 
             return True
@@ -261,6 +312,17 @@ class CodingCouncilTrinityBridge:
                 await self._status_task
             except asyncio.CancelledError:
                 pass
+
+        # Cancel message processor
+        if self._message_processor_task:
+            self._message_processor_task.cancel()
+            try:
+                await self._message_processor_task
+            except asyncio.CancelledError:
+                pass
+
+        # Shutdown Trinity modules in reverse order
+        await self._shutdown_trinity_modules()
 
         # Write final state
         await self._write_state(status="offline")
@@ -286,6 +348,310 @@ class CodingCouncilTrinityBridge:
         (TRINITY_DIR / "components").mkdir(parents=True, exist_ok=True)
         (TRINITY_DIR / "commands").mkdir(parents=True, exist_ok=True)
         (TRINITY_DIR / "evolutions").mkdir(parents=True, exist_ok=True)
+        (TRINITY_DIR / "messages").mkdir(parents=True, exist_ok=True)
+        (TRINITY_DIR / "sync").mkdir(parents=True, exist_ok=True)
+
+    # =========================================================================
+    # v77.0 Trinity Module Management
+    # =========================================================================
+
+    async def _initialize_trinity_modules(self) -> None:
+        """Initialize all v77.0 Trinity modules."""
+        if not TRINITY_MODULE_AVAILABLE:
+            logger.info("[CodingCouncilTrinity] Trinity modules not available, using fallback mode")
+            return
+
+        logger.info("[CodingCouncilTrinity] Initializing v77.0 Trinity modules...")
+
+        try:
+            # 1. Initialize Multi-Transport (Gap #1)
+            self._multi_transport = MultiTransport(
+                component_name="coding_council",
+                redis_url=os.getenv("REDIS_URL"),
+                websocket_url=os.getenv("TRINITY_WEBSOCKET_URL"),
+                file_transport_dir=TRINITY_DIR / "messages",
+            )
+            await self._multi_transport.start()
+            logger.info("[CodingCouncilTrinity] MultiTransport started")
+
+            # 2. Initialize Message Queue (Gap #4)
+            queue_db = TRINITY_DIR / "messages" / "coding_council_queue.db"
+            self._message_queue = PersistentMessageQueue(
+                db_path=queue_db,
+                max_retries=3,
+                dead_letter_enabled=True,
+            )
+            await self._message_queue.start()
+            logger.info("[CodingCouncilTrinity] MessageQueue started")
+
+            # 3. Initialize Heartbeat Validator (Gaps #2, #3)
+            self._heartbeat_validator = HeartbeatValidator(
+                component_name="coding_council",
+                heartbeat_interval=STATUS_BROADCAST_INTERVAL,
+                staleness_threshold=STATUS_BROADCAST_INTERVAL * 3,
+                validate_pid=True,
+            )
+            await self._heartbeat_validator.start()
+            self._heartbeat_validator.on_staleness(self._on_component_stale)
+            logger.info("[CodingCouncilTrinity] HeartbeatValidator started")
+
+            # 4. Initialize Cross-Repo Sync (Gaps #5, #6, #7)
+            if CODING_COUNCIL_CROSS_REPO:
+                self._cross_repo_sync = CrossRepoSync(
+                    repos={
+                        "jarvis": JARVIS_REPO,
+                        "jarvis_prime": JARVIS_PRIME_REPO,
+                        "reactor_core": REACTOR_CORE_REPO,
+                    },
+                    sync_interval=60.0,
+                    state_dir=TRINITY_DIR / "sync",
+                )
+                await self._cross_repo_sync.start()
+                logger.info("[CodingCouncilTrinity] CrossRepoSync started")
+
+            logger.info("[CodingCouncilTrinity] All Trinity modules initialized")
+
+        except Exception as e:
+            logger.error(f"[CodingCouncilTrinity] Trinity module init failed: {e}")
+            # Graceful degradation - continue without failed modules
+            pass
+
+    async def _shutdown_trinity_modules(self) -> None:
+        """Shutdown Trinity modules in reverse order."""
+        if not TRINITY_MODULE_AVAILABLE:
+            return
+
+        logger.info("[CodingCouncilTrinity] Shutting down Trinity modules...")
+
+        # Shutdown in reverse order
+        if self._cross_repo_sync:
+            try:
+                await self._cross_repo_sync.stop()
+            except Exception as e:
+                logger.error(f"[CodingCouncilTrinity] CrossRepoSync shutdown error: {e}")
+            self._cross_repo_sync = None
+
+        if self._heartbeat_validator:
+            try:
+                await self._heartbeat_validator.stop()
+            except Exception as e:
+                logger.error(f"[CodingCouncilTrinity] HeartbeatValidator shutdown error: {e}")
+            self._heartbeat_validator = None
+
+        if self._message_queue:
+            try:
+                await self._message_queue.stop()
+            except Exception as e:
+                logger.error(f"[CodingCouncilTrinity] MessageQueue shutdown error: {e}")
+            self._message_queue = None
+
+        if self._multi_transport:
+            try:
+                await self._multi_transport.stop()
+            except Exception as e:
+                logger.error(f"[CodingCouncilTrinity] MultiTransport shutdown error: {e}")
+            self._multi_transport = None
+
+        logger.info("[CodingCouncilTrinity] Trinity modules shutdown complete")
+
+    async def _on_component_stale(self, component: str, last_seen: float) -> None:
+        """Handle stale component detection."""
+        self._heartbeat_failures += 1
+        staleness_seconds = time.time() - last_seen
+        logger.warning(
+            f"[CodingCouncilTrinity] Component '{component}' is stale "
+            f"(last seen {staleness_seconds:.1f}s ago)"
+        )
+
+        # If it's one of our repos, attempt to recover
+        if self._cross_repo_sync and component in ["jarvis_prime", "reactor_core"]:
+            await self._cross_repo_sync.trigger_recovery(component)
+
+    async def _message_processor_loop(self) -> None:
+        """Process incoming messages from the queue."""
+        if not self._message_queue:
+            return
+
+        logger.info("[CodingCouncilTrinity] Message processor started")
+
+        while True:
+            try:
+                # Dequeue next message
+                message = await self._message_queue.dequeue(timeout=5.0)
+                if message is None:
+                    continue
+
+                self._total_messages_received += 1
+
+                # Parse and route the message
+                try:
+                    payload = message.payload
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+
+                    # Check if it's a Coding Council command
+                    if "intent" in payload:
+                        command = CodingCouncilCommand.from_dict(payload)
+                        result = await self.handle_command(command)
+
+                        # Send response if correlation_id present
+                        if command.correlation_id:
+                            await self._send_response(command.correlation_id, result)
+
+                    # Notify callbacks
+                    for callback in self._message_callbacks:
+                        try:
+                            await callback(payload)
+                        except Exception as e:
+                            logger.error(f"[CodingCouncilTrinity] Callback error: {e}")
+
+                    # Mark as processed
+                    await self._message_queue.ack(message.id)
+
+                except Exception as e:
+                    logger.error(f"[CodingCouncilTrinity] Message processing error: {e}")
+                    await self._message_queue.nack(message.id, requeue=True)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[CodingCouncilTrinity] Message loop error: {e}")
+                await asyncio.sleep(1.0)
+
+    async def _send_response(self, correlation_id: str, result: Dict[str, Any]) -> None:
+        """Send a response message."""
+        if not self._multi_transport:
+            return
+
+        try:
+            response = {
+                "type": "response",
+                "correlation_id": correlation_id,
+                "timestamp": time.time(),
+                "result": result,
+            }
+            await self._multi_transport.send(
+                topic="coding_council_responses",
+                payload=response,
+            )
+            self._total_messages_sent += 1
+        except Exception as e:
+            logger.error(f"[CodingCouncilTrinity] Failed to send response: {e}")
+
+    # =========================================================================
+    # Public API for Trinity Communication
+    # =========================================================================
+
+    async def send_evolution_event(
+        self,
+        event_type: str,
+        task_id: str,
+        data: Dict[str, Any],
+    ) -> bool:
+        """
+        Send an evolution event to the Trinity network.
+
+        Args:
+            event_type: Type of event (started, completed, failed, etc.)
+            task_id: The evolution task ID
+            data: Event payload data
+
+        Returns:
+            True if sent successfully
+        """
+        if not self._multi_transport:
+            return False
+
+        try:
+            event = {
+                "type": "evolution_event",
+                "event_type": event_type,
+                "task_id": task_id,
+                "component": "coding_council",
+                "timestamp": time.time(),
+                "data": data,
+            }
+            await self._multi_transport.send(
+                topic="coding_council_events",
+                payload=event,
+            )
+            self._total_messages_sent += 1
+            return True
+        except Exception as e:
+            logger.error(f"[CodingCouncilTrinity] Failed to send event: {e}")
+            return False
+
+    async def queue_command(
+        self,
+        command: CodingCouncilCommand,
+        priority: Optional[int] = None,
+    ) -> bool:
+        """
+        Queue a command for processing.
+
+        Args:
+            command: The command to queue
+            priority: Optional priority (lower = higher priority)
+
+        Returns:
+            True if queued successfully
+        """
+        if not self._message_queue:
+            # Process immediately if no queue
+            await self.handle_command(command)
+            return True
+
+        try:
+            await self._message_queue.enqueue(
+                payload=command.to_dict(),
+                priority=priority or 50,
+                correlation_id=command.correlation_id,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"[CodingCouncilTrinity] Failed to queue command: {e}")
+            return False
+
+    def on_message(self, callback: Callable[[Dict[str, Any]], Coroutine]) -> None:
+        """Register a message callback."""
+        self._message_callbacks.append(callback)
+
+    async def get_repo_status(self, repo_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the current status of a repository.
+
+        Args:
+            repo_name: Name of the repo (jarvis, jarvis_prime, reactor_core)
+
+        Returns:
+            Status dict or None if not available
+        """
+        if not self._cross_repo_sync:
+            return None
+
+        return await self._cross_repo_sync.get_repo_state(repo_name)
+
+    async def get_component_health(self, component: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the health status of a Trinity component.
+
+        Args:
+            component: Component name
+
+        Returns:
+            Health dict or None if not available
+        """
+        if not self._heartbeat_validator:
+            return None
+
+        return await self._heartbeat_validator.get_component_health(component)
+
+    async def get_transport_status(self) -> Dict[str, Any]:
+        """Get the current transport status."""
+        if not self._multi_transport:
+            return {"available": False, "fallback_mode": True}
+
+        return await self._multi_transport.get_status()
 
     def _register_command_handlers(self) -> None:
         """Register handlers for all Coding Council intents."""
@@ -532,6 +898,26 @@ class CodingCouncilTrinityBridge:
         if not CODING_COUNCIL_CROSS_REPO:
             raise RuntimeError("Cross-repo operations disabled")
 
+        # Use CrossRepoSync if available
+        if self._cross_repo_sync:
+            # Trigger sync across all repos
+            sync_status = await self._cross_repo_sync.sync_all()
+            return {
+                "repos": {
+                    name: {
+                        "exists": state.exists,
+                        "healthy": state.healthy,
+                        "branch": state.branch,
+                        "has_uncommitted_changes": state.has_uncommitted_changes,
+                        "last_commit": state.last_commit_hash[:8] if state.last_commit_hash else None,
+                        "path": str(state.path),
+                    }
+                    for name, state in sync_status.items()
+                },
+                "sync_timestamp": time.time(),
+            }
+
+        # Fallback to basic sync
         sync_results = {}
 
         # Check each repo's status
@@ -641,10 +1027,26 @@ class CodingCouncilTrinityBridge:
                 "evolutions_completed": self._total_evolutions_completed,
                 "evolutions_failed": self._total_evolutions_failed,
                 "active_tasks": len(self._active_evolutions),
+                "messages_sent": self._total_messages_sent,
+                "messages_received": self._total_messages_received,
+                "heartbeat_failures": self._heartbeat_failures,
             },
             "config": {
                 "cross_repo_enabled": CODING_COUNCIL_CROSS_REPO,
                 "auto_approve": CODING_COUNCIL_AUTO_APPROVE,
+                "status_broadcast_interval": STATUS_BROADCAST_INTERVAL,
+            },
+            "trinity_modules": {
+                "available": TRINITY_MODULE_AVAILABLE,
+                "multi_transport": self._multi_transport is not None,
+                "message_queue": self._message_queue is not None,
+                "heartbeat_validator": self._heartbeat_validator is not None,
+                "cross_repo_sync": self._cross_repo_sync is not None,
+            },
+            "repos": {
+                "jarvis": str(JARVIS_REPO),
+                "jarvis_prime": str(JARVIS_PRIME_REPO),
+                "reactor_core": str(REACTOR_CORE_REPO),
             },
         }
 
@@ -657,9 +1059,12 @@ class CodingCouncilTrinityBridge:
                 await asyncio.sleep(STATUS_BROADCAST_INTERVAL)
                 await self._write_state()
 
-                # Broadcast via Reactor Bridge if available
-                if self._reactor_bridge:
-                    await self._broadcast_status()
+                # Broadcast via multi-transport (primary) or Reactor Bridge (fallback)
+                await self._broadcast_status()
+
+                # Update heartbeat
+                if self._heartbeat_validator:
+                    await self._heartbeat_validator.send_heartbeat()
 
             except asyncio.CancelledError:
                 break
@@ -667,19 +1072,39 @@ class CodingCouncilTrinityBridge:
                 logger.debug(f"[CodingCouncilTrinity] Status broadcast error: {e}")
 
     async def _broadcast_status(self) -> None:
-        """Broadcast status update to Reactor Core."""
-        if not self._reactor_bridge or not self._council:
+        """Broadcast status update to Trinity network."""
+        if not self._council:
             return
 
         try:
             status = self._council.get_status()
             status["component"] = "coding_council"
             status["timestamp"] = time.time()
+            status["pid"] = os.getpid()
 
-            # Use Reactor Bridge to broadcast
-            await self._reactor_bridge.publish_heartbeat_async(
-                extra_data={"coding_council": status}
-            )
+            # Add Trinity module status
+            status["trinity_modules"] = {
+                "multi_transport": self._multi_transport is not None,
+                "message_queue": self._message_queue is not None,
+                "heartbeat_validator": self._heartbeat_validator is not None,
+                "cross_repo_sync": self._cross_repo_sync is not None,
+            }
+
+            # Primary: Use multi-transport
+            if self._multi_transport:
+                await self._multi_transport.send(
+                    topic="coding_council_status",
+                    payload=status,
+                )
+                self._total_messages_sent += 1
+                return
+
+            # Fallback: Use Reactor Bridge
+            if self._reactor_bridge:
+                await self._reactor_bridge.publish_heartbeat_async(
+                    extra_data={"coding_council": status}
+                )
+
         except Exception as e:
             logger.debug(f"[CodingCouncilTrinity] Broadcast failed: {e}")
 
