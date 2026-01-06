@@ -182,7 +182,7 @@ try:
     )
     ADVANCED_AVAILABLE = True
 except ImportError as e:
-    logger.debug(f"Advanced module not available: {e}")
+    # logger not yet defined at module load time
     ADVANCED_AVAILABLE = False
 
 # v77.2 Advanced Modules (Gaps #61-80)
@@ -232,7 +232,7 @@ try:
     )
     ADVANCED_V772_AVAILABLE = True
 except ImportError as e:
-    logger.debug(f"Advanced v77.2 module not available: {e}")
+    # logger not yet defined at module load time
     ADVANCED_V772_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
@@ -1875,3 +1875,143 @@ class UnifiedCodingCouncil:
     def _rollback_manager(self) -> RollbackManager:
         """Get rollback manager (for Trinity integration)."""
         return self.rollback
+
+    # =========================================================================
+    # Trinity Cross-Repo Event Handling
+    # =========================================================================
+
+    async def handle_trinity_event(self, event: Dict[str, Any]) -> None:
+        """
+        Handle Trinity cross-repo events.
+
+        This method is called by the Trinity sync system when files change
+        in other repos (J-Prime, Reactor-Core) that may affect JARVIS.
+
+        Args:
+            event: Dictionary containing:
+                - type: Event type (file_changed, context_updated, etc.)
+                - repo: Source repository (jarvis, j_prime, reactor_core)
+                - file: File path that changed
+                - timestamp: When the event occurred
+
+        Handles:
+            1. Cache invalidation for affected files
+            2. Cross-repo dependency updates
+            3. Adaptive selector weight adjustments
+            4. Event logging for observability
+        """
+        event_type = event.get('type', 'unknown')
+        source_repo = event.get('repo', 'unknown')
+        file_path = event.get('file', '')
+        timestamp = event.get('timestamp', 0)
+
+        logger.debug(
+            f"[TrinityEvent] type={event_type} repo={source_repo} file={file_path}"
+        )
+
+        try:
+            if event_type == 'file_changed':
+                # Handle file change events
+                await self._handle_file_change_event(source_repo, file_path)
+
+            elif event_type == 'context_updated':
+                # Handle context updates
+                await self._handle_context_update_event(source_repo, event)
+
+            elif event_type == 'dependency_changed':
+                # Handle dependency graph changes
+                if self._dependency_tracker:
+                    await self._handle_dependency_change_event(source_repo, file_path)
+
+            # Record event in metrics
+            if self._metrics:
+                self._metrics.record_counter(
+                    "trinity_events_received",
+                    1,
+                    {"type": event_type, "repo": source_repo}
+                )
+
+        except Exception as e:
+            logger.error(f"[TrinityEvent] Error handling event: {e}")
+            if self._metrics:
+                self._metrics.record_counter(
+                    "trinity_events_errors",
+                    1,
+                    {"type": event_type, "error": str(e)[:50]}
+                )
+
+    async def _handle_file_change_event(
+        self,
+        source_repo: str,
+        file_path: str,
+    ) -> None:
+        """Handle file change events from Trinity repos."""
+        # Invalidate caches related to changed files
+        if self._cross_repo_sync:
+            # Cross-repo sync handles propagation
+            await self._cross_repo_sync.invalidate_for_file(file_path, source_repo)
+
+        # Update dependency tracker if available
+        if self._dependency_tracker:
+            try:
+                # Check if changed file affects any tracked dependencies
+                affected = await self._dependency_tracker.get_dependents(file_path)
+                if affected:
+                    logger.info(
+                        f"[TrinityEvent] File {file_path} change affects {len(affected)} files"
+                    )
+            except Exception as e:
+                logger.debug(f"[TrinityEvent] Dependency check skipped: {e}")
+
+        # Adjust adaptive selector weights if patterns suggest framework preference
+        if self._adaptive_selector and source_repo in ('j_prime', 'reactor_core'):
+            # If ML/model files changed in J-Prime or Reactor-Core,
+            # slightly boost MetaGPT weight for better planning
+            if any(kw in file_path.lower() for kw in ['model', 'ml', 'train', 'predict']):
+                await self._adaptive_selector.adjust_weight(
+                    FrameworkType.METAGPT,
+                    boost=0.05,
+                    reason=f"ML file changed in {source_repo}"
+                )
+
+    async def _handle_context_update_event(
+        self,
+        source_repo: str,
+        event: Dict[str, Any],
+    ) -> None:
+        """Handle context updates from Trinity repos."""
+        # Context updates may include:
+        # - New available models (from Reactor-Core)
+        # - New cognitive capabilities (from J-Prime)
+        # - System state changes
+
+        trigger_repo = event.get('trigger_repo', source_repo)
+        trigger_file = event.get('trigger_file', '')
+
+        logger.debug(
+            f"[TrinityEvent] Context update: {trigger_repo}/{trigger_file}"
+        )
+
+        # Update health monitor with cross-repo status
+        if self._health_monitor:
+            self._health_monitor.record_check(
+                f"trinity_{source_repo}",
+                True,
+                f"Context update received"
+            )
+
+    async def _handle_dependency_change_event(
+        self,
+        source_repo: str,
+        file_path: str,
+    ) -> None:
+        """Handle dependency graph changes from Trinity repos."""
+        if self._dependency_tracker:
+            try:
+                # Re-analyze dependencies for affected files
+                await self._dependency_tracker.invalidate_cache(file_path)
+                logger.debug(
+                    f"[TrinityEvent] Dependency cache invalidated for {file_path}"
+                )
+            except Exception as e:
+                logger.debug(f"[TrinityEvent] Dependency invalidation skipped: {e}")

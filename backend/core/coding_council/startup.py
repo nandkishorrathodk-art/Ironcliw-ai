@@ -304,7 +304,7 @@ async def _connect_trinity_to_orchestrator() -> None:
 
 
 async def _start_lsp_server() -> None:
-    """Start LSP server in background."""
+    """Start LSP server in background with port conflict detection."""
     global _lsp_server
 
     if _lsp_server is None:
@@ -312,6 +312,21 @@ async def _start_lsp_server() -> None:
 
     try:
         await _lsp_server.start_tcp(host="127.0.0.1", port=LSP_SERVER_PORT)
+    except OSError as e:
+        if "Address already in use" in str(e) or "address already in use" in str(e).lower():
+            logger.error(
+                f"[CodingCouncilStartup] LSP Server port {LSP_SERVER_PORT} is already in use. "
+                f"Try: export LSP_SERVER_PORT={LSP_SERVER_PORT + 1}"
+            )
+            # Try alternative port
+            try:
+                alt_port = LSP_SERVER_PORT + 1
+                await _lsp_server.start_tcp(host="127.0.0.1", port=alt_port)
+                logger.info(f"[CodingCouncilStartup] LSP Server started on alternative port {alt_port}")
+            except Exception:
+                logger.error("[CodingCouncilStartup] LSP Server failed to start on alternative port")
+        else:
+            logger.error(f"[CodingCouncilStartup] LSP Server failed: {e}")
     except Exception as e:
         logger.error(f"[CodingCouncilStartup] LSP Server failed: {e}")
 
@@ -551,8 +566,10 @@ def register_coding_council_routes(app):
         from backend.core.coding_council.startup import register_coding_council_routes
         register_coding_council_routes(app)
     """
-    from fastapi import APIRouter, HTTPException
+    from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.responses import JSONResponse
+    from starlette.websockets import WebSocketState
+    import json
 
     router = APIRouter(prefix="/coding-council", tags=["Coding Council"])
 
@@ -762,9 +779,306 @@ def register_coding_council_routes(app):
 
         return {"success": success, "repo": repo.value}
 
+    # =========================================================================
+    # WebSocket Endpoint for IDE Real-Time Communication
+    # =========================================================================
+
+    @router.websocket("/ide/ws")
+    async def ide_websocket(websocket: WebSocket):
+        """
+        WebSocket endpoint for real-time IDE communication.
+
+        Protocol:
+        - Client sends JSON messages with 'type' field
+        - Server responds with JSON messages
+
+        Message Types (Client → Server):
+        - file_opened: {"type": "file_opened", "uri": "file:///...", "content": "...", "language": "python"}
+        - file_changed: {"type": "file_changed", "uri": "file:///...", "changes": [...]}
+        - file_closed: {"type": "file_closed", "uri": "file:///..."}
+        - cursor_moved: {"type": "cursor_moved", "uri": "file:///...", "line": 10, "character": 5}
+        - request_suggestion: {"type": "request_suggestion", "uri": "file:///...", "line": 10, "character": 5}
+        - diagnostics: {"type": "diagnostics", "uri": "file:///...", "diagnostics": [...]}
+
+        Message Types (Server → Client):
+        - suggestion: {"type": "suggestion", "text": "...", "range": {...}}
+        - context_update: {"type": "context_update", "files": [...]}
+        - trinity_event: {"type": "trinity_event", "repo": "...", "event": "..."}
+        - error: {"type": "error", "message": "..."}
+        """
+        global _websocket_handler, _ide_bridge, _trinity_sync
+
+        # Accept the WebSocket connection
+        await websocket.accept()
+
+        # Track connection for cleanup
+        connection_id = f"ws_{id(websocket)}_{time.time()}"
+        active_subscriptions = set()
+
+        logger.info(f"[WebSocket] New IDE connection: {connection_id}")
+
+        try:
+            # Send initial connection acknowledgment
+            await websocket.send_json({
+                "type": "connected",
+                "connection_id": connection_id,
+                "capabilities": {
+                    "suggestions": _ide_bridge is not None,
+                    "trinity_sync": _trinity_sync is not None,
+                    "lsp": _lsp_server is not None,
+                },
+                "version": "77.3",
+            })
+
+            # Main message loop
+            while True:
+                try:
+                    # Receive message with timeout for heartbeat
+                    message = await asyncio.wait_for(
+                        websocket.receive_json(),
+                        timeout=60.0  # 60 second timeout for heartbeat
+                    )
+                except asyncio.TimeoutError:
+                    # Send heartbeat ping
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                        continue
+                    else:
+                        break
+
+                msg_type = message.get("type", "")
+
+                # Handle different message types
+                if msg_type == "pong":
+                    # Heartbeat response, ignore
+                    continue
+
+                elif msg_type == "file_opened":
+                    uri = message.get("uri", "")
+                    content = message.get("content", "")
+                    language = message.get("language", "unknown")
+
+                    if _ide_bridge:
+                        try:
+                            from .ide.bridge import FileContext
+                            file_ctx = FileContext(
+                                uri=uri,
+                                content=content,
+                                language_id=language,
+                                version=1,
+                            )
+                            await _ide_bridge.update_file(file_ctx)
+                            await websocket.send_json({
+                                "type": "ack",
+                                "original_type": "file_opened",
+                                "uri": uri,
+                            })
+                        except Exception as e:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Failed to process file_opened: {e}",
+                            })
+
+                elif msg_type == "file_changed":
+                    uri = message.get("uri", "")
+                    changes = message.get("changes", [])
+
+                    if _ide_bridge:
+                        try:
+                            # Apply incremental changes
+                            await _ide_bridge.handle_file_changes(uri, changes)
+
+                            # Publish to Trinity for cross-repo awareness
+                            if _trinity_sync:
+                                from .ide.trinity_sync import detect_repo_type
+                                file_path = uri.replace("file://", "")
+                                repo = detect_repo_type(file_path)
+                                if repo:
+                                    await _trinity_sync.publish_file_change(
+                                        repo=repo,
+                                        file_path=file_path,
+                                        change_type="modified",
+                                    )
+
+                            await websocket.send_json({
+                                "type": "ack",
+                                "original_type": "file_changed",
+                                "uri": uri,
+                            })
+                        except Exception as e:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Failed to process file_changed: {e}",
+                            })
+
+                elif msg_type == "file_closed":
+                    uri = message.get("uri", "")
+                    if _ide_bridge and hasattr(_ide_bridge, 'close_file'):
+                        await _ide_bridge.close_file(uri)
+                    await websocket.send_json({
+                        "type": "ack",
+                        "original_type": "file_closed",
+                        "uri": uri,
+                    })
+
+                elif msg_type == "cursor_moved":
+                    uri = message.get("uri", "")
+                    line = message.get("line", 0)
+                    character = message.get("character", 0)
+
+                    if _ide_bridge and hasattr(_ide_bridge, 'update_cursor'):
+                        await _ide_bridge.update_cursor(uri, line, character)
+
+                elif msg_type == "request_suggestion":
+                    uri = message.get("uri", "")
+                    line = message.get("line", 0)
+                    character = message.get("character", 0)
+                    trigger = message.get("trigger", "invoked")
+
+                    if _ide_bridge:
+                        try:
+                            suggestion = await _ide_bridge.get_inline_suggestion(
+                                uri=uri,
+                                line=line,
+                                character=character,
+                                trigger_kind=trigger,
+                            )
+
+                            if suggestion:
+                                await websocket.send_json({
+                                    "type": "suggestion",
+                                    "uri": uri,
+                                    "line": line,
+                                    "character": character,
+                                    "text": suggestion,
+                                })
+                            else:
+                                await websocket.send_json({
+                                    "type": "no_suggestion",
+                                    "uri": uri,
+                                })
+                        except Exception as e:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Suggestion failed: {e}",
+                            })
+                    else:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "IDE Bridge not available",
+                        })
+
+                elif msg_type == "diagnostics":
+                    uri = message.get("uri", "")
+                    diagnostics = message.get("diagnostics", [])
+
+                    if _ide_bridge and hasattr(_ide_bridge, 'update_diagnostics'):
+                        await _ide_bridge.update_diagnostics(uri, diagnostics)
+                    await websocket.send_json({
+                        "type": "ack",
+                        "original_type": "diagnostics",
+                        "uri": uri,
+                        "count": len(diagnostics),
+                    })
+
+                elif msg_type == "subscribe_trinity":
+                    # Subscribe to Trinity cross-repo events
+                    if _trinity_sync:
+                        active_subscriptions.add("trinity")
+                        await websocket.send_json({
+                            "type": "subscribed",
+                            "channel": "trinity",
+                        })
+
+                elif msg_type == "get_context":
+                    # Get compressed context for current focus
+                    if _ide_bridge:
+                        focus_file = message.get("focus_file")
+                        focus_line = message.get("focus_line", 0)
+                        context = await _ide_bridge.get_compressed_context(
+                            focus_file=focus_file,
+                            focus_line=focus_line,
+                        )
+                        await websocket.send_json({
+                            "type": "context",
+                            "focus_file": focus_file,
+                            "context": context,
+                        })
+
+                else:
+                    # Unknown message type
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Unknown message type: {msg_type}",
+                    })
+
+        except WebSocketDisconnect:
+            logger.info(f"[WebSocket] IDE client disconnected: {connection_id}")
+        except Exception as e:
+            logger.error(f"[WebSocket] Connection error: {e}")
+            try:
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Connection error: {e}",
+                        "fatal": True,
+                    })
+            except:
+                pass
+        finally:
+            # Cleanup
+            logger.info(f"[WebSocket] Cleaning up connection: {connection_id}")
+
+    # =========================================================================
+    # Connection Verification Endpoint
+    # =========================================================================
+
+    @router.get("/ide/verify-connections")
+    async def verify_ide_connections():
+        """Verify all IDE integration connections."""
+        connections = await verify_critical_connections()
+
+        all_connected = all(connections.values())
+        connected_count = sum(1 for v in connections.values() if v)
+
+        return {
+            "all_connected": all_connected,
+            "connected_count": connected_count,
+            "total_count": len(connections),
+            "connections": connections,
+            "recommendations": _get_connection_recommendations(connections),
+        }
+
+    def _get_connection_recommendations(connections: Dict[str, bool]) -> List[str]:
+        """Generate recommendations based on connection status."""
+        recommendations = []
+
+        if not connections.get("anthropic_engine"):
+            recommendations.append(
+                "Set ANTHROPIC_API_KEY environment variable for Claude API access"
+            )
+
+        if not connections.get("ide_bridge"):
+            recommendations.append(
+                "IDE Bridge not initialized - check IDE_BRIDGE_ENABLED env var"
+            )
+
+        if not connections.get("trinity_sync"):
+            recommendations.append(
+                "Trinity Sync not running - cross-repo features unavailable"
+            )
+
+        if not connections.get("voice_handler"):
+            recommendations.append(
+                "Voice evolution handler not available - voice commands may not work"
+            )
+
+        return recommendations
+
     # Register routes
     app.include_router(router)
     logger.info("[CodingCouncilStartup] API routes registered at /coding-council")
+    logger.info(f"[CodingCouncilStartup] WebSocket endpoint: /coding-council/ide/ws")
 
 
 # =============================================================================

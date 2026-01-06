@@ -15,6 +15,7 @@ Author: JARVIS v77.0
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import functools
 import logging
 import time
@@ -75,7 +76,7 @@ class TimeoutWrapper:
     """
 
     # Thread-local context stack
-    _context_stack: asyncio.ContextVar[list] = asyncio.ContextVar(
+    _context_stack: contextvars.ContextVar[list] = contextvars.ContextVar(
         "timeout_context_stack",
         default=[]
     )

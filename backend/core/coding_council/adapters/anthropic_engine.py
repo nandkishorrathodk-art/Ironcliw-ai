@@ -1345,10 +1345,23 @@ class AnthropicUnifiedEngine:
     async def initialize(self) -> bool:
         """Initialize the engine and verify API access."""
         try:
-            # Verify API key is set
+            # Verify API key is set with detailed error message
             if not AnthropicEngineConfig.API_KEY:
-                logger.error("[AnthropicEngine] ANTHROPIC_API_KEY not set")
+                logger.error(
+                    "[AnthropicEngine] ANTHROPIC_API_KEY environment variable not set.\n"
+                    "  To fix, run one of:\n"
+                    "    export ANTHROPIC_API_KEY=sk-ant-api03-...\n"
+                    "    echo 'ANTHROPIC_API_KEY=sk-ant-api03-...' >> ~/.bashrc\n"
+                    "  Get your API key from: https://console.anthropic.com/settings/keys"
+                )
                 return False
+
+            # Verify API key format (basic validation)
+            if not AnthropicEngineConfig.API_KEY.startswith(("sk-ant-", "sk-")):
+                logger.warning(
+                    "[AnthropicEngine] ANTHROPIC_API_KEY format looks unusual. "
+                    "Expected format: sk-ant-api03-..."
+                )
 
             # Verify git repo
             if not self.git.is_git_repo:
