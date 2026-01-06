@@ -235,6 +235,36 @@ except ImportError as e:
     # logger not yet defined at module load time
     ADVANCED_V772_AVAILABLE = False
 
+# v78.0 Advanced Modules (Process Management)
+try:
+    from .advanced import (
+        # Adaptive Timeout
+        AdaptiveTimeoutManager,
+        OperationType,
+        TimeoutStrategy,
+        TimeoutConfig,
+        get_timeout_manager,
+        get_timeout_manager_sync,
+        # Intelligent Retry
+        IntelligentRetryManager,
+        RetryStrategy,
+        IntelligentRetryConfig,
+        RetryResult,
+        RetryCircuitBreaker,
+        get_retry_manager,
+        get_retry_manager_sync,
+        with_intelligent_retry,
+        # Cross-Repo Coordinator
+        CrossRepoTransactionCoordinator,
+        RepoScope,
+        get_transaction_coordinator,
+        get_transaction_coordinator_sync,
+    )
+    ADVANCED_V780_AVAILABLE = True
+except ImportError as e:
+    # logger not yet defined at module load time
+    ADVANCED_V780_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -1078,6 +1108,19 @@ class UnifiedCodingCouncil:
         # Adaptive Framework Selector (ML-based)
         self._adaptive_selector: Optional[AdaptiveFrameworkSelector] = None
 
+        # =================================================================
+        # v78.0 Advanced Modules (Process Management)
+        # =================================================================
+
+        # Adaptive Timeout Manager (dynamic timeouts based on task complexity)
+        self._timeout_manager: Optional[AdaptiveTimeoutManager] = None
+
+        # Intelligent Retry Manager (context-aware retry with circuit breakers)
+        self._retry_manager: Optional[IntelligentRetryManager] = None
+
+        # Cross-Repo Transaction Coordinator (atomic multi-repo commits)
+        self._cross_repo_tx: Optional[CrossRepoTransactionCoordinator] = None
+
     async def initialize(self) -> bool:
         """Initialize the Coding Council."""
         if self._initialized:
@@ -1235,9 +1278,30 @@ class UnifiedCodingCouncil:
             except Exception as e:
                 logger.warning(f"[CodingCouncil] Advanced modules init failed: {e}")
 
+        # =================================================================
+        # v78.0 Advanced Modules (Process Management)
+        # =================================================================
+        if ADVANCED_V780_AVAILABLE:
+            try:
+                # Adaptive Timeout Manager (dynamic timeouts)
+                self._timeout_manager = await get_timeout_manager()
+                logger.info("[CodingCouncil] Adaptive Timeout Manager initialized")
+
+                # Intelligent Retry Manager
+                self._retry_manager = await get_retry_manager()
+                logger.info("[CodingCouncil] Intelligent Retry Manager initialized")
+
+                # Cross-Repo Transaction Coordinator
+                self._cross_repo_tx = await get_transaction_coordinator()
+                logger.info("[CodingCouncil] Cross-Repo Transaction Coordinator initialized")
+
+                logger.info("[CodingCouncil] v78.0 modules initialized successfully")
+            except Exception as e:
+                logger.warning(f"[CodingCouncil] v78.0 modules init failed: {e}")
+
         # Initialize adapters (lazy - only when needed)
         self._initialized = True
-        logger.info("[CodingCouncil] Initialization complete - All 60 gaps addressed (v77.0 + v77.1)")
+        logger.info("[CodingCouncil] Initialization complete - All 95 gaps addressed (v77.0 + v77.1 + v77.2 + v78.0)")
 
         return True
 
@@ -1430,7 +1494,24 @@ class UnifiedCodingCouncil:
             8. Apply or rollback
         """
         start_time = time.time()
-        timeout = timeout or self.config.default_timeout
+
+        # v78.0: Use adaptive timeout if available
+        if self._timeout_manager and timeout is None:
+            try:
+                timeout = await self._timeout_manager.get_timeout(
+                    operation=OperationType.CODING_COUNCIL,
+                    context={
+                        "description": task.description[:200] if task.description else "",
+                        "num_files": len(task.target_files) if task.target_files else 0,
+                        "complexity": getattr(task, 'complexity', 'medium'),
+                    }
+                )
+                logger.debug(f"[v78.0] Adaptive timeout calculated: {timeout:.1f}s for task {task.task_id}")
+            except Exception as e:
+                logger.warning(f"[v78.0] Adaptive timeout failed, using default: {e}")
+                timeout = self.config.default_timeout
+        else:
+            timeout = timeout or self.config.default_timeout
 
         # Initialize result
         result = EvolutionResult(
@@ -1503,9 +1584,23 @@ class UnifiedCodingCouncil:
                     task.current_phase = "execution"
                     task.progress_percent = 50
 
-                    framework_result = await self._run_framework(
-                        framework, task, analysis, plan, timeout
-                    )
+                    # v78.0: Track operation for adaptive timeout statistics
+                    if self._timeout_manager:
+                        async with self._timeout_manager.track_operation(
+                            operation=OperationType.CODING_COUNCIL,
+                            context={
+                                "framework": framework.value,
+                                "task_id": task.task_id,
+                                "num_files": len(task.target_files) if task.target_files else 0,
+                            }
+                        ):
+                            framework_result = await self._run_framework(
+                                framework, task, analysis, plan, timeout
+                            )
+                    else:
+                        framework_result = await self._run_framework(
+                            framework, task, analysis, plan, timeout
+                        )
 
                     if not framework_result.success:
                         await cb.record_failure(framework_result.error)
@@ -1659,13 +1754,14 @@ class UnifiedCodingCouncil:
         plan: Optional[PlanResult],
         timeout: float
     ) -> FrameworkResult:
-        """Run the selected framework."""
+        """Run the selected framework with v78.0 intelligent retry."""
         start = time.time()
 
-        try:
+        async def _execute_adapter() -> FrameworkResult:
+            """Inner execution function for retry wrapper."""
             adapter = await self._get_adapter(framework)
             if adapter is None:
-                # Fallback to Claude Code
+                # Not retryable - framework unavailable
                 logger.warning(
                     f"[CodingCouncil] {framework.value} not available, "
                     "using Claude Code fallback"
@@ -1680,9 +1776,48 @@ class UnifiedCodingCouncil:
                 adapter.execute(task, analysis, plan),
                 timeout=timeout
             )
-
             result.execution_time_ms = (time.time() - start) * 1000
             return result
+
+        try:
+            # v78.0: Use intelligent retry if available
+            if self._retry_manager:
+                from .advanced import IntelligentRetryConfig, RetryStrategy
+
+                retry_config = IntelligentRetryConfig(
+                    max_attempts=3,
+                    base_delay_ms=1000,   # 1 second base delay
+                    max_delay_ms=30000,   # 30 second max delay
+                    strategy=RetryStrategy.DECORRELATED_JITTER,
+                    budget_ms=timeout * 1000 if timeout else None,  # Total time budget
+                )
+
+                retry_result = await self._retry_manager.execute_with_retry(
+                    _execute_adapter,
+                    operation=f"framework_{framework.value}",
+                    config=retry_config,
+                )
+
+                if retry_result.success:
+                    logger.debug(
+                        f"[v78.0] Framework {framework.value} succeeded "
+                        f"after {retry_result.attempts} attempt(s)"
+                    )
+                    return retry_result.result
+                else:
+                    logger.warning(
+                        f"[v78.0] Framework {framework.value} failed after "
+                        f"{retry_result.attempts} attempts: {retry_result.error}"
+                    )
+                    return FrameworkResult(
+                        framework=framework,
+                        success=False,
+                        error=f"Failed after {retry_result.attempts} retries: {retry_result.error}",
+                        execution_time_ms=(time.time() - start) * 1000
+                    )
+            else:
+                # Fallback: Direct execution without retry
+                return await _execute_adapter()
 
         except asyncio.TimeoutError:
             return FrameworkResult(

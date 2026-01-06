@@ -260,6 +260,9 @@ class ErrorClassifier:
         "overloaded",
         "busy",
         "temporary failure",
+        "transient",        # v78.0: Added for semantic error messages
+        "retry",            # v78.0: Common indicator of retryable errors
+        "intermittent",     # v78.0: Intermittent failures are retryable
     ]
 
     # Known permanent error patterns
@@ -305,15 +308,8 @@ class ErrorClassifier:
             if 400 <= http_status < 500:
                 return ErrorCategory.CLIENT_ERROR
 
-        # Classify by exception type
-        if isinstance(error, asyncio.TimeoutError):
-            return ErrorCategory.TIMEOUT
-        if isinstance(error, (ConnectionError, ConnectionRefusedError)):
-            return ErrorCategory.NETWORK
-        if isinstance(error, (ValueError, TypeError, KeyError)):
-            return ErrorCategory.VALIDATION
-
-        # Classify by error message
+        # v78.0: Check message patterns FIRST (allows semantic overrides)
+        # This lets "transient error" in message override exception type classification
         for pattern in cls.TRANSIENT_PATTERNS:
             if pattern in error_str:
                 return ErrorCategory.TRANSIENT
@@ -321,6 +317,14 @@ class ErrorClassifier:
         for pattern in cls.PERMANENT_PATTERNS:
             if pattern in error_str:
                 return ErrorCategory.PERMANENT
+
+        # Classify by exception type
+        if isinstance(error, asyncio.TimeoutError):
+            return ErrorCategory.TIMEOUT
+        if isinstance(error, (ConnectionError, ConnectionRefusedError)):
+            return ErrorCategory.NETWORK
+        if isinstance(error, (ValueError, TypeError, KeyError)):
+            return ErrorCategory.VALIDATION
 
         # Default to unknown (will retry with caution)
         return ErrorCategory.UNKNOWN
@@ -515,7 +519,7 @@ class IntelligentRetryManager:
         config = config or self.get_config(operation)
         circuit = self.get_circuit_breaker(operation)
 
-        result = RetryResult()
+        result = RetryResult(success=False)
         start_time = time.time()
         prev_delay_ms = 0
 

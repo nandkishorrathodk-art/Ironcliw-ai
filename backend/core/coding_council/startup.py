@@ -138,6 +138,11 @@ _startup_time: Optional[float] = None
 _initialized = False
 _recovery_log: List[Dict[str, Any]] = []  # Track auto-recovery actions
 
+# v78.0: Advanced Process Management Components
+_command_buffer: Optional[Any] = None
+_timeout_manager: Optional[Any] = None
+_retry_manager: Optional[Any] = None
+
 # IDE Configuration
 IDE_BRIDGE_ENABLED = os.getenv("IDE_BRIDGE_ENABLED", "true").lower() == "true"
 LSP_SERVER_PORT = int(os.getenv("LSP_SERVER_PORT", "9257"))
@@ -475,7 +480,78 @@ async def _initialize_council_full() -> "UnifiedCodingCouncil":
     if IDE_BRIDGE_ENABLED:
         await _initialize_ide_components()
 
+    # v78.0: Initialize Advanced Process Management Components
+    await _initialize_v78_components()
+
     return council
+
+
+async def _initialize_v78_components() -> None:
+    """
+    v78.0: Initialize advanced process management components.
+
+    Components:
+    - Command Buffer: Handles early Trinity commands before council is ready
+    - Adaptive Timeout: Dynamic timeout calculation
+    - Intelligent Retry: Context-aware retry with circuit breakers
+    """
+    global _command_buffer, _timeout_manager, _retry_manager
+
+    logger.info("[CodingCouncilStartup] Initializing v78.0 components...")
+
+    # Initialize Command Buffer for early Trinity commands
+    try:
+        from .advanced import get_command_buffer
+        _command_buffer = await get_command_buffer()
+
+        # Set up executor for command buffer (processes buffered commands)
+        async def execute_buffered_command(cmd):
+            global _council
+            if _council:
+                try:
+                    await _council.handle_trinity_event(cmd.payload)
+                    return True
+                except Exception as e:
+                    logger.warning(f"[CommandBuffer] Execution failed: {e}")
+                    return False
+            return False
+
+        _command_buffer.set_executor(execute_buffered_command)
+
+        # Signal ready and flush any buffered commands
+        await _command_buffer.signal_ready()
+
+        logger.info("[CodingCouncilStartup] ✅ Command Buffer ready")
+    except Exception as e:
+        logger.warning(f"[CodingCouncilStartup] Command Buffer not available: {e}")
+        _command_buffer = None
+
+    # Initialize Adaptive Timeout Manager
+    try:
+        from .advanced import get_timeout_manager
+        _timeout_manager = await get_timeout_manager()
+        logger.info("[CodingCouncilStartup] ✅ Adaptive Timeout Manager ready")
+    except Exception as e:
+        logger.warning(f"[CodingCouncilStartup] Timeout Manager not available: {e}")
+        _timeout_manager = None
+
+    # Initialize Intelligent Retry Manager
+    try:
+        from .advanced import get_retry_manager
+        _retry_manager = await get_retry_manager()
+        logger.info("[CodingCouncilStartup] ✅ Intelligent Retry Manager ready")
+    except Exception as e:
+        logger.warning(f"[CodingCouncilStartup] Retry Manager not available: {e}")
+        _retry_manager = None
+
+    # Log summary
+    v78_components = [
+        ("Command Buffer", _command_buffer is not None),
+        ("Adaptive Timeout", _timeout_manager is not None),
+        ("Intelligent Retry", _retry_manager is not None),
+    ]
+    ready = sum(1 for _, ok in v78_components if ok)
+    logger.info(f"[CodingCouncilStartup] v78.0 Components: {ready}/{len(v78_components)} ready")
 
 
 async def _initialize_ide_components() -> None:
