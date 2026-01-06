@@ -2651,6 +2651,82 @@ class SupervisorBootstrapper:
                 print(f"  {TerminalUI.YELLOW}⚠️ Advanced Orchestrator: Not available{TerminalUI.RESET}")
 
             # ═══════════════════════════════════════════════════════════════════
+            # v78.0: Initialize Advanced Process Management Components
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables enterprise-grade process management:
+            # - Unified Process Tree: Track entire process hierarchy
+            # - Command Buffer: Handle early commands before system ready
+            # - Atomic Command Queue: Race-condition-free Trinity transport
+            # - Cross-Repo Coordinator: Atomic commits across JARVIS/J-Prime/Reactor
+            # - Adaptive Timeout: Dynamic timeouts based on history
+            # - Intelligent Retry: Context-aware retry with circuit breakers
+            # ═══════════════════════════════════════════════════════════════════
+            try:
+                from core.coding_council.advanced import (
+                    get_process_tree,
+                    get_command_buffer,
+                    get_atomic_queue,
+                    get_transaction_coordinator,
+                    get_timeout_manager,
+                    get_retry_manager,
+                    ProcessRole,
+                    JARVIS_TO_JPRIME,
+                )
+                import os
+
+                # Initialize Process Tree Manager
+                self._process_tree = await get_process_tree()
+                await self._process_tree.register_process(
+                    pid=os.getpid(),
+                    name="run_supervisor.py",
+                    role=ProcessRole.SUPERVISOR,
+                    parent_pid=None,  # Root of tree
+                    critical=True,
+                    metadata={"version": "v78.0", "started_at": time.time()},
+                )
+                await self._process_tree.start_monitoring(interval=10.0)
+
+                # Initialize Command Buffer for early Trinity commands
+                self._command_buffer = await get_command_buffer()
+                # Executor will be set when Coding Council is ready
+
+                # Initialize Trinity Queues (atomic, race-condition-free)
+                self._trinity_queues = {
+                    "jarvis_to_jprime": await get_atomic_queue(JARVIS_TO_JPRIME),
+                }
+
+                # Initialize Cross-Repo Transaction Coordinator
+                self._tx_coordinator = await get_transaction_coordinator()
+
+                # Initialize Adaptive Timeout Manager
+                self._timeout_manager = await get_timeout_manager()
+
+                # Initialize Intelligent Retry Manager
+                self._retry_manager = await get_retry_manager()
+
+                print(f"  {TerminalUI.GREEN}✓ Process Management v78.0: Active{TerminalUI.RESET}")
+                print(f"    → Process tree, command buffer, atomic queues, cross-repo tx")
+                print(f"    → Adaptive timeouts, intelligent retry enabled")
+
+            except ImportError as e:
+                self._process_tree = None
+                self._command_buffer = None
+                self._trinity_queues = {}
+                self._tx_coordinator = None
+                self._timeout_manager = None
+                self._retry_manager = None
+                self.logger.debug(f"[ProcessMgmt] Module not available: {e}")
+            except Exception as e:
+                self._process_tree = None
+                self._command_buffer = None
+                self._trinity_queues = {}
+                self._tx_coordinator = None
+                self._timeout_manager = None
+                self._retry_manager = None
+                self.logger.warning(f"[ProcessMgmt] Initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Process Management v78.0: Not available{TerminalUI.RESET}")
+
+            # ═══════════════════════════════════════════════════════════════════
             # v5.0: Initialize Intelligent Rate Orchestrator (ML Forecasting)
             # ═══════════════════════════════════════════════════════════════════
             # This starts the ML-powered rate limiting system that:
@@ -8741,6 +8817,50 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self.logger.info("   ✅ Advanced Orchestrator stopped")
             except Exception as e:
                 self.logger.debug(f"   Orchestrator shutdown error: {e}")
+
+        # v78.0: Shutdown Process Management Components
+        # Shutdown in reverse order of initialization
+        if hasattr(self, '_process_tree') and self._process_tree:
+            try:
+                self.logger.info("   Shutting down Process Tree Manager...")
+                await self._process_tree.stop_monitoring()
+                # Use cascading shutdown for clean process termination
+                from core.coding_council.advanced import ShutdownStrategy
+                await self._process_tree.shutdown_tree(
+                    strategy=ShutdownStrategy.CASCADING,
+                    timeout=30.0,
+                    force_after=10.0,
+                )
+                self.logger.info("   ✅ Process Tree Manager stopped")
+            except Exception as e:
+                self.logger.debug(f"   Process tree shutdown error: {e}")
+
+        if hasattr(self, '_command_buffer') and self._command_buffer:
+            try:
+                self.logger.info("   Flushing Command Buffer...")
+                stats = self._command_buffer.get_stats()
+                if stats.current_size > 0:
+                    self.logger.warning(f"   ⚠️ {stats.current_size} commands still buffered, flushing...")
+                    await self._command_buffer.flush()
+                self.logger.info("   ✅ Command Buffer shutdown complete")
+            except Exception as e:
+                self.logger.debug(f"   Command buffer shutdown error: {e}")
+
+        if hasattr(self, '_timeout_manager') and self._timeout_manager:
+            try:
+                self.logger.info("   Persisting Timeout Manager stats...")
+                await self._timeout_manager.persist()
+                self.logger.info("   ✅ Timeout Manager stats persisted")
+            except Exception as e:
+                self.logger.debug(f"   Timeout manager persist error: {e}")
+
+        if hasattr(self, '_retry_manager') and self._retry_manager:
+            try:
+                self.logger.info("   Persisting Retry Manager stats...")
+                await self._retry_manager.persist()
+                self.logger.info("   ✅ Retry Manager stats persisted")
+            except Exception as e:
+                self.logger.debug(f"   Retry manager persist error: {e}")
 
         self.logger.info("✅ Trinity component shutdown complete")
 

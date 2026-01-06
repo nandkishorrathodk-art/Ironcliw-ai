@@ -1,8 +1,8 @@
 """
-v77.2: Advanced Coding Council Module
+v78.0: Advanced Coding Council Module
 ======================================
 
-Advanced patterns for production-grade multi-repo evolution:
+Advanced patterns for production-grade multi-repo evolution.
 
 v77.1 Gaps Addressed:
 - Gap #41: Partial success handling
@@ -21,6 +21,14 @@ v77.2 Gaps Addressed:
 - Gap #72: Error classification (transient vs permanent)
 - Gap #80: Handler lifecycle management
 
+v78.0 Gaps Addressed:
+- Gap #90: Unified Process Tree Management
+- Gap #91: Command Buffer for early commands
+- Gap #92: Atomic Command Queue (race-condition free)
+- Gap #93: Cross-Repo Transaction Coordinator (2PC)
+- Gap #94: Adaptive Timeout Manager
+- Gap #95: Intelligent Retry Manager
+
 Advanced Patterns:
 - Saga pattern for long-running operations
 - Event sourcing for complete audit trail
@@ -29,8 +37,11 @@ Advanced Patterns:
 - Circuit breaker for fault tolerance
 - Exponential backoff with jitter
 - Bounded collections to prevent memory leaks
+- Process tree tracking with cascading shutdown
+- File-based atomic queues with deduplication
+- Context-aware retry strategies
 
-Author: JARVIS v77.2
+Author: JARVIS v78.0
 """
 
 # v77.1 Modules
@@ -137,6 +148,95 @@ from .memory_management import (
     get_cleanup_service,
 )
 
+# v78.0 Modules - Process Tree Management
+from .unified_process_tree import (
+    UnifiedProcessTree,
+    ProcessNode,
+    ProcessRole,
+    ProcessState,
+    ProcessMetrics,
+    ShutdownStrategy,
+    TreeSnapshot,
+    get_process_tree,
+    get_process_tree_sync,
+)
+
+# v78.0 Modules - Command Buffer
+from .command_buffer import (
+    CommandBuffer,
+    BufferedCommand,
+    CommandPriority,
+    CommandState,
+    CommandType,
+    BufferStats,
+    get_command_buffer,
+    get_command_buffer_sync,
+)
+
+# v78.0 Modules - Atomic Command Queue
+from .atomic_command_queue import (
+    AtomicCommandQueue,
+    AtomicQueueEntry,
+    AtomicFileLock as AtomicQueueLock,
+    LockType as AtomicLockType,
+    EntryState,
+    QueueStats,
+    AtomicQueueError,
+    LockAcquisitionError as AtomicLockError,
+    get_atomic_queue,
+    get_atomic_queue_sync,
+    JARVIS_TO_JPRIME,
+    JPRIME_TO_JARVIS,
+    JARVIS_TO_REACTOR,
+    REACTOR_TO_JARVIS,
+)
+
+# v78.0 Modules - Cross-Repo Transaction Coordinator
+from .cross_repo_coordinator import (
+    CrossRepoTransactionCoordinator,
+    Transaction,
+    RepoScope,
+    TransactionState as CrossRepoTxState,
+    VoteResult,
+    ParticipantVote,
+    CoordinatorStats,
+    get_transaction_coordinator,
+    get_transaction_coordinator_sync,
+)
+
+# v78.0 Modules - Adaptive Timeout Manager
+from .adaptive_timeout_manager import (
+    AdaptiveTimeoutManager,
+    OperationType,
+    TimeoutStrategy,
+    TimeoutConfig,
+    TimeoutBudget,
+    OperationStats as TimeoutOperationStats,
+    LoadLevel,
+    ComplexityEstimator,
+    get_timeout_manager,
+    get_timeout_manager_sync,
+)
+
+# v78.0 Modules - Intelligent Retry Manager
+from .intelligent_retry_manager import (
+    IntelligentRetryManager,
+    RetryStrategy,
+    RetryConfig as IntelligentRetryConfig,
+    RetryResult,
+    RetryAttempt,
+    CircuitBreaker as RetryCircuitBreaker,
+    CircuitBreakerConfig as RetryCircuitConfig,
+    CircuitState as RetryCircuitState,
+    ErrorCategory as RetryErrorCategory,
+    ErrorClassifier as RetryErrorClassifier,
+    DelayCalculator,
+    RetryStats,
+    with_retry as with_intelligent_retry,
+    get_retry_manager,
+    get_retry_manager_sync,
+)
+
 __all__ = [
     # Distributed Transactions (v77.1)
     "DistributedTransactionCoordinator",
@@ -221,4 +321,75 @@ __all__ = [
     "CleanupService",
     "get_memory_monitor",
     "get_cleanup_service",
+    # Process Tree Management (v78.0)
+    "UnifiedProcessTree",
+    "ProcessNode",
+    "ProcessRole",
+    "ProcessState",
+    "ProcessMetrics",
+    "ShutdownStrategy",
+    "TreeSnapshot",
+    "get_process_tree",
+    "get_process_tree_sync",
+    # Command Buffer (v78.0)
+    "CommandBuffer",
+    "BufferedCommand",
+    "CommandPriority",
+    "CommandState",
+    "CommandType",
+    "BufferStats",
+    "get_command_buffer",
+    "get_command_buffer_sync",
+    # Atomic Command Queue (v78.0)
+    "AtomicCommandQueue",
+    "AtomicQueueEntry",
+    "AtomicQueueLock",
+    "AtomicLockType",
+    "EntryState",
+    "QueueStats",
+    "AtomicQueueError",
+    "AtomicLockError",
+    "get_atomic_queue",
+    "get_atomic_queue_sync",
+    "JARVIS_TO_JPRIME",
+    "JPRIME_TO_JARVIS",
+    "JARVIS_TO_REACTOR",
+    "REACTOR_TO_JARVIS",
+    # Cross-Repo Transaction Coordinator (v78.0)
+    "CrossRepoTransactionCoordinator",
+    "Transaction",
+    "RepoScope",
+    "CrossRepoTxState",
+    "VoteResult",
+    "ParticipantVote",
+    "CoordinatorStats",
+    "get_transaction_coordinator",
+    "get_transaction_coordinator_sync",
+    # Adaptive Timeout Manager (v78.0)
+    "AdaptiveTimeoutManager",
+    "OperationType",
+    "TimeoutStrategy",
+    "TimeoutConfig",
+    "TimeoutBudget",
+    "TimeoutOperationStats",
+    "LoadLevel",
+    "ComplexityEstimator",
+    "get_timeout_manager",
+    "get_timeout_manager_sync",
+    # Intelligent Retry Manager (v78.0)
+    "IntelligentRetryManager",
+    "RetryStrategy",
+    "IntelligentRetryConfig",
+    "RetryResult",
+    "RetryAttempt",
+    "RetryCircuitBreaker",
+    "RetryCircuitConfig",
+    "RetryCircuitState",
+    "RetryErrorCategory",
+    "RetryErrorClassifier",
+    "DelayCalculator",
+    "RetryStats",
+    "with_intelligent_retry",
+    "get_retry_manager",
+    "get_retry_manager_sync",
 ]
