@@ -124,18 +124,54 @@ def _get_trinity_dir() -> Path:
     return Path.home() / ".jarvis" / "trinity"
 
 
-# Legacy constants for backward compatibility
+def _get_state_file() -> Path:
+    """Get Coding Council state file path."""
+    return _get_trinity_dir() / "components" / "coding_council.json"
+
+
+def _is_auto_approve_enabled() -> bool:
+    """Check if auto-approve is enabled for evolutions."""
+    config = _get_unified_config()
+    if config and hasattr(config, 'coding_council_auto_approve'):
+        return config.coding_council_auto_approve
+    return os.getenv("CODING_COUNCIL_AUTO_APPROVE", "false").lower() == "true"
+
+
+def _get_status_broadcast_interval() -> float:
+    """Get the status broadcast interval in seconds."""
+    config = _get_unified_config()
+    if config and hasattr(config, 'heartbeat_interval'):
+        return config.heartbeat_interval
+    return float(os.getenv("CODING_COUNCIL_STATUS_INTERVAL", "10.0"))
+
+
+def _ensure_trinity_dirs() -> None:
+    """Ensure all Trinity directories exist."""
+    trinity_dir = _get_trinity_dir()
+    for subdir in ["components", "commands", "evolutions", "messages", "sync"]:
+        (trinity_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+
+# =============================================================================
+# DEPRECATED: Legacy Constants (DO NOT USE - Use dynamic functions above)
+# =============================================================================
+# These constants are kept ONLY for backward compatibility with external code.
+# All internal code now uses dynamic functions:
+#   - _is_enabled() instead of CODING_COUNCIL_ENABLED
+#   - _is_cross_repo_enabled() instead of CODING_COUNCIL_CROSS_REPO
+#   - _is_auto_approve_enabled() instead of CODING_COUNCIL_AUTO_APPROVE
+#   - _get_status_broadcast_interval() instead of STATUS_BROADCAST_INTERVAL
+#   - _get_trinity_repos() instead of JARVIS_REPO/JARVIS_PRIME_REPO/REACTOR_CORE_REPO
+#   - _get_trinity_dir() instead of TRINITY_DIR
+#   - _get_state_file() instead of CODING_COUNCIL_STATE_FILE
+# =============================================================================
 CODING_COUNCIL_ENABLED = os.getenv("CODING_COUNCIL_ENABLED", "true").lower() == "true"
 CODING_COUNCIL_CROSS_REPO = os.getenv("CODING_COUNCIL_CROSS_REPO", "true").lower() == "true"
 CODING_COUNCIL_AUTO_APPROVE = os.getenv("CODING_COUNCIL_AUTO_APPROVE", "false").lower() == "true"
 STATUS_BROADCAST_INTERVAL = float(os.getenv("CODING_COUNCIL_STATUS_INTERVAL", "10.0"))
-
-# Cross-repo paths (use dynamic functions when possible)
 JARVIS_REPO = Path(os.getenv("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
 JARVIS_PRIME_REPO = Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
 REACTOR_CORE_REPO = Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core")))
-
-# Trinity directories
 TRINITY_DIR = Path.home() / ".jarvis" / "trinity"
 CODING_COUNCIL_STATE_FILE = TRINITY_DIR / "components" / "coding_council.json"
 
@@ -290,8 +326,8 @@ class CodingCouncilTrinityBridge:
             logger.debug("[CodingCouncilTrinity] Already initialized")
             return True
 
-        if not CODING_COUNCIL_ENABLED:
-            logger.info("[CodingCouncilTrinity] Coding Council disabled via CODING_COUNCIL_ENABLED")
+        if not _is_enabled():
+            logger.info("[CodingCouncilTrinity] Coding Council disabled via configuration")
             return False
 
         self._council = council
@@ -333,8 +369,8 @@ class CodingCouncilTrinityBridge:
 
             logger.info("=" * 60)
             logger.info("CODING COUNCIL: Trinity Bridge Online")
-            logger.info(f"  Cross-Repo: {CODING_COUNCIL_CROSS_REPO}")
-            logger.info(f"  Auto-Approve: {CODING_COUNCIL_AUTO_APPROVE}")
+            logger.info(f"  Cross-Repo: {_is_cross_repo_enabled()}")
+            logger.info(f"  Auto-Approve: {_is_auto_approve_enabled()}")
             logger.info(f"  Trinity Modules: {TRINITY_MODULE_AVAILABLE}")
             logger.info("=" * 60)
 
@@ -390,12 +426,7 @@ class CodingCouncilTrinityBridge:
 
     def _ensure_directories(self) -> None:
         """Ensure required directories exist."""
-        TRINITY_DIR.mkdir(parents=True, exist_ok=True)
-        (TRINITY_DIR / "components").mkdir(parents=True, exist_ok=True)
-        (TRINITY_DIR / "commands").mkdir(parents=True, exist_ok=True)
-        (TRINITY_DIR / "evolutions").mkdir(parents=True, exist_ok=True)
-        (TRINITY_DIR / "messages").mkdir(parents=True, exist_ok=True)
-        (TRINITY_DIR / "sync").mkdir(parents=True, exist_ok=True)
+        _ensure_trinity_dirs()
 
     # =========================================================================
     # v77.0 Trinity Module Management
@@ -411,17 +442,18 @@ class CodingCouncilTrinityBridge:
 
         try:
             # 1. Initialize Multi-Transport (Gap #1)
+            trinity_dir = _get_trinity_dir()
             self._multi_transport = MultiTransport(
                 component_name="coding_council",
                 redis_url=os.getenv("REDIS_URL"),
                 websocket_url=os.getenv("TRINITY_WEBSOCKET_URL"),
-                file_transport_dir=TRINITY_DIR / "messages",
+                file_transport_dir=trinity_dir / "messages",
             )
             await self._multi_transport.start()
             logger.info("[CodingCouncilTrinity] MultiTransport started")
 
             # 2. Initialize Message Queue (Gap #4)
-            queue_db = TRINITY_DIR / "messages" / "coding_council_queue.db"
+            queue_db = trinity_dir / "messages" / "coding_council_queue.db"
             self._message_queue = PersistentMessageQueue(
                 db_path=queue_db,
                 max_retries=3,
@@ -431,10 +463,11 @@ class CodingCouncilTrinityBridge:
             logger.info("[CodingCouncilTrinity] MessageQueue started")
 
             # 3. Initialize Heartbeat Validator (Gaps #2, #3)
+            broadcast_interval = _get_status_broadcast_interval()
             self._heartbeat_validator = HeartbeatValidator(
                 component_name="coding_council",
-                heartbeat_interval=STATUS_BROADCAST_INTERVAL,
-                staleness_threshold=STATUS_BROADCAST_INTERVAL * 3,
+                heartbeat_interval=broadcast_interval,
+                staleness_threshold=broadcast_interval * 3,
                 validate_pid=True,
             )
             await self._heartbeat_validator.start()
@@ -442,15 +475,12 @@ class CodingCouncilTrinityBridge:
             logger.info("[CodingCouncilTrinity] HeartbeatValidator started")
 
             # 4. Initialize Cross-Repo Sync (Gaps #5, #6, #7)
-            if CODING_COUNCIL_CROSS_REPO:
+            if _is_cross_repo_enabled():
+                repos = _get_trinity_repos()
                 self._cross_repo_sync = CrossRepoSync(
-                    repos={
-                        "jarvis": JARVIS_REPO,
-                        "jarvis_prime": JARVIS_PRIME_REPO,
-                        "reactor_core": REACTOR_CORE_REPO,
-                    },
+                    repos=repos,
                     sync_interval=60.0,
-                    state_dir=TRINITY_DIR / "sync",
+                    state_dir=trinity_dir / "sync",
                 )
                 await self._cross_repo_sync.start()
                 logger.info("[CodingCouncilTrinity] CrossRepoSync started")
@@ -793,7 +823,7 @@ class CodingCouncilTrinityBridge:
             target_files=command.target_files or None,
             require_sandbox=command.require_sandbox,
             require_planning=command.require_planning,
-            require_approval=command.require_approval and not CODING_COUNCIL_AUTO_APPROVE,
+            require_approval=command.require_approval and not _is_auto_approve_enabled(),
             correlation_id=command.correlation_id,
             timeout=command.timeout_seconds,
         )
@@ -897,7 +927,7 @@ class CodingCouncilTrinityBridge:
 
     async def _handle_cross_repo_evolve(self, command: CodingCouncilCommand) -> Dict[str, Any]:
         """Handle CROSS_REPO_EVOLVE command for multi-repo evolution."""
-        if not CODING_COUNCIL_CROSS_REPO:
+        if not _is_cross_repo_enabled():
             raise RuntimeError("Cross-repo evolution disabled")
 
         if not self._council:
@@ -908,13 +938,14 @@ class CodingCouncilTrinityBridge:
 
         results = {}
 
-        # Map repo names to paths
+        # Map repo names to paths (dynamic from unified config)
+        repos = _get_trinity_repos()
         repo_map = {
-            "jarvis": JARVIS_REPO,
-            "jarvis_prime": JARVIS_PRIME_REPO,
-            "jprime": JARVIS_PRIME_REPO,
-            "reactor_core": REACTOR_CORE_REPO,
-            "reactor": REACTOR_CORE_REPO,
+            "jarvis": repos.get("jarvis"),
+            "jarvis_prime": repos.get("j_prime"),
+            "jprime": repos.get("j_prime"),
+            "reactor_core": repos.get("reactor_core"),
+            "reactor": repos.get("reactor_core"),
         }
 
         for repo_name in target_repos:
@@ -931,7 +962,7 @@ class CodingCouncilTrinityBridge:
             result = await self._council.evolve(
                 description=f"[{repo_name}] {description}",
                 target_files=command.target_files,
-                require_approval=not CODING_COUNCIL_AUTO_APPROVE,
+                require_approval=not _is_auto_approve_enabled(),
                 correlation_id=f"{command.correlation_id}-{repo_name}" if command.correlation_id else None,
             )
 
@@ -941,7 +972,7 @@ class CodingCouncilTrinityBridge:
 
     async def _handle_sync_repos(self, command: CodingCouncilCommand) -> Dict[str, Any]:
         """Handle SYNC_REPOS command to synchronize Trinity repos."""
-        if not CODING_COUNCIL_CROSS_REPO:
+        if not _is_cross_repo_enabled():
             raise RuntimeError("Cross-repo operations disabled")
 
         # Use CrossRepoSync if available
@@ -966,12 +997,8 @@ class CodingCouncilTrinityBridge:
         # Fallback to basic sync
         sync_results = {}
 
-        # Check each repo's status
-        repos = {
-            "jarvis": JARVIS_REPO,
-            "jarvis_prime": JARVIS_PRIME_REPO,
-            "reactor_core": REACTOR_CORE_REPO,
-        }
+        # Check each repo's status (from dynamic config)
+        repos = _get_trinity_repos()
 
         for name, path in repos.items():
             if path.exists():
@@ -1062,6 +1089,9 @@ class CodingCouncilTrinityBridge:
                         json.dump(data, f, indent=2)
                     return True
 
+        # Get dynamic config values
+        repos = _get_trinity_repos()
+
         state = {
             "component": "coding_council",
             "version": "77.0",
@@ -1078,9 +1108,9 @@ class CodingCouncilTrinityBridge:
                 "heartbeat_failures": self._heartbeat_failures,
             },
             "config": {
-                "cross_repo_enabled": CODING_COUNCIL_CROSS_REPO,
-                "auto_approve": CODING_COUNCIL_AUTO_APPROVE,
-                "status_broadcast_interval": STATUS_BROADCAST_INTERVAL,
+                "cross_repo_enabled": _is_cross_repo_enabled(),
+                "auto_approve": _is_auto_approve_enabled(),
+                "status_broadcast_interval": _get_status_broadcast_interval(),
             },
             "trinity_modules": {
                 "available": TRINITY_MODULE_AVAILABLE,
@@ -1089,20 +1119,16 @@ class CodingCouncilTrinityBridge:
                 "heartbeat_validator": self._heartbeat_validator is not None,
                 "cross_repo_sync": self._cross_repo_sync is not None,
             },
-            "repos": {
-                "jarvis": str(JARVIS_REPO),
-                "jarvis_prime": str(JARVIS_PRIME_REPO),
-                "reactor_core": str(REACTOR_CORE_REPO),
-            },
+            "repos": {name: str(path) for name, path in repos.items()},
         }
 
-        write_json_atomic(CODING_COUNCIL_STATE_FILE, state)
+        write_json_atomic(_get_state_file(), state)
 
     async def _status_broadcast_loop(self) -> None:
         """Periodically broadcast status to Trinity network."""
         while True:
             try:
-                await asyncio.sleep(STATUS_BROADCAST_INTERVAL)
+                await asyncio.sleep(_get_status_broadcast_interval())
                 await self._write_state()
 
                 # Broadcast via multi-transport (primary) or Reactor Bridge (fallback)
