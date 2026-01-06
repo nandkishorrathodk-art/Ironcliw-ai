@@ -173,6 +173,26 @@ except ImportError:
     except ImportError as e:
         logger.debug(f"ReactorCoreBridge (Project Trinity) not available: {e}")
 
+# v77.2: Import Coding Council integration for code evolution commands
+CODING_COUNCIL_AVAILABLE = False
+get_voice_evolution_handler = None
+CommandClassifier = None
+try:
+    from core.coding_council.integration import (
+        get_voice_evolution_handler,
+        CommandClassifier,
+    )
+    CODING_COUNCIL_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.core.coding_council.integration import (
+            get_voice_evolution_handler,
+            CommandClassifier,
+        )
+        CODING_COUNCIL_AVAILABLE = True
+    except ImportError as e:
+        logger.debug(f"Coding Council integration not available: {e}")
+
 class ResponseStyle(Enum):
     """
     Response style variations based on time of day and context.
@@ -2418,6 +2438,80 @@ class IntelligentCommandHandler:
 
         return None
 
+    async def _check_evolution_command(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        v77.2: Check if the command is a code evolution request.
+
+        Uses ML-inspired semantic classification from Coding Council integration
+        module rather than hardcoded strings. This enables intelligent detection
+        of evolution commands like "evolve yourself", "self-improve", "update
+        your code", etc.
+
+        Args:
+            text: The command text to check
+
+        Returns:
+            Dictionary with evolution result if detected:
+            {
+                "is_evolution": True,
+                "message": str,  # Response message
+                "evolution_id": str,  # Unique evolution tracking ID
+                "request": {...}  # Parsed evolution request
+            }
+            None if not an evolution command or module unavailable
+        """
+        # Check if Coding Council integration is available
+        if not CODING_COUNCIL_AVAILABLE:
+            logger.debug("[Evolution] Coding Council integration not available")
+            return None
+
+        try:
+            # Use CommandClassifier from integration module (no hardcoding)
+            # This uses semantic pattern matching for robust detection
+            if CommandClassifier is None:
+                logger.debug("[Evolution] CommandClassifier not loaded")
+                return None
+
+            # Check if this looks like an evolution command
+            is_evolution = CommandClassifier.is_evolution_command(text)
+
+            if not is_evolution:
+                return None
+
+            logger.info(f"🧬 [Evolution] Detected evolution command: {text[:50]}...")
+
+            # Get the voice evolution handler
+            handler_func = get_voice_evolution_handler
+            if handler_func is None:
+                logger.warning("[Evolution] Voice evolution handler not available")
+                return {"is_evolution": True, "message": "Evolution system initializing..."}
+
+            voice_handler = handler_func()
+            if voice_handler is None:
+                logger.warning("[Evolution] Could not instantiate voice handler")
+                return {"is_evolution": True, "message": "Evolution handler not ready"}
+
+            # Process the voice evolution command
+            # This routes through TrinityProtocol to J-Prime for orchestration
+            result = await voice_handler.process_voice_command(text)
+
+            if result:
+                result["is_evolution"] = True
+                logger.info(f"🧬 [Evolution] Processing result: {result.get('message', 'No message')[:100]}")
+                return result
+            else:
+                return {
+                    "is_evolution": True,
+                    "message": "Evolution request received. Processing through Trinity Protocol..."
+                }
+
+        except ImportError as e:
+            logger.debug(f"[Evolution] Import error (expected if council not installed): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Evolution] Error checking evolution command: {e}", exc_info=True)
+            return None
+
     def _generate_encouragement(self, context: str) -> str:
         """
         Generate encouraging message based on context.
@@ -2914,6 +3008,41 @@ class IntelligentCommandHandler:
                 }
                 self._record_command(text, handler_type, classification, response)
                 success = True
+                self._record_interaction(text, response, handler_type, success)
+
+                # Check for milestone
+                milestone_msg = self._check_interaction_milestone()
+
+                # Build final response with context
+                if long_gap_msg:
+                    response = f"{long_gap_msg} {response}"
+                if milestone_msg:
+                    response += f"\n\n{milestone_msg}"
+
+                return response, handler_type
+
+            # ===================================================================
+            # PRIORITY 0.5: CODE EVOLUTION COMMANDS (v77.2)
+            # ===================================================================
+            # v77.2: Check for evolution commands BEFORE routing
+            # This ensures self-evolution ALWAYS works regardless of classifier
+            # Uses CommandClassifier from integration module (no hardcoding)
+            # ===================================================================
+            evolution_result = await self._check_evolution_command(text)
+            if evolution_result and evolution_result.get("is_evolution"):
+                logger.info(f"🧬 PRE-CLASSIFICATION: Code evolution command detected")
+                response = evolution_result.get("message", "Evolution processing...")
+                handler_type = 'code_evolution'
+
+                # Record for learning
+                classification = {
+                    'type': 'code_evolution',
+                    'intent': 'evolve_code',
+                    'confidence': 0.99,
+                    'entities': evolution_result
+                }
+                self._record_command(text, handler_type, classification, response)
+                success = evolution_result.get("success", True)
                 self._record_interaction(text, response, handler_type, success)
 
                 # Check for milestone

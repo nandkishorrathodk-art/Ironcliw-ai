@@ -438,8 +438,27 @@ def _get_handler_for_intent(intent: str) -> Optional[Callable]:
         "create_ghost_display": handle_create_ghost_display,
         "ping": handle_ping,
         "execute_plan": handle_execute_plan,
+        # v77.2: Coding Council evolution handlers
+        "evolve_code": _get_evolution_handler("evolve_code"),
+        "evolution_status": _get_evolution_handler("evolution_status"),
+        "evolution_rollback": _get_evolution_handler("evolution_rollback"),
     }
     return handlers.get(intent)
+
+
+def _get_evolution_handler(handler_name: str) -> Optional[Callable]:
+    """Lazily get evolution handler to avoid circular imports."""
+    try:
+        from backend.core.coding_council.integration import get_trinity_evolution_handler
+        handler = get_trinity_evolution_handler()
+        return getattr(handler, f"handle_{handler_name}", None)
+    except ImportError:
+        try:
+            from core.coding_council.integration import get_trinity_evolution_handler
+            handler = get_trinity_evolution_handler()
+            return getattr(handler, f"handle_{handler_name}", None)
+        except ImportError:
+            return None
 
 
 async def _send_ack(command: TrinityCommand, message: str = "") -> None:
@@ -506,6 +525,19 @@ def register_trinity_handlers(bridge=None) -> bool:
         bridge.register_handler(handle_create_ghost_display, [TrinityIntent.CREATE_GHOST_DISPLAY])
         bridge.register_handler(handle_ping, [TrinityIntent.PING])
         bridge.register_handler(handle_execute_plan, [TrinityIntent.EXECUTE_PLAN])
+
+        # v77.2: Register Coding Council evolution handlers
+        try:
+            from backend.core.coding_council.integration import register_evolution_handlers
+            register_evolution_handlers(bridge)
+            logger.info("[Trinity] Coding Council evolution handlers registered")
+        except ImportError:
+            try:
+                from core.coding_council.integration import register_evolution_handlers
+                register_evolution_handlers(bridge)
+                logger.info("[Trinity] Coding Council evolution handlers registered")
+            except ImportError:
+                logger.debug("[Trinity] Coding Council integration not available")
 
         _handlers_registered = True
         logger.info("[Trinity] All command handlers registered")

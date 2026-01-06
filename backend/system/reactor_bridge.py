@@ -110,6 +110,12 @@ class TrinityIntent(Enum):
     EXECUTE_PLAN = "execute_plan"
     ABORT_PLAN = "abort_plan"
 
+    # v77.2: Coding Council Evolution commands
+    EVOLVE_CODE = "evolve_code"
+    EVOLUTION_STATUS = "evolution_status"
+    EVOLUTION_COMPLETE = "evolution_complete"
+    EVOLUTION_ROLLBACK = "evolution_rollback"
+
 
 @dataclass
 class TrinityCommand:

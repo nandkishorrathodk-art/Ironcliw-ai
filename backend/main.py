@@ -4949,6 +4949,16 @@ async def health_check():
     else:
         component_manager_details = {"enabled": False}
 
+    # v77.2: Check Coding Council status for self-evolution capabilities
+    coding_council_details = {}
+    try:
+        from core.coding_council.integration import get_coding_council_health
+        coding_council_details = await get_coding_council_health()
+    except ImportError:
+        coding_council_details = {"enabled": False, "reason": "module_not_installed"}
+    except Exception as e:
+        coding_council_details = {"enabled": False, "error": str(e)}
+
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -4962,6 +4972,7 @@ async def health_check():
         "self_healing": self_healing_details,
         "voice_unlock": voice_unlock_details,
         "component_manager": component_manager_details,
+        "coding_council": coding_council_details,
     }
 
 
@@ -5680,6 +5691,17 @@ def mount_routers():
         logger.info("✅ Reactor-Core API mounted at /reactor-core")
     except ImportError as e:
         logger.debug(f"Reactor-Core API not available: {e}")
+
+    # v77.2: Coding Council Evolution API - Self-Evolution Capabilities
+    try:
+        from core.coding_council.integration import create_coding_council_router
+
+        coding_council_router = create_coding_council_router()
+        app.include_router(coding_council_router, tags=["coding-council"])
+        logger.info("✅ Coding Council API mounted at /api/evolution")
+        logger.info("   Endpoints: /api/evolution/trigger, /api/evolution/status, /api/evolution/rollback")
+    except ImportError as e:
+        logger.debug(f"Coding Council API not available: {e}")
 
     # Context Intelligence API (Priority 1-3 features)
     if hasattr(app.state, "context_bridge") and app.state.context_bridge:
