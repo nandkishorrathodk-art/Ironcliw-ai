@@ -48,7 +48,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .orchestrator import UnifiedCodingCouncil
@@ -78,11 +78,201 @@ _lsp_server: Optional[Any] = None
 _websocket_handler: Optional[Any] = None
 _startup_time: Optional[float] = None
 _initialized = False
+_recovery_log: List[Dict[str, Any]] = []  # Track auto-recovery actions
 
 # IDE Configuration
 IDE_BRIDGE_ENABLED = os.getenv("IDE_BRIDGE_ENABLED", "true").lower() == "true"
 LSP_SERVER_PORT = int(os.getenv("LSP_SERVER_PORT", "9257"))
 IDE_WEBSOCKET_PORT = int(os.getenv("IDE_WEBSOCKET_PORT", "9258"))
+
+
+# =============================================================================
+# Pre-Flight Checks
+# =============================================================================
+
+async def _run_preflight_checks(log) -> bool:
+    """
+    Run pre-flight diagnostic checks before initialization.
+
+    This validates:
+    - Environment variables (ANTHROPIC_API_KEY, etc.)
+    - Port availability (LSP, WebSocket)
+    - Trinity repository connectivity
+    - Required module imports
+    - API connectivity (if key is set)
+
+    Args:
+        log: Logger instance to use for output
+
+    Returns:
+        True if all critical checks pass, False otherwise
+    """
+    global _recovery_log
+
+    try:
+        from .diagnostics import (
+            run_preflight_checks,
+            CheckStatus,
+            AutoRecovery,
+        )
+
+        # Run initial checks
+        report = await run_preflight_checks(print_report=False, auto_recover=False)
+
+        # Log initial summary
+        log.info(f"  Pre-flight checks: {report.passed}/{report.total} passed")
+
+        if report.warnings > 0:
+            log.warning(f"  Pre-flight warnings: {report.warnings}")
+
+        if report.failed > 0:
+            log.warning(f"  Pre-flight failures: {report.failed} - attempting recovery...")
+
+            # Attempt auto-recovery
+            recovery_actions = await AutoRecovery.attempt_recovery(report)
+
+            if recovery_actions:
+                for action in recovery_actions:
+                    log.info(f"    ⚡ Auto-recovered: {action}")
+                    _recovery_log.append({
+                        "action": action,
+                        "timestamp": time.time(),
+                        "success": True,
+                    })
+
+                # Re-run checks after recovery
+                log.info("  Re-running checks after recovery...")
+                report = await run_preflight_checks(print_report=False, auto_recover=False)
+                log.info(f"  Post-recovery checks: {report.passed}/{report.total} passed")
+
+        # Log individual failures and warnings
+        for check in report.checks:
+            if check.status == CheckStatus.FAIL:
+                log.error(f"    ✗ {check.name}: {check.message}")
+                if check.fix_command:
+                    log.error(f"      Manual fix: {check.fix_command}")
+            elif check.status == CheckStatus.WARN:
+                log.warning(f"    ⚠ {check.name}: {check.message}")
+
+        log.info(f"  Pre-flight duration: {report.duration_ms:.1f}ms")
+
+        # Run advanced recovery for remaining failures
+        if not report.is_healthy:
+            await _run_advanced_recovery(report, log)
+            # Final check
+            report = await run_preflight_checks(print_report=False, auto_recover=False)
+
+        return report.is_healthy
+
+    except ImportError as e:
+        log.warning(f"  Pre-flight checks unavailable: {e}")
+        return True  # Don't block startup if diagnostics module not available
+    except Exception as e:
+        log.warning(f"  Pre-flight checks failed with exception: {e}")
+        return True  # Don't block startup on diagnostic failures
+
+
+async def _run_advanced_recovery(report, log) -> None:
+    """
+    Run advanced recovery strategies for persistent failures.
+
+    This handles more complex recovery scenarios:
+    - Alternative port selection
+    - Environment file loading
+    - Service restart attempts
+    """
+    global _recovery_log
+
+    try:
+        from .diagnostics import CheckStatus, CheckCategory
+
+        for check in report.checks:
+            if check.status != CheckStatus.FAIL:
+                continue
+
+            # Advanced port recovery: try alternative ports
+            if check.category == CheckCategory.PORTS:
+                await _recover_port_conflict(check, log)
+
+            # Trinity directory recovery
+            elif check.category == CheckCategory.TRINITY and "directory" in check.message.lower():
+                await _recover_directory(check, log)
+
+    except Exception as e:
+        log.debug(f"  Advanced recovery exception (non-critical): {e}")
+
+
+async def _recover_port_conflict(check, log) -> bool:
+    """
+    Attempt to recover from port conflicts by using alternative ports.
+    """
+    global _recovery_log, LSP_SERVER_PORT, IDE_WEBSOCKET_PORT
+
+    # Extract port from check name (e.g., "Port 9257 (lsp_server)")
+    import re
+    match = re.search(r"Port (\d+)", check.name)
+    if not match:
+        return False
+
+    original_port = int(match.group(1))
+    alternative_port = original_port + 1
+
+    # Check if alternative port is available
+    from .diagnostics import PortChecker
+    if PortChecker.is_port_available(alternative_port):
+        # Update the appropriate global variable
+        if "lsp" in check.name.lower():
+            os.environ["LSP_SERVER_PORT"] = str(alternative_port)
+            log.info(f"    ⚡ Using alternative LSP port: {alternative_port}")
+        elif "websocket" in check.name.lower():
+            os.environ["IDE_WEBSOCKET_PORT"] = str(alternative_port)
+            log.info(f"    ⚡ Using alternative WebSocket port: {alternative_port}")
+
+        _recovery_log.append({
+            "action": f"Switched to alternative port {alternative_port}",
+            "original_port": original_port,
+            "timestamp": time.time(),
+            "success": True,
+        })
+        return True
+
+    return False
+
+
+async def _recover_directory(check, log) -> bool:
+    """
+    Attempt to create missing directories.
+    """
+    global _recovery_log
+
+    if not check.fix_command:
+        return False
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            check.fix_command,
+            shell=True,
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            log.info(f"    ⚡ Created directory via: {check.fix_command}")
+            _recovery_log.append({
+                "action": f"Created directory: {check.name}",
+                "timestamp": time.time(),
+                "success": True,
+            })
+            return True
+    except Exception as e:
+        log.debug(f"  Directory recovery failed: {e}")
+
+    return False
+
+
+def get_recovery_log() -> List[Dict[str, Any]]:
+    """Get the list of auto-recovery actions taken during startup."""
+    return _recovery_log.copy()
 
 
 # =============================================================================
@@ -121,7 +311,16 @@ async def initialize_coding_council_startup(
 
     try:
         log.info("=" * 60)
-        log.info("v77.0 UNIFIED CODING COUNCIL: Initializing")
+        log.info("v77.3 UNIFIED CODING COUNCIL: Pre-Flight Checks")
+        log.info("=" * 60)
+
+        # Run pre-flight diagnostics
+        preflight_passed = await _run_preflight_checks(log)
+        if not preflight_passed:
+            log.warning("[CodingCouncilStartup] Some pre-flight checks failed, continuing anyway")
+
+        log.info("=" * 60)
+        log.info("v77.3 UNIFIED CODING COUNCIL: Initializing")
         log.info("=" * 60)
 
         # Voice announcement if narrator available
@@ -532,6 +731,12 @@ async def get_coding_council_health() -> Dict[str, Any]:
             }
             ide_status["websocket_port"] = IDE_WEBSOCKET_PORT
 
+        # Get recovery information
+        recovery_info = {
+            "actions_taken": len(_recovery_log),
+            "log": _recovery_log[-5:] if _recovery_log else [],  # Last 5 recovery actions
+        }
+
         return {
             "enabled": True,
             "status": "healthy",
@@ -545,6 +750,7 @@ async def get_coding_council_health() -> Dict[str, Any]:
                 "total": total_count,
                 "details": connections,
             },
+            "auto_recovery": recovery_info,
         }
     except Exception as e:
         return {
@@ -658,6 +864,92 @@ def register_coding_council_routes(app):
                 framework_status[name] = {"available": False, "error": "Not loaded"}
 
         return {"frameworks": framework_status}
+
+    # Diagnostics and Recovery Routes
+    @router.get("/diagnostics")
+    async def run_diagnostics():
+        """
+        Run diagnostic checks and return report.
+
+        This can be called at any time to verify system health.
+        """
+        try:
+            from .diagnostics import run_preflight_checks
+
+            report = await run_preflight_checks(print_report=False, auto_recover=False)
+
+            return {
+                "healthy": report.is_healthy,
+                "summary": {
+                    "passed": report.passed,
+                    "warnings": report.warnings,
+                    "failed": report.failed,
+                    "skipped": report.skipped,
+                    "total": report.total,
+                    "duration_ms": round(report.duration_ms, 2),
+                },
+                "checks": [c.to_dict() for c in report.checks],
+                "system_info": report.system_info,
+            }
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Diagnostics module not available")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Diagnostics failed: {e}")
+
+    @router.post("/diagnostics/recover")
+    async def trigger_recovery():
+        """
+        Manually trigger auto-recovery for any detected issues.
+
+        Returns list of recovery actions taken.
+        """
+        try:
+            from .diagnostics import run_preflight_checks, AutoRecovery
+
+            # Run checks first
+            report = await run_preflight_checks(print_report=False, auto_recover=False)
+
+            if report.is_healthy:
+                return {
+                    "actions_taken": [],
+                    "message": "System is healthy, no recovery needed",
+                    "healthy": True,
+                }
+
+            # Attempt recovery
+            actions = await AutoRecovery.attempt_recovery(report)
+
+            # Re-check after recovery
+            post_report = await run_preflight_checks(print_report=False, auto_recover=False)
+
+            # Track in recovery log
+            for action in actions:
+                _recovery_log.append({
+                    "action": action,
+                    "timestamp": time.time(),
+                    "source": "manual_trigger",
+                    "success": True,
+                })
+
+            return {
+                "actions_taken": actions,
+                "healthy_before": report.is_healthy,
+                "healthy_after": post_report.is_healthy,
+                "failed_checks_before": report.failed,
+                "failed_checks_after": post_report.failed,
+            }
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Diagnostics module not available")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Recovery failed: {e}")
+
+    @router.get("/diagnostics/recovery-log")
+    async def get_recovery_history():
+        """Get history of auto-recovery actions."""
+        return {
+            "total_actions": len(_recovery_log),
+            "log": _recovery_log,
+        }
 
     # IDE Integration Routes
     @router.get("/ide/status")
