@@ -1133,6 +1133,7 @@ class EvolutionBroadcaster:
     - Buffered replay for late joiners
     - Automatic cleanup
     - Bridge to main WebSocket infrastructure
+    - v79.0: Voice announcements via CodingCouncilVoiceAnnouncer
     """
 
     def __init__(self, buffer_size: int = 100):
@@ -1142,6 +1143,9 @@ class EvolutionBroadcaster:
         self._lock = asyncio.Lock()
         self._unified_ws_manager: Optional[Any] = None
         self._ws_manager_checked = False
+        # v79.0: Voice announcer integration
+        self._voice_announcer: Optional[Any] = None
+        self._voice_announcer_checked = False
 
     def _get_unified_ws_manager(self) -> Optional[Any]:
         """
@@ -1171,6 +1175,95 @@ class EvolutionBroadcaster:
             self._unified_ws_manager = None
 
         return self._unified_ws_manager
+
+    def _get_voice_announcer(self) -> Optional[Any]:
+        """
+        v79.0: Lazily get the CodingCouncilVoiceAnnouncer for voice broadcasts.
+
+        This connects evolution broadcasts to voice output for real-time
+        spoken feedback during code evolution operations.
+        """
+        if self._voice_announcer_checked:
+            return self._voice_announcer
+
+        self._voice_announcer_checked = True
+        try:
+            try:
+                from core.coding_council.voice_announcer import get_evolution_announcer
+            except ImportError:
+                from backend.core.coding_council.voice_announcer import get_evolution_announcer
+
+            self._voice_announcer = get_evolution_announcer()
+            logger.info("[EvolutionBroadcaster] Connected to VoiceAnnouncer")
+        except ImportError:
+            logger.debug("[EvolutionBroadcaster] VoiceAnnouncer not available")
+            self._voice_announcer = None
+        except Exception as e:
+            logger.debug(f"[EvolutionBroadcaster] Failed to get voice announcer: {e}")
+            self._voice_announcer = None
+
+        return self._voice_announcer
+
+    async def _trigger_voice_announcement(
+        self,
+        task_id: str,
+        status: str,
+        progress: float,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        v79.0: Trigger voice announcement based on broadcast status.
+
+        Maps broadcast events to appropriate voice announcements.
+        """
+        announcer = self._get_voice_announcer()
+        if not announcer:
+            return
+
+        try:
+            if status == "started":
+                await announcer.announce_evolution_started(
+                    task_id=task_id,
+                    description=message,
+                    target_files=details.get("target_files") if details else None,
+                    trinity_involved=details.get("trinity_involved", False) if details else False,
+                )
+            elif status in ("progress", "stage"):
+                stage = details.get("stage") if details else None
+                await announcer.announce_evolution_progress(
+                    task_id=task_id,
+                    progress=progress,
+                    stage=stage,
+                )
+            elif status == "complete":
+                await announcer.announce_evolution_complete(
+                    task_id=task_id,
+                    success=True,
+                    files_modified=details.get("files_modified") if details else None,
+                )
+            elif status == "failed":
+                await announcer.announce_evolution_complete(
+                    task_id=task_id,
+                    success=False,
+                    error_message=message,
+                )
+            elif status == "confirmation_needed":
+                confirmation_id = details.get("confirmation_id", "") if details else ""
+                await announcer.announce_confirmation_needed(
+                    task_id=task_id,
+                    description=message,
+                    confirmation_id=confirmation_id,
+                )
+            elif status == "error":
+                error_type = details.get("error_type", "unknown") if details else "unknown"
+                await announcer.announce_error(
+                    task_id=task_id,
+                    error_type=error_type,
+                    details=message,
+                )
+        except Exception as e:
+            logger.debug(f"[EvolutionBroadcaster] Voice announcement failed: {e}")
 
     async def register_client(self, client: Any) -> None:
         """Register a WebSocket client."""
@@ -1274,6 +1367,18 @@ class EvolutionBroadcaster:
                         await ws_manager.broadcast(payload)
                     except Exception:
                         pass
+
+            # v79.0: Trigger voice announcement (async, non-blocking)
+            # Use create_task to avoid slowing down the broadcast
+            asyncio.create_task(
+                self._trigger_voice_announcement(
+                    task_id=task_id,
+                    status=status,
+                    progress=progress,
+                    message=message,
+                    details=details,
+                )
+            )
 
             return notified
 
@@ -2902,6 +3007,136 @@ def create_coding_council_router():
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+    # =========================================================================
+    # v79.0: Voice Announcer API Endpoints
+    # =========================================================================
+
+    @router.get("/voice/status")
+    async def get_voice_status():
+        """
+        v79.0: Get voice announcer status and statistics.
+
+        Returns current voice configuration, statistics, and active evolutions
+        being tracked for voice announcements.
+        """
+        try:
+            try:
+                from core.coding_council.voice_announcer import get_evolution_announcer
+            except ImportError:
+                from backend.core.coding_council.voice_announcer import get_evolution_announcer
+
+            announcer = get_evolution_announcer()
+            return {
+                "available": True,
+                "statistics": announcer.get_statistics(),
+                "active_evolutions": announcer.get_active_evolutions(),
+            }
+
+        except ImportError:
+            return {
+                "available": False,
+                "error": "Voice announcer module not available",
+            }
+        except Exception as e:
+            return {
+                "available": False,
+                "error": str(e),
+            }
+
+    @router.get("/voice/history")
+    async def get_voice_history(limit: int = 10):
+        """
+        v79.0: Get recent voice announcement history.
+
+        Args:
+            limit: Maximum number of history entries to return (default 10)
+
+        Returns list of recent evolution completions that were announced.
+        """
+        try:
+            try:
+                from core.coding_council.voice_announcer import get_evolution_announcer
+            except ImportError:
+                from backend.core.coding_council.voice_announcer import get_evolution_announcer
+
+            announcer = get_evolution_announcer()
+            return {
+                "history": announcer.get_evolution_history(limit=limit),
+            }
+
+        except ImportError:
+            return {"error": "Voice announcer not available"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    @router.post("/voice/test")
+    async def test_voice_announcement(message: str = "Testing evolution voice announcer"):
+        """
+        v79.0: Test voice announcement system.
+
+        Args:
+            message: Message to announce (default: test message)
+
+        Triggers a test voice announcement to verify TTS integration.
+        """
+        try:
+            try:
+                from core.supervisor.unified_voice_orchestrator import speak_evolution
+            except ImportError:
+                from backend.core.supervisor.unified_voice_orchestrator import speak_evolution
+
+            success = await speak_evolution(message, wait=True)
+            return {
+                "success": success,
+                "message": message if success else "Voice system unavailable or disabled",
+            }
+
+        except ImportError:
+            return {
+                "success": False,
+                "error": "Voice orchestrator not available",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    @router.get("/voice/config")
+    async def get_voice_config():
+        """
+        v79.0: Get voice announcer configuration.
+
+        Returns current voice announcer configuration including cooldowns,
+        milestone settings, and enabled state.
+        """
+        try:
+            try:
+                from core.coding_council.voice_announcer import get_evolution_announcer
+            except ImportError:
+                from backend.core.coding_council.voice_announcer import get_evolution_announcer
+
+            announcer = get_evolution_announcer()
+            config = announcer.config
+            return {
+                "enabled": config.enabled,
+                "progress_cooldown": config.progress_cooldown,
+                "start_cooldown": config.start_cooldown,
+                "progress_milestones": config.progress_milestones,
+                "use_sir": config.use_sir,
+                "sir_probability": config.sir_probability,
+                "environment_variables": {
+                    "JARVIS_EVOLUTION_VOICE": "enabled" if config.enabled else "disabled",
+                    "JARVIS_EVOLUTION_PROGRESS_COOLDOWN": str(config.progress_cooldown),
+                    "JARVIS_EVOLUTION_START_COOLDOWN": str(config.start_cooldown),
+                },
+            }
+
+        except ImportError:
+            return {"error": "Voice announcer not available"}
+        except Exception as e:
+            return {"error": str(e)}
 
     @router.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):

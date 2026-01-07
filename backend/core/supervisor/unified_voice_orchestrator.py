@@ -131,6 +131,9 @@ class VoiceSource(str, Enum):
     TRAINING = "training"              # Model training/fine-tuning
     LEARNING = "learning"              # Learning goals and discovery
     JARVIS_PRIME = "jarvis_prime"      # JARVIS-Prime tier-0 brain
+    # v79.0: Coding Council Evolution System
+    CODING_COUNCIL = "coding_council"  # Coding Council self-evolution
+    EVOLUTION = "evolution"            # Code evolution operations
 
 
 class SpeechTopic(str, Enum):
@@ -153,6 +156,9 @@ class SpeechTopic(str, Enum):
     SCRAPING = "scraping"              # Web scraping progress
     MODEL_DEPLOY = "model_deploy"      # Model deployment announcements
     INTELLIGENCE = "intelligence"      # JARVIS-Prime intelligent responses
+    # v79.0: Coding Council Evolution System
+    EVOLUTION = "evolution"            # Code evolution progress/completion
+    CODING_COUNCIL = "coding_council"  # Coding Council operations
 
 
 @dataclass
@@ -1099,6 +1105,98 @@ Generate ONE natural sentence JARVIS would speak:"""
         logger.debug(f"JARVIS-Prime generation failed: {e}, using fallback")
 
     return await speak(message, priority, VoiceSource.JARVIS_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
+
+
+# =============================================================================
+# v79.0: Coding Council Evolution Voice Functions
+# =============================================================================
+
+
+async def speak_evolution(
+    text: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    wait: bool = False,
+) -> bool:
+    """Speak evolution-related announcements."""
+    return await speak(text, priority, VoiceSource.EVOLUTION, wait, topic=SpeechTopic.EVOLUTION)
+
+
+async def speak_coding_council(
+    text: str,
+    priority: VoicePriority = VoicePriority.MEDIUM,
+    wait: bool = False,
+) -> bool:
+    """Speak Coding Council announcements."""
+    return await speak(text, priority, VoiceSource.CODING_COUNCIL, wait, topic=SpeechTopic.CODING_COUNCIL)
+
+
+async def speak_evolution_progress(
+    task_id: str,
+    progress: float,
+    stage: str,
+    wait: bool = False,
+) -> bool:
+    """
+    Announce evolution progress with intelligent throttling.
+
+    Only announces at significant milestones (25%, 50%, 75%, 100%) to avoid
+    overwhelming the user with updates.
+    """
+    # Only announce at milestones
+    milestones = [0.25, 0.50, 0.75, 1.0]
+    closest_milestone = min(milestones, key=lambda x: abs(x - progress))
+
+    # Skip if not at a milestone (within 5% tolerance)
+    if abs(progress - closest_milestone) > 0.05:
+        return False
+
+    percentage = int(progress * 100)
+
+    if progress >= 1.0:
+        message = f"Evolution complete. Code has been updated."
+    elif progress >= 0.75:
+        message = f"Evolution {percentage}% complete. Finalizing changes."
+    elif progress >= 0.50:
+        message = f"Evolution halfway done. {stage}."
+    elif progress >= 0.25:
+        message = f"Evolution {percentage}% complete. {stage}."
+    else:
+        message = f"Evolution started. {stage}."
+
+    return await speak_evolution(message, VoicePriority.LOW, wait)
+
+
+async def speak_evolution_complete(
+    task_id: str,
+    success: bool,
+    files_modified: int = 0,
+    description: str = "",
+    wait: bool = True,
+) -> bool:
+    """Announce evolution completion with intelligent messaging."""
+    if success:
+        if files_modified == 1:
+            message = f"Evolution complete. Modified one file successfully."
+        elif files_modified > 1:
+            message = f"Evolution complete. Updated {files_modified} files."
+        else:
+            message = f"Evolution complete. {description}" if description else "Evolution complete."
+        priority = VoicePriority.MEDIUM
+    else:
+        message = f"Evolution encountered an issue. {description}" if description else "Evolution could not be completed."
+        priority = VoicePriority.HIGH
+
+    return await speak_evolution(message, priority, wait)
+
+
+async def speak_evolution_confirmation_needed(
+    confirmation_id: str,
+    description: str,
+    wait: bool = True,
+) -> bool:
+    """Announce that evolution confirmation is needed."""
+    message = f"Confirmation required for: {description}. Say confirm {confirmation_id} to proceed."
+    return await speak_coding_council(message, VoicePriority.HIGH, wait)
 
 
 # =============================================================================

@@ -134,6 +134,7 @@ _ide_bridge: Optional[Any] = None
 _trinity_sync: Optional[Any] = None
 _lsp_server: Optional[Any] = None
 _websocket_handler: Optional[Any] = None
+_voice_announcer: Optional[Any] = None  # v79.0: Voice announcer for evolution
 _startup_time: Optional[float] = None
 _initialized = False
 _recovery_log: List[Dict[str, Any]] = []  # Track auto-recovery actions
@@ -483,6 +484,9 @@ async def _initialize_council_full() -> "UnifiedCodingCouncil":
     # v78.0: Initialize Advanced Process Management Components
     await _initialize_v78_components()
 
+    # v79.0: Initialize Voice Announcer for evolution feedback
+    await _initialize_v79_components()
+
     return council
 
 
@@ -552,6 +556,43 @@ async def _initialize_v78_components() -> None:
     ]
     ready = sum(1 for _, ok in v78_components if ok)
     logger.info(f"[CodingCouncilStartup] v78.0 Components: {ready}/{len(v78_components)} ready")
+
+
+async def _initialize_v79_components() -> None:
+    """
+    v79.0: Initialize voice announcer and related components.
+
+    Components:
+    - Voice Announcer: Real-time voice feedback for evolution operations
+    - Integration with EvolutionBroadcaster for automatic announcements
+    """
+    global _voice_announcer
+
+    if not CODING_COUNCIL_VOICE_ANNOUNCE:
+        logger.info("[CodingCouncilStartup] Voice announcements disabled via config")
+        return
+
+    logger.info("[CodingCouncilStartup] Initializing v79.0 voice components...")
+
+    # Initialize Voice Announcer
+    try:
+        from .voice_announcer import get_evolution_announcer
+        _voice_announcer = get_evolution_announcer()
+        logger.info("[CodingCouncilStartup] ✅ Voice Announcer ready")
+
+        # Set up integration with broadcaster (done automatically in EvolutionBroadcaster)
+        # The broadcaster will lazily initialize the voice announcer on first broadcast
+
+    except ImportError as e:
+        logger.debug(f"[CodingCouncilStartup] Voice Announcer not available: {e}")
+        _voice_announcer = None
+    except Exception as e:
+        logger.warning(f"[CodingCouncilStartup] Voice Announcer init failed: {e}")
+        _voice_announcer = None
+
+    # Log summary
+    logger.info(f"[CodingCouncilStartup] v79.0 Components: Voice Announcer "
+                f"{'✅ ready' if _voice_announcer else '❌ unavailable'}")
 
 
 async def _initialize_ide_components() -> None:
@@ -761,12 +802,15 @@ async def shutdown_coding_council_startup() -> None:
 
     This should be called from run_supervisor.py during shutdown.
     """
-    global _council, _anthropic_engine, _ide_bridge, _trinity_sync, _lsp_server, _websocket_handler, _initialized
+    global _council, _anthropic_engine, _ide_bridge, _trinity_sync, _lsp_server, _websocket_handler, _voice_announcer, _initialized
 
     if not _initialized:
         return
 
     logger.info("[CodingCouncilStartup] Shutting down Coding Council...")
+
+    # v79.0: Clean up Voice Announcer (graceful, no cleanup needed - just nullify)
+    _voice_announcer = None
 
     # Shutdown WebSocket Handler
     try:
@@ -1612,3 +1656,12 @@ def get_websocket_handler() -> Optional[Any]:
 def get_anthropic_engine() -> Optional[Any]:
     """Get the global Anthropic Engine instance."""
     return _anthropic_engine
+
+
+def get_voice_announcer() -> Optional[Any]:
+    """
+    v79.0: Get the global Voice Announcer instance.
+
+    Returns the CodingCouncilVoiceAnnouncer for evolution voice feedback.
+    """
+    return _voice_announcer
