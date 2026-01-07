@@ -6465,6 +6465,26 @@ class SupervisorBootstrapper:
                     shutdown_uae,
                 )
 
+                # v83.0: Create voice and notification callbacks for Proactive Intelligence
+                async def uae_voice_callback(text: str):
+                    """Voice callback for UAE proactive suggestions."""
+                    try:
+                        if hasattr(self, 'narrator') and self.narrator:
+                            await self.narrator.speak(text, wait=False)
+                            self.logger.debug(f"[UAE-VOICE] Spoke: {text[:50]}...")
+                    except Exception as e:
+                        self.logger.debug(f"[UAE-VOICE] Error: {e}")
+
+                async def uae_notification_callback(title: str, message: str, priority: str = "low"):
+                    """Notification callback for UAE proactive suggestions."""
+                    try:
+                        self.logger.info(f"[UAE-NOTIFY] [{priority.upper()}] {title}: {message}")
+                        # Also speak high-priority notifications
+                        if priority in ("high", "critical") and hasattr(self, 'narrator') and self.narrator:
+                            await self.narrator.speak(f"{title}. {message}", wait=False)
+                    except Exception as e:
+                        self.logger.debug(f"[UAE-NOTIFY] Error: {e}")
+
                 # Initialize UAE with all features enabled
                 self._uae_engine = await initialize_uae(
                     vision_analyzer=None,  # Will be injected later by main.py
@@ -6473,6 +6493,8 @@ class SupervisorBootstrapper:
                     enable_learning_db=True,
                     enable_yabai=self.config.sai_yabai_bridge,  # Connect to Yabai if enabled
                     enable_proactive_intelligence=True,  # Phase 4 proactive communication
+                    voice_callback=uae_voice_callback,  # v83.0: Enable voice output
+                    notification_callback=uae_notification_callback,  # v83.0: Enable notifications
                     enable_chain_of_thought=self.config.uae_chain_of_thought,  # LangGraph reasoning
                     enable_unified_orchestrator=True,  # Full UnifiedIntelligenceOrchestrator
                 )

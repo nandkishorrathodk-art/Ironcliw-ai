@@ -1459,10 +1459,20 @@ class CloudSQLConnectionManager:
                                 self._checkouts[checkout_id].release_time = datetime.now()
                             self._active_connections.discard(checkout_id)
 
-                    # Release to pool
-                    await self.pool.release(conn)
-                    logger.debug(f"♻️ Connection #{checkout_id} released ({duration_ms:.1f}ms)")
+                    # Release to pool with CancelledError protection
+                    # v82.1: During shutdown, asyncio.shield() can be interrupted
+                    # causing CancelledError in pool.release(). We catch this and
+                    # let the connection be cleaned up by the pool's shutdown.
+                    try:
+                        await self.pool.release(conn)
+                        logger.debug(f"♻️ Connection #{checkout_id} released ({duration_ms:.1f}ms)")
+                    except asyncio.CancelledError:
+                        # Connection will be cleaned up during pool shutdown
+                        logger.debug(f"⚠️ Connection #{checkout_id} release cancelled (shutdown in progress)")
 
+                except asyncio.CancelledError:
+                    # v82.1: Outer CancelledError - don't log as error
+                    logger.debug(f"⚠️ Connection operation cancelled for #{checkout_id} (shutdown)")
                 except Exception as e:
                     logger.error(f"❌ Failed to release connection: {e}")
 

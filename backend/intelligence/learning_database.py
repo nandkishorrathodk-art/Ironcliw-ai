@@ -6684,11 +6684,150 @@ class JARVISLearningDatabase:
 
                     profiles.append(profile)
 
+                # v83.0: Sync profiles with acoustic features to SQLite cache
+                # This ensures SQLite has the latest data when Cloud SQL becomes unavailable
+                if profiles and isinstance(self.db, DatabaseConnectionWrapper):
+                    asyncio.create_task(self._sync_profiles_to_sqlite_cache(profiles))
+
                 return profiles
 
         except Exception as e:
             logger.error(f"Failed to get speaker profiles: {e}", exc_info=True)
             return []
+
+    async def _sync_profiles_to_sqlite_cache(self, profiles: List[Dict]) -> None:
+        """
+        v83.0: Sync speaker profiles with acoustic features to SQLite cache.
+
+        This ensures SQLite has the latest acoustic features from Cloud SQL,
+        providing a fallback when Cloud SQL becomes unavailable.
+
+        Called automatically after loading profiles from Cloud SQL.
+        """
+        try:
+            # Connect to SQLite directly (bypassing DatabaseConnectionWrapper)
+            sqlite_path = self.db_dir / "jarvis_learning.db"
+
+            async with aiosqlite.connect(str(sqlite_path)) as sqlite_conn:
+                synced_count = 0
+
+                for profile in profiles:
+                    try:
+                        speaker_id = profile.get("speaker_id")
+                        speaker_name = profile.get("speaker_name")
+
+                        if not speaker_id or not speaker_name:
+                            continue
+
+                        # Check if any acoustic features need syncing
+                        has_acoustic = any([
+                            profile.get("pitch_mean_hz"),
+                            profile.get("formant_f1_hz"),
+                            profile.get("spectral_centroid_hz")
+                        ])
+
+                        if not has_acoustic:
+                            continue
+
+                        # Update SQLite with acoustic features
+                        await sqlite_conn.execute("""
+                            UPDATE speaker_profiles SET
+                                pitch_mean_hz = ?,
+                                pitch_std_hz = ?,
+                                pitch_range_hz = ?,
+                                pitch_min_hz = ?,
+                                pitch_max_hz = ?,
+                                formant_f1_hz = ?,
+                                formant_f1_std = ?,
+                                formant_f2_hz = ?,
+                                formant_f2_std = ?,
+                                formant_f3_hz = ?,
+                                formant_f3_std = ?,
+                                formant_f4_hz = ?,
+                                formant_f4_std = ?,
+                                spectral_centroid_hz = ?,
+                                spectral_centroid_std = ?,
+                                spectral_rolloff_hz = ?,
+                                spectral_rolloff_std = ?,
+                                spectral_flux = ?,
+                                spectral_flux_std = ?,
+                                spectral_entropy = ?,
+                                spectral_entropy_std = ?,
+                                spectral_flatness = ?,
+                                spectral_bandwidth_hz = ?,
+                                speaking_rate_wpm = ?,
+                                speaking_rate_std = ?,
+                                pause_ratio = ?,
+                                pause_ratio_std = ?,
+                                syllable_rate = ?,
+                                articulation_rate = ?,
+                                energy_mean = ?,
+                                energy_std = ?,
+                                energy_dynamic_range_db = ?,
+                                jitter_percent = ?,
+                                jitter_std = ?,
+                                shimmer_percent = ?,
+                                shimmer_std = ?,
+                                harmonic_to_noise_ratio_db = ?,
+                                hnr_std = ?,
+                                last_updated = CURRENT_TIMESTAMP
+                            WHERE speaker_name = ?
+                        """, (
+                            profile.get("pitch_mean_hz"),
+                            profile.get("pitch_std_hz"),
+                            profile.get("pitch_range_hz"),
+                            profile.get("pitch_min_hz"),
+                            profile.get("pitch_max_hz"),
+                            profile.get("formant_f1_hz"),
+                            profile.get("formant_f1_std"),
+                            profile.get("formant_f2_hz"),
+                            profile.get("formant_f2_std"),
+                            profile.get("formant_f3_hz"),
+                            profile.get("formant_f3_std"),
+                            profile.get("formant_f4_hz"),
+                            profile.get("formant_f4_std"),
+                            profile.get("spectral_centroid_hz"),
+                            profile.get("spectral_centroid_std"),
+                            profile.get("spectral_rolloff_hz"),
+                            profile.get("spectral_rolloff_std"),
+                            profile.get("spectral_flux"),
+                            profile.get("spectral_flux_std"),
+                            profile.get("spectral_entropy"),
+                            profile.get("spectral_entropy_std"),
+                            profile.get("spectral_flatness"),
+                            profile.get("spectral_bandwidth_hz"),
+                            profile.get("speaking_rate_wpm"),
+                            profile.get("speaking_rate_std"),
+                            profile.get("pause_ratio"),
+                            profile.get("pause_ratio_std"),
+                            profile.get("syllable_rate"),
+                            profile.get("articulation_rate"),
+                            profile.get("energy_mean"),
+                            profile.get("energy_std"),
+                            profile.get("energy_dynamic_range_db"),
+                            profile.get("jitter_percent"),
+                            profile.get("jitter_std"),
+                            profile.get("shimmer_percent"),
+                            profile.get("shimmer_std"),
+                            profile.get("harmonic_to_noise_ratio_db"),
+                            profile.get("hnr_std"),
+                            speaker_name
+                        ))
+
+                        synced_count += 1
+
+                    except Exception as profile_error:
+                        logger.debug(f"[v83.0] SQLite sync error for {speaker_name}: {profile_error}")
+                        continue
+
+                await sqlite_conn.commit()
+
+                if synced_count > 0:
+                    logger.info(f"[v83.0] ✅ Synced {synced_count} profile(s) acoustic features to SQLite cache")
+
+        except Exception as e:
+            # Non-critical: Log but don't fail profile loading
+            logger.debug(f"[v83.0] SQLite cache sync error (non-critical): {e}")
 
     async def store_voice_sample(
         self,

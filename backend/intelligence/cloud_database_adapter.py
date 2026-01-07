@@ -4,6 +4,7 @@ Cloud Database Adapter for JARVIS
 Supports both local SQLite and GCP Cloud SQL (PostgreSQL)
 Seamless switching between local and cloud databases
 """
+import asyncio
 import json
 import logging
 import os
@@ -485,6 +486,11 @@ class CloudDatabaseAdapter:
                 async with self.connection_manager.connection() as conn:
                     yield CloudSQLConnection(conn)
                     return  # Success - exit without fallback
+            except asyncio.CancelledError:
+                # v82.1: Task cancellation during connection release - graceful handling
+                # This can happen during shutdown when asyncio.shield() is interrupted
+                logger.debug("[v82.1] Cloud SQL operation cancelled (likely shutdown), falling back to SQLite")
+                using_fallback = True
             except RuntimeError as e:
                 # v82.0: Circuit breaker OPEN or connection pool exhausted
                 if "Circuit breaker OPEN" in str(e) or "shutting down" in str(e):
@@ -499,7 +505,7 @@ class CloudDatabaseAdapter:
             except Exception as e:
                 # v82.0: Any other database error - try fallback
                 error_type = type(e).__name__
-                if any(x in str(e).lower() for x in ["connection", "timeout", "refused", "pool"]):
+                if any(x in str(e).lower() for x in ["connection", "timeout", "refused", "pool", "cancel"]):
                     logger.debug(f"[v82.0] Cloud SQL error ({error_type}), falling back to SQLite")
                     using_fallback = True
                 else:
