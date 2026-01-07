@@ -1303,7 +1303,8 @@ class UnifiedCodingCouncil:
         # Safety (Gaps #16-22)
         if SAFETY_AVAILABLE:
             try:
-                self._ast_validator = ASTValidator()
+                # v78.2: Fixed ASTValidator initialization - requires repo_root
+                self._ast_validator = ASTValidator(self.config.repo_root)
                 self._security_scanner = SecurityScanner(self.config.repo_root)
                 self._type_checker = TypeChecker(self.config.repo_root)
                 self._staging_env = StagingEnvironment(self.config.repo_root)

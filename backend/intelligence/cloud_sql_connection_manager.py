@@ -500,7 +500,15 @@ class CircuitState(Enum):
 
 
 class CircuitBreaker:
-    """Circuit breaker for connection failures with async support."""
+    """
+    Circuit breaker for connection failures with async support.
+
+    v82.0 Enhancements:
+    - Auto-proxy-start: Automatically attempts to start Cloud SQL proxy when
+      transitioning from OPEN to HALF_OPEN
+    - Connection refused detection: Tracks if failures are due to proxy not running
+    - Intelligent recovery: Only attempts proxy start if failures look like proxy issues
+    """
 
     def __init__(self, config: ConnectionConfig):
         self.config = config
@@ -510,6 +518,11 @@ class CircuitBreaker:
         self.last_failure_time: Optional[datetime] = None
         self.last_success_time: Optional[datetime] = None
         self._lock = AsyncLock()
+
+        # v82.0: Track connection refused errors for auto-proxy-start
+        self._connection_refused_count = 0
+        self._last_proxy_start_attempt: Optional[datetime] = None
+        self._proxy_start_cooldown_seconds = 60  # Don't spam proxy starts
 
     async def record_success_async(self) -> None:
         """Record a successful operation (async)."""
@@ -539,9 +552,15 @@ class CircuitBreaker:
         with self._lock:
             self._record_failure_internal()
 
-    def _record_failure_internal(self) -> None:
+    def _record_failure_internal(self, error: Optional[Exception] = None) -> None:
         self.failure_count += 1
         self.last_failure_time = datetime.now()
+
+        # v82.0: Track connection refused errors (proxy not running indicator)
+        if error:
+            error_str = str(error).lower()
+            if "connection refused" in error_str or "errno 61" in error_str:
+                self._connection_refused_count += 1
 
         if self.state == CircuitState.HALF_OPEN:
             logger.warning("🔴 Circuit breaker OPEN (recovery failed)")
@@ -562,10 +581,81 @@ class CircuitBreaker:
                 if elapsed >= self.config.recovery_timeout_seconds:
                     logger.info("🟡 Circuit breaker HALF-OPEN (testing)")
                     self.state = CircuitState.HALF_OPEN
+
+                    # v82.0: Attempt auto-proxy-start if failures were connection refused
+                    if self._connection_refused_count > 0:
+                        self._try_auto_start_proxy()
+
                     return True
             return False
 
         return self.state == CircuitState.HALF_OPEN
+
+    def _try_auto_start_proxy(self) -> None:
+        """
+        v82.0: Attempt to auto-start Cloud SQL proxy if it appears to be down.
+
+        This is called when transitioning from OPEN to HALF_OPEN and we've
+        detected connection refused errors (indicating proxy not running).
+
+        Uses a cooldown to prevent spamming proxy start attempts.
+        """
+        try:
+            # Check cooldown
+            if self._last_proxy_start_attempt:
+                elapsed = (datetime.now() - self._last_proxy_start_attempt).total_seconds()
+                if elapsed < self._proxy_start_cooldown_seconds:
+                    logger.debug(
+                        f"[v82.0] Proxy start cooldown active ({elapsed:.0f}s / "
+                        f"{self._proxy_start_cooldown_seconds}s)"
+                    )
+                    return
+
+            self._last_proxy_start_attempt = datetime.now()
+
+            # Import and try to start proxy
+            from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
+            from pathlib import Path
+            import json
+
+            # Load config
+            config_path = Path.home() / ".jarvis" / "config" / "jarvis_config.json"
+            if config_path.exists():
+                with open(config_path) as f:
+                    config = json.load(f)
+
+                proxy_manager = CloudSQLProxyManager(config)
+
+                if not proxy_manager.is_running():
+                    logger.info("[v82.0] 🚀 Auto-starting Cloud SQL proxy...")
+
+                    # Start proxy in background (non-blocking)
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Schedule async start
+                        asyncio.create_task(self._async_start_proxy(proxy_manager))
+                    else:
+                        logger.debug("[v82.0] Event loop not running, skipping auto-start")
+                else:
+                    logger.debug("[v82.0] Proxy already running, no auto-start needed")
+                    # Reset connection refused count since proxy is running
+                    self._connection_refused_count = 0
+
+        except Exception as e:
+            logger.debug(f"[v82.0] Auto-proxy-start failed: {e}")
+
+    async def _async_start_proxy(self, proxy_manager) -> None:
+        """Async helper to start proxy without blocking."""
+        try:
+            success = await proxy_manager.start(force_restart=False, max_retries=2)
+            if success:
+                logger.info("[v82.0] ✅ Cloud SQL proxy auto-started successfully")
+                self._connection_refused_count = 0
+            else:
+                logger.warning("[v82.0] ⚠️ Cloud SQL proxy auto-start failed")
+        except Exception as e:
+            logger.debug(f"[v82.0] Async proxy start error: {e}")
 
     def get_state_info(self) -> Dict[str, Any]:
         """Get circuit breaker state information."""
@@ -575,6 +665,9 @@ class CircuitBreaker:
             'success_count': self.success_count,
             'last_failure': self.last_failure_time.isoformat() if self.last_failure_time else None,
             'last_success': self.last_success_time.isoformat() if self.last_success_time else None,
+            # v82.0 metrics
+            'connection_refused_count': self._connection_refused_count,
+            'last_proxy_start_attempt': self._last_proxy_start_attempt.isoformat() if self._last_proxy_start_attempt else None,
         }
 
 

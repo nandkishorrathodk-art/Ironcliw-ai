@@ -857,27 +857,46 @@ class ConnectionVerifier:
         if trinity_dir is None:
             trinity_dir = Path.home() / ".jarvis" / "trinity"
 
-        heartbeat_file = trinity_dir / "components" / f"{component}.json"
+        # Support multiple naming conventions for backwards compatibility
+        # e.g., "jarvis_prime" -> ["jarvis_prime.json", "j_prime.json"]
+        component_aliases = {
+            "jarvis_prime": ["jarvis_prime.json", "j_prime.json"],
+            "reactor_core": ["reactor_core.json"],
+        }
+
+        # Get list of possible filenames for this component
+        possible_files = component_aliases.get(component, [f"{component}.json"])
+
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            try:
-                if heartbeat_file.exists():
-                    with open(heartbeat_file) as f:
-                        state = json.load(f)
+            # Try each possible filename
+            for filename in possible_files:
+                heartbeat_file = trinity_dir / "components" / filename
+                try:
+                    if heartbeat_file.exists():
+                        with open(heartbeat_file) as f:
+                            state = json.load(f)
 
-                    heartbeat_ts = state.get("timestamp", 0)
-                    heartbeat_age = time.time() - heartbeat_ts
+                        heartbeat_ts = state.get("timestamp", 0)
+                        heartbeat_age = time.time() - heartbeat_ts
 
-                    if heartbeat_age < max_heartbeat_age:
-                        self.log.debug(
-                            f"[ConnectionVerifier] {component} heartbeat fresh "
-                            f"(age: {heartbeat_age:.1f}s)"
-                        )
-                        return True
+                        if heartbeat_age < max_heartbeat_age:
+                            self.log.debug(
+                                f"[ConnectionVerifier] {component} heartbeat fresh "
+                                f"(file: {filename}, age: {heartbeat_age:.1f}s)"
+                            )
+                            return True
+                        else:
+                            self.log.debug(
+                                f"[ConnectionVerifier] {component} heartbeat stale "
+                                f"(file: {filename}, age: {heartbeat_age:.1f}s, max: {max_heartbeat_age}s)"
+                            )
 
-            except Exception as e:
-                self.log.debug(f"[ConnectionVerifier] Heartbeat check failed: {e}")
+                except json.JSONDecodeError as e:
+                    self.log.debug(f"[ConnectionVerifier] {component} JSON error ({filename}): {e}")
+                except Exception as e:
+                    self.log.debug(f"[ConnectionVerifier] Heartbeat check failed ({filename}): {e}")
 
             await asyncio.sleep(interval)
 

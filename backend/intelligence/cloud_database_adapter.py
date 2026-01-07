@@ -457,19 +457,70 @@ class CloudDatabaseAdapter:
 
     @asynccontextmanager
     async def connection(self):
-        """Get database connection (context manager)"""
+        """
+        Get database connection (context manager).
+
+        v82.0: Intelligent Graceful Degradation
+        ======================================
+        When Cloud SQL is unavailable (circuit breaker open, connection refused,
+        timeout, etc.), automatically falls back to local SQLite to prevent
+        cascade failures. This ensures the system remains functional even when
+        Cloud SQL is temporarily unavailable.
+
+        Fallback is transparent to callers - they get a working connection
+        regardless of which backend is used.
+
+        Priority order:
+        1. Cloud SQL via connection manager (preferred)
+        2. Cloud SQL via direct pool (backward compat)
+        3. Local SQLite (fallback)
+        """
+        # Track whether we're using fallback for logging
+        using_fallback = False
+
+        # Try Cloud SQL first
         if self.connection_manager and self.connection_manager.is_initialized:
-            # Cloud SQL (PostgreSQL) via singleton connection manager
-            async with self.connection_manager.connection() as conn:
-                yield CloudSQLConnection(conn)
-        elif self.pool:
-            # Backward compatibility: use pool directly if manager not available
-            async with self.pool.acquire() as conn:
-                yield CloudSQLConnection(conn)
-        else:
-            # Local SQLite
-            async with aiosqlite.connect(self.config.sqlite_path) as conn:
-                yield SQLiteConnection(conn)
+            try:
+                # Cloud SQL (PostgreSQL) via singleton connection manager
+                async with self.connection_manager.connection() as conn:
+                    yield CloudSQLConnection(conn)
+                    return  # Success - exit without fallback
+            except RuntimeError as e:
+                # v82.0: Circuit breaker OPEN or connection pool exhausted
+                if "Circuit breaker OPEN" in str(e) or "shutting down" in str(e):
+                    logger.debug(f"[v82.0] Cloud SQL unavailable ({e}), falling back to SQLite")
+                    using_fallback = True
+                else:
+                    raise  # Re-raise unexpected RuntimeErrors
+            except (ConnectionRefusedError, OSError, asyncio.TimeoutError) as e:
+                # v82.0: Connection-level errors - graceful fallback
+                logger.debug(f"[v82.0] Cloud SQL connection failed ({type(e).__name__}), falling back to SQLite")
+                using_fallback = True
+            except Exception as e:
+                # v82.0: Any other database error - try fallback
+                error_type = type(e).__name__
+                if any(x in str(e).lower() for x in ["connection", "timeout", "refused", "pool"]):
+                    logger.debug(f"[v82.0] Cloud SQL error ({error_type}), falling back to SQLite")
+                    using_fallback = True
+                else:
+                    raise  # Re-raise non-connection errors
+
+        # Try direct pool (backward compat) if manager not available
+        if not using_fallback and self.pool:
+            try:
+                async with self.pool.acquire() as conn:
+                    yield CloudSQLConnection(conn)
+                    return
+            except (ConnectionRefusedError, OSError, asyncio.TimeoutError) as e:
+                logger.debug(f"[v82.0] Direct pool connection failed, falling back to SQLite")
+                using_fallback = True
+
+        # Fallback to SQLite (always available)
+        if using_fallback:
+            logger.info("[v82.0] 📂 Using SQLite fallback (Cloud SQL temporarily unavailable)")
+
+        async with aiosqlite.connect(self.config.sqlite_path) as conn:
+            yield SQLiteConnection(conn)
 
     async def close(self):
         """Close database connections"""

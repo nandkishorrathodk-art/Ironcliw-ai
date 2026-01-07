@@ -6620,9 +6620,36 @@ class JARVISLearningDatabase:
                         # Convert bytes to numpy array (assuming float32)
                         try:
                             embedding_array = np.frombuffer(profile["embedding"], dtype=np.float32)
+
+                            # CRITICAL: Validate for NaN/Inf values before using embedding
+                            # NaN values can occur from:
+                            # - Corrupted audio during enrollment
+                            # - Failed ML model inference
+                            # - Database corruption
+                            # - Previous bugs in embedding extraction
+                            if not np.all(np.isfinite(embedding_array)):
+                                nan_count = np.sum(np.isnan(embedding_array))
+                                inf_count = np.sum(np.isinf(embedding_array))
+                                logger.error(
+                                    f"❌ Profile '{profile['speaker_name']}' contains INVALID embedding! "
+                                    f"NaN values: {nan_count}, Inf values: {inf_count}. "
+                                    f"Profile will be SKIPPED - re-enrollment required."
+                                )
+                                profile["embedding"] = None
+                                profile["voiceprint_embedding"] = None  # Mark as invalid
+                                continue
+
+                            # Validate embedding dimension (ECAPA-TDNN produces 192 dims)
+                            expected_dims = profile.get("embedding_dimension", 192)
+                            if len(embedding_array) != expected_dims and len(embedding_array) not in (192, 256, 512):
+                                logger.warning(
+                                    f"⚠️ Profile '{profile['speaker_name']}' has unexpected embedding dimension: "
+                                    f"{len(embedding_array)} (expected {expected_dims})"
+                                )
+
                             profile["embedding"] = embedding_array.tolist()
-                        except:
-                            logger.warning(f"Could not convert embedding for {profile['speaker_name']}")
+                        except Exception as e:
+                            logger.warning(f"Could not convert embedding for {profile['speaker_name']}: {e}")
                             profile["embedding"] = None
 
                     # Check if this is a valid profile with embedding
@@ -7320,6 +7347,29 @@ class JARVISLearningDatabase:
             True if successful
         """
         try:
+            # CRITICAL: Validate embedding for NaN/Inf BEFORE storing
+            # This prevents corrupted embeddings from entering the database
+            import numpy as np
+
+            embedding_array = np.frombuffer(embedding, dtype=np.float32)
+
+            if not np.all(np.isfinite(embedding_array)):
+                nan_count = int(np.sum(np.isnan(embedding_array)))
+                inf_count = int(np.sum(np.isinf(embedding_array)))
+                logger.error(
+                    f"❌ REJECTING embedding update for speaker_id={speaker_id}! "
+                    f"Embedding contains invalid values: NaN={nan_count}, Inf={inf_count}. "
+                    f"This could corrupt the speaker profile - storing BLOCKED."
+                )
+                return False
+
+            # Validate embedding dimension
+            if len(embedding_array) not in (192, 256, 512):
+                logger.warning(
+                    f"⚠️ Unusual embedding dimension {len(embedding_array)} for speaker_id={speaker_id}. "
+                    f"Expected 192 (ECAPA-TDNN) or 256/512 (other models). Proceeding anyway."
+                )
+
             async with self.db.cursor() as cursor:
                 await cursor.execute(
                     """
@@ -7343,7 +7393,8 @@ class JARVISLearningDatabase:
                 await self.db.commit()
 
                 logger.info(
-                    f"✅ Updated speaker embedding (ID: {speaker_id}, confidence: {confidence:.2f}, owner: {is_primary_user})"
+                    f"✅ Updated speaker embedding (ID: {speaker_id}, dim: {len(embedding_array)}, "
+                    f"confidence: {confidence:.2f}, owner: {is_primary_user})"
                 )
 
                 return True

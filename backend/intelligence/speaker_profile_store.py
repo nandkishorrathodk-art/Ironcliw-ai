@@ -202,10 +202,22 @@ class SpeakerProfile:
         # Extract embedding bytes and convert to list of floats
         embedding_bytes = row["voiceprint_embedding"]
         embedding = []
-        
+
         if embedding_bytes:
             num_floats = len(embedding_bytes) // 4
-            embedding = list(struct.unpack(f'<{num_floats}f', embedding_bytes))
+            raw_embedding = list(struct.unpack(f'<{num_floats}f', embedding_bytes))
+
+            # CRITICAL: Validate for NaN/Inf values using math.isfinite (no numpy dependency)
+            # NaN values can occur from corrupted audio, failed ML inference, or database corruption
+            invalid_count = sum(1 for x in raw_embedding if not math.isfinite(x))
+            if invalid_count > 0:
+                logger.error(
+                    f"❌ Profile '{safe_get('speaker_name', 'unknown')}' contains {invalid_count} "
+                    f"invalid (NaN/Inf) values in embedding! Profile will be SKIPPED."
+                )
+                embedding = []  # Mark as invalid - will fail is_valid check
+            else:
+                embedding = raw_embedding
         
         return cls(
             speaker_name=row["speaker_name"],

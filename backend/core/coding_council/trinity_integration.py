@@ -1125,23 +1125,69 @@ class CodingCouncilTrinityBridge:
         write_json_atomic(_get_state_file(), state)
 
     async def _status_broadcast_loop(self) -> None:
-        """Periodically broadcast status to Trinity network."""
+        """Periodically broadcast status to Trinity network.
+
+        v78.0: Enhanced with automatic recovery and error tracking.
+        - Logs errors at warning level (not debug) for visibility
+        - Tracks consecutive failures
+        - Continues operation despite errors
+        - Writes heartbeat even if broadcast fails
+        """
+        consecutive_failures = 0
+        max_consecutive_failures = 10
+
         while True:
             try:
                 await asyncio.sleep(_get_status_broadcast_interval())
-                await self._write_state()
+
+                # ALWAYS write state file first - this is what health checks look for
+                try:
+                    await self._write_state()
+                    consecutive_failures = 0  # Reset on success
+                except Exception as write_error:
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"[CodingCouncilTrinity] State write failed "
+                        f"(attempt {consecutive_failures}): {write_error}"
+                    )
 
                 # Broadcast via multi-transport (primary) or Reactor Bridge (fallback)
-                await self._broadcast_status()
+                # This can fail without affecting health status
+                try:
+                    await self._broadcast_status()
+                except Exception as broadcast_error:
+                    logger.debug(f"[CodingCouncilTrinity] Broadcast failed: {broadcast_error}")
 
-                # Update heartbeat
+                # Update heartbeat validator
                 if self._heartbeat_validator:
-                    await self._heartbeat_validator.send_heartbeat()
+                    try:
+                        await self._heartbeat_validator.send_heartbeat()
+                    except Exception as hb_error:
+                        logger.debug(f"[CodingCouncilTrinity] Heartbeat validator failed: {hb_error}")
+
+                # Log warning if we're having persistent issues
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(
+                        f"[CodingCouncilTrinity] {consecutive_failures} consecutive state write failures! "
+                        f"Health check may mark CodingCouncil as unhealthy."
+                    )
+                    # Reset counter to avoid log spam
+                    consecutive_failures = 0
 
             except asyncio.CancelledError:
+                # Write final state before shutdown
+                try:
+                    await self._write_state(status="shutting_down")
+                except Exception:
+                    pass
                 break
             except Exception as e:
-                logger.debug(f"[CodingCouncilTrinity] Status broadcast error: {e}")
+                # Catch-all for any unexpected errors - keep the loop running
+                consecutive_failures += 1
+                logger.error(
+                    f"[CodingCouncilTrinity] Unexpected error in status loop "
+                    f"(attempt {consecutive_failures}): {e}"
+                )
 
     async def _broadcast_status(self) -> None:
         """Broadcast status update to Trinity network."""
