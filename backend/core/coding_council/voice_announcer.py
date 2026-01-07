@@ -76,20 +76,22 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import gc
 import logging
 import os
 import random
+import sys
 import time
 import uuid
 import weakref
 from collections import OrderedDict
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from typing import (
-    Any, Callable, Coroutine, Dict, List, Optional,
-    Set, Tuple, TypeVar, Union, TYPE_CHECKING
+    Any, Callable, Coroutine, Dict, Final, Generic, List, Optional,
+    Protocol, Set, Tuple, TypeVar, Union, TYPE_CHECKING, runtime_checkable
 )
 
 if TYPE_CHECKING:
@@ -140,6 +142,635 @@ def _get_task_registry_lock() -> asyncio.Lock:
     if _task_registry_lock is None:
         _task_registry_lock = asyncio.Lock()
     return _task_registry_lock
+
+
+# =============================================================================
+# v79.2: Advanced Event Listener System with Memory Safety
+# =============================================================================
+
+
+class ListenerPriority(IntEnum):
+    """
+    Listener execution priority levels.
+    Lower values execute first.
+    """
+    CRITICAL = 0    # System-critical listeners (error handlers)
+    HIGH = 10       # High priority (UI updates, WebSocket)
+    NORMAL = 50     # Default priority
+    LOW = 100       # Background/logging listeners
+    DEFERRED = 200  # Deferred execution (analytics, ML learning)
+
+
+@runtime_checkable
+class EventListenerProtocol(Protocol):
+    """Protocol for event listeners - enables duck typing."""
+    async def __call__(self, event_type: str, details: Dict[str, Any]) -> None: ...
+
+
+@dataclass
+class ListenerMetrics:
+    """
+    Performance and health metrics for a listener.
+
+    Tracks invocation counts, latencies, and failure rates
+    for intelligent auto-cleanup decisions.
+    """
+    total_invocations: int = 0
+    successful_invocations: int = 0
+    failed_invocations: int = 0
+    total_latency_ms: float = 0.0
+    last_invocation_time: float = 0.0
+    last_failure_time: float = 0.0
+    consecutive_failures: int = 0
+    last_error: Optional[str] = None
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate (0.0-1.0)."""
+        if self.total_invocations == 0:
+            return 1.0
+        return self.successful_invocations / self.total_invocations
+
+    @property
+    def average_latency_ms(self) -> float:
+        """Calculate average latency in milliseconds."""
+        if self.successful_invocations == 0:
+            return 0.0
+        return self.total_latency_ms / self.successful_invocations
+
+    @property
+    def is_healthy(self) -> bool:
+        """
+        Determine if listener is healthy based on metrics.
+
+        Unhealthy if:
+        - 5+ consecutive failures
+        - Success rate below 50% (with 10+ invocations)
+        - Average latency > 10 seconds
+        """
+        if self.consecutive_failures >= 5:
+            return False
+        if self.total_invocations >= 10 and self.success_rate < 0.5:
+            return False
+        if self.average_latency_ms > 10000:  # 10 seconds
+            return False
+        return True
+
+    def record_success(self, latency_ms: float) -> None:
+        """Record a successful invocation."""
+        self.total_invocations += 1
+        self.successful_invocations += 1
+        self.total_latency_ms += latency_ms
+        self.last_invocation_time = time.time()
+        self.consecutive_failures = 0
+
+    def record_failure(self, error: str) -> None:
+        """Record a failed invocation."""
+        self.total_invocations += 1
+        self.failed_invocations += 1
+        self.last_failure_time = time.time()
+        self.last_invocation_time = time.time()
+        self.consecutive_failures += 1
+        self.last_error = error[:200]  # Truncate for memory
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "total_invocations": self.total_invocations,
+            "successful_invocations": self.successful_invocations,
+            "failed_invocations": self.failed_invocations,
+            "success_rate": round(self.success_rate, 3),
+            "average_latency_ms": round(self.average_latency_ms, 2),
+            "consecutive_failures": self.consecutive_failures,
+            "is_healthy": self.is_healthy,
+            "last_error": self.last_error,
+        }
+
+
+@dataclass
+class ListenerRegistration:
+    """
+    Complete registration info for an event listener.
+
+    Uses weak references where possible to prevent memory leaks.
+    Tracks metadata for debugging and auto-cleanup.
+    """
+    id: str
+    callback_ref: weakref.ref  # Weak reference to callback
+    callback_strong: Optional[Callable] = None  # Strong ref for lambdas/closures
+    priority: ListenerPriority = ListenerPriority.NORMAL
+    group: str = "default"
+    event_filter: Optional[Set[str]] = None  # None = all events
+    created_at: float = field(default_factory=time.time)
+    source_module: str = ""
+    source_file: str = ""
+    is_sync: bool = False
+    metrics: ListenerMetrics = field(default_factory=ListenerMetrics)
+    max_retries: int = 0
+    timeout_seconds: float = 5.0
+    enabled: bool = True
+
+    def __post_init__(self):
+        """Extract source information from callback."""
+        callback = self.get_callback()
+        if callback:
+            self.source_module = getattr(callback, '__module__', 'unknown')
+            if hasattr(callback, '__code__'):
+                self.source_file = callback.__code__.co_filename
+
+    def get_callback(self) -> Optional[Callable]:
+        """Get the callback, handling weak reference dereferencing."""
+        # Try weak reference first
+        if self.callback_ref is not None:
+            callback = self.callback_ref()
+            if callback is not None:
+                return callback
+        # Fall back to strong reference
+        return self.callback_strong
+
+    def is_alive(self) -> bool:
+        """Check if the listener is still valid (not garbage collected)."""
+        return self.get_callback() is not None
+
+    def matches_event(self, event_type: str) -> bool:
+        """Check if this listener should receive the event."""
+        if not self.enabled:
+            return False
+        if self.event_filter is None:
+            return True
+        return event_type in self.event_filter
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for debugging."""
+        callback = self.get_callback()
+        return {
+            "id": self.id,
+            "callback_name": getattr(callback, '__name__', 'anonymous') if callback else 'dead',
+            "priority": self.priority.name,
+            "group": self.group,
+            "event_filter": list(self.event_filter) if self.event_filter else None,
+            "source_module": self.source_module,
+            "is_alive": self.is_alive(),
+            "enabled": self.enabled,
+            "metrics": self.metrics.to_dict(),
+        }
+
+
+class AdvancedEventEmitter:
+    """
+    v79.2: Advanced Event Emitter with Memory Safety and Auto-Cleanup.
+
+    Features:
+    - WeakRef-based listener storage (prevents memory leaks)
+    - Automatic dead listener cleanup
+    - Listener health monitoring and auto-disable
+    - Priority-based execution ordering
+    - Listener groups for batch operations
+    - Event filtering per listener
+    - Retry logic with exponential backoff
+    - Comprehensive metrics tracking
+    - Scoped listeners via context managers
+    - Trinity-aware cross-repo event bridging
+
+    Architecture:
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                    AdvancedEventEmitter v79.2                       │
+    ├─────────────────────────────────────────────────────────────────────┤
+    │                                                                     │
+    │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐   │
+    │  │ WeakRef Registry │  │ Health Monitor   │  │ Priority Queue   │   │
+    │  │ • Auto GC        │  │ • Metrics Track  │  │ • Ordered Exec   │   │
+    │  │ • Dead Cleanup   │  │ • Auto-Disable   │  │ • Group Filter   │   │
+    │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘   │
+    │           │                     │                     │             │
+    │           └─────────────────────┼─────────────────────┘             │
+    │                                 ▼                                   │
+    │  ┌─────────────────────────────────────────────────────────────┐    │
+    │  │                    Event Dispatch Pipeline                  │    │
+    │  ├─────────────────────────────────────────────────────────────┤    │
+    │  │  Filter → Priority Sort → Parallel/Sequential → Retry Logic │    │
+    │  └─────────────────────────────────────────────────────────────┘    │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+    """
+
+    # Class-level constants
+    MAX_LISTENERS: Final[int] = 100  # Prevent unbounded growth
+    CLEANUP_INTERVAL: Final[float] = 60.0  # Seconds between cleanup runs
+    UNHEALTHY_THRESHOLD: Final[int] = 5  # Consecutive failures before disable
+
+    def __init__(self):
+        self._listeners: Dict[str, ListenerRegistration] = {}
+        self._groups: Dict[str, Set[str]] = {"default": set()}
+        self._lock = asyncio.Lock()
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._running = False
+        self._total_events_emitted = 0
+        self._event_history: List[Tuple[float, str, int]] = []  # (timestamp, event_type, listener_count)
+        self._max_history = 1000
+
+    async def start(self) -> None:
+        """Start the event emitter with background cleanup."""
+        if self._running:
+            return
+        self._running = True
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        logger.debug("[EventEmitter] Started with auto-cleanup")
+
+    async def stop(self) -> None:
+        """Stop the event emitter and cleanup."""
+        self._running = False
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        await self.remove_all_listeners()
+        logger.debug("[EventEmitter] Stopped")
+
+    async def _cleanup_loop(self) -> None:
+        """Background task to clean up dead and unhealthy listeners."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.CLEANUP_INTERVAL)
+                await self._perform_cleanup()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"[EventEmitter] Cleanup error: {e}")
+
+    async def _perform_cleanup(self) -> int:
+        """
+        Perform cleanup of dead and unhealthy listeners.
+
+        Returns:
+            Number of listeners removed
+        """
+        removed = 0
+        async with self._lock:
+            dead_ids = []
+            unhealthy_ids = []
+
+            for listener_id, reg in self._listeners.items():
+                # Check if garbage collected
+                if not reg.is_alive():
+                    dead_ids.append(listener_id)
+                # Check health metrics
+                elif not reg.metrics.is_healthy:
+                    unhealthy_ids.append(listener_id)
+
+            # Remove dead listeners
+            for lid in dead_ids:
+                reg = self._listeners.pop(lid, None)
+                if reg:
+                    self._groups.get(reg.group, set()).discard(lid)
+                    removed += 1
+                    logger.info(f"[EventEmitter] Removed dead listener: {lid}")
+
+            # Disable unhealthy listeners (don't remove, allow recovery)
+            for lid in unhealthy_ids:
+                if lid in self._listeners:
+                    self._listeners[lid].enabled = False
+                    logger.warning(f"[EventEmitter] Disabled unhealthy listener: {lid}")
+
+        if removed > 0:
+            logger.info(f"[EventEmitter] Cleanup removed {removed} dead listeners")
+
+        # Force garbage collection if we removed listeners
+        if removed > 0:
+            gc.collect()
+
+        return removed
+
+    async def add_listener(
+        self,
+        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]],
+        priority: ListenerPriority = ListenerPriority.NORMAL,
+        group: str = "default",
+        event_filter: Optional[Set[str]] = None,
+        listener_id: Optional[str] = None,
+        timeout: float = 5.0,
+        max_retries: int = 0,
+        use_weak_ref: bool = True,
+    ) -> str:
+        """
+        Register an async event listener with advanced options.
+
+        Args:
+            callback: Async function to call on events
+            priority: Execution priority (lower = earlier)
+            group: Group name for batch operations
+            event_filter: Set of event types to receive (None = all)
+            listener_id: Custom ID (auto-generated if not provided)
+            timeout: Timeout for listener execution in seconds
+            max_retries: Max retries on failure (0 = no retry)
+            use_weak_ref: Use weak reference (False for lambdas/closures)
+
+        Returns:
+            Listener ID for later removal
+
+        Raises:
+            RuntimeError: If max listeners exceeded
+        """
+        async with self._lock:
+            if len(self._listeners) >= self.MAX_LISTENERS:
+                # Try cleanup first
+                await self._perform_cleanup()
+                if len(self._listeners) >= self.MAX_LISTENERS:
+                    raise RuntimeError(f"Max listeners ({self.MAX_LISTENERS}) exceeded")
+
+            lid = listener_id or f"listener_{uuid.uuid4().hex[:12]}"
+
+            # Create weak or strong reference
+            if use_weak_ref:
+                try:
+                    callback_ref = weakref.ref(callback)
+                    callback_strong = None
+                except TypeError:
+                    # Can't create weak ref (e.g., for bound methods without prevent cycle)
+                    callback_ref = None
+                    callback_strong = callback
+            else:
+                callback_ref = None
+                callback_strong = callback
+
+            reg = ListenerRegistration(
+                id=lid,
+                callback_ref=callback_ref,
+                callback_strong=callback_strong,
+                priority=priority,
+                group=group,
+                event_filter=event_filter,
+                timeout_seconds=timeout,
+                max_retries=max_retries,
+                is_sync=False,
+            )
+
+            self._listeners[lid] = reg
+
+            # Track in group
+            if group not in self._groups:
+                self._groups[group] = set()
+            self._groups[group].add(lid)
+
+            logger.debug(f"[EventEmitter] Added listener: {lid} (priority={priority.name}, group={group})")
+            return lid
+
+    async def add_listener_sync(
+        self,
+        callback: Callable[[str, Dict[str, Any]], None],
+        priority: ListenerPriority = ListenerPriority.NORMAL,
+        group: str = "default",
+        event_filter: Optional[Set[str]] = None,
+        listener_id: Optional[str] = None,
+    ) -> str:
+        """
+        Register a synchronous event listener.
+
+        Sync listeners are wrapped and run in an executor to avoid blocking.
+        """
+        async with self._lock:
+            if len(self._listeners) >= self.MAX_LISTENERS:
+                await self._perform_cleanup()
+                if len(self._listeners) >= self.MAX_LISTENERS:
+                    raise RuntimeError(f"Max listeners ({self.MAX_LISTENERS}) exceeded")
+
+            lid = listener_id or f"sync_listener_{uuid.uuid4().hex[:12]}"
+
+            reg = ListenerRegistration(
+                id=lid,
+                callback_ref=None,
+                callback_strong=callback,
+                priority=priority,
+                group=group,
+                event_filter=event_filter,
+                is_sync=True,
+            )
+
+            self._listeners[lid] = reg
+
+            if group not in self._groups:
+                self._groups[group] = set()
+            self._groups[group].add(lid)
+
+            return lid
+
+    async def remove_listener(self, listener_id: str) -> bool:
+        """Remove a listener by ID."""
+        async with self._lock:
+            reg = self._listeners.pop(listener_id, None)
+            if reg:
+                self._groups.get(reg.group, set()).discard(listener_id)
+                return True
+            return False
+
+    async def remove_group(self, group: str) -> int:
+        """Remove all listeners in a group."""
+        async with self._lock:
+            listener_ids = list(self._groups.get(group, set()))
+            for lid in listener_ids:
+                self._listeners.pop(lid, None)
+            self._groups.pop(group, None)
+            return len(listener_ids)
+
+    async def remove_all_listeners(self) -> int:
+        """Remove all listeners."""
+        async with self._lock:
+            count = len(self._listeners)
+            self._listeners.clear()
+            self._groups.clear()
+            self._groups["default"] = set()
+            return count
+
+    async def enable_listener(self, listener_id: str) -> bool:
+        """Re-enable a disabled listener."""
+        async with self._lock:
+            if listener_id in self._listeners:
+                self._listeners[listener_id].enabled = True
+                self._listeners[listener_id].metrics.consecutive_failures = 0
+                return True
+            return False
+
+    async def disable_listener(self, listener_id: str) -> bool:
+        """Disable a listener without removing it."""
+        async with self._lock:
+            if listener_id in self._listeners:
+                self._listeners[listener_id].enabled = False
+                return True
+            return False
+
+    @asynccontextmanager
+    async def scoped_listener(
+        self,
+        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]],
+        **kwargs,
+    ):
+        """
+        Context manager for scoped listener registration.
+
+        The listener is automatically removed when the context exits.
+
+        Example:
+            async with emitter.scoped_listener(my_handler) as lid:
+                # listener active here
+                await do_something()
+            # listener automatically removed
+        """
+        listener_id = await self.add_listener(callback, **kwargs)
+        try:
+            yield listener_id
+        finally:
+            await self.remove_listener(listener_id)
+
+    async def emit(
+        self,
+        event_type: str,
+        details: Dict[str, Any],
+        parallel: bool = True,
+        wait: bool = False,
+    ) -> int:
+        """
+        Emit an event to all matching listeners.
+
+        Args:
+            event_type: Type of event
+            details: Event data
+            parallel: Execute listeners in parallel (True) or sequential (False)
+            wait: Wait for all listeners to complete before returning
+
+        Returns:
+            Number of listeners notified
+        """
+        self._total_events_emitted += 1
+
+        # Get matching listeners sorted by priority
+        async with self._lock:
+            matching = [
+                (lid, reg) for lid, reg in self._listeners.items()
+                if reg.is_alive() and reg.matches_event(event_type)
+            ]
+
+        if not matching:
+            return 0
+
+        # Sort by priority
+        matching.sort(key=lambda x: x[1].priority)
+
+        # Enrich details
+        enriched = {
+            **details,
+            "event_type": event_type,
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.now().isoformat(),
+        }
+
+        # Record in history
+        self._event_history.append((time.time(), event_type, len(matching)))
+        if len(self._event_history) > self._max_history:
+            self._event_history = self._event_history[-self._max_history:]
+
+        # Execute listeners
+        if parallel:
+            tasks = [
+                self._invoke_listener(lid, reg, event_type, enriched)
+                for lid, reg in matching
+            ]
+            if wait:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            else:
+                for task in tasks:
+                    asyncio.create_task(task)
+        else:
+            # Sequential execution
+            for lid, reg in matching:
+                try:
+                    await self._invoke_listener(lid, reg, event_type, enriched)
+                except Exception as e:
+                    logger.warning(f"[EventEmitter] Sequential listener error: {e}")
+
+        return len(matching)
+
+    async def _invoke_listener(
+        self,
+        listener_id: str,
+        reg: ListenerRegistration,
+        event_type: str,
+        details: Dict[str, Any],
+    ) -> None:
+        """Invoke a single listener with retry and metrics tracking."""
+        callback = reg.get_callback()
+        if callback is None:
+            return
+
+        retries = 0
+        max_retries = reg.max_retries
+
+        while True:
+            start_time = time.time()
+            try:
+                if reg.is_sync:
+                    # Run sync callback in executor
+                    loop = asyncio.get_event_loop()
+                    await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: callback(event_type, details)),
+                        timeout=reg.timeout_seconds,
+                    )
+                else:
+                    # Run async callback
+                    await asyncio.wait_for(
+                        callback(event_type, details),
+                        timeout=reg.timeout_seconds,
+                    )
+
+                latency_ms = (time.time() - start_time) * 1000
+                reg.metrics.record_success(latency_ms)
+                return
+
+            except asyncio.TimeoutError:
+                reg.metrics.record_failure(f"Timeout after {reg.timeout_seconds}s")
+                logger.warning(f"[EventEmitter] Listener {listener_id} timed out")
+
+            except Exception as e:
+                reg.metrics.record_failure(str(e))
+                logger.warning(f"[EventEmitter] Listener {listener_id} error: {e}")
+
+            # Retry logic
+            retries += 1
+            if retries > max_retries:
+                break
+
+            # Exponential backoff
+            backoff = min(0.1 * (2 ** retries), 2.0)
+            await asyncio.sleep(backoff)
+
+    def get_listener_count(self) -> Dict[str, int]:
+        """Get listener counts by category."""
+        alive = sum(1 for reg in self._listeners.values() if reg.is_alive())
+        enabled = sum(1 for reg in self._listeners.values() if reg.enabled and reg.is_alive())
+        healthy = sum(1 for reg in self._listeners.values() if reg.metrics.is_healthy and reg.is_alive())
+
+        return {
+            "total": len(self._listeners),
+            "alive": alive,
+            "enabled": enabled,
+            "healthy": healthy,
+            "groups": len(self._groups),
+        }
+
+    def get_listener_details(self) -> List[Dict[str, Any]]:
+        """Get detailed info for all listeners."""
+        return [reg.to_dict() for reg in self._listeners.values()]
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get emitter statistics."""
+        return {
+            "total_events_emitted": self._total_events_emitted,
+            "listeners": self.get_listener_count(),
+            "groups": list(self._groups.keys()),
+            "recent_events": self._event_history[-10:] if self._event_history else [],
+            "running": self._running,
+        }
 
 
 # =============================================================================
@@ -1173,6 +1804,10 @@ class CodingCouncilVoiceAnnouncer:
         self._trinity_bridge = TrinityVoiceBridge()
         self._agi_os_voice = AGIOSVoiceIntegration()
 
+        # v79.2: Advanced Event Emitter with memory safety and auto-cleanup
+        self._event_emitter = AdvancedEventEmitter()
+        self._emitter_started = False
+
         # Statistics
         self._stats = {
             "announcements_made": 0,
@@ -1188,103 +1823,161 @@ class CodingCouncilVoiceAnnouncer:
             "events_emitted": 0,
         }
 
-        # v79.1: Event listener system for external integrations
-        # Allows VoiceAuthenticationNarrator, run_supervisor, etc. to receive events
-        self._event_listeners: List[Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]] = []
-        self._event_listeners_sync: List[Callable[[str, Dict[str, Any]], None]] = []
+        # v79.2: Pending approvals with futures
         self._pending_approvals: Dict[str, asyncio.Future] = {}
 
-        logger.info(f"[CodingCouncilVoice] v79.1 Initialized (enabled={self.config.enabled})")
+        logger.info(f"[CodingCouncilVoice] v79.2 Initialized (enabled={self.config.enabled})")
 
     # =========================================================================
-    # v79.1: Event Listener System (for external integrations)
+    # v79.2: Advanced Event Listener System (Memory Safe with Auto-Cleanup)
     # =========================================================================
+
+    async def _ensure_emitter_started(self) -> None:
+        """Ensure the event emitter is started with background cleanup."""
+        if not self._emitter_started:
+            await self._event_emitter.start()
+            self._emitter_started = True
 
     async def add_event_listener(
         self,
-        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> bool:
+        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]],
+        priority: ListenerPriority = ListenerPriority.NORMAL,
+        group: str = "default",
+        event_filter: Optional[Set[str]] = None,
+        timeout: float = 5.0,
+        max_retries: int = 0,
+        use_weak_ref: bool = True,
+    ) -> str:
         """
         Register an async callback to receive evolution events.
 
-        The callback will be invoked with:
-            - event_type: str (e.g., 'started', 'progress', 'complete', 'failed')
-            - details: Dict[str, Any] containing event-specific data
+        v79.2 Features:
+        - WeakRef storage prevents memory leaks (callbacks GC'd when no longer referenced)
+        - Priority-based execution ordering
+        - Event filtering per listener
+        - Automatic health monitoring and dead listener cleanup
+        - Retry logic with exponential backoff
+
+        Args:
+            callback: Async function to call on events
+            priority: Execution priority (CRITICAL=0, HIGH=10, NORMAL=50, LOW=100, DEFERRED=200)
+            group: Group name for batch operations (e.g., remove all in group)
+            event_filter: Set of event types to receive (None = all events)
+            timeout: Timeout for listener execution in seconds
+            max_retries: Max retries on failure (0 = no retry)
+            use_weak_ref: Use weak reference to allow GC (False for lambdas/closures)
+
+        Returns:
+            Listener ID for later removal/management
 
         Example:
             async def my_handler(event_type: str, details: Dict[str, Any]) -> None:
                 if event_type == 'complete':
                     print(f"Evolution {details['task_id']} completed!")
 
-            await announcer.add_event_listener(my_handler)
-
-        Args:
-            callback: Async function to call on events
-
-        Returns:
-            True if registered successfully
+            # High priority WebSocket listener
+            lid = await announcer.add_event_listener(
+                my_handler,
+                priority=ListenerPriority.HIGH,
+                group="websocket",
+                event_filter={"complete", "failed"},
+            )
         """
-        if callback not in self._event_listeners:
-            self._event_listeners.append(callback)
-            logger.debug(f"[CodingCouncilVoice] Added event listener: {callback.__name__ if hasattr(callback, '__name__') else 'anonymous'}")
-            return True
-        return False
+        await self._ensure_emitter_started()
+        return await self._event_emitter.add_listener(
+            callback=callback,
+            priority=priority,
+            group=group,
+            event_filter=event_filter,
+            timeout=timeout,
+            max_retries=max_retries,
+            use_weak_ref=use_weak_ref,
+        )
 
-    def add_event_listener_sync(
+    async def add_event_listener_sync(
         self,
-        callback: Callable[[str, Dict[str, Any]], None]
-    ) -> bool:
+        callback: Callable[[str, Dict[str, Any]], None],
+        priority: ListenerPriority = ListenerPriority.NORMAL,
+        group: str = "default",
+        event_filter: Optional[Set[str]] = None,
+    ) -> str:
         """
         Register a synchronous callback to receive evolution events.
 
+        Sync listeners are wrapped and run in an executor to avoid blocking.
+
         Args:
             callback: Sync function to call on events
+            priority: Execution priority
+            group: Group name for batch operations
+            event_filter: Set of event types to receive
 
         Returns:
-            True if registered successfully
+            Listener ID for later removal
         """
-        if callback not in self._event_listeners_sync:
-            self._event_listeners_sync.append(callback)
-            logger.debug(f"[CodingCouncilVoice] Added sync event listener: {callback.__name__ if hasattr(callback, '__name__') else 'anonymous'}")
-            return True
-        return False
+        await self._ensure_emitter_started()
+        return await self._event_emitter.add_listener_sync(
+            callback=callback,
+            priority=priority,
+            group=group,
+            event_filter=event_filter,
+        )
 
-    async def remove_event_listener(
-        self,
-        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> bool:
+    async def remove_event_listener(self, listener_id: str) -> bool:
         """
-        Remove an async event listener.
+        Remove an event listener by ID.
 
         Args:
-            callback: Previously registered callback to remove
+            listener_id: ID returned from add_event_listener
 
         Returns:
             True if removed, False if not found
         """
-        if callback in self._event_listeners:
-            self._event_listeners.remove(callback)
-            logger.debug(f"[CodingCouncilVoice] Removed event listener")
-            return True
-        return False
+        return await self._event_emitter.remove_listener(listener_id)
 
-    def remove_event_listener_sync(
-        self,
-        callback: Callable[[str, Dict[str, Any]], None]
-    ) -> bool:
+    async def remove_listener_group(self, group: str) -> int:
         """
-        Remove a synchronous event listener.
+        Remove all listeners in a group.
+
+        Useful for cleanup when a component shuts down.
 
         Args:
-            callback: Previously registered sync callback to remove
+            group: Group name
 
         Returns:
-            True if removed, False if not found
+            Number of listeners removed
         """
-        if callback in self._event_listeners_sync:
-            self._event_listeners_sync.remove(callback)
-            return True
-        return False
+        return await self._event_emitter.remove_group(group)
+
+    async def enable_listener(self, listener_id: str) -> bool:
+        """Re-enable a disabled listener (e.g., after it recovers from failures)."""
+        return await self._event_emitter.enable_listener(listener_id)
+
+    async def disable_listener(self, listener_id: str) -> bool:
+        """Disable a listener without removing it (can be re-enabled later)."""
+        return await self._event_emitter.disable_listener(listener_id)
+
+    @asynccontextmanager
+    async def scoped_listener(
+        self,
+        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]],
+        **kwargs,
+    ):
+        """
+        Context manager for scoped listener registration.
+
+        The listener is automatically removed when the context exits,
+        preventing memory leaks for temporary listeners.
+
+        Example:
+            async with announcer.scoped_listener(my_handler, group="temp") as lid:
+                # listener active here
+                await do_something()
+            # listener automatically removed, no cleanup needed
+        """
+        await self._ensure_emitter_started()
+        async with self._event_emitter.scoped_listener(callback, **kwargs) as lid:
+            yield lid
 
     async def _emit_event(
         self,
@@ -1295,6 +1988,12 @@ class CodingCouncilVoiceAnnouncer:
         """
         Emit an event to all registered listeners.
 
+        v79.2: Uses AdvancedEventEmitter with:
+        - Priority-ordered execution
+        - Parallel dispatch
+        - Automatic metrics tracking
+        - Dead listener cleanup
+
         Args:
             event_type: Type of event (started, progress, complete, failed, etc.)
             details: Event-specific data
@@ -1304,93 +2003,34 @@ class CodingCouncilVoiceAnnouncer:
             Number of listeners notified
         """
         self._stats["events_emitted"] += 1
-        notified = 0
+        await self._ensure_emitter_started()
 
-        # Add timestamp and event_type to details
-        enriched_details = {
-            **details,
-            "event_type": event_type,
-            "timestamp": time.time(),
-            "timestamp_iso": datetime.now().isoformat(),
-        }
-
-        # Notify async listeners
-        for listener in self._event_listeners:
-            try:
-                if fire_and_forget:
-                    # Non-blocking: spawn task and continue
-                    asyncio.create_task(
-                        self._safe_call_listener(listener, event_type, enriched_details)
-                    )
-                else:
-                    # Blocking: wait for listener
-                    await self._safe_call_listener(listener, event_type, enriched_details)
-                notified += 1
-            except Exception as e:
-                logger.warning(f"[CodingCouncilVoice] Async listener error: {e}")
-
-        # Notify sync listeners (in executor to avoid blocking)
-        for listener in self._event_listeners_sync:
-            try:
-                loop = asyncio.get_event_loop()
-                if fire_and_forget:
-                    loop.run_in_executor(
-                        None,
-                        lambda: self._safe_call_sync_listener(listener, event_type, enriched_details)
-                    )
-                else:
-                    await loop.run_in_executor(
-                        None,
-                        lambda: self._safe_call_sync_listener(listener, event_type, enriched_details)
-                    )
-                notified += 1
-            except Exception as e:
-                logger.warning(f"[CodingCouncilVoice] Sync listener error: {e}")
-
-        if notified > 0:
-            logger.debug(f"[CodingCouncilVoice] Emitted '{event_type}' to {notified} listeners")
-
-        return notified
-
-    async def _safe_call_listener(
-        self,
-        listener: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]],
-        event_type: str,
-        details: Dict[str, Any]
-    ) -> None:
-        """Safely call an async listener with timeout."""
-        try:
-            await asyncio.wait_for(
-                listener(event_type, details),
-                timeout=5.0  # 5 second timeout for listeners
-            )
-        except asyncio.TimeoutError:
-            listener_name = getattr(listener, '__name__', 'anonymous')
-            logger.warning(f"[CodingCouncilVoice] Listener '{listener_name}' timed out")
-        except Exception as e:
-            listener_name = getattr(listener, '__name__', 'anonymous')
-            logger.warning(f"[CodingCouncilVoice] Listener '{listener_name}' error: {e}")
-
-    def _safe_call_sync_listener(
-        self,
-        listener: Callable[[str, Dict[str, Any]], None],
-        event_type: str,
-        details: Dict[str, Any]
-    ) -> None:
-        """Safely call a sync listener."""
-        try:
-            listener(event_type, details)
-        except Exception as e:
-            listener_name = getattr(listener, '__name__', 'anonymous')
-            logger.warning(f"[CodingCouncilVoice] Sync listener '{listener_name}' error: {e}")
+        return await self._event_emitter.emit(
+            event_type=event_type,
+            details=details,
+            parallel=True,
+            wait=not fire_and_forget,
+        )
 
     def get_listener_count(self) -> Dict[str, int]:
-        """Get count of registered listeners."""
-        return {
-            "async_listeners": len(self._event_listeners),
-            "sync_listeners": len(self._event_listeners_sync),
-            "total": len(self._event_listeners) + len(self._event_listeners_sync),
-        }
+        """
+        Get count of registered listeners with health metrics.
+
+        v79.2: Returns detailed listener health info.
+        """
+        return self._event_emitter.get_listener_count()
+
+    def get_listener_details(self) -> List[Dict[str, Any]]:
+        """
+        Get detailed info for all registered listeners.
+
+        Useful for debugging and monitoring listener health.
+        """
+        return self._event_emitter.get_listener_details()
+
+    def get_event_emitter_stats(self) -> Dict[str, Any]:
+        """Get AdvancedEventEmitter statistics."""
+        return self._event_emitter.get_statistics()
 
     def _can_announce(self, announcement_type: AnnouncementType) -> bool:
         """Check if we can make an announcement."""
@@ -1946,7 +2586,9 @@ class CodingCouncilVoiceAnnouncer:
             "trinity_bridge": self._trinity_bridge.get_status(),
             "agi_os_voice": self._agi_os_voice.get_status(),
             "message_cache": self._composer.get_cache_stats(),
-            "event_listeners": self.get_listener_count(),  # v79.1: Include listener counts
+            # v79.2: Advanced event emitter statistics
+            "event_emitter": self.get_event_emitter_stats(),
+            "event_listeners": self.get_listener_count(),
             "config": {
                 "enabled": self.config.enabled,
                 "progress_cooldown": self.config.progress_cooldown,
@@ -2005,12 +2647,19 @@ class CodingCouncilVoiceAnnouncer:
 
     async def shutdown(self) -> None:
         """Graceful shutdown with task cleanup."""
+        # v79.2: Stop event emitter first (stops background cleanup, removes listeners)
+        if self._emitter_started:
+            await self._event_emitter.stop()
+            self._emitter_started = False
+            logger.info("[CodingCouncilVoice] Event emitter stopped")
+
+        # Cancel pending voice tasks
         cancelled = await self._task_registry.cancel_all()
         if cancelled > 0:
             logger.info(f"[CodingCouncilVoice] Cancelled {cancelled} pending tasks")
 
         self._active_evolutions.clear()
-        logger.info("[CodingCouncilVoice] Shutdown complete")
+        logger.info("[CodingCouncilVoice] v79.2 Shutdown complete")
 
 
 # =============================================================================
@@ -2086,13 +2735,19 @@ async def setup_voice_integration() -> Dict[str, bool]:
 
 
 # =============================================================================
-# v79.1: WebSocket Event Broadcasting
+# v79.2: WebSocket Event Broadcasting (with Advanced Features)
 # =============================================================================
 
 
 async def setup_websocket_event_hook(announcer: CodingCouncilVoiceAnnouncer) -> bool:
     """
     Set up WebSocket event broadcasting for evolution events.
+
+    v79.2 Features:
+    - HIGH priority for fast UI updates
+    - Grouped under 'websocket' for easy batch management
+    - 3 second timeout (UI updates should be fast)
+    - 1 retry on failure
 
     This allows connected IDE clients to receive real-time evolution status updates.
 
@@ -2157,9 +2812,16 @@ async def setup_websocket_event_hook(announcer: CodingCouncilVoiceAnnouncer) -> 
             except Exception as e:
                 logger.debug(f"[WebSocketHook] Broadcast failed: {e}")
 
-        # Register the listener
-        await announcer.add_event_listener(websocket_evolution_broadcaster)
-        logger.info("[CodingCouncilVoice] WebSocket event hook registered")
+        # v79.2: Register with advanced options
+        listener_id = await announcer.add_event_listener(
+            websocket_evolution_broadcaster,
+            priority=ListenerPriority.HIGH,  # UI updates should be fast
+            group="websocket",  # Easy to remove all WS listeners at once
+            timeout=3.0,  # 3 seconds for UI updates
+            max_retries=1,  # Retry once on failure
+            use_weak_ref=False,  # Keep strong ref (this is a closure)
+        )
+        logger.info(f"[CodingCouncilVoice] WebSocket event hook registered (id={listener_id})")
         return True
 
     except ImportError as e:
@@ -2168,3 +2830,15 @@ async def setup_websocket_event_hook(announcer: CodingCouncilVoiceAnnouncer) -> 
     except Exception as e:
         logger.warning(f"[CodingCouncilVoice] WebSocket hook setup failed: {e}")
         return False
+
+
+async def remove_websocket_event_hook(announcer: CodingCouncilVoiceAnnouncer) -> int:
+    """
+    Remove all WebSocket event listeners.
+
+    Useful during shutdown or when WebSocket handler is being replaced.
+
+    Returns:
+        Number of listeners removed
+    """
+    return await announcer.remove_listener_group("websocket")
