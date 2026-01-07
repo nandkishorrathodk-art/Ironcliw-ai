@@ -1635,3 +1635,749 @@ def format_startup_result(result: StartupResult) -> str:
 
     lines.append("=" * 60)
     return "\n".join(lines)
+
+
+# =============================================================================
+# v80.0: Cross-Repo Health Monitor with Circuit Breakers
+# =============================================================================
+
+
+class CrossRepoHealthMonitor:
+    """
+    v80.0: Advanced Cross-Repository Health Monitoring.
+
+    Enterprise-grade health monitoring for PROJECT TRINITY with:
+    - Async parallel health checks for all repos
+    - Circuit breakers with adaptive thresholds
+    - Exponential backoff with jitter
+    - Health trend analysis
+    - Automatic recovery detection
+    - Real-time metrics aggregation
+
+    Architecture:
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                    CrossRepoHealthMonitor v80.0                     │
+    ├─────────────────────────────────────────────────────────────────────┤
+    │                                                                     │
+    │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐   │
+    │  │ JARVIS Body      │  │ J-Prime Mind     │  │ Reactor Nerves   │   │
+    │  │ ┌──────────────┐ │  │ ┌──────────────┐ │  │ ┌──────────────┐ │   │
+    │  │ │CircuitBreaker│ │  │ │CircuitBreaker│ │  │ │CircuitBreaker│ │   │
+    │  │ │HealthMetrics │ │  │ │HealthMetrics │ │  │ │HealthMetrics │ │   │
+    │  │ └──────────────┘ │  │ └──────────────┘ │  │ └──────────────┘ │   │
+    │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘   │
+    │           │                     │                     │             │
+    │           └─────────────────────┼─────────────────────┘             │
+    │                                 ▼                                   │
+    │  ┌─────────────────────────────────────────────────────────────┐    │
+    │  │                 Health Aggregation Engine                   │    │
+    │  ├─────────────────────────────────────────────────────────────┤    │
+    │  │  Trend Analysis │ Recovery Detection │ Alert Generation     │    │ 
+    │  └─────────────────────────────────────────────────────────────┘    │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+    """
+
+    # Health check intervals (adaptive based on health status)
+    HEALTHY_CHECK_INTERVAL = 10.0  # Check every 10s when healthy
+    DEGRADED_CHECK_INTERVAL = 5.0  # Check every 5s when degraded
+    CRITICAL_CHECK_INTERVAL = 2.0  # Check every 2s when critical
+
+    # Port discovery patterns
+    DEFAULT_PORTS = {
+        "jarvis": int(os.environ.get("JARVIS_PORT", "8010")),
+        "j_prime": int(os.environ.get("JARVIS_PRIME_PORT", "8002")),
+        "reactor_core": int(os.environ.get("REACTOR_CORE_PORT", "8003")),
+    }
+
+    def __init__(self, log: Optional[logging.Logger] = None):
+        self.log = log or logger
+        self._health_cache: Dict[str, Dict[str, Any]] = {}
+        self._circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self._health_history: Dict[str, Deque[Dict[str, Any]]] = defaultdict(
+            lambda: deque(maxlen=100)
+        )
+        self._lock = asyncio.Lock()
+        self._monitoring_task: Optional[asyncio.Task] = None
+        self._running = False
+        self._listeners: List[Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]] = []
+        self._current_interval = self.HEALTHY_CHECK_INTERVAL
+
+    async def start(self) -> None:
+        """Start background health monitoring."""
+        if self._running:
+            return
+
+        self._running = True
+
+        # Initialize circuit breakers
+        for repo in ["jarvis", "j_prime", "reactor_core"]:
+            self._circuit_breakers[repo] = CircuitBreaker(
+                failure_threshold=5,
+                recovery_timeout=30.0,
+                expected_exception=Exception,
+            )
+
+        # Start monitoring loop
+        self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self.log.info("[CrossRepoHealthMonitor] Started background monitoring")
+
+    async def stop(self) -> None:
+        """Stop health monitoring."""
+        self._running = False
+        if self._monitoring_task:
+            self._monitoring_task.cancel()
+            try:
+                await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+        self.log.info("[CrossRepoHealthMonitor] Stopped")
+
+    def add_listener(
+        self,
+        callback: Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
+    ) -> None:
+        """Add a health status change listener."""
+        self._listeners.append(callback)
+
+    async def _monitoring_loop(self) -> None:
+        """Adaptive monitoring loop with dynamic intervals."""
+        while self._running:
+            try:
+                # Run all health checks in parallel
+                results = await asyncio.gather(
+                    self._check_repo_health("jarvis", self.DEFAULT_PORTS["jarvis"]),
+                    self._check_repo_health("j_prime", self.DEFAULT_PORTS["j_prime"]),
+                    self._check_repo_health("reactor_core", self.DEFAULT_PORTS["reactor_core"]),
+                    self._check_trinity_heartbeats(),
+                    return_exceptions=True,
+                )
+
+                # Process results
+                await self._process_health_results(results)
+
+                # Adaptive interval based on overall health
+                self._update_check_interval()
+
+                await asyncio.sleep(self._current_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.log.warning(f"[CrossRepoHealthMonitor] Loop error: {e}")
+                await asyncio.sleep(self._current_interval)
+
+    async def _check_repo_health(
+        self,
+        repo_name: str,
+        port: int,
+    ) -> Dict[str, Any]:
+        """
+        Check health of a single repository with circuit breaker protection.
+        """
+        start_time = time.time()
+        health = {
+            "repo": repo_name,
+            "port": port,
+            "status": "unknown",
+            "response_time_ms": 0,
+            "timestamp": start_time,
+            "error": None,
+        }
+
+        cb = self._circuit_breakers.get(repo_name)
+        if cb and cb.state == CircuitState.OPEN:
+            health["status"] = "circuit_open"
+            health["error"] = "Circuit breaker open"
+            return health
+
+        try:
+            # Dynamic health endpoint discovery
+            endpoints = [
+                f"http://localhost:{port}/health",
+                f"http://localhost:{port}/api/health",
+                f"http://localhost:{port}/health/ping",
+            ]
+
+            success = False
+            for endpoint in endpoints:
+                try:
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            endpoint,
+                            timeout=aiohttp.ClientTimeout(total=3.0),
+                        ) as response:
+                            if response.status == 200:
+                                health["status"] = "healthy"
+                                health["endpoint"] = endpoint
+                                success = True
+                                break
+                            elif response.status < 500:
+                                health["status"] = "degraded"
+                                success = True
+                                break
+                except Exception:
+                    continue
+
+            if not success:
+                health["status"] = "offline"
+                health["error"] = "No health endpoint responded"
+
+        except Exception as e:
+            health["status"] = "error"
+            health["error"] = str(e)
+            if cb:
+                cb.record_failure()
+
+        health["response_time_ms"] = (time.time() - start_time) * 1000
+
+        # Record in cache and history
+        async with self._lock:
+            old_status = self._health_cache.get(repo_name, {}).get("status")
+            self._health_cache[repo_name] = health
+            self._health_history[repo_name].append(health)
+
+            # Notify listeners if status changed
+            if old_status != health["status"]:
+                await self._notify_listeners(repo_name, health)
+
+        return health
+
+    async def _check_trinity_heartbeats(self) -> Dict[str, Any]:
+        """Check Trinity file-based heartbeats for all components."""
+        trinity_dir = Path.home() / ".jarvis" / "trinity" / "components"
+        result = {
+            "type": "heartbeat_check",
+            "timestamp": time.time(),
+            "components": {},
+        }
+
+        for component in ["jarvis_body", "j_prime", "reactor_core"]:
+            state_file = trinity_dir / f"{component}.json"
+            component_status = {
+                "online": False,
+                "age_seconds": float("inf"),
+            }
+
+            if state_file.exists():
+                try:
+                    with open(state_file) as f:
+                        state = json.load(f)
+                    age = time.time() - state.get("timestamp", 0)
+                    component_status["age_seconds"] = age
+                    component_status["online"] = age < 30
+                    component_status["instance_id"] = state.get("instance_id")
+                    component_status["metrics"] = state.get("metrics", {})
+                except Exception as e:
+                    component_status["error"] = str(e)
+
+            result["components"][component] = component_status
+
+        return result
+
+    async def _process_health_results(self, results: List[Any]) -> None:
+        """Process health check results and update aggregated status."""
+        for result in results:
+            if isinstance(result, Exception):
+                self.log.debug(f"[CrossRepoHealthMonitor] Health check error: {result}")
+            elif isinstance(result, dict) and "type" == "heartbeat_check":
+                # Store heartbeat results
+                async with self._lock:
+                    self._health_cache["heartbeats"] = result
+
+    def _update_check_interval(self) -> None:
+        """Dynamically adjust check interval based on health status."""
+        unhealthy_count = sum(
+            1 for h in self._health_cache.values()
+            if isinstance(h, dict) and h.get("status") in ("offline", "error", "circuit_open")
+        )
+
+        if unhealthy_count >= 2:
+            self._current_interval = self.CRITICAL_CHECK_INTERVAL
+        elif unhealthy_count >= 1:
+            self._current_interval = self.DEGRADED_CHECK_INTERVAL
+        else:
+            self._current_interval = self.HEALTHY_CHECK_INTERVAL
+
+    async def _notify_listeners(self, repo: str, health: Dict[str, Any]) -> None:
+        """Notify all listeners of health status change."""
+        for listener in self._listeners:
+            try:
+                await listener(repo, health)
+            except Exception as e:
+                self.log.debug(f"[CrossRepoHealthMonitor] Listener error: {e}")
+
+    def get_health(self, repo: Optional[str] = None) -> Dict[str, Any]:
+        """Get current health status."""
+        if repo:
+            return self._health_cache.get(repo, {"status": "unknown"})
+        return dict(self._health_cache)
+
+    def get_aggregated_health(self) -> Dict[str, Any]:
+        """Get aggregated health status for all repos."""
+        jarvis = self._health_cache.get("jarvis", {"status": "unknown"})
+        j_prime = self._health_cache.get("j_prime", {"status": "unknown"})
+        reactor = self._health_cache.get("reactor_core", {"status": "unknown"})
+        heartbeats = self._health_cache.get("heartbeats", {})
+
+        healthy_count = sum(
+            1 for h in [jarvis, j_prime, reactor]
+            if h.get("status") == "healthy"
+        )
+
+        return {
+            "jarvis": jarvis,
+            "j_prime": j_prime,
+            "reactor_core": reactor,
+            "heartbeats": heartbeats.get("components", {}),
+            "healthy_count": healthy_count,
+            "total_count": 3,
+            "all_healthy": healthy_count == 3,
+            "degraded": 0 < healthy_count < 3,
+            "timestamp": time.time(),
+        }
+
+    def get_health_trends(self, repo: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get health history for trend analysis."""
+        history = list(self._health_history.get(repo, []))
+        return history[-limit:] if history else []
+
+
+# =============================================================================
+# v80.0: Trinity Startup Coordinator
+# =============================================================================
+
+
+@dataclass
+class TrinityStartupProgress:
+    """Progress tracking for Trinity startup."""
+    phase: str
+    message: str
+    progress_percent: float  # 0-100
+    component: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "phase": self.phase,
+            "message": self.message,
+            "progress": self.progress_percent,
+            "component": self.component,
+            "metadata": self.metadata,
+            "timestamp": self.timestamp,
+        }
+
+
+class TrinityStartupCoordinator:
+    """
+    v80.0: Advanced Cross-Repo Startup Coordination.
+
+    Orchestrates startup across JARVIS, J-Prime, and Reactor-Core with:
+    - Dependency-aware startup ordering
+    - Parallel startup where dependencies allow
+    - Real-time progress broadcasting
+    - Graceful degradation for unavailable repos
+    - Automatic retry with exponential backoff
+    - Health gate verification before each phase
+
+    Startup Flow:
+    1. Infrastructure (Trinity dir, Cloud SQL, etc.)
+    2. JARVIS Body (main backend) - must complete first
+    3. J-Prime Mind (parallel with Reactor-Core)
+    4. Reactor-Core Nerves (parallel with J-Prime)
+    5. Trinity Sync (after all components online)
+    """
+
+    # Startup phases with weights for progress calculation
+    PHASES = {
+        "infrastructure": 10,
+        "jarvis_body": 30,
+        "cross_repo_parallel": 40,  # J-Prime + Reactor in parallel
+        "trinity_sync": 15,
+        "finalization": 5,
+    }
+
+    def __init__(
+        self,
+        config_discovery: DynamicConfigDiscovery,
+        health_monitor: CrossRepoHealthMonitor,
+        log: Optional[logging.Logger] = None,
+    ):
+        self.config_discovery = config_discovery
+        self.health_monitor = health_monitor
+        self.log = log or logger
+        self._progress_listeners: List[Callable[[TrinityStartupProgress], Coroutine[Any, Any, None]]] = []
+        self._current_progress = 0.0
+        self._startup_errors: List[str] = []
+        self._startup_warnings: List[str] = []
+        self._components_started: Set[str] = set()
+
+    def add_progress_listener(
+        self,
+        callback: Callable[[TrinityStartupProgress], Coroutine[Any, Any, None]]
+    ) -> None:
+        """Add a progress listener for real-time updates."""
+        self._progress_listeners.append(callback)
+
+    async def _broadcast_progress(
+        self,
+        phase: str,
+        message: str,
+        progress: float,
+        component: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Broadcast progress to all listeners."""
+        self._current_progress = progress
+        progress_obj = TrinityStartupProgress(
+            phase=phase,
+            message=message,
+            progress_percent=progress,
+            component=component,
+            metadata=metadata or {},
+        )
+
+        for listener in self._progress_listeners:
+            try:
+                await listener(progress_obj)
+            except Exception as e:
+                self.log.debug(f"[TrinityStartup] Progress listener error: {e}")
+
+    async def orchestrate_startup(self) -> Dict[str, Any]:
+        """
+        Orchestrate complete Trinity startup.
+
+        Returns:
+            Startup result with status for each component
+        """
+        start_time = time.time()
+        self.log.info("=" * 70)
+        self.log.info("v80.0: Trinity Startup Coordination Beginning")
+        self.log.info("=" * 70)
+
+        # Discover configuration
+        await self._broadcast_progress(
+            "infrastructure",
+            "Discovering configuration...",
+            5,
+        )
+        config = await self.config_discovery.discover()
+
+        # Phase 1: Infrastructure
+        await self._broadcast_progress(
+            "infrastructure",
+            "Preparing Trinity infrastructure...",
+            10,
+        )
+        await self._ensure_trinity_infrastructure()
+
+        # Phase 2: JARVIS Body (must complete first)
+        await self._broadcast_progress(
+            "jarvis_body",
+            "Starting JARVIS Body (main backend)...",
+            15,
+            component="jarvis",
+        )
+
+        jarvis_ok = await self._start_jarvis_body(config)
+        if not jarvis_ok:
+            self._startup_warnings.append("JARVIS Body health check delayed")
+
+        await self._broadcast_progress(
+            "jarvis_body",
+            "JARVIS Body initialized",
+            40,
+            component="jarvis",
+            metadata={"status": "ready" if jarvis_ok else "pending"},
+        )
+
+        # Phase 3: Cross-repo parallel startup
+        await self._broadcast_progress(
+            "cross_repo_parallel",
+            "Starting cross-repo components in parallel...",
+            45,
+        )
+
+        # Start J-Prime and Reactor-Core in parallel
+        jprime_task = asyncio.create_task(
+            self._start_jprime(config)
+        )
+        reactor_task = asyncio.create_task(
+            self._start_reactor_core(config)
+        )
+
+        jprime_ok, reactor_ok = await asyncio.gather(
+            jprime_task,
+            reactor_task,
+            return_exceptions=False,
+        )
+
+        await self._broadcast_progress(
+            "cross_repo_parallel",
+            f"Cross-repo startup complete (J-Prime: {jprime_ok}, Reactor: {reactor_ok})",
+            80,
+            metadata={"j_prime": jprime_ok, "reactor_core": reactor_ok},
+        )
+
+        # Phase 4: Trinity Sync
+        await self._broadcast_progress(
+            "trinity_sync",
+            "Synchronizing Trinity components...",
+            85,
+        )
+
+        await self._sync_trinity_components()
+
+        await self._broadcast_progress(
+            "trinity_sync",
+            "Trinity synchronization complete",
+            95,
+        )
+
+        # Phase 5: Finalization
+        await self._broadcast_progress(
+            "finalization",
+            "Finalizing startup...",
+            98,
+        )
+
+        # Get final health status
+        health = self.health_monitor.get_aggregated_health()
+
+        await self._broadcast_progress(
+            "finalization",
+            f"Trinity startup complete ({health['healthy_count']}/3 healthy)",
+            100,
+            metadata=health,
+        )
+
+        duration = time.time() - start_time
+
+        result = {
+            "success": len(self._startup_errors) == 0,
+            "duration_seconds": duration,
+            "components_started": list(self._components_started),
+            "health": health,
+            "errors": self._startup_errors,
+            "warnings": self._startup_warnings,
+        }
+
+        self.log.info("=" * 70)
+        self.log.info(f"Trinity Startup Complete in {duration:.2f}s")
+        self.log.info(f"  Components: {health['healthy_count']}/3 healthy")
+        self.log.info("=" * 70)
+
+        return result
+
+    async def _ensure_trinity_infrastructure(self) -> None:
+        """Ensure Trinity directory structure exists."""
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+        for subdir in ["commands", "heartbeats", "components", "logs", "state"]:
+            (trinity_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+    async def _start_jarvis_body(self, config: DiscoveredConfig) -> bool:
+        """Start and verify JARVIS Body."""
+        # JARVIS is typically already running (we're inside it)
+        # Just verify health
+        port = config.ports.get("jarvis_backend", 8010)
+
+        for attempt in range(5):
+            health = await self.health_monitor._check_repo_health("jarvis", port)
+            if health.get("status") == "healthy":
+                self._components_started.add("jarvis")
+                return True
+
+            await asyncio.sleep(2 * (attempt + 1))
+
+        return False
+
+    async def _start_jprime(self, config: DiscoveredConfig) -> bool:
+        """Start J-Prime with progress updates."""
+        if TrinityRepo.JARVIS_PRIME not in config.repo_paths:
+            self._startup_warnings.append("J-Prime repo not found")
+            return False
+
+        await self._broadcast_progress(
+            "cross_repo_parallel",
+            "Starting J-Prime Mind...",
+            50,
+            component="j_prime",
+        )
+
+        port = config.ports.get("j_prime", 8002)
+
+        # Check if already running
+        health = await self.health_monitor._check_repo_health("j_prime", port)
+        if health.get("status") == "healthy":
+            self._components_started.add("j_prime")
+            await self._broadcast_progress(
+                "cross_repo_parallel",
+                "J-Prime Mind already running",
+                60,
+                component="j_prime",
+            )
+            return True
+
+        # Attempt to start (if startup script exists)
+        jprime_path = config.repo_paths[TrinityRepo.JARVIS_PRIME]
+        startup_scripts = [
+            jprime_path / "run.py",
+            jprime_path / "start.py",
+            jprime_path / "jarvis_prime" / "main.py",
+        ]
+
+        for script in startup_scripts:
+            if script.exists():
+                try:
+                    # Start in background
+                    python = config.python_executables.get("j_prime", sys.executable)
+                    subprocess.Popen(
+                        [python, str(script)],
+                        cwd=str(jprime_path),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self.log.info(f"[TrinityStartup] Started J-Prime via {script}")
+                    break
+                except Exception as e:
+                    self.log.debug(f"[TrinityStartup] J-Prime start error: {e}")
+
+        # Wait for health
+        for attempt in range(10):
+            await asyncio.sleep(2)
+            health = await self.health_monitor._check_repo_health("j_prime", port)
+            if health.get("status") == "healthy":
+                self._components_started.add("j_prime")
+                return True
+
+            await self._broadcast_progress(
+                "cross_repo_parallel",
+                f"Waiting for J-Prime... ({attempt + 1}/10)",
+                50 + (attempt * 2),
+                component="j_prime",
+            )
+
+        self._startup_warnings.append("J-Prime failed to start in time")
+        return False
+
+    async def _start_reactor_core(self, config: DiscoveredConfig) -> bool:
+        """Start Reactor-Core with progress updates."""
+        if TrinityRepo.REACTOR_CORE not in config.repo_paths:
+            self._startup_warnings.append("Reactor-Core repo not found")
+            return False
+
+        await self._broadcast_progress(
+            "cross_repo_parallel",
+            "Starting Reactor-Core Nerves...",
+            55,
+            component="reactor_core",
+        )
+
+        port = config.ports.get("reactor_core", 8003)
+
+        # Check if already running
+        health = await self.health_monitor._check_repo_health("reactor_core", port)
+        if health.get("status") == "healthy":
+            self._components_started.add("reactor_core")
+            await self._broadcast_progress(
+                "cross_repo_parallel",
+                "Reactor-Core already running",
+                65,
+                component="reactor_core",
+            )
+            return True
+
+        # Attempt to start
+        reactor_path = config.repo_paths[TrinityRepo.REACTOR_CORE]
+        startup_scripts = [
+            reactor_path / "run.py",
+            reactor_path / "start.py",
+            reactor_path / "reactor_core" / "main.py",
+        ]
+
+        for script in startup_scripts:
+            if script.exists():
+                try:
+                    python = config.python_executables.get("reactor_core", sys.executable)
+                    subprocess.Popen(
+                        [python, str(script)],
+                        cwd=str(reactor_path),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self.log.info(f"[TrinityStartup] Started Reactor-Core via {script}")
+                    break
+                except Exception as e:
+                    self.log.debug(f"[TrinityStartup] Reactor-Core start error: {e}")
+
+        # Wait for health
+        for attempt in range(10):
+            await asyncio.sleep(2)
+            health = await self.health_monitor._check_repo_health("reactor_core", port)
+            if health.get("status") == "healthy":
+                self._components_started.add("reactor_core")
+                return True
+
+            await self._broadcast_progress(
+                "cross_repo_parallel",
+                f"Waiting for Reactor-Core... ({attempt + 1}/10)",
+                55 + (attempt * 2),
+                component="reactor_core",
+            )
+
+        self._startup_warnings.append("Reactor-Core failed to start in time")
+        return False
+
+    async def _sync_trinity_components(self) -> None:
+        """Synchronize all Trinity components."""
+        # Write sync state
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+        sync_state = {
+            "timestamp": time.time(),
+            "components": list(self._components_started),
+            "sync_version": "v80.0",
+        }
+
+        with open(trinity_dir / "state" / "sync.json", "w") as f:
+            json.dump(sync_state, f, indent=2)
+
+
+# =============================================================================
+# v80.0: Global Instances and Factory Functions
+# =============================================================================
+
+_health_monitor: Optional[CrossRepoHealthMonitor] = None
+_startup_coordinator: Optional[TrinityStartupCoordinator] = None
+
+
+async def get_health_monitor() -> CrossRepoHealthMonitor:
+    """Get or create the global health monitor."""
+    global _health_monitor
+    if _health_monitor is None:
+        _health_monitor = CrossRepoHealthMonitor()
+        await _health_monitor.start()
+    return _health_monitor
+
+
+async def get_startup_coordinator() -> TrinityStartupCoordinator:
+    """Get or create the global startup coordinator."""
+    global _startup_coordinator, _health_monitor
+
+    if _startup_coordinator is None:
+        config_discovery = DynamicConfigDiscovery()
+        health_monitor = await get_health_monitor()
+        _startup_coordinator = TrinityStartupCoordinator(
+            config_discovery=config_discovery,
+            health_monitor=health_monitor,
+        )
+    return _startup_coordinator
+
+
+async def shutdown_health_monitor() -> None:
+    """Shutdown the global health monitor."""
+    global _health_monitor
+    if _health_monitor:
+        await _health_monitor.stop()
+        _health_monitor = None

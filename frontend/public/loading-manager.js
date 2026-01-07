@@ -332,6 +332,42 @@ class JARVISLoadingManager {
                 expectedProgress: [78, 80],
                 substeps: ['Connecting to JARVIS Prime (8002)', 'Reactor Core link', 'Neural Mesh coordination']
             },
+            // === v80.0: PROJECT TRINITY CROSS-REPO LOADING ===
+            'v80_cross_repo_init': {
+                name: 'Trinity Cross-Repo System',
+                icon: '🔺',
+                phase: 'initialization',
+                expectedProgress: [86, 88],
+                substeps: ['Health monitor active', 'Circuit breakers online', 'Startup coordinator ready']
+            },
+            'trinity_infrastructure': {
+                name: 'Trinity Infrastructure',
+                icon: '🏗️',
+                phase: 'initialization',
+                expectedProgress: [80, 82],
+                substeps: ['Creating Trinity directories', 'Cloud SQL check']
+            },
+            'trinity_jarvis_body': {
+                name: 'Trinity: JARVIS Body',
+                icon: '🦾',
+                phase: 'initialization',
+                expectedProgress: [82, 85],
+                substeps: ['Execution layer online', 'Vision ready', 'Actions enabled']
+            },
+            'trinity_cross_repo_parallel': {
+                name: 'Trinity: J-Prime + Reactor',
+                icon: '🧠⚡',
+                phase: 'initialization',
+                expectedProgress: [85, 90],
+                substeps: ['J-Prime Mind connecting', 'Reactor-Core Nerves connecting', 'Parallel startup']
+            },
+            'trinity_sync': {
+                name: 'Trinity: Full Sync',
+                icon: '🔄',
+                phase: 'initialization',
+                expectedProgress: [90, 92],
+                substeps: ['Heartbeat synchronization', 'Event bus connected']
+            },
             'cloud_ecapa': {
                 name: 'Cloud ECAPA Service',
                 icon: '☁️',
@@ -2465,6 +2501,53 @@ class JARVISLoadingManager {
                 }
                 this.updateAdvancedStatusPanel('cross_repo');
             }
+
+            // v80.0: PROJECT TRINITY Cross-Repo Loading System
+            if (metadata.trinity_phase || metadata.trinityPhase || metadata.v80_enabled || metadata.v80Enabled) {
+                const phase = metadata.trinity_phase || metadata.trinityPhase;
+                const v80Enabled = metadata.v80_enabled || metadata.v80Enabled;
+                const healthMonitorActive = metadata.health_monitor_active || metadata.healthMonitorActive;
+                const startupCoordinatorReady = metadata.startup_coordinator_ready || metadata.startupCoordinatorReady;
+                const circuitBreakers = metadata.circuit_breakers || metadata.circuitBreakers || [];
+                const aggregateHealth = metadata.aggregate_health || metadata.aggregateHealth || {};
+
+                // Update Trinity state
+                this.state.trinity = {
+                    v80Enabled: v80Enabled || false,
+                    phase: phase || 'unknown',
+                    healthMonitorActive: healthMonitorActive || false,
+                    startupCoordinatorReady: startupCoordinatorReady || false,
+                    circuitBreakers: circuitBreakers,
+                    overallStatus: aggregateHealth.overall_status || aggregateHealth.overallStatus || 'unknown',
+                    healthyComponents: aggregateHealth.healthy_components || aggregateHealth.healthyComponents || 0,
+                    totalComponents: aggregateHealth.total_components || aggregateHealth.totalComponents || 3
+                };
+
+                // Log Trinity-specific updates
+                if (phase) {
+                    const phaseNames = {
+                        'infrastructure': 'Infrastructure Setup',
+                        'jarvis_body': 'JARVIS Body (Execution)',
+                        'cross_repo_parallel': 'J-Prime + Reactor (Parallel)',
+                        'trinity_sync': 'Trinity Sync',
+                        'finalization': 'Finalization'
+                    };
+                    const phaseName = phaseNames[phase] || phase;
+                    this.addLogEntry('Trinity', `Phase: ${phaseName}`, 'info');
+                }
+
+                if (healthMonitorActive) {
+                    const status = aggregateHealth.overall_status || 'checking';
+                    const statusEmoji = status === 'healthy' ? '✅' : status === 'degraded' ? '⚠️' : '❌';
+                    this.addLogEntry('Trinity', `${statusEmoji} Health Monitor: ${status} (${circuitBreakers.length} breakers)`, status === 'healthy' ? 'success' : 'warning');
+                }
+
+                if (startupCoordinatorReady) {
+                    this.addLogEntry('Trinity', '🚀 Startup Coordinator: Ready for parallel orchestration', 'success');
+                }
+
+                this.updateAdvancedStatusPanel('trinity');
+            }
         }
 
         // Handle special log-only stages
@@ -2771,7 +2854,62 @@ class JARVISLoadingManager {
             case 'neural_mesh':
                 this.updateNeuralMeshUI(advancedPanel);
                 break;
+            case 'trinity':
+                this.updateTrinityUI(advancedPanel);
+                break;
         }
+    }
+
+    /**
+     * v80.0: Update PROJECT TRINITY Status UI
+     */
+    updateTrinityUI(panel) {
+        const grid = panel.querySelector('#ai-systems-grid');
+        if (!grid) return;
+
+        let trinityCard = document.getElementById('trinity-card');
+        if (!trinityCard) {
+            trinityCard = document.createElement('div');
+            trinityCard.id = 'trinity-card';
+            trinityCard.className = 'ai-system-card';
+            grid.appendChild(trinityCard);
+        }
+
+        const trinity = this.state.trinity || {};
+        const isActive = trinity.v80Enabled || trinity.healthMonitorActive;
+        const status = trinity.overallStatus || 'initializing';
+        const statusClass = status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : 'initializing';
+        const statusEmoji = status === 'healthy' ? '✅' : status === 'degraded' ? '⚠️' : '🔄';
+
+        trinityCard.innerHTML = `
+            <div class="ai-card-header">
+                <span class="ai-card-icon">🔺</span>
+                <span class="ai-card-name">PROJECT TRINITY</span>
+                <span class="ai-card-status ${statusClass}">${statusEmoji}</span>
+            </div>
+            <div class="ai-card-details">
+                <div class="ai-stat">
+                    <span class="stat-label">Status:</span>
+                    <span class="stat-value ${statusClass}">${status}</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="stat-label">Phase:</span>
+                    <span class="stat-value">${trinity.phase || 'unknown'}</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="stat-label">Components:</span>
+                    <span class="stat-value">${trinity.healthyComponents || 0}/${trinity.totalComponents || 3}</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="stat-label">Health Monitor:</span>
+                    <span class="stat-value ${trinity.healthMonitorActive ? 'success' : 'inactive'}">${trinity.healthMonitorActive ? 'Active' : 'Inactive'}</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="stat-label">Circuit Breakers:</span>
+                    <span class="stat-value">${(trinity.circuitBreakers || []).length}</span>
+                </div>
+            </div>
+        `;
     }
 
     /**

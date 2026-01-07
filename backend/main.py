@@ -5511,6 +5511,150 @@ async def autonomous_status():
 
 
 # =============================================================================
+# PROJECT TRINITY API - Cross-Repo Status (v80.0)
+# =============================================================================
+
+@app.get("/trinity/status")
+async def trinity_status():
+    """
+    v80.0: Get PROJECT TRINITY cross-repo status.
+
+    Returns comprehensive status of:
+    - JARVIS Body (local backend)
+    - J-Prime (cognitive layer)
+    - Reactor-Core (neural/training layer)
+    - Cross-repo health monitoring
+    - Circuit breaker states
+    - Startup coordination status
+
+    This endpoint provides real-time visibility into the Trinity
+    distributed architecture and cross-repo communication health.
+    """
+    import time
+    import json
+    from pathlib import Path
+
+    trinity_dir = Path.home() / ".jarvis" / "trinity"
+
+    # Collect component status from heartbeat files
+    components = {}
+    component_files = {
+        "jarvis_body": trinity_dir / "components" / "jarvis_body.json",
+        "j_prime": trinity_dir / "components" / "j_prime.json",
+        "reactor_core": trinity_dir / "components" / "reactor_core.json",
+    }
+
+    for name, path in component_files.items():
+        if path.exists():
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                age = time.time() - data.get("timestamp", 0)
+                components[name] = {
+                    "status": "online" if age < 30 else "stale",
+                    "instance_id": data.get("instance_id"),
+                    "last_heartbeat_seconds_ago": round(age, 1),
+                    "metrics": data.get("metrics", {}),
+                }
+            except Exception as e:
+                components[name] = {"status": "error", "error": str(e)}
+        else:
+            components[name] = {"status": "offline"}
+
+    # Get v80.0 health monitor status if available
+    health_monitor_status = None
+    try:
+        from core.advanced_startup_orchestrator import get_health_monitor
+        monitor = await get_health_monitor()
+        health_monitor_status = await monitor.get_aggregate_health()
+    except Exception as e:
+        health_monitor_status = {"error": str(e)}
+
+    # Calculate aggregate status
+    online_count = sum(1 for c in components.values() if c.get("status") == "online")
+    total_count = len(components)
+
+    if online_count == total_count:
+        overall_status = "full_distributed"
+    elif online_count >= 1:
+        overall_status = "partial"
+    else:
+        overall_status = "offline"
+
+    return {
+        "trinity_enabled": True,
+        "v80_cross_repo_enabled": True,
+        "overall_status": overall_status,
+        "components_online": f"{online_count}/{total_count}",
+        "components": components,
+        "health_monitor": health_monitor_status,
+        "architecture": {
+            "jarvis_body": "Execution layer (Computer Use, Vision, Actions)",
+            "j_prime": "Cognitive layer (Reasoning, Planning, Decisions)",
+            "reactor_core": "Neural layer (Training, Learning, Optimization)",
+        },
+    }
+
+
+@app.get("/trinity/health")
+async def trinity_health():
+    """
+    v80.0: Get real-time Trinity health check with circuit breaker status.
+
+    Performs live health checks against all Trinity components and returns:
+    - Individual component health
+    - Circuit breaker states
+    - Latency measurements
+    - Trend analysis
+    """
+    try:
+        from core.advanced_startup_orchestrator import get_health_monitor
+
+        monitor = await get_health_monitor()
+
+        # Get aggregate health with all metrics
+        aggregate = await monitor.get_aggregate_health()
+
+        # Get individual component status
+        component_health = {}
+        for component in ["jarvis", "j_prime", "reactor_core"]:
+            if component in monitor._health_cache:
+                cached = monitor._health_cache[component]
+                breaker = monitor._circuit_breakers.get(component, {})
+                component_health[component] = {
+                    "status": cached.get("status", "unknown"),
+                    "latency_ms": cached.get("latency_ms", 0),
+                    "circuit_breaker": {
+                        "state": breaker.get("state", "closed"),
+                        "failures": breaker.get("failures", 0),
+                        "last_failure": breaker.get("last_failure"),
+                    },
+                }
+            else:
+                component_health[component] = {"status": "not_checked"}
+
+        return {
+            "healthy": aggregate.get("overall_status") == "healthy",
+            "overall_status": aggregate.get("overall_status", "unknown"),
+            "components": component_health,
+            "aggregate": aggregate,
+            "v80_enabled": True,
+        }
+    except ImportError:
+        return {
+            "healthy": False,
+            "error": "v80.0 health monitor not available",
+            "v80_enabled": False,
+        }
+    except Exception as e:
+        return {
+            "healthy": False,
+            "error": str(e),
+            "v80_enabled": True,
+        }
+
+
+# =============================================================================
 # DATA FLYWHEEL API - Self-Improving Learning Loop (v8.0)
 # =============================================================================
 
