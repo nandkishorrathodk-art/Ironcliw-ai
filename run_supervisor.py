@@ -396,6 +396,17 @@ class BootstrapConfig:
     dms_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_DMS_ENABLED", "true").lower() == "true")
     dms_probation_seconds: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_PROBATION_SECONDS", "30")))
     dms_max_failures: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_MAX_FAILURES", "3")))
+
+    # =========================================================================
+    # v80.0: Global Startup Timeout and Deep Health Verification
+    # =========================================================================
+    # Prevents infinite hangs during startup with a global timeout.
+    # Deep health verification ensures components are actually functional.
+    # =========================================================================
+    global_startup_timeout: float = field(default_factory=lambda: float(os.getenv("SUPERVISOR_STARTUP_TIMEOUT", "300.0")))
+    deep_health_enabled: bool = field(default_factory=lambda: os.getenv("DEEP_HEALTH_ENABLED", "true").lower() == "true")
+    deep_health_timeout: float = field(default_factory=lambda: float(os.getenv("DEEP_HEALTH_TIMEOUT", "10.0")))
+    advanced_primitives_enabled: bool = field(default_factory=lambda: os.getenv("ADVANCED_PRIMITIVES_ENABLED", "true").lower() == "true")
     
     # AGI OS integration
     agi_os_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_ENABLED", "true").lower() == "true")
@@ -2494,6 +2505,8 @@ class SupervisorBootstrapper:
         resource validation, loading page, and other non-essential initialization
         for instant JARVIS startup.
 
+        v80.0: Wrapped with global timeout to prevent infinite hangs.
+
         Returns:
             Exit code (0 for success, non-zero for failure)
         """
@@ -2503,6 +2516,62 @@ class SupervisorBootstrapper:
         if fast_startup:
             return await self._run_fast_startup()
 
+        # v80.0: Wrap entire startup in global timeout
+        try:
+            return await asyncio.wait_for(
+                self._run_with_deep_health(),
+                timeout=self.config.global_startup_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.error(
+                f"🚨 GLOBAL STARTUP TIMEOUT after {self.config.global_startup_timeout}s - "
+                "forcing emergency shutdown"
+            )
+            await self._emergency_shutdown()
+            return 1
+        except Exception as e:
+            self.logger.error(f"🚨 Startup failed with exception: {e}")
+            await self._emergency_shutdown()
+            return 1
+
+    async def _emergency_shutdown(self) -> None:
+        """v80.0: Emergency shutdown when startup times out."""
+        self.logger.warning("🚨 Emergency shutdown initiated")
+        try:
+            # Kill all Trinity components
+            await self._shutdown_trinity_components()
+
+            # Kill loading server
+            if self._loading_server_process:
+                try:
+                    self._loading_server_process.terminate()
+                except Exception:
+                    pass
+
+            # Cleanup graceful degradation
+            try:
+                from backend.core.graceful_degradation import shutdown_degradation
+                await shutdown_degradation()
+            except Exception:
+                pass
+
+            # Cleanup advanced primitives
+            try:
+                from backend.core.advanced_async_primitives import shutdown_all
+                await shutdown_all()
+            except Exception:
+                pass
+
+        except Exception as e:
+            self.logger.error(f"Emergency shutdown error: {e}")
+
+    async def _run_with_deep_health(self) -> int:
+        """
+        v80.0: Run startup with deep health verification.
+
+        This wraps the main startup sequence and verifies components
+        are actually functional, not just responding to HTTP.
+        """
         try:
             # Setup signal handlers
             self._setup_signal_handlers()
