@@ -588,9 +588,24 @@ class ECAPATDNNWrapper(MLEngineWrapper):
         self._encoder_loaded = False
 
     async def _load_impl(self) -> Any:
-        """Load ECAPA-TDNN speaker encoder."""
+        """
+        Load ECAPA-TDNN speaker encoder.
+
+        v78.1: Fixed to run in executor to avoid blocking event loop.
+        Also added intelligent cache checking to speed up cached loads.
+        """
         from concurrent.futures import ThreadPoolExecutor
         import torch
+
+        cache_dir = MLConfig.CACHE_DIR / "speechbrain" / "speaker_encoder"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # v78.1: Check if model is already cached (much faster load)
+        model_cached = self._check_ecapa_cache(cache_dir)
+        if model_cached:
+            logger.info(f"   [{self.name}] ✅ Model cached locally, fast load expected")
+        else:
+            logger.info(f"   [{self.name}] ⚠️ Model not cached, downloading (this may take a while)...")
 
         logger.info(f"   [{self.name}] Importing SpeechBrain...")
 
@@ -599,9 +614,6 @@ class ECAPATDNNWrapper(MLEngineWrapper):
 
             # Force CPU for speaker encoder (MPS doesn't support FFT)
             run_opts = {"device": "cpu"}
-
-            cache_dir = MLConfig.CACHE_DIR / "speechbrain" / "speaker_encoder"
-            cache_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info(f"   [{self.name}] Loading from: speechbrain/spkrec-ecapa-voxceleb")
 
@@ -613,14 +625,35 @@ class ECAPATDNNWrapper(MLEngineWrapper):
 
             return model
 
-        # Run synchronously on main thread (macOS stability)
-        # loop = asyncio.get_running_loop()
-        # with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_loader") as executor:
-        #    model = await loop.run_in_executor(executor, _load_sync)
-        model = _load_sync()
+        # v78.1: Run in executor to avoid blocking event loop
+        # This is critical for async responsiveness during model loading
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="ecapa_loader") as executor:
+            model = await loop.run_in_executor(executor, _load_sync)
 
         self._encoder_loaded = True
+        logger.info(f"   [{self.name}] ✅ ECAPA-TDNN loaded successfully")
         return model
+
+    def _check_ecapa_cache(self, cache_dir: Path) -> bool:
+        """
+        v78.1: Check if ECAPA model files are already cached.
+
+        Returns True if all essential model files exist locally.
+        """
+        essential_files = [
+            "hyperparams.yaml",
+            "embedding_model.ckpt",
+            "classifier.ckpt",
+            "label_encoder.ckpt",
+        ]
+
+        for filename in essential_files:
+            filepath = cache_dir / filename
+            if not filepath.exists():
+                return False
+
+        return True
 
     async def _warmup_impl(self) -> bool:
         """
@@ -2474,7 +2507,7 @@ def prewarm_voice_unlock_models_background(
 
 
 async def ensure_ecapa_available(
-    timeout: float = 60.0,
+    timeout: float = MLConfig.MODEL_LOAD_TIMEOUT,  # v78.1: Use configured timeout (120s default)
     allow_cloud: bool = True,
 ) -> Tuple[bool, str, Optional[Any]]:
     """
