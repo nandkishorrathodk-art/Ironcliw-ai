@@ -2034,6 +2034,41 @@ class UnifiedCommandProcessor:
                 "resolved_query": classified_query.resolved_query,
             }
 
+        # =========================================================================
+        # TRINITY TELEMETRY: Emit interaction to Reactor-Core for training
+        # =========================================================================
+        # This enables the continuous learning loop:
+        # JARVIS (interactions) → Reactor-Core (training) → JARVIS-Prime (better model)
+        # =========================================================================
+        try:
+            from core.telemetry_emitter import get_telemetry_emitter
+
+            emitter = await get_telemetry_emitter()
+
+            # Calculate processing time if we tracked it
+            processing_time_ms = result_dict.get("latency_ms", 0.0)
+
+            # Emit the interaction asynchronously (fire and forget)
+            asyncio.create_task(
+                emitter.emit_interaction(
+                    user_input=command_text,
+                    response=result_dict.get("response", ""),
+                    success=result_dict.get("success", False),
+                    confidence=result_dict.get("confidence", classified_query.complexity.confidence if classified_query else 1.0),
+                    latency_ms=processing_time_ms,
+                    source=result_dict.get("source", "jarvis_agent"),
+                    metadata={
+                        "command_type": command_type.value,
+                        "speaker_verified": speaker_verification_result is not None,
+                        "context_aware": True,
+                    },
+                )
+            )
+        except ImportError:
+            pass  # Telemetry not available
+        except Exception as e:
+            logger.debug(f"[UNIFIED] Telemetry emission skipped: {e}")
+
         return result_dict
 
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
