@@ -50,8 +50,20 @@ if TYPE_CHECKING:
         DiscoveredConfig,
         StartupResult,
     )
+    from .trinity_health_monitor import (
+        TrinityHealthMonitor,
+        TrinityHealthSnapshot,
+    )
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# v78.0: Trinity Health Monitor Integration
+# =============================================================================
+# The TrinityHealthMonitor provides unified health monitoring for all repos.
+# It can be optionally enabled for continuous background monitoring.
+
+_trinity_health_monitor: Optional["TrinityHealthMonitor"] = None
 
 
 # =============================================================================
@@ -655,3 +667,115 @@ async def get_discovered_repo_paths() -> Dict[str, Optional[Path]]:
     """Get discovered repository paths."""
     hooks = await get_orchestrator_hooks()
     return await hooks.get_dynamic_repo_paths()
+
+
+# =============================================================================
+# v78.0: Trinity Health Monitor Functions
+# =============================================================================
+
+async def start_trinity_health_monitor(
+    check_interval: float = 10.0,
+    on_health_change: Optional[Callable[["TrinityHealthSnapshot"], None]] = None,
+) -> "TrinityHealthMonitor":
+    """
+    Start the unified Trinity health monitor for continuous background monitoring.
+
+    This provides real-time health status for all Trinity components:
+    - JARVIS Body (HTTP endpoint)
+    - J-Prime Mind (heartbeat file)
+    - Reactor-Core Nerves (heartbeat file)
+    - Coding Council (heartbeat file)
+
+    Args:
+        check_interval: Seconds between health checks (default: 10.0)
+        on_health_change: Optional callback for health status changes
+
+    Returns:
+        TrinityHealthMonitor instance
+
+    Example:
+        monitor = await start_trinity_health_monitor(
+            check_interval=5.0,
+            on_health_change=lambda snap: print(f"Health: {snap.summary}")
+        )
+    """
+    global _trinity_health_monitor
+
+    if _trinity_health_monitor is not None:
+        return _trinity_health_monitor
+
+    try:
+        from .trinity_health_monitor import (
+            TrinityHealthMonitor,
+            TrinityHealthConfig,
+        )
+
+        config = TrinityHealthConfig.from_env()
+        config.check_interval_seconds = check_interval
+
+        _trinity_health_monitor = TrinityHealthMonitor(config=config)
+
+        if on_health_change:
+            _trinity_health_monitor.register_health_callback(on_health_change)
+
+        await _trinity_health_monitor.start()
+
+        logger.info(
+            f"[OrchestratorBridge] Trinity health monitor started "
+            f"(interval: {check_interval}s)"
+        )
+
+        return _trinity_health_monitor
+
+    except ImportError as e:
+        logger.warning(f"[OrchestratorBridge] Trinity health monitor not available: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"[OrchestratorBridge] Failed to start Trinity health monitor: {e}")
+        raise
+
+
+async def stop_trinity_health_monitor() -> None:
+    """Stop the Trinity health monitor."""
+    global _trinity_health_monitor
+
+    if _trinity_health_monitor:
+        await _trinity_health_monitor.stop()
+        _trinity_health_monitor = None
+        logger.info("[OrchestratorBridge] Trinity health monitor stopped")
+
+
+async def get_trinity_health_snapshot() -> Optional["TrinityHealthSnapshot"]:
+    """
+    Get the latest Trinity health snapshot.
+
+    Returns:
+        TrinityHealthSnapshot or None if monitor not running
+    """
+    if _trinity_health_monitor:
+        return _trinity_health_monitor.latest_snapshot
+    return None
+
+
+async def check_trinity_health_now() -> Optional["TrinityHealthSnapshot"]:
+    """
+    Perform an immediate Trinity health check.
+
+    This bypasses the monitoring interval and performs a check right now.
+
+    Returns:
+        TrinityHealthSnapshot with current health status
+    """
+    if _trinity_health_monitor:
+        return await _trinity_health_monitor.check_health()
+
+    # If monitor not running, use quick check via hooks
+    try:
+        from .trinity_health_monitor import TrinityHealthMonitor, TrinityHealthConfig
+
+        monitor = TrinityHealthMonitor(config=TrinityHealthConfig.from_env())
+        snapshot = await monitor.check_health()
+        return snapshot
+    except Exception as e:
+        logger.error(f"[OrchestratorBridge] Trinity health check failed: {e}")
+        return None
