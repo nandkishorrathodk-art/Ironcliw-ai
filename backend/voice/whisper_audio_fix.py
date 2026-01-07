@@ -474,8 +474,41 @@ class WhisperImportManager:
         # Metrics
         self._import_start_time: float = 0.0
 
+        # v14.0: Auto-reset circuit breaker if numba is now working
+        self._try_auto_reset_circuit_breaker()
+
         self._initialized = True
         logger.info("🎤 WhisperImportManager initialized")
+
+    def _try_auto_reset_circuit_breaker(self):
+        """
+        v14.0: Check if numba issue is now resolved and reset circuit breaker.
+
+        This helps recover from previous failures when the underlying issue
+        (numba circular import) has been fixed.
+        """
+        try:
+            from core.numba_preload import (
+                is_numba_ready,
+                is_numba_skipped,
+                get_numba_status
+            )
+
+            status = get_numba_status()
+
+            # If numba is ready or properly skipped, the issue is resolved
+            if status.get('is_ready') or is_numba_skipped():
+                # Check if we had previous failures
+                if self.circuit_breaker.metrics.consecutive_failures > 0:
+                    logger.info(
+                        f"🔄 Auto-resetting circuit breaker: numba is now "
+                        f"{'ready' if status.get('is_ready') else 'properly skipped'} "
+                        f"(had {self.circuit_breaker.metrics.consecutive_failures} failures)"
+                    )
+                    self.circuit_breaker.reset()
+        except Exception as e:
+            # Don't fail initialization if this check fails
+            logger.debug(f"Circuit breaker auto-reset check skipped: {e}")
 
     @property
     def is_module_loaded(self) -> bool:

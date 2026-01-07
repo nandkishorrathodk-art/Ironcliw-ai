@@ -167,20 +167,167 @@ def _check_llvmlite_compatibility() -> tuple:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# v12.0: RUN COMPATIBILITY CHECK AT MODULE LOAD TIME
+# v14.0: PROCESS-LEVEL IMPORT LOCK - Prevent concurrent numba imports
 # ═══════════════════════════════════════════════════════════════════════════════
-_compat_result = _check_version_compatibility()
-_NUMBA_COMPATIBLE = _compat_result[0]
-if not _NUMBA_COMPATIBLE:
-    _NUMBA_SKIP_REASON = _compat_result[1]
-    # Print warning once
+# The circular import error occurs when multiple threads try to import numba
+# simultaneously. We use a file-based lock to serialize imports across all
+# threads and even across multiple processes.
+# ═══════════════════════════════════════════════════════════════════════════════
+import fcntl as _fcntl
+import tempfile as _tempfile
+
+_NUMBA_LOCK_FILE = None
+_NUMBA_LOCK_FD = None
+
+
+def _acquire_numba_import_lock(timeout: float = 30.0) -> bool:
+    """
+    Acquire a process-level lock for numba import.
+    This prevents concurrent imports that cause circular import errors.
+
+    Returns:
+        True if lock acquired, False if timeout
+    """
+    global _NUMBA_LOCK_FILE, _NUMBA_LOCK_FD
+    import time
+
+    lock_path = _os.path.join(_tempfile.gettempdir(), '.jarvis_numba_import.lock')
+    _NUMBA_LOCK_FILE = lock_path
+
+    try:
+        _NUMBA_LOCK_FD = open(lock_path, 'w')
+        start = time.time()
+
+        while True:
+            try:
+                _fcntl.flock(_NUMBA_LOCK_FD.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                return True
+            except (IOError, OSError):
+                if time.time() - start > timeout:
+                    return False
+                time.sleep(0.1)
+    except Exception:
+        return False
+
+
+def _release_numba_import_lock():
+    """Release the numba import lock."""
+    global _NUMBA_LOCK_FD
+    try:
+        if _NUMBA_LOCK_FD:
+            _fcntl.flock(_NUMBA_LOCK_FD.fileno(), _fcntl.LOCK_UN)
+            _NUMBA_LOCK_FD.close()
+            _NUMBA_LOCK_FD = None
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v14.0: PROACTIVE IMPORT TEST - Catch circular import BEFORE it cascades
+# ═══════════════════════════════════════════════════════════════════════════════
+def _test_numba_import_safety() -> tuple:
+    """
+    v14.0: Actually attempt to import numba.core.utils EARLY to catch circular import.
+
+    This is more reliable than version compatibility checks because it tests
+    the ACTUAL runtime behavior. If import fails, we know to skip numba entirely.
+
+    v14.0 ENHANCEMENT: Uses file-based lock to prevent concurrent imports.
+
+    Returns:
+        Tuple of (is_safe: bool, reason: str)
+    """
+    # First check if numba is even installed
+    try:
+        if _sys.version_info >= (3, 8):
+            from importlib.metadata import version as get_version
+            get_version('numba')
+    except Exception:
+        return (True, "numba_not_installed")  # Not installed = safe to proceed
+
+    # Check if numba is already in a corrupted state
+    if 'numba' in _sys.modules:
+        mod = _sys.modules.get('numba')
+        # Check if it's our mock module (that's OK)
+        if getattr(mod, '_JARVIS_MOCK', False):
+            return (False, "already_mocked")
+        if mod is None or not hasattr(mod, '__version__'):
+            return (False, "numba_already_corrupted")
+
+    # v14.0: Acquire file lock to prevent concurrent imports
+    lock_acquired = _acquire_numba_import_lock(timeout=5.0)
+    if not lock_acquired:
+        # Another process/thread is importing numba - wait and check result
+        return (False, "concurrent_import_in_progress")
+
+    try:
+        # Try the problematic import that causes circular import errors
+        # Do this in a controlled way with JIT disabled
+        _os.environ['NUMBA_DISABLE_JIT'] = '1'
+        _os.environ['NUMBA_NUM_THREADS'] = '1'
+
+        try:
+            # Clear any existing numba modules first to get a clean test
+            numba_keys = [k for k in _sys.modules.keys() if k == 'numba' or k.startswith('numba.')]
+            for key in numba_keys:
+                try:
+                    del _sys.modules[key]
+                except (KeyError, TypeError):
+                    pass
+
+            # Now try the actual import
+            import numba.core.utils
+
+            # Check if get_hashable_key exists (the problematic function)
+            if hasattr(numba.core.utils, 'get_hashable_key'):
+                return (True, "import_test_passed")
+            else:
+                return (False, "get_hashable_key_missing")
+
+        except ImportError as e:
+            error_str = str(e).lower()
+            if 'partially initialized' in error_str or 'circular' in error_str:
+                return (False, f"circular_import_detected: {e}")
+            return (False, f"import_error: {e}")
+        except Exception as e:
+            return (False, f"import_failed: {e}")
+
+    finally:
+        _release_numba_import_lock()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v14.0: RUN PROACTIVE IMPORT TEST AT MODULE LOAD TIME
+# This catches circular imports BEFORE they cascade through the system
+# ═══════════════════════════════════════════════════════════════════════════════
+_import_test_result = _test_numba_import_safety()
+_NUMBA_IMPORT_SAFE = _import_test_result[0]
+
+if not _NUMBA_IMPORT_SAFE:
+    # Proactive test failed - install mock immediately
+    _NUMBA_COMPATIBLE = False
+    _NUMBA_SKIP_REASON = _import_test_result[1]
+
     if hasattr(_sys, '_jarvis_numba_warned') is False:
-        _recommendation = _compat_result[2]
-        print(f"[numba_preload] ⚠️ SKIPPING NUMBA: {_NUMBA_SKIP_REASON}")
-        if _recommendation:
-            print(f"[numba_preload] 💡 FIX: {_recommendation}")
-        print("[numba_preload] ✅ Whisper will work fine without numba (just slightly slower)")
+        print(f"[numba_preload] ⚠️ PROACTIVE TEST FAILED: {_NUMBA_SKIP_REASON}")
+        print("[numba_preload] ✅ Installing numba mock - Whisper will work without numba")
         _sys._jarvis_numba_warned = True
+else:
+    # v12.0: RUN COMPATIBILITY CHECK AT MODULE LOAD TIME
+    _compat_result = _check_version_compatibility()
+    _NUMBA_COMPATIBLE = _compat_result[0]
+    if not _NUMBA_COMPATIBLE:
+        _NUMBA_SKIP_REASON = _compat_result[1]
+        # Print warning once
+        if hasattr(_sys, '_jarvis_numba_warned') is False:
+            _recommendation = _compat_result[2]
+            print(f"[numba_preload] ⚠️ SKIPPING NUMBA: {_NUMBA_SKIP_REASON}")
+            if _recommendation:
+                print(f"[numba_preload] 💡 FIX: {_recommendation}")
+            print("[numba_preload] ✅ Whisper will work fine without numba (just slightly slower)")
+            _sys._jarvis_numba_warned = True
+
+if not _NUMBA_COMPATIBLE:
 
     # Set environment to prevent any numba import attempts
     _os.environ['NUMBA_DISABLE_JIT'] = '1'
@@ -597,6 +744,8 @@ def _do_numba_import(retry_count: int = 0, max_retries: int = 2) -> bool:
     - Circular import detection and recovery
     - Better diagnostics for debugging
 
+    v14.0: Added file-based lock for multi-process safety.
+
     Args:
         retry_count: Current retry attempt (internal use)
         max_retries: Maximum number of retry attempts
@@ -628,146 +777,155 @@ def _do_numba_import(retry_count: int = 0, max_retries: int = 2) -> bool:
         os.environ['NUMBA_DISABLE_JIT'] = '1'
         os.environ['NUMBA_NUM_THREADS'] = '1'
 
-    with _numba_import_environment():
-        try:
-            # ═══════════════════════════════════════════════════════════════════
-            # PHASE 1: Import main numba module
-            # ═══════════════════════════════════════════════════════════════════
-            _set_status(NumbaStatus.INITIALIZING)
+    # v14.0: Acquire file lock for multi-process safety
+    file_lock_acquired = _acquire_numba_import_lock(timeout=30.0)
+    if not file_lock_acquired:
+        logger.warning("[numba_preload] Could not acquire file lock, proceeding anyway")
 
-            # Use importlib for better control over the import process
-            numba = importlib.import_module('numba')
-            _numba_module = numba
-            version = numba.__version__
+    try:
+        with _numba_import_environment():
+            try:
+                # ═══════════════════════════════════════════════════════════════════
+                # PHASE 1: Import main numba module
+                # ═══════════════════════════════════════════════════════════════════
+                _set_status(NumbaStatus.INITIALIZING)
 
-            logger.debug(f"[numba_preload] Phase 1: numba {version} base imported")
+                # Use importlib for better control over the import process
+                numba = importlib.import_module('numba')
+                _numba_module = numba
+                version = numba.__version__
 
-            # ═══════════════════════════════════════════════════════════════════
-            # PHASE 2: Force COMPLETE initialization of ALL problematic submodules
-            # These must be imported in a specific order to avoid circular imports
-            # ═══════════════════════════════════════════════════════════════════
-            _set_status(NumbaStatus.IMPORTING_SUBMODULES, version=version)
+                logger.debug(f"[numba_preload] Phase 1: numba {version} base imported")
 
-            # v8.0: Dynamic submodule list based on numba version
-            critical_submodules = _get_critical_submodules(version)
+                # ═══════════════════════════════════════════════════════════════════
+                # PHASE 2: Force COMPLETE initialization of ALL problematic submodules
+                # These must be imported in a specific order to avoid circular imports
+                # ═══════════════════════════════════════════════════════════════════
+                _set_status(NumbaStatus.IMPORTING_SUBMODULES, version=version)
 
-            loaded_count = 0
-            load_errors = []
+                # v8.0: Dynamic submodule list based on numba version
+                critical_submodules = _get_critical_submodules(version)
 
-            for submodule in critical_submodules:
-                try:
-                    mod = importlib.import_module(submodule)
-                    loaded_count += 1
+                loaded_count = 0
+                load_errors = []
 
-                    # For numba.core.utils, explicitly access key functions to force resolution
-                    if submodule == 'numba.core.utils':
-                        for func_name in ['get_hashable_key', 'unified_function_type']:
-                            if hasattr(mod, func_name):
-                                _ = getattr(mod, func_name)
-                                logger.debug(f"[numba_preload] ✓ {func_name} resolved")
+                for submodule in critical_submodules:
+                    try:
+                        mod = importlib.import_module(submodule)
+                        loaded_count += 1
 
-                except ImportError as e:
-                    error_str = str(e)
-                    # v10.0: Detect circular import specifically
-                    if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
-                        logger.warning(f"[numba_preload] Circular import detected in {submodule}: {e}")
-                        load_errors.append(f"{submodule}: CIRCULAR_IMPORT: {e}")
-                    else:
-                        # Some submodules may not exist in all numba versions
+                        # For numba.core.utils, explicitly access key functions to force resolution
+                        if submodule == 'numba.core.utils':
+                            for func_name in ['get_hashable_key', 'unified_function_type']:
+                                if hasattr(mod, func_name):
+                                    _ = getattr(mod, func_name)
+                                    logger.debug(f"[numba_preload] ✓ {func_name} resolved")
+
+                    except ImportError as e:
+                        error_str = str(e)
+                        # v10.0: Detect circular import specifically
+                        if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
+                            logger.warning(f"[numba_preload] Circular import detected in {submodule}: {e}")
+                            load_errors.append(f"{submodule}: CIRCULAR_IMPORT: {e}")
+                        else:
+                            # Some submodules may not exist in all numba versions
+                            load_errors.append(f"{submodule}: {e}")
+                            logger.debug(f"[numba_preload] Submodule {submodule} not available: {e}")
+                    except Exception as e:
                         load_errors.append(f"{submodule}: {e}")
-                        logger.debug(f"[numba_preload] Submodule {submodule} not available: {e}")
-                except Exception as e:
-                    load_errors.append(f"{submodule}: {e}")
-                    logger.debug(f"[numba_preload] Submodule {submodule} error: {e}")
+                        logger.debug(f"[numba_preload] Submodule {submodule} error: {e}")
 
-            with _status_lock:
-                _numba_info.submodules_loaded = loaded_count
+                with _status_lock:
+                    _numba_info.submodules_loaded = loaded_count
 
-            logger.debug(f"[numba_preload] Phase 2: {loaded_count}/{len(critical_submodules)} submodules loaded")
+                logger.debug(f"[numba_preload] Phase 2: {loaded_count}/{len(critical_submodules)} submodules loaded")
 
-            # v10.0: Check if any circular import errors occurred
-            circular_errors = [e for e in load_errors if 'CIRCULAR_IMPORT' in e]
-            if circular_errors and retry_count < max_retries:
-                logger.warning(f"[numba_preload] Circular import errors detected, clearing and retrying...")
-                clear_corrupted_numba_modules()
-                os.environ['NUMBA_DISABLE_JIT'] = '1'
-                return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
-
-            # ═══════════════════════════════════════════════════════════════════
-            # PHASE 3: Verify initialization is complete
-            # ═══════════════════════════════════════════════════════════════════
-            is_complete, _ = _check_numba_in_sys_modules()
-            if not is_complete:
-                # Something went wrong - numba isn't fully initialized
-                logger.warning("[numba_preload] Warning: numba import completed but verification failed")
-                if load_errors:
-                    logger.debug(f"[numba_preload] Submodule errors: {load_errors}")
-
-            _set_status(NumbaStatus.READY, version=version)
-            logger.info(
-                f"✅ numba {version} pre-initialized "
-                f"(thread: {threading.current_thread().name}, "
-                f"submodules: {loaded_count}, "
-                f"JIT: {'disabled' if os.environ.get('NUMBA_DISABLE_JIT') == '1' else 'enabled'})"
-            )
-            return True
-
-        except ImportError as e:
-            error_str = str(e)
-
-            # v10.0: Detect circular import and retry
-            if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
-                logger.warning(f"[numba_preload] Circular import error: {e}")
-
-                if retry_count < max_retries:
-                    logger.info(f"[numba_preload] Clearing modules and retrying (attempt {retry_count + 1}/{max_retries})...")
+                # v10.0: Check if any circular import errors occurred
+                circular_errors = [e for e in load_errors if 'CIRCULAR_IMPORT' in e]
+                if circular_errors and retry_count < max_retries:
+                    logger.warning(f"[numba_preload] Circular import errors detected, clearing and retrying...")
                     clear_corrupted_numba_modules()
                     os.environ['NUMBA_DISABLE_JIT'] = '1'
-                    os.environ['NUMBA_NUM_THREADS'] = '1'
                     return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
+
+                # ═══════════════════════════════════════════════════════════════════
+                # PHASE 3: Verify initialization is complete
+                # ═══════════════════════════════════════════════════════════════════
+                is_complete, _ = _check_numba_in_sys_modules()
+                if not is_complete:
+                    # Something went wrong - numba isn't fully initialized
+                    logger.warning("[numba_preload] Warning: numba import completed but verification failed")
+                    if load_errors:
+                        logger.debug(f"[numba_preload] Submodule errors: {load_errors}")
+
+                _set_status(NumbaStatus.READY, version=version)
+                logger.info(
+                    f"✅ numba {version} pre-initialized "
+                    f"(thread: {threading.current_thread().name}, "
+                    f"submodules: {loaded_count}, "
+                    f"JIT: {'disabled' if os.environ.get('NUMBA_DISABLE_JIT') == '1' else 'enabled'})"
+                )
+                return True
+
+            except ImportError as e:
+                error_str = str(e)
+
+                # v10.0: Detect circular import and retry
+                if 'partially initialized module' in error_str or 'circular import' in error_str.lower():
+                    logger.warning(f"[numba_preload] Circular import error: {e}")
+
+                    if retry_count < max_retries:
+                        logger.info(f"[numba_preload] Clearing modules and retrying (attempt {retry_count + 1}/{max_retries})...")
+                        clear_corrupted_numba_modules()
+                        os.environ['NUMBA_DISABLE_JIT'] = '1'
+                        os.environ['NUMBA_NUM_THREADS'] = '1'
+                        return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
+                    else:
+                        _set_status(
+                            NumbaStatus.FAILED,
+                            error=f"Circular import after {max_retries} retries: {error_str}",
+                            error_type="CircularImportError"
+                        )
+                        logger.error(f"❌ numba circular import cannot be resolved: {e}")
+                        return False
+
+                if 'No module named' in error_str and 'numba' in error_str:
+                    _set_status(
+                        NumbaStatus.NOT_INSTALLED,
+                        error=error_str,
+                        error_type="ImportError"
+                    )
+                    logger.debug(f"numba not installed (optional): {e}")
                 else:
                     _set_status(
                         NumbaStatus.FAILED,
-                        error=f"Circular import after {max_retries} retries: {error_str}",
-                        error_type="CircularImportError"
+                        error=error_str,
+                        error_type="ImportError"
                     )
-                    logger.error(f"❌ numba circular import cannot be resolved: {e}")
-                    return False
+                    logger.warning(f"⚠️ numba import error: {e}")
+                return False
 
-            if 'No module named' in error_str and 'numba' in error_str:
-                _set_status(
-                    NumbaStatus.NOT_INSTALLED,
-                    error=error_str,
-                    error_type="ImportError"
-                )
-                logger.debug(f"numba not installed (optional): {e}")
-            else:
+            except Exception as e:
+                error_str = str(e)
+
+                # v10.0: Check for circular import in exception message
+                if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
+                    if retry_count < max_retries:
+                        logger.warning(f"[numba_preload] Possible circular import, retrying: {e}")
+                        clear_corrupted_numba_modules()
+                        os.environ['NUMBA_DISABLE_JIT'] = '1'
+                        return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
+
                 _set_status(
                     NumbaStatus.FAILED,
-                    error=error_str,
-                    error_type="ImportError"
+                    error=str(e),
+                    error_type=type(e).__name__
                 )
-                logger.warning(f"⚠️ numba import error: {e}")
-            return False
-
-        except Exception as e:
-            error_str = str(e)
-
-            # v10.0: Check for circular import in exception message
-            if 'partially initialized' in error_str.lower() or 'circular' in error_str.lower():
-                if retry_count < max_retries:
-                    logger.warning(f"[numba_preload] Possible circular import, retrying: {e}")
-                    clear_corrupted_numba_modules()
-                    os.environ['NUMBA_DISABLE_JIT'] = '1'
-                    return _do_numba_import(retry_count=retry_count + 1, max_retries=max_retries)
-
-            _set_status(
-                NumbaStatus.FAILED,
-                error=str(e),
-                error_type=type(e).__name__
-            )
-            logger.warning(f"⚠️ numba pre-initialization failed (non-fatal): {e}")
-            return False
+                logger.warning(f"⚠️ numba pre-initialization failed (non-fatal): {e}")
+                return False
+    finally:
+        # v14.0: Always release the file lock
+        _release_numba_import_lock()
 
 
 def _get_critical_submodules(version: str) -> list:
