@@ -26,6 +26,7 @@ Version: 1.0.0 - 24/7 Spatial Intelligence
 
 import asyncio
 import logging
+import os
 import subprocess
 import json
 import time

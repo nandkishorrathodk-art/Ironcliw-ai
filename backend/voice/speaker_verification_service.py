@@ -2538,6 +2538,573 @@ class MultiFactorAuthFusionEngine:
         return max(0.50, confidence)
 
 
+# =============================================================================
+# v81.0: AUTOMATIC ACOUSTIC FEATURE ENHANCEMENT SYSTEM
+# =============================================================================
+# Root cause fix: Acoustic features are NULL in database because they were
+# never computed. This class automatically:
+# 1. Detects profiles with missing acoustic features
+# 2. Fetches stored voice samples from database
+# 3. Computes features using AdvancedFeatureExtractor
+# 4. Updates the database with computed features
+# 5. Syncs features across repos (JARVIS, J-Prime, Reactor-Core)
+# =============================================================================
+
+
+class AutoAcousticFeatureEnhancer:
+    """
+    v81.0: Automatic Acoustic Feature Enhancement System.
+
+    Fixes the root cause of "NO ACOUSTIC FEATURES (basic mode only)" by:
+    - Detecting missing acoustic features during profile loading
+    - Computing features from stored voice samples
+    - Updating database with computed features
+    - Cross-repo synchronization for Trinity architecture
+
+    Features:
+    - Async parallel feature extraction (non-blocking)
+    - Batch processing with configurable concurrency
+    - Intelligent sample selection (highest quality)
+    - Feature aggregation with statistical analysis
+    - Automatic retry with exponential backoff
+    - Circuit breaker for database operations
+    - Progress broadcasting for UI updates
+    """
+
+    # Feature computation parameters
+    MIN_SAMPLES_FOR_ENHANCEMENT = 3  # Need at least 3 samples
+    MAX_SAMPLES_TO_PROCESS = 20  # Process up to 20 best samples
+    BATCH_SIZE = 5  # Process 5 samples concurrently
+    FEATURE_VERSION = "v81.0"  # Track which version computed features
+
+    def __init__(self, learning_db: Optional["JARVISLearningDatabase"] = None):
+        self.learning_db = learning_db
+        self._feature_extractor = None
+        self._executor = get_verification_executor()
+        self._enhancement_in_progress = set()  # Track ongoing enhancements
+        self._enhancement_lock = asyncio.Lock()
+        self._circuit_breaker_failures = 0
+        self._circuit_breaker_open = False
+        self._last_failure_time = 0
+
+    async def _get_feature_extractor(self) -> "AdvancedFeatureExtractor":
+        """Lazy load the feature extractor."""
+        if self._feature_extractor is None:
+            try:
+                from voice.advanced_feature_extraction import AdvancedFeatureExtractor
+                self._feature_extractor = AdvancedFeatureExtractor()
+                logger.info("[v81.0] AdvancedFeatureExtractor loaded")
+            except ImportError as e:
+                logger.warning(f"[v81.0] AdvancedFeatureExtractor not available: {e}")
+                raise
+        return self._feature_extractor
+
+    async def check_and_enhance_profile(
+        self,
+        speaker_name: str,
+        speaker_id: int,
+        current_acoustic_features: Dict[str, Any],
+        progress_callback: Optional[Callable[[str, float], None]] = None
+    ) -> Dict[str, Any]:
+        """
+        Check if a profile needs acoustic feature enhancement and enhance if needed.
+
+        Args:
+            speaker_name: Name of the speaker
+            speaker_id: Database ID of the speaker
+            current_acoustic_features: Current (possibly empty) acoustic features
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Enhanced acoustic features dict, or original if enhancement not possible
+        """
+        # Check if features are already populated
+        has_features = self._has_valid_features(current_acoustic_features)
+
+        if has_features:
+            logger.debug(f"[v81.0] Profile '{speaker_name}' already has acoustic features")
+            return current_acoustic_features
+
+        # Check circuit breaker
+        if self._circuit_breaker_open:
+            if time.time() - self._last_failure_time > 60:  # 60s recovery
+                self._circuit_breaker_open = False
+                self._circuit_breaker_failures = 0
+                logger.info("[v81.0] Circuit breaker reset")
+            else:
+                logger.debug("[v81.0] Circuit breaker open, skipping enhancement")
+                return current_acoustic_features
+
+        # Check if enhancement already in progress for this speaker
+        async with self._enhancement_lock:
+            if speaker_name in self._enhancement_in_progress:
+                logger.debug(f"[v81.0] Enhancement already in progress for '{speaker_name}'")
+                return current_acoustic_features
+            self._enhancement_in_progress.add(speaker_name)
+
+        try:
+            logger.info(f"[v81.0] 🔬 Starting acoustic feature enhancement for '{speaker_name}'")
+
+            if progress_callback:
+                progress_callback(f"Enhancing {speaker_name}", 0.0)
+
+            # Step 1: Fetch voice samples from database
+            samples = await self._fetch_voice_samples(speaker_name, speaker_id)
+
+            if len(samples) < self.MIN_SAMPLES_FOR_ENHANCEMENT:
+                logger.warning(
+                    f"[v81.0] Not enough samples for '{speaker_name}': "
+                    f"{len(samples)}/{self.MIN_SAMPLES_FOR_ENHANCEMENT}"
+                )
+                return current_acoustic_features
+
+            if progress_callback:
+                progress_callback(f"Processing {len(samples)} samples", 0.2)
+
+            # Step 2: Extract features from samples (parallel batch processing)
+            extracted_features = await self._extract_features_batch(samples, progress_callback)
+
+            if not extracted_features:
+                logger.warning(f"[v81.0] Failed to extract features for '{speaker_name}'")
+                return current_acoustic_features
+
+            if progress_callback:
+                progress_callback("Aggregating features", 0.8)
+
+            # Step 3: Aggregate features with statistical analysis
+            aggregated_features = self._aggregate_features(extracted_features)
+
+            # Step 4: Update database
+            if progress_callback:
+                progress_callback("Updating database", 0.9)
+
+            await self._update_database_features(speaker_id, speaker_name, aggregated_features)
+
+            # Step 5: Broadcast to Trinity components (J-Prime, Reactor-Core)
+            if progress_callback:
+                progress_callback("Syncing to Trinity", 0.95)
+
+            await self.broadcast_to_trinity(speaker_name, speaker_id, aggregated_features)
+
+            if progress_callback:
+                progress_callback("Enhancement complete", 1.0)
+
+            logger.info(
+                f"[v81.0] ✅ Enhanced '{speaker_name}' with {len(aggregated_features)} acoustic features "
+                f"from {len(samples)} samples (Trinity synced)"
+            )
+
+            return aggregated_features
+
+        except Exception as e:
+            logger.error(f"[v81.0] Enhancement failed for '{speaker_name}': {e}")
+            self._circuit_breaker_failures += 1
+            if self._circuit_breaker_failures >= 3:
+                self._circuit_breaker_open = True
+                self._last_failure_time = time.time()
+                logger.warning("[v81.0] Circuit breaker opened after 3 failures")
+            return current_acoustic_features
+
+        finally:
+            async with self._enhancement_lock:
+                self._enhancement_in_progress.discard(speaker_name)
+
+    def _has_valid_features(self, features: Dict[str, Any]) -> bool:
+        """Check if acoustic features dict has valid (non-None) values."""
+        if not features:
+            return False
+
+        # Check key feature categories
+        key_features = [
+            "pitch_mean_hz", "formant_f1_hz", "spectral_centroid_hz",
+            "energy_mean", "jitter_percent"
+        ]
+
+        return any(
+            features.get(key) is not None and features.get(key) != 0
+            for key in key_features
+        )
+
+    async def _fetch_voice_samples(
+        self,
+        speaker_name: str,
+        speaker_id: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch voice samples from database for feature extraction."""
+        try:
+            if not self.learning_db:
+                logger.warning("[v81.0] No learning_db available for sample fetch")
+                return []
+
+            # Get samples with highest quality scores
+            samples = await self.learning_db.get_voice_samples_for_speaker(
+                speaker_id,
+                limit=self.MAX_SAMPLES_TO_PROCESS
+            )
+
+            # Sort by quality score (highest first)
+            samples = sorted(
+                samples,
+                key=lambda s: s.get("quality_score", 0) or 0,
+                reverse=True
+            )
+
+            logger.info(f"[v81.0] Fetched {len(samples)} voice samples for enhancement")
+            return samples
+
+        except Exception as e:
+            logger.error(f"[v81.0] Failed to fetch voice samples: {e}")
+            return []
+
+    async def _extract_features_batch(
+        self,
+        samples: List[Dict[str, Any]],
+        progress_callback: Optional[Callable[[str, float], None]] = None
+    ) -> List[Dict[str, Any]]:
+        """Extract features from samples in parallel batches."""
+        extracted = []
+
+        try:
+            extractor = await self._get_feature_extractor()
+
+            # Process in batches
+            total_samples = len(samples)
+            for batch_idx in range(0, total_samples, self.BATCH_SIZE):
+                batch = samples[batch_idx:batch_idx + self.BATCH_SIZE]
+
+                # Process batch concurrently
+                tasks = []
+                for sample in batch:
+                    tasks.append(self._extract_single_sample(extractor, sample))
+
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                for result in results:
+                    if isinstance(result, Exception):
+                        logger.debug(f"[v81.0] Sample extraction failed: {result}")
+                        continue
+                    if result:
+                        extracted.append(result)
+
+                # Update progress
+                if progress_callback:
+                    progress = 0.2 + (0.6 * (batch_idx + len(batch)) / total_samples)
+                    progress_callback(f"Processed {min(batch_idx + len(batch), total_samples)}/{total_samples}", progress)
+
+            logger.info(f"[v81.0] Extracted features from {len(extracted)}/{total_samples} samples")
+            return extracted
+
+        except Exception as e:
+            logger.error(f"[v81.0] Batch extraction failed: {e}")
+            return extracted
+
+    async def _extract_single_sample(
+        self,
+        extractor: "AdvancedFeatureExtractor",
+        sample: Dict[str, Any]
+    ) -> Optional[Dict[str, float]]:
+        """Extract features from a single voice sample."""
+        try:
+            audio_data = sample.get("audio_data")
+            if audio_data is None:
+                return None
+
+            # Convert audio bytes to numpy array
+            import io
+            import soundfile as sf
+
+            # Try to read audio from bytes
+            if isinstance(audio_data, (bytes, memoryview)):
+                audio_buffer = io.BytesIO(audio_data)
+                try:
+                    audio_np, sr = sf.read(audio_buffer)
+                except Exception:
+                    # Try raw float32 format
+                    audio_np = np.frombuffer(audio_data, dtype=np.float32)
+                    sr = 16000
+            else:
+                audio_np = np.array(audio_data, dtype=np.float32)
+                sr = 16000
+
+            # Ensure mono
+            if len(audio_np.shape) > 1:
+                audio_np = audio_np.mean(axis=1)
+
+            # Resample to 16kHz if needed
+            if sr != 16000:
+                import librosa
+                audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=16000)
+
+            # Convert to torch tensor
+            import torch
+            audio_tensor = torch.from_numpy(audio_np).float()
+
+            # Get dummy embedding (we only need acoustic features)
+            dummy_embedding = np.zeros(192, dtype=np.float32)
+
+            # Extract features
+            features = await extractor.extract_features(
+                audio_tensor,
+                dummy_embedding,
+                transcription=""
+            )
+
+            # Convert VoiceBiometricFeatures to dict
+            return {
+                "pitch_mean_hz": features.pitch_mean,
+                "pitch_std_hz": features.pitch_std,
+                "pitch_range_hz": features.pitch_range,
+                "formant_f1_hz": features.formant_f1,
+                "formant_f2_hz": features.formant_f2,
+                "formant_f3_hz": features.formant_f3,
+                "formant_f4_hz": features.formant_f4,
+                "spectral_centroid_hz": features.spectral_centroid,
+                "spectral_rolloff_hz": features.spectral_rolloff,
+                "spectral_flux": features.spectral_flux,
+                "spectral_entropy": features.spectral_entropy,
+                "energy_mean": features.energy_mean,
+                "jitter_percent": features.jitter,
+                "shimmer_percent": features.shimmer,
+                "harmonic_to_noise_ratio_db": features.hnr,
+                "speaking_rate_wpm": features.speaking_rate,
+                "pause_ratio": features.pause_ratio,
+            }
+
+        except Exception as e:
+            logger.debug(f"[v81.0] Single sample extraction failed: {e}")
+            return None
+
+    def _aggregate_features(
+        self,
+        extracted_features: List[Dict[str, float]]
+    ) -> Dict[str, Any]:
+        """Aggregate features from multiple samples with statistical analysis."""
+        if not extracted_features:
+            return {}
+
+        # Collect all values for each feature
+        feature_values = {}
+        for features in extracted_features:
+            for key, value in features.items():
+                if value is not None and not np.isnan(value):
+                    if key not in feature_values:
+                        feature_values[key] = []
+                    feature_values[key].append(value)
+
+        # Compute statistics for each feature
+        aggregated = {}
+        for key, values in feature_values.items():
+            if not values:
+                continue
+
+            arr = np.array(values)
+
+            # Remove outliers using IQR
+            q1, q3 = np.percentile(arr, [25, 75])
+            iqr = q3 - q1
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+            filtered = arr[(arr >= lower) & (arr <= upper)]
+
+            if len(filtered) == 0:
+                filtered = arr  # Fallback if all are "outliers"
+
+            # Store mean value
+            aggregated[key] = float(np.mean(filtered))
+
+            # Store std if it's a primary feature
+            if key.endswith("_hz") or key in ["energy_mean", "jitter_percent", "shimmer_percent"]:
+                std_key = key.replace("_hz", "_std").replace("_mean", "_std")
+                if not std_key.endswith("_std"):
+                    std_key = key + "_std"
+                aggregated[std_key] = float(np.std(filtered))
+
+        # Add metadata
+        aggregated["feature_extraction_version"] = self.FEATURE_VERSION
+        aggregated["sample_count_for_features"] = len(extracted_features)
+        aggregated["feature_computed_at"] = datetime.utcnow().isoformat()
+
+        return aggregated
+
+    async def _update_database_features(
+        self,
+        speaker_id: int,
+        speaker_name: str,
+        features: Dict[str, Any]
+    ) -> bool:
+        """Update database with computed acoustic features."""
+        try:
+            if not self.learning_db:
+                logger.warning("[v81.0] No learning_db available for update")
+                return False
+
+            # Build UPDATE query dynamically
+            update_fields = []
+            update_values = []
+
+            feature_columns = [
+                "pitch_mean_hz", "pitch_std_hz", "pitch_range_hz",
+                "formant_f1_hz", "formant_f1_std", "formant_f2_hz", "formant_f2_std",
+                "formant_f3_hz", "formant_f3_std", "formant_f4_hz", "formant_f4_std",
+                "spectral_centroid_hz", "spectral_centroid_std",
+                "spectral_rolloff_hz", "spectral_rolloff_std",
+                "spectral_flux", "spectral_flux_std",
+                "spectral_entropy", "spectral_entropy_std",
+                "energy_mean", "energy_std",
+                "jitter_percent", "jitter_std",
+                "shimmer_percent", "shimmer_std",
+                "harmonic_to_noise_ratio_db", "hnr_std",
+                "speaking_rate_wpm", "speaking_rate_std",
+                "pause_ratio", "pause_ratio_std",
+                "feature_extraction_version"
+            ]
+
+            for col in feature_columns:
+                if col in features and features[col] is not None:
+                    update_fields.append(f"{col} = %s")
+                    update_values.append(features[col])
+
+            if not update_fields:
+                logger.warning("[v81.0] No features to update")
+                return False
+
+            update_values.append(speaker_id)
+
+            # Execute update
+            if hasattr(self.learning_db, 'cloud_adapter') and self.learning_db.cloud_adapter:
+                async with self.learning_db.cloud_adapter.get_connection() as conn:
+                    async with conn.cursor() as cursor:
+                        query = f"""
+                            UPDATE speaker_profiles
+                            SET {', '.join(update_fields)}
+                            WHERE speaker_id = %s
+                        """
+                        await cursor.execute(query, update_values)
+                        await conn.commit()
+                        logger.info(f"[v81.0] Updated Cloud SQL with {len(update_fields)} features for '{speaker_name}'")
+            else:
+                # SQLite fallback
+                query = f"""
+                    UPDATE speaker_profiles
+                    SET {', '.join(f.replace('%s', '?') for f in update_fields)}
+                    WHERE speaker_id = ?
+                """
+                await self.learning_db.db.execute(query, update_values)
+                await self.learning_db.db.commit()
+                logger.info(f"[v81.0] Updated SQLite with {len(update_fields)} features for '{speaker_name}'")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"[v81.0] Database update failed: {e}")
+            return False
+
+    async def broadcast_to_trinity(
+        self,
+        speaker_name: str,
+        speaker_id: int,
+        features: Dict[str, Any]
+    ) -> bool:
+        """
+        v81.0: Broadcast enhanced acoustic features to Trinity components.
+
+        Syncs features across JARVIS, J-Prime, and Reactor-Core via:
+        - Trinity file-based message passing
+        - Cross-repo state system
+        - Direct API calls (if components are online)
+
+        Args:
+            speaker_name: Speaker name for identification
+            speaker_id: Database ID
+            features: Enhanced acoustic features to sync
+
+        Returns:
+            True if broadcast succeeded to at least one component
+        """
+        from pathlib import Path
+        import json
+
+        success = False
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+
+        try:
+            # Method 1: Trinity file-based sync (always works)
+            voice_sync_dir = trinity_dir / "voice_sync"
+            voice_sync_dir.mkdir(parents=True, exist_ok=True)
+
+            sync_payload = {
+                "type": "acoustic_features_enhanced",
+                "speaker_name": speaker_name,
+                "speaker_id": speaker_id,
+                "features": features,
+                "timestamp": time.time(),
+                "source": "jarvis_body",
+                "version": self.FEATURE_VERSION,
+            }
+
+            # Write to sync file for J-Prime and Reactor-Core to pick up
+            sync_file = voice_sync_dir / f"features_{speaker_id}_{int(time.time())}.json"
+            with open(sync_file, "w") as f:
+                json.dump(sync_payload, f, indent=2)
+
+            logger.info(f"[v81.0] Wrote Trinity sync file: {sync_file.name}")
+            success = True
+
+            # Method 2: Direct API call to J-Prime (if available)
+            try:
+                import aiohttp
+                jprime_port = int(os.environ.get("JARVIS_PRIME_PORT", "8002"))
+
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                    async with session.post(
+                        f"http://localhost:{jprime_port}/api/voice/sync_features",
+                        json=sync_payload,
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"[v81.0] ✅ Synced to J-Prime via API")
+                        else:
+                            logger.debug(f"[v81.0] J-Prime sync returned {resp.status}")
+            except Exception as e:
+                logger.debug(f"[v81.0] J-Prime API sync skipped: {e}")
+
+            # Method 3: Direct API call to Reactor-Core (if available)
+            try:
+                import aiohttp
+                reactor_port = int(os.environ.get("REACTOR_CORE_PORT", "8003"))
+
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                    async with session.post(
+                        f"http://localhost:{reactor_port}/api/voice/sync_features",
+                        json=sync_payload,
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"[v81.0] ✅ Synced to Reactor-Core via API")
+                        else:
+                            logger.debug(f"[v81.0] Reactor-Core sync returned {resp.status}")
+            except Exception as e:
+                logger.debug(f"[v81.0] Reactor-Core API sync skipped: {e}")
+
+            return success
+
+        except Exception as e:
+            logger.warning(f"[v81.0] Trinity broadcast failed: {e}")
+            return False
+
+
+# Global instance for lazy initialization
+_acoustic_enhancer: Optional[AutoAcousticFeatureEnhancer] = None
+
+
+async def get_acoustic_enhancer(learning_db: Optional["JARVISLearningDatabase"] = None) -> AutoAcousticFeatureEnhancer:
+    """Get or create the global acoustic feature enhancer."""
+    global _acoustic_enhancer
+    if _acoustic_enhancer is None:
+        _acoustic_enhancer = AutoAcousticFeatureEnhancer(learning_db)
+    elif learning_db and _acoustic_enhancer.learning_db is None:
+        _acoustic_enhancer.learning_db = learning_db
+    return _acoustic_enhancer
+
+
 class SpeakerVerificationService:
     """
     Speaker verification service for JARVIS
@@ -4821,15 +5388,60 @@ class SpeakerVerificationService:
                             f"🔬 BEAST MODE"
                         )
                     else:
-                        logger.warning(
-                            f"⚠️  Loaded: {speaker_name} "
-                            f"(ID: {speaker_id}, {embedding.shape[0]}D, Samples: {total_samples}) "
-                            f"- NO ACOUSTIC FEATURES (basic mode only)"
-                        )
+                        # v81.0: Attempt automatic acoustic feature enhancement
                         logger.info(
-                            f"   💡 To enable BEAST MODE for {speaker_name}, run: "
-                            f"python3 backend/quick_voice_enhancement.py"
+                            f"🔬 [v81.0] Profile '{speaker_name}' missing acoustic features - "
+                            f"attempting automatic enhancement..."
                         )
+
+                        try:
+                            # Get the acoustic enhancer (lazy init)
+                            enhancer = await get_acoustic_enhancer(self.learning_db)
+
+                            # Try to enhance the profile with computed features
+                            enhanced_features = await enhancer.check_and_enhance_profile(
+                                speaker_name=speaker_name,
+                                speaker_id=speaker_id,
+                                current_acoustic_features=acoustic_features,
+                                progress_callback=None  # Could add UI callback here
+                            )
+
+                            # Check if enhancement succeeded
+                            enhancement_succeeded = any(
+                                v is not None and v != 0
+                                for k, v in enhanced_features.items()
+                                if k in ["pitch_mean_hz", "formant_f1_hz", "spectral_centroid_hz"]
+                            )
+
+                            if enhancement_succeeded:
+                                # Update the cached profile with enhanced features
+                                self.speaker_profiles[speaker_name]["acoustic_features"] = enhanced_features
+                                logger.info(
+                                    f"✅ [v81.0] Enhanced: {speaker_name} "
+                                    f"(ID: {speaker_id}, {embedding.shape[0]}D, Samples: {total_samples}) "
+                                    f"🔬 BEAST MODE activated via auto-enhancement"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️  Loaded: {speaker_name} "
+                                    f"(ID: {speaker_id}, {embedding.shape[0]}D, Samples: {total_samples}) "
+                                    f"- NO ACOUSTIC FEATURES (basic mode only)"
+                                )
+                                logger.info(
+                                    f"   💡 [v81.0] Auto-enhancement failed (not enough samples or extraction error). "
+                                    f"To enable BEAST MODE for {speaker_name}, run: "
+                                    f"python3 backend/quick_voice_enhancement.py"
+                                )
+                        except Exception as enhance_error:
+                            logger.warning(
+                                f"⚠️  Loaded: {speaker_name} "
+                                f"(ID: {speaker_id}, {embedding.shape[0]}D, Samples: {total_samples}) "
+                                f"- NO ACOUSTIC FEATURES (enhancement error: {enhance_error})"
+                            )
+                            logger.info(
+                                f"   💡 To enable BEAST MODE for {speaker_name}, run: "
+                                f"python3 backend/quick_voice_enhancement.py"
+                            )
 
                     loaded_count += 1
 

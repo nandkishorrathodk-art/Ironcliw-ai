@@ -33,6 +33,64 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
+def _resolve_anthropic_api_key() -> Optional[str]:
+    """
+    v78.2: Intelligently resolve ANTHROPIC_API_KEY using multi-backend fallback.
+
+    Resolution order:
+    1. Environment variable (fast path)
+    2. SecretManager (GCP, Keychain)
+    3. .env file loading
+
+    Returns:
+        API key string or None if not found
+    """
+    # Fast path: Check environment first
+    env_key = os.environ.get("ANTHROPIC_API_KEY")
+    if env_key:
+        return env_key
+
+    # Try SecretManager for multi-backend resolution
+    try:
+        from backend.core.secret_manager import get_secret
+
+        secret = get_secret("anthropic-api-key")
+        if secret:
+            os.environ["ANTHROPIC_API_KEY"] = secret
+            logger.debug("[AgenticConfig] API key resolved from SecretManager")
+            return secret
+
+        secret = get_secret("ANTHROPIC_API_KEY")
+        if secret:
+            os.environ["ANTHROPIC_API_KEY"] = secret
+            return secret
+    except Exception:
+        pass
+
+    # Last resort: .env file
+    try:
+        from pathlib import Path
+        env_paths = [
+            Path(__file__).parent.parent / ".env",
+            Path(__file__).parent.parent.parent / ".env",
+            Path.home() / ".jarvis" / ".env",
+        ]
+        for env_path in env_paths:
+            if env_path.exists():
+                with open(env_path) as f:
+                    for line in f:
+                        if line.strip().startswith("ANTHROPIC_API_KEY="):
+                            key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if key:
+                                os.environ["ANTHROPIC_API_KEY"] = key
+                                logger.debug(f"[AgenticConfig] API key loaded from {env_path}")
+                                return key
+    except Exception:
+        pass
+
+    return None
+
+
 class ConfigSource(Enum):
     """Source of configuration value."""
     DEFAULT = "default"
@@ -54,7 +112,7 @@ class ComputerUseConfig:
     api_timeout: float = field(default_factory=lambda: float(os.getenv(
         "JARVIS_API_TIMEOUT", "60.0"
     )))
-    api_key: Optional[str] = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
+    api_key: Optional[str] = field(default_factory=_resolve_anthropic_api_key)
 
     # Execution settings
     max_actions_per_task: int = field(default_factory=lambda: int(os.getenv(

@@ -5007,14 +5007,21 @@ class AgenticTaskRunner:
 
 
 # =============================================================================
-# Singleton Access (for backward compatibility)
+# Singleton Access with Auto-Initialization Factory Pattern (v78.2)
 # =============================================================================
 
 _runner_instance: Optional[AgenticTaskRunner] = None
+_runner_lock = asyncio.Lock() if hasattr(asyncio, 'Lock') else None
+_runner_initializing: bool = False
 
 
 def get_agentic_runner() -> Optional[AgenticTaskRunner]:
-    """Get the global runner instance (if set)."""
+    """
+    Get the global runner instance.
+
+    Returns the existing instance or None if not yet initialized.
+    For auto-initialization, use get_or_create_agentic_runner() instead.
+    """
     return _runner_instance
 
 
@@ -5022,6 +5029,85 @@ def set_agentic_runner(runner: AgenticTaskRunner):
     """Set the global runner instance."""
     global _runner_instance
     _runner_instance = runner
+
+
+async def get_or_create_agentic_runner(
+    config: Optional[AgenticRunnerConfig] = None,
+    tts_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+    watchdog: Optional[Any] = None,
+    timeout: float = 30.0,
+) -> Optional[AgenticTaskRunner]:
+    """
+    Get existing runner or create and initialize a new one (factory pattern).
+
+    This is the preferred method for accessing the agentic runner as it:
+    - Returns existing instance if available (fast path)
+    - Auto-creates and initializes if not exists
+    - Thread-safe with async lock
+    - Prevents duplicate initialization races
+    - Has configurable timeout for initialization
+
+    Args:
+        config: Optional runner configuration
+        tts_callback: Optional TTS callback for voice feedback
+        watchdog: Optional agentic watchdog for safety monitoring
+        timeout: Maximum time to wait for initialization (default 30s)
+
+    Returns:
+        Initialized AgenticTaskRunner or None if initialization fails
+    """
+    global _runner_instance, _runner_initializing
+
+    # Fast path: return existing instance
+    if _runner_instance is not None:
+        return _runner_instance
+
+    # Create lock if needed (handles module-level initialization edge case)
+    global _runner_lock
+    if _runner_lock is None:
+        _runner_lock = asyncio.Lock()
+
+    async with _runner_lock:
+        # Double-check after acquiring lock
+        if _runner_instance is not None:
+            return _runner_instance
+
+        # Prevent re-entrant initialization
+        if _runner_initializing:
+            logger.warning("[AgenticRunner] Initialization already in progress, waiting...")
+            # Wait for other initializer to complete
+            for _ in range(int(timeout * 10)):  # Check every 100ms
+                await asyncio.sleep(0.1)
+                if _runner_instance is not None:
+                    return _runner_instance
+            logger.error("[AgenticRunner] Timed out waiting for initialization")
+            return None
+
+        try:
+            _runner_initializing = True
+            logger.info("[AgenticRunner] Auto-creating runner instance...")
+
+            runner = await asyncio.wait_for(
+                create_agentic_runner(
+                    config=config,
+                    tts_callback=tts_callback,
+                    watchdog=watchdog,
+                ),
+                timeout=timeout
+            )
+
+            _runner_instance = runner
+            logger.info("[AgenticRunner] ✅ Runner auto-initialized successfully")
+            return runner
+
+        except asyncio.TimeoutError:
+            logger.error(f"[AgenticRunner] Initialization timed out after {timeout}s")
+            return None
+        except Exception as e:
+            logger.error(f"[AgenticRunner] Auto-initialization failed: {e}")
+            return None
+        finally:
+            _runner_initializing = False
 
 
 async def create_agentic_runner(

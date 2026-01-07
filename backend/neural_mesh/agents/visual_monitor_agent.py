@@ -1310,29 +1310,28 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 self._computer_use_connector = None
 
         async def init_agentic_runner():
-            """AgenticTaskRunner - Non-blocking (enables complex workflows)."""
+            """AgenticTaskRunner - Auto-initializing factory pattern (v78.2)."""
             if not self.config.enable_agentic_runner:
                 return  # Skip if disabled
 
             comp_start = time_module.time()
             try:
-                def _init_agentic_runner():
-                    from backend.core.agentic_task_runner import get_agentic_runner
-                    return get_agentic_runner()
+                # v78.2: Use auto-initializing factory instead of manual getter
+                # This will create the runner if it doesn't exist, with proper async handling
+                from backend.core.agentic_task_runner import get_or_create_agentic_runner
 
-                self._agentic_task_runner = await asyncio.wait_for(
-                    loop.run_in_executor(None, _init_agentic_runner),
+                self._agentic_task_runner = await get_or_create_agentic_runner(
                     timeout=agentic_runner_init_timeout
                 )
 
                 if self._agentic_task_runner:
                     component_status["agentic_runner"]["success"] = True
                     component_status["agentic_runner"]["duration"] = time_module.time() - comp_start
-                    logger.info("✅ Agentic Runner Ready")
+                    logger.info("✅ Agentic Runner Ready (auto-initialized)")
                 else:
-                    component_status["agentic_runner"]["error"] = "returned None"
+                    component_status["agentic_runner"]["error"] = "auto-initialization returned None"
                     component_status["agentic_runner"]["duration"] = time_module.time() - comp_start
-                    logger.warning("AgenticTaskRunner returned None - using Computer Use fallback")
+                    logger.warning("AgenticTaskRunner auto-init returned None - using Computer Use fallback")
 
             except asyncio.TimeoutError:
                 component_status["agentic_runner"]["error"] = f"timeout ({agentic_runner_init_timeout}s)"
@@ -1388,30 +1387,55 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 self.spatial_agent = None
 
         # =====================================================================
-        # LAUNCH ALL TASKS IN PARALLEL
+        # DEPENDENCY-AWARE TIERED INITIALIZATION (v78.2)
         # =====================================================================
-        tasks = [
-            asyncio.create_task(init_ferrari_engine(), name="ferrari"),
-            asyncio.create_task(init_watcher_manager(), name="watcher"),
-            asyncio.create_task(init_detector(), name="detector"),
-            asyncio.create_task(init_computer_use(), name="computer_use"),
-            asyncio.create_task(init_agentic_runner(), name="agentic"),
-            asyncio.create_task(init_spatial_agent(), name="spatial"),
-        ]
+        # Tier 1: Foundation (no dependencies, run in parallel)
+        # Tier 2: Core Services (depend on Tier 1)
+        # Tier 3: Dependent Services (depend on Tier 2)
+        # This prevents race conditions and ensures proper initialization order
+        # =====================================================================
 
-        # Wait for all with global timeout
+        async def run_tier(tier_name: str, init_funcs: list, tier_timeout: float):
+            """Run a tier of initialization functions in parallel with timeout."""
+            tier_tasks = [asyncio.create_task(fn(), name=fn.__name__) for fn in init_funcs]
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tier_tasks, return_exceptions=True),
+                    timeout=tier_timeout
+                )
+                logger.debug(f"[Init] {tier_name} completed")
+            except asyncio.TimeoutError:
+                logger.warning(f"[Init] {tier_name} timed out after {tier_timeout}s")
+                for task in tier_tasks:
+                    if not task.done():
+                        task.cancel()
+
+        # Tier 1: Foundation components (no dependencies)
+        tier1_funcs = [init_ferrari_engine, init_watcher_manager, init_detector]
+        tier1_timeout = parallel_timeout * 0.4  # 40% of total timeout
+
+        # Tier 2: Core services (depend on foundation being ready)
+        tier2_funcs = [init_computer_use]
+        tier2_timeout = parallel_timeout * 0.3  # 30% of total timeout
+
+        # Tier 3: Dependent services (depend on core services)
+        tier3_funcs = [init_agentic_runner, init_spatial_agent]
+        tier3_timeout = parallel_timeout * 0.3  # 30% of total timeout
+
+        # Execute tiers sequentially, components within each tier in parallel
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=parallel_timeout
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"⚠️ Parallel initialization timed out after {parallel_timeout}s")
-            logger.warning("   Some components may still be initializing in background")
-            # Cancel remaining tasks
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
+            logger.debug("[Init] Starting Tier 1: Foundation components...")
+            await run_tier("Tier 1 (Foundation)", tier1_funcs, tier1_timeout)
+
+            logger.debug("[Init] Starting Tier 2: Core services...")
+            await run_tier("Tier 2 (Core Services)", tier2_funcs, tier2_timeout)
+
+            logger.debug("[Init] Starting Tier 3: Dependent services...")
+            await run_tier("Tier 3 (Dependent)", tier3_funcs, tier3_timeout)
+
+        except Exception as e:
+            logger.warning(f"⚠️ Tiered initialization error: {e}")
+            logger.warning("   Some components may not be fully initialized")
 
         # =====================================================================
         # INITIALIZATION COMPLETE - Report Status

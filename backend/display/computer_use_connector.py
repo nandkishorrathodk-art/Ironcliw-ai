@@ -858,10 +858,18 @@ Always provide your reasoning before taking action, including grid position esti
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("anthropic package required. Install with: pip install anthropic")
 
-        import os
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        # v78.2: Use unified SecretManager for multi-backend API key resolution
+        # Priority: 1) Explicit param 2) GCP Secret Manager 3) macOS Keychain 4) Environment
+        self.api_key = api_key
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY required")
+            self.api_key = self._resolve_api_key_intelligent()
+        if not self.api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY required. Configure via: "
+                "1) GCP Secret Manager (anthropic-api-key) "
+                "2) macOS Keychain (JARVIS/ANTHROPIC_API_KEY) "
+                "3) Environment variable (ANTHROPIC_API_KEY)"
+            )
 
         self.client = AsyncAnthropic(api_key=self.api_key)
         self.max_actions_per_task = max_actions_per_task
@@ -942,6 +950,81 @@ Always provide your reasoning before taking action, including grid position esti
         self._refinements_initialized = False
 
         logger.info("[COMPUTER USE] Claude Computer Use Connector initialized with async support")
+
+    @staticmethod
+    def _resolve_api_key_intelligent() -> Optional[str]:
+        """
+        Intelligently resolve ANTHROPIC_API_KEY using multi-backend fallback.
+
+        Resolution order (highest to lowest priority):
+        1. GCP Secret Manager (anthropic-api-key) - Production
+        2. macOS Keychain (JARVIS/ANTHROPIC_API_KEY) - Local dev
+        3. Environment variable (ANTHROPIC_API_KEY) - CI/CD fallback
+        4. .env file loading as last resort
+
+        Returns:
+            API key string or None if not found in any backend
+        """
+        import os
+
+        # Fast path: Check environment first (most common case)
+        env_key = os.environ.get("ANTHROPIC_API_KEY")
+        if env_key:
+            logger.debug("[API KEY] Resolved from environment variable")
+            return env_key
+
+        # Try unified SecretManager for multi-backend resolution
+        try:
+            from backend.core.secret_manager import get_secret
+
+            # Try GCP-style secret name first
+            secret = get_secret("anthropic-api-key")
+            if secret:
+                # Also cache in environment for faster subsequent access
+                os.environ["ANTHROPIC_API_KEY"] = secret
+                logger.info("[API KEY] Resolved from SecretManager (GCP/Keychain)")
+                return secret
+
+            # Try environment-style name as fallback
+            secret = get_secret("ANTHROPIC_API_KEY")
+            if secret:
+                os.environ["ANTHROPIC_API_KEY"] = secret
+                logger.info("[API KEY] Resolved from SecretManager (env-style)")
+                return secret
+
+        except ImportError:
+            logger.debug("[API KEY] SecretManager not available")
+        except Exception as e:
+            logger.debug(f"[API KEY] SecretManager error: {e}")
+
+        # Last resort: Try loading from .env files
+        try:
+            from pathlib import Path
+
+            # Find .env files in common locations
+            search_paths = [
+                Path(__file__).parent.parent / ".env",  # backend/.env
+                Path(__file__).parent.parent.parent / ".env",  # project root/.env
+                Path.home() / ".jarvis" / ".env",  # ~/.jarvis/.env
+            ]
+
+            for env_path in search_paths:
+                if env_path.exists():
+                    # Parse .env file manually (no dotenv dependency required)
+                    with open(env_path) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("ANTHROPIC_API_KEY="):
+                                key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                                if key:
+                                    os.environ["ANTHROPIC_API_KEY"] = key
+                                    logger.info(f"[API KEY] Loaded from {env_path}")
+                                    return key
+        except Exception as e:
+            logger.debug(f"[API KEY] .env loading failed: {e}")
+
+        logger.warning("[API KEY] Could not resolve ANTHROPIC_API_KEY from any backend")
+        return None
 
     async def _ensure_refinements_initialized(self) -> bool:
         """Lazily initialize Open Interpreter refinement components."""

@@ -44,8 +44,41 @@ logger = logging.getLogger(__name__)
 
 
 # Import proprioception functions (lazy to avoid circular imports)
+# v78.2: Fixed import paths - use absolute backend.core paths for reliability
 def _get_proprioception_functions():
-    """Lazy import of proprioception functions."""
+    """
+    Lazy import of proprioception functions with multi-path fallback.
+
+    Tries multiple import strategies to handle different execution contexts:
+    1. Absolute path (backend.core.*) - Most reliable
+    2. Relative path (core.*) - Fallback for certain exec contexts
+    3. Direct module import - Last resort
+
+    Returns dict of functions or None if all strategies fail.
+    """
+    # Strategy 1: Absolute import (preferred)
+    try:
+        from backend.core.computer_use_bridge import (
+            get_current_context,
+            switch_to_app_smart,
+            get_spatial_manager,
+            SpatialContext,
+            SwitchOperation,
+            SwitchResult,
+        )
+        logger.debug("[Proprioception] Loaded via absolute import (backend.core)")
+        return {
+            "get_current_context": get_current_context,
+            "switch_to_app_smart": switch_to_app_smart,
+            "get_spatial_manager": get_spatial_manager,
+            "SpatialContext": SpatialContext,
+            "SwitchOperation": SwitchOperation,
+            "SwitchResult": SwitchResult,
+        }
+    except ImportError:
+        pass
+
+    # Strategy 2: Relative import (fallback for some PYTHONPATH configs)
     try:
         from core.computer_use_bridge import (
             get_current_context,
@@ -55,6 +88,37 @@ def _get_proprioception_functions():
             SwitchOperation,
             SwitchResult,
         )
+        logger.debug("[Proprioception] Loaded via relative import (core)")
+        return {
+            "get_current_context": get_current_context,
+            "switch_to_app_smart": switch_to_app_smart,
+            "get_spatial_manager": get_spatial_manager,
+            "SpatialContext": SpatialContext,
+            "SwitchOperation": SwitchOperation,
+            "SwitchResult": SwitchResult,
+        }
+    except ImportError:
+        pass
+
+    # Strategy 3: Dynamic path resolution
+    try:
+        import sys
+        from pathlib import Path
+
+        # Add backend to path if not present
+        backend_path = Path(__file__).parent.parent.parent
+        if str(backend_path) not in sys.path:
+            sys.path.insert(0, str(backend_path))
+
+        from core.computer_use_bridge import (
+            get_current_context,
+            switch_to_app_smart,
+            get_spatial_manager,
+            SpatialContext,
+            SwitchOperation,
+            SwitchResult,
+        )
+        logger.debug("[Proprioception] Loaded via dynamic path resolution")
         return {
             "get_current_context": get_current_context,
             "switch_to_app_smart": switch_to_app_smart,
@@ -64,7 +128,7 @@ def _get_proprioception_functions():
             "SwitchResult": SwitchResult,
         }
     except ImportError as e:
-        logger.warning(f"Proprioception functions not available: {e}")
+        logger.warning(f"[Proprioception] All import strategies failed: {e}")
         return None
 
 
