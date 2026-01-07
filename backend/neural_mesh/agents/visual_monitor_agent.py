@@ -1158,15 +1158,20 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         loop = asyncio.get_event_loop()
 
         # Configurable timeouts from environment (no hardcoding)
-        ferrari_init_timeout = float(os.getenv('JARVIS_FERRARI_INIT_TIMEOUT', '5.0'))
-        watcher_mgr_init_timeout = float(os.getenv('JARVIS_WATCHER_MGR_INIT_TIMEOUT', '3.0'))
-        detector_init_timeout = float(os.getenv('JARVIS_DETECTOR_INIT_TIMEOUT', '5.0'))
-        computer_use_init_timeout = float(os.getenv('JARVIS_COMPUTER_USE_INIT_TIMEOUT', '3.0'))
-        agentic_runner_init_timeout = float(os.getenv('JARVIS_AGENTIC_RUNNER_INIT_TIMEOUT', '3.0'))
-        spatial_agent_init_timeout = float(os.getenv('JARVIS_SPATIAL_AGENT_INIT_TIMEOUT', '5.0'))
+        ferrari_init_timeout = float(os.getenv('JARVIS_FERRARI_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
+        watcher_mgr_init_timeout = float(os.getenv('JARVIS_WATCHER_MGR_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
+        detector_init_timeout = float(os.getenv('JARVIS_DETECTOR_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
+        computer_use_init_timeout = float(os.getenv('JARVIS_COMPUTER_USE_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
+        agentic_runner_init_timeout = float(os.getenv('JARVIS_AGENTIC_RUNNER_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 3s
+        spatial_agent_init_timeout = float(os.getenv('JARVIS_SPATIAL_AGENT_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
 
-        # Overall parallel timeout - max of individual + buffer
-        parallel_timeout = float(os.getenv('JARVIS_PARALLEL_INIT_TIMEOUT', '10.0'))
+        # v78.1: Smart parallel timeout - max of individual timeouts + 5s buffer
+        individual_timeouts = [
+            ferrari_init_timeout, watcher_mgr_init_timeout, detector_init_timeout,
+            computer_use_init_timeout, agentic_runner_init_timeout, spatial_agent_init_timeout
+        ]
+        default_parallel_timeout = max(individual_timeouts) + 5.0
+        parallel_timeout = float(os.getenv('JARVIS_PARALLEL_INIT_TIMEOUT', str(default_parallel_timeout)))
 
         # Track component status for final report
         component_status = {
