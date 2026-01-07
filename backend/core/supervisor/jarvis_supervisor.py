@@ -173,6 +173,75 @@ class SupervisorStats:
     current_version: Optional[str] = None
 
 
+@dataclass
+class HealthCheckState:
+    """
+    v83.0: Track health check state with circuit breaker logic.
+
+    Moved to module level to fix Python 3.9 dataclass decorator bug where
+    defining dataclasses inside async functions causes AttributeError:
+    "'NoneType' object has no attribute '__dict__'" due to module resolution failure.
+
+    Features:
+    - Circuit breaker pattern for resilient health checking
+    - Consecutive failure tracking with automatic circuit opening
+    - Half-open state for recovery testing after cooldown
+    - Check counting for monitoring/diagnostics
+    """
+    consecutive_failures: int = 0
+    last_success: float = 0.0
+    is_ready: bool = False
+    circuit_open: bool = False
+    check_count: int = 0
+    last_check_time: float = 0.0  # v83.0: Track when last check occurred
+    total_latency_ms: float = 0.0  # v83.0: Track cumulative latency for averaging
+
+    def record_success(self, latency_ms: float = 0.0) -> None:
+        """Record a successful health check."""
+        self.consecutive_failures = 0
+        self.last_success = time.time()
+        self.is_ready = True
+        self.circuit_open = False
+        self.check_count += 1
+        self.last_check_time = time.time()
+        self.total_latency_ms += latency_ms
+
+    def record_failure(self) -> None:
+        """Record a failed health check with circuit breaker logic."""
+        self.consecutive_failures += 1
+        self.check_count += 1
+        self.last_check_time = time.time()
+        # Open circuit after 10 consecutive failures
+        if self.consecutive_failures >= 10:
+            self.circuit_open = True
+
+    def should_check(self) -> bool:
+        """Circuit breaker: skip checks if circuit is open (with half-open recovery)."""
+        if self.is_ready:
+            return False  # Already ready, no need to check
+        if self.circuit_open:
+            # Half-open: try again after 5 seconds cooldown
+            return time.time() - self.last_check_time > 5.0
+        return True
+
+    def reset(self) -> None:
+        """v83.0: Reset state for fresh start."""
+        self.consecutive_failures = 0
+        self.last_success = 0.0
+        self.is_ready = False
+        self.circuit_open = False
+        self.check_count = 0
+        self.last_check_time = 0.0
+        self.total_latency_ms = 0.0
+
+    @property
+    def avg_latency_ms(self) -> float:
+        """v83.0: Calculate average latency."""
+        if self.check_count == 0:
+            return 0.0
+        return self.total_latency_ms / self.check_count
+
+
 class JARVISSupervisor:
     """
     Main Lifecycle Supervisor for JARVIS.
@@ -1020,9 +1089,8 @@ class JARVISSupervisor:
             return
         
         import aiohttp
-        from dataclasses import dataclass, field
         from typing import Tuple
-        
+
         # === DYNAMIC CONFIGURATION (no hardcoding) ===
         backend_port = int(os.environ.get("BACKEND_PORT", "8010"))
         frontend_port = int(os.environ.get("FRONTEND_PORT", "3000"))
@@ -1044,43 +1112,12 @@ class JARVISSupervisor:
         frontend_optional = os.environ.get("FRONTEND_OPTIONAL", "false").lower() == "true"
         frontend_soft_timeout = float(os.environ.get("FRONTEND_SOFT_TIMEOUT", "60.0"))  # After 60s, treat as optional
         frontend_became_optional = False  # Tracks if we switched to optional mode
-        
+
         backend_url = f"http://localhost:{backend_port}"
         frontend_url = f"http://localhost:{frontend_port}"
-        
+
         # === INTELLIGENT STATE TRACKING ===
-        @dataclass
-        class HealthCheckState:
-            """Track health check state with circuit breaker logic."""
-            consecutive_failures: int = 0
-            last_success: float = 0.0
-            is_ready: bool = False
-            circuit_open: bool = False
-            check_count: int = 0
-            
-            def record_success(self):
-                self.consecutive_failures = 0
-                self.last_success = time.time()
-                self.is_ready = True
-                self.circuit_open = False
-                self.check_count += 1
-            
-            def record_failure(self):
-                self.consecutive_failures += 1
-                self.check_count += 1
-                # Open circuit after 10 consecutive failures
-                if self.consecutive_failures >= 10:
-                    self.circuit_open = True
-            
-            def should_check(self) -> bool:
-                """Circuit breaker: skip checks if circuit is open."""
-                if self.is_ready:
-                    return False  # Already ready, no need to check
-                if self.circuit_open:
-                    # Half-open: try again after 5 seconds
-                    return time.time() - self.last_success > 5.0
-                return True
-        
+        # v83.0: Using module-level HealthCheckState to fix Python 3.9 dataclass bug
         backend_state = HealthCheckState()
         frontend_state = HealthCheckState()
         

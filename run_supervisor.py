@@ -2862,12 +2862,16 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             # Uses the advanced orchestrator to verify all Trinity components
             # are properly connected and healthy before proceeding.
+            # v78.1: Pre-startup phase - skip HTTP checks since backend hasn't started yet.
+            # Backend/CodingCouncil HTTP endpoints won't exist until supervisor.run() completes.
+            # Only verify heartbeat-based components (J-Prime, Reactor-Core) at this stage.
             # ═══════════════════════════════════════════════════════════════════
             if hasattr(self, '_orchestrator_hooks') and self._orchestrator_hooks:
                 try:
-                    self.logger.info("[Orchestrator] Verifying Trinity connections...")
+                    self.logger.info("[Orchestrator] Verifying Trinity connections (pre-startup)...")
                     health_status = await self._orchestrator_hooks.verify_trinity_connections(
-                        timeout=30.0
+                        timeout=30.0,
+                        skip_http_checks=True,  # v78.1: Backend hasn't started yet
                     )
 
                     if health_status.all_healthy:
@@ -8102,17 +8106,23 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             reactor_online = False
 
             # Check J-Prime heartbeat
-            jprime_state_file = trinity_dir / "components" / "j_prime.json"
-            if jprime_state_file.exists():
-                try:
-                    with open(jprime_state_file) as f:
-                        jprime_state = json.load(f)
-                    age = time.time() - jprime_state.get("timestamp", 0)
-                    if age < 30:  # Consider online if heartbeat < 30s old
-                        jprime_online = True
-                        self.logger.info("   🧠 J-Prime (Mind): ONLINE")
-                except Exception:
-                    pass
+            # v78.1: Support both naming conventions for backwards compatibility
+            jprime_state_files = [
+                trinity_dir / "components" / "jarvis_prime.json",
+                trinity_dir / "components" / "j_prime.json",
+            ]
+            for jprime_state_file in jprime_state_files:
+                if jprime_state_file.exists():
+                    try:
+                        with open(jprime_state_file) as f:
+                            jprime_state = json.load(f)
+                        age = time.time() - jprime_state.get("timestamp", 0)
+                        if age < 30:  # Consider online if heartbeat < 30s old
+                            jprime_online = True
+                            self.logger.info("   🧠 J-Prime (Mind): ONLINE")
+                            break
+                    except Exception:
+                        pass
 
             # Check Reactor Core
             reactor_state_file = trinity_dir / "components" / "reactor_core.json"
@@ -8473,15 +8483,21 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             jprime_online = False
             reactor_online = False
 
-            jprime_file = trinity_dir / "components" / "j_prime.json"
-            if jprime_file.exists():
-                try:
-                    with open(jprime_file) as f:
-                        state = json.load(f)
-                    if time.time() - state.get("timestamp", 0) < 30:
-                        jprime_online = True
-                except Exception:
-                    pass
+            # v78.1: Support both naming conventions for backwards compatibility
+            jprime_candidates = [
+                trinity_dir / "components" / "jarvis_prime.json",
+                trinity_dir / "components" / "j_prime.json",
+            ]
+            for jprime_file in jprime_candidates:
+                if jprime_file.exists():
+                    try:
+                        with open(jprime_file) as f:
+                            state = json.load(f)
+                        if time.time() - state.get("timestamp", 0) < 30:
+                            jprime_online = True
+                            break  # Found valid heartbeat, no need to check other files
+                    except Exception:
+                        pass
 
             reactor_file = trinity_dir / "components" / "reactor_core.json"
             if reactor_file.exists():
@@ -8767,22 +8783,30 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             return
 
         # Check if already running (via heartbeat)
+        # v78.1: Support both naming conventions for backwards compatibility
         trinity_dir = Path.home() / ".jarvis" / "trinity"
-        jprime_state_file = trinity_dir / "components" / "j_prime.json"
+        components_dir = trinity_dir / "components"
 
-        if jprime_state_file.exists():
-            try:
-                import json
-                import time as time_module
-                with open(jprime_state_file) as f:
-                    state = json.load(f)
-                heartbeat_age = time_module.time() - state.get("timestamp", 0)
-                if heartbeat_age < 30:
-                    self.logger.info("   🧠 J-Prime already running (heartbeat detected)")
-                    print(f"  {TerminalUI.GREEN}✓ J-Prime: Already running (heartbeat: {heartbeat_age:.1f}s ago){TerminalUI.RESET}")
-                    return
-            except Exception as e:
-                self.logger.debug(f"   Could not read J-Prime state: {e}")
+        # Check for either jarvis_prime.json (new) or j_prime.json (legacy)
+        jprime_state_files = [
+            components_dir / "jarvis_prime.json",
+            components_dir / "j_prime.json",
+        ]
+
+        for jprime_state_file in jprime_state_files:
+            if jprime_state_file.exists():
+                try:
+                    import json
+                    import time as time_module
+                    with open(jprime_state_file) as f:
+                        state = json.load(f)
+                    heartbeat_age = time_module.time() - state.get("timestamp", 0)
+                    if heartbeat_age < 30:
+                        self.logger.info(f"   🧠 J-Prime already running (heartbeat: {jprime_state_file.name})")
+                        print(f"  {TerminalUI.GREEN}✓ J-Prime: Already running (heartbeat: {heartbeat_age:.1f}s ago){TerminalUI.RESET}")
+                        return
+                except Exception as e:
+                    self.logger.debug(f"   Could not read J-Prime state from {jprime_state_file}: {e}")
 
         # Find Python executable (prefer venv)
         venv_python = self._jprime_repo_path / "venv" / "bin" / "python3"

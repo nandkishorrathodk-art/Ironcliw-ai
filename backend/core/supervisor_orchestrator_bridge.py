@@ -278,12 +278,15 @@ class OrchestratorHooks:
     async def verify_trinity_connections(
         self,
         timeout: Optional[float] = None,
+        skip_http_checks: bool = False,
     ) -> TrinityHealthStatus:
         """
         Verify all Trinity component connections.
 
         Args:
             timeout: Optional timeout override
+            skip_http_checks: If True, skip HTTP-based health checks (Backend, CodingCouncil).
+                             Use this during pre-startup phase when the backend hasn't started yet.
 
         Returns:
             TrinityHealthStatus with detailed status
@@ -302,43 +305,67 @@ class OrchestratorHooks:
         trinity_dir = self._discovered_config.trinity_dir
         health_timeout = timeout or self.config.trinity_health_timeout
 
-        # Verify in parallel if enabled
-        if self.config.parallel_verification:
-            tasks = [
-                self._verify_backend_health(ports.get("jarvis_backend", 8010), health_timeout),
-                self._verify_trinity_heartbeat("jarvis_prime", trinity_dir, health_timeout),
-                self._verify_trinity_heartbeat("reactor_core", trinity_dir, health_timeout),
-                self._verify_coding_council_health(ports.get("jarvis_backend", 8010), health_timeout),
-            ]
+        # v78.1: When skip_http_checks=True (pre-startup), only check heartbeat-based components
+        # HTTP endpoints (Backend, CodingCouncil) won't exist until supervisor.run() completes
+        if skip_http_checks:
+            self.log.debug("[OrchestratorBridge] Pre-startup mode: Skipping HTTP health checks")
+            # Only verify heartbeat-based components
+            status.jarvis_backend = True  # Assume True - will be started soon
+            status.coding_council = True  # Assume True - depends on backend
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            status.jarvis_backend = results[0] if not isinstance(results[0], Exception) else False
-            status.jarvis_prime = results[1] if not isinstance(results[1], Exception) else False
-            status.reactor_core = results[2] if not isinstance(results[2], Exception) else False
-            status.coding_council = results[3] if not isinstance(results[3], Exception) else False
-
-            # Check for exceptions
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    status.errors.append(f"Task {i}: {result}")
-
+            if self.config.parallel_verification:
+                tasks = [
+                    self._verify_trinity_heartbeat("jarvis_prime", trinity_dir, health_timeout),
+                    self._verify_trinity_heartbeat("reactor_core", trinity_dir, health_timeout),
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                status.jarvis_prime = results[0] if not isinstance(results[0], Exception) else False
+                status.reactor_core = results[1] if not isinstance(results[1], Exception) else False
+            else:
+                status.jarvis_prime = await self._verify_trinity_heartbeat(
+                    "jarvis_prime", trinity_dir, health_timeout
+                )
+                status.reactor_core = await self._verify_trinity_heartbeat(
+                    "reactor_core", trinity_dir, health_timeout
+                )
         else:
-            # Sequential verification
-            status.jarvis_backend = await self._verify_backend_health(
-                ports.get("jarvis_backend", 8010), health_timeout
-            )
-            status.jarvis_prime = await self._verify_trinity_heartbeat(
-                "jarvis_prime", trinity_dir, health_timeout
-            )
-            status.reactor_core = await self._verify_trinity_heartbeat(
-                "reactor_core", trinity_dir, health_timeout
-            )
-            status.coding_council = await self._verify_coding_council_health(
-                ports.get("jarvis_backend", 8010), health_timeout
-            )
+            # Verify in parallel if enabled (full health check including HTTP)
+            if self.config.parallel_verification:
+                tasks = [
+                    self._verify_backend_health(ports.get("jarvis_backend", 8010), health_timeout),
+                    self._verify_trinity_heartbeat("jarvis_prime", trinity_dir, health_timeout),
+                    self._verify_trinity_heartbeat("reactor_core", trinity_dir, health_timeout),
+                    self._verify_coding_council_health(ports.get("jarvis_backend", 8010), health_timeout),
+                ]
 
-        # Trinity sync is healthy if all components are healthy
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                status.jarvis_backend = results[0] if not isinstance(results[0], Exception) else False
+                status.jarvis_prime = results[1] if not isinstance(results[1], Exception) else False
+                status.reactor_core = results[2] if not isinstance(results[2], Exception) else False
+                status.coding_council = results[3] if not isinstance(results[3], Exception) else False
+
+                # Check for exceptions
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        status.errors.append(f"Task {i}: {result}")
+
+            else:
+                # Sequential verification
+                status.jarvis_backend = await self._verify_backend_health(
+                    ports.get("jarvis_backend", 8010), health_timeout
+                )
+                status.jarvis_prime = await self._verify_trinity_heartbeat(
+                    "jarvis_prime", trinity_dir, health_timeout
+                )
+                status.reactor_core = await self._verify_trinity_heartbeat(
+                    "reactor_core", trinity_dir, health_timeout
+                )
+                status.coding_council = await self._verify_coding_council_health(
+                    ports.get("jarvis_backend", 8010), health_timeout
+                )
+
+        # Trinity sync is healthy if Backend + at least one external component is healthy
         status.trinity_sync = (
             status.jarvis_backend and
             (status.jarvis_prime or status.reactor_core)

@@ -637,10 +637,13 @@ class TrinityHealthMonitor:
         components_dir = Path.home() / ".jarvis" / "trinity" / "components"
 
         # Check J-Prime (Mind)
-        await self._check_component(
-            "j_prime",
-            components_dir / "j_prime.json",
+        # v78.1: Support both naming conventions for backwards compatibility
+        # J-Prime may write to either jarvis_prime.json or j_prime.json
+        jprime_heartbeat = self._find_heartbeat_file(
+            components_dir,
+            ["jarvis_prime.json", "j_prime.json"]
         )
+        await self._check_component("j_prime", jprime_heartbeat)
 
         # Check Reactor-Core (Nerves)
         await self._check_component(
@@ -650,6 +653,20 @@ class TrinityHealthMonitor:
 
         # JARVIS Body is this process - always healthy if running
         self._component_states["jarvis_body"] = "healthy"
+
+    def _find_heartbeat_file(self, components_dir: Path, candidates: list) -> Path:
+        """
+        Find the first existing heartbeat file from a list of candidates.
+
+        v78.1: Supports multiple naming conventions for backwards compatibility.
+        Returns the first file that exists, or the first candidate if none exist.
+        """
+        for filename in candidates:
+            filepath = components_dir / filename
+            if filepath.exists():
+                return filepath
+        # Return first candidate as default (will trigger "file missing" handling)
+        return components_dir / candidates[0]
 
     async def _check_component(
         self,
@@ -915,7 +932,11 @@ class TrinityHealthMonitor:
         results["reactor_core"] = reactor_status
 
         # Check J-Prime (depends on Reactor-Core)
-        jprime_file = components_dir / "j_prime.json"
+        # v78.1: Support both naming conventions for backwards compatibility
+        jprime_file = self._find_heartbeat_file(
+            components_dir,
+            ["jarvis_prime.json", "j_prime.json"]
+        )
         jprime_status = await self._check_dependency_status(
             "j_prime", jprime_file, now
         )
