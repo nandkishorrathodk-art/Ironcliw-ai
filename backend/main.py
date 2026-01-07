@@ -1536,6 +1536,58 @@ async def parallel_lifespan(app: FastAPI):
         # Launch Coding Council initialization in background
         asyncio.create_task(_init_coding_council_background(), name="coding_council_init")
 
+        # =================================================================
+        # TRINITY ECOSYSTEM: Initialize Prime Router & Graceful Degradation
+        # =================================================================
+        # Initialize the Trinity routing infrastructure in background.
+        # This connects JARVIS to JARVIS-Prime (Mind) with cloud fallback.
+        app.state.trinity_initialized = False
+        app.state.prime_router = None
+
+        async def _init_trinity_background():
+            """Initialize Trinity ecosystem in background."""
+            try:
+                # Initialize Prime Router (connects to JARVIS-Prime)
+                try:
+                    from core.prime_router import get_prime_router
+                except ImportError:
+                    from backend.core.prime_router import get_prime_router
+
+                logger.info("🔱 Trinity: Starting Prime Router initialization...")
+                router = await get_prime_router()
+                app.state.prime_router = router
+
+                # Initialize Graceful Degradation
+                try:
+                    from core.graceful_degradation import get_degradation
+                except ImportError:
+                    from backend.core.graceful_degradation import get_degradation
+
+                degradation = get_degradation()
+                app.state.graceful_degradation = degradation
+
+                # Check if JARVIS-Prime is available
+                router_status = router.get_status()
+                prime_available = router_status.get("prime_client", {}).get("available", False)
+
+                if prime_available:
+                    logger.info("✅ Trinity: JARVIS-Prime (Mind) connected")
+                else:
+                    logger.info("⚠️ Trinity: JARVIS-Prime not available, using cloud fallback")
+
+                app.state.trinity_initialized = True
+                logger.info("✅ Trinity ecosystem initialized (background init)")
+
+            except ImportError as e:
+                logger.debug(f"Trinity modules not available: {e}")
+                app.state.trinity_initialized = False
+            except Exception as e:
+                logger.warning(f"⚠️ Trinity initialization failed: {e}")
+                app.state.trinity_initialized = False
+
+        # Launch Trinity initialization in background
+        asyncio.create_task(_init_trinity_background(), name="trinity_init")
+
         yield
 
         # =====================================================================
@@ -1585,6 +1637,18 @@ async def parallel_lifespan(app: FastAPI):
                 pass  # Coding Council not available
             except Exception as e:
                 logger.debug(f"Coding Council shutdown error (non-critical): {e}")
+
+        # =================================================================
+        # TRINITY ECOSYSTEM: Graceful shutdown
+        # =================================================================
+        if hasattr(app.state, 'trinity_initialized') and app.state.trinity_initialized:
+            try:
+                logger.info("🔱 Shutting down Trinity ecosystem...")
+                if hasattr(app.state, 'prime_router') and app.state.prime_router:
+                    await app.state.prime_router.close()
+                logger.info("✅ Trinity ecosystem shutdown complete")
+            except Exception as e:
+                logger.debug(f"Trinity shutdown error (non-critical): {e}")
 
         # =================================================================
         # HYPER-SPEED AI LOADER: Graceful shutdown
@@ -4522,6 +4586,19 @@ except ImportError as e:
     logger.warning(f"⚠️  Voice Unlock API not available: {e}")
 except Exception as e:
     logger.error(f"❌ Failed to mount Voice Unlock API: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# TRINITY HEALTH API - Monitor JARVIS-Prime and Reactor-Core
+# ═══════════════════════════════════════════════════════════════
+try:
+    from api.trinity_health_api import router as trinity_health_router
+    app.include_router(trinity_health_router, tags=["trinity"])
+    logger.info("✅ Trinity Health API mounted at /health/trinity, /health/prime, /health/routing")
+except ImportError as e:
+    logger.debug(f"Trinity Health API not available: {e}")
+except Exception as e:
+    logger.warning(f"⚠️  Failed to mount Trinity Health API: {e}")
 
 
 # =============================================================================
