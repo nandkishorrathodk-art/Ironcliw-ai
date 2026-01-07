@@ -390,6 +390,67 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                 logger.error(f"[JARVIS] ❌ Surveillance routing failed: {e}", exc_info=True)
                 return f"I encountered an error setting up monitoring, {self.user_name}: {str(e)}"
 
+        # =========================================================================
+        # v79.1: CODING COUNCIL EVOLUTION COMMAND DETECTION
+        # =========================================================================
+        # Route evolution commands to the Coding Council with ML learning integration
+        # =========================================================================
+        evolution_keywords = [
+            "evolve", "evolution", "evolving", "self-evolve",
+            "improve", "enhance", "upgrade", "optimize",
+            "refactor", "fix", "modify", "change", "update",
+            "add feature", "implement", "create function", "add method",
+        ]
+        code_targets = [
+            "code", "codebase", "function", "method", "class", "module",
+            "file", "backend", "frontend", "api", "system", "jarvis",
+        ]
+
+        has_evolution_keyword = any(kw in text_lower for kw in evolution_keywords)
+        has_code_target = any(target in text_lower for target in code_targets)
+
+        # Detect evolution intent
+        is_evolution_command = has_evolution_keyword and has_code_target
+
+        if is_evolution_command:
+            logger.info(
+                f"[JARVIS] 🧬 EVOLUTION COMMAND DETECTED: '{text}' | "
+                f"evolution_kw={has_evolution_keyword}, code_target={has_code_target}"
+            )
+            logger.info("[JARVIS] Routing to Coding Council for code evolution")
+
+            try:
+                from core.coding_council.integration import get_voice_evolution_handler
+
+                evolution_handler = get_voice_evolution_handler()
+                if evolution_handler:
+                    # Process through Coding Council
+                    result = await evolution_handler.handle_voice_command(
+                        command_text=text,
+                        user_id=self.user_name,
+                    )
+
+                    success = result.get('success', False)
+                    response = result.get('response', 'Evolution task initiated.')
+
+                    # v79.1: ML Learning - Learn from evolution command success/failure
+                    await self._learn_from_evolution_command(text, success, result)
+
+                    logger.info(f"[JARVIS] ✅ Evolution response: {response[:100]}...")
+                    return response
+                else:
+                    logger.warning("[JARVIS] Evolution handler not available")
+                    return f"I understand you want to evolve the code, {self.user_name}, but the Coding Council is not available right now."
+
+            except ImportError:
+                logger.debug("[JARVIS] Coding Council not installed")
+                return f"The Coding Council module is not available, {self.user_name}."
+            except Exception as e:
+                logger.error(f"[JARVIS] ❌ Evolution routing failed: {e}", exc_info=True)
+                # Still learn from failure
+                await self._learn_from_evolution_command(text, False, {"error": str(e)})
+                return f"I encountered an error processing the evolution request, {self.user_name}: {str(e)}"
+
         # Check for document creation commands (more flexible)
         document_keywords = ["write", "create", "draft", "compose", "generate", "make", "prepare", "type"]
         document_types = ["essay", "report", "paper", "article", "document", "blog", "story", "letter"]
@@ -562,6 +623,119 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Check for system keywords (for non-vision commands)
         return any(keyword in text_lower for keyword in self.system_keywords)
+
+    # =========================================================================
+    # v79.1: ML LEARNING FOR EVOLUTION COMMANDS
+    # =========================================================================
+
+    async def _learn_from_evolution_command(
+        self,
+        command_text: str,
+        success: bool,
+        result: dict
+    ) -> None:
+        """
+        v79.1: Learn from evolution command interactions.
+
+        This method integrates with the ML voice training system to improve
+        recognition of evolution commands over time.
+
+        Args:
+            command_text: The original command text
+            success: Whether the evolution succeeded
+            result: The result dictionary from the evolution handler
+        """
+        try:
+            # Extract learning features
+            features = {
+                "command_text": command_text,
+                "success": success,
+                "context": "coding_council_evolution",
+                "task_id": result.get("task_id", ""),
+                "files_modified": len(result.get("files_modified", [])),
+                "execution_time_ms": result.get("execution_time_ms", 0),
+                "error": result.get("error", ""),
+            }
+
+            # Try to use ML trainer if available (from MLEnhancedVoiceSystem)
+            if hasattr(self, 'ml_trainer') and self.ml_trainer:
+                await self.ml_trainer.learn_from_interaction(
+                    recognized_text=command_text,
+                    success=success,
+                    context="coding_council_evolution",
+                    metadata=features,
+                )
+                logger.debug(f"[v79.1] ML learned from evolution: success={success}")
+
+            # Also record in voice learning history
+            if hasattr(self, '_voice_learning_history'):
+                self._voice_learning_history.append({
+                    **features,
+                    "timestamp": __import__("time").time(),
+                })
+                # Keep only last 100 entries
+                if len(self._voice_learning_history) > 100:
+                    self._voice_learning_history = self._voice_learning_history[-100:]
+
+            # Track evolution command patterns
+            if not hasattr(self, '_evolution_command_patterns'):
+                self._evolution_command_patterns = {
+                    "successful_patterns": [],
+                    "failed_patterns": [],
+                    "total_attempts": 0,
+                    "success_rate": 0.0,
+                }
+
+            patterns = self._evolution_command_patterns
+            patterns["total_attempts"] += 1
+
+            if success:
+                patterns["successful_patterns"].append(command_text.lower())
+                if len(patterns["successful_patterns"]) > 50:
+                    patterns["successful_patterns"] = patterns["successful_patterns"][-50:]
+            else:
+                patterns["failed_patterns"].append(command_text.lower())
+                if len(patterns["failed_patterns"]) > 50:
+                    patterns["failed_patterns"] = patterns["failed_patterns"][-50:]
+
+            # Update success rate
+            if patterns["total_attempts"] > 0:
+                success_count = len(patterns["successful_patterns"])
+                patterns["success_rate"] = success_count / patterns["total_attempts"]
+
+            logger.debug(
+                f"[v79.1] Evolution pattern tracking: "
+                f"attempts={patterns['total_attempts']}, "
+                f"success_rate={patterns['success_rate']:.2%}"
+            )
+
+        except Exception as e:
+            # ML learning should never break the main flow
+            logger.debug(f"[v79.1] ML learning error (non-critical): {e}")
+
+    def get_evolution_learning_stats(self) -> dict:
+        """
+        v79.1: Get statistics about evolution command learning.
+
+        Returns:
+            Dictionary with learning statistics
+        """
+        if not hasattr(self, '_evolution_command_patterns'):
+            return {
+                "available": False,
+                "message": "No evolution commands processed yet",
+            }
+
+        patterns = self._evolution_command_patterns
+        return {
+            "available": True,
+            "total_attempts": patterns["total_attempts"],
+            "success_rate": patterns["success_rate"],
+            "successful_pattern_count": len(patterns["successful_patterns"]),
+            "failed_pattern_count": len(patterns["failed_patterns"]),
+            "recent_successful": patterns["successful_patterns"][-5:] if patterns["successful_patterns"] else [],
+            "recent_failed": patterns["failed_patterns"][-3:] if patterns["failed_patterns"] else [],
+        }
 
     async def _handle_system_command(self, text: str) -> str:
         """Handle system control commands"""

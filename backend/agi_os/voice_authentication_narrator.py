@@ -644,6 +644,122 @@ class VoiceAuthNarrator:
 
         await self._speak(response, "notification")
 
+    # ============== v79.1: Coding Council Evolution Events ==============
+
+    async def narrate_coding_council_evolution(
+        self,
+        event_type: str,
+        details: Dict[str, Any]
+    ) -> None:
+        """
+        v79.1: Narrate Coding Council evolution events.
+
+        Integrates with the Coding Council voice announcer to provide
+        seamless voice feedback during code evolution tasks.
+
+        Args:
+            event_type: Type of evolution event:
+                - 'started': Evolution task started
+                - 'analyzing': Analyzing codebase
+                - 'planning': Planning changes
+                - 'generating': Generating code
+                - 'testing': Running tests
+                - 'complete': Evolution complete
+                - 'failed': Evolution failed
+                - 'approval_needed': User approval required
+            details: Event details including task_id, progress, files, etc.
+        """
+        task_id = details.get('task_id', 'unknown')
+        progress = details.get('progress', 0)
+        files_modified = details.get('files_modified', [])
+        error = details.get('error', '')
+        description = details.get('description', '')
+
+        response = None
+        mode = "notification"
+
+        if event_type == "started":
+            response = f"Starting evolution task. {description[:50] if description else 'Analyzing requirements.'}"
+
+        elif event_type == "analyzing":
+            response = "Analyzing codebase structure and dependencies."
+
+        elif event_type == "planning":
+            response = "Planning code modifications."
+
+        elif event_type == "generating":
+            response = "Generating code changes."
+            mode = "conversational"  # Less urgent tone
+
+        elif event_type == "testing":
+            file_count = len(files_modified) if files_modified else 0
+            response = f"Testing {file_count} modified file{'s' if file_count != 1 else ''}."
+
+        elif event_type == "complete":
+            file_count = len(files_modified) if files_modified else 0
+            duration = details.get('duration_seconds', 0)
+            if duration > 0:
+                response = (
+                    f"Evolution complete! Modified {file_count} file{'s' if file_count != 1 else ''} "
+                    f"in {duration:.1f} seconds."
+                )
+            else:
+                response = f"Evolution complete! Modified {file_count} file{'s' if file_count != 1 else ''}."
+            mode = "notification"
+
+        elif event_type == "failed":
+            response = f"Evolution encountered an issue: {error[:100] if error else 'Unknown error'}. Changes rolled back."
+            mode = "alert"
+
+        elif event_type == "rollback":
+            response = "Changes rolled back. No modifications were made to the codebase."
+            mode = "notification"
+
+        elif event_type == "approval_needed":
+            risk_level = details.get('risk_level', 'medium')
+            response = (
+                f"Approval needed for {risk_level} risk evolution. "
+                f"{description[:100] if description else 'Please confirm to proceed.'}"
+            )
+            mode = "alert"
+
+        elif event_type == "approval_granted":
+            response = "Approval granted. Proceeding with evolution."
+            mode = "conversational"
+
+        elif event_type == "approval_denied":
+            response = "Evolution cancelled by user."
+            mode = "notification"
+
+        else:
+            # Default: just log, don't speak for unknown events
+            logger.debug(f"[v79.1] Unknown evolution event: {event_type}")
+            return
+
+        if response:
+            await self._speak(response, mode)
+
+    async def subscribe_to_coding_council_events(self) -> None:
+        """
+        v79.1: Subscribe to Coding Council evolution events.
+
+        This method sets up event listeners to receive evolution updates
+        from the Coding Council and narrate them appropriately.
+        """
+        try:
+            from ..core.coding_council.voice_announcer import get_evolution_announcer
+
+            announcer = get_evolution_announcer()
+            if announcer and hasattr(announcer, 'add_event_listener'):
+                await announcer.add_event_listener(
+                    self.narrate_coding_council_evolution
+                )
+                logger.info("[v79.1] Subscribed to Coding Council evolution events")
+        except ImportError:
+            logger.debug("[v79.1] Coding Council not available for event subscription")
+        except Exception as e:
+            logger.debug(f"[v79.1] Failed to subscribe to evolution events: {e}")
+
     async def narrate_security_incident(
         self,
         incident_type: str,

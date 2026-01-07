@@ -404,15 +404,50 @@ async def initialize_coding_council_startup(
         log.info("v77.4 UNIFIED CODING COUNCIL: Initializing")
         log.info("=" * 60)
 
-        # Voice announcement if narrator available
-        if narrator and CODING_COUNCIL_VOICE_ANNOUNCE:
+        # v79.1: Use StartupAnnouncementCoordinator for priority-based announcements
+        # This prevents overlapping announcements with other systems
+        if CODING_COUNCIL_VOICE_ANNOUNCE:
             try:
-                await narrator.speak(
-                    "Initializing Unified Coding Council for self-evolution.",
-                    wait=False
+                from ..startup_announcement_coordinator import (
+                    get_startup_coordinator,
+                    AnnouncementPriority,
                 )
-            except Exception:
-                pass  # Voice is optional
+
+                coordinator = get_startup_coordinator()
+                # Request announcement with NORMAL priority (let Voice API win if it's also starting)
+                should_announce = await coordinator.announce_if_first(
+                    system_name="coding_council_startup",
+                    priority=AnnouncementPriority.NORMAL,
+                    message="Initializing Unified Coding Council",
+                    metadata={
+                        "component": "coding_council",
+                        "phase": "initialization",
+                        "timestamp": start_time,
+                    }
+                )
+
+                if should_announce and narrator:
+                    # We won the announcement - speak initialization message
+                    greeting = coordinator.generate_greeting(context={
+                        "system_name": "Coding Council",
+                        "action": "initializing",
+                    })
+                    await narrator.speak(
+                        f"{greeting} Initializing self-evolution capabilities.",
+                        wait=False
+                    )
+                    log.debug("[v79.1] Coding Council won startup announcement")
+                elif not should_announce:
+                    log.debug("[v79.1] Coding Council deferred to higher priority announcer")
+            except ImportError:
+                # Fallback to basic narrator if coordinator not available
+                if narrator:
+                    await narrator.speak(
+                        "Initializing Unified Coding Council for self-evolution.",
+                        wait=False
+                    )
+            except Exception as e:
+                log.debug(f"[v79.1] Startup coordinator integration skipped: {e}")
 
         # Initialize with timeout (use dynamic config)
         startup_timeout = _get_startup_timeout()
@@ -441,15 +476,26 @@ async def initialize_coding_council_startup(
         log.info(f"  Cross-Repo: {os.getenv('CODING_COUNCIL_CROSS_REPO', 'true')}")
         log.info("=" * 60)
 
-        # Voice success
-        if narrator and CODING_COUNCIL_VOICE_ANNOUNCE:
+        # v79.1: Voice success using voice announcer or coordinator
+        if CODING_COUNCIL_VOICE_ANNOUNCE:
             try:
-                await narrator.speak(
-                    "Coding Council online. Self-evolution capabilities active.",
-                    wait=False
-                )
-            except Exception:
-                pass
+                # Try v79.1 voice announcer first (has circuit breaker, async, etc.)
+                if _voice_announcer:
+                    await _voice_announcer.announce_completion(
+                        task_id="startup",
+                        success=True,
+                        files_modified=0,
+                        execution_time_ms=duration * 1000,
+                        error=None,
+                    )
+                elif narrator:
+                    # Fallback to narrator
+                    await narrator.speak(
+                        "Coding Council online. Self-evolution capabilities active.",
+                        wait=False
+                    )
+            except Exception as e:
+                log.debug(f"[v79.1] Voice success announcement skipped: {e}")
 
         return True
 
