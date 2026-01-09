@@ -922,20 +922,65 @@ class HotReloadLock:
 # Decision Router (Framework Selection)
 # =============================================================================
 
+# Import J-Prime task classification utilities
+try:
+    from .adapters.jprime_adapter import (
+        JPrimeAvailabilityChecker,
+        classify_task_for_jprime,
+        is_task_suitable_for_jprime,
+    )
+    from .adapters.jprime_engine import ModelTaskType
+    JPRIME_ADAPTER_AVAILABLE = True
+except ImportError:
+    JPRIME_ADAPTER_AVAILABLE = False
+    ModelTaskType = None  # type: ignore
+
+
 class DecisionRouter:
     """
-    Intelligent router that chooses the best framework for each task.
+    v84.0: Intelligent router that chooses the best framework for each task.
 
     Decision Matrix:
-        TRIVIAL  → Aider (fastest)
-        SIMPLE   → Aider (fast, single file)
-        MEDIUM   → RepoMaster analysis + Aider
-        COMPLEX  → MetaGPT planning + OpenHands sandbox
-        CRITICAL → Full Council + Human approval
+        1. J-Prime First: Local LLM for coding/reasoning (cost-free, private)
+        2. TRIVIAL  → Aider (fastest cloud)
+        3. SIMPLE   → Aider (fast, single file)
+        4. MEDIUM   → RepoMaster analysis + Aider
+        5. COMPLEX  → MetaGPT planning + OpenHands sandbox
+        6. CRITICAL → Full Council + Human approval
+
+    J-Prime Routing:
+        - JPRIME_CODING: CodeLlama/DeepSeek for coding, debugging, refactoring
+        - JPRIME_REASONING: Qwen/Llama for planning, analysis, reasoning
+        - JPRIME_LOCAL: General-purpose local inference
     """
 
     def __init__(self, config: CodingCouncilConfig):
         self.config = config
+        self._jprime_available: Optional[bool] = None
+        self._last_jprime_check: float = 0.0
+        self._jprime_check_interval: float = 30.0  # Re-check every 30 seconds
+
+    async def choose_framework_async(
+        self,
+        task: EvolutionTask,
+        analysis: Optional[AnalysisResult] = None,
+        plan: Optional[PlanResult] = None
+    ) -> FrameworkType:
+        """
+        v84.0: Async framework selection with J-Prime priority.
+
+        Checks J-Prime availability asynchronously before falling back to
+        cloud-based frameworks.
+        """
+        # Rule 0: Check J-Prime first (cost-free, private)
+        if self.config.jprime_enabled and await self._is_jprime_available_async():
+            jprime_framework = await self._select_jprime_framework(task)
+            if jprime_framework:
+                logger.info(f"[Router] Selected J-Prime: {jprime_framework.value}")
+                return jprime_framework
+
+        # Fall through to synchronous routing
+        return self.choose_framework(task, analysis, plan)
 
     def choose_framework(
         self,
@@ -943,7 +988,17 @@ class DecisionRouter:
         analysis: Optional[AnalysisResult] = None,
         plan: Optional[PlanResult] = None
     ) -> FrameworkType:
-        """Choose the best framework for the task."""
+        """
+        v84.0: Choose the best framework for the task.
+
+        Enhanced with J-Prime local LLM routing for cost-free, private inference.
+        """
+        # Rule 0: Try J-Prime first if enabled and available (synchronous check)
+        if self.config.jprime_enabled and self._is_jprime_available_sync():
+            jprime_framework = self._select_jprime_framework_sync(task)
+            if jprime_framework:
+                logger.info(f"[Router] Selected J-Prime: {jprime_framework.value}")
+                return jprime_framework
 
         # Rule 1: Requires sandbox → OpenHands
         if task.requires_sandbox:
@@ -977,6 +1032,169 @@ class DecisionRouter:
 
         # Default fallback
         return FrameworkType.CLAUDE_CODE
+
+    # =========================================================================
+    # J-Prime Routing (v84.0)
+    # =========================================================================
+
+    async def _is_jprime_available_async(self) -> bool:
+        """
+        v84.0: Async check if J-Prime is available.
+
+        Uses cached result if checked recently to avoid overhead.
+        """
+        if not JPRIME_ADAPTER_AVAILABLE:
+            return False
+
+        try:
+            return await JPrimeAvailabilityChecker.is_available()
+        except Exception as e:
+            logger.debug(f"[Router] J-Prime availability check failed: {e}")
+            return False
+
+    def _is_jprime_available_sync(self) -> bool:
+        """
+        v84.0: Synchronous check if J-Prime is available.
+
+        Uses heartbeat file check only (fast, no network).
+        """
+        if not JPRIME_ADAPTER_AVAILABLE:
+            return False
+
+        import time
+        import json
+        from pathlib import Path
+
+        # Rate limit checks
+        now = time.time()
+        if now - self._last_jprime_check < self._jprime_check_interval:
+            return self._jprime_available or False
+
+        self._last_jprime_check = now
+
+        try:
+            # Check heartbeat file (fast, synchronous)
+            heartbeat_file = Path.home() / ".jarvis" / "trinity" / "components" / "jarvis_prime.json"
+
+            if heartbeat_file.exists():
+                with open(heartbeat_file) as f:
+                    data = json.load(f)
+                    heartbeat_age = now - data.get("timestamp", 0)
+
+                    if heartbeat_age < 30:  # Fresh heartbeat
+                        self._jprime_available = True
+                        return True
+
+            self._jprime_available = False
+            return False
+
+        except Exception as e:
+            logger.debug(f"[Router] J-Prime sync check failed: {e}")
+            self._jprime_available = False
+            return False
+
+    async def _select_jprime_framework(self, task: EvolutionTask) -> Optional[FrameworkType]:
+        """
+        v84.0: Select the appropriate J-Prime framework for a task (async).
+
+        Routes based on task classification:
+        - Coding/debugging/refactoring → JPRIME_CODING (CodeLlama)
+        - Reasoning/planning/analysis → JPRIME_REASONING (Qwen)
+        - General → JPRIME_LOCAL (Llama)
+        """
+        return self._select_jprime_framework_sync(task)
+
+    def _select_jprime_framework_sync(self, task: EvolutionTask) -> Optional[FrameworkType]:
+        """
+        v84.0: Select the appropriate J-Prime framework for a task (sync).
+
+        Uses intelligent task classification to route to optimal model.
+        """
+        if not JPRIME_ADAPTER_AVAILABLE:
+            return None
+
+        # Check if task is suitable for J-Prime
+        if not is_task_suitable_for_jprime(task.description, task.target_files):
+            logger.debug(f"[Router] Task not suitable for J-Prime: {task.description[:50]}...")
+            return None
+
+        # Classify task
+        task_type, confidence = classify_task_for_jprime(task.description, task.target_files)
+        logger.debug(f"[Router] Task classified as {task_type.value} (confidence: {confidence:.2f})")
+
+        # Map task types to J-Prime frameworks
+        coding_tasks = {
+            ModelTaskType.CODING,
+            ModelTaskType.DEBUGGING,
+            ModelTaskType.REFACTORING,
+            ModelTaskType.CODE_REVIEW,
+        }
+
+        reasoning_tasks = {
+            ModelTaskType.REASONING,
+            ModelTaskType.PLANNING,
+            ModelTaskType.ANALYSIS,
+            ModelTaskType.MATH,
+        }
+
+        # Select framework based on task type
+        if task_type in coding_tasks:
+            # Prefer JPRIME_CODING for coding tasks
+            if self.config.jprime_prefer_for_coding:
+                return FrameworkType.JPRIME_CODING
+            # Only use if explicitly set
+            return FrameworkType.JPRIME_CODING if confidence >= 0.5 else None
+
+        if task_type in reasoning_tasks:
+            return FrameworkType.JPRIME_REASONING
+
+        # Default to JPRIME_LOCAL for general tasks
+        if confidence >= 0.3:
+            return FrameworkType.JPRIME_LOCAL
+
+        return None
+
+    def _classify_task_type(self, task: EvolutionTask) -> Optional[str]:
+        """
+        v84.0: Classify task type for routing decisions.
+
+        Returns one of: 'coding', 'reasoning', 'general', or None if unsure.
+        """
+        if not JPRIME_ADAPTER_AVAILABLE:
+            return None
+
+        task_type, confidence = classify_task_for_jprime(task.description, task.target_files)
+
+        if confidence < 0.3:
+            return None
+
+        return task_type.value
+
+    def should_use_jprime(self, task: EvolutionTask) -> bool:
+        """
+        v84.0: Quick check if J-Prime should be considered for this task.
+
+        Returns True if:
+        - J-Prime is enabled in config
+        - Task is suitable for local inference
+        - J-Prime appears to be available (cached check)
+        """
+        if not self.config.jprime_enabled:
+            return False
+
+        if not JPRIME_ADAPTER_AVAILABLE:
+            return False
+
+        # Check suitability
+        if not is_task_suitable_for_jprime(task.description, task.target_files):
+            return False
+
+        # Quick availability check (uses cache)
+        return self._is_jprime_available_sync()
+
+    # =========================================================================
+    # Original Helper Methods
+    # =========================================================================
 
     def should_use_analysis(self, task: EvolutionTask) -> bool:
         """Check if task should include RepoMaster analysis."""
@@ -2053,7 +2271,11 @@ class UnifiedCodingCouncil:
             )
 
     async def _get_adapter(self, framework: FrameworkType):
-        """Get or create a framework adapter."""
+        """
+        v84.0: Get or create a framework adapter.
+
+        Enhanced with J-Prime adapter support for local LLM inference.
+        """
         if framework in self._adapters:
             return self._adapters[framework]
 
@@ -2079,6 +2301,32 @@ class UnifiedCodingCouncil:
                 from .adapters.continue_adapter import ContinueAdapter
                 self._adapters[framework] = ContinueAdapter(self.config)
 
+            # ================================================================
+            # v84.0: J-Prime Adapters (Local LLM)
+            # ================================================================
+
+            elif framework == FrameworkType.JPRIME_CODING:
+                from .adapters.jprime_adapter import JPrimeCodingAdapter
+                adapter = JPrimeCodingAdapter(self.config)
+                # Pre-initialize the engine for faster first request
+                await adapter._get_engine()
+                self._adapters[framework] = adapter
+                logger.info("[CodingCouncil] J-Prime Coding adapter loaded (CodeLlama)")
+
+            elif framework == FrameworkType.JPRIME_REASONING:
+                from .adapters.jprime_adapter import JPrimeReasoningAdapter
+                adapter = JPrimeReasoningAdapter(self.config)
+                await adapter._get_engine()
+                self._adapters[framework] = adapter
+                logger.info("[CodingCouncil] J-Prime Reasoning adapter loaded (Qwen)")
+
+            elif framework == FrameworkType.JPRIME_LOCAL:
+                from .adapters.jprime_adapter import JPrimeLocalAdapter
+                adapter = JPrimeLocalAdapter(self.config)
+                await adapter._get_engine()
+                self._adapters[framework] = adapter
+                logger.info("[CodingCouncil] J-Prime Local adapter loaded (Llama)")
+
             else:
                 return None
 
@@ -2086,6 +2334,9 @@ class UnifiedCodingCouncil:
 
         except ImportError as e:
             logger.warning(f"[CodingCouncil] Could not load {framework.value} adapter: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"[CodingCouncil] Adapter initialization failed for {framework.value}: {e}")
             return None
 
     def get_stats(self) -> Dict[str, Any]:
