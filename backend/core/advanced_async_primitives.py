@@ -3881,3 +3881,1410 @@ def setup_shutdown_signal_handlers(
             logging.getLogger("jarvis.shutdown").warning(
                 f"Could not register handler for {s}: {e}"
             )
+
+
+# =============================================================================
+# GUARANTEED EVENT DELIVERY SYSTEM
+# =============================================================================
+
+
+@dataclass
+class PendingEvent:
+    """A pending event awaiting acknowledgment."""
+    event_id: str
+    event_data: Dict[str, Any]
+    target_component: str
+    created_at: float
+    retry_count: int = 0
+    last_attempt: Optional[float] = None
+    next_retry: Optional[float] = None
+    ack_timeout: float = 30.0
+
+
+class GuaranteedEventDelivery:
+    """
+    Guaranteed event delivery with acknowledgment and retry.
+
+    Features:
+    - Acknowledgment-based delivery
+    - Automatic retry with exponential backoff
+    - Persistent event queue (SQLite-backed)
+    - At-least-once delivery guarantee
+    - Configurable via environment variables
+
+    Environment Variables:
+        GED_MAX_RETRIES: Maximum retry attempts (default: 5)
+        GED_RETRY_BACKOFF: Base backoff time in seconds (default: 1.0)
+        GED_MAX_BACKOFF: Maximum backoff time (default: 60.0)
+        GED_ACK_TIMEOUT: Default ACK timeout (default: 30.0)
+        GED_CLEANUP_INTERVAL: Cleanup interval for old events (default: 300.0)
+    """
+
+    def __init__(
+        self,
+        store_path: Optional[Path] = None,
+        send_callback: Optional[Callable[[str, Dict[str, Any]], Awaitable[bool]]] = None,
+    ):
+        """
+        Initialize guaranteed event delivery.
+
+        Args:
+            store_path: Path to SQLite store
+            send_callback: Async function to actually send events
+        """
+        env_dir = os.getenv("GED_STORE_DIR")
+        if store_path:
+            self._store_path = store_path
+        elif env_dir:
+            self._store_path = Path(env_dir) / "events.db"
+        else:
+            jarvis_base = os.getenv("JARVIS_BASE_DIR", os.path.expanduser("~/.jarvis"))
+            self._store_path = Path(jarvis_base) / "trinity" / "events.db"
+
+        self._store_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Configuration from environment
+        self._max_retries = _env_int("GED_MAX_RETRIES", 5)
+        self._retry_backoff = _env_float("GED_RETRY_BACKOFF", 1.0)
+        self._max_backoff = _env_float("GED_MAX_BACKOFF", 60.0)
+        self._default_ack_timeout = _env_float("GED_ACK_TIMEOUT", 30.0)
+        self._cleanup_interval = _env_float("GED_CLEANUP_INTERVAL", 300.0)
+
+        # Send callback
+        self._send_callback = send_callback
+
+        # In-memory tracking
+        self._pending_events: Dict[str, PendingEvent] = {}
+        self._ack_futures: Dict[str, asyncio.Future] = {}
+        self._retry_tasks: Dict[str, asyncio.Task] = {}
+
+        # Database
+        self._db_conn: Optional[sqlite3.Connection] = None
+        self._db_lock = asyncio.Lock()
+
+        # Background tasks
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._retry_processor_task: Optional[asyncio.Task] = None
+        self._shutdown = False
+
+        self._logger = logging.getLogger("jarvis.ged")
+
+    async def initialize(self) -> None:
+        """Initialize the event delivery system."""
+        async with self._db_lock:
+            self._db_conn = sqlite3.connect(
+                str(self._store_path),
+                check_same_thread=False,
+                timeout=30.0,
+            )
+            # Enable WAL mode for better concurrency
+            self._db_conn.execute("PRAGMA journal_mode=WAL")
+            self._db_conn.execute("PRAGMA busy_timeout=30000")
+            self._db_conn.execute("PRAGMA synchronous=NORMAL")
+
+            # Create tables
+            self._db_conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_data TEXT NOT NULL,
+                    target_component TEXT NOT NULL,
+                    retry_count INTEGER DEFAULT 0,
+                    created_at REAL NOT NULL,
+                    last_attempt REAL,
+                    next_retry REAL,
+                    ack_timeout REAL DEFAULT 30.0
+                )
+            """)
+
+            self._db_conn.execute("""
+                CREATE TABLE IF NOT EXISTS delivered_events (
+                    event_id TEXT PRIMARY KEY,
+                    target_component TEXT NOT NULL,
+                    delivered_at REAL NOT NULL,
+                    retry_count INTEGER DEFAULT 0
+                )
+            """)
+
+            self._db_conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pending_next_retry
+                ON pending_events(next_retry)
+            """)
+
+            self._db_conn.commit()
+
+        # Load pending events
+        await self._load_pending_events()
+
+        # Start background tasks
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._retry_processor_task = asyncio.create_task(self._retry_processor_loop())
+
+        self._logger.info(
+            f"[GED] Initialized with {len(self._pending_events)} pending events"
+        )
+
+    async def shutdown(self) -> None:
+        """Shutdown the event delivery system."""
+        self._shutdown = True
+
+        # Cancel background tasks
+        for task in [self._cleanup_task, self._retry_processor_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        # Cancel retry tasks
+        for task in self._retry_tasks.values():
+            task.cancel()
+
+        # Close database
+        if self._db_conn:
+            self._db_conn.close()
+
+        self._logger.info("[GED] Shutdown complete")
+
+    def set_send_callback(
+        self,
+        callback: Callable[[str, Dict[str, Any]], Awaitable[bool]],
+    ) -> None:
+        """Set the callback used to send events."""
+        self._send_callback = callback
+
+    async def send_with_ack(
+        self,
+        event_id: str,
+        event_data: Dict[str, Any],
+        target_component: str,
+        ack_timeout: Optional[float] = None,
+    ) -> bool:
+        """
+        Send event with acknowledgment guarantee.
+
+        Args:
+            event_id: Unique event ID
+            event_data: Event payload
+            target_component: Target component ID
+            ack_timeout: Acknowledgment timeout
+
+        Returns:
+            True if acknowledged within timeout, False if will retry
+        """
+        timeout = ack_timeout or self._default_ack_timeout
+
+        # Create pending event
+        pending = PendingEvent(
+            event_id=event_id,
+            event_data=event_data,
+            target_component=target_component,
+            created_at=time.time(),
+            ack_timeout=timeout,
+        )
+
+        # Store in database
+        await self._store_pending_event(pending)
+
+        # Track in memory
+        self._pending_events[event_id] = pending
+
+        # Send and wait for ACK
+        ack_received = await self._send_and_wait_ack(pending)
+
+        if ack_received:
+            await self._mark_delivered(event_id, target_component)
+            return True
+        else:
+            # Will be retried by background task
+            return False
+
+    async def _send_and_wait_ack(self, pending: PendingEvent) -> bool:
+        """Send event and wait for acknowledgment."""
+        if not self._send_callback:
+            self._logger.warning("[GED] No send callback configured")
+            return False
+
+        event_id = pending.event_id
+
+        # Create ACK future
+        ack_future: asyncio.Future = asyncio.Future()
+        self._ack_futures[event_id] = ack_future
+
+        try:
+            # Update last attempt
+            pending.last_attempt = time.time()
+
+            # Send event
+            send_success = await self._send_callback(
+                pending.target_component,
+                pending.event_data,
+            )
+
+            if not send_success:
+                self._logger.warning(f"[GED] Send failed for {event_id}")
+                return False
+
+            # Wait for ACK
+            try:
+                result = await asyncio.wait_for(
+                    ack_future,
+                    timeout=pending.ack_timeout,
+                )
+                return result
+            except asyncio.TimeoutError:
+                self._logger.warning(f"[GED] ACK timeout for {event_id}")
+                return False
+
+        except Exception as e:
+            self._logger.error(f"[GED] Error sending {event_id}: {e}")
+            return False
+        finally:
+            self._ack_futures.pop(event_id, None)
+
+    async def acknowledge(self, event_id: str) -> bool:
+        """
+        Acknowledge receipt of event.
+
+        Called by the recipient to confirm delivery.
+
+        Args:
+            event_id: Event ID to acknowledge
+
+        Returns:
+            True if event was pending
+        """
+        if event_id in self._ack_futures:
+            future = self._ack_futures[event_id]
+            if not future.done():
+                future.set_result(True)
+            return True
+
+        # Event might have already been processed
+        return event_id in self._pending_events
+
+    async def _store_pending_event(self, pending: PendingEvent) -> None:
+        """Store pending event in database."""
+        async with self._db_lock:
+            self._db_conn.execute(
+                """
+                INSERT OR REPLACE INTO pending_events
+                (event_id, event_data, target_component, retry_count,
+                 created_at, last_attempt, next_retry, ack_timeout)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    pending.event_id,
+                    json.dumps(pending.event_data),
+                    pending.target_component,
+                    pending.retry_count,
+                    pending.created_at,
+                    pending.last_attempt,
+                    pending.next_retry or time.time(),
+                    pending.ack_timeout,
+                ),
+            )
+            self._db_conn.commit()
+
+    async def _mark_delivered(self, event_id: str, target: str) -> None:
+        """Mark event as delivered."""
+        pending = self._pending_events.pop(event_id, None)
+
+        # Cancel any retry task
+        if event_id in self._retry_tasks:
+            self._retry_tasks[event_id].cancel()
+            del self._retry_tasks[event_id]
+
+        async with self._db_lock:
+            # Remove from pending
+            self._db_conn.execute(
+                "DELETE FROM pending_events WHERE event_id = ?",
+                (event_id,),
+            )
+
+            # Record delivery
+            self._db_conn.execute(
+                """
+                INSERT INTO delivered_events
+                (event_id, target_component, delivered_at, retry_count)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    target,
+                    time.time(),
+                    pending.retry_count if pending else 0,
+                ),
+            )
+
+            self._db_conn.commit()
+
+        self._logger.debug(f"[GED] Delivered: {event_id}")
+
+    async def _load_pending_events(self) -> None:
+        """Load pending events from database."""
+        async with self._db_lock:
+            cursor = self._db_conn.execute(
+                """
+                SELECT event_id, event_data, target_component, retry_count,
+                       created_at, last_attempt, next_retry, ack_timeout
+                FROM pending_events
+                """
+            )
+
+            for row in cursor.fetchall():
+                try:
+                    event_data = json.loads(row[1])
+                    pending = PendingEvent(
+                        event_id=row[0],
+                        event_data=event_data,
+                        target_component=row[2],
+                        retry_count=row[3],
+                        created_at=row[4],
+                        last_attempt=row[5],
+                        next_retry=row[6],
+                        ack_timeout=row[7],
+                    )
+                    self._pending_events[pending.event_id] = pending
+                except Exception as e:
+                    self._logger.error(f"[GED] Error loading event: {e}")
+
+    async def _retry_processor_loop(self) -> None:
+        """Process pending events that need retry."""
+        while not self._shutdown:
+            try:
+                now = time.time()
+
+                for event_id, pending in list(self._pending_events.items()):
+                    # Skip if already being retried
+                    if event_id in self._retry_tasks:
+                        continue
+
+                    # Check if retry is due
+                    if pending.next_retry and pending.next_retry <= now:
+                        if pending.retry_count >= self._max_retries:
+                            self._logger.error(
+                                f"[GED] Event {event_id} failed after "
+                                f"{pending.retry_count} retries"
+                            )
+                            # Remove from pending
+                            await self._remove_failed_event(event_id)
+                        else:
+                            # Schedule retry
+                            self._retry_tasks[event_id] = asyncio.create_task(
+                                self._retry_event(pending)
+                            )
+
+                await asyncio.sleep(1.0)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"[GED] Retry processor error: {e}")
+                await asyncio.sleep(1.0)
+
+    async def _retry_event(self, pending: PendingEvent) -> None:
+        """Retry sending an event."""
+        event_id = pending.event_id
+
+        try:
+            pending.retry_count += 1
+
+            # Calculate next retry with exponential backoff
+            backoff = min(
+                self._retry_backoff * (2 ** pending.retry_count),
+                self._max_backoff,
+            )
+            # Add jitter
+            backoff *= (0.5 + random.random())
+            pending.next_retry = time.time() + backoff
+
+            # Update database
+            await self._store_pending_event(pending)
+
+            self._logger.info(
+                f"[GED] Retrying {event_id} (attempt {pending.retry_count})"
+            )
+
+            # Send and wait for ACK
+            ack_received = await self._send_and_wait_ack(pending)
+
+            if ack_received:
+                await self._mark_delivered(event_id, pending.target_component)
+
+        except Exception as e:
+            self._logger.error(f"[GED] Retry error for {event_id}: {e}")
+        finally:
+            self._retry_tasks.pop(event_id, None)
+
+    async def _remove_failed_event(self, event_id: str) -> None:
+        """Remove a permanently failed event."""
+        self._pending_events.pop(event_id, None)
+
+        if event_id in self._retry_tasks:
+            self._retry_tasks[event_id].cancel()
+            del self._retry_tasks[event_id]
+
+        async with self._db_lock:
+            self._db_conn.execute(
+                "DELETE FROM pending_events WHERE event_id = ?",
+                (event_id,),
+            )
+            self._db_conn.commit()
+
+    async def _cleanup_loop(self) -> None:
+        """Periodic cleanup of old events."""
+        while not self._shutdown:
+            try:
+                await asyncio.sleep(self._cleanup_interval)
+
+                # Clean up old delivered events (keep 24 hours)
+                cutoff = time.time() - 86400
+                async with self._db_lock:
+                    self._db_conn.execute(
+                        "DELETE FROM delivered_events WHERE delivered_at < ?",
+                        (cutoff,),
+                    )
+                    self._db_conn.commit()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"[GED] Cleanup error: {e}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get delivery statistics."""
+        return {
+            "pending_events": len(self._pending_events),
+            "active_retries": len(self._retry_tasks),
+            "max_retries": self._max_retries,
+            "retry_backoff": self._retry_backoff,
+        }
+
+
+# Singleton
+_event_delivery: Optional[GuaranteedEventDelivery] = None
+
+
+async def get_event_delivery() -> GuaranteedEventDelivery:
+    """Get singleton GuaranteedEventDelivery instance."""
+    global _event_delivery
+    if _event_delivery is None:
+        _event_delivery = GuaranteedEventDelivery()
+        await _event_delivery.initialize()
+    return _event_delivery
+
+
+# =============================================================================
+# OOM PROTECTION
+# =============================================================================
+
+
+class MemoryPressureLevel(Enum):
+    """Memory pressure levels."""
+    NORMAL = "normal"
+    WARNING = "warning"
+    CRITICAL = "critical"
+    EMERGENCY = "emergency"
+
+
+@dataclass
+class MemoryStats:
+    """Memory statistics."""
+    rss_mb: float
+    vms_mb: float
+    percent: float
+    limit_mb: float
+    pressure_level: MemoryPressureLevel
+    timestamp: float = field(default_factory=time.time)
+
+
+class OOMProtector:
+    """
+    Out-of-memory protection with real-time monitoring.
+
+    Features:
+    - Real-time memory monitoring
+    - Configurable pressure thresholds
+    - Automatic eviction callbacks
+    - Pre-emptive memory checks
+    - Graceful degradation
+
+    Environment Variables:
+        OOM_MEMORY_LIMIT_MB: Memory limit in MB (default: 4096)
+        OOM_WARNING_THRESHOLD: Warning level (default: 0.7)
+        OOM_CRITICAL_THRESHOLD: Critical level (default: 0.85)
+        OOM_EMERGENCY_THRESHOLD: Emergency level (default: 0.95)
+        OOM_CHECK_INTERVAL: Check interval in seconds (default: 1.0)
+    """
+
+    def __init__(
+        self,
+        eviction_callback: Optional[Callable[[MemoryPressureLevel], Awaitable[int]]] = None,
+    ):
+        """
+        Initialize OOM protector.
+
+        Args:
+            eviction_callback: Async function to evict resources, returns bytes freed
+        """
+        # Configuration
+        self._memory_limit_mb = _env_float("OOM_MEMORY_LIMIT_MB", 4096.0)
+        self._warning_threshold = _env_float("OOM_WARNING_THRESHOLD", 0.7)
+        self._critical_threshold = _env_float("OOM_CRITICAL_THRESHOLD", 0.85)
+        self._emergency_threshold = _env_float("OOM_EMERGENCY_THRESHOLD", 0.95)
+        self._check_interval = _env_float("OOM_CHECK_INTERVAL", 1.0)
+
+        # Callbacks
+        self._eviction_callback = eviction_callback
+        self._pressure_callbacks: List[Callable[[MemoryPressureLevel], Awaitable[None]]] = []
+
+        # State
+        self._current_level = MemoryPressureLevel.NORMAL
+        self._last_stats: Optional[MemoryStats] = None
+        self._running = False
+        self._monitor_task: Optional[asyncio.Task] = None
+
+        # History for trend analysis
+        self._memory_history: Deque[float] = deque(maxlen=60)
+
+        self._logger = logging.getLogger("jarvis.oom")
+
+    async def start(self) -> None:
+        """Start memory monitoring."""
+        if self._running:
+            return
+
+        self._running = True
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._logger.info(
+            f"[OOM] Started (limit={self._memory_limit_mb}MB, "
+            f"warning={self._warning_threshold*100:.0f}%, "
+            f"critical={self._critical_threshold*100:.0f}%)"
+        )
+
+    async def stop(self) -> None:
+        """Stop memory monitoring."""
+        self._running = False
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        self._logger.info("[OOM] Stopped")
+
+    def register_pressure_callback(
+        self,
+        callback: Callable[[MemoryPressureLevel], Awaitable[None]],
+    ) -> None:
+        """Register callback for pressure level changes."""
+        self._pressure_callbacks.append(callback)
+
+    def set_eviction_callback(
+        self,
+        callback: Callable[[MemoryPressureLevel], Awaitable[int]],
+    ) -> None:
+        """Set the eviction callback."""
+        self._eviction_callback = callback
+
+    async def check_can_allocate(self, size_mb: float) -> bool:
+        """
+        Check if allocation of given size is safe.
+
+        Args:
+            size_mb: Size to allocate in MB
+
+        Returns:
+            True if safe to allocate
+        """
+        stats = await self.get_stats()
+        projected = stats.rss_mb + size_mb
+        projected_percent = projected / self._memory_limit_mb
+
+        if projected_percent >= self._critical_threshold:
+            self._logger.warning(
+                f"[OOM] Cannot allocate {size_mb}MB: would exceed critical threshold"
+            )
+            return False
+
+        return True
+
+    async def get_stats(self) -> MemoryStats:
+        """Get current memory statistics."""
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+
+            rss_mb = memory_info.rss / (1024 * 1024)
+            vms_mb = memory_info.vms / (1024 * 1024)
+            percent = rss_mb / self._memory_limit_mb
+
+            if percent >= self._emergency_threshold:
+                level = MemoryPressureLevel.EMERGENCY
+            elif percent >= self._critical_threshold:
+                level = MemoryPressureLevel.CRITICAL
+            elif percent >= self._warning_threshold:
+                level = MemoryPressureLevel.WARNING
+            else:
+                level = MemoryPressureLevel.NORMAL
+
+            stats = MemoryStats(
+                rss_mb=rss_mb,
+                vms_mb=vms_mb,
+                percent=percent,
+                limit_mb=self._memory_limit_mb,
+                pressure_level=level,
+            )
+
+            self._last_stats = stats
+            return stats
+
+        except Exception as e:
+            self._logger.error(f"[OOM] Error getting stats: {e}")
+            # Return last known stats or defaults
+            if self._last_stats:
+                return self._last_stats
+            return MemoryStats(
+                rss_mb=0,
+                vms_mb=0,
+                percent=0,
+                limit_mb=self._memory_limit_mb,
+                pressure_level=MemoryPressureLevel.NORMAL,
+            )
+
+    async def _monitor_loop(self) -> None:
+        """Monitor memory usage continuously."""
+        while self._running:
+            try:
+                stats = await self.get_stats()
+
+                # Record history
+                self._memory_history.append(stats.rss_mb)
+
+                # Check for level change
+                if stats.pressure_level != self._current_level:
+                    old_level = self._current_level
+                    self._current_level = stats.pressure_level
+
+                    self._logger.info(
+                        f"[OOM] Pressure level changed: {old_level.value} -> "
+                        f"{stats.pressure_level.value} "
+                        f"({stats.rss_mb:.0f}MB / {stats.limit_mb:.0f}MB)"
+                    )
+
+                    # Notify callbacks
+                    for callback in self._pressure_callbacks:
+                        try:
+                            await callback(stats.pressure_level)
+                        except Exception as e:
+                            self._logger.error(f"[OOM] Callback error: {e}")
+
+                # Take action based on level
+                if stats.pressure_level == MemoryPressureLevel.EMERGENCY:
+                    await self._handle_emergency()
+                elif stats.pressure_level == MemoryPressureLevel.CRITICAL:
+                    await self._handle_critical()
+                elif stats.pressure_level == MemoryPressureLevel.WARNING:
+                    await self._handle_warning()
+
+                await asyncio.sleep(self._check_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"[OOM] Monitor error: {e}")
+                await asyncio.sleep(self._check_interval)
+
+    async def _handle_emergency(self) -> None:
+        """Handle emergency memory pressure."""
+        self._logger.critical("[OOM] 🚨 EMERGENCY: Forcing garbage collection")
+
+        # Force GC
+        import gc
+        gc.collect()
+
+        # Evict if callback available
+        if self._eviction_callback:
+            try:
+                freed = await self._eviction_callback(MemoryPressureLevel.EMERGENCY)
+                self._logger.info(f"[OOM] Emergency eviction freed {freed / 1024 / 1024:.0f}MB")
+            except Exception as e:
+                self._logger.error(f"[OOM] Emergency eviction failed: {e}")
+
+    async def _handle_critical(self) -> None:
+        """Handle critical memory pressure."""
+        self._logger.warning("[OOM] ⚠️ CRITICAL: Triggering eviction")
+
+        if self._eviction_callback:
+            try:
+                freed = await self._eviction_callback(MemoryPressureLevel.CRITICAL)
+                self._logger.info(f"[OOM] Critical eviction freed {freed / 1024 / 1024:.0f}MB")
+            except Exception as e:
+                self._logger.error(f"[OOM] Critical eviction failed: {e}")
+
+    async def _handle_warning(self) -> None:
+        """Handle warning memory pressure."""
+        # Log trend
+        if len(self._memory_history) >= 10:
+            recent = list(self._memory_history)[-10:]
+            trend = recent[-1] - recent[0]
+            if trend > 0:
+                self._logger.warning(
+                    f"[OOM] Memory increasing: +{trend:.0f}MB in last 10 checks"
+                )
+
+
+# Singleton
+_oom_protector: Optional[OOMProtector] = None
+
+
+async def get_oom_protector() -> OOMProtector:
+    """Get singleton OOMProtector instance."""
+    global _oom_protector
+    if _oom_protector is None:
+        _oom_protector = OOMProtector()
+        await _oom_protector.start()
+    return _oom_protector
+
+
+# =============================================================================
+# DEADLOCK-SAFE LOCK
+# =============================================================================
+
+
+class DeadlockSafeLock:
+    """
+    Lock with timeout to prevent deadlocks.
+
+    Features:
+    - Configurable timeout
+    - Deadlock detection
+    - Lock ownership tracking
+    - Debug logging
+
+    Environment Variables:
+        DSL_DEFAULT_TIMEOUT: Default lock timeout (default: 30.0)
+        DSL_WARN_AFTER: Warn if held longer than this (default: 10.0)
+    """
+
+    def __init__(
+        self,
+        name: str = "unnamed",
+        timeout: Optional[float] = None,
+    ):
+        """
+        Initialize deadlock-safe lock.
+
+        Args:
+            name: Lock name for debugging
+            timeout: Lock acquisition timeout
+        """
+        self._name = name
+        self._timeout = timeout or _env_float("DSL_DEFAULT_TIMEOUT", 30.0)
+        self._warn_after = _env_float("DSL_WARN_AFTER", 10.0)
+
+        self._lock = asyncio.Lock()
+        self._owner: Optional[str] = None
+        self._acquired_at: Optional[float] = None
+        self._acquisition_stack: Optional[str] = None
+
+        self._logger = logging.getLogger("jarvis.lock")
+
+    @asynccontextmanager
+    async def acquire(
+        self,
+        timeout: Optional[float] = None,
+        caller: Optional[str] = None,
+    ):
+        """
+        Acquire lock with timeout.
+
+        Args:
+            timeout: Override timeout
+            caller: Caller identifier for debugging
+
+        Raises:
+            asyncio.TimeoutError: If lock cannot be acquired within timeout
+        """
+        effective_timeout = timeout or self._timeout
+
+        try:
+            await asyncio.wait_for(
+                self._lock.acquire(),
+                timeout=effective_timeout,
+            )
+        except asyncio.TimeoutError:
+            # Log deadlock info
+            self._logger.error(
+                f"[LOCK] Deadlock detected on '{self._name}'! "
+                f"Current owner: {self._owner}, "
+                f"held for {time.time() - (self._acquired_at or 0):.1f}s"
+            )
+            if self._acquisition_stack:
+                self._logger.error(f"[LOCK] Owner stack:\n{self._acquisition_stack}")
+            raise
+
+        # Track ownership
+        self._owner = caller or "unknown"
+        self._acquired_at = time.time()
+
+        # Capture stack for debugging
+        import traceback
+        self._acquisition_stack = "".join(traceback.format_stack()[-5:-1])
+
+        # Start warning task
+        warn_task = asyncio.create_task(
+            self._warn_if_held_too_long()
+        )
+
+        try:
+            yield
+        finally:
+            # Release lock
+            warn_task.cancel()
+            self._owner = None
+            self._acquired_at = None
+            self._acquisition_stack = None
+            self._lock.release()
+
+    async def _warn_if_held_too_long(self) -> None:
+        """Warn if lock is held too long."""
+        try:
+            await asyncio.sleep(self._warn_after)
+            if self._owner:
+                self._logger.warning(
+                    f"[LOCK] '{self._name}' held for >{self._warn_after}s "
+                    f"by {self._owner}"
+                )
+        except asyncio.CancelledError:
+            pass
+
+    @property
+    def locked(self) -> bool:
+        """Check if lock is held."""
+        return self._lock.locked()
+
+    @property
+    def owner(self) -> Optional[str]:
+        """Get current lock owner."""
+        return self._owner
+
+
+# =============================================================================
+# NETWORK PARTITION DETECTOR
+# =============================================================================
+
+
+@dataclass
+class ComponentStatus:
+    """Status of a network component."""
+    component_id: str
+    last_heartbeat: float
+    consecutive_failures: int = 0
+    is_reachable: bool = True
+    latency_ms: float = 0.0
+
+
+class NetworkPartitionDetector:
+    """
+    Detects network partitions between Trinity components.
+
+    Features:
+    - Heartbeat-based detection
+    - Configurable timeouts
+    - Partition event callbacks
+    - Auto-recovery detection
+
+    Environment Variables:
+        NPD_HEARTBEAT_INTERVAL: Heartbeat interval (default: 5.0)
+        NPD_TIMEOUT: Component timeout (default: 15.0)
+        NPD_FAILURE_THRESHOLD: Failures before partition (default: 3)
+    """
+
+    def __init__(
+        self,
+        component_id: str,
+        heartbeat_callback: Optional[Callable[[str], Awaitable[float]]] = None,
+    ):
+        """
+        Initialize partition detector.
+
+        Args:
+            component_id: This component's ID
+            heartbeat_callback: Async function to ping component, returns latency_ms
+        """
+        self._component_id = component_id
+        self._heartbeat_callback = heartbeat_callback
+
+        # Configuration
+        self._heartbeat_interval = _env_float("NPD_HEARTBEAT_INTERVAL", 5.0)
+        self._timeout = _env_float("NPD_TIMEOUT", 15.0)
+        self._failure_threshold = _env_int("NPD_FAILURE_THRESHOLD", 3)
+
+        # State
+        self._components: Dict[str, ComponentStatus] = {}
+        self._partition_callbacks: List[Callable[[str, bool], Awaitable[None]]] = []
+        self._running = False
+        self._monitor_task: Optional[asyncio.Task] = None
+
+        self._logger = logging.getLogger("jarvis.npd")
+
+    async def start(self) -> None:
+        """Start partition detection."""
+        if self._running:
+            return
+
+        self._running = True
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._logger.info(f"[NPD] Started for {self._component_id}")
+
+    async def stop(self) -> None:
+        """Stop partition detection."""
+        self._running = False
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
+    def register_component(self, component_id: str) -> None:
+        """Register a component to monitor."""
+        if component_id not in self._components:
+            self._components[component_id] = ComponentStatus(
+                component_id=component_id,
+                last_heartbeat=time.time(),
+            )
+
+    def register_partition_callback(
+        self,
+        callback: Callable[[str, bool], Awaitable[None]],
+    ) -> None:
+        """
+        Register callback for partition events.
+
+        Args:
+            callback: Async function(component_id, is_partitioned)
+        """
+        self._partition_callbacks.append(callback)
+
+    async def record_heartbeat(
+        self,
+        component_id: str,
+        latency_ms: float = 0.0,
+    ) -> None:
+        """Record successful heartbeat from component."""
+        if component_id not in self._components:
+            self.register_component(component_id)
+
+        status = self._components[component_id]
+        was_partitioned = not status.is_reachable
+
+        status.last_heartbeat = time.time()
+        status.consecutive_failures = 0
+        status.is_reachable = True
+        status.latency_ms = latency_ms
+
+        # Notify if recovered from partition
+        if was_partitioned:
+            self._logger.info(f"[NPD] Component {component_id} recovered")
+            for callback in self._partition_callbacks:
+                try:
+                    await callback(component_id, False)
+                except Exception as e:
+                    self._logger.error(f"[NPD] Callback error: {e}")
+
+    async def _monitor_loop(self) -> None:
+        """Monitor components for partitions."""
+        while self._running:
+            try:
+                now = time.time()
+
+                for component_id, status in self._components.items():
+                    # Check if heartbeat is stale
+                    age = now - status.last_heartbeat
+
+                    if age > self._timeout:
+                        status.consecutive_failures += 1
+
+                        if (
+                            status.consecutive_failures >= self._failure_threshold
+                            and status.is_reachable
+                        ):
+                            # Partition detected
+                            status.is_reachable = False
+                            self._logger.warning(
+                                f"[NPD] PARTITION DETECTED: {component_id} "
+                                f"(no heartbeat for {age:.1f}s)"
+                            )
+
+                            for callback in self._partition_callbacks:
+                                try:
+                                    await callback(component_id, True)
+                                except Exception as e:
+                                    self._logger.error(f"[NPD] Callback error: {e}")
+
+                    # Try active heartbeat if callback available
+                    if self._heartbeat_callback and age > self._heartbeat_interval:
+                        try:
+                            latency = await asyncio.wait_for(
+                                self._heartbeat_callback(component_id),
+                                timeout=self._timeout,
+                            )
+                            await self.record_heartbeat(component_id, latency)
+                        except asyncio.TimeoutError:
+                            status.consecutive_failures += 1
+                        except Exception as e:
+                            self._logger.debug(f"[NPD] Heartbeat failed: {e}")
+                            status.consecutive_failures += 1
+
+                await asyncio.sleep(self._heartbeat_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"[NPD] Monitor error: {e}")
+                await asyncio.sleep(self._heartbeat_interval)
+
+    def get_status(self, component_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get component status."""
+        if component_id:
+            status = self._components.get(component_id)
+            if status:
+                return {
+                    "component_id": status.component_id,
+                    "is_reachable": status.is_reachable,
+                    "last_heartbeat": status.last_heartbeat,
+                    "consecutive_failures": status.consecutive_failures,
+                    "latency_ms": status.latency_ms,
+                }
+            return {}
+
+        return {
+            cid: {
+                "is_reachable": s.is_reachable,
+                "last_heartbeat": s.last_heartbeat,
+                "failures": s.consecutive_failures,
+            }
+            for cid, s in self._components.items()
+        }
+
+
+# =============================================================================
+# SQLITE RETRY WRAPPER
+# =============================================================================
+
+
+class SQLiteRetryWrapper:
+    """
+    SQLite connection wrapper with automatic retry on lock contention.
+
+    Features:
+    - Automatic retry with exponential backoff
+    - WAL mode for better concurrency
+    - Configurable timeouts
+    - Connection pooling friendly
+
+    Environment Variables:
+        SQLITE_MAX_RETRIES: Maximum retries (default: 5)
+        SQLITE_RETRY_DELAY: Base retry delay (default: 0.1)
+        SQLITE_BUSY_TIMEOUT: SQLite busy timeout ms (default: 30000)
+    """
+
+    def __init__(
+        self,
+        db_path: Path,
+        check_same_thread: bool = False,
+    ):
+        """
+        Initialize SQLite wrapper.
+
+        Args:
+            db_path: Path to database file
+            check_same_thread: SQLite check_same_thread setting
+        """
+        self._db_path = db_path
+        self._check_same_thread = check_same_thread
+
+        # Configuration
+        self._max_retries = _env_int("SQLITE_MAX_RETRIES", 5)
+        self._retry_delay = _env_float("SQLITE_RETRY_DELAY", 0.1)
+        self._busy_timeout = _env_int("SQLITE_BUSY_TIMEOUT", 30000)
+
+        self._conn: Optional[sqlite3.Connection] = None
+        self._lock = asyncio.Lock()
+
+        self._logger = logging.getLogger("jarvis.sqlite")
+
+    async def connect(self) -> None:
+        """Connect to database."""
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._conn = sqlite3.connect(
+            str(self._db_path),
+            check_same_thread=self._check_same_thread,
+            timeout=self._busy_timeout / 1000.0,
+        )
+
+        # Configure for concurrency
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout}")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+
+        self._logger.debug(f"[SQLITE] Connected to {self._db_path}")
+
+    async def close(self) -> None:
+        """Close database connection."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+    @asynccontextmanager
+    async def transaction(self):
+        """Execute within a transaction with retry."""
+        if not self._conn:
+            await self.connect()
+
+        async with self._lock:
+            for attempt in range(self._max_retries + 1):
+                try:
+                    yield self._conn
+                    self._conn.commit()
+                    return
+
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower() and attempt < self._max_retries:
+                        self._conn.rollback()
+                        delay = self._retry_delay * (2 ** attempt)
+                        delay *= (0.5 + random.random())
+                        self._logger.warning(
+                            f"[SQLITE] Lock contention, retry {attempt + 1} "
+                            f"in {delay:.2f}s"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        self._conn.rollback()
+                        raise
+
+                except Exception:
+                    self._conn.rollback()
+                    raise
+
+    async def execute(
+        self,
+        sql: str,
+        params: tuple = (),
+    ) -> sqlite3.Cursor:
+        """Execute SQL with retry."""
+        if not self._conn:
+            await self.connect()
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                async with self._lock:
+                    return self._conn.execute(sql, params)
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < self._max_retries:
+                    delay = self._retry_delay * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+    async def executemany(
+        self,
+        sql: str,
+        params_list: List[tuple],
+    ) -> None:
+        """Execute many with retry."""
+        if not self._conn:
+            await self.connect()
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                async with self._lock:
+                    self._conn.executemany(sql, params_list)
+                    self._conn.commit()
+                return
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < self._max_retries:
+                    delay = self._retry_delay * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+
+# =============================================================================
+# WEBSOCKET MESSAGE BUFFER
+# =============================================================================
+
+
+@dataclass
+class BufferedMessage:
+    """A buffered WebSocket message."""
+    message: Dict[str, Any]
+    timestamp: float
+    target: Optional[str] = None
+    priority: int = 0
+
+
+class WebSocketMessageBuffer:
+    """
+    Buffer for WebSocket messages during disconnects.
+
+    Features:
+    - Priority-based buffering
+    - TTL-based expiration
+    - Size limits
+    - Ordered delivery
+
+    Environment Variables:
+        WS_BUFFER_SIZE: Maximum buffer size (default: 1000)
+        WS_BUFFER_TTL: Message TTL in seconds (default: 300)
+        WS_BUFFER_PRIORITY_LEVELS: Number of priority levels (default: 3)
+    """
+
+    def __init__(self):
+        """Initialize message buffer."""
+        self._max_size = _env_int("WS_BUFFER_SIZE", 1000)
+        self._ttl = _env_float("WS_BUFFER_TTL", 300.0)
+        self._priority_levels = _env_int("WS_BUFFER_PRIORITY_LEVELS", 3)
+
+        # Priority queues
+        self._buffers: Dict[int, Deque[BufferedMessage]] = {
+            i: deque() for i in range(self._priority_levels)
+        }
+
+        self._lock = asyncio.Lock()
+        self._total_size = 0
+
+        self._logger = logging.getLogger("jarvis.wsbuf")
+
+    async def add(
+        self,
+        message: Dict[str, Any],
+        target: Optional[str] = None,
+        priority: int = 1,
+    ) -> bool:
+        """
+        Add message to buffer.
+
+        Args:
+            message: Message to buffer
+            target: Target component
+            priority: Message priority (0=highest)
+
+        Returns:
+            True if buffered, False if buffer full
+        """
+        async with self._lock:
+            # Check size limit
+            if self._total_size >= self._max_size:
+                # Try to evict expired or low-priority messages
+                evicted = await self._evict_if_needed()
+                if not evicted:
+                    self._logger.warning("[WSBUF] Buffer full, dropping message")
+                    return False
+
+            priority = min(priority, self._priority_levels - 1)
+
+            buffered = BufferedMessage(
+                message=message,
+                timestamp=time.time(),
+                target=target,
+                priority=priority,
+            )
+
+            self._buffers[priority].append(buffered)
+            self._total_size += 1
+
+            return True
+
+    async def flush(
+        self,
+        target: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Flush buffered messages.
+
+        Args:
+            target: Only flush messages for this target
+
+        Returns:
+            List of messages in priority order
+        """
+        async with self._lock:
+            now = time.time()
+            messages = []
+
+            # Process in priority order (0 = highest)
+            for priority in range(self._priority_levels):
+                buffer = self._buffers[priority]
+                remaining = deque()
+
+                while buffer:
+                    msg = buffer.popleft()
+                    self._total_size -= 1
+
+                    # Check TTL
+                    if now - msg.timestamp > self._ttl:
+                        continue
+
+                    # Check target filter
+                    if target and msg.target and msg.target != target:
+                        remaining.append(msg)
+                        self._total_size += 1
+                        continue
+
+                    messages.append(msg.message)
+
+                # Put back remaining
+                self._buffers[priority] = remaining
+
+            if messages:
+                self._logger.debug(f"[WSBUF] Flushed {len(messages)} messages")
+
+            return messages
+
+    async def _evict_if_needed(self) -> bool:
+        """Evict messages to make room."""
+        now = time.time()
+        evicted = False
+
+        # First, evict expired messages
+        for priority in range(self._priority_levels - 1, -1, -1):
+            buffer = self._buffers[priority]
+            while buffer and now - buffer[0].timestamp > self._ttl:
+                buffer.popleft()
+                self._total_size -= 1
+                evicted = True
+
+        # If still full, evict lowest priority
+        if self._total_size >= self._max_size:
+            for priority in range(self._priority_levels - 1, -1, -1):
+                if self._buffers[priority]:
+                    self._buffers[priority].popleft()
+                    self._total_size -= 1
+                    evicted = True
+                    break
+
+        return evicted
+
+    @property
+    def size(self) -> int:
+        """Get current buffer size."""
+        return self._total_size
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get buffer statistics."""
+        return {
+            "total_size": self._total_size,
+            "max_size": self._max_size,
+            "by_priority": {
+                p: len(self._buffers[p])
+                for p in range(self._priority_levels)
+            },
+        }

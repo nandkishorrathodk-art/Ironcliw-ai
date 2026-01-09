@@ -2024,6 +2024,303 @@ class TrinityUnifiedOrchestrator:
     ✅ Zero Hardcoding     - 100% config-driven
     """
 
+    # 2. Guaranteed Event Delivery System  
+    class GuaranteedEventDelivery:
+        """
+        Guaranteed event with acknowledgement and retry.
+
+        Features:
+        - Acknowledgement-based delivery 
+        - Automatic retry with exponential backoff 
+        - Persistent event queue (SQLite-backed)
+        - At-least-once delivery guarantee
+        """
+
+        def __init__(self, 
+            store_path: Optional[Path] = None, 
+            max_retries: int = 5, 
+            retry_backoff: float = 1.0,
+        ):
+            self._store_path = store_path or Path.home() / ".jarvis" / "trinity" / "events.db" # Default store path is in the user's home directory under .jarvis/trinity/events.db 
+            self._store_path.parent.mkdir(parents=True, exist_ok=True) # Create directory if it doesn't exist. parent is the directory above the store path.
+            self._max_retries = max_retries # Maximum number of retries. After this many retries, the event is considered failed. 
+            self._retry_backoff = retry_backoff # Base retry delay in seconds. This is the delay before the next retry. 
+
+            self._pending_events: Dict[str, Dict[str, Any]] = {} # Event ID -> Event data. This is the event that is being processed. 
+            self._ack_timeouts: Dict[str, asyncio.Task] = {} # Event ID -> Task. This is the task that is waiting for the acknowledgement. 
+            self._retry_tasks: Dict[str, asyncio.Task] = {} # Event ID -> Task. This is the task that is waiting for the retry. 
+
+            self._db_conn: Optional[sqlite3.Connection] = None # Database connection. This is the connection to the SQLite database. 
+            self._db_lock = asyncio.Lock() # Lock for the database. This is used to prevent concurrent access to the database.  
+
+        # Initialize the event store. This is called when the orchestrator is initialized. 
+        async def initialize(self) -> None:
+            """Initialize persistent event store."""
+            async with self._db_lock: # Lock the database to prevent concurrent access. 
+                # Connect to the database. 
+                self._db_conn = sqlite2.connect(
+                    str(self._store_path),
+                    check_same_thread=False,
+                    timeout=30.0,
+                )
+                self._db_conn.execute("PRAGMA journal_mode=WAL") # Enable WAL mode for better concurrency 
+                self._db_conn.execute("PRAGMA busy_timeout=30000") # Set busy timeout to 30 seconds. This is the timeout for the database to wait for a lock.  
+
+                # Create tables for pending events. This is the table that stores the events that are being processed. 
+                self._db_conn.execute(""" 
+                    CREATE TABLE IF NOT EXISTS pending_events (
+                        event_id TEXT PRIMARY KEY,
+                        event_data TEXT NOT NULL, 
+                        target_component TEXT, 
+                        retry_count INTEGER DEFAULT 0, 
+                        created_at REAL NOT NULL,
+                        last_attempt_at REAL, 
+                        next_retry REAL
+                    )
+                """)
+
+                # Create index for next retry. This is used to find the next event to retry. 
+                self._db_conn.execute(""" 
+                    CREATE INDEX IF NOT EXISTS idx_next_retry 
+                    ON pending_events(next_retry)
+                """)
+
+                self._db_conn.commit() # Commit the changes to the database. 
+
+                # Load pending events
+                await self._load_pending_events() # Load pending events from the database. 
+
+        # Send event with acknowledgment guarantee. This is called when the event is sent to the target component. 
+        async def send_with_ack(
+            self, # Self is the instance of the class. 
+            event: TrinityEvent, # Event to send. This is the event that is being sent. 
+            target_component: str, # Target component. This is the component that is receiving the event. 
+            ack_timeout: float = 30.0, # Acknowledgement timeout. This is the timeout for the acknowledgement. 
+        ) -> bool: # Return True if acknowledged, False if failed after retries. 
+            """
+            Send event with acknowledgment guarantee.
+            
+            Returns:
+                True if acknowledged, False if failed after retries
+            """
+            event_id = event.event_id # Get the event ID. This is the unique identifier for the event. 
+
+            # Store event in database. This is the event that is being processed.  
+            async with self._db_lock:
+                self._db_conn.execute(
+                    """
+                    INSERT OR REPLACE INTO pending_events 
+                    (event_id, event_data, target_component, created_at, next_retry)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id, # Event ID. This is the unique identifier for the event. 
+                        json.dumps(event.to_dict()), # Event data. This is the event that is being processed. 
+                        target_component, # Target component. This is the component that is receiving the event. 
+                        time.time(), # Created at. This is the time when the event was created. 
+                        time.time(), # Next retry. This is the time when the event will be retried. 
+                    )
+                )
+                self._db_conn.commit() # Commit the changes to the database. 
+            
+            # Track pending event. This is the event that is being processed. 
+            self._pending_events[event_id] = {
+                "event": event, # Event data. This is the event that is being processed. 
+                "target": target_component, # Target component. This is the component that is receiving the event. 
+                "retry_count": 0, # Retry count. This is the number of times the event has been retried. 
+                "ack_timeout": ack_timeout, # Acknowledgement timeout. This is the timeout for the acknowledgement. 
+            } 
+
+            # Send event to target component and wait for acknowledgement.  
+            ack_received = await self._send_and_wait_ack(event_id, target_component)
+
+            # If acknowledgement is received, remove from pending.  
+            if ack_received: 
+                # Remove from pending. This is the event that is being processed. 
+                await self._remove_pending_event(event_id) 
+                return True # Return True if acknowledgement is received. 
+            else: # If acknowledgement is not received, schedule retry. 
+                # Schedule retry 
+                await self._schedule_retry(event_id) # Schedule retry. This is the event that is being processed. 
+                return False # Return False if acknowledgement is not received. 
+        
+        async def _send_and_wait_ack(self, event_id: str, target_component: str) -> bool:
+            """Send event and wait for acknowlegment."""
+            # Get pending event. This is the event that is being processed. 
+            pending = self._pending_events.get(event_id) 
+
+            if not pending: # If the event is not found, return False.  
+                return False  # Return False if the event is not found.  
+
+            event = pending["event"] # Event data. This is the event that is being processed. 
+            timeout = pending["ack_timeout"] # Acknowledgement timeout. This is the timeout for the acknowledgement. 
+
+            # Send via bridge (this would call the actual bridge)
+            # For now, simulate 
+            try: 
+                # Create future for ACK. This is the future that is waiting for the acknowledgement. 
+                ack_future = asyncio.Future() 
+                
+                # Create task to wait for acknowledgement. This is the task that is waiting for the ACK. 
+                self._ack_timeouts[event_id] = aysncio.create_task(
+                    self._wait_for_ack(event_id, ack_future, timeout) # Wait for acknowledgement. This is the task that is waiting for the ACK. 
+                )
+
+                try: 
+                    await asyncio.wait_for(ack_future, timeout=timeout) # Wait for acknowledgement. This is the future that is waiting for the ACK. 
+                    return True # Return True if acknowledgement is received. 
+                except asyncio.TimeoutError: # If the acknowledgement is not received, return False.  
+                    return False # Return False if the acknowledgement is not received.  
+            
+            except Exception as e: # If an error occurs, log the error and return False.  
+                logger.error(f"Error sending event {event_id}: {e}") # Log the error.  
+                return False # Return False if an error occurs.  
+                
+        # Wait for ACK (would be called by bridge on ACK). 
+        async def _wait_for_ack(
+            self,
+            event_id: str, 
+            future: asyncio.Future,
+            timeout: float,
+        ): 
+            """Wait for ACK (would be called by bridge on ACK).""" 
+            try: 
+                await asyncio.sleep(timeout) # Wait for the timeout. 
+                if not future.done(): # If the future is not done, set the result to False.     
+                    future.set_result(False) # Set the result to False. 
+            except asyncio.CancelledError: # If the task is cancelled, pass. 
+                pass # Pass if the task is cancelled. 
+        
+        # Acknowledge the event. This is called by the bridge on ACK. 
+        def acknowledge(self, event_id: str): 
+            """Acknowledge the event."""
+            if event_id in self._ack_timeouts: # If the event is in the acknowledgement timeouts, cancel the task. 
+                task = self._ack_timeouts.pop(event_id) # Get the task. 
+                task.cancel() # Cancel the task. 
+            
+            if event_id in self._pending_events: # If the event is in the pending events, set the result to True. 
+                future = asyncio.Future() # Create a future. 
+                future.set_result(True) # Set the result to True. 
+
+        # Schedule retry. This is called when the event is not acknowledged. 
+        async def schedule_retry(self, event_id: str): 
+            # Get pending event. This is the event that is being processed. 
+            pending = self._pending_events.get(event_id) 
+
+            # If the event is not found, return. 
+            if not pending: # If the event is not found, return. 
+                return # Return if the event is not found. 
+
+            # Get retry count. This is the number of times the event has been retried. 
+            retry_count = pending["retry_count"]
+
+            if retry_count >= self._max_retries: # If the retry count is greater than the maximum retries, log the error and remove the event from the pending events.  
+                logger.error(f"Event {event_id} failed after {retry_count} retries")
+                await self._remove_pending_event(event_id) # Remove the event from the pending events. 
+                return # Return if the retry count is greater than the maximum retries.     
+            
+            # Calculate backoff time. This is the time to wait before the next retry.  
+            backoff = self._retry_backoff * (2 ** retry_count) 
+            # Calculate next retry time. This is the time when the event will be retried. 
+            next_retry = time.time() + backoff 
+
+            # Update retry count. This is the number of times the event has been retried. 
+            pending["retry_count"] = retry_count + 1 
+
+            # Update database with new retry info. This is the event that is being processed. 
+            async with self._db_lock: 
+                self._db_conn.execute(
+                    """
+                    UPDATE pending_events 
+                    SET retry_count = ?, next_retry = ?, last_attempt = ? 
+                    WHERE event_id = ? 
+                    """, 
+                    (retry_count + 1, next_retry, time.time(), event_id) # Update the retry count, next retry time, and last attempt time. 
+                )
+                self._db_conn.commit() # Commit the changes to the database. 
+
+            # Schedule retry task. This is the task that is waiting for the retry. 
+            self._retry_tasks[event_id] = asyncio.create_task(
+                self._retry_event(event_id, backoff) # Retry the event after the backoff time. 
+            )
+
+        # Retry event. This is called when the event is not acknowledged. 
+        async def _retry_event(self, event_id: str, delay: float):
+            """Retry sending event after delay."""
+            # Wait for the delay. This is the time to wait before the next retry. 
+            """Retry sending event after delay."""
+            await asyncio.sleep(delay) # Wait for the delay. This is the time to wait before the next retry. 
+
+            # Get pending event. This is the event that is being processed. 
+            pending = self._pending_events.get(event_id) 
+
+            # If the event is not found, return. 
+            if not pending: # If the event is not found, return. 
+                return # Return if the event is not found. 
+
+            # Send event to target component and wait for acknowledgement. This is the event that is being processed. 
+            if pending: 
+                await self._send_and_wait_ack(event_id, pending["target"]) # Send the event to the target component and wait for acknowledgement. 
+
+        # Load pending events from database on startup. This is called when the orchestrator is initialized. 
+        async def _load_pending_events(self):
+            """Load pending events from database on startup."""
+            async with self._db_lock: # Lock the database to prevent concurrent access. 
+                cursor = self._db_conn.execute( # Execute the query to load the pending events from the database. 
+                    """
+                    SELECT event_id, event_data, target_component, retry_count, next_retry 
+                    FROM pending_events  
+                    WHERE next_retry <= ?  
+                    """,
+                    (time.time()) # Time now. This is the time when the event was created. 
+                )
+
+                # Fetch all the rows from the database. 
+                for row in cursor.fetchall(): # For each row, get the event ID, event data, target component, retry count, and next retry time. 
+                    event_id, event_data, target, retry_count, next_retry = row # Event ID, event data, target component, retry count, and next retry time. 
+
+                    try: 
+                        event_dict = json.loads(event_data) # Event data. This is the event that is being processed. 
+                        event = TrinityEvent.from_dict(event_dict) # Event data. This is the event that is being processed.  
+
+                        self._pending_events[event_id] = {
+                            "event": event, # Event data. This is the event that is being processed. 
+                            "target": target, # Target component. This is the component that is receiving the event. 
+                            "retry_count": retry_count, # Retry count. This is the number of times the event has been retried. 
+                            "ack_timeout": 30.0, # Acknowledgement timeout. This is the timeout for the acknowledgement. 
+                        }
+
+                        # Schedule retry if needed 
+                        if next_retry <= time.time(): 
+                            await self._schedule_retry(event_id) # Schedule retry. This is the event that is being processed. 
+
+                    except Exception as e: # If an error occurs, log the error. 
+                        logger.error(f"Error loading pending even {event_id}: {e}") # Log the error. 
+        
+        # Remove pending event. This is called when the event is acknowledged or failed after retries. 
+        async def _remove_pending_event(self, event_id: str):
+            """Remove event from pending queue."""
+            self._pending_events.pop(event_id, None) # Remove the event from the pending events. 
+
+            # Cancel tasks
+            if event_id in self._ack_timeouts: # If the event is in the acknowledgement timeouts, cancel the task. 
+                self._ack_timeouts[event_id].cancel() # Cancel the task. 
+                del self._ack_timeouts[event_id] # Delete the task from the acknowledgement timeouts. 
+
+            if event_id in self._retry_tasks: # If the event is in the retry tasks, cancel the task. 
+                self._retry_tasks[event_id].cancel() 
+                del self._retry_tasks[event_id] # Delete the task from the retry tasks. 
+
+            # Remove from database 
+            async with self._db_lock: # Lock the database to prevent concurrent access.  
+                self._db_conn.execute( # Execute the query to remove the event from the database. 
+                    """
+                    DELETE FROM pending_events WHERE event_id = ? 
+                    """,
+                    (event_id,) # Event ID. This is the unique identifier for the event. 
+                )
+                self._db_conn.commit() # Commit the changes to the database. 
+
     def __init__(
         self,
         enable_jprime: bool = True,
