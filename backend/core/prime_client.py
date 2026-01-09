@@ -92,7 +92,7 @@ class PrimeClientConfig:
     """Configuration for Prime client."""
     # Connection settings
     prime_host: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "localhost"))
-    prime_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8020))
+    prime_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8000))
     prime_api_version: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_API_VERSION", "v1"))
 
     # Connection pool settings
