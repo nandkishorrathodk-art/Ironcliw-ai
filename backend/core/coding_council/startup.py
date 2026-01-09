@@ -144,6 +144,11 @@ _command_buffer: Optional[Any] = None
 _timeout_manager: Optional[Any] = None
 _retry_manager: Optional[Any] = None
 
+# v85.0: J-Prime Local LLM Integration
+_jprime_engine: Optional[Any] = None
+_jprime_fallback_chain: Optional[Any] = None
+JPRIME_ENABLED = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+
 # IDE Configuration
 IDE_BRIDGE_ENABLED = os.getenv("IDE_BRIDGE_ENABLED", "true").lower() == "true"
 LSP_SERVER_PORT = int(os.getenv("LSP_SERVER_PORT", "9257"))
@@ -533,6 +538,9 @@ async def _initialize_council_full() -> "UnifiedCodingCouncil":
     # v79.0: Initialize Voice Announcer for evolution feedback
     await _initialize_v79_components()
 
+    # v85.0: Initialize J-Prime Local LLM Engine
+    await _initialize_v85_jprime_components()
+
     return council
 
 
@@ -639,6 +647,54 @@ async def _initialize_v79_components() -> None:
     # Log summary
     logger.info(f"[CodingCouncilStartup] v79.0 Components: Voice Announcer "
                 f"{'✅ ready' if _voice_announcer else '❌ unavailable'}")
+
+
+async def _initialize_v85_jprime_components() -> None:
+    """
+    v85.0: Initialize J-Prime local LLM engine and fallback chain.
+
+    Components:
+    - JPrimeUnifiedEngine: Local LLM inference via llama-cpp-python
+    - MultiModelFallbackChain: Intelligent model cascading
+    - Cross-repo coordination with J-Prime heartbeat monitoring
+    """
+    global _jprime_engine, _jprime_fallback_chain
+
+    if not JPRIME_ENABLED:
+        logger.info("[CodingCouncilStartup] J-Prime disabled via config")
+        return
+
+    logger.info("[CodingCouncilStartup] Initializing v85.0 J-Prime components...")
+
+    # Initialize J-Prime Unified Engine
+    try:
+        from .adapters.jprime_engine import JPrimeUnifiedEngine, get_jprime_engine
+
+        # Use factory function for singleton pattern
+        _jprime_engine = await get_jprime_engine()
+
+        if _jprime_engine and await _jprime_engine.is_available():
+            logger.info("[CodingCouncilStartup] ✅ J-Prime Unified Engine ready (local LLM)")
+
+            # Get fallback chain reference
+            _jprime_fallback_chain = getattr(_jprime_engine, '_fallback_chain', None)
+            if _jprime_fallback_chain:
+                logger.info("[CodingCouncilStartup] ✅ Multi-Model Fallback Chain ready")
+        else:
+            logger.warning("[CodingCouncilStartup] J-Prime not available (no local model loaded)")
+            _jprime_engine = None
+
+    except ImportError as e:
+        logger.debug(f"[CodingCouncilStartup] J-Prime adapter not available: {e}")
+        _jprime_engine = None
+    except Exception as e:
+        logger.warning(f"[CodingCouncilStartup] J-Prime init failed: {e}")
+        _jprime_engine = None
+
+    # Log summary
+    jprime_status = "✅ ready" if _jprime_engine else "❌ unavailable"
+    fallback_status = "✅ ready" if _jprime_fallback_chain else "❌ unavailable"
+    logger.info(f"[CodingCouncilStartup] v85.0 J-Prime: Engine {jprime_status}, Fallback Chain {fallback_status}")
 
 
 async def _initialize_ide_components() -> None:
@@ -1711,3 +1767,39 @@ def get_voice_announcer() -> Optional[Any]:
     Returns the CodingCouncilVoiceAnnouncer for evolution voice feedback.
     """
     return _voice_announcer
+
+
+def get_jprime_engine() -> Optional[Any]:
+    """
+    v85.0: Get the global J-Prime Unified Engine instance.
+
+    Returns the JPrimeUnifiedEngine for local LLM inference.
+    The engine includes:
+    - MultiModelFallbackChain for adaptive model selection
+    - Circuit breakers per model
+    - Aider-style code editing
+    - MetaGPT-style multi-agent planning
+    """
+    return _jprime_engine
+
+
+def get_jprime_fallback_chain() -> Optional[Any]:
+    """
+    v85.0: Get the global J-Prime Fallback Chain.
+
+    Returns the MultiModelFallbackChain for intelligent model cascading:
+    - Sequential fallback through local models
+    - Parallel race mode for latency-critical tasks
+    - Adaptive model selection based on success rates
+    - Claude fallback as last resort
+    """
+    return _jprime_fallback_chain
+
+
+def is_jprime_available() -> bool:
+    """
+    v85.0: Check if J-Prime local LLM is available.
+
+    Returns True if the J-Prime engine is initialized and has a model loaded.
+    """
+    return _jprime_engine is not None

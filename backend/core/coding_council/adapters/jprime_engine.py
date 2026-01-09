@@ -120,6 +120,45 @@ class CircuitState(Enum):
     HALF_OPEN = auto()  # Testing recovery
 
 
+class FallbackStrategy(Enum):
+    """Multi-model fallback strategies."""
+    SEQUENTIAL = auto()      # Try models in order until success
+    PARALLEL_RACE = auto()   # Start all, use first success
+    ADAPTIVE = auto()        # Use historical success rates
+
+
+@dataclass
+class ModelFallbackConfig:
+    """Configuration for a model in the fallback chain."""
+    model_id: str
+    priority: int = 0           # Higher = try first
+    timeout_ms: float = 30000   # Model-specific timeout
+    is_local: bool = True
+    retry_count: int = 1
+    suitable_tasks: Set[str] = field(default_factory=set)  # Empty = all tasks
+
+    # Historical tracking (updated dynamically)
+    success_count: int = 0
+    failure_count: int = 0
+    total_latency_ms: float = 0.0
+
+    @property
+    def success_rate(self) -> float:
+        total = self.success_count + self.failure_count
+        return self.success_count / total if total > 0 else 0.5
+
+    @property
+    def avg_latency_ms(self) -> float:
+        return self.total_latency_ms / self.success_count if self.success_count > 0 else 0.0
+
+    def record_success(self, latency_ms: float):
+        self.success_count += 1
+        self.total_latency_ms += latency_ms
+
+    def record_failure(self):
+        self.failure_count += 1
+
+
 @dataclass
 class JPrimeConfig:
     """Configuration for JARVIS Prime engine."""
@@ -131,7 +170,7 @@ class JPrimeConfig:
         default_factory=lambda: Path.home() / ".jarvis" / "trinity" / "components" / "jarvis_prime.json"
     )
 
-    # Models
+    # Primary Models
     coding_model: str = field(
         default_factory=lambda: _get_env("JPRIME_CODING_MODEL", "codellama-7b-instruct")
     )
@@ -143,6 +182,39 @@ class JPrimeConfig:
     )
     fast_model: str = field(
         default_factory=lambda: _get_env("JPRIME_FAST_MODEL", "phi-3.5-mini")
+    )
+
+    # Fallback Models (comma-separated for chain)
+    coding_fallback_models: str = field(
+        default_factory=lambda: _get_env(
+            "JPRIME_CODING_FALLBACKS",
+            "deepseek-coder-7b,starcoder2-7b,codellama-13b"
+        )
+    )
+    reasoning_fallback_models: str = field(
+        default_factory=lambda: _get_env(
+            "JPRIME_REASONING_FALLBACKS",
+            "qwen2.5-14b-instruct,llama-3-8b-instruct,mixtral-8x7b"
+        )
+    )
+    general_fallback_models: str = field(
+        default_factory=lambda: _get_env(
+            "JPRIME_GENERAL_FALLBACKS",
+            "llama-3-8b-instruct,mistral-7b-instruct"
+        )
+    )
+
+    # Fallback strategy
+    fallback_strategy: str = field(
+        default_factory=lambda: _get_env("JPRIME_FALLBACK_STRATEGY", "ADAPTIVE")
+    )
+
+    # Claude fallback models (in order)
+    claude_fallback_models: str = field(
+        default_factory=lambda: _get_env(
+            "JPRIME_CLAUDE_FALLBACKS",
+            "claude-3-5-haiku-20241022,claude-sonnet-4-20250514"
+        )
     )
 
     # Inference settings
@@ -163,6 +235,9 @@ class JPrimeConfig:
     connect_timeout: float = field(
         default_factory=lambda: _get_env_float("JPRIME_CONNECT_TIMEOUT", 10.0)
     )
+    fallback_timeout: float = field(
+        default_factory=lambda: _get_env_float("JPRIME_FALLBACK_TIMEOUT", 60.0)
+    )
 
     # Retry settings
     max_retries: int = field(
@@ -180,15 +255,45 @@ class JPrimeConfig:
         default_factory=lambda: _get_env_float("JPRIME_CIRCUIT_RECOVERY", 30.0)
     )
 
-    # Fallback
+    # Fallback control
     fallback_to_claude: bool = field(
         default_factory=lambda: _get_env_bool("JPRIME_FALLBACK_CLAUDE", True)
+    )
+    max_fallback_attempts: int = field(
+        default_factory=lambda: _get_env_int("JPRIME_MAX_FALLBACK_ATTEMPTS", 5)
     )
 
     # Git integration
     auto_commit: bool = field(
         default_factory=lambda: _get_env_bool("JPRIME_AUTO_COMMIT", False)
     )
+
+    def get_fallback_strategy(self) -> FallbackStrategy:
+        """Get the configured fallback strategy."""
+        try:
+            return FallbackStrategy[self.fallback_strategy.upper()]
+        except KeyError:
+            return FallbackStrategy.ADAPTIVE
+
+    def get_fallback_chain(self, task_type: "ModelTaskType") -> List[str]:
+        """Get the fallback model chain for a task type."""
+        # Map task types to fallback chains
+        if task_type in (
+            ModelTaskType.CODING, ModelTaskType.DEBUGGING,
+            ModelTaskType.REFACTORING, ModelTaskType.CODE_REVIEW
+        ):
+            return [m.strip() for m in self.coding_fallback_models.split(",") if m.strip()]
+        elif task_type in (
+            ModelTaskType.REASONING, ModelTaskType.MATH,
+            ModelTaskType.PLANNING, ModelTaskType.ANALYSIS
+        ):
+            return [m.strip() for m in self.reasoning_fallback_models.split(",") if m.strip()]
+        else:
+            return [m.strip() for m in self.general_fallback_models.split(",") if m.strip()]
+
+    def get_claude_chain(self) -> List[str]:
+        """Get Claude fallback chain."""
+        return [m.strip() for m in self.claude_fallback_models.split(",") if m.strip()]
 
 
 @dataclass
@@ -305,6 +410,304 @@ class CircuitBreaker:
                         f"Circuit {self.name}: CLOSED → OPEN "
                         f"(failures: {self._failure_count})"
                     )
+
+
+# =============================================================================
+# Multi-Model Fallback Chain
+# =============================================================================
+
+class MultiModelFallbackChain:
+    """
+    v85.0: Intelligent multi-model fallback with adaptive routing.
+
+    Features:
+    - Sequential fallback through local models
+    - Parallel race mode for latency-critical tasks
+    - Adaptive model selection based on success rates
+    - Automatic Claude fallback as last resort
+    - Per-model circuit breakers
+    - Historical performance tracking
+    """
+
+    def __init__(self, config: JPrimeConfig):
+        self.config = config
+        self._model_configs: Dict[str, ModelFallbackConfig] = {}
+        self._model_circuits: Dict[str, CircuitBreaker] = {}
+        self._lock = asyncio.Lock()
+
+        # Stats
+        self._stats = {
+            "total_attempts": 0,
+            "primary_successes": 0,
+            "fallback_successes": 0,
+            "claude_fallbacks": 0,
+            "total_failures": 0,
+        }
+
+    def _get_or_create_circuit(self, model_id: str) -> CircuitBreaker:
+        """Get or create circuit breaker for a model."""
+        if model_id not in self._model_circuits:
+            self._model_circuits[model_id] = CircuitBreaker(
+                failure_threshold=3,
+                recovery_timeout=60.0,
+                name=f"model_{model_id}",
+            )
+        return self._model_circuits[model_id]
+
+    def _get_or_create_config(self, model_id: str, is_local: bool = True) -> ModelFallbackConfig:
+        """Get or create model config with tracking."""
+        if model_id not in self._model_configs:
+            self._model_configs[model_id] = ModelFallbackConfig(
+                model_id=model_id,
+                is_local=is_local,
+            )
+        return self._model_configs[model_id]
+
+    def _sort_models_by_performance(self, models: List[str]) -> List[str]:
+        """Sort models by success rate and latency (adaptive strategy)."""
+        def score(model_id: str) -> float:
+            cfg = self._model_configs.get(model_id)
+            if not cfg or cfg.success_count + cfg.failure_count < 3:
+                return 0.5  # Unknown models get neutral score
+            # Balance success rate and speed
+            success_score = cfg.success_rate * 0.7
+            latency_score = (1.0 / max(cfg.avg_latency_ms, 100)) * 0.3 * 1000
+            return success_score + latency_score
+
+        return sorted(models, key=score, reverse=True)
+
+    async def execute_with_fallback(
+        self,
+        execute_fn: Callable[[str], Awaitable[InferenceResult]],
+        task_type: ModelTaskType,
+        primary_model: str,
+    ) -> InferenceResult:
+        """
+        Execute with intelligent multi-model fallback.
+
+        Args:
+            execute_fn: Function that takes model_id and returns InferenceResult
+            task_type: Type of task for fallback chain selection
+            primary_model: Primary model to try first
+
+        Returns:
+            InferenceResult from first successful model
+        """
+        self._stats["total_attempts"] += 1
+        strategy = self.config.get_fallback_strategy()
+
+        # Build fallback chain
+        fallback_models = self.config.get_fallback_chain(task_type)
+        all_models = [primary_model] + fallback_models
+
+        # Apply strategy
+        if strategy == FallbackStrategy.ADAPTIVE:
+            all_models = self._sort_models_by_performance(all_models)
+        elif strategy == FallbackStrategy.PARALLEL_RACE:
+            return await self._execute_parallel_race(execute_fn, all_models)
+
+        # Sequential execution with fallback
+        last_error = None
+        attempts = 0
+        max_attempts = self.config.max_fallback_attempts
+
+        for model_id in all_models:
+            if attempts >= max_attempts:
+                break
+
+            circuit = self._get_or_create_circuit(model_id)
+            if not await circuit.can_execute():
+                logger.debug(f"Skipping {model_id}: circuit open")
+                continue
+
+            attempts += 1
+            start_time = time.time()
+
+            try:
+                result = await asyncio.wait_for(
+                    execute_fn(model_id),
+                    timeout=self.config.fallback_timeout,
+                )
+
+                latency_ms = (time.time() - start_time) * 1000
+
+                if result.success:
+                    await circuit.record_success()
+                    model_cfg = self._get_or_create_config(model_id)
+                    model_cfg.record_success(latency_ms)
+
+                    if model_id == primary_model:
+                        self._stats["primary_successes"] += 1
+                    else:
+                        self._stats["fallback_successes"] += 1
+                        logger.info(f"Fallback to {model_id} succeeded")
+
+                    return result
+                else:
+                    await circuit.record_failure()
+                    model_cfg = self._get_or_create_config(model_id)
+                    model_cfg.record_failure()
+                    last_error = result.error
+
+            except asyncio.TimeoutError:
+                await circuit.record_failure()
+                logger.warning(f"Model {model_id} timed out")
+                last_error = f"{model_id} timeout"
+
+            except Exception as e:
+                await circuit.record_failure()
+                logger.warning(f"Model {model_id} failed: {e}")
+                last_error = str(e)
+
+        # All local models failed, try Claude chain
+        if self.config.fallback_to_claude:
+            claude_result = await self._execute_claude_fallback(
+                execute_fn, task_type
+            )
+            if claude_result.success:
+                self._stats["claude_fallbacks"] += 1
+                return claude_result
+            last_error = claude_result.error
+
+        self._stats["total_failures"] += 1
+        return InferenceResult(
+            success=False,
+            content="",
+            model_used="none",
+            error=f"All models failed. Last error: {last_error}",
+        )
+
+    async def _execute_parallel_race(
+        self,
+        execute_fn: Callable[[str], Awaitable[InferenceResult]],
+        models: List[str],
+    ) -> InferenceResult:
+        """Execute on multiple models in parallel, return first success."""
+        tasks = []
+
+        for model_id in models[:3]:  # Limit parallel attempts
+            circuit = self._get_or_create_circuit(model_id)
+            if await circuit.can_execute():
+                tasks.append(
+                    asyncio.create_task(
+                        self._execute_with_timeout(execute_fn, model_id),
+                        name=f"race_{model_id}",
+                    )
+                )
+
+        if not tasks:
+            return InferenceResult(
+                success=False,
+                content="",
+                model_used="none",
+                error="All models have open circuits",
+            )
+
+        # Wait for first successful result
+        pending = set(tasks)
+        while pending:
+            done, pending = await asyncio.wait(
+                pending,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            for task in done:
+                try:
+                    result = task.result()
+                    if result.success:
+                        # Cancel remaining tasks
+                        for p in pending:
+                            p.cancel()
+                        return result
+                except Exception:
+                    pass
+
+        return InferenceResult(
+            success=False,
+            content="",
+            model_used="none",
+            error="Parallel race: all models failed",
+        )
+
+    async def _execute_with_timeout(
+        self,
+        execute_fn: Callable[[str], Awaitable[InferenceResult]],
+        model_id: str,
+    ) -> InferenceResult:
+        """Execute with timeout and circuit breaker update."""
+        circuit = self._get_or_create_circuit(model_id)
+        start_time = time.time()
+
+        try:
+            result = await asyncio.wait_for(
+                execute_fn(model_id),
+                timeout=self.config.fallback_timeout,
+            )
+
+            if result.success:
+                await circuit.record_success()
+                latency_ms = (time.time() - start_time) * 1000
+                model_cfg = self._get_or_create_config(model_id)
+                model_cfg.record_success(latency_ms)
+            else:
+                await circuit.record_failure()
+
+            return result
+
+        except Exception as e:
+            await circuit.record_failure()
+            return InferenceResult(
+                success=False,
+                content="",
+                model_used=model_id,
+                error=str(e),
+            )
+
+    async def _execute_claude_fallback(
+        self,
+        execute_fn: Callable[[str], Awaitable[InferenceResult]],
+        task_type: ModelTaskType,
+    ) -> InferenceResult:
+        """Execute Claude fallback chain."""
+        claude_models = self.config.get_claude_chain()
+
+        for claude_model in claude_models:
+            try:
+                result = await asyncio.wait_for(
+                    execute_fn(claude_model),
+                    timeout=self.config.request_timeout,
+                )
+                if result.success:
+                    result.fallback_used = True
+                    logger.info(f"Claude fallback {claude_model} succeeded")
+                    return result
+            except Exception as e:
+                logger.warning(f"Claude {claude_model} failed: {e}")
+
+        return InferenceResult(
+            success=False,
+            content="",
+            model_used="claude",
+            error="All Claude fallback models failed",
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get fallback chain statistics."""
+        model_stats = {}
+        for model_id, cfg in self._model_configs.items():
+            circuit = self._model_circuits.get(model_id)
+            model_stats[model_id] = {
+                "success_rate": round(cfg.success_rate, 3),
+                "avg_latency_ms": round(cfg.avg_latency_ms, 1),
+                "success_count": cfg.success_count,
+                "failure_count": cfg.failure_count,
+                "circuit_state": circuit.state.name if circuit else "unknown",
+            }
+
+        return {
+            **self._stats,
+            "models": model_stats,
+        }
 
 
 # =============================================================================
@@ -662,20 +1065,22 @@ class JPrimeClient:
 
 class JPrimeUnifiedEngine:
     """
-    v84.0: Unified engine for JARVIS Prime local LLM inference.
+    v85.0: Unified engine for JARVIS Prime local LLM inference.
 
     Provides:
     - Aider-style code editing
     - MetaGPT-style multi-agent planning
     - Direct chat completion
-    - Intelligent model routing
+    - Intelligent model routing with multi-model fallback
     - Git integration
-    - Fallback to Claude
+    - Adaptive fallback chain (local → local fallbacks → Claude)
+    - Per-model circuit breakers and performance tracking
     """
 
     def __init__(self, config: Optional[JPrimeConfig] = None):
         self.config = config or JPrimeConfig()
         self._client: Optional[JPrimeClient] = None
+        self._fallback_chain: Optional[MultiModelFallbackChain] = None
         self._initialized = False
         self._classifier = TaskClassifier()
 
@@ -696,9 +1101,12 @@ class JPrimeUnifiedEngine:
 
         self._client = JPrimeClient(self.config)
         await self._client.initialize()
-        self._initialized = True
 
-        logger.info("JPrimeUnifiedEngine initialized")
+        # Initialize the multi-model fallback chain
+        self._fallback_chain = MultiModelFallbackChain(self.config)
+
+        self._initialized = True
+        logger.info("JPrimeUnifiedEngine v85.0 initialized with multi-model fallback")
 
     async def close(self):
         """Close the engine."""
@@ -986,7 +1394,7 @@ Only output file blocks and brief explanations. Do not include the original file
         return "\n".join(prompt_parts)
 
     # =========================================================================
-    # Direct Chat
+    # Direct Chat (with multi-model fallback)
     # =========================================================================
 
     async def chat(
@@ -994,39 +1402,123 @@ Only output file blocks and brief explanations. Do not include the original file
         prompt: str,
         system_prompt: Optional[str] = None,
         task_type: Optional[ModelTaskType] = None,
+        use_fallback_chain: bool = True,
     ) -> InferenceResult:
         """
-        Direct chat completion.
+        Direct chat completion with intelligent multi-model fallback.
 
         Args:
             prompt: User prompt
             system_prompt: Optional system prompt
             task_type: Task type for model selection
+            use_fallback_chain: If True, use multi-model fallback (default: True)
 
         Returns:
             InferenceResult
         """
         self._stats["total_requests"] += 1
-        model = self._select_model(task_type=task_type, description=prompt)
+
+        # Classify task if not provided
+        if task_type is None:
+            task_type, _ = self._classifier.classify(prompt)
+
+        primary_model = self._select_model(task_type=task_type, description=prompt)
 
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        result = await self._client.chat_completion(
-            messages=messages,
-            model=model,
-        )
+        if use_fallback_chain and self._fallback_chain:
+            # Use the multi-model fallback chain
+            async def execute_with_model(model_id: str) -> InferenceResult:
+                # Check if it's a Claude model
+                if model_id.startswith("claude"):
+                    return await self._call_claude_api(messages, model_id)
+                else:
+                    return await self._client.chat_completion(
+                        messages=messages,
+                        model=model_id,
+                    )
+
+            result = await self._fallback_chain.execute_with_fallback(
+                execute_fn=execute_with_model,
+                task_type=task_type,
+                primary_model=primary_model,
+            )
+        else:
+            # Direct call without fallback
+            result = await self._client.chat_completion(
+                messages=messages,
+                model=primary_model,
+            )
 
         if result.success:
             self._stats["successful_requests"] += 1
             self._stats["total_tokens"] += result.tokens_used
             self._stats["total_inference_time_ms"] += result.inference_time_ms
+            if result.fallback_used:
+                self._stats["fallback_requests"] += 1
         else:
             self._stats["failed_requests"] += 1
 
         return result
+
+    async def _call_claude_api(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+    ) -> InferenceResult:
+        """Call Claude API directly (for fallback chain)."""
+        try:
+            from anthropic import AsyncAnthropic
+
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                return InferenceResult(
+                    success=False,
+                    content="",
+                    model_used=model,
+                    error="No ANTHROPIC_API_KEY set",
+                )
+
+            client = AsyncAnthropic(api_key=api_key)
+
+            # Convert messages format
+            system_msg = ""
+            claude_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_msg = msg["content"]
+                else:
+                    claude_messages.append(msg)
+
+            start_time = time.time()
+            response = await client.messages.create(
+                model=model,
+                max_tokens=self.config.max_tokens,
+                system=system_msg,
+                messages=claude_messages,
+            )
+
+            return InferenceResult(
+                success=True,
+                content=response.content[0].text,
+                model_used=model,
+                tokens_used=response.usage.input_tokens + response.usage.output_tokens,
+                inference_time_ms=(time.time() - start_time) * 1000,
+                cost_usd=self._estimate_claude_cost(response.usage),
+                fallback_used=True,
+            )
+
+        except Exception as e:
+            logger.error(f"Claude API call failed: {e}")
+            return InferenceResult(
+                success=False,
+                content="",
+                model_used=model,
+                error=str(e),
+            )
 
     # =========================================================================
     # Fallback
@@ -1142,12 +1634,18 @@ Only output file blocks and brief explanations. Do not include the original file
     # =========================================================================
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get engine statistics."""
-        return {
+        """Get engine statistics including fallback chain metrics."""
+        stats = {
             **self._stats,
             "available": self._initialized,
             "circuit_breaker_state": self._client._circuit_breaker.state.name if self._client else "unknown",
         }
+
+        # Add fallback chain stats if available
+        if self._fallback_chain:
+            stats["fallback_chain"] = self._fallback_chain.get_stats()
+
+        return stats
 
 
 # =============================================================================
@@ -1173,13 +1671,22 @@ async def get_jprime_engine() -> JPrimeUnifiedEngine:
 # =============================================================================
 
 __all__ = [
+    # Engine & Client
     "JPrimeUnifiedEngine",
     "JPrimeConfig",
     "JPrimeClient",
+    # Results
     "InferenceResult",
     "CodeEditResult",
+    # Types & Enums
     "ModelTaskType",
+    "CircuitState",
+    "FallbackStrategy",
+    # Components
     "TaskClassifier",
     "CircuitBreaker",
+    "MultiModelFallbackChain",
+    "ModelFallbackConfig",
+    # Factory
     "get_jprime_engine",
 ]
