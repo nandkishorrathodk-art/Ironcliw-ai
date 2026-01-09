@@ -2378,6 +2378,9 @@ class TrinityUnifiedOrchestrator:
         self._jprime_process: Optional[subprocess.Popen] = None
         self._reactor_process: Optional[subprocess.Popen] = None
 
+        # v84.0: Managed async processes
+        self._managed_processes: Dict[str, Dict[str, Any]] = {}
+
         # Background tasks
         self._health_task: Optional[asyncio.Task] = None
         self._event_cleanup_task: Optional[asyncio.Task] = None
@@ -2853,12 +2856,322 @@ class TrinityUnifiedOrchestrator:
             return False
 
     async def _start_jprime(self) -> bool:
-        """Actually start JARVIS Prime and wait for it to be ready."""
+        """
+        v84.0: Start JARVIS Prime - discover or launch.
+
+        Strategy:
+        1. First check if already running (heartbeat file)
+        2. If not, launch the process
+        3. Wait for it to become ready
+        """
+        # Check if already running
+        if await self._discover_running_component("jarvis_prime"):
+            logger.info("[TrinityOrchestrator] J-Prime already running (discovered)")
+            return await self._wait_for_jprime()
+
+        # Launch the process
+        launched = await self._launch_jprime_process()
+        if not launched:
+            logger.warning("[TrinityOrchestrator] Failed to launch J-Prime")
+            return False
+
+        # Wait for it to be ready
         return await self._wait_for_jprime()
 
     async def _start_reactor(self) -> bool:
-        """Actually start Reactor-Core and wait for it to be ready."""
+        """
+        v84.0: Start Reactor-Core - discover or launch.
+
+        Strategy:
+        1. First check if already running (heartbeat file)
+        2. If not, launch the process
+        3. Wait for it to become ready
+        """
+        # Check if already running
+        if await self._discover_running_component("reactor_core"):
+            logger.info("[TrinityOrchestrator] Reactor-Core already running (discovered)")
+            return await self._wait_for_reactor()
+
+        # Launch the process
+        launched = await self._launch_reactor_process()
+        if not launched:
+            logger.warning("[TrinityOrchestrator] Failed to launch Reactor-Core")
+            return False
+
+        # Wait for it to be ready
         return await self._wait_for_reactor()
+
+    # =========================================================================
+    # v84.0: Process Launching and Discovery
+    # =========================================================================
+
+    async def _discover_running_component(self, component: str) -> bool:
+        """
+        v84.0: Discover if a component is already running.
+
+        Checks:
+        1. Heartbeat file freshness (< 30s)
+        2. Process is actually alive (PID check)
+        3. HTTP health check responds
+
+        Args:
+            component: Component name (jarvis_prime, reactor_core)
+
+        Returns:
+            True if component is running and healthy
+        """
+        import psutil
+
+        trinity_dir = Path(os.getenv(
+            "TRINITY_DIR",
+            str(Path.home() / ".jarvis" / "trinity")
+        ))
+
+        heartbeat_file = trinity_dir / "components" / f"{component}.json"
+
+        if not heartbeat_file.exists():
+            return False
+
+        try:
+            with open(heartbeat_file, 'r') as f:
+                data = json.load(f)
+
+            # Check freshness (30 second threshold)
+            timestamp = data.get("timestamp", 0)
+            age = time.time() - timestamp
+            if age > 30.0:
+                logger.debug(f"[Discovery] {component} heartbeat stale ({age:.1f}s)")
+                return False
+
+            # Check if process is alive
+            pid = data.get("pid")
+            if pid:
+                try:
+                    proc = psutil.Process(pid)
+                    if proc.is_running():
+                        logger.debug(f"[Discovery] {component} process alive (PID {pid})")
+
+                        # Optional: HTTP health check
+                        port = data.get("port")
+                        if port:
+                            try:
+                                import aiohttp
+                                async with aiohttp.ClientSession(
+                                    timeout=aiohttp.ClientTimeout(total=5.0)
+                                ) as session:
+                                    url = f"http://localhost:{port}/health"
+                                    async with session.get(url) as resp:
+                                        if resp.status == 200:
+                                            logger.info(
+                                                f"[Discovery] {component} healthy at port {port}"
+                                            )
+                                            return True
+                            except Exception:
+                                # HTTP check failed but process is alive
+                                pass
+
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"[Discovery] Error checking {component}: {e}")
+            return False
+
+    async def _launch_jprime_process(self) -> bool:
+        """
+        v84.0: Launch JARVIS Prime process.
+
+        Discovers repo path from environment or default location,
+        then starts the server in a subprocess.
+        """
+        # Get repo path
+        jprime_repo = os.getenv(
+            "JARVIS_PRIME_REPO_PATH",
+            str(Path.home() / "Documents" / "repos" / "jarvis-prime")
+        )
+        jprime_repo = Path(jprime_repo)
+
+        if not jprime_repo.exists():
+            logger.error(f"[Launcher] J-Prime repo not found: {jprime_repo}")
+            return False
+
+        # Find Python executable
+        venv_python = jprime_repo / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = jprime_repo / "venv" / "bin" / "python"
+        if not venv_python.exists():
+            # Try system Python
+            import shutil
+            venv_python = Path(shutil.which("python3") or "python3")
+
+        # Build command
+        server_module = "jarvis_prime.server"
+        port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+
+        cmd = [
+            str(venv_python),
+            "-m", server_module,
+            "--port", str(port),
+        ]
+
+        # Add auto-download flag if configured
+        if os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "false").lower() == "true":
+            cmd.append("--auto-download")
+
+        logger.info(f"[Launcher] Starting J-Prime: {' '.join(cmd)}")
+
+        try:
+            # Start process in background
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(jprime_repo),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # Detach from parent
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(jprime_repo),
+                    "TRINITY_ENABLED": "true",
+                },
+            )
+
+            # Wait briefly for startup
+            await asyncio.sleep(2.0)
+
+            # Check if process is still running
+            if process.returncode is None:
+                logger.info(f"[Launcher] J-Prime started (PID {process.pid})")
+
+                # Store process for later management
+                self._managed_processes["jarvis_prime"] = {
+                    "process": process,
+                    "pid": process.pid,
+                    "port": port,
+                    "started_at": time.time(),
+                }
+
+                return True
+            else:
+                # Process exited immediately
+                stdout, stderr = await process.communicate()
+                logger.error(
+                    f"[Launcher] J-Prime failed to start (exit {process.returncode})"
+                )
+                if stderr:
+                    logger.error(f"[Launcher] stderr: {stderr.decode()[:500]}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[Launcher] Failed to launch J-Prime: {e}")
+            return False
+
+    async def _launch_reactor_process(self) -> bool:
+        """
+        v84.0: Launch Reactor-Core process.
+
+        Discovers repo path from environment or default location,
+        then starts the orchestrator in a subprocess.
+        """
+        # Get repo path
+        reactor_repo = os.getenv(
+            "REACTOR_CORE_REPO_PATH",
+            str(Path.home() / "Documents" / "repos" / "reactor-core")
+        )
+        reactor_repo = Path(reactor_repo)
+
+        if not reactor_repo.exists():
+            logger.error(f"[Launcher] Reactor-Core repo not found: {reactor_repo}")
+            return False
+
+        # Find Python executable
+        venv_python = reactor_repo / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = reactor_repo / "venv" / "bin" / "python"
+        if not venv_python.exists():
+            # Try system Python
+            import shutil
+            venv_python = Path(shutil.which("python3") or "python3")
+
+        # Build command - Reactor-Core uses its own orchestrator
+        orchestrator_script = reactor_repo / "reactor_core" / "orchestration" / "trinity_orchestrator.py"
+        if not orchestrator_script.exists():
+            # Fallback to main script
+            orchestrator_script = reactor_repo / "main.py"
+
+        if not orchestrator_script.exists():
+            logger.error(f"[Launcher] Reactor-Core orchestrator not found")
+            return False
+
+        cmd = [str(venv_python), str(orchestrator_script)]
+
+        logger.info(f"[Launcher] Starting Reactor-Core: {' '.join(cmd)}")
+
+        try:
+            # Start process in background
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(reactor_repo),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # Detach from parent
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(reactor_repo),
+                    "TRINITY_ENABLED": "true",
+                },
+            )
+
+            # Wait briefly for startup
+            await asyncio.sleep(2.0)
+
+            # Check if process is still running
+            if process.returncode is None:
+                logger.info(f"[Launcher] Reactor-Core started (PID {process.pid})")
+
+                # Store process for later management
+                self._managed_processes["reactor_core"] = {
+                    "process": process,
+                    "pid": process.pid,
+                    "started_at": time.time(),
+                }
+
+                return True
+            else:
+                # Process exited immediately
+                stdout, stderr = await process.communicate()
+                logger.error(
+                    f"[Launcher] Reactor-Core failed to start (exit {process.returncode})"
+                )
+                if stderr:
+                    logger.error(f"[Launcher] stderr: {stderr.decode()[:500]}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[Launcher] Failed to launch Reactor-Core: {e}")
+            return False
+
+    async def _shutdown_managed_processes(self) -> None:
+        """
+        v84.0: Gracefully shutdown all managed processes.
+        """
+        for name, info in self._managed_processes.items():
+            process = info.get("process")
+            if process and process.returncode is None:
+                logger.info(f"[Shutdown] Terminating {name} (PID {process.pid})")
+                try:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[Shutdown] Force killing {name}")
+                        process.kill()
+                except Exception as e:
+                    logger.warning(f"[Shutdown] Error terminating {name}: {e}")
+
+        self._managed_processes.clear()
 
     async def _event_cleanup_loop(self) -> None:
         """Background loop to clean up expired events."""

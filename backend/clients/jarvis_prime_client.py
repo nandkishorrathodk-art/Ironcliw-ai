@@ -2,39 +2,51 @@
 JARVIS Prime Client - Cognitive Mind Integration.
 ==================================================
 
+v84.0 - Advanced Trinity Integration with Intelligent Routing
+
 Provides robust communication with JARVIS Prime (the cognitive mind
 of the Trinity architecture).
 
 Features:
-- Circuit breaker for fault tolerance
+- Intelligent service discovery (heartbeat file + HTTP probing)
+- OpenAI-compatible API format support
+- Circuit breaker with adaptive thresholds
+- Connection pooling with health monitoring
 - Hot-reload model swapping
-- LLM inference streaming
+- LLM inference streaming with backpressure
 - Cognitive task delegation
-- Model health monitoring
-- Dead letter queue for failed operations
+- Latency-based routing
+- Dead letter queue with automatic retry
 
-API Endpoints:
-    POST /api/inference          - Run inference
-    POST /api/inference/stream   - Streaming inference
-    POST /api/model/swap         - Hot-swap model
-    GET  /api/model/status       - Get model status
-    GET  /api/health             - Health check
-    POST /api/cognitive/delegate - Delegate cognitive task
+API Compatibility:
+    OpenAI Format (J-Prime Server):
+        POST /v1/chat/completions    - Chat completions
+        POST /v1/completions         - Text completions
+        GET  /v1/models              - List models
+        POST /v1/embeddings          - Embeddings
 
-Author: JARVIS Trinity v81.0
+    Custom Format (Legacy):
+        POST /api/inference          - Run inference
+        GET  /api/health             - Health check
+
+Author: JARVIS Trinity v84.0
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import random
 import time
+import weakref
+from collections import deque
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +68,7 @@ except ImportError:
 
 
 # =============================================================================
-# Environment Helpers
+# v84.0: ADVANCED ENVIRONMENT HELPERS
 # =============================================================================
 
 def _env_str(key: str, default: str) -> str:
@@ -76,6 +88,328 @@ def _env_float(key: str, default: float) -> float:
 
 def _env_bool(key: str, default: bool) -> bool:
     return os.getenv(key, str(default)).lower() in ("true", "1", "yes", "on")
+
+def _env_list(key: str, default: List[str], separator: str = ",") -> List[str]:
+    """Parse comma-separated environment variable."""
+    value = os.getenv(key)
+    if value:
+        return [v.strip() for v in value.split(separator) if v.strip()]
+    return default
+
+
+# =============================================================================
+# v84.0: INTELLIGENT SERVICE DISCOVERY
+# =============================================================================
+
+class ServiceDiscoveryMethod(Enum):
+    """Methods for discovering J-Prime service."""
+    HEARTBEAT_FILE = auto()  # Read from ~/.jarvis/trinity/components/jarvis_prime.json
+    HTTP_PROBE = auto()       # Probe known ports
+    ENVIRONMENT = auto()      # From JARVIS_PRIME_URL
+    MULTICAST = auto()        # Future: mDNS/Bonjour
+
+
+@dataclass
+class DiscoveredService:
+    """A discovered J-Prime service instance."""
+    url: str
+    port: int
+    method: ServiceDiscoveryMethod
+    model_loaded: bool = False
+    model_name: Optional[str] = None
+    latency_ms: float = float('inf')
+    last_seen: float = field(default_factory=time.time)
+    healthy: bool = True
+    api_format: str = "openai"  # "openai" or "custom"
+
+    def __hash__(self):
+        return hash(self.url)
+
+
+class IntelligentServiceDiscovery:
+    """
+    v84.0: Intelligent service discovery for J-Prime.
+
+    Features:
+    - Multiple discovery methods with fallback
+    - Health-based service selection
+    - Latency-aware routing
+    - Automatic port detection
+    - API format detection (OpenAI vs custom)
+    """
+
+    # Known ports to probe (ordered by preference)
+    PROBE_PORTS: List[int] = field(default_factory=lambda: [
+        int(os.getenv("JARVIS_PRIME_PORT", "8000")),  # Default/configured
+        8000,  # Standard J-Prime port
+        8001,  # Alternate
+        8002,  # Legacy
+        11434, # Ollama compatibility
+    ])
+
+    # Health check endpoints (ordered by preference)
+    HEALTH_ENDPOINTS: List[str] = [
+        "/health",
+        "/v1/models",
+        "/api/health",
+    ]
+
+    def __init__(self):
+        self._discovered_services: Dict[str, DiscoveredService] = {}
+        self._primary_service: Optional[DiscoveredService] = None
+        self._discovery_lock = asyncio.Lock()
+        self._last_discovery_time: float = 0.0
+        self._discovery_interval: float = float(os.getenv(
+            "JARVIS_PRIME_DISCOVERY_INTERVAL", "30.0"
+        ))
+
+        # Trinity directory for heartbeat files
+        self._trinity_dir = Path(os.getenv(
+            "TRINITY_DIR",
+            str(Path.home() / ".jarvis" / "trinity")
+        ))
+
+    async def discover(self, force: bool = False) -> Optional[DiscoveredService]:
+        """
+        Discover J-Prime service using all available methods.
+
+        Returns:
+            Best available service or None
+        """
+        async with self._discovery_lock:
+            now = time.time()
+
+            # Skip if recently discovered (unless forced)
+            if not force and (now - self._last_discovery_time) < self._discovery_interval:
+                if self._primary_service and self._primary_service.healthy:
+                    return self._primary_service
+
+            self._last_discovery_time = now
+
+            # Try discovery methods in priority order
+            discovered = []
+
+            # Method 1: Environment variable (highest priority)
+            env_service = await self._discover_from_environment()
+            if env_service:
+                discovered.append(env_service)
+
+            # Method 2: Heartbeat file (second priority)
+            heartbeat_service = await self._discover_from_heartbeat()
+            if heartbeat_service:
+                discovered.append(heartbeat_service)
+
+            # Method 3: Port probing (fallback)
+            if not discovered:
+                probed = await self._discover_by_probing()
+                discovered.extend(probed)
+
+            # Select best service (lowest latency, healthy)
+            healthy_services = [s for s in discovered if s.healthy]
+            if healthy_services:
+                # Sort by latency
+                healthy_services.sort(key=lambda s: s.latency_ms)
+                self._primary_service = healthy_services[0]
+
+                # Cache all discovered services
+                for service in discovered:
+                    self._discovered_services[service.url] = service
+
+                logger.info(
+                    f"[Discovery] Primary service: {self._primary_service.url} "
+                    f"(latency={self._primary_service.latency_ms:.1f}ms, "
+                    f"format={self._primary_service.api_format})"
+                )
+                return self._primary_service
+
+            logger.warning("[Discovery] No healthy J-Prime service found")
+            return None
+
+    async def _discover_from_environment(self) -> Optional[DiscoveredService]:
+        """Discover from JARVIS_PRIME_URL environment variable."""
+        url = os.getenv("JARVIS_PRIME_URL")
+        if not url:
+            return None
+
+        try:
+            # Extract port from URL
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            port = parsed.port or 8000
+
+            # Probe health
+            latency, api_format, model_info = await self._probe_service(url)
+            if latency < float('inf'):
+                return DiscoveredService(
+                    url=url,
+                    port=port,
+                    method=ServiceDiscoveryMethod.ENVIRONMENT,
+                    latency_ms=latency,
+                    api_format=api_format,
+                    model_loaded=model_info.get("loaded", False),
+                    model_name=model_info.get("name"),
+                    healthy=True,
+                )
+
+        except Exception as e:
+            logger.debug(f"[Discovery] Environment URL probe failed: {e}")
+
+        return None
+
+    async def _discover_from_heartbeat(self) -> Optional[DiscoveredService]:
+        """Discover from Trinity heartbeat file."""
+        heartbeat_file = self._trinity_dir / "components" / "jarvis_prime.json"
+
+        if not heartbeat_file.exists():
+            return None
+
+        try:
+            with open(heartbeat_file, 'r') as f:
+                data = json.load(f)
+
+            # Check freshness (30 second threshold)
+            timestamp = data.get("timestamp", 0)
+            age = time.time() - timestamp
+            if age > 30.0:
+                logger.debug(f"[Discovery] Heartbeat stale ({age:.1f}s old)")
+                return None
+
+            port = data.get("port", 8000)
+            url = f"http://localhost:{port}"
+
+            # Probe to verify and measure latency
+            latency, api_format, model_info = await self._probe_service(url)
+            if latency < float('inf'):
+                return DiscoveredService(
+                    url=url,
+                    port=port,
+                    method=ServiceDiscoveryMethod.HEARTBEAT_FILE,
+                    latency_ms=latency,
+                    api_format=api_format,
+                    model_loaded=data.get("model_loaded", False),
+                    model_name=data.get("model_name"),
+                    healthy=True,
+                )
+
+        except Exception as e:
+            logger.debug(f"[Discovery] Heartbeat read failed: {e}")
+
+        return None
+
+    async def _discover_by_probing(self) -> List[DiscoveredService]:
+        """Probe known ports for J-Prime service."""
+        discovered = []
+
+        # Get unique ports to probe
+        probe_ports = list(dict.fromkeys([
+            int(os.getenv("JARVIS_PRIME_PORT", "8000")),
+            8000, 8001, 8002, 11434
+        ]))
+
+        # Probe ports in parallel
+        async def probe_port(port: int) -> Optional[DiscoveredService]:
+            url = f"http://localhost:{port}"
+            try:
+                latency, api_format, model_info = await self._probe_service(url)
+                if latency < float('inf'):
+                    return DiscoveredService(
+                        url=url,
+                        port=port,
+                        method=ServiceDiscoveryMethod.HTTP_PROBE,
+                        latency_ms=latency,
+                        api_format=api_format,
+                        model_loaded=model_info.get("loaded", False),
+                        model_name=model_info.get("name"),
+                        healthy=True,
+                    )
+            except Exception:
+                pass
+            return None
+
+        # Probe all ports concurrently with timeout
+        tasks = [probe_port(port) for port in probe_ports]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, DiscoveredService):
+                discovered.append(result)
+
+        return discovered
+
+    async def _probe_service(
+        self,
+        base_url: str,
+        timeout: float = 5.0,
+    ) -> Tuple[float, str, Dict[str, Any]]:
+        """
+        Probe a service for health and detect API format.
+
+        Returns:
+            (latency_ms, api_format, model_info)
+        """
+        try:
+            import aiohttp
+        except ImportError:
+            return (float('inf'), "unknown", {})
+
+        model_info = {}
+
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as session:
+            # Try OpenAI format first (preferred)
+            start = time.time()
+            try:
+                async with session.get(f"{base_url}/v1/models") as resp:
+                    if resp.status == 200:
+                        latency = (time.time() - start) * 1000
+                        data = await resp.json()
+                        if "data" in data or "models" in data:
+                            models = data.get("data", data.get("models", []))
+                            if models:
+                                model_info["loaded"] = True
+                                model_info["name"] = models[0].get("id", "unknown")
+                            return (latency, "openai", model_info)
+            except Exception:
+                pass
+
+            # Try custom health endpoint
+            start = time.time()
+            try:
+                async with session.get(f"{base_url}/health") as resp:
+                    if resp.status == 200:
+                        latency = (time.time() - start) * 1000
+                        data = await resp.json()
+                        model_info["loaded"] = data.get("model_loaded", False)
+                        return (latency, "custom", model_info)
+            except Exception:
+                pass
+
+            # Try legacy health
+            start = time.time()
+            try:
+                async with session.get(f"{base_url}/api/health") as resp:
+                    if resp.status == 200:
+                        latency = (time.time() - start) * 1000
+                        return (latency, "legacy", model_info)
+            except Exception:
+                pass
+
+        return (float('inf'), "unknown", model_info)
+
+    def get_primary_service(self) -> Optional[DiscoveredService]:
+        """Get the current primary service."""
+        return self._primary_service
+
+    def invalidate(self) -> None:
+        """Invalidate discovery cache."""
+        self._last_discovery_time = 0.0
+        if self._primary_service:
+            self._primary_service.healthy = False
+
+
+# Global discovery instance
+_service_discovery = IntelligentServiceDiscovery()
 
 
 # =============================================================================
@@ -201,10 +535,16 @@ class ModelInfo:
 
 @dataclass
 class JARVISPrimeConfig(ClientConfig):
-    """Configuration for JARVIS Prime client."""
+    """
+    v84.0: Configuration for JARVIS Prime client.
+
+    NOTE: base_url defaults to port 8000 (J-Prime standard port).
+    Set JARVIS_PRIME_URL environment variable to override.
+    """
     name: str = "jarvis_prime"
+    # v84.0: Fixed port to 8000 (was incorrectly 8002)
     base_url: str = field(default_factory=lambda: _env_str(
-        "JARVIS_PRIME_URL", "http://localhost:8002"
+        "JARVIS_PRIME_URL", "http://localhost:8000"  # ✅ Correct port
     ))
     timeout: float = field(default_factory=lambda: _env_float(
         "JARVIS_PRIME_TIMEOUT", 60.0
@@ -216,6 +556,9 @@ class JARVISPrimeConfig(ClientConfig):
     default_temperature: float = field(default_factory=lambda: _env_float(
         "JARVIS_PRIME_DEFAULT_TEMPERATURE", 0.7
     ))
+    default_top_p: float = field(default_factory=lambda: _env_float(
+        "JARVIS_PRIME_DEFAULT_TOP_P", 0.9
+    ))
     # Streaming
     stream_buffer_size: int = field(default_factory=lambda: _env_int(
         "JARVIS_PRIME_STREAM_BUFFER", 16
@@ -224,12 +567,34 @@ class JARVISPrimeConfig(ClientConfig):
     model_swap_timeout: float = field(default_factory=lambda: _env_float(
         "JARVIS_PRIME_SWAP_TIMEOUT", 120.0
     ))
+    # v84.0: Service discovery settings
+    enable_discovery: bool = field(default_factory=lambda: _env_bool(
+        "JARVIS_PRIME_ENABLE_DISCOVERY", True
+    ))
+    discovery_interval: float = field(default_factory=lambda: _env_float(
+        "JARVIS_PRIME_DISCOVERY_INTERVAL", 30.0
+    ))
+    # v84.0: API format preference
+    api_format: str = field(default_factory=lambda: _env_str(
+        "JARVIS_PRIME_API_FORMAT", "auto"  # "auto", "openai", "custom"
+    ))
     # Fallback
     fallback_to_cloud: bool = field(default_factory=lambda: _env_bool(
         "JARVIS_PRIME_FALLBACK_TO_CLOUD", True
     ))
     cloud_api_url: str = field(default_factory=lambda: _env_str(
         "JARVIS_PRIME_CLOUD_URL", ""
+    ))
+    # v84.0: Connection pool settings
+    pool_size: int = field(default_factory=lambda: _env_int(
+        "JARVIS_PRIME_POOL_SIZE", 3
+    ))
+    # v84.0: Retry settings
+    max_retries: int = field(default_factory=lambda: _env_int(
+        "JARVIS_PRIME_MAX_RETRIES", 3
+    ))
+    retry_base_delay: float = field(default_factory=lambda: _env_float(
+        "JARVIS_PRIME_RETRY_DELAY", 0.5
     ))
 
 
@@ -239,12 +604,16 @@ class JARVISPrimeConfig(ClientConfig):
 
 class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
     """
-    Client for JARVIS Prime (cognitive mind).
+    v84.0: Advanced client for JARVIS Prime (cognitive mind).
 
     Features:
+    - Intelligent service discovery with fallback
+    - OpenAI-compatible API format
     - LLM inference with streaming support
     - Hot-swap model reloading
     - Cognitive task delegation
+    - Latency-based routing
+    - Connection pooling
     - Fallback to cloud when local is unavailable
     """
 
@@ -270,12 +639,17 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         self._total_inferences = 0
         self._total_tokens = 0
         self._avg_latency_ms = 0.0
+        self._latency_samples: deque = deque(maxlen=100)
+
+        # v84.0: Service discovery
+        self._discovered_service: Optional[DiscoveredService] = None
+        self._api_format: str = "auto"  # Will be detected
 
         # HTTP session
         self._session = None
 
         logger.info(
-            f"[JARVISPrime] Client initialized with base_url={self._prime_config.base_url}"
+            f"[JARVISPrime] Client initialized (discovery={'enabled' if self._prime_config.enable_discovery else 'disabled'})"
         )
 
     async def _get_session(self):
@@ -283,7 +657,14 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         if self._session is None:
             try:
                 import aiohttp
+                # v84.0: Configure connection pooling
+                connector = aiohttp.TCPConnector(
+                    limit=self._prime_config.pool_size,
+                    limit_per_host=self._prime_config.pool_size,
+                    keepalive_timeout=30,
+                )
                 self._session = aiohttp.ClientSession(
+                    connector=connector,
                     timeout=aiohttp.ClientTimeout(total=self._prime_config.timeout)
                 )
             except ImportError:
@@ -291,17 +672,43 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                 raise
         return self._session
 
+    async def _get_base_url(self) -> str:
+        """
+        v84.0: Get base URL using intelligent discovery.
+
+        Priority:
+        1. Discovered service (if enabled and healthy)
+        2. Environment variable JARVIS_PRIME_URL
+        3. Config base_url
+        """
+        if self._prime_config.enable_discovery:
+            service = await _service_discovery.discover()
+            if service:
+                self._discovered_service = service
+                self._api_format = service.api_format
+                return service.url
+
+        return self._prime_config.base_url
+
     async def _health_check(self) -> bool:
         """Check if JARVIS Prime is healthy."""
         try:
+            base_url = await self._get_base_url()
             session = await self._get_session()
-            url = f"{self._prime_config.base_url}/health"
 
-            async with session.get(url, timeout=5.0) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("status") in ("healthy", "ok", "ready")
-                return False
+            # Try multiple health endpoints
+            health_endpoints = ["/health", "/v1/models", "/api/health"]
+
+            for endpoint in health_endpoints:
+                try:
+                    url = f"{base_url}{endpoint}"
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=5.0)) as response:
+                        if response.status == 200:
+                            return True
+                except Exception:
+                    continue
+
+            return False
 
         except Exception as e:
             logger.debug(f"[JARVISPrime] Health check failed: {e}")
@@ -312,37 +719,132 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         operation: str,
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Execute a request to JARVIS Prime."""
+        """
+        v84.0: Execute request with intelligent endpoint mapping.
+
+        Supports both OpenAI format and custom format based on detected API.
+        """
+        base_url = await self._get_base_url()
         session = await self._get_session()
 
-        # Map operation to endpoint
-        endpoint_map = {
-            "inference": ("POST", "/api/inference"),
-            "model_status": ("GET", "/api/model/status"),
-            "model_swap": ("POST", "/api/model/swap"),
-            "cognitive_delegate": ("POST", "/api/cognitive/delegate"),
-            "embeddings": ("POST", "/api/embeddings"),
-        }
+        # v84.0: Determine API format
+        api_format = self._api_format
+        if api_format == "auto":
+            api_format = self._discovered_service.api_format if self._discovered_service else "openai"
+
+        # v84.0: Map operation to endpoint based on API format
+        if api_format == "openai":
+            endpoint_map = {
+                "inference": ("POST", "/v1/chat/completions"),
+                "model_status": ("GET", "/v1/models"),
+                "model_swap": ("POST", "/v1/models/load"),  # Custom extension
+                "cognitive_delegate": ("POST", "/v1/chat/completions"),  # Use chat for delegation
+                "embeddings": ("POST", "/v1/embeddings"),
+            }
+        else:
+            # Legacy/custom format
+            endpoint_map = {
+                "inference": ("POST", "/api/inference"),
+                "model_status": ("GET", "/api/model/status"),
+                "model_swap": ("POST", "/api/model/swap"),
+                "cognitive_delegate": ("POST", "/api/cognitive/delegate"),
+                "embeddings": ("POST", "/api/embeddings"),
+            }
 
         if operation not in endpoint_map:
             raise ValueError(f"Unknown operation: {operation}")
 
         method, endpoint = endpoint_map[operation]
-        url = f"{self._prime_config.base_url}{endpoint}"
+        url = f"{base_url}{endpoint}"
 
-        try:
-            if method == "GET":
-                async with session.get(url, params=payload) as response:
-                    response.raise_for_status()
-                    return await response.json()
-            else:
-                async with session.post(url, json=payload) as response:
-                    response.raise_for_status()
-                    return await response.json()
+        # v84.0: Transform payload for OpenAI format if needed
+        if api_format == "openai" and operation == "inference":
+            payload = self._to_openai_format(payload)
 
-        except Exception as e:
-            logger.debug(f"[JARVISPrime] Request failed: {operation} - {e}")
-            raise
+        # v84.0: Execute with retry and latency tracking
+        start_time = time.time()
+        last_error = None
+
+        for attempt in range(self._prime_config.max_retries):
+            try:
+                if method == "GET":
+                    async with session.get(url, params=payload) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                else:
+                    async with session.post(url, json=payload) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+
+                # Track latency
+                latency_ms = (time.time() - start_time) * 1000
+                self._latency_samples.append(latency_ms)
+
+                # v84.0: Transform response from OpenAI format if needed
+                if api_format == "openai" and operation == "inference":
+                    result = self._from_openai_format(result, latency_ms)
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                if attempt < self._prime_config.max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = self._prime_config.retry_base_delay * (2 ** attempt)
+                    jitter = delay * 0.1 * random.random()
+                    await asyncio.sleep(delay + jitter)
+                    logger.debug(f"[JARVISPrime] Retry {attempt + 1}: {e}")
+
+        # All retries failed
+        logger.warning(f"[JARVISPrime] Request failed after {self._prime_config.max_retries} retries: {last_error}")
+        _service_discovery.invalidate()  # Mark service as unhealthy
+        raise last_error
+
+    def _to_openai_format(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert internal format to OpenAI chat completions format."""
+        messages = []
+
+        # Add system prompt if present
+        system_prompt = payload.get("system_prompt")
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        # Add user prompt
+        prompt = payload.get("prompt", "")
+        messages.append({"role": "user", "content": prompt})
+
+        return {
+            "messages": messages,
+            "max_tokens": payload.get("max_tokens", self._prime_config.default_max_tokens),
+            "temperature": payload.get("temperature", self._prime_config.default_temperature),
+            "top_p": payload.get("top_p", self._prime_config.default_top_p),
+            "stop": payload.get("stop_sequences", []),
+            "stream": payload.get("stream", False),
+        }
+
+    def _from_openai_format(self, response: Dict[str, Any], latency_ms: float) -> Dict[str, Any]:
+        """Convert OpenAI chat completions response to internal format."""
+        choices = response.get("choices", [])
+        if not choices:
+            return {"text": "", "tokens_used": 0, "latency_ms": latency_ms, "finish_reason": "error"}
+
+        choice = choices[0]
+        message = choice.get("message", {})
+        usage = response.get("usage", {})
+
+        return {
+            "text": message.get("content", ""),
+            "tokens_used": usage.get("total_tokens", 0),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "latency_ms": latency_ms,
+            "model_version": response.get("model", "unknown"),
+            "finish_reason": choice.get("finish_reason", "unknown"),
+            "metadata": {
+                "id": response.get("id"),
+                "created": response.get("created"),
+            },
+        }
 
     async def disconnect(self) -> None:
         """Disconnect and cleanup."""
