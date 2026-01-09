@@ -50,6 +50,43 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Set, Tupl
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# v88.0: ULTRA COORDINATOR INTEGRATION
+# =============================================================================
+
+# v88.0: Module-level ultra coordinator for protection
+_ultra_coordinator: Optional[Any] = None
+_ultra_coord_lock: Optional[asyncio.Lock] = None
+
+
+async def _get_ultra_coordinator() -> Optional[Any]:
+    """v88.0: Get ultra coordinator with lazy initialization."""
+    global _ultra_coordinator, _ultra_coord_lock
+
+    # Skip if disabled
+    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+        return None
+
+    if _ultra_coordinator is not None:
+        return _ultra_coordinator
+
+    # Lazy init lock
+    if _ultra_coord_lock is None:
+        _ultra_coord_lock = asyncio.Lock()
+
+    async with _ultra_coord_lock:
+        if _ultra_coordinator is not None:
+            return _ultra_coordinator
+
+        try:
+            from backend.core.trinity_integrator import get_ultra_coordinator
+            _ultra_coordinator = await get_ultra_coordinator()
+            logger.info("[JARVISPrime] v88.0 Ultra coordinator initialized")
+            return _ultra_coordinator
+        except Exception as e:
+            logger.debug(f"[JARVISPrime] v88.0 Ultra coordinator not available: {e}")
+            return None
+
 # Import base client components
 try:
     from backend.clients.trinity_base_client import (
@@ -720,7 +757,43 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        v84.0: Execute request with intelligent endpoint mapping.
+        v88.0: Execute request with intelligent endpoint mapping + ultra protection.
+
+        Supports both OpenAI format and custom format based on detected API.
+        Now includes v88.0 protection stack:
+        - Adaptive circuit breaker with ML-based prediction
+        - Backpressure handling with AIMD rate limiting
+        - W3C distributed tracing
+        - Timeout enforcement
+        """
+        # v88.0: Use ultra coordinator protection if available
+        ultra_coord = await _get_ultra_coordinator()
+        if ultra_coord:
+            timeout = float(os.getenv("JARVIS_PRIME_REQUEST_TIMEOUT", "60.0"))
+            success, result, metadata = await ultra_coord.execute_with_protection(
+                component="jarvis_prime",
+                operation=lambda: self._execute_request_internal(operation, payload),
+                timeout=timeout,
+            )
+            if success and result is not None:
+                return result
+            elif not success:
+                error_msg = metadata.get("error", "Unknown protection error")
+                if metadata.get("circuit_open"):
+                    logger.warning(f"[JARVISPrime] v88.0 Circuit breaker open: {error_msg}")
+                    _service_discovery.invalidate()
+                raise RuntimeError(f"[v88.0] Protected request failed: {error_msg}")
+
+        # Fallback: direct execution without protection
+        return await self._execute_request_internal(operation, payload)
+
+    async def _execute_request_internal(
+        self,
+        operation: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        v84.0/v88.0: Internal request execution (called by protection wrapper).
 
         Supports both OpenAI format and custom format based on detected API.
         """

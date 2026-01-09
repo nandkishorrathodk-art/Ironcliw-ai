@@ -9446,12 +9446,52 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # v73.0: Pre-flight zombie reaper - kill any orphaned processes holding Trinity ports
             await self._reap_zombie_port_holders()
 
-            # Launch J-Prime (Mind) and Reactor-Core (Nerves) in parallel
-            jprime_task = asyncio.create_task(self._launch_jprime_orchestrator())
-            reactor_task = asyncio.create_task(self._launch_reactor_core_orchestrator())
+            # v88.0: Launch J-Prime (Mind) and Reactor-Core (Nerves) in parallel with protection
+            # Protection stack includes:
+            # - Adaptive circuit breaker with ML-based prediction
+            # - Backpressure handling with AIMD rate limiting
+            # - W3C distributed tracing
+            # - Timeout enforcement
+            launch_timeout = float(os.environ.get("TRINITY_LAUNCH_TIMEOUT", "120.0"))
 
-            # Wait for both launches to complete
-            await asyncio.gather(jprime_task, reactor_task, return_exceptions=True)
+            async def protected_jprime_launch():
+                success, result, metadata = await self._execute_protected_v88(
+                    component="jprime_launch",
+                    operation=self._launch_jprime_orchestrator,
+                    timeout=launch_timeout,
+                    fallback_on_failure=True,
+                )
+                if not success:
+                    self.logger.warning(f"[v88.0] J-Prime launch protection failed: {metadata}")
+                return success, result, metadata
+
+            async def protected_reactor_launch():
+                success, result, metadata = await self._execute_protected_v88(
+                    component="reactor_core_launch",
+                    operation=self._launch_reactor_core_orchestrator,
+                    timeout=launch_timeout,
+                    fallback_on_failure=True,
+                )
+                if not success:
+                    self.logger.warning(f"[v88.0] Reactor-Core launch protection failed: {metadata}")
+                return success, result, metadata
+
+            jprime_task = asyncio.create_task(protected_jprime_launch())
+            reactor_task = asyncio.create_task(protected_reactor_launch())
+
+            # Wait for both protected launches to complete
+            results = await asyncio.gather(jprime_task, reactor_task, return_exceptions=True)
+
+            # v88.0: Log protection results
+            for i, result in enumerate(results):
+                component_name = "J-Prime" if i == 0 else "Reactor-Core"
+                if isinstance(result, Exception):
+                    self.logger.warning(f"[v88.0] {component_name} launch exception: {result}")
+                elif isinstance(result, tuple) and len(result) >= 3:
+                    success, _, metadata = result
+                    if success:
+                        trace_id = metadata.get("trace_id", "N/A")
+                        self.logger.info(f"[v88.0] {component_name} launched with trace_id={trace_id}")
 
             # Give components time to register their heartbeats
             self.logger.info("   ⏳ Waiting for component registration...")

@@ -54,6 +54,43 @@ from typing import Any, Dict, List, Optional, AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# v88.0: ULTRA COORDINATOR INTEGRATION
+# =============================================================================
+
+# v88.0: Module-level ultra coordinator for protection
+_ultra_coordinator: Optional[Any] = None
+_ultra_coord_lock: Optional[asyncio.Lock] = None
+
+
+async def _get_ultra_coordinator() -> Optional[Any]:
+    """v88.0: Get ultra coordinator with lazy initialization."""
+    global _ultra_coordinator, _ultra_coord_lock
+
+    # Skip if disabled
+    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+        return None
+
+    if _ultra_coordinator is not None:
+        return _ultra_coordinator
+
+    # Lazy init lock
+    if _ultra_coord_lock is None:
+        _ultra_coord_lock = asyncio.Lock()
+
+    async with _ultra_coord_lock:
+        if _ultra_coordinator is not None:
+            return _ultra_coordinator
+
+        try:
+            from backend.core.trinity_integrator import get_ultra_coordinator
+            _ultra_coordinator = await get_ultra_coordinator()
+            logger.info("[PrimeRouter] v88.0 Ultra coordinator initialized")
+            return _ultra_coordinator
+        except Exception as e:
+            logger.debug(f"[PrimeRouter] v88.0 Ultra coordinator not available: {e}")
+            return None
+
 
 # =============================================================================
 # CONFIGURATION
@@ -241,9 +278,14 @@ class PrimeRouter:
         **kwargs
     ) -> RouterResponse:
         """
-        Generate a response, automatically routing to the best backend.
+        v88.0: Generate a response with ultra protection stack.
 
         This is the main entry point for all AI inference requests.
+        Now includes v88.0 protection:
+        - Adaptive circuit breaker with ML-based prediction
+        - Backpressure handling with AIMD rate limiting
+        - W3C distributed tracing
+        - Timeout enforcement
 
         Args:
             prompt: User prompt
@@ -259,6 +301,53 @@ class PrimeRouter:
         if not self._initialized:
             await self.initialize()
 
+        # v88.0: Use ultra coordinator protection if available
+        ultra_coord = await _get_ultra_coordinator()
+        if ultra_coord:
+            timeout = float(os.getenv("PRIME_ROUTER_TIMEOUT", "90.0"))
+            success, result, metadata = await ultra_coord.execute_with_protection(
+                component="prime_router",
+                operation=lambda: self._generate_internal(
+                    prompt, system_prompt, context, max_tokens, temperature, **kwargs
+                ),
+                timeout=timeout,
+            )
+            if success and result is not None:
+                # Inject trace context into response metadata
+                if "trace_id" in metadata:
+                    result.metadata["v88_trace_id"] = metadata["trace_id"]
+                return result
+            elif not success:
+                # Protection failed, return degraded response
+                error_msg = metadata.get("error", "Unknown protection error")
+                logger.warning(f"[PrimeRouter] v88.0 Protection failed: {error_msg}")
+                return RouterResponse(
+                    content="I'm experiencing some difficulties. Please try again.",
+                    source="degraded",
+                    latency_ms=0,
+                    model="none",
+                    metadata={"v88_error": error_msg, "circuit_open": metadata.get("circuit_open", False)},
+                )
+
+        # Fallback: direct execution without protection
+        return await self._generate_internal(
+            prompt, system_prompt, context, max_tokens, temperature, **kwargs
+        )
+
+    async def _generate_internal(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        context: Optional[List[Dict[str, str]]],
+        max_tokens: int,
+        temperature: float,
+        **kwargs
+    ) -> RouterResponse:
+        """
+        v88.0: Internal generation logic (called by protection wrapper).
+
+        Routes between local JARVIS-Prime and cloud Claude API.
+        """
         start_time = time.time()
         self._metrics.total_requests += 1
 

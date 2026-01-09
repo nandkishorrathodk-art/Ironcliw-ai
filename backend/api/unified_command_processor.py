@@ -1,20 +1,64 @@
 """
 Unified Command Processor - Dynamic command interpretation with zero hardcoding
 Learns from the system and adapts to any environment
+
+v88.0: Ultra Protection Integration
+- Adaptive circuit breaker with ML-based prediction
+- Backpressure handling with AIMD rate limiting
+- W3C distributed tracing
+- Timeout enforcement
 """
 
 import asyncio
 import json
 import logging
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# v88.0: ULTRA COORDINATOR INTEGRATION
+# =============================================================================
+
+# v88.0: Module-level ultra coordinator for protection
+_ultra_coordinator: Optional[Any] = None
+_ultra_coord_lock: Optional[asyncio.Lock] = None
+
+
+async def _get_ultra_coordinator() -> Optional[Any]:
+    """v88.0: Get ultra coordinator with lazy initialization."""
+    global _ultra_coordinator, _ultra_coord_lock
+
+    # Skip if disabled
+    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+        return None
+
+    if _ultra_coordinator is not None:
+        return _ultra_coordinator
+
+    # Lazy init lock
+    if _ultra_coord_lock is None:
+        _ultra_coord_lock = asyncio.Lock()
+
+    async with _ultra_coord_lock:
+        if _ultra_coordinator is not None:
+            return _ultra_coordinator
+
+        try:
+            from backend.core.trinity_integrator import get_ultra_coordinator
+            _ultra_coordinator = await get_ultra_coordinator()
+            logger.info("[UnifiedProcessor] v88.0 Ultra coordinator initialized")
+            return _ultra_coordinator
+        except Exception as e:
+            logger.debug(f"[UnifiedProcessor] v88.0 Ultra coordinator not available: {e}")
+            return None
 
 # Import manual unlock handler
 try:
@@ -3305,7 +3349,57 @@ class UnifiedCommandProcessor:
         websocket=None,
         context: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        """Execute command using appropriate handler"""
+        """
+        v88.0: Execute command with ultra protection stack.
+
+        Protection includes:
+        - Adaptive circuit breaker with ML-based prediction
+        - Backpressure handling with AIMD rate limiting
+        - W3C distributed tracing
+        - Timeout enforcement
+        """
+        # v88.0: Use ultra coordinator protection if available
+        ultra_coord = await _get_ultra_coordinator()
+        if ultra_coord:
+            timeout = float(os.getenv("JARVIS_COMMAND_EXECUTION_TIMEOUT", "120.0"))
+            success, result, metadata = await ultra_coord.execute_with_protection(
+                component=f"command_{command_type.value}",
+                operation=lambda: self._execute_command_internal(
+                    command_type, command_text, websocket, context
+                ),
+                timeout=timeout,
+            )
+            if success and result is not None:
+                # Inject v88.0 trace info into result
+                if isinstance(result, dict):
+                    result["v88_protected"] = True
+                    if "trace_id" in metadata:
+                        result["v88_trace_id"] = metadata["trace_id"]
+                return result
+            elif not success:
+                error_msg = metadata.get("error", "Unknown protection error")
+                logger.warning(f"[UnifiedProcessor] v88.0 Protection failed: {error_msg}")
+                return {
+                    "success": False,
+                    "response": "I'm experiencing some difficulties. Please try again.",
+                    "command_type": command_type.value,
+                    "v88_error": error_msg,
+                    "circuit_open": metadata.get("circuit_open", False),
+                }
+
+        # Fallback: direct execution without protection
+        return await self._execute_command_internal(
+            command_type, command_text, websocket, context
+        )
+
+    async def _execute_command_internal(
+        self,
+        command_type: CommandType,
+        command_text: str,
+        websocket=None,
+        context: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
+        """v88.0: Internal command execution (called by protection wrapper)"""
 
         # =========================================================================
         # 🛡️ SOVEREIGN SURVEILLANCE ROUTING v1.0.0
