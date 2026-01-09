@@ -1035,6 +1035,22 @@ async def get_coding_council_health() -> Dict[str, Any]:
             "log": _recovery_log[-5:] if _recovery_log else [],  # Last 5 recovery actions
         }
 
+        # v85.0: Get J-Prime status
+        jprime_status = {}
+        if JPRIME_ENABLED:
+            jprime_status["enabled"] = True
+            jprime_status["engine_available"] = _jprime_engine is not None
+            if _jprime_engine:
+                try:
+                    jprime_status["is_available"] = await _jprime_engine.is_available()
+                    jprime_status["stats"] = _jprime_engine.get_stats()
+                except Exception as e:
+                    jprime_status["error"] = str(e)
+            if _jprime_fallback_chain:
+                jprime_status["fallback_chain"] = _jprime_fallback_chain.get_stats()
+        else:
+            jprime_status["enabled"] = False
+
         return {
             "enabled": True,
             "status": "healthy",
@@ -1043,6 +1059,7 @@ async def get_coding_council_health() -> Dict[str, Any]:
             "circuit_breakers": status.get("circuit_breakers", {}),
             "frameworks": status.get("frameworks_available", []),
             "ide_integration": ide_status,
+            "jprime": jprime_status,  # v85.0: J-Prime local LLM status
             "connections": {
                 "verified": connected_count,
                 "total": total_count,
