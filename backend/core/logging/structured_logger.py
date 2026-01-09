@@ -648,6 +648,77 @@ class StructuredLogger:
         """Log critical message."""
         self._log_with_context(logging.CRITICAL, msg, *args, **kwargs)
 
+    def exception(self, msg: str, *args, **kwargs) -> None:
+        """
+        Log error message with exception info automatically included.
+
+        This is equivalent to error() with exc_info=True, matching
+        the standard Python logging.Logger.exception() behavior.
+
+        Features:
+        - Automatically captures current exception info
+        - Compatible with standard logging API
+        - Integrates with error aggregation
+        - Includes full traceback in structured logs
+
+        Args:
+            msg: Log message describing the exception context
+            *args: Format args for message
+            **kwargs: Additional context fields
+        """
+        # Automatically set exc_info=True unless explicitly overridden
+        if "exc_info" not in kwargs:
+            kwargs["exc_info"] = True
+
+        self._log_with_context(logging.ERROR, msg, *args, **kwargs)
+
+    def log(self, level: int, msg: str, *args, **kwargs) -> None:
+        """
+        Log at arbitrary level (compatibility with standard logging.Logger).
+
+        Args:
+            level: Logging level (e.g., logging.DEBUG, logging.INFO)
+            msg: Log message
+            *args: Format args for message
+            **kwargs: Additional context fields
+        """
+        self._log_with_context(level, msg, *args, **kwargs)
+
+    def isEnabledFor(self, level: int) -> bool:
+        """
+        Check if logging is enabled for specified level.
+
+        Compatibility method for standard logging.Logger API.
+
+        Args:
+            level: Logging level to check
+
+        Returns:
+            True if level is enabled, False otherwise
+        """
+        return self._logger.isEnabledFor(level)
+
+    def setLevel(self, level: int) -> None:
+        """
+        Set the logging level for this logger.
+
+        Compatibility method for standard logging.Logger API.
+
+        Args:
+            level: New logging level
+        """
+        self._logger.setLevel(level)
+
+    @property
+    def level(self) -> int:
+        """Get the effective logging level."""
+        return self._logger.level
+
+    @property
+    def handlers(self):
+        """Get the handlers associated with this logger."""
+        return self._logger.handlers
+
     @asynccontextmanager
     async def timer(self, operation: str, **context):
         """

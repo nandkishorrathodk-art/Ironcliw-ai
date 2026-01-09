@@ -2552,7 +2552,9 @@ class SupervisorBootstrapper:
 
     async def _run_v87_preflight_checks(self) -> bool:
         """
-        v87.0: Run pre-flight resource checks before startup.
+        v87.0/v88.1: Run pre-flight resource checks before startup.
+
+        Enhanced with ultra-robust error isolation to prevent cascading failures.
 
         Verifies system resources are adequate before acquiring ownership:
         - Network partition detection (for NFS-mounted state directories)
@@ -2578,107 +2580,144 @@ class SupervisorBootstrapper:
 
         warnings: List[str] = []
         critical_failures: List[str] = []
+        coord = None  # v88.1: Track coordinator for cleanup
 
         try:
-            from backend.core.trinity_integrator import TrinityAdvancedCoordinator
-
-            # Create a temporary coordinator for pre-flight checks
-            coord = TrinityAdvancedCoordinator()
-            await coord.initialize()
-
-            # 1. Network partition check (critical for NFS-mounted state)
+            # v88.1: Import with isolated error handling
             try:
-                is_partitioned, reason = await coord.check_network_partition()
-                if is_partitioned:
-                    critical_failures.append(f"Network partition: {reason}")
-                    self.logger.error(f"[v87.0] ❌ Network partition detected: {reason}")
-                else:
-                    self.logger.debug(f"[v87.0] ✓ Network OK: {reason}")
-            except Exception as e:
-                warnings.append(f"Network check error: {e}")
-                self.logger.warning(f"[v87.0] Network check error (non-critical): {e}")
+                from backend.core.trinity_integrator import TrinityAdvancedCoordinator
+            except ImportError as import_err:
+                self.logger.info(
+                    f"[v87.0] TrinityAdvancedCoordinator not available: {import_err}. "
+                    "Skipping advanced pre-flight checks (this is OK)."
+                )
+                # Return True to allow startup without advanced checks
+                TerminalUI.print_success("[v87.0] Pre-flight checks skipped (basic mode)")
+                return True
 
-            # 2. Filesystem writability check
+            # v88.1: Create coordinator with timeout protection
             try:
-                state_dir = Path(os.environ.get("TRINITY_STATE_DIR", str(Path.home() / ".jarvis" / "trinity")))
-                fs_ok, fs_reason = await coord.check_filesystem_writable(state_dir)
-                if not fs_ok:
-                    critical_failures.append(f"Filesystem: {fs_reason}")
-                    self.logger.error(f"[v87.0] ❌ Filesystem not writable: {fs_reason}")
-                else:
-                    self.logger.debug(f"[v87.0] ✓ Filesystem OK: {fs_reason}")
-            except Exception as e:
-                warnings.append(f"Filesystem check error: {e}")
-                self.logger.warning(f"[v87.0] Filesystem check error (non-critical): {e}")
+                coord = TrinityAdvancedCoordinator()
 
-            # 3. Disk space check
-            try:
-                disk_ok, disk_metrics = await coord.check_disk_space(state_dir)
-                if not disk_ok:
-                    disk_warnings = disk_metrics.get("warnings", ["Low disk space"])
-                    warnings.extend(disk_warnings)
-                    for dw in disk_warnings:
-                        self.logger.warning(f"[v87.0] ⚠ Disk warning: {dw}")
-                else:
-                    free_pct = disk_metrics.get("free_percent", 0)
-                    self.logger.debug(f"[v87.0] ✓ Disk OK: {free_pct:.1f}% free")
-            except Exception as e:
-                warnings.append(f"Disk check error: {e}")
-                self.logger.warning(f"[v87.0] Disk check error (non-critical): {e}")
+                # Initialize with timeout to prevent hanging
+                init_timeout = float(os.environ.get("JARVIS_V87_INIT_TIMEOUT", "10.0"))
+                await asyncio.wait_for(coord.initialize(), timeout=init_timeout)
+            except asyncio.TimeoutError:
+                warnings.append(f"Coordinator initialization timed out after {init_timeout}s")
+                self.logger.warning(
+                    f"[v87.0] Coordinator init timeout ({init_timeout}s) - using basic checks"
+                )
+                coord = None  # Continue without coordinator
+            except Exception as coord_err:
+                warnings.append(f"Coordinator initialization failed: {coord_err}")
+                self.logger.warning(
+                    f"[v87.0] Coordinator init failed (non-critical, continuing): {coord_err}"
+                )
+                coord = None  # Continue without coordinator
 
-            # 4. Clock skew detection
-            try:
-                has_skew, skew_seconds = await coord.check_clock_skew()
-                if has_skew:
-                    warnings.append(f"Clock skew: {skew_seconds:.2f}s")
-                    self.logger.warning(f"[v87.0] ⚠ Clock skew detected: {skew_seconds:.2f}s")
-                else:
-                    self.logger.debug(f"[v87.0] ✓ Clock OK: skew {skew_seconds:.2f}s")
-            except Exception as e:
-                warnings.append(f"Clock check error: {e}")
-                self.logger.warning(f"[v87.0] Clock check error (non-critical): {e}")
+            # v88.1: Only run advanced checks if coordinator is available
+            if coord is not None:
+                # 1. Network partition check (critical for NFS-mounted state)
+                try:
+                    is_partitioned, reason = await coord.check_network_partition()
+                    if is_partitioned:
+                        critical_failures.append(f"Network partition: {reason}")
+                        self.logger.error(f"[v87.0] ❌ Network partition detected: {reason}")
+                    else:
+                        self.logger.debug(f"[v87.0] ✓ Network OK: {reason}")
+                except Exception as e:
+                    warnings.append(f"Network check error: {e}")
+                    self.logger.warning(f"[v87.0] Network check error (non-critical): {e}")
 
-            # 5. File descriptor check
-            try:
-                fd_ok, fd_metrics = await coord.check_file_descriptors()
-                fd_count = fd_metrics.get("current", 0)
-                fd_limit = fd_metrics.get("soft_limit", 0)
-                if not fd_ok:
-                    fd_warnings = fd_metrics.get("warnings", [])
-                    for fw in fd_warnings:
-                        warnings.append(fw)
-                    self.logger.warning(f"[v87.0] ⚠ FD issues: {fd_count}/{fd_limit}")
-                else:
-                    pct_used = fd_metrics.get("percent_used", 0)
-                    self.logger.debug(f"[v87.0] ✓ FD OK: {fd_count}/{fd_limit} ({pct_used:.1f}% used)")
-            except Exception as e:
-                warnings.append(f"FD check error: {e}")
-                self.logger.warning(f"[v87.0] FD check error (non-critical): {e}")
+                # 2. Filesystem writability check
+                try:
+                    state_dir = Path(os.environ.get("TRINITY_STATE_DIR", str(Path.home() / ".jarvis" / "trinity")))
+                    fs_ok, fs_reason = await coord.check_filesystem_writable(state_dir)
+                    if not fs_ok:
+                        critical_failures.append(f"Filesystem: {fs_reason}")
+                        self.logger.error(f"[v87.0] ❌ Filesystem not writable: {fs_reason}")
+                    else:
+                        self.logger.debug(f"[v87.0] ✓ Filesystem OK: {fs_reason}")
+                except Exception as e:
+                    warnings.append(f"Filesystem check error: {e}")
+                    self.logger.warning(f"[v87.0] Filesystem check error (non-critical): {e}")
 
-            # 6. Process group isolation check
-            try:
-                from backend.core.trinity_integrator import UnifiedStateCoordinator
-                temp_coord = UnifiedStateCoordinator()
-                isolated, isolation_reason = await temp_coord.verify_process_isolation()
-                if not isolated:
-                    warnings.append(f"Process isolation: {isolation_reason}")
-                    self.logger.warning(f"[v87.0] ⚠ Process isolation issue: {isolation_reason}")
-                else:
-                    self.logger.debug(f"[v87.0] ✓ Process isolation OK: {isolation_reason}")
-            except Exception as e:
-                warnings.append(f"Process isolation check error: {e}")
-                self.logger.debug(f"[v87.0] Process isolation check error: {e}")
+                # 3. Disk space check
+                try:
+                    disk_ok, disk_metrics = await coord.check_disk_space(state_dir)
+                    if not disk_ok:
+                        disk_warnings = disk_metrics.get("warnings", ["Low disk space"])
+                        warnings.extend(disk_warnings)
+                        for dw in disk_warnings:
+                            self.logger.warning(f"[v87.0] ⚠ Disk warning: {dw}")
+                    else:
+                        free_pct = disk_metrics.get("free_percent", 0)
+                        self.logger.debug(f"[v87.0] ✓ Disk OK: {free_pct:.1f}% free")
+                except Exception as e:
+                    warnings.append(f"Disk check error: {e}")
+                    self.logger.warning(f"[v87.0] Disk check error (non-critical): {e}")
 
-            # Cleanup temporary coordinator
-            await coord.shutdown()
+                # 4. Clock skew detection
+                try:
+                    has_skew, skew_seconds = await coord.check_clock_skew()
+                    if has_skew:
+                        warnings.append(f"Clock skew: {skew_seconds:.2f}s")
+                        self.logger.warning(f"[v87.0] ⚠ Clock skew detected: {skew_seconds:.2f}s")
+                    else:
+                        self.logger.debug(f"[v87.0] ✓ Clock OK: skew {skew_seconds:.2f}s")
+                except Exception as e:
+                    warnings.append(f"Clock check error: {e}")
+                    self.logger.warning(f"[v87.0] Clock check error (non-critical): {e}")
 
-        except ImportError as e:
-            # TrinityAdvancedCoordinator not available - skip advanced checks
-            self.logger.info(f"[v87.0] Advanced coordinator not available, using basic checks: {e}")
+                # 5. File descriptor check
+                try:
+                    fd_ok, fd_metrics = await coord.check_file_descriptors()
+                    fd_count = fd_metrics.get("current", 0)
+                    fd_limit = fd_metrics.get("soft_limit", 0)
+                    if not fd_ok:
+                        fd_warnings = fd_metrics.get("warnings", [])
+                        for fw in fd_warnings:
+                            warnings.append(fw)
+                        self.logger.warning(f"[v87.0] ⚠ FD issues: {fd_count}/{fd_limit}")
+                    else:
+                        pct_used = fd_metrics.get("percent_used", 0)
+                        self.logger.debug(f"[v87.0] ✓ FD OK: {fd_count}/{fd_limit} ({pct_used:.1f}% used)")
+                except Exception as e:
+                    warnings.append(f"FD check error: {e}")
+                    self.logger.warning(f"[v87.0] FD check error (non-critical): {e}")
+
+                # 6. Process group isolation check
+                try:
+                    from backend.core.trinity_integrator import UnifiedStateCoordinator
+                    temp_coord = UnifiedStateCoordinator()
+                    isolated, isolation_reason = await temp_coord.verify_process_isolation()
+                    if not isolated:
+                        warnings.append(f"Process isolation: {isolation_reason}")
+                        self.logger.warning(f"[v87.0] ⚠ Process isolation issue: {isolation_reason}")
+                    else:
+                        self.logger.debug(f"[v87.0] ✓ Process isolation OK: {isolation_reason}")
+                except Exception as e:
+                    warnings.append(f"Process isolation check error: {e}")
+                    self.logger.debug(f"[v87.0] Process isolation check error: {e}")
+
+                # v88.1: Cleanup coordinator with timeout protection
+                try:
+                    await asyncio.wait_for(coord.shutdown(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    self.logger.debug("[v87.0] Coordinator shutdown timeout (ignored)")
+                except Exception as shutdown_err:
+                    self.logger.debug(f"[v87.0] Coordinator shutdown error (ignored): {shutdown_err}")
 
         except Exception as e:
-            self.logger.warning(f"[v87.0] Pre-flight check error (continuing anyway): {e}")
-            # Don't fail on pre-flight errors - just log and continue
+            # v88.1: Catch-all for any unexpected errors - don't fail startup
+            self.logger.warning(f"[v87.0] Pre-flight check error (continuing anyway): {e}", exc_info=True)
+            warnings.append(f"Pre-flight checks encountered errors: {e}")
+            # Cleanup coordinator if it was created
+            if coord is not None:
+                try:
+                    await asyncio.wait_for(coord.shutdown(), timeout=2.0)
+                except Exception:
+                    pass
 
         # Report results
         if critical_failures:
@@ -3584,9 +3623,37 @@ class SupervisorBootstrapper:
             return 130
 
         except Exception as e:
-            self.logger.exception(f"Bootstrap failed: {e}")
-            TerminalUI.print_error(f"Bootstrap failed: {e}")
-            await self.narrator.speak("An error occurred. Please check the logs.", wait=True)
+            # v88.1: Ultra-robust exception handling with multiple fallback layers
+            # This ensures startup NEVER fails silently due to logging issues
+            error_msg = f"Bootstrap failed: {e}"
+
+            # Layer 1: Try the exception() method (now available in StructuredLogger)
+            try:
+                self.logger.exception(error_msg)
+            except AttributeError:
+                # Layer 2: Fallback to error() with exc_info if exception() doesn't exist
+                try:
+                    self.logger.error(error_msg, exc_info=True)
+                except Exception:
+                    # Layer 3: Last resort - print to stderr with full traceback
+                    import traceback
+                    print(f"🚨 CRITICAL: {error_msg}", file=sys.stderr)
+                    traceback.print_exc(file=sys.stderr)
+            except Exception as log_err:
+                # Layer 3: Logging itself failed - print to stderr
+                import traceback
+                print(f"🚨 CRITICAL: {error_msg}", file=sys.stderr)
+                print(f"🚨 LOGGING ALSO FAILED: {log_err}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+
+            TerminalUI.print_error(error_msg)
+
+            # Try to speak, but don't fail if narrator is unavailable
+            try:
+                await self.narrator.speak("An error occurred. Please check the logs.", wait=True)
+            except Exception:
+                pass  # Narrator failure should not cascade
+
             return 1
         
         finally:
@@ -3821,7 +3888,12 @@ class SupervisorBootstrapper:
             print()  # Blank line for readability
             
         except Exception as e:
-            self.logger.exception(f"Failed to start loading page ecosystem: {e}")
+            # v88.1: Robust exception logging with fallback
+            error_msg = f"Failed to start loading page ecosystem: {e}"
+            try:
+                self.logger.exception(error_msg)
+            except Exception:
+                self.logger.error(error_msg, exc_info=True)
             print(f"  {TerminalUI.YELLOW}⚠️  Loading page failed: {e}{TerminalUI.RESET}")
             print(f"  {TerminalUI.CYAN}💡 JARVIS will start without loading page{TerminalUI.RESET}")
 
@@ -4381,7 +4453,12 @@ class SupervisorBootstrapper:
                 self._release_browser_lock()
             
         except Exception as e:
-            self.logger.exception(f"Window management error: {e}")
+            # v88.1: Robust exception logging with fallback
+            error_msg = f"Window management error: {e}"
+            try:
+                self.logger.exception(error_msg)
+            except Exception:
+                self.logger.error(error_msg, exc_info=True)
             self._release_browser_lock()
             return False
     
