@@ -68,6 +68,10 @@ class FrameworkType(str, Enum):
     REPOMASTER = "repomaster"    # Codebase analysis
     CONTINUE = "continue"        # IDE integration
     CLAUDE_CODE = "claude_code"  # Direct Claude usage (fallback)
+    # v84.0: Local JARVIS Prime inference (CodeLlama, Qwen, Llama etc.)
+    JPRIME_LOCAL = "jprime_local"  # Local LLM via JARVIS Prime (cost-free, private)
+    JPRIME_CODING = "jprime_coding"  # CodeLlama/DeepSeek Coder via J-Prime
+    JPRIME_REASONING = "jprime_reasoning"  # Qwen/Llama via J-Prime for reasoning
 
 
 class TaskComplexity(str, Enum):
@@ -155,6 +159,32 @@ class CodingCouncilConfig:
     )
     continue_enabled: bool = field(
         default_factory=lambda: _get_env_bool("CODING_COUNCIL_CONTINUE_ENABLED", False)
+    )
+
+    # v84.0: JARVIS Prime Local LLM Settings
+    jprime_enabled: bool = field(
+        default_factory=lambda: _get_env_bool("CODING_COUNCIL_JPRIME_ENABLED", True)
+    )
+    jprime_url: str = field(
+        default_factory=lambda: _get_env("JARVIS_PRIME_URL", "http://localhost:8000")
+    )
+    jprime_prefer_for_coding: bool = field(
+        default_factory=lambda: _get_env_bool("CODING_COUNCIL_JPRIME_PREFER_CODING", True)
+    )
+    jprime_fallback_to_claude: bool = field(
+        default_factory=lambda: _get_env_bool("CODING_COUNCIL_JPRIME_FALLBACK_CLAUDE", True)
+    )
+    jprime_coding_model: str = field(
+        default_factory=lambda: _get_env("JPRIME_CODING_MODEL", "codellama-7b-instruct")
+    )
+    jprime_reasoning_model: str = field(
+        default_factory=lambda: _get_env("JPRIME_REASONING_MODEL", "qwen2.5-7b-instruct")
+    )
+    jprime_general_model: str = field(
+        default_factory=lambda: _get_env("JPRIME_GENERAL_MODEL", "llama-3-8b-instruct")
+    )
+    jprime_timeout: float = field(
+        default_factory=lambda: _get_env_float("JPRIME_TIMEOUT", 120.0)
     )
 
     # Timeouts (seconds)
