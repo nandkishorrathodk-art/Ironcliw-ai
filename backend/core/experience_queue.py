@@ -984,12 +984,16 @@ class ExperienceQueueProcessor:
 
 _queue_instance: Optional[ExperienceDataQueue] = None
 _processor_instance: Optional[ExperienceQueueProcessor] = None
-_instance_lock = asyncio.Lock()
+_instance_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_experience_queue() -> ExperienceDataQueue:
     """Get the singleton experience queue."""
-    global _queue_instance
+    global _queue_instance, _instance_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _instance_lock is None:
+        _instance_lock = asyncio.Lock()
 
     async with _instance_lock:
         if _queue_instance is None:
@@ -1002,7 +1006,11 @@ async def get_experience_processor(
     reactor_client: Optional[Any] = None,
 ) -> ExperienceQueueProcessor:
     """Get the singleton experience processor."""
-    global _processor_instance
+    global _processor_instance, _instance_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _instance_lock is None:
+        _instance_lock = asyncio.Lock()
 
     async with _instance_lock:
         if _processor_instance is None:

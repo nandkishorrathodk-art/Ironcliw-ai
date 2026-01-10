@@ -318,9 +318,16 @@ class IntelligentRepoDiscovery:
 
     # Cache of discovered paths (thread-safe via asyncio)
     _cache: Dict[str, DiscoveryResult] = {}
-    _cache_lock: asyncio.Lock = asyncio.Lock()
+    _cache_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy initialization
     _cache_ttl: float = 300.0  # 5 minutes
     _cache_timestamps: Dict[str, float] = {}
+
+    @classmethod
+    def _get_cache_lock(cls) -> asyncio.Lock:
+        """v90.0: Get cache lock with lazy initialization."""
+        if cls._cache_lock is None:
+            cls._cache_lock = asyncio.Lock()
+        return cls._cache_lock
 
     def __init__(
         self,
@@ -389,7 +396,7 @@ class IntelligentRepoDiscovery:
 
         # Check cache first
         if self.enable_cache:
-            async with self._cache_lock:
+            async with self._get_cache_lock():
                 if repo_id in self._cache:
                     cache_age = time.time() - self._cache_timestamps.get(repo_id, 0)
                     if cache_age < self._cache_ttl:
@@ -426,7 +433,7 @@ class IntelligentRepoDiscovery:
                     result.alternatives = alternatives
 
                     if self.enable_cache:
-                        async with self._cache_lock:
+                        async with self._get_cache_lock():
                             self._cache[repo_id] = result
                             self._cache_timestamps[repo_id] = time.time()
 
@@ -733,12 +740,17 @@ class IntelligentRepoDiscovery:
 
 # Global discovery instance (lazy initialization)
 _discovery_instance: Optional[IntelligentRepoDiscovery] = None
-_discovery_lock = asyncio.Lock()
+_discovery_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_repo_discovery() -> IntelligentRepoDiscovery:
     """Get the global IntelligentRepoDiscovery instance."""
-    global _discovery_instance
+    global _discovery_instance, _discovery_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors
+    if _discovery_lock is None:
+        _discovery_lock = asyncio.Lock()
+
     async with _discovery_lock:
         if _discovery_instance is None:
             _discovery_instance = IntelligentRepoDiscovery()
@@ -10439,14 +10451,18 @@ TrinityIntegrator = TrinityUnifiedOrchestrator
 # =============================================================================
 
 _orchestrator: Optional[TrinityUnifiedOrchestrator] = None
-_orchestrator_lock = asyncio.Lock()
+_orchestrator_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_trinity_orchestrator(
     **kwargs,
 ) -> TrinityUnifiedOrchestrator:
     """Get or create the singleton Trinity Unified Orchestrator v83.0."""
-    global _orchestrator
+    global _orchestrator, _orchestrator_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _orchestrator_lock is None:
+        _orchestrator_lock = asyncio.Lock()
 
     async with _orchestrator_lock:
         if _orchestrator is None:

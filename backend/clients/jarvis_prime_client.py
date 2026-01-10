@@ -1332,14 +1332,18 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
 # =============================================================================
 
 _client: Optional[JARVISPrimeClient] = None
-_client_lock = asyncio.Lock()
+_client_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_jarvis_prime_client(
     config: Optional[JARVISPrimeConfig] = None,
 ) -> JARVISPrimeClient:
     """Get or create the singleton JARVIS Prime client."""
-    global _client
+    global _client, _client_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
 
     async with _client_lock:
         if _client is None:

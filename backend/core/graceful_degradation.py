@@ -766,7 +766,7 @@ class GracefulDegradation:
 # =============================================================================
 
 _degradation: Optional[GracefulDegradation] = None
-_degradation_lock = asyncio.Lock()
+_degradation_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 def get_degradation() -> GracefulDegradation:
@@ -784,8 +784,13 @@ async def get_degradation_async() -> GracefulDegradation:
     This version ensures primitives are initialized before returning.
     Recommended for production use.
     """
-    global _degradation
+    global _degradation, _degradation_lock
+
     if _degradation is None:
+        # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+        if _degradation_lock is None:
+            _degradation_lock = asyncio.Lock()
+
         async with _degradation_lock:
             if _degradation is None:
                 _degradation = GracefulDegradation()
@@ -1202,12 +1207,16 @@ class TrinityFallbackManager:
 # =============================================================================
 
 _trinity_fallback: Optional[TrinityFallbackManager] = None
-_trinity_fallback_lock = asyncio.Lock()
+_trinity_fallback_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_trinity_fallback() -> TrinityFallbackManager:
     """Get the singleton TrinityFallbackManager instance."""
-    global _trinity_fallback
+    global _trinity_fallback, _trinity_fallback_lock
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _trinity_fallback_lock is None:
+        _trinity_fallback_lock = asyncio.Lock()
 
     async with _trinity_fallback_lock:
         if _trinity_fallback is None:

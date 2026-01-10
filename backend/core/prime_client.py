@@ -828,7 +828,7 @@ class PrimeClient:
 # =============================================================================
 
 _prime_client: Optional[PrimeClient] = None
-_client_lock = asyncio.Lock()
+_client_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_prime_client(config: Optional[PrimeClientConfig] = None) -> PrimeClient:
@@ -837,10 +837,14 @@ async def get_prime_client(config: Optional[PrimeClientConfig] = None) -> PrimeC
 
     Thread-safe with double-check locking.
     """
-    global _prime_client
+    global _prime_client, _client_lock
 
     if _prime_client is not None and _prime_client._initialized:
         return _prime_client
+
+    # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
 
     async with _client_lock:
         if _prime_client is not None and _prime_client._initialized:
