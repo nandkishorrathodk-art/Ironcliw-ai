@@ -633,23 +633,40 @@ class TrinityHealthMonitor:
             await asyncio.sleep(self.CHECK_INTERVAL)
 
     async def _check_all_components(self) -> None:
-        """Check health of all Trinity components."""
+        """
+        Check health of all Trinity components.
+
+        v90.0: Only check components that are enabled to avoid spurious errors
+        when components are intentionally disabled or their repos don't exist.
+        """
         components_dir = Path.home() / ".jarvis" / "trinity" / "components"
 
-        # Check J-Prime (Mind)
-        # v78.1: Support both naming conventions for backwards compatibility
-        # J-Prime may write to either jarvis_prime.json or j_prime.json
-        jprime_heartbeat = self._find_heartbeat_file(
-            components_dir,
-            ["jarvis_prime.json", "j_prime.json"]
-        )
-        await self._check_component("j_prime", jprime_heartbeat)
+        # v90.0: Check if J-Prime is enabled before checking heartbeat
+        jprime_enabled = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
+        if jprime_enabled:
+            # Check J-Prime (Mind)
+            # v78.1: Support both naming conventions for backwards compatibility
+            # J-Prime may write to either jarvis_prime.json or j_prime.json
+            jprime_heartbeat = self._find_heartbeat_file(
+                components_dir,
+                ["jarvis_prime.json", "j_prime.json"]
+            )
+            await self._check_component("j_prime", jprime_heartbeat)
+        else:
+            # Mark as disabled - not an error
+            self._component_states["j_prime"] = "disabled"
 
-        # Check Reactor-Core (Nerves)
-        await self._check_component(
-            "reactor_core",
-            components_dir / "reactor_core.json",
-        )
+        # v90.0: Check if Reactor-Core is enabled before checking heartbeat
+        reactor_enabled = os.getenv("REACTOR_CORE_ENABLED", "true").lower() in ("true", "1", "yes")
+        if reactor_enabled:
+            # Check Reactor-Core (Nerves)
+            await self._check_component(
+                "reactor_core",
+                components_dir / "reactor_core.json",
+            )
+        else:
+            # Mark as disabled - not an error
+            self._component_states["reactor_core"] = "disabled"
 
         # JARVIS Body is this process - always healthy if running
         self._component_states["jarvis_body"] = "healthy"
@@ -909,6 +926,9 @@ class TrinityHealthMonitor:
         2. J-Prime (mind) - depends on Reactor-Core for communication
         3. JARVIS Body - can function in degraded mode without the others
 
+        v90.0: Now respects component enabled status - disabled components
+        are treated as "ok" for dependency purposes.
+
         Returns:
             Dict with dependency status and recommended action
         """
@@ -924,27 +944,42 @@ class TrinityHealthMonitor:
             "recommendations": [],
         }
 
+        # v90.0: Check if components are enabled
+        reactor_enabled = os.getenv("REACTOR_CORE_ENABLED", "true").lower() in ("true", "1", "yes")
+        jprime_enabled = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
+
         # Check Reactor-Core first (it's the communication backbone)
-        reactor_file = components_dir / "reactor_core.json"
-        reactor_status = await self._check_dependency_status(
-            "reactor_core", reactor_file, now
-        )
-        results["reactor_core"] = reactor_status
+        if reactor_enabled:
+            reactor_file = components_dir / "reactor_core.json"
+            reactor_status = await self._check_dependency_status(
+                "reactor_core", reactor_file, now
+            )
+            results["reactor_core"] = reactor_status
+        else:
+            # v90.0: Disabled components are treated as "ok"
+            results["reactor_core"] = {"status": "disabled", "heartbeat_age": None, "error": None}
 
         # Check J-Prime (depends on Reactor-Core)
-        # v78.1: Support both naming conventions for backwards compatibility
-        jprime_file = self._find_heartbeat_file(
-            components_dir,
-            ["jarvis_prime.json", "j_prime.json"]
-        )
-        jprime_status = await self._check_dependency_status(
-            "j_prime", jprime_file, now
-        )
-        results["j_prime"] = jprime_status
+        if jprime_enabled:
+            # v78.1: Support both naming conventions for backwards compatibility
+            jprime_file = self._find_heartbeat_file(
+                components_dir,
+                ["jarvis_prime.json", "j_prime.json"]
+            )
+            jprime_status = await self._check_dependency_status(
+                "j_prime", jprime_file, now
+            )
+            results["j_prime"] = jprime_status
+        else:
+            # v90.0: Disabled components are treated as "ok"
+            results["j_prime"] = {"status": "disabled", "heartbeat_age": None, "error": None}
 
         # Determine overall status
-        reactor_ok = reactor_status["status"] in ("healthy", "starting")
-        jprime_ok = jprime_status["status"] in ("healthy", "starting")
+        # v90.0: Disabled components count as "ok" for dependency purposes
+        reactor_status_val = results["reactor_core"]["status"]
+        jprime_status_val = results["j_prime"]["status"]
+        reactor_ok = reactor_status_val in ("healthy", "starting", "disabled")
+        jprime_ok = jprime_status_val in ("healthy", "starting", "disabled")
 
         if reactor_ok and jprime_ok:
             results["ready_for_full_operation"] = True

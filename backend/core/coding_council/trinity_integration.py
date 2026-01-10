@@ -442,46 +442,42 @@ class CodingCouncilTrinityBridge:
 
         try:
             # 1. Initialize Multi-Transport (Gap #1)
+            # v90.0: Fixed parameter names to match MultiTransport.__init__ signature
             trinity_dir = _get_trinity_dir()
             self._multi_transport = MultiTransport(
-                component_name="coding_council",
                 redis_url=os.getenv("REDIS_URL"),
                 websocket_url=os.getenv("TRINITY_WEBSOCKET_URL"),
-                file_transport_dir=trinity_dir / "messages",
+                file_base_dir=trinity_dir / "messages",  # v90.0: Fixed from file_transport_dir
             )
             await self._multi_transport.start()
             logger.info("[CodingCouncilTrinity] MultiTransport started")
 
             # 2. Initialize Message Queue (Gap #4)
+            # v90.0: Fixed parameters to match PersistentMessageQueue.__init__ signature
+            # PersistentMessageQueue only takes db_path
             queue_db = trinity_dir / "messages" / "coding_council_queue.db"
             self._message_queue = PersistentMessageQueue(
                 db_path=queue_db,
-                max_retries=3,
-                dead_letter_enabled=True,
             )
             await self._message_queue.start()
             logger.info("[CodingCouncilTrinity] MessageQueue started")
 
             # 3. Initialize Heartbeat Validator (Gaps #2, #3)
-            broadcast_interval = _get_status_broadcast_interval()
+            # v90.0: Fixed parameter to match HeartbeatValidator.__init__ signature
+            # HeartbeatValidator only takes heartbeat_dir, other config is internal
+            heartbeat_dir = trinity_dir / "heartbeats"
             self._heartbeat_validator = HeartbeatValidator(
-                component_name="coding_council",
-                heartbeat_interval=broadcast_interval,
-                staleness_threshold=broadcast_interval * 3,
-                validate_pid=True,
+                heartbeat_dir=heartbeat_dir,
             )
             await self._heartbeat_validator.start()
             self._heartbeat_validator.on_staleness(self._on_component_stale)
             logger.info("[CodingCouncilTrinity] HeartbeatValidator started")
 
             # 4. Initialize Cross-Repo Sync (Gaps #5, #6, #7)
+            # v90.0: Fixed - CrossRepoSync.__init__ takes no parameters
+            # It uses DEFAULT_PATHS and can be configured via environment variables
             if _is_cross_repo_enabled():
-                repos = _get_trinity_repos()
-                self._cross_repo_sync = CrossRepoSync(
-                    repos=repos,
-                    sync_interval=60.0,
-                    state_dir=trinity_dir / "sync",
-                )
+                self._cross_repo_sync = CrossRepoSync()
                 await self._cross_repo_sync.start()
                 logger.info("[CodingCouncilTrinity] CrossRepoSync started")
 

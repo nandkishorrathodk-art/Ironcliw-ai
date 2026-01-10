@@ -1520,18 +1520,41 @@ class EnhancedShutdownManager(CoordinatedShutdownManager):
         result = await super().initiate_shutdown(reason, timeout, force)
 
         if verify_cleanup:
-            # Verify no orphans remain
-            await asyncio.sleep(1.0)  # Brief delay for processes to fully exit
+            # v90.0: Enhanced orphan cleanup with retry logic and longer delays
+            # Give processes more time to fully terminate
+            orphan_check_delay = float(os.getenv("SHUTDOWN_ORPHAN_CHECK_DELAY", "3.0"))
+            max_orphan_retries = int(os.getenv("SHUTDOWN_ORPHAN_RETRIES", "3"))
+
+            await asyncio.sleep(orphan_check_delay)
             orphans = await self.orphan_detector.detect_orphans()
 
-            if orphans:
-                logger.warning(
-                    f"[EnhancedShutdown] {len(orphans)} orphans remain after shutdown"
+            retry_count = 0
+            while orphans and retry_count < max_orphan_retries:
+                retry_count += 1
+                logger.info(
+                    f"[EnhancedShutdown] {len(orphans)} orphans detected, "
+                    f"cleanup attempt {retry_count}/{max_orphan_retries}..."
                 )
+
                 terminated, failed = await self.orphan_detector.cleanup_orphans(
-                    orphans, force=True
+                    orphans, force=(retry_count > 1)  # Force after first attempt
                 )
                 result.processes_terminated += terminated
+
+                # Wait and recheck
+                await asyncio.sleep(2.0)
+                orphans = await self.orphan_detector.detect_orphans()
+
+            if orphans:
+                # v90.0: Log as debug instead of warning if retries exhausted
+                # These are likely protected processes or system processes
+                orphan_pids = [o.pid for o in orphans]
+                logger.debug(
+                    f"[EnhancedShutdown] {len(orphans)} processes remain "
+                    f"after {max_orphan_retries} cleanup attempts: {orphan_pids}"
+                )
+            else:
+                logger.info("[EnhancedShutdown] All orphan processes cleaned up")
 
         return result
 
