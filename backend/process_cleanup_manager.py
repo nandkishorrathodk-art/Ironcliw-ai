@@ -5626,6 +5626,19 @@ class ProcessCleanupManager:
                     is_jarvis_related = True
 
                 if is_jarvis_related:
+                    # v89.0: CRITICAL - Check if this is a protected process before killing
+                    # Protected processes include: run_supervisor, jarvis_supervisor, dead_man_switch
+                    # These should NEVER be killed even in emergency cleanup
+                    if self._supervisor_state.is_process_protected(proc.pid, cmdline):
+                        logger.warning(
+                            f"[Cleanup] PROTECTED process {proc.name()} (PID: {proc.pid}) - NOT killing! "
+                            f"This is a critical system process."
+                        )
+                        results.setdefault("protected_skipped", []).append(
+                            {"pid": proc.pid, "name": proc.name(), "reason": "Protected pattern match"}
+                        )
+                        continue  # Skip this process - do NOT kill it
+
                     logger.info(f"Killing JARVIS process: {proc.name()} (PID: {proc.pid})")
                     try:
                         if force_kill:

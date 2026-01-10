@@ -544,7 +544,7 @@ class UnifiedProcessTree:
         graceful: bool = True,
         timeout: float = 5.0,
     ) -> bool:
-        """Shutdown a single process."""
+        """Shutdown a single process with protection for critical processes."""
         node = self._nodes.get(pid)
         if not node:
             return True  # Already gone
@@ -552,6 +552,26 @@ class UnifiedProcessTree:
         if not node.is_alive:
             await self.update_state(pid, ProcessState.STOPPED)
             return True
+
+        # v89.0: CRITICAL - Never kill supervisor processes
+        # These are the root of the process tree and killing them causes system death
+        if node.role == ProcessRole.SUPERVISOR:
+            self.log.warning(
+                f"[ProcessTree] PROTECTED: Refusing to kill SUPERVISOR process {node.name} (PID {pid}). "
+                f"This is a critical system process that should never be terminated by cleanup."
+            )
+            return False  # Return False to indicate we did NOT stop it
+
+        # v89.0: Also check protected patterns in process name
+        protected_patterns = ["run_supervisor", "jarvis_supervisor", "dead_man_switch"]
+        name_lower = node.name.lower()
+        for pattern in protected_patterns:
+            if pattern in name_lower:
+                self.log.warning(
+                    f"[ProcessTree] PROTECTED: Refusing to kill {node.name} (PID {pid}) - "
+                    f"matches protected pattern '{pattern}'"
+                )
+                return False
 
         self.log.info(f"[ProcessTree] Stopping {node.name} (PID {pid})...")
 

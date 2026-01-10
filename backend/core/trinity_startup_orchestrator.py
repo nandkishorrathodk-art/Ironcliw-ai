@@ -198,7 +198,7 @@ class TrinityStartupOrchestrator:
         reactor_path = jarvis_path.parent / "reactor-core"
 
         # Get ports from config or defaults
-        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8002"))
+        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))  # v89.0: Fixed to 8000
         reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
 
         self.state.components = {

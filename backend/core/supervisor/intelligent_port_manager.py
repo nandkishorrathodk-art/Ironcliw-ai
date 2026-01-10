@@ -958,7 +958,7 @@ def get_intelligent_port_manager(**kwargs) -> IntelligentPortManager:
     return _manager_instance
 
 
-async def ensure_port_available(port: int = 8002, **kwargs) -> Tuple[int, Optional[ProcessInfo]]:
+async def ensure_port_available(port: int = 8000, **kwargs) -> Tuple[int, Optional[ProcessInfo]]:  # v89.0: Fixed to 8000
     """Convenience function to ensure a port is available."""
     manager = get_intelligent_port_manager(primary_port=port, **kwargs)
     return await manager.ensure_port_available()

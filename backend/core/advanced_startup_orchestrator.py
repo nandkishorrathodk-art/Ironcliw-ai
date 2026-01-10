@@ -2225,7 +2225,7 @@ class TrinityStartupCoordinator:
             component="j_prime",
         )
 
-        port = config.ports.get("j_prime", 8002)
+        port = config.ports.get("j_prime", 8000)  # v89.0: Fixed to 8000
 
         # Check if already running
         health = await self.health_monitor._check_repo_health("j_prime", port)

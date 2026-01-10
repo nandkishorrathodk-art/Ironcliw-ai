@@ -728,27 +728,61 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         return self._prime_config.base_url
 
     async def _health_check(self) -> bool:
-        """Check if JARVIS Prime is healthy."""
+        """
+        Check if JARVIS Prime is healthy with robust error reporting.
+
+        v89.0: Enhanced with:
+        - Configurable timeout via PRIME_HEALTH_CHECK_TIMEOUT env var
+        - Detailed logging for each endpoint attempt (not silent)
+        - Reordered endpoints by likelihood of success
+        - Connection error differentiation
+        """
         try:
             base_url = await self._get_base_url()
             session = await self._get_session()
 
-            # Try multiple health endpoints
-            health_endpoints = ["/health", "/v1/models", "/api/health"]
+            # v89.0: Use configurable timeout (default 10s, was hardcoded 5s)
+            health_timeout = float(os.getenv("PRIME_HEALTH_CHECK_TIMEOUT", "10.0"))
 
+            # v89.0: Reordered by likelihood - /v1/models is most reliable for OpenAI format
+            # /health is standard, /api/health is legacy fallback
+            health_endpoints = ["/v1/models", "/health", "/api/health"]
+
+            last_error = None
             for endpoint in health_endpoints:
+                url = f"{base_url}{endpoint}"
                 try:
-                    url = f"{base_url}{endpoint}"
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=5.0)) as response:
+                    async with session.get(
+                        url,
+                        timeout=aiohttp.ClientTimeout(total=health_timeout)
+                    ) as response:
                         if response.status == 200:
+                            logger.debug(f"[JARVISPrime] Health check passed: {endpoint}")
                             return True
-                except Exception:
-                    continue
+                        else:
+                            logger.debug(
+                                f"[JARVISPrime] Health check {endpoint}: status {response.status}"
+                            )
+                except aiohttp.ClientConnectorError as e:
+                    # Connection refused, host unreachable, etc.
+                    last_error = f"Connection error: {e}"
+                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
+                except asyncio.TimeoutError:
+                    last_error = f"Timeout after {health_timeout}s"
+                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
+                except Exception as e:
+                    last_error = str(e)
+                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
 
+            # v89.0: Log the actual failure reason instead of silent return
+            if last_error:
+                logger.warning(
+                    f"[JARVISPrime] All health endpoints failed at {base_url}: {last_error}"
+                )
             return False
 
         except Exception as e:
-            logger.debug(f"[JARVISPrime] Health check failed: {e}")
+            logger.warning(f"[JARVISPrime] Health check setup failed: {e}")
             return False
 
     async def _execute_request(

@@ -186,7 +186,7 @@ class TrinityHealthConfig:
 
     # Component endpoints (dynamically discovered if possible)
     jarvis_backend_port: int = 8010
-    jarvis_prime_port: int = 8002
+    jarvis_prime_port: int = 8000  # v89.0: Fixed to 8000 (was incorrectly 8002)
     reactor_core_port: int = 8003
 
     # Component weights for health score calculation
@@ -207,7 +207,7 @@ class TrinityHealthConfig:
             http_timeout_seconds=float(os.getenv("TRINITY_HTTP_TIMEOUT", "5.0")),
             check_interval_seconds=float(os.getenv("TRINITY_CHECK_INTERVAL", "10.0")),
             jarvis_backend_port=int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
-            jarvis_prime_port=int(os.getenv("JARVIS_PRIME_PORT", "8002")),
+            jarvis_prime_port=int(os.getenv("JARVIS_PRIME_PORT", "8000")),  # v89.0: Fixed to 8000
             reactor_core_port=int(os.getenv("REACTOR_CORE_PORT", "8003")),
         )
 
