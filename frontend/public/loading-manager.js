@@ -1593,9 +1593,21 @@ class JARVISLoadingManager {
         // This enables automatic redirect when system is already running but loading server is down
         this.startBackendHealthPolling();
 
-        // v87.0: TRINITY ULTRA ADVANCED INTELLIGENCE INITIALIZATION
+        // ===================================================================
+        // v87.0 ULTRA: TRINITY ADVANCED INTELLIGENCE INITIALIZATION
+        // ===================================================================
+
         // Initialize network condition detection and adaptive polling
         this.detectNetworkCondition();
+
+        // Initialize smart caching for performance optimization
+        this.initSmartCache();
+
+        // Initialize circuit breakers for resilience
+        this.initCircuitBreakers();
+
+        // Initialize cross-tab synchronization
+        this.initCrossTabSync();
 
         // Start periodic unified health polling (Trinity components: J-Prime, Reactor-Core)
         setInterval(() => this.pollUnifiedHealth(), 5000);
@@ -1604,6 +1616,7 @@ class JARVISLoadingManager {
         setInterval(() => this.checkSupervisorHeartbeat(), 10000);
 
         console.log('[v87.0] ✅ Trinity Ultra intelligence systems initialized');
+        console.log('[v87.0] 🚀 Ultra features: Smart Cache, Circuit Breakers, Cross-Tab Sync, Atomic Updates');
 
         // NOTE: No independent health polling - we trust the loading server
         // The loading server has a watchdog for edge cases
@@ -2811,6 +2824,20 @@ class JARVISLoadingManager {
             this.state.sequencing.lastSequenceNumber = currentSeq;
             this.state.sequencing.totalUpdates++;
             this.state.sequencing.lastSequenceCheck = Date.now();
+
+            // v87.0: ULTRA - Auto-recover missed updates
+            if (missed > 0 && missed <= 10) {
+                // Only auto-recover if gap is reasonable (≤10 updates)
+                console.log(`[v87.0] 🔄 Auto-recovering ${missed} missed updates...`);
+                this.requestMissedUpdates(lastSeq).catch(err => {
+                    console.error('[v87.0] Failed to recover missed updates:', err);
+                });
+            } else if (missed > 10) {
+                console.error(`[v87.0] ⚠️  Large gap detected (${missed} updates) - full resync needed`);
+                this.fullResync().catch(err => {
+                    console.error('[v87.0] Full resync failed:', err);
+                });
+            }
         }
 
         // v87.0: Redirect Grace Period Handling
@@ -2845,6 +2872,11 @@ class JARVISLoadingManager {
             } else {
                 this.state.clockSkew.detected = false;
             }
+        }
+
+        // v87.0 ULTRA: Broadcast progress update to other tabs
+        if (data.sequence_number !== undefined) {
+            this.broadcastToTabs('progress-update', data);
         }
     }
 
@@ -2927,6 +2959,9 @@ class JARVISLoadingManager {
                 memValue.className = `info-value ${memClass}`;
             }
         }
+
+        // v87.0 ULTRA: Update parallel component progress UI
+        this.updateParallelComponentUI();
 
         // Update mode indicator
         if (this.elements.modeIndicator && this.state.memoryMode) {
@@ -4485,7 +4520,7 @@ class JARVISLoadingManager {
     }
 
     /**
-     * v87.0: Poll unified Trinity health status
+     * v87.0 ULTRA: Poll unified Trinity health status with circuit breaker & smart caching
      */
     async pollUnifiedHealth() {
         const now = Date.now();
@@ -4497,73 +4532,91 @@ class JARVISLoadingManager {
         }
 
         try {
-            const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
-            const response = await fetch(`${loadingUrl}/api/health/unified`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(3000)
+            // v87.0 ULTRA: Use circuit breaker to prevent cascading failures
+            await this.executeWithCircuitBreaker('unifiedHealth', async () => {
+                const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
+
+                // v87.0 ULTRA: Use smart caching to minimize requests
+                const health = await this.fetchWithCache(
+                    `${loadingUrl}/api/health/unified`,
+                    {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        signal: AbortSignal.timeout(3000)
+                    }
+                );
+
+                // v87.0 ULTRA: Atomic state update
+                await this.atomicStateUpdate(() => {
+                    this.state.unifiedHealth = {
+                        overallHealth: health.overall_health || 0,
+                        state: health.state || 'unknown',
+                        components: health.components || {},
+                        circuitBreakers: health.circuit_breakers || {},
+                        lastPoll: now,
+                        pollInterval: 5000
+                    };
+                });
+
+                console.log(`[v87.0] 🏥 Health: ${health.state} (${health.overall_health}%)${health._cached ? ' [CACHED]' : ''}`);
             });
-
-            if (response.ok) {
-                const health = await response.json();
-
-                this.state.unifiedHealth = {
-                    overallHealth: health.overall_health || 0,
-                    state: health.state || 'unknown',
-                    components: health.components || {},
-                    circuitBreakers: health.circuit_breakers || {},
-                    lastPoll: now,
-                    pollInterval: 5000
-                };
-
-                console.log(`[v87.0] 🏥 Health: ${health.state} (${health.overall_health}%)`);
-            }
         } catch (error) {
             console.debug('[v87.0] Health polling error:', error.message);
+            // Circuit breaker will handle failure tracking
         }
     }
 
     /**
-     * v87.0: Check supervisor heartbeat for crash detection
+     * v87.0 ULTRA: Check supervisor heartbeat with circuit breaker
      */
     async checkSupervisorHeartbeat() {
         try {
-            const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
-            const response = await fetch(`${loadingUrl}/api/supervisor/heartbeat`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(3000)
-            });
+            // v87.0 ULTRA: Use circuit breaker
+            await this.executeWithCircuitBreaker('supervisorHeartbeat', async () => {
+                const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
 
-            if (response.ok) {
+                const response = await fetch(`${loadingUrl}/api/supervisor/heartbeat`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    signal: AbortSignal.timeout(3000)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
                 const status = await response.json();
 
-                const wasAlive = this.state.supervisorHeartbeat.alive;
-                const isAlive = status.supervisor_alive;
+                // v87.0 ULTRA: Atomic state update
+                await this.atomicStateUpdate(() => {
+                    const wasAlive = this.state.supervisorHeartbeat.alive;
+                    const isAlive = status.supervisor_alive;
 
-                this.state.supervisorHeartbeat = {
-                    alive: isAlive,
-                    lastUpdate: status.last_update_timestamp,
-                    timeSinceUpdate: status.time_since_update,
-                    timeoutThreshold: status.timeout_threshold,
-                    crashed: !isAlive,
-                    recoveredAt: (!wasAlive && isAlive) ? Date.now() : this.state.supervisorHeartbeat.recoveredAt
-                };
+                    this.state.supervisorHeartbeat = {
+                        alive: isAlive,
+                        lastUpdate: status.last_update_timestamp,
+                        timeSinceUpdate: status.time_since_update,
+                        timeoutThreshold: status.timeout_threshold,
+                        crashed: !isAlive,
+                        recoveredAt: (!wasAlive && isAlive) ? Date.now() : this.state.supervisorHeartbeat.recoveredAt
+                    };
 
-                // Alert on crash
-                if (!isAlive && wasAlive) {
-                    console.error('[v87.0] 💀 SUPERVISOR CRASH DETECTED!');
-                    this.addLogEntry('System', 'Supervisor process crashed - check logs', 'error');
-                }
+                    // Alert on crash
+                    if (!isAlive && wasAlive) {
+                        console.error('[v87.0] 💀 SUPERVISOR CRASH DETECTED!');
+                        this.addLogEntry('System', 'Supervisor process crashed - check logs', 'error');
+                    }
 
-                // Log recovery
-                if (isAlive && !wasAlive) {
-                    console.log('[v87.0] ✅ Supervisor recovered!');
-                    this.addLogEntry('System', 'Supervisor process recovered', 'success');
-                }
-            }
+                    // Log recovery
+                    if (isAlive && !wasAlive) {
+                        console.log('[v87.0] ✅ Supervisor recovered!');
+                        this.addLogEntry('System', 'Supervisor process recovered', 'success');
+                    }
+                });
+            });
         } catch (error) {
             console.debug('[v87.0] Supervisor heartbeat check error:', error.message);
+            // Circuit breaker handles failure tracking
         }
     }
 
@@ -4642,6 +4695,518 @@ class JARVISLoadingManager {
     recordFailedRequest() {
         this.state.offlineMode.consecutiveFailures++;
         this.handleOfflineMode();
+    }
+
+    /**
+     * v87.0 ULTRA: Request missed updates from server (atomic recovery)
+     *
+     * Recovers updates that were missed due to WebSocket disconnection or packet loss.
+     * Uses /api/progress/resume endpoint with sequence tracking.
+     */
+    async requestMissedUpdates(lastSequence) {
+        try {
+            const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
+            const url = `${loadingUrl}/api/progress/resume?last_sequence=${lastSequence}&include_health=false`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Request-Type': 'missed-update-recovery',
+                },
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(5000),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.resume_metadata && data.resume_metadata.missed_updates > 0) {
+                console.log(
+                    `[v87.0] ✅ Recovered ${data.resume_metadata.missed_updates} missed updates ` +
+                    `(sequence ${data.resume_metadata.client_last_sequence} → ${data.resume_metadata.current_sequence})`
+                );
+
+                // Process the recovered state update atomically
+                await this.atomicStateUpdate(() => {
+                    this.handleProgressUpdate(data);
+                });
+
+                this.addLogEntry('System', `Recovered ${data.resume_metadata.missed_updates} updates`, 'success');
+            } else {
+                console.log('[v87.0] No missed updates to recover');
+            }
+
+        } catch (error) {
+            console.error('[v87.0] ❌ Missed update recovery failed:', error.message);
+            this.addLogEntry('System', 'Failed to recover updates', 'error');
+            throw error;
+        }
+    }
+
+    /**
+     * v87.0 ULTRA: Full state resync (for large gaps)
+     *
+     * Performs complete state synchronization when gap is too large (>10 updates).
+     * Fetches current state and resets sequence tracking.
+     */
+    async fullResync() {
+        console.log('[v87.0] 🔄 Performing full state resync...');
+
+        try {
+            const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
+            const url = `${loadingUrl}/api/progress/resume?include_health=true`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Request-Type': 'full-resync',
+                },
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(5000),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Atomic state reset
+            await this.atomicStateUpdate(() => {
+                // Reset sequence tracking
+                this.state.sequencing.missedUpdates = 0;
+                this.state.sequencing.lastSequenceNumber = data.sequence_number || -1;
+                this.state.sequencing.lastSequenceCheck = Date.now();
+
+                // Full state update
+                this.handleProgressUpdate(data);
+            });
+
+            console.log(`[v87.0] ✅ Full resync complete (sequence: ${data.sequence_number})`);
+            this.addLogEntry('System', 'Full state synchronized', 'success');
+
+        } catch (error) {
+            console.error('[v87.0] ❌ Full resync failed:', error.message);
+            this.addLogEntry('System', 'Full resync failed', 'error');
+            throw error;
+        }
+    }
+
+    /**
+     * v87.0 ULTRA: Atomic state update with locking
+     *
+     * Prevents race conditions when concurrent updates occur.
+     * Uses async mutex pattern for thread-safe state modifications.
+     */
+    async atomicStateUpdate(updateFn) {
+        // Simple async mutex using promise chaining
+        if (!this._stateLock) {
+            this._stateLock = Promise.resolve();
+        }
+
+        // Queue this update after previous ones
+        const previousLock = this._stateLock;
+        let releaseLock;
+        this._stateLock = new Promise(resolve => {
+            releaseLock = resolve;
+        });
+
+        try {
+            // Wait for previous update to complete
+            await previousLock;
+
+            // Execute update function
+            const result = await Promise.resolve(updateFn());
+
+            return result;
+
+        } finally {
+            // Release lock
+            releaseLock();
+        }
+    }
+
+    /**
+     * v87.0 ULTRA: Smart caching with ETag support
+     *
+     * Caches responses based on ETag headers to minimize redundant requests.
+     * Implements LRU eviction policy with configurable cache size.
+     */
+    initSmartCache() {
+        if (this._smartCache) return;
+
+        this._smartCache = {
+            store: new Map(), // url -> {etag, data, timestamp}
+            maxSize: 50,
+            hits: 0,
+            misses: 0,
+        };
+
+        console.log('[v87.0] 💾 Smart cache initialized (max size: 50)');
+    }
+
+    async fetchWithCache(url, options = {}) {
+        this.initSmartCache();
+
+        const cacheKey = url;
+        const cached = this._smartCache.store.get(cacheKey);
+
+        // Add If-None-Match header if we have cached ETag
+        if (cached && cached.etag) {
+            options.headers = options.headers || {};
+            options.headers['If-None-Match'] = cached.etag;
+        }
+
+        const response = await fetch(url, options);
+
+        // 304 Not Modified - use cache
+        if (response.status === 304 && cached) {
+            this._smartCache.hits++;
+            console.debug(`[v87.0] 💾 Cache HIT: ${url} (${this._smartCache.hits} hits, ${this._smartCache.misses} misses)`);
+            return { ...cached.data, _cached: true };
+        }
+
+        // 200 OK - cache the response
+        if (response.ok) {
+            this._smartCache.misses++;
+            const data = await response.json();
+            const etag = response.headers.get('ETag');
+
+            if (etag) {
+                // Store in cache
+                this._smartCache.store.set(cacheKey, {
+                    etag,
+                    data,
+                    timestamp: Date.now(),
+                });
+
+                // LRU eviction if cache too large
+                if (this._smartCache.store.size > this._smartCache.maxSize) {
+                    const oldestKey = this._smartCache.store.keys().next().value;
+                    this._smartCache.store.delete(oldestKey);
+                    console.debug(`[v87.0] 💾 Cache evicted: ${oldestKey}`);
+                }
+            }
+
+            return data;
+        }
+
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    /**
+     * v87.0 ULTRA: Circuit breaker for health endpoints
+     *
+     * Prevents cascading failures by stopping requests to failing endpoints.
+     * Implements half-open state for automatic recovery testing.
+     */
+    initCircuitBreakers() {
+        if (this._circuitBreakers) return;
+
+        this._circuitBreakers = {
+            unifiedHealth: this.createCircuitBreaker('unified-health', 5, 30000),
+            supervisorHeartbeat: this.createCircuitBreaker('supervisor-heartbeat', 5, 30000),
+        };
+
+        console.log('[v87.0] ⚡ Circuit breakers initialized');
+    }
+
+    createCircuitBreaker(name, threshold = 5, resetTimeout = 30000) {
+        return {
+            name,
+            state: 'closed', // closed, open, half-open
+            failures: 0,
+            threshold,
+            resetTimeout,
+            lastFailureTime: null,
+            successCount: 0,
+        };
+    }
+
+    async executeWithCircuitBreaker(breakerName, asyncFn) {
+        this.initCircuitBreakers();
+        const breaker = this._circuitBreakers[breakerName];
+
+        if (!breaker) {
+            // No breaker configured - execute directly
+            return await asyncFn();
+        }
+
+        // Check breaker state
+        if (breaker.state === 'open') {
+            const now = Date.now();
+            const timeSinceFailure = now - breaker.lastFailureTime;
+
+            if (timeSinceFailure >= breaker.resetTimeout) {
+                // Try transitioning to half-open
+                console.log(`[v87.0] ⚡ Circuit breaker [${breaker.name}] transitioning to half-open`);
+                breaker.state = 'half-open';
+                breaker.successCount = 0;
+            } else {
+                // Still open - reject immediately
+                const remainingMs = breaker.resetTimeout - timeSinceFailure;
+                throw new Error(`Circuit breaker [${breaker.name}] is OPEN (retry in ${(remainingMs / 1000).toFixed(1)}s)`);
+            }
+        }
+
+        // Execute function
+        try {
+            const result = await asyncFn();
+
+            // Success - update breaker
+            if (breaker.state === 'half-open') {
+                breaker.successCount++;
+                if (breaker.successCount >= 2) {
+                    // Two successes in half-open = close breaker
+                    console.log(`[v87.0] ⚡ Circuit breaker [${breaker.name}] closed after recovery`);
+                    breaker.state = 'closed';
+                    breaker.failures = 0;
+                }
+            } else if (breaker.state === 'closed') {
+                // Reset failure count on success
+                breaker.failures = Math.max(0, breaker.failures - 1);
+            }
+
+            return result;
+
+        } catch (error) {
+            // Failure - increment counter
+            breaker.failures++;
+            breaker.lastFailureTime = Date.now();
+
+            if (breaker.failures >= breaker.threshold) {
+                // Open the circuit
+                console.error(`[v87.0] ⚡ Circuit breaker [${breaker.name}] OPENED after ${breaker.failures} failures`);
+                breaker.state = 'open';
+                this.addLogEntry('System', `Circuit breaker [${breaker.name}] opened`, 'error');
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * v87.0 ULTRA: Render parallel component progress (J-Prime, Reactor-Core)
+     *
+     * Displays individual progress bars for Trinity components when data is available.
+     * Creates/updates UI elements dynamically to show component-level progress.
+     */
+    updateParallelComponentUI() {
+        // Only render if we have component data
+        if (!this.state.parallelComponents || Object.keys(this.state.parallelComponents).length === 0) {
+            return;
+        }
+
+        // Find or create container for parallel components
+        let componentContainer = document.getElementById('parallel-components-container');
+        if (!componentContainer) {
+            // Create container if it doesn't exist
+            const detailsPanel = this.elements.detailsPanel;
+            if (!detailsPanel) return;
+
+            componentContainer = document.createElement('div');
+            componentContainer.id = 'parallel-components-container';
+            componentContainer.className = 'parallel-components';
+            componentContainer.innerHTML = '<h3 style="margin: 10px 0; font-size: 0.9em; opacity: 0.7;">Trinity Components</h3>';
+
+            // Insert before substep list
+            const substepList = this.elements.substepList;
+            if (substepList && substepList.parentNode) {
+                substepList.parentNode.insertBefore(componentContainer, substepList);
+            } else {
+                detailsPanel.appendChild(componentContainer);
+            }
+        }
+
+        // Update each component
+        Object.entries(this.state.parallelComponents).forEach(([componentName, componentData]) => {
+            const componentId = `component-${componentName}`;
+            let componentEl = document.getElementById(componentId);
+
+            if (!componentEl) {
+                // Create new component element
+                componentEl = document.createElement('div');
+                componentEl.id = componentId;
+                componentEl.className = 'parallel-component';
+                componentEl.innerHTML = `
+                    <div class="component-header">
+                        <span class="component-icon">${this._getComponentIcon(componentName)}</span>
+                        <span class="component-name">${this._formatComponentName(componentName)}</span>
+                        <span class="component-status"></span>
+                    </div>
+                    <div class="component-progress-bar">
+                        <div class="component-progress-fill"></div>
+                        <div class="component-progress-text"></div>
+                    </div>
+                `;
+                componentContainer.appendChild(componentEl);
+
+                // Add inline styles for new element
+                componentEl.style.cssText = `
+                    margin: 8px 0;
+                    padding: 8px;
+                    background: rgba(0, 255, 204, 0.05);
+                    border-radius: 8px;
+                    border: 1px solid rgba(0, 255, 204, 0.2);
+                `;
+            }
+
+            // Update component state
+            const statusEl = componentEl.querySelector('.component-status');
+            const fillEl = componentEl.querySelector('.component-progress-fill');
+            const textEl = componentEl.querySelector('.component-progress-text');
+
+            if (statusEl) {
+                statusEl.textContent = componentData.state || 'unknown';
+                statusEl.className = `component-status ${componentData.state}`;
+                statusEl.style.cssText = `
+                    font-size: 0.8em;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    background: ${componentData.state === 'ready' ? 'rgba(0, 255, 0, 0.2)' :
+                                 componentData.state === 'starting' ? 'rgba(255, 255, 0, 0.2)' :
+                                 'rgba(255, 0, 0, 0.2)'};
+                `;
+            }
+
+            if (fillEl && textEl) {
+                const progress = componentData.progress || 0;
+                fillEl.style.width = `${progress}%`;
+                fillEl.style.cssText += `
+                    height: 100%;
+                    background: linear-gradient(90deg, rgba(0, 255, 204, 0.6), rgba(0, 255, 204, 0.3));
+                    border-radius: 4px;
+                    transition: width 0.3s ease;
+                `;
+                textEl.textContent = `${Math.round(progress)}%`;
+                textEl.style.cssText = `
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    font-size: 0.8em;
+                    font-weight: bold;
+                    color: #00ffcc;
+                    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+                `;
+            }
+
+            // Style progress bar container
+            const progressBar = componentEl.querySelector('.component-progress-bar');
+            if (progressBar && !progressBar.dataset.styled) {
+                progressBar.style.cssText = `
+                    position: relative;
+                    height: 20px;
+                    background: rgba(0, 0, 0, 0.3);
+                    border-radius: 4px;
+                    overflow: hidden;
+                    margin-top: 4px;
+                `;
+                progressBar.dataset.styled = 'true';
+            }
+        });
+    }
+
+    _formatComponentName(componentName) {
+        const names = {
+            'jarvis_prime': 'JARVIS Prime (Tier-0)',
+            'reactor_core': 'Reactor Core (ML)',
+            'jarvis': 'JARVIS (Main)',
+        };
+        return names[componentName] || componentName.replace(/_/g, ' ').toUpperCase();
+    }
+
+    /**
+     * v87.0 ULTRA: Cross-tab synchronization using BroadcastChannel
+     *
+     * Synchronizes loading state across multiple browser tabs to prevent
+     * duplicate loading screens and coordinate redirect timing.
+     */
+    initCrossTabSync() {
+        if (!window.BroadcastChannel) {
+            console.debug('[v87.0] BroadcastChannel not available - cross-tab sync disabled');
+            return;
+        }
+
+        if (this._tabSyncChannel) return;
+
+        try {
+            this._tabSyncChannel = new BroadcastChannel('jarvis-loading-sync');
+
+            // Listen for messages from other tabs
+            this._tabSyncChannel.onmessage = (event) => {
+                const { type, data, tabId } = event.data;
+
+                // Ignore messages from self
+                if (tabId === this._tabId) return;
+
+                console.debug(`[v87.0] 📡 Cross-tab message: ${type} from tab ${tabId}`);
+
+                switch (type) {
+                    case 'progress-update':
+                        // Another tab got a progress update - sync state
+                        if (data.sequence_number > this.state.sequencing.lastSequenceNumber) {
+                            console.log('[v87.0] 🔄 Syncing progress from another tab');
+                            this.handleProgressUpdate(data);
+                        }
+                        break;
+
+                    case 'redirect-complete':
+                        // Another tab redirected - we should too
+                        console.log('[v87.0] 🔄 Another tab redirected - following');
+                        setTimeout(() => {
+                            if (this.state.progress >= 100) {
+                                this.quickRedirectToApp();
+                            }
+                        }, 500);
+                        break;
+
+                    case 'tab-closed':
+                        // Another tab closed - we might be the last one
+                        console.log(`[v87.0] Tab ${tabId} closed`);
+                        break;
+                }
+            };
+
+            // Generate unique tab ID
+            this._tabId = `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            // Announce this tab exists
+            this.broadcastToTabs('tab-opened', { timestamp: Date.now() });
+
+            console.log(`[v87.0] 📡 Cross-tab sync initialized (tab: ${this._tabId})`);
+
+            // Clean up on page unload
+            window.addEventListener('beforeunload', () => {
+                this.broadcastToTabs('tab-closed', { timestamp: Date.now() });
+                if (this._tabSyncChannel) {
+                    this._tabSyncChannel.close();
+                }
+            });
+
+        } catch (error) {
+            console.warn('[v87.0] Failed to initialize cross-tab sync:', error);
+        }
+    }
+
+    broadcastToTabs(type, data) {
+        if (!this._tabSyncChannel) return;
+
+        try {
+            this._tabSyncChannel.postMessage({
+                type,
+                data,
+                tabId: this._tabId,
+                timestamp: Date.now(),
+            });
+        } catch (error) {
+            console.debug('[v87.0] Failed to broadcast to tabs:', error.message);
+        }
     }
 
     cleanup() {
