@@ -226,7 +226,22 @@ if _sys.version_info < (3, 10):
             _metadata.packages_distributions = _packages_distributions_fallback
     except Exception:
         pass
+    except Exception:
+        pass
 del _sys
+
+# =============================================================================
+# SYSTEM RESOURCE OPTIMIZATION (v1.0)
+# =============================================================================
+# Critical for high-concurrency async operations.
+# Handles auto-maximization of ulimits/file descriptors.
+# =============================================================================
+try:
+    from backend.core.system_optimization import get_system_optimizer
+    _optimizer = get_system_optimizer()
+    _optimization_stats = _optimizer.optimize()
+except Exception as e:
+    print(f"⚠️  System optimization warning: {e}")
 
 # =============================================================================
 # NORMAL IMPORTS START HERE

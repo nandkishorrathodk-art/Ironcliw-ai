@@ -625,9 +625,22 @@ except ImportError as e:
 except Exception as e:
     print(f"⚠️  Python 3.9 compatibility patch error: {e}")
 
-# ============================================================================
+# =============================================================================
+# SYSTEM RESOURCE OPTIMIZATION (v1.0)
+# =============================================================================
+# Critical for high-concurrency async operations.
+# Handles auto-maximization of ulimits/file descriptors.
+# =============================================================================
+try:
+    from backend.core.system_optimization import get_system_optimizer
+    _optimizer = get_system_optimizer()
+    _optimization_stats = _optimizer.optimize()
+except Exception as e:
+    print(f"⚠️  System optimization warning: {e}")
+
+# =============================================================================
 # Environment is now verified and ready
-# ============================================================================
+# =============================================================================
 
 import argparse
 import asyncio
