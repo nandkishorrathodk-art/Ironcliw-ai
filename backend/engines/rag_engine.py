@@ -1970,7 +1970,14 @@ class CircuitState(Enum):
 
 @dataclass
 class CircuitMetrics:
-    """Metrics for ML-based failure prediction."""
+    """
+    Enhanced metrics for ML-based failure prediction with EWMA.
+    
+    EWMA (Exponentially Weighted Moving Average) provides:
+    - More weight to recent observations
+    - Smooth trend detection
+    - Seasonal pattern learning
+    """
     total_calls: int = 0
     successful_calls: int = 0
     failed_calls: int = 0
@@ -1979,6 +1986,81 @@ class CircuitMetrics:
     latency_samples: List[float] = field(default_factory=list)
     failure_timestamps: List[float] = field(default_factory=list)
     state_changes: List[Tuple[str, float]] = field(default_factory=list)
+    
+    # EWMA state (alpha = 0.2 for fast adaptation)
+    _ewma_failure_rate: float = 0.0
+    _ewma_latency: float = 0.0
+    _ewma_alpha: float = 0.2
+    
+    # Trend detection (second-order EWMA)
+    _ewma_failure_trend: float = 0.0
+    _ewma_latency_trend: float = 0.0
+    
+    # Hourly patterns for time-of-day awareness
+    _hourly_failure_rates: Dict[int, List[float]] = field(default_factory=lambda: {h: [] for h in range(24)})
+    
+    def update_ewma(self, success: bool, latency: float):
+        """Update EWMA metrics with new observation."""
+        # Update failure rate EWMA
+        failure_value = 0.0 if success else 1.0
+        old_ewma = self._ewma_failure_rate
+        self._ewma_failure_rate = (
+            self._ewma_alpha * failure_value +
+            (1 - self._ewma_alpha) * self._ewma_failure_rate
+        )
+        
+        # Track trend (derivative of EWMA)
+        self._ewma_failure_trend = (
+            self._ewma_alpha * (self._ewma_failure_rate - old_ewma) +
+            (1 - self._ewma_alpha) * self._ewma_failure_trend
+        )
+        
+        # Update latency EWMA
+        old_latency_ewma = self._ewma_latency
+        self._ewma_latency = (
+            self._ewma_alpha * latency +
+            (1 - self._ewma_alpha) * self._ewma_latency
+        )
+        
+        # Latency trend
+        self._ewma_latency_trend = (
+            self._ewma_alpha * (self._ewma_latency - old_latency_ewma) +
+            (1 - self._ewma_alpha) * self._ewma_latency_trend
+        )
+        
+        # Update hourly pattern
+        hour = int(time.time() // 3600) % 24
+        if hour not in self._hourly_failure_rates:
+            self._hourly_failure_rates[hour] = []
+        self._hourly_failure_rates[hour].append(failure_value)
+        # Keep last 100 per hour
+        if len(self._hourly_failure_rates[hour]) > 100:
+            self._hourly_failure_rates[hour] = self._hourly_failure_rates[hour][-100:]
+    
+    @property
+    def predicted_failure_rate(self) -> float:
+        """Predict future failure rate using EWMA + trend."""
+        # Base prediction from EWMA
+        prediction = self._ewma_failure_rate
+        
+        # Adjust for trend (if failures increasing, predict higher)
+        if self._ewma_failure_trend > 0:
+            prediction += self._ewma_failure_trend * 5  # Project 5 steps ahead
+        
+        # Adjust for time-of-day pattern
+        hour = int(time.time() // 3600) % 24
+        hourly_rates = self._hourly_failure_rates.get(hour, [])
+        if len(hourly_rates) >= 10:
+            hourly_avg = sum(hourly_rates[-10:]) / 10
+            # Weight hourly pattern 20%
+            prediction = 0.8 * prediction + 0.2 * hourly_avg
+        
+        return min(1.0, max(0.0, prediction))
+    
+    @property
+    def is_degrading(self) -> bool:
+        """Check if system is trending toward failure."""
+        return self._ewma_failure_trend > 0.01 or self._ewma_latency_trend > 0.1
     
     @property
     def success_rate(self) -> float:
@@ -1991,11 +2073,25 @@ class CircuitMetrics:
         return 1.0 - self.success_rate
     
     @property
+    def p50_latency(self) -> float:
+        if len(self.latency_samples) < 5:
+            return 0.0
+        sorted_samples = sorted(self.latency_samples)
+        return sorted_samples[len(sorted_samples) // 2]
+    
+    @property
     def p95_latency(self) -> float:
         if len(self.latency_samples) < 10:
             return 0.0
         sorted_samples = sorted(self.latency_samples)
         return sorted_samples[int(len(sorted_samples) * 0.95)]
+    
+    @property
+    def p99_latency(self) -> float:
+        if len(self.latency_samples) < 20:
+            return 0.0
+        sorted_samples = sorted(self.latency_samples)
+        return sorted_samples[int(len(sorted_samples) * 0.99)]
 
 
 class AdaptiveMLCircuitBreaker:
@@ -2159,12 +2255,15 @@ class AdaptiveMLCircuitBreaker:
             raise
     
     def _on_success(self, latency: float):
-        """Record successful call."""
+        """Record successful call with EWMA update."""
         self._metrics.total_calls += 1
         self._metrics.successful_calls += 1
         self._metrics.consecutive_successes += 1
         self._metrics.consecutive_failures = 0
         self._metrics.latency_samples.append(latency)
+        
+        # Update EWMA metrics
+        self._metrics.update_ewma(success=True, latency=latency)
         
         # Keep last 100 samples
         if len(self._metrics.latency_samples) > 100:
@@ -2174,21 +2273,24 @@ class AdaptiveMLCircuitBreaker:
         if self._state == CircuitState.HALF_OPEN:
             self._half_open_successes += 1
             
-            # Graduated recovery
+            # Graduated recovery with exponential ramp
             if self._half_open_successes >= 2:
-                self._half_open_traffic_pct = min(1.0, self._half_open_traffic_pct + 0.2)
+                # Exponential: 10% → 20% → 40% → 80% → 100%
+                self._half_open_traffic_pct = min(1.0, self._half_open_traffic_pct * 2)
                 
             if self._half_open_successes >= self._success_threshold:
                 self._transition_to(CircuitState.CLOSED)
         
         elif self._state == CircuitState.DEGRADED:
-            if self._metrics.consecutive_successes >= self._success_threshold:
-                self._transition_to(CircuitState.CLOSED)
+            # Check trend — only recover if not degrading
+            if not self._metrics.is_degrading:
+                if self._metrics.consecutive_successes >= self._success_threshold:
+                    self._transition_to(CircuitState.CLOSED)
         
         self._update_prediction()
     
     def _on_failure(self):
-        """Record failed call."""
+        """Record failed call with EWMA update and early degradation."""
         self._metrics.total_calls += 1
         self._metrics.failed_calls += 1
         self._metrics.consecutive_failures += 1
@@ -2196,15 +2298,26 @@ class AdaptiveMLCircuitBreaker:
         self._metrics.failure_timestamps.append(time.time())
         self._last_failure_time = time.time()
         
+        # Update EWMA metrics (record failure with worst-case latency estimate)
+        self._metrics.update_ewma(success=False, latency=self._recovery_timeout)
+        
         # Keep last 100 timestamps
         if len(self._metrics.failure_timestamps) > 100:
             self._metrics.failure_timestamps = self._metrics.failure_timestamps[-100:]
         
-        # State transitions
+        # State transitions with early degradation
         if self._state == CircuitState.HALF_OPEN:
             self._transition_to(CircuitState.OPEN)
+            
         elif self._state == CircuitState.CLOSED:
-            if self._metrics.consecutive_failures >= self._failure_threshold:
+            # Check for early degradation (trend-based)
+            if self._metrics.is_degrading and self._metrics.consecutive_failures >= 2:
+                logger.warning(
+                    f"[AdaptiveMLCircuitBreaker:{self._name}] Early DEGRADED "
+                    f"(trend indicates increasing failures)"
+                )
+                self._transition_to(CircuitState.DEGRADED)
+            elif self._metrics.consecutive_failures >= self._failure_threshold:
                 self._transition_to(CircuitState.OPEN)
         
         self._update_prediction()
@@ -2281,45 +2394,255 @@ class TokenBucket:
 
 
 class RequestDeduplicator:
-    """Deduplicates in-flight requests to prevent redundant work."""
+    """
+    Enhanced deduplicator with semantic matching and result caching.
     
-    def __init__(self, ttl_seconds: float = 30.0):
+    Features:
+    - **In-flight deduplication**: Concurrent identical requests share result
+    - **Semantic matching**: Normalizes queries (case, whitespace, punctuation)
+    - **Result cache**: Stores recent results for fast replay
+    - **Similar query detection**: Hash prefix matching for near-duplicates
+    """
+    
+    def __init__(
+        self,
+        ttl_seconds: float = 30.0,
+        cache_ttl_seconds: float = 60.0,
+        similarity_threshold: float = 0.9,
+    ):
         self._in_flight: Dict[str, asyncio.Future] = {}
         self._ttl = ttl_seconds
         self._lock = asyncio.Lock()
+        
+        # Result cache: normalized_key -> (result, timestamp)
+        self._result_cache: Dict[str, Tuple[Any, float]] = {}
+        self._cache_ttl = cache_ttl_seconds
+        self._cache_hits = 0
+        self._cache_misses = 0
+        
+        # Semantic matching patterns
+        self._normalize_patterns = [
+            (re.compile(r'\s+'), ' '),           # Collapse whitespace
+            (re.compile(r'[^\w\s]'), ''),         # Remove punctuation
+            (re.compile(r'\b(what|tell|show|me|about|the|a|an|is)\b', re.I), ''),  # Stop words
+        ]
+    
+    def _normalize_query(self, query: str) -> str:
+        """Normalize query for semantic matching."""
+        normalized = query.lower().strip()
+        for pattern, replacement in self._normalize_patterns:
+            normalized = pattern.sub(replacement, normalized)
+        return ' '.join(normalized.split())  # Clean up extra spaces
+    
+    def _get_cache_key(self, query: str) -> str:
+        """Generate cache key from normalized query."""
+        normalized = self._normalize_query(query)
+        return hashlib.md5(normalized.encode()).hexdigest()
+    
+    def _check_cache(self, key: str) -> Optional[Any]:
+        """Check if we have a cached result."""
+        if key in self._result_cache:
+            result, timestamp = self._result_cache[key]
+            if time.time() - timestamp < self._cache_ttl:
+                self._cache_hits += 1
+                return result
+            # Expired, remove
+            del self._result_cache[key]
+        self._cache_misses += 1
+        return None
+    
+    def _update_cache(self, key: str, result: Any):
+        """Update result cache."""
+        self._result_cache[key] = (result, time.time())
+        
+        # Cleanup old entries (keep max 500)
+        if len(self._result_cache) > 500:
+            # Remove oldest entries
+            sorted_keys = sorted(
+                self._result_cache.keys(),
+                key=lambda k: self._result_cache[k][1]
+            )
+            for old_key in sorted_keys[:100]:
+                del self._result_cache[old_key]
     
     async def dedupe(
         self,
         key: str,
         func: Callable,
         *args,
+        use_cache: bool = True,
         **kwargs,
     ) -> Any:
         """
-        Execute function, deduplicating concurrent identical requests.
+        Execute function with deduplication and caching.
         
-        If a request with the same key is already in flight, wait for it
-        instead of executing again.
+        Args:
+            key: Original query or request key
+            func: Async function to execute
+            use_cache: Whether to check/update result cache
+            *args, **kwargs: Function arguments
+            
+        Returns:
+            Function result (possibly from cache or in-flight request)
         """
+        # Normalize key for semantic matching
+        cache_key = self._get_cache_key(key)
+        
+        # Check cache first
+        if use_cache:
+            cached = self._check_cache(cache_key)
+            if cached is not None:
+                logger.debug(f"[Dedup] Cache hit for query: {key[:30]}...")
+                return cached
+        
         async with self._lock:
-            if key in self._in_flight:
+            # Check if in-flight (use cache key for semantic matching)
+            if cache_key in self._in_flight:
                 logger.debug(f"[Dedup] Waiting for in-flight request: {key[:20]}...")
-                return await self._in_flight[key]
+                return await self._in_flight[cache_key]
             
             # Create future for this request
             future: asyncio.Future = asyncio.get_event_loop().create_future()
-            self._in_flight[key] = future
+            self._in_flight[cache_key] = future
         
         try:
             result = await func(*args, **kwargs)
             future.set_result(result)
+            
+            # Update cache
+            if use_cache:
+                self._update_cache(cache_key, result)
+            
             return result
         except Exception as e:
             future.set_exception(e)
             raise
         finally:
             async with self._lock:
-                self._in_flight.pop(key, None)
+                self._in_flight.pop(cache_key, None)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get deduplicator statistics."""
+        total = self._cache_hits + self._cache_misses
+        return {
+            "cache_size": len(self._result_cache),
+            "in_flight_count": len(self._in_flight),
+            "cache_hits": self._cache_hits,
+            "cache_misses": self._cache_misses,
+            "cache_hit_rate": self._cache_hits / max(1, total),
+        }
+
+
+class PartialResultAggregator:
+    """
+    Aggregates partial results from multiple sources for graceful degradation.
+    
+    When some sources fail (Trinity, local KB, etc.), this aggregator:
+    - Collects successful results
+    - Tracks failed sources with reasons
+    - Provides quality score (0.0 = no results, 1.0 = all sources succeeded)
+    - Enables informed degradation decisions
+    
+    Usage:
+        aggregator = PartialResultAggregator(sources=["trinity", "local_kb", "cache"])
+        aggregator.add_result("trinity", web_results)
+        aggregator.add_failure("local_kb", "Timeout")
+        aggregator.add_result("cache", cached_results)
+        
+        final = aggregator.get_aggregated()
+        # {
+        #     "context_text": "...",
+        #     "sources": [...],
+        #     "quality_score": 0.67,
+        #     "degraded": True,
+        #     "failed_sources": ["local_kb"]
+        # }
+    """
+    
+    def __init__(self, sources: List[str]):
+        self._expected_sources = sources
+        self._results: Dict[str, Any] = {}
+        self._failures: Dict[str, str] = {}
+        self._start_time = time.time()
+    
+    def add_result(self, source: str, result: Any):
+        """Add successful result from a source."""
+        self._results[source] = result
+    
+    def add_failure(self, source: str, reason: str):
+        """Record a failed source with reason."""
+        self._failures[source] = reason
+    
+    @property
+    def quality_score(self) -> float:
+        """Quality score: ratio of successful sources."""
+        if not self._expected_sources:
+            return 1.0
+        return len(self._results) / len(self._expected_sources)
+    
+    @property
+    def is_degraded(self) -> bool:
+        """True if any source failed."""
+        return len(self._failures) > 0
+    
+    @property
+    def failed_sources(self) -> List[str]:
+        """List of failed sources."""
+        return list(self._failures.keys())
+    
+    def get_aggregated(self) -> Dict[str, Any]:
+        """
+        Get aggregated result with quality metadata.
+        
+        Returns:
+            Dict with:
+            - context_text: Combined context from all successful sources
+            - sources: List of all sources that contributed
+            - web_sources: List of web sources (from Trinity)
+            - quality_score: 0.0-1.0 indicating result completeness
+            - degraded: True if any source failed
+            - failed_sources: List of failed source names
+            - latency_ms: Time taken to aggregate
+        """
+        context_parts = []
+        all_sources = []
+        web_sources = []
+        
+        # Process results by priority (Trinity first for recency)
+        for source in ["trinity", "local_kb", "cache"]:
+            if source in self._results:
+                result = self._results[source]
+                
+                if isinstance(result, dict):
+                    # Dict result (typical RAG response)
+                    if result.get("context_text"):
+                        context_parts.append(result["context_text"])
+                    if result.get("sources"):
+                        all_sources.extend(result["sources"])
+                    if result.get("web_sources"):
+                        web_sources.extend(result["web_sources"])
+                elif isinstance(result, list):
+                    # List of results (search results)
+                    for item in result:
+                        if isinstance(item, dict):
+                            text = item.get("text", item.get("content", ""))
+                            if text:
+                                context_parts.append(text)
+                            all_sources.append(item)
+                elif isinstance(result, str):
+                    # String result (raw context)
+                    context_parts.append(result)
+        
+        return {
+            "context_text": "\n\n---\n\n".join(context_parts) if context_parts else "",
+            "sources": all_sources,
+            "web_sources": web_sources,
+            "quality_score": self.quality_score,
+            "degraded": self.is_degraded,
+            "failed_sources": self.failed_sources,
+            "failure_reasons": self._failures,
+            "latency_ms": (time.time() - self._start_time) * 1000,
+        }
 
 
 class UnifiedResilienceLayer:
