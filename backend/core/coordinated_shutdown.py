@@ -750,28 +750,75 @@ class CoordinatedShutdownManager:
         )
 
     async def _announce_shutdown(self) -> None:
-        """Announce shutdown to all components via IPC."""
+        """
+        Announce shutdown to all components via IPC with robust error handling.
+
+        Uses proper TrinityCommand parameters and broadcasts to all Trinity components
+        with configurable timeout and retry logic.
+        """
         if self.ipc_bus is None:
+            logger.debug("[ShutdownManager] No IPC bus configured - skipping announcement")
             return
 
         try:
-            from backend.core.trinity_ipc import TrinityCommand
+            from backend.core.trinity_ipc import (
+                TrinityCommand,
+                ComponentType,
+                CommandPriority,
+            )
             import uuid
 
-            command = TrinityCommand(
-                id=str(uuid.uuid4()),
-                command_type="shutdown_announce",
-                source="jarvis_body",
-                target="all",
-                payload={
-                    "reason": self._shutdown_reason.value if self._shutdown_reason else "unknown",
-                    "timestamp": time.time(),
-                },
-            )
-            await self.ipc_bus.enqueue_command(command)
-            logger.info("[ShutdownManager] Shutdown announced via IPC")
+            # Generate correlation ID for tracing across all components
+            correlation_id = f"shutdown_{uuid.uuid4().hex[:8]}"
 
+            # Broadcast shutdown announcement to each Trinity component
+            # Using CRITICAL priority to ensure immediate processing
+            targets = [
+                ComponentType.JARVIS_PRIME,
+                ComponentType.REACTOR_CORE,
+                ComponentType.CODING_COUNCIL,
+            ]
+
+            announcement_tasks = []
+            for target in targets:
+                command = TrinityCommand(
+                    command_id=str(uuid.uuid4()),
+                    source=ComponentType.JARVIS_BODY,
+                    target=target,
+                    action="shutdown_announce",
+                    payload={
+                        "reason": self._shutdown_reason.value if self._shutdown_reason else "unknown",
+                        "timestamp": time.time(),
+                        "initiator": "jarvis_body",
+                        "correlation_id": correlation_id,
+                        "phases": [phase.name for phase in ShutdownPhase],
+                    },
+                    priority=CommandPriority.CRITICAL,
+                    timeout_seconds=5.0,  # Short timeout for announcement
+                    correlation_id=correlation_id,
+                )
+                announcement_tasks.append(self.ipc_bus.enqueue_command(command))
+
+            # Execute announcements in parallel with timeout protection
+            if announcement_tasks:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*announcement_tasks, return_exceptions=True),
+                        timeout=3.0,  # Don't let announcement block shutdown
+                    )
+                    logger.info(
+                        f"[ShutdownManager] Shutdown announced via IPC to {len(targets)} components "
+                        f"(correlation_id={correlation_id})"
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[ShutdownManager] Shutdown announcement timed out - proceeding anyway"
+                    )
+
+        except ImportError as e:
+            logger.warning(f"[ShutdownManager] Trinity IPC not available: {e}")
         except Exception as e:
+            # Don't let announcement failures block shutdown
             logger.warning(f"[ShutdownManager] Failed to announce shutdown: {e}")
 
     async def _save_state(self) -> None:
@@ -875,44 +922,111 @@ def setup_signal_handlers(
     loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
     """
-    Set up signal handlers for graceful shutdown.
+    Set up signal handlers for graceful shutdown with modern asyncio patterns.
 
-    Handles SIGTERM, SIGINT, and SIGHUP.
+    Handles SIGTERM, SIGINT, and SIGHUP with proper event loop context handling.
+    Uses Python 3.10+ compatible APIs (no deprecated loop= parameter).
+
+    Args:
+        shutdown_manager: The shutdown manager to trigger on signals
+        loop: Optional event loop (auto-detected if not provided)
     """
-    if loop is None:
-        try:
+    import sys
+    import functools
+
+    # Get the running loop safely
+    try:
+        if loop is None:
             loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # No running loop - we're being called during setup before loop starts
+        # Signal handlers will be set up but won't work until loop runs
+        logger.warning(
+            "[ShutdownManager] No running event loop - signal handlers may be delayed"
+        )
+        return
+
+    # Track if shutdown was already triggered to prevent duplicate calls
+    _shutdown_triggered = {"value": False}
+    _shutdown_lock = asyncio.Lock()
+
+    async def _safe_shutdown(reason: ShutdownReason, sig_name: str) -> None:
+        """Execute shutdown with lock to prevent duplicates."""
+        async with _shutdown_lock:
+            if _shutdown_triggered["value"]:
+                logger.debug(f"[ShutdownManager] Ignoring duplicate signal {sig_name}")
+                return
+            _shutdown_triggered["value"] = True
+
+        logger.info(f"[ShutdownManager] Initiating shutdown due to {sig_name}")
+        try:
+            await shutdown_manager.initiate_shutdown(reason=reason)
+        except Exception as e:
+            logger.error(f"[ShutdownManager] Shutdown failed: {e}")
+            # Force exit on shutdown failure
+            sys.exit(1)
 
     def handle_signal(signum: int) -> None:
+        """Signal handler that schedules async shutdown."""
         sig_name = signal.Signals(signum).name
         logger.info(f"[ShutdownManager] Received signal {sig_name}")
 
-        # Determine shutdown reason
-        if signum == signal.SIGTERM:
-            reason = ShutdownReason.SIGNAL_RECEIVED
-        elif signum == signal.SIGINT:
-            reason = ShutdownReason.USER_REQUEST
-        elif signum == signal.SIGHUP:
-            reason = ShutdownReason.UPDATE_REQUIRED
-        else:
-            reason = ShutdownReason.SIGNAL_RECEIVED
+        # Determine shutdown reason based on signal
+        reason_map = {
+            signal.SIGTERM: ShutdownReason.SIGNAL_RECEIVED,
+            signal.SIGINT: ShutdownReason.USER_REQUEST,
+            signal.SIGHUP: ShutdownReason.UPDATE_REQUIRED,
+        }
+        reason = reason_map.get(signum, ShutdownReason.SIGNAL_RECEIVED)
 
-        # Schedule shutdown
-        asyncio.ensure_future(
-            shutdown_manager.initiate_shutdown(reason=reason),
-            loop=loop,
-        )
-
-    # Register handlers
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        # Schedule shutdown using modern asyncio API (no deprecated loop= param)
+        # Use create_task if we're in a running loop context
         try:
-            loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+            running_loop = asyncio.get_running_loop()
+            running_loop.create_task(
+                _safe_shutdown(reason, sig_name),
+                name=f"shutdown_signal_{sig_name}",
+            )
+        except RuntimeError:
+            # No running loop - this shouldn't happen in normal operation
+            logger.error(
+                f"[ShutdownManager] Cannot handle signal {sig_name} - no running event loop"
+            )
+
+    # Signals to handle
+    signals_to_handle = [signal.SIGTERM, signal.SIGINT]
+
+    # SIGHUP is not available on Windows
+    if hasattr(signal, "SIGHUP"):
+        signals_to_handle.append(signal.SIGHUP)
+
+    # Register handlers with proper error handling
+    for sig in signals_to_handle:
+        try:
+            # Use functools.partial to properly capture the signal value
+            loop.add_signal_handler(
+                sig,
+                functools.partial(handle_signal, sig),
+            )
             logger.debug(f"[ShutdownManager] Registered handler for {sig.name}")
         except NotImplementedError:
-            # Windows doesn't support add_signal_handler
-            signal.signal(sig, lambda s, f, sig=sig: handle_signal(sig))
+            # Windows doesn't support add_signal_handler for all signals
+            # Fall back to signal.signal() but note this blocks the event loop
+            try:
+                def windows_handler(signum, frame, captured_sig=sig):
+                    handle_signal(captured_sig)
+                signal.signal(sig, windows_handler)
+                logger.debug(
+                    f"[ShutdownManager] Registered Windows handler for {sig.name}"
+                )
+            except (ValueError, OSError) as e:
+                logger.warning(
+                    f"[ShutdownManager] Could not register handler for {sig.name}: {e}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"[ShutdownManager] Failed to register handler for {sig.name}: {e}"
+            )
 
 
 # =============================================================================

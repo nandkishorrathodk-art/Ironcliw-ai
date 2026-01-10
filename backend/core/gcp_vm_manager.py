@@ -624,29 +624,88 @@ class GCPVMManager:
                 raise
 
     async def _initialize_gcp_clients(self):
-        """Initialize GCP API clients with error isolation"""
+        """
+        Initialize GCP API clients with robust event loop handling.
+
+        Uses modern asyncio patterns (get_running_loop) and handles edge cases:
+        - Event loop closing during shutdown
+        - No running event loop (sync context)
+        - Thread pool executor failures
+
+        Falls back to synchronous initialization if async fails.
+        """
         try:
+            # First check if we have a running event loop and it's not closing
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_closed() or loop.is_running() is False:
+                    raise RuntimeError("Event loop is closed or not running")
+            except RuntimeError as loop_error:
+                # No running loop or loop is closing - initialize synchronously
+                logger.warning(
+                    f"[GCPVMManager] No running event loop ({loop_error}) - "
+                    "initializing GCP clients synchronously"
+                )
+                self._initialize_gcp_clients_sync()
+                return
+
             # Run client initialization in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            
-            self.instances_client = await loop.run_in_executor(
-                None, compute_v1.InstancesClient
-            )
-            self.zones_client = await loop.run_in_executor(
-                None, compute_v1.ZonesClient
-            )
-            self.zone_operations_client = await loop.run_in_executor(
-                None, compute_v1.ZoneOperationsClient
-            )
-            
+            # Use asyncio.to_thread for cleaner syntax (Python 3.9+)
+            try:
+                self.instances_client = await asyncio.to_thread(
+                    compute_v1.InstancesClient
+                )
+                self.zones_client = await asyncio.to_thread(
+                    compute_v1.ZonesClient
+                )
+                self.zone_operations_client = await asyncio.to_thread(
+                    compute_v1.ZoneOperationsClient
+                )
+            except RuntimeError as executor_error:
+                # Thread pool executor may fail during shutdown
+                if "cannot schedule" in str(executor_error).lower():
+                    logger.warning(
+                        f"[GCPVMManager] Thread pool unavailable ({executor_error}) - "
+                        "falling back to sync initialization"
+                    )
+                    self._initialize_gcp_clients_sync()
+                    return
+                raise
+
             logger.info(f"✅ GCP API clients initialized (Project: {self.config.project_id})")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize GCP API clients: {e}")
             raise RuntimeError(f"GCP API client initialization failed: {e}") from e
 
+    def _initialize_gcp_clients_sync(self):
+        """
+        Synchronous fallback for GCP client initialization.
+
+        Used when:
+        - No running event loop (during shutdown)
+        - Thread pool executor is unavailable
+        - Called from synchronous context
+        """
+        try:
+            self.instances_client = compute_v1.InstancesClient()
+            self.zones_client = compute_v1.ZonesClient()
+            self.zone_operations_client = compute_v1.ZoneOperationsClient()
+            logger.info(
+                f"✅ GCP API clients initialized synchronously "
+                f"(Project: {self.config.project_id})"
+            )
+        except Exception as e:
+            logger.error(f"Synchronous GCP client initialization failed: {e}")
+            raise
+
     async def _initialize_integrations(self):
-        """Initialize integrations with graceful fallbacks"""
+        """
+        Initialize integrations with graceful fallbacks and modern asyncio patterns.
+
+        Non-critical integrations fail gracefully without blocking core functionality.
+        Uses asyncio.to_thread for clean async I/O.
+        """
         # Cost tracker - non-critical, continue without it
         try:
             self.cost_tracker = get_cost_tracker()
@@ -671,13 +730,18 @@ class GCPVMManager:
         except Exception as e:
             logger.warning(f"⚠️  GCP optimizer initialization failed (non-critical): {e}")
             self.gcp_optimizer = None
-        
+
         # Initialize regions client for quota checking
+        # Use modern asyncio patterns with fallback
         try:
-            loop = asyncio.get_event_loop()
-            self.regions_client = await loop.run_in_executor(
-                None, compute_v1.RegionsClient
-            )
+            try:
+                # Try async initialization first
+                self.regions_client = await asyncio.to_thread(
+                    compute_v1.RegionsClient
+                )
+            except RuntimeError:
+                # Fall back to sync if thread pool unavailable
+                self.regions_client = compute_v1.RegionsClient()
             logger.info("✅ Regions client initialized for quota checking")
         except Exception as e:
             logger.warning(f"⚠️  Regions client initialization failed (quota checking limited): {e}")

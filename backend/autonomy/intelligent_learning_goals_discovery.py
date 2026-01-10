@@ -828,7 +828,7 @@ class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
                     return json.load(f)
 
             # Try to connect to Prime API
-            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8002")
+            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
             # TODO: Implement API call when Prime metrics endpoint is available
 
         except Exception as e:

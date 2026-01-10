@@ -668,7 +668,7 @@ class JARVISPrimeAdapter:
         # Try HTTP client (remote integration)
         try:
             import aiohttp
-            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8002")
+            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{prime_url}/health", timeout=aiohttp.ClientTimeout(total=2.0)) as resp:
                     if resp.status == 200:

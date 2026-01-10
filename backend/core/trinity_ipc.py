@@ -383,7 +383,10 @@ class AtomicIPCFile:
 
     async def read_atomic(self) -> Optional[Dict[str, Any]]:
         """
-        Read file with shared lock.
+        Read file with shared lock using modern asyncio patterns.
+
+        Uses asyncio.get_running_loop() (Python 3.10+ best practice) instead of
+        the deprecated get_event_loop() to avoid issues with event loop lifecycle.
 
         Returns:
             Parsed JSON data or None if file doesn't exist or is invalid
@@ -392,9 +395,15 @@ class AtomicIPCFile:
             return None
 
         try:
-            # Use run_in_executor for file I/O
-            loop = asyncio.get_event_loop()
+            # Use get_running_loop() - modern asyncio best practice
+            # This ensures we're in an async context and avoids deprecation warnings
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._read_with_lock)
+        except RuntimeError as e:
+            # No running loop - we're being called from sync context
+            # Fall back to synchronous read
+            logger.debug(f"[AtomicIPCFile] No running loop, using sync read: {e}")
+            return self._read_with_lock()
         except Exception as e:
             logger.debug(f"[AtomicIPCFile] Read failed for {self._file_path}: {e}")
             return None
@@ -424,15 +433,20 @@ class AtomicIPCFile:
 
     async def write_atomic(self, data: Dict[str, Any]) -> None:
         """
-        Atomic write using temp file + rename pattern.
+        Atomic write using temp file + rename pattern with modern asyncio.
 
         This ensures that readers never see a partial write.
+        Uses asyncio.get_running_loop() for Python 3.10+ compatibility.
 
         Args:
             data: Dictionary to write as JSON
         """
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._write_with_lock, data)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._write_with_lock, data)
+        except RuntimeError:
+            # No running loop - fall back to synchronous write
+            self._write_with_lock(data)
 
     def _write_with_lock(self, data: Dict[str, Any]) -> None:
         """Synchronous atomic write."""
@@ -470,7 +484,9 @@ class AtomicIPCFile:
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        Atomic read-modify-write operation.
+        Atomic read-modify-write operation with modern asyncio patterns.
+
+        Uses asyncio.get_running_loop() for Python 3.10+ compatibility.
 
         Args:
             updater: Function that transforms the data
@@ -480,13 +496,17 @@ class AtomicIPCFile:
             Updated data
         """
         timeout = timeout or self._config.lock_timeout
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            self._update_with_lock,
-            updater,
-            timeout
-        )
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                self._update_with_lock,
+                updater,
+                timeout
+            )
+        except RuntimeError:
+            # No running loop - fall back to synchronous update
+            return self._update_with_lock(updater, timeout)
 
     def _update_with_lock(
         self,
@@ -743,7 +763,13 @@ class TrinityIPCBus:
 
     async def enqueue_command(self, command: TrinityCommand) -> str:
         """
-        Add command to queue.
+        Add command to queue with intelligent expiration and overflow handling.
+
+        Features:
+        - Enforces command timeout_seconds by filtering expired commands
+        - Logs dropped commands when queue overflows (no silent truncation)
+        - Priority-based queue ordering
+        - Automatic cleanup of stale commands
 
         Args:
             command: Command to enqueue
@@ -751,23 +777,80 @@ class TrinityIPCBus:
         Returns:
             Command ID
         """
+        # Track dropped commands for logging
+        dropped_commands = []
+        expired_count = 0
+        max_queue_size = _env_int("TRINITY_IPC_MAX_QUEUE_SIZE", 1000)
+
         def updater(data: Dict) -> Dict:
+            nonlocal dropped_commands, expired_count
             queue = data.get("commands", [])
-            queue.append(command.to_dict())
+            now = time.time()
+
+            # First pass: Remove expired commands (enforce timeout_seconds)
+            active_queue = []
+            for cmd_data in queue:
+                cmd_timestamp = cmd_data.get("timestamp", 0)
+                cmd_timeout = cmd_data.get("timeout_seconds", 30.0)
+
+                # Check if command has expired based on its timeout_seconds
+                if now - cmd_timestamp > cmd_timeout:
+                    expired_count += 1
+                    logger.debug(
+                        f"[TrinityIPC] Command {cmd_data.get('command_id', 'unknown')} "
+                        f"expired after {cmd_timeout}s - removing from queue"
+                    )
+                else:
+                    active_queue.append(cmd_data)
+
+            # Log if we cleaned up expired commands
+            if expired_count > 0:
+                logger.info(
+                    f"[TrinityIPC] Cleaned up {expired_count} expired commands from queue"
+                )
+
+            # Add the new command
+            active_queue.append(command.to_dict())
+
             # Sort by priority (lower value = higher priority)
-            queue.sort(key=lambda x: x.get("priority", 2))
-            # Limit queue size
-            if len(queue) > 1000:
-                queue = queue[:1000]
-            data["commands"] = queue
-            data["last_updated"] = time.time()
+            active_queue.sort(key=lambda x: x.get("priority", 2))
+
+            # Handle queue overflow with logging (no silent truncation)
+            if len(active_queue) > max_queue_size:
+                # Drop lowest priority commands (at end of sorted queue)
+                dropped_commands = active_queue[max_queue_size:]
+                active_queue = active_queue[:max_queue_size]
+
+                # Log dropped commands with details
+                for dropped in dropped_commands:
+                    logger.warning(
+                        f"[TrinityIPC] QUEUE OVERFLOW - Dropped command "
+                        f"{dropped.get('command_id', 'unknown')}: "
+                        f"action={dropped.get('action', 'unknown')}, "
+                        f"target={dropped.get('target', 'unknown')}, "
+                        f"priority={dropped.get('priority', 2)}"
+                    )
+
+                logger.warning(
+                    f"[TrinityIPC] Queue overflow: dropped {len(dropped_commands)} "
+                    f"low-priority commands (queue limit: {max_queue_size})"
+                )
+
+            data["commands"] = active_queue
+            data["last_updated"] = now
+            data["queue_stats"] = {
+                "size": len(active_queue),
+                "expired_cleaned": expired_count,
+                "dropped_overflow": len(dropped_commands),
+            }
             return data
 
         if self._command_file:
             await self._command_file.update_atomic(updater)
             logger.debug(
                 f"[TrinityIPC] Enqueued command {command.command_id}: "
-                f"{command.action} -> {command.target.value}"
+                f"{command.action} -> {command.target.value} "
+                f"(timeout={command.timeout_seconds}s, priority={command.priority.value})"
             )
 
         return command.command_id
@@ -861,7 +944,13 @@ class TrinityIPCBus:
         timeout: float = 30.0,
     ) -> Optional[CommandResponse]:
         """
-        Wait for response to a command.
+        Wait for response to a command with adaptive backoff polling.
+
+        Features:
+        - Adaptive polling interval (starts fast, backs off over time)
+        - Detailed timeout diagnostics
+        - Safe response file cleanup with retry
+        - Progress logging for long waits
 
         Args:
             command_id: Command to wait for
@@ -876,21 +965,85 @@ class TrinityIPCBus:
         )
 
         start_time = time.time()
-        while time.time() - start_time < timeout:
-            data = await response_file.read_atomic()
-            if data:
-                try:
-                    response = CommandResponse.from_dict(data)
-                    # Clean up response file
-                    await response_file.delete()
-                    return response
-                except Exception as e:
-                    logger.debug(f"[TrinityIPC] Invalid response data: {e}")
 
-            await asyncio.sleep(self._config.poll_interval)
+        # Adaptive backoff configuration
+        min_poll_interval = self._config.poll_interval  # Start with configured interval
+        max_poll_interval = min(2.0, timeout / 10)  # Cap at 2s or 10% of timeout
+        current_interval = min_poll_interval
+        backoff_factor = 1.5  # Exponential backoff multiplier
+        backoff_threshold = 1.0  # Start backing off after 1 second
 
-        logger.debug(f"[TrinityIPC] Response timeout for {command_id}")
-        return None
+        poll_count = 0
+        last_progress_log = start_time
+
+        while True:
+            elapsed = time.time() - start_time
+
+            # Check timeout
+            if elapsed >= timeout:
+                logger.debug(
+                    f"[TrinityIPC] Response timeout for command {command_id} "
+                    f"after {elapsed:.2f}s ({poll_count} polls)"
+                )
+                return None
+
+            # Try to read response
+            try:
+                data = await response_file.read_atomic()
+                if data:
+                    try:
+                        response = CommandResponse.from_dict(data)
+
+                        # Clean up response file with retry
+                        for cleanup_attempt in range(3):
+                            try:
+                                await response_file.delete()
+                                break
+                            except Exception as cleanup_error:
+                                if cleanup_attempt == 2:
+                                    logger.warning(
+                                        f"[TrinityIPC] Could not clean up response file "
+                                        f"{command_id}: {cleanup_error}"
+                                    )
+                                await asyncio.sleep(0.1)
+
+                        logger.debug(
+                            f"[TrinityIPC] Response received for {command_id} "
+                            f"in {elapsed:.2f}s ({poll_count} polls)"
+                        )
+                        return response
+
+                    except (KeyError, ValueError, TypeError) as e:
+                        logger.warning(
+                            f"[TrinityIPC] Invalid response data for {command_id}: {e}"
+                        )
+                        # Continue polling - might be a partial write
+
+            except Exception as e:
+                logger.debug(f"[TrinityIPC] Error reading response: {e}")
+
+            poll_count += 1
+
+            # Progress logging for long waits (every 5 seconds)
+            if time.time() - last_progress_log >= 5.0:
+                remaining = timeout - elapsed
+                logger.debug(
+                    f"[TrinityIPC] Waiting for response to {command_id}: "
+                    f"{elapsed:.1f}s elapsed, {remaining:.1f}s remaining"
+                )
+                last_progress_log = time.time()
+
+            # Adaptive backoff: start fast, slow down over time
+            if elapsed > backoff_threshold:
+                current_interval = min(
+                    current_interval * backoff_factor,
+                    max_poll_interval
+                )
+
+            # Don't sleep longer than remaining timeout
+            sleep_time = min(current_interval, timeout - elapsed)
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
 
     # =========================================================================
     # STATE OPERATIONS

@@ -180,7 +180,7 @@ class AgenticRunnerConfig:
         default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
     )
     jarvis_prime_url: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_URL", "http://localhost:8002")
+        default_factory=lambda: os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
     )
     jarvis_prime_use_cloud_run: bool = field(
         default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true"

@@ -129,8 +129,8 @@ class IntelligentPortManager:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        primary_port: int = 8002,
-        fallback_port_start: int = 8003,
+        primary_port: int = 8000,  # v89.0: Fixed to 8000 (was incorrectly 8002)
+        fallback_port_start: int = 8004,  # v89.0: Changed from 8003 to avoid collision with Reactor Core (8003)
         fallback_port_end: int = 8020,
         max_cleanup_time_seconds: float = 15.0,  # v78.1: Increased from 10s to 15s
         adopt_existing_instances: bool = True,
