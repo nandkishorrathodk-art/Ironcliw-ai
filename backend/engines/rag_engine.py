@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Dict, Optional, Tuple, Any, Union
+from typing import List, Dict, Optional, Tuple, Any, Union, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
@@ -19,8 +19,14 @@ import asyncio
 import aiofiles
 from collections import defaultdict
 import re
+import logging
+import time
+from enum import Enum
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# Logger for RAG engine
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Document:
@@ -848,8 +854,254 @@ class LearningEngine:
             
         return " ".join(additions)
 
+
+# =============================================================================
+# Trinity RAG Bridge - Connects Web Scraping Memory to RAG Pipeline
+# =============================================================================
+
+class CircuitState(Enum):
+    """Circuit breaker states for resilient async operations."""
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"      # Failing, reject calls
+    HALF_OPEN = "half_open"  # Testing if recovered
+
+
+@dataclass
+class CircuitBreakerConfig:
+    """Configuration for circuit breaker pattern."""
+    failure_threshold: int = 3  # Failures before opening
+    recovery_timeout_seconds: float = 30.0  # Time before half-open
+    success_threshold: int = 2  # Successes to close from half-open
+
+
+class TrinityRAGBridge:
+    """
+    Async bridge connecting Trinity Knowledge Indexer to RAG pipeline.
+    
+    The "Brain Bridge" that connects JARVIS's scraped web memory to his
+    conversational abilities. Features:
+    
+    - Circuit breaker pattern for resilience
+    - Parallel retrieval from multiple sources  
+    - Graceful degradation when indexer unavailable
+    - Source attribution formatting
+    - Dynamic initialization (no hardcoded imports)
+    
+    Architecture:
+        ┌──────────────────────────────────────────────┐
+        │     TrinityRAGBridge                         │
+        │  ┌────────────────┐  ┌────────────────────┐  │
+        │  │ Circuit Breaker│  │ Trinity Indexer    │  │
+        │  │ (Resilience)   │──│ (ChromaDB/FAISS)   │  │
+        │  └────────────────┘  └────────────────────┘  │
+        │            │                                 │
+        │            ▼                                 │
+        │  ┌────────────────────────────────────────┐  │
+        │  │ Format: [Web Source: URL] content      │  │
+        │  └────────────────────────────────────────┘  │
+        └──────────────────────────────────────────────┘
+    """
+    
+    def __init__(
+        self,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
+        search_timeout_seconds: float = 5.0,
+        max_results: int = 5,
+        min_similarity: float = 0.3,
+    ):
+        self._circuit_config = circuit_config or CircuitBreakerConfig()
+        self._search_timeout = search_timeout_seconds
+        self._max_results = max_results
+        self._min_similarity = min_similarity
+        
+        # Circuit breaker state
+        self._circuit_state = CircuitState.CLOSED
+        self._failure_count = 0
+        self._success_count = 0  
+        self._last_failure_time: Optional[float] = None
+        
+        # Lazy-loaded indexer reference
+        self._indexer: Optional[Any] = None
+        self._indexer_available: Optional[bool] = None
+        
+        logger.debug("[TrinityRAGBridge] Initialized with circuit breaker pattern")
+    
+    async def _get_indexer(self) -> Optional[Any]:
+        """
+        Lazy-load the Trinity Knowledge Indexer.
+        
+        Uses dynamic import to avoid circular dependencies and
+        gracefully handles missing dependencies.
+        """
+        if self._indexer is not None:
+            return self._indexer
+            
+        if self._indexer_available is False:
+            return None  # Previously failed, don't retry in this session
+            
+        try:
+            # Dynamic import prevents startup failures if Trinity not available
+            from backend.autonomy.trinity_knowledge_indexer import get_knowledge_indexer
+            self._indexer = await get_knowledge_indexer()
+            self._indexer_available = True
+            logger.info("[TrinityRAGBridge] ✅ Trinity Knowledge Indexer connected")
+            return self._indexer
+        except ImportError as e:
+            logger.warning(f"[TrinityRAGBridge] Trinity Indexer not available: {e}")
+            self._indexer_available = False
+            return None
+        except Exception as e:
+            logger.error(f"[TrinityRAGBridge] Failed to initialize indexer: {e}")
+            self._indexer_available = False
+            return None
+    
+    def _check_circuit(self) -> bool:
+        """
+        Check if circuit breaker allows the call.
+        
+        Returns:
+            True if call should proceed, False if rejected
+        """
+        if self._circuit_state == CircuitState.CLOSED:
+            return True
+            
+        if self._circuit_state == CircuitState.OPEN:
+            # Check if recovery timeout has elapsed
+            if self._last_failure_time is not None:
+                elapsed = time.time() - self._last_failure_time
+                if elapsed >= self._circuit_config.recovery_timeout_seconds:
+                    logger.info("[TrinityRAGBridge] Circuit transitioning to HALF_OPEN")
+                    self._circuit_state = CircuitState.HALF_OPEN
+                    self._success_count = 0
+                    return True
+            return False
+            
+        # HALF_OPEN state - allow the call for testing
+        return True
+    
+    def _record_success(self):
+        """Record successful call for circuit breaker."""
+        if self._circuit_state == CircuitState.HALF_OPEN:
+            self._success_count += 1
+            if self._success_count >= self._circuit_config.success_threshold:
+                logger.info("[TrinityRAGBridge] Circuit CLOSED (recovered)")
+                self._circuit_state = CircuitState.CLOSED
+                self._failure_count = 0
+        elif self._circuit_state == CircuitState.CLOSED:
+            self._failure_count = 0  # Reset on success
+    
+    def _record_failure(self):
+        """Record failed call for circuit breaker."""
+        self._failure_count += 1
+        self._last_failure_time = time.time()
+        
+        if self._circuit_state == CircuitState.HALF_OPEN:
+            logger.warning("[TrinityRAGBridge] Circuit OPEN (failed during recovery)")
+            self._circuit_state = CircuitState.OPEN
+        elif self._failure_count >= self._circuit_config.failure_threshold:
+            logger.warning(f"[TrinityRAGBridge] Circuit OPEN after {self._failure_count} failures")
+            self._circuit_state = CircuitState.OPEN
+    
+    async def search(
+        self,
+        query: str,
+        limit: Optional[int] = None,
+        min_similarity: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search Trinity Knowledge Indexer for relevant web content.
+        
+        Args:
+            query: Search query text
+            limit: Maximum results (default from config)
+            min_similarity: Minimum similarity score (default from config)
+            
+        Returns:
+            List of results with text, metadata, score, formatted_source
+        """
+        if not self._check_circuit():
+            logger.debug("[TrinityRAGBridge] Circuit OPEN, skipping Trinity search")
+            return []
+            
+        try:
+            indexer = await self._get_indexer()
+            if indexer is None:
+                return []
+            
+            # Execute search with timeout
+            search_task = indexer.search_similar(
+                query=query,
+                limit=limit or self._max_results,
+                min_similarity=min_similarity or self._min_similarity,
+            )
+            
+            results = await asyncio.wait_for(
+                search_task,
+                timeout=self._search_timeout
+            )
+            
+            # Format results with source attribution
+            formatted_results = []
+            for result in results:
+                formatted = {
+                    **result,
+                    "formatted_source": self._format_web_source(
+                        result.get("text", ""),
+                        result.get("metadata", {})
+                    )
+                }
+                formatted_results.append(formatted)
+            
+            self._record_success()
+            logger.debug(f"[TrinityRAGBridge] Found {len(formatted_results)} web sources")
+            return formatted_results
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"[TrinityRAGBridge] Search timed out after {self._search_timeout}s")
+            self._record_failure()
+            return []
+        except Exception as e:
+            logger.error(f"[TrinityRAGBridge] Search failed: {e}")
+            self._record_failure()
+            return []
+    
+    def _format_web_source(self, text: str, metadata: Dict[str, Any]) -> str:
+        """
+        Format web content with source attribution.
+        
+        Format: [Web Source: {url}] {content}
+        """
+        url = metadata.get("url", "unknown source")
+        title = metadata.get("title", "")
+        
+        header = f"[Web Source: {url}]"
+        if title:
+            header = f"[Web Source: {title} - {url}]"
+            
+        return f"{header}\n{text}"
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get bridge status for monitoring."""
+        return {
+            "circuit_state": self._circuit_state.value,
+            "failure_count": self._failure_count,
+            "indexer_available": self._indexer_available,
+            "search_timeout": self._search_timeout,
+            "max_results": self._max_results,
+        }
+
+
+# =============================================================================
+# RAG Engine - Main Integration Point
+# =============================================================================
+
 class RAGEngine:
-    """Main RAG engine integrating all components"""
+    """
+    Main RAG engine integrating all components.
+    
+    v2.0: Now includes TrinityRAGBridge for web-scraped knowledge retrieval.
+    Combines local knowledge base with Trinity indexer for comprehensive context.
+    """
     
     def __init__(self, base_model_name: str = "gpt2"):
         self.embedding_model = EmbeddingModel()
@@ -858,10 +1110,80 @@ class RAGEngine:
         self.learning_engine = LearningEngine(self.knowledge_base)
         self.base_model_name = base_model_name
         
-    async def generate_with_retrieval(self, query: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
-        """Generate response using retrieval-augmented generation"""
-        # Get relevant context
-        context = await self.knowledge_base.get_relevant_context(query, max_tokens=1024)
+        # v2.0: Trinity RAG Bridge for web knowledge
+        self._trinity_bridge: Optional[TrinityRAGBridge] = None
+        self._trinity_enabled = os.getenv("TRINITY_RAG_ENABLED", "true").lower() == "true"
+        
+    def _get_trinity_bridge(self) -> TrinityRAGBridge:
+        """Lazy initialization of Trinity bridge."""
+        if self._trinity_bridge is None:
+            self._trinity_bridge = TrinityRAGBridge(
+                search_timeout_seconds=float(os.getenv("TRINITY_SEARCH_TIMEOUT", "5.0")),
+                max_results=int(os.getenv("TRINITY_MAX_RESULTS", "5")),
+                min_similarity=float(os.getenv("TRINITY_MIN_SIMILARITY", "0.3")),
+            )
+        return self._trinity_bridge
+        
+    async def generate_with_retrieval(
+        self,
+        query: str,
+        conversation_history: List[Dict[str, str]] = None,
+        include_web_sources: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generate response using retrieval-augmented generation.
+        
+        v2.0: Now combines web-scraped content (Trinity) with local knowledge base.
+        
+        Args:
+            query: User query
+            conversation_history: Previous conversation messages
+            include_web_sources: Whether to include Trinity web sources
+            
+        Returns:
+            Dict with response, context_used, sources, web_sources
+        """
+        # Parallel retrieval from multiple sources
+        trinity_context = ""
+        web_sources = []
+        local_context = ""
+        
+        # Create retrieval tasks
+        tasks = []
+        
+        # Task 1: Local knowledge base retrieval (always)
+        async def get_local_context():
+            return await self.knowledge_base.get_relevant_context(query, max_tokens=768)
+        tasks.append(get_local_context())
+        
+        # Task 2: Trinity web retrieval (if enabled)
+        if include_web_sources and self._trinity_enabled:
+            async def get_trinity_context():
+                bridge = self._get_trinity_bridge()
+                results = await bridge.search(query)
+                return results
+            tasks.append(get_trinity_context())
+        
+        # Execute in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process local context (first result)
+        if not isinstance(results[0], Exception):
+            local_context = results[0]
+        else:
+            logger.warning(f"[RAGEngine] Local KB retrieval failed: {results[0]}")
+            
+        # Process Trinity context (second result if available)
+        if len(results) > 1 and not isinstance(results[1], Exception):
+            web_results = results[1]
+            if web_results:
+                web_sources = web_results
+                # Build formatted web context (web sources first for recency)
+                trinity_parts = [r.get("formatted_source", "") for r in web_results if r.get("formatted_source")]
+                trinity_context = "\n\n".join(trinity_parts[:3])  # Limit to top 3
+                
+        # Combine contexts: Web sources first (more recent), then local KB
+        combined_context = self._merge_contexts(trinity_context, local_context)
         
         # Get adapted parameters
         adapted_params = self.learning_engine.get_adapted_parameters()
@@ -872,23 +1194,57 @@ class RAGEngine:
         # Build augmented prompt
         augmented_prompt = self._build_augmented_prompt(
             query,
-            context,
+            combined_context,
             conversation_history,
             prompt_additions
         )
         
         # Generate response (placeholder - integrate with actual model)
-        response = f"Based on the context: {context[:200]}... I can help you with: {query}"
+        response = f"Based on the context: {combined_context[:200]}... I can help you with: {query}"
         
         # Store interaction for learning
         await self.learning_engine.learn_from_interaction(query, response)
         
         return {
             'response': response,
-            'context_used': context,
+            'context_used': combined_context,
             'adapted_parameters': adapted_params,
-            'sources': await self._get_source_documents(query)
+            'sources': await self._get_source_documents(query),
+            'web_sources': web_sources,
+            'trinity_status': self._get_trinity_bridge().get_status() if self._trinity_enabled else None,
         }
+    
+    def _merge_contexts(
+        self,
+        web_context: str,
+        local_context: str,
+        max_combined_tokens: int = 1500,
+    ) -> str:
+        """
+        Merge web and local contexts with deduplication.
+        
+        Web sources come first (more recent/relevant scraped data),
+        followed by local knowledge base content.
+        """
+        parts = []
+        
+        if web_context.strip():
+            parts.append("=== Recent Web Knowledge ===")
+            parts.append(web_context.strip())
+            
+        if local_context.strip():
+            if parts:
+                parts.append("\n=== Local Knowledge Base ===")
+            parts.append(local_context.strip())
+            
+        combined = "\n".join(parts)
+        
+        # Simple token limit (rough estimate: 4 chars per token)
+        max_chars = max_combined_tokens * 4
+        if len(combined) > max_chars:
+            combined = combined[:max_chars] + "..."
+            
+        return combined
         
     def _build_augmented_prompt(self, query: str, context: str, history: List[Dict[str, str]], additions: str) -> str:
         """Build prompt with retrieved context"""

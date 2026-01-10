@@ -8515,6 +8515,52 @@ class SupervisorBootstrapper:
                 print(f"  {TerminalUI.YELLOW}⚠️ Reactor-Core: Failed ({e}){TerminalUI.RESET}")
 
         # ═══════════════════════════════════════════════════════════════════
+        # Step 8: Initialize Trinity Knowledge Indexer (Brain Bridge)
+        # ═══════════════════════════════════════════════════════════════════
+        # This connects JARVIS's scraped web memory to his conversational abilities
+        trinity_indexer_enabled = os.getenv("TRINITY_INDEXER_ENABLED", "true").lower() == "true"
+        if trinity_indexer_enabled:
+            try:
+                self.logger.info("🧠 Step 8: Initializing Trinity Knowledge Indexer...")
+
+                from autonomy.trinity_knowledge_indexer import (
+                    get_knowledge_indexer,
+                    start_knowledge_indexer,
+                )
+
+                # Get or initialize the indexer
+                self._trinity_indexer = await get_knowledge_indexer()
+
+                # Start background indexing loop
+                await start_knowledge_indexer()
+
+                initialized_systems["trinity_indexer"] = True
+                os.environ["TRINITY_INDEXER_ENABLED"] = "true"
+
+                # Get status for logging
+                indexer_status = self._trinity_indexer.get_status()
+                chunks_indexed = indexer_status.get("metrics", {}).get("total_chunks_indexed", 0)
+
+                self.logger.info(
+                    f"✅ Trinity Knowledge Indexer initialized "
+                    f"(ChromaDB: {indexer_status['vector_stores']['chromadb']}, "
+                    f"FAISS: {indexer_status['vector_stores']['faiss']}, "
+                    f"Chunks indexed: {chunks_indexed})"
+                )
+                print(f"  {TerminalUI.GREEN}✓ Trinity Indexer: Brain Bridge connecting scraped knowledge to RAG{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ Trinity Indexer not available: {e}")
+                os.environ["TRINITY_INDEXER_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Trinity Indexer: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.error(f"❌ Trinity Indexer initialization failed: {e}")
+                os.environ["TRINITY_INDEXER_ENABLED"] = "false"
+                print(f"  {TerminalUI.YELLOW}⚠️ Trinity Indexer: Failed ({e}){TerminalUI.RESET}")
+        else:
+            initialized_systems["trinity_indexer"] = False
+
+        # ═══════════════════════════════════════════════════════════════════
         # Broadcast Intelligence Systems Status
         # ═══════════════════════════════════════════════════════════════════
         active_systems = [k for k, v in initialized_systems.items() if v]
