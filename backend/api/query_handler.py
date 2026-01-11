@@ -149,39 +149,62 @@ async def _fallback_to_uae(command: str, context: Optional[Dict[str, Any]] = Non
 
 
 async def _fallback_to_cloud(command: str) -> Dict[str, Any]:
-    """Final fallback - direct cloud Claude call."""
+    """
+    Final fallback - routes through Prime Router instead of direct Claude API.
+
+    v2.7 FIX: Previously called AsyncAnthropic directly, bypassing the entire
+    Prime routing system. Now uses PrimeRouter which has its own fallback chain:
+    LOCAL_PRIME → CLOUD_RUN → CLOUD_CLAUDE
+
+    This ensures:
+    - All API calls are tracked and monitored
+    - Cost tracking works for all requests
+    - Circuit breakers apply consistently
+    - Local Prime gets priority when available
+    """
     try:
-        from anthropic import AsyncAnthropic
-        import os
+        # v2.7: Use Prime Router instead of direct Anthropic client
+        try:
+            from core.prime_router import get_prime_router
+        except ImportError:
+            from backend.core.prime_router import get_prime_router
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            return {
-                "success": False,
-                "response": "I'm currently unable to process queries. Please try again later.",
-                "source": "degraded",
-                "error": "no_api_key",
-            }
+        router = await get_prime_router()
 
-        client = AsyncAnthropic(api_key=api_key)
-        response = await client.messages.create(
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+        # Generate through Prime Router (handles all fallback logic internally)
+        response = await router.generate(
+            prompt=command,
+            system_prompt=JARVIS_SYSTEM_PROMPT,
             max_tokens=4096,
-            system=JARVIS_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": command}],
         )
 
-        content = response.content[0].text if response.content else ""
+        # Extract content from response
+        content = ""
+        if hasattr(response, 'content') and response.content:
+            if isinstance(response.content, list):
+                content = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
+            else:
+                content = str(response.content)
+        elif isinstance(response, dict):
+            content = response.get('content', response.get('response', ''))
+        else:
+            content = str(response)
+
+        # Determine source from router
+        source = getattr(response, 'source', 'prime_router_fallback')
+        if isinstance(response, dict):
+            source = response.get('source', 'prime_router_fallback')
 
         return {
             "success": True,
             "response": content,
-            "source": "cloud_claude_direct",
+            "source": source,
             "fallback_used": True,
+            "routed_via_prime": True,  # v2.7: Track Prime routing
         }
 
     except Exception as e:
-        logger.error(f"[QUERY] Cloud fallback failed: {e}")
+        logger.error(f"[QUERY] Prime router fallback failed: {e}")
         return {
             "success": False,
             "response": f"I apologize, but I'm experiencing technical difficulties: {str(e)}",

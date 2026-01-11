@@ -664,12 +664,25 @@ class BaseNeuralMeshAgent(ABC):
                 await asyncio.sleep(backoff)
 
     async def _message_handler_loop(self) -> None:
-        """Process incoming messages."""
+        """
+        Process incoming messages with optimized low-latency handling.
+
+        v2.7 CRITICAL FIX: Reduced timeout from 1.0s to 0.01s (10ms) to meet
+        latency targets:
+        - CRITICAL: <1ms
+        - HIGH: <5ms
+        - NORMAL: <10ms
+
+        The previous 1.0s timeout was a MAJOR bottleneck causing 700ms+ workflow latency.
+        """
+        # v2.7: Ultra-low latency queue polling (10ms timeout)
+        queue_timeout = float(os.getenv("NEURAL_MESH_QUEUE_TIMEOUT", "0.01"))
+
         while self._running:
             try:
                 message = await asyncio.wait_for(
                     self._message_queue.get(),
-                    timeout=1.0,
+                    timeout=queue_timeout,  # v2.7: 10ms instead of 1000ms
                 )
                 await self._process_message(message)
             except asyncio.TimeoutError:

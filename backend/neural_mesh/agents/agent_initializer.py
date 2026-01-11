@@ -25,6 +25,8 @@ from .google_workspace_agent import GoogleWorkspaceAgent
 from .spatial_awareness_agent import SpatialAwarenessAgent  # v6.2: Grand Unification
 from .predictive_planning_agent import PredictivePlanningAgent  # v6.2: Proactive Parallelism
 from .visual_monitor_agent import VisualMonitorAgent  # v10.6: VMSI - The Watcher
+from .goal_inference_agent import GoalInferenceAgent  # v2.7: Intent Understanding (formerly dormant)
+from .activity_recognition_agent import ActivityRecognitionAgent  # v2.7: Activity Context (formerly dormant)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 # v6.2 Grand Unification: Added SpatialAwarenessAgent for 3D OS Awareness
 # v6.2 Proactive Parallelism: Added PredictivePlanningAgent ("Psychic Brain")
 # v10.6 VMSI: Added VisualMonitorAgent for background visual surveillance
+# v2.7 Agent Activation: Added GoalInferenceAgent and ActivityRecognitionAgent (formerly dormant)
 PRODUCTION_AGENTS: List[Type[BaseNeuralMeshAgent]] = [
     # Core agents (fundamental system operations)
     MemoryAgent,
@@ -46,6 +49,10 @@ PRODUCTION_AGENTS: List[Type[BaseNeuralMeshAgent]] = [
 
     # Proactive Intelligence ("The Psychic Brain")
     PredictivePlanningAgent,  # v6.2: Expands intents into parallel tasks
+
+    # Intent & Activity Understanding (v2.7: formerly dormant agents)
+    GoalInferenceAgent,        # v2.7: ML-powered intent understanding
+    ActivityRecognitionAgent,  # v2.7: User activity and focus tracking
 
     # Spatial agents (3D OS Awareness & Visual Monitoring - "The Body & Eyes")
     SpatialAwarenessAgent,  # v6.2: Proprioception for all agents

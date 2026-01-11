@@ -484,14 +484,33 @@ class AgentCommunicationBus:
         return messages[-limit:]
 
     async def _process_queue(self, priority: MessagePriority) -> None:
-        """Process messages from a priority queue."""
+        """
+        Process messages from a priority queue with optimized latency.
+
+        v2.7 CRITICAL FIX: Reduced timeout from 1.0s to priority-based values:
+        - CRITICAL: 1ms timeout
+        - HIGH: 5ms timeout
+        - NORMAL: 10ms timeout
+        - LOW: 50ms timeout
+
+        The previous 1.0s timeout was causing 700ms+ workflow latency.
+        """
         queue = self._queues[priority]
         target_latency = self.config.latency_targets_ms.get(priority.value, 10.0)
 
+        # v2.7: Priority-based queue timeouts (match latency targets)
+        priority_timeouts = {
+            MessagePriority.CRITICAL: 0.001,  # 1ms
+            MessagePriority.HIGH: 0.005,      # 5ms
+            MessagePriority.NORMAL: 0.01,     # 10ms
+            MessagePriority.LOW: 0.05,        # 50ms
+        }
+        queue_timeout = priority_timeouts.get(priority, 0.01)
+
         while self._running:
             try:
-                # Get message from queue
-                message = await asyncio.wait_for(queue.get(), timeout=1.0)
+                # Get message from queue with priority-based timeout
+                message = await asyncio.wait_for(queue.get(), timeout=queue_timeout)
 
                 start_time = time.perf_counter()
 

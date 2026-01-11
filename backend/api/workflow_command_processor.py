@@ -45,15 +45,12 @@ class WorkflowCommandProcessor:
         self.use_intelligent_selection = use_intelligent_selection
         self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.WORKFLOW_INDICATORS]
 
-        # Initialize Claude API for dynamic responses
-        self.claude_client = None
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            try:
-                self.claude_client = anthropic.Anthropic(api_key=api_key)
-                logger.info("✅ Claude API initialized for dynamic JARVIS responses")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not initialize Claude API: {e}")
+        # v2.7 FIX: Use Prime Router instead of direct Claude API
+        # This ensures all LLM calls go through the proper routing system
+        # with fallback chain: LOCAL_PRIME → CLOUD_RUN → CLOUD_CLAUDE
+        self._prime_router = None  # Lazy-loaded
+        self._use_prime_router = os.getenv("WORKFLOW_USE_PRIME_ROUTER", "true").lower() == "true"
+        logger.info("✅ Workflow processor will route through Prime Router")
 
     def is_workflow_command(self, command_text: str) -> bool:
         """Check if command contains multiple actions"""
@@ -231,20 +228,36 @@ GUIDELINES:
 Generate ONLY the response text, nothing else."""
 
         try:
-            # Call Claude API
-            message = self.claude_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+            # v2.7 FIX: Route through Prime Router instead of direct Claude API
+            if self._prime_router is None:
+                try:
+                    from core.prime_router import get_prime_router
+                except ImportError:
+                    from backend.core.prime_router import get_prime_router
+                self._prime_router = await get_prime_router()
+
+            # Generate via Prime Router (handles LOCAL_PRIME → CLOUD_RUN → CLAUDE fallback)
+            response_obj = await self._prime_router.generate(
+                prompt=prompt,
                 max_tokens=150,
-                temperature=0.7,
-                messages=[{"role": "user", "content": prompt}],
             )
 
-            response = message.content[0].text.strip()
-            logger.info(f"✨ Generated dynamic JARVIS response: {response}")
+            # Extract text from response
+            if hasattr(response_obj, 'content') and response_obj.content:
+                if isinstance(response_obj.content, list):
+                    response = response_obj.content[0].text.strip() if hasattr(response_obj.content[0], 'text') else str(response_obj.content[0]).strip()
+                else:
+                    response = str(response_obj.content).strip()
+            elif isinstance(response_obj, dict):
+                response = response_obj.get('content', response_obj.get('response', '')).strip()
+            else:
+                response = str(response_obj).strip()
+
+            logger.info(f"✨ Generated dynamic JARVIS response via Prime Router: {response}")
             return response
 
         except Exception as e:
-            logger.error(f"Claude API error, falling back to basic response: {e}")
+            logger.error(f"Prime Router error, falling back to basic response: {e}")
             return self._generate_basic_response(workflow, result)
 
     async def _generate_response_with_intelligent_selection(self, workflow, result) -> str:
