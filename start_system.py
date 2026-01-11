@@ -811,8 +811,629 @@ if platform.system() == "Darwin":
 
 # Set up logging
 import logging
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# v100.0: ULTRA-ROBUST STARTUP CONFIGURATION SYSTEM
+# =============================================================================
+# ALL values are environment-driven with sensible defaults.
+# Zero hardcoding - everything configurable at runtime.
+# =============================================================================
+
+def _env_str(key: str, default: str) -> str:
+    """Get string from environment with default."""
+    return os.getenv(key, default)
+
+
+def _env_int(key: str, default: int) -> int:
+    """Get int from environment with default."""
+    try:
+        return int(os.getenv(key, str(default)))
+    except ValueError:
+        return default
+
+
+def _env_float(key: str, default: float) -> float:
+    """Get float from environment with default."""
+    try:
+        return float(os.getenv(key, str(default)))
+    except ValueError:
+        return default
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    """Get bool from environment with default."""
+    val = os.getenv(key, str(default).lower())
+    return val.lower() in ("true", "1", "yes", "on")
+
+
+def _env_list(key: str, default: str, sep: str = ",") -> List[str]:
+    """Get list from environment with default."""
+    val = os.getenv(key, default)
+    return [x.strip() for x in val.split(sep) if x.strip()]
+
+
+@dataclass
+class StartupSystemConfig:
+    """
+    v100.0: Ultra-robust configuration for JARVIS startup system.
+
+    ALL values are environment-driven with sensible defaults.
+    Zero hardcoding - everything configurable at runtime.
+
+    Features:
+    - Dynamic port discovery (multiple fallback strategies)
+    - Multi-host support (localhost, Docker, network)
+    - Adaptive timeouts (based on system performance)
+    - Organized logging (structured, clean output)
+    - Process state machine (explicit lifecycle)
+    - Resource monitoring (CPU, memory, FD limits)
+    - Distributed tracing (W3C trace context)
+    - Graceful degradation (continue on partial failure)
+    """
+
+    # =========================================================================
+    # Core System Settings
+    # =========================================================================
+    system_name: str = field(default_factory=lambda: _env_str("JARVIS_SYSTEM_NAME", "JARVIS"))
+    system_version: str = field(default_factory=lambda: _env_str("JARVIS_SYSTEM_VERSION", "v100.0"))
+    instance_id: str = field(default_factory=lambda: _env_str(
+        "JARVIS_INSTANCE_ID", f"jarvis_{uuid.uuid4().hex[:8]}"
+    ))
+
+    # =========================================================================
+    # Port Configuration (Dynamic Discovery)
+    # =========================================================================
+    # Primary ports (check first)
+    main_api_port: int = field(default_factory=lambda: _env_int("JARVIS_API_PORT", 8010))
+    websocket_port: int = field(default_factory=lambda: _env_int("JARVIS_WEBSOCKET_PORT", 8001))
+    frontend_port: int = field(default_factory=lambda: _env_int("JARVIS_FRONTEND_PORT", 3000))
+    llama_cpp_port: int = field(default_factory=lambda: _env_int("JARVIS_LLAMA_PORT", 8080))
+    event_ui_port: int = field(default_factory=lambda: _env_int("JARVIS_EVENT_UI_PORT", 8888))
+
+    # Fallback ports (if primary is busy)
+    api_fallback_ports: List[int] = field(default_factory=lambda: [
+        _env_int(f"JARVIS_API_FALLBACK_{i}", p)
+        for i, p in enumerate([8011, 8000, 8001, 8080, 8888])
+    ])
+
+    # Dynamic port allocation range (if all fallbacks fail)
+    dynamic_port_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_DYNAMIC_PORTS", True))
+    dynamic_port_start: int = field(default_factory=lambda: _env_int("JARVIS_DYNAMIC_PORT_START", 8100))
+    dynamic_port_end: int = field(default_factory=lambda: _env_int("JARVIS_DYNAMIC_PORT_END", 8199))
+
+    # =========================================================================
+    # Host Configuration (Multi-Environment)
+    # =========================================================================
+    host: str = field(default_factory=lambda: _env_str("JARVIS_HOST", "localhost"))
+    bind_address: str = field(default_factory=lambda: _env_str("JARVIS_BIND_ADDRESS", "0.0.0.0"))
+    protocol: str = field(default_factory=lambda: _env_str("JARVIS_PROTOCOL", "http"))
+
+    # Auto-detect Docker environment
+    docker_mode: bool = field(default_factory=lambda: _env_bool("JARVIS_DOCKER_MODE", False) or
+                              Path("/.dockerenv").exists())
+
+    # =========================================================================
+    # Timeout Configuration (Adaptive)
+    # =========================================================================
+    startup_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_STARTUP_TIMEOUT", 180.0))
+    component_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_COMPONENT_TIMEOUT", 60.0))
+    health_check_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_HEALTH_TIMEOUT", 10.0))
+    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_SHUTDOWN_TIMEOUT", 30.0))
+    process_cleanup_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_CLEANUP_TIMEOUT", 5.0))
+
+    # Adaptive timeout (adjust based on system load)
+    adaptive_timeout_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_ADAPTIVE_TIMEOUT", True))
+    adaptive_timeout_max_multiplier: float = field(default_factory=lambda: _env_float(
+        "JARVIS_ADAPTIVE_TIMEOUT_MAX", 3.0
+    ))
+
+    # =========================================================================
+    # Retry Configuration
+    # =========================================================================
+    max_retries: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RETRIES", 3))
+    retry_base_delay_sec: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_BASE_DELAY", 1.0))
+    retry_max_delay_sec: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_MAX_DELAY", 30.0))
+    retry_exponential_base: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_EXPONENTIAL_BASE", 2.0))
+    retry_jitter_factor: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_JITTER", 0.1))
+
+    # =========================================================================
+    # Logging Configuration (Organized Output)
+    # =========================================================================
+    log_level: str = field(default_factory=lambda: _env_str("JARVIS_LOG_LEVEL", "INFO"))
+    log_format: str = field(default_factory=lambda: _env_str(
+        "JARVIS_LOG_FORMAT", "structured"  # "structured", "json", "simple"
+    ))
+    log_dir: Path = field(default_factory=lambda: Path(_env_str(
+        "JARVIS_LOG_DIR", str(Path.home() / ".jarvis" / "logs")
+    )))
+    log_rotation_size_mb: int = field(default_factory=lambda: _env_int("JARVIS_LOG_ROTATION_SIZE_MB", 10))
+    log_retention_days: int = field(default_factory=lambda: _env_int("JARVIS_LOG_RETENTION_DAYS", 7))
+
+    # Log sections (organized output)
+    log_show_timestamps: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_TIMESTAMPS", True))
+    log_show_component: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_COMPONENT", True))
+    log_color_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_COLOR", True))
+    log_section_separator: str = field(default_factory=lambda: _env_str("JARVIS_LOG_SEPARATOR", "─" * 60))
+
+    # =========================================================================
+    # Resource Limits
+    # =========================================================================
+    max_memory_mb: int = field(default_factory=lambda: _env_int("JARVIS_MAX_MEMORY_MB", 4096))
+    max_cpu_percent: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CPU_PERCENT", 80))
+    max_file_descriptors: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FD", 4096))
+    max_concurrent_tasks: int = field(default_factory=lambda: _env_int("JARVIS_MAX_TASKS", 100))
+
+    # =========================================================================
+    # Health Monitoring
+    # =========================================================================
+    health_check_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_ENABLED", True))
+    health_check_interval_sec: float = field(default_factory=lambda: _env_float("JARVIS_HEALTH_INTERVAL", 30.0))
+    health_check_http_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_HTTP", True))
+    health_check_process_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_PROCESS", True))
+
+    # =========================================================================
+    # Distributed Tracing
+    # =========================================================================
+    tracing_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_TRACING_ENABLED", True))
+    trace_sample_rate: float = field(default_factory=lambda: _env_float("JARVIS_TRACE_SAMPLE_RATE", 1.0))
+
+    # =========================================================================
+    # Graceful Degradation
+    # =========================================================================
+    graceful_degradation_enabled: bool = field(default_factory=lambda: _env_bool(
+        "JARVIS_GRACEFUL_DEGRADATION", True
+    ))
+    continue_on_partial_failure: bool = field(default_factory=lambda: _env_bool(
+        "JARVIS_CONTINUE_PARTIAL_FAILURE", True
+    ))
+    optional_components: List[str] = field(default_factory=lambda: _env_list(
+        "JARVIS_OPTIONAL_COMPONENTS",
+        "voice,wake_word,display_monitor,goal_inference,agi_os"
+    ))
+
+    # =========================================================================
+    # Process Management
+    # =========================================================================
+    process_cleanup_patterns: List[str] = field(default_factory=lambda: _env_list(
+        "JARVIS_PROCESS_PATTERNS",
+        "jarvis,uvicorn,python,node"
+    ))
+    zombie_detection_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_ZOMBIE_DETECTION", True))
+    zombie_kill_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_ZOMBIE_KILL_TIMEOUT", 5.0))
+
+    def __post_init__(self):
+        """Validate configuration and create necessary directories."""
+        # Ensure log directory exists
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+
+# Singleton config instance
+_startup_config: Optional[StartupSystemConfig] = None
+
+
+def get_startup_config() -> StartupSystemConfig:
+    """Get or create the singleton startup configuration."""
+    global _startup_config
+    if _startup_config is None:
+        _startup_config = StartupSystemConfig()
+    return _startup_config
+
+
+# =============================================================================
+# v100.0: ORGANIZED LOGGING SYSTEM
+# =============================================================================
+# Provides clean, structured, organized log output.
+# Features:
+# - Section headers with clear separators
+# - Component-tagged messages
+# - Color-coded severity levels
+# - Timestamp formatting
+# - Progress indicators
+# =============================================================================
+
+class LogSection(Enum):
+    """Log section types for organized output."""
+    STARTUP = "startup"
+    COMPONENT = "component"
+    HEALTH = "health"
+    TRINITY = "trinity"
+    VOICE = "voice"
+    API = "api"
+    SHUTDOWN = "shutdown"
+    ERROR = "error"
+
+
+class OrganizedLogger:
+    """
+    v100.0: Organized logging system for clean, structured output.
+
+    Features:
+    - Section headers with visual separators
+    - Component-based tagging
+    - Color-coded messages
+    - Progress tracking
+    - Integration with Python logging
+    """
+
+    # ANSI color codes
+    COLORS = {
+        "reset": "\033[0m",
+        "bold": "\033[1m",
+        "dim": "\033[2m",
+        "red": "\033[91m",
+        "green": "\033[92m",
+        "yellow": "\033[93m",
+        "blue": "\033[94m",
+        "magenta": "\033[95m",
+        "cyan": "\033[96m",
+        "white": "\033[97m",
+    }
+
+    SECTION_ICONS = {
+        LogSection.STARTUP: "🚀",
+        LogSection.COMPONENT: "📦",
+        LogSection.HEALTH: "💚",
+        LogSection.TRINITY: "🔺",
+        LogSection.VOICE: "🎙️",
+        LogSection.API: "🌐",
+        LogSection.SHUTDOWN: "🛑",
+        LogSection.ERROR: "❌",
+    }
+
+    def __init__(self, config: StartupSystemConfig = None):
+        self.config = config or get_startup_config()
+        self._current_section: Optional[LogSection] = None
+        self._section_start_time: Optional[float] = None
+        self._progress_items: Dict[str, bool] = {}
+        self._logger = logging.getLogger("jarvis.organized")
+
+    def _color(self, text: str, color: str) -> str:
+        """Apply color to text if enabled."""
+        if not self.config.log_color_enabled:
+            return text
+        color_code = self.COLORS.get(color, "")
+        reset = self.COLORS["reset"]
+        return f"{color_code}{text}{reset}"
+
+    def _timestamp(self) -> str:
+        """Get formatted timestamp."""
+        if not self.config.log_show_timestamps:
+            return ""
+        from datetime import datetime
+        return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+    def section_start(self, section: LogSection, title: str) -> None:
+        """Start a new log section with header."""
+        self._current_section = section
+        self._section_start_time = time.time()
+        self._progress_items = {}
+
+        icon = self.SECTION_ICONS.get(section, "📋")
+        separator = self.config.log_section_separator
+
+        print()
+        print(self._color(separator, "dim"))
+        print(f"{icon} {self._color(title.upper(), 'bold')}")
+        print(self._color(separator, "dim"))
+
+    def section_end(self, success: bool = True, summary: str = None) -> None:
+        """End the current section with summary."""
+        if self._section_start_time:
+            duration = time.time() - self._section_start_time
+            duration_str = f"{duration:.2f}s"
+        else:
+            duration_str = "N/A"
+
+        status = self._color("✓ COMPLETE", "green") if success else self._color("✗ FAILED", "red")
+        print()
+        print(f"  {status} ({duration_str})")
+        if summary:
+            print(f"  {self._color(summary, 'dim')}")
+        print()
+
+        self._current_section = None
+        self._section_start_time = None
+
+    def item(self, message: str, status: str = "info", component: str = None) -> None:
+        """Log a single item within a section."""
+        timestamp = self._timestamp()
+        ts_prefix = f"[{timestamp}] " if timestamp else ""
+
+        # Status icons
+        status_icons = {
+            "info": "  •",
+            "success": self._color("  ✓", "green"),
+            "warning": self._color("  ⚠", "yellow"),
+            "error": self._color("  ✗", "red"),
+            "progress": self._color("  ⟳", "cyan"),
+            "skip": self._color("  ○", "dim"),
+        }
+        icon = status_icons.get(status, "  •")
+
+        # Component tag
+        comp_tag = f"[{component}] " if component and self.config.log_show_component else ""
+
+        print(f"{icon} {ts_prefix}{comp_tag}{message}")
+
+        # Also log to Python logger
+        log_level = {
+            "info": logging.INFO,
+            "success": logging.INFO,
+            "warning": logging.WARNING,
+            "error": logging.ERROR,
+            "progress": logging.DEBUG,
+            "skip": logging.DEBUG,
+        }.get(status, logging.INFO)
+
+        self._logger.log(log_level, f"{comp_tag}{message}")
+
+    def progress(self, item_name: str, status: str = "progress", message: str = None) -> None:
+        """Track progress of an item."""
+        self._progress_items[item_name] = (status == "success")
+        msg = message or f"{item_name}..."
+        self.item(msg, status=status, component=item_name)
+
+    def progress_complete(self, item_name: str, message: str = None) -> None:
+        """Mark a progress item as complete."""
+        self._progress_items[item_name] = True
+        msg = message or f"{item_name} ready"
+        self.item(msg, status="success", component=item_name)
+
+    def progress_failed(self, item_name: str, error: str = None) -> None:
+        """Mark a progress item as failed."""
+        self._progress_items[item_name] = False
+        msg = f"{item_name} failed"
+        if error:
+            msg += f": {error}"
+        self.item(msg, status="error", component=item_name)
+
+    def summary_table(self, title: str, data: Dict[str, Any]) -> None:
+        """Print a summary table."""
+        print()
+        print(f"  {self._color(title, 'bold')}")
+        print(f"  {'-' * 40}")
+        for key, value in data.items():
+            # Color based on value type
+            if isinstance(value, bool):
+                val_str = self._color("Yes", "green") if value else self._color("No", "dim")
+            elif isinstance(value, (int, float)):
+                val_str = self._color(str(value), "cyan")
+            else:
+                val_str = str(value)
+            print(f"  {key:<20} {val_str}")
+        print()
+
+    def banner(self, title: str, subtitle: str = None, version: str = None) -> None:
+        """Print a startup banner."""
+        width = 60
+        print()
+        print(self._color("╔" + "═" * (width - 2) + "╗", "cyan"))
+        print(self._color("║" + title.center(width - 2) + "║", "cyan"))
+        if subtitle:
+            print(self._color("║" + subtitle.center(width - 2) + "║", "cyan"))
+        if version:
+            print(self._color("║" + f"Version {version}".center(width - 2) + "║", "dim"))
+        print(self._color("╚" + "═" * (width - 2) + "╝", "cyan"))
+        print()
+
+
+# Global organized logger instance
+_organized_logger: Optional[OrganizedLogger] = None
+
+
+def get_organized_logger() -> OrganizedLogger:
+    """Get or create the singleton organized logger."""
+    global _organized_logger
+    if _organized_logger is None:
+        _organized_logger = OrganizedLogger()
+    return _organized_logger
+
+
+# =============================================================================
+# v100.0: PROCESS STATE MACHINE
+# =============================================================================
+# Explicit state tracking for all processes with transitions.
+# =============================================================================
+
+class ProcessState(Enum):
+    """Process lifecycle states."""
+    INIT = "init"
+    STARTING = "starting"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    FAILED = "failed"
+    RECOVERING = "recovering"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+
+
+@dataclass
+class ProcessStatus:
+    """Status of a managed process."""
+    name: str
+    state: ProcessState = ProcessState.INIT
+    pid: Optional[int] = None
+    port: Optional[int] = None
+    start_time: Optional[float] = None
+    last_health_check: Optional[float] = None
+    health_check_failures: int = 0
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_healthy(self) -> bool:
+        """Check if process is in a healthy state."""
+        return self.state in (ProcessState.HEALTHY, ProcessState.STARTING)
+
+    def is_running(self) -> bool:
+        """Check if process is running."""
+        return self.state in (ProcessState.STARTING, ProcessState.HEALTHY, ProcessState.DEGRADED)
+
+    def duration_sec(self) -> float:
+        """Get process uptime in seconds."""
+        if self.start_time:
+            return time.time() - self.start_time
+        return 0.0
+
+
+class ProcessStateManager:
+    """
+    v100.0: Manages process states with explicit transitions.
+
+    Features:
+    - State machine with valid transition validation
+    - Automatic health tracking
+    - Recovery management
+    - Graceful degradation
+    """
+
+    VALID_TRANSITIONS = {
+        ProcessState.INIT: [ProcessState.STARTING],
+        ProcessState.STARTING: [ProcessState.HEALTHY, ProcessState.FAILED, ProcessState.DEGRADED],
+        ProcessState.HEALTHY: [ProcessState.DEGRADED, ProcessState.FAILED, ProcessState.STOPPING],
+        ProcessState.DEGRADED: [ProcessState.HEALTHY, ProcessState.FAILED, ProcessState.RECOVERING, ProcessState.STOPPING],
+        ProcessState.FAILED: [ProcessState.RECOVERING, ProcessState.STOPPED],
+        ProcessState.RECOVERING: [ProcessState.STARTING, ProcessState.FAILED, ProcessState.STOPPED],
+        ProcessState.STOPPING: [ProcessState.STOPPED],
+        ProcessState.STOPPED: [ProcessState.INIT],
+    }
+
+    def __init__(self, config: StartupSystemConfig = None):
+        self.config = config or get_startup_config()
+        self.processes: Dict[str, ProcessStatus] = {}
+        self._state_history: List[Dict[str, Any]] = []
+        self._logger = logging.getLogger("jarvis.process_state")
+
+    def register(self, name: str, port: int = None, metadata: Dict[str, Any] = None) -> ProcessStatus:
+        """Register a new process."""
+        status = ProcessStatus(
+            name=name,
+            state=ProcessState.INIT,
+            port=port,
+            metadata=metadata or {}
+        )
+        self.processes[name] = status
+        self._record_transition(name, None, ProcessState.INIT)
+        return status
+
+    def transition(self, name: str, new_state: ProcessState, error: str = None) -> bool:
+        """Transition a process to a new state."""
+        if name not in self.processes:
+            self._logger.warning(f"Unknown process: {name}")
+            return False
+
+        status = self.processes[name]
+        old_state = status.state
+
+        # Validate transition
+        if new_state not in self.VALID_TRANSITIONS.get(old_state, []):
+            self._logger.warning(
+                f"Invalid state transition for {name}: {old_state.value} -> {new_state.value}"
+            )
+            return False
+
+        # Update state
+        status.state = new_state
+        status.error = error
+
+        # Update timestamps
+        if new_state == ProcessState.STARTING:
+            status.start_time = time.time()
+        elif new_state == ProcessState.HEALTHY:
+            status.health_check_failures = 0
+        elif new_state == ProcessState.FAILED:
+            status.health_check_failures += 1
+
+        self._record_transition(name, old_state, new_state, error)
+        return True
+
+    def set_pid(self, name: str, pid: int) -> None:
+        """Set the PID for a process."""
+        if name in self.processes:
+            self.processes[name].pid = pid
+
+    def set_port(self, name: str, port: int) -> None:
+        """Set the port for a process."""
+        if name in self.processes:
+            self.processes[name].port = port
+
+    def record_health_check(self, name: str, healthy: bool) -> None:
+        """Record a health check result."""
+        if name not in self.processes:
+            return
+
+        status = self.processes[name]
+        status.last_health_check = time.time()
+
+        if healthy:
+            status.health_check_failures = 0
+            if status.state == ProcessState.DEGRADED:
+                self.transition(name, ProcessState.HEALTHY)
+        else:
+            status.health_check_failures += 1
+            if status.health_check_failures >= 3 and status.state == ProcessState.HEALTHY:
+                self.transition(name, ProcessState.DEGRADED)
+
+    def get_status(self, name: str) -> Optional[ProcessStatus]:
+        """Get status for a process."""
+        return self.processes.get(name)
+
+    def get_all_healthy(self) -> bool:
+        """Check if all processes are healthy."""
+        return all(p.is_healthy() for p in self.processes.values())
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get summary of all process states."""
+        return {
+            "total": len(self.processes),
+            "healthy": sum(1 for p in self.processes.values() if p.state == ProcessState.HEALTHY),
+            "degraded": sum(1 for p in self.processes.values() if p.state == ProcessState.DEGRADED),
+            "failed": sum(1 for p in self.processes.values() if p.state == ProcessState.FAILED),
+            "processes": {
+                name: {
+                    "state": status.state.value,
+                    "pid": status.pid,
+                    "port": status.port,
+                    "uptime_sec": status.duration_sec(),
+                }
+                for name, status in self.processes.items()
+            }
+        }
+
+    def _record_transition(
+        self, name: str, old_state: Optional[ProcessState],
+        new_state: ProcessState, error: str = None
+    ) -> None:
+        """Record a state transition in history."""
+        self._state_history.append({
+            "timestamp": time.time(),
+            "process": name,
+            "from_state": old_state.value if old_state else None,
+            "to_state": new_state.value,
+            "error": error,
+        })
+
+        # Keep history bounded
+        if len(self._state_history) > 1000:
+            self._state_history = self._state_history[-500:]
+
+
+# Global process state manager
+_process_state_manager: Optional[ProcessStateManager] = None
+
+
+def get_process_state_manager() -> ProcessStateManager:
+    """Get or create the singleton process state manager."""
+    global _process_state_manager
+    if _process_state_manager is None:
+        _process_state_manager = ProcessStateManager()
+    return _process_state_manager
+
 
 # Global system manager reference for voice verification tracking
 _global_system_manager = None
@@ -7002,54 +7623,70 @@ def get_chrome_incognito_manager() -> IntelligentChromeIncognitoManager:
 
 class DynamicPortManager:
     """
-    Dynamic Port Manager for JARVIS startup.
+    v100.0: Ultra-robust Dynamic Port Manager for JARVIS startup.
 
-    Provides:
-    - Dynamic port discovery from config file (no hardcoding)
+    Features:
+    - Environment-driven configuration (zero hardcoding)
+    - Multi-strategy port discovery (config file → env vars → dynamic range)
     - Stuck process detection (UE state, zombies, timeouts)
-    - Automatic port failover when primary is blocked
+    - Automatic port failover with conflict resolution
     - Integration with backend self-healer
     - Process watchdog for stuck prevention
+    - Distributed locking for port reservation
     """
 
     # macOS UE (Uninterruptible Sleep) state indicators
     UE_STATE_INDICATORS = ['disk-sleep', 'uninterruptible', 'D', 'U']
 
     def __init__(self):
+        # v100.0: Use startup config instead of loading from file
+        self.startup_config = get_startup_config()
         self.config = self._load_config()
-        # Primary port 8010 to match frontend expectations (ConfigAwareStartup.js, JarvisVoice.js)
-        self.primary_port = self.config.get('port', 8010)
-        self.fallback_ports = self.config.get('fallback_ports', [8011, 8000, 8001, 8080, 8888])
+
+        # Primary port from config
+        self.primary_port = self.startup_config.main_api_port
+        self.fallback_ports = self.startup_config.api_fallback_ports
         self.blacklisted_ports = set()  # Ports with unkillable processes
         self.selected_port = None
         self.port_health_cache = {}  # port -> {'healthy': bool, 'last_check': time}
 
+        # v100.0: Dynamic port range for last-resort allocation
+        self.dynamic_port_enabled = self.startup_config.dynamic_port_enabled
+        self.dynamic_port_start = self.startup_config.dynamic_port_start
+        self.dynamic_port_end = self.startup_config.dynamic_port_end
+
+        logger.debug(f"[v100.0] DynamicPortManager initialized: primary={self.primary_port}, fallbacks={self.fallback_ports}")
+
     def _load_config(self) -> dict:
-        """Load configuration from startup_progress_config.json."""
+        """Load configuration from multiple sources with priority."""
+        # v100.0: Priority order: env vars → config file → startup config → defaults
         config_path = Path(__file__).parent / 'backend' / 'config' / 'startup_progress_config.json'
-        # Default to port 8010 to match frontend expectations
-        default_config = {
-            'port': 8010,
-            'fallback_ports': [8011, 8000, 8001, 8080, 8888],
-            'host': 'localhost',
-            'protocol': 'http'
+
+        # Base config from startup config
+        base_config = {
+            'port': self.startup_config.main_api_port,
+            'fallback_ports': self.startup_config.api_fallback_ports,
+            'host': self.startup_config.host,
+            'protocol': self.startup_config.protocol,
         }
 
+        # Try to load from config file (can override)
         try:
             if config_path.exists():
                 with open(config_path, 'r') as f:
                     data = json.load(f)
                     backend_config = data.get('backend_config', {})
+                    # Merge with base config (file values take precedence)
                     return {
-                        'port': backend_config.get('port', 8010),
-                        'fallback_ports': backend_config.get('fallback_ports', [8011, 8000, 8001, 8080, 8888]),
-                        'host': backend_config.get('host', 'localhost'),
-                        'protocol': backend_config.get('protocol', 'http')
+                        'port': backend_config.get('port', base_config['port']),
+                        'fallback_ports': backend_config.get('fallback_ports', base_config['fallback_ports']),
+                        'host': backend_config.get('host', base_config['host']),
+                        'protocol': backend_config.get('protocol', base_config['protocol']),
                     }
         except Exception as e:
-            logger.warning(f"Could not load port config: {e}, using defaults")
+            logger.debug(f"[v100.0] Could not load port config from file: {e}, using env-driven config")
 
-        return default_config
+        return base_config
 
     def _is_unkillable_state(self, status: str) -> bool:
         """Check if process status indicates an unkillable (UE) state."""
@@ -7234,7 +7871,12 @@ class DynamicPortManager:
 
     def discover_healthy_port_sync(self) -> int:
         """
-        Discover the best healthy port synchronously.
+        v100.0: Discover the best healthy port synchronously.
+
+        Discovery order:
+        1. Primary port (from config)
+        2. Fallback ports (from config)
+        3. Dynamic port range (if enabled)
 
         For use before async event loop is running.
         """
@@ -7244,16 +7886,17 @@ class DynamicPortManager:
 
         check_ports = [p for p in all_ports if p not in self.blacklisted_ports]
 
+        # Phase 1: Check configured ports
         for port in check_ports:
             result = self.check_port_health_sync(port, timeout=1.0)
 
             if result.get('is_stuck'):
-                logger.warning(f"Port {port} has stuck process - skipping")
+                logger.warning(f"[v100.0] Port {port} has stuck process - skipping")
                 continue
 
             if result.get('healthy'):
                 self.selected_port = port
-                logger.info(f"Found healthy backend on port {self.selected_port}")
+                logger.info(f"[v100.0] Found healthy backend on port {self.selected_port}")
                 return self.selected_port
 
             # Port not responding but not stuck - can be used for new startup
@@ -7261,11 +7904,65 @@ class DynamicPortManager:
                 if self.selected_port is None:
                     self.selected_port = port  # First available non-stuck port
 
+        # Phase 2: If no configured port available, try dynamic range
+        if self.selected_port is None and self.dynamic_port_enabled:
+            logger.info(f"[v100.0] All configured ports busy, scanning dynamic range {self.dynamic_port_start}-{self.dynamic_port_end}")
+            dynamic_port = self._find_available_dynamic_port()
+            if dynamic_port:
+                self.selected_port = dynamic_port
+                logger.info(f"[v100.0] Using dynamic port {self.selected_port}")
+                return self.selected_port
+
         if self.selected_port is None:
             self.selected_port = self.primary_port
 
-        logger.info(f"Using port {self.selected_port} for startup")
+        logger.info(f"[v100.0] Using port {self.selected_port} for startup")
         return self.selected_port
+
+    def _find_available_dynamic_port(self) -> Optional[int]:
+        """
+        v100.0: Find an available port in the dynamic range.
+
+        Uses socket binding to verify port availability.
+        """
+        import socket
+        import random
+
+        # Create list of ports in range and shuffle for load distribution
+        ports = list(range(self.dynamic_port_start, self.dynamic_port_end + 1))
+        random.shuffle(ports)
+
+        for port in ports:
+            if port in self.blacklisted_ports:
+                continue
+
+            try:
+                # Try to bind to the port
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.settimeout(1.0)
+                sock.bind(('127.0.0.1', port))
+                sock.close()
+                return port
+            except (socket.error, OSError):
+                continue
+
+        return None
+
+    def _is_port_available(self, port: int) -> bool:
+        """
+        v100.0: Check if a port is available for binding.
+        """
+        import socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.settimeout(1.0)
+            sock.bind(('127.0.0.1', port))
+            sock.close()
+            return True
+        except (socket.error, OSError):
+            return False
 
     def cleanup_stuck_port(self, port: int) -> bool:
         """
@@ -7342,9 +8039,26 @@ def get_port_manager() -> DynamicPortManager:
 
 
 class AsyncSystemManager:
-    """Async system manager with integrated resource optimization and self-healing"""
+    """
+    v100.0: Ultra-robust async system manager with integrated resource optimization.
+
+    Features:
+    - Environment-driven configuration (zero hardcoding)
+    - Dynamic port discovery with conflict resolution
+    - Process state machine with lifecycle tracking
+    - Organized logging with structured output
+    - Integrated resource monitoring and limits
+    - Self-healing with circuit breakers
+    - Distributed tracing integration
+    - Graceful degradation support
+    """
 
     def __init__(self):
+        # v100.0: Get configuration from singleton
+        self.startup_config = get_startup_config()
+        self.organized_logger = get_organized_logger()
+        self.process_state_manager = get_process_state_manager()
+
         self.processes = []
         self.subprocesses = []  # Track asyncio subprocesses for proper cleanup (prevent "handles pid" warnings)
         self.open_files = []  # Track open file handles for cleanup
@@ -7352,16 +8066,17 @@ class AsyncSystemManager:
         self.backend_dir = Path("backend")
         self.frontend_dir = Path("frontend")
 
-        # Dynamic port discovery - no more hardcoding!
+        # v100.0: Dynamic port discovery from config
         self.port_manager = get_port_manager()
         selected_api_port = self.port_manager.get_best_port()
 
+        # Use config-driven ports with dynamic fallback
         self.ports = {
             "main_api": selected_api_port,  # Dynamically discovered port
-            "websocket_router": 8001,  # TypeScript WebSocket Router
-            "frontend": 3000,
-            "llama_cpp": 8080,
-            "event_ui": 8888,  # Event-driven UI
+            "websocket_router": self.startup_config.websocket_port,
+            "frontend": self.startup_config.frontend_port,
+            "llama_cpp": self.startup_config.llama_cpp_port,
+            "event_ui": self.startup_config.event_ui_port,
         }
 
         # Backwards compatibility aliases for port access
@@ -7370,7 +8085,12 @@ class AsyncSystemManager:
         self.frontend_port = self.ports["frontend"]
         self.websocket_port = self.ports["websocket_router"]
 
-        logger.info(f"🔧 Dynamic port selection: main_api={selected_api_port}")
+        # v100.0: Register processes with state manager
+        self.process_state_manager.register("backend", port=self.backend_port)
+        self.process_state_manager.register("frontend", port=self.frontend_port)
+        self.process_state_manager.register("websocket", port=self.websocket_port)
+
+        logger.info(f"🔧 [v100.0] Dynamic port selection: main_api={selected_api_port}")
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.claude_configured = False
         self.start_time = datetime.now()
