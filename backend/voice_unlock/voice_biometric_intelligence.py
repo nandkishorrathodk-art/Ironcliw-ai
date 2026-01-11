@@ -1805,6 +1805,124 @@ class VoiceBiometricIntelligence:
         except Exception as e:
             logger.debug(f"Baseline adaptation failed: {e}")
 
+    async def _analyze_voice_health_for_borderline(
+        self,
+        result: VerificationResult,
+        audio_data: bytes,
+    ) -> Tuple[VerificationResult, bool]:
+        """
+        Analyze voice health when confidence is borderline.
+
+        v2.7 Enhancement: Sick voice detection with intelligent challenge flow.
+        If voice sounds different due to illness/fatigue but behavioral patterns
+        match, we can be more lenient or trigger a challenge instead of rejection.
+
+        Per CLAUDE.md:
+            "Your voice sounds different today - are you feeling alright?
+            For security, I'd normally ask you to try again, but your speech
+            patterns and timing match perfectly."
+
+        Args:
+            result: Current verification result
+            audio_data: Raw audio bytes
+
+        Returns:
+            Tuple of (updated_result, should_trigger_challenge)
+        """
+        should_challenge = False
+
+        try:
+            # Import voice health analyzer
+            from .reasoning.voice_health_analyzer import get_voice_health_analyzer
+
+            analyzer = await get_voice_health_analyzer()
+            health_result = await analyzer.analyze(
+                audio_data=audio_data,
+                user_id=result.speaker_name or self._owner_name or "owner",
+                sample_rate=16000,
+            )
+
+            # Log health analysis
+            logger.info(
+                f"🩺 Voice health: {health_result.health_state.value}, "
+                f"health_score={health_result.health_score:.1%}, "
+                f"impact={health_result.confidence_impact.value}"
+            )
+
+            # Store health info in result
+            if not hasattr(result, 'voice_health'):
+                result.voice_health = {}
+
+            result.voice_health = {
+                'state': health_result.health_state.value,
+                'score': health_result.health_score,
+                'impact': health_result.confidence_impact.value,
+                'hoarseness': health_result.hoarseness_score,
+                'fatigue': health_result.fatigue_score,
+                'stress': health_result.stress_score,
+                'feedback': health_result.user_feedback_suggestion,
+            }
+
+            # Check if sick voice + behavioral match should trigger challenge
+            from .reasoning.voice_health_analyzer import VoiceHealthIndicator, VoiceConfidenceImpact
+
+            sick_indicators = [
+                VoiceHealthIndicator.HOARSE,
+                VoiceHealthIndicator.CONGESTED,
+                VoiceHealthIndicator.FATIGUED,
+                VoiceHealthIndicator.STRESSED,
+            ]
+
+            behavioral_confidence = (
+                result.behavioral.behavioral_confidence
+                if result.behavioral else 0.0
+            )
+
+            is_sick_voice = health_result.health_state in sick_indicators
+            has_high_behavioral = behavioral_confidence >= 0.75
+
+            # Sick voice + high behavioral = trigger challenge instead of reject
+            if is_sick_voice and has_high_behavioral:
+                logger.info(
+                    f"🩺 Sick voice detected ({health_result.health_state.value}) "
+                    f"but behavioral confidence is high ({behavioral_confidence:.1%}) - "
+                    "triggering challenge flow"
+                )
+                should_challenge = True
+
+                # Add context to reasoning
+                result.bayesian_reasoning.append(
+                    f"Voice appears {health_result.health_state.value} but speech patterns match. "
+                    f"Behavioral confidence: {behavioral_confidence:.1%}"
+                )
+
+                # If confidence impact is moderate/minor, we can boost confidence
+                if health_result.confidence_impact in [
+                    VoiceConfidenceImpact.MINOR,
+                    VoiceConfidenceImpact.MODERATE,
+                ]:
+                    # Boost confidence slightly based on behavioral match
+                    boost = min(0.10, behavioral_confidence - 0.75)  # Up to 10% boost
+                    result.fused_confidence = min(1.0, result.fused_confidence + boost)
+                    result.confidence = result.fused_confidence
+
+                    logger.info(
+                        f"🩺 Confidence boosted by {boost:.1%} due to behavioral match "
+                        f"despite sick voice"
+                    )
+
+                # Update announcement with health feedback
+                if health_result.user_feedback_suggestion:
+                    result.learned_something = True
+                    result.learning_note = health_result.user_feedback_suggestion
+
+        except ImportError as e:
+            logger.debug(f"Voice health analyzer not available: {e}")
+        except Exception as e:
+            logger.warning(f"Voice health analysis error: {e}")
+
+        return result, should_challenge
+
     async def _run_reasoning_for_borderline(
         self,
         result: VerificationResult,
@@ -1821,6 +1939,17 @@ class VoiceBiometricIntelligence:
         # Only use reasoning for borderline cases
         if result.level not in [RecognitionLevel.BORDERLINE, RecognitionLevel.GOOD]:
             return result
+
+        # v2.7: Analyze voice health before reasoning
+        result, should_challenge = await self._analyze_voice_health_for_borderline(
+            result, audio_data
+        )
+
+        # If sick voice + high behavioral match, adjust reasoning context
+        if should_challenge and hasattr(result, 'voice_health'):
+            context = context or {}
+            context['voice_health'] = result.voice_health
+            context['sick_voice_detected'] = True
 
         try:
             logger.info("🧠 Running reasoning graph for borderline case...")
@@ -3810,10 +3939,24 @@ class VoiceBiometricIntelligence:
 
         try:
             # Gather all confidence sources
-            ml_confidence = result.voice_confidence
-            physics_confidence = result.physics_confidence
-            behavioral_confidence = result.behavioral.behavioral_confidence if result.behavioral else 0.5
-            context_confidence = self._get_context_confidence(result)
+            # v2.7: Pass None for unavailable sources (don't use default values)
+            # This ensures Bayesian fusion properly excludes unavailable evidence
+
+            # ML confidence: None if 0.0 (model unavailable/failed)
+            ml_confidence = result.voice_confidence if result.voice_confidence > 0.05 else None
+
+            # Physics confidence: None if not computed
+            physics_confidence = result.physics_confidence if result.physics_confidence > 0.05 else None
+
+            # Behavioral confidence: None if not available (don't use 0.5 default!)
+            behavioral_confidence = None
+            if result.behavioral and result.behavioral.behavioral_confidence > 0.05:
+                behavioral_confidence = result.behavioral.behavioral_confidence
+
+            # Context confidence: Only use if we have valid audio analysis
+            context_confidence = None
+            if result.audio and result.audio.has_speech:
+                context_confidence = self._get_context_confidence(result)
 
             # Build details for each evidence source
             ml_details = {

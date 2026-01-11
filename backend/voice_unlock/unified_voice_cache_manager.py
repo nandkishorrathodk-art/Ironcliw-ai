@@ -546,9 +546,12 @@ class UnifiedVoiceCacheManager:
 
         # =================================================================
         # ANTI-SPOOFING: Recent embeddings for replay detection
+        # v2.7: Added lock to prevent race conditions in concurrent access
         # =================================================================
         self._recent_embeddings: List[Tuple[np.ndarray, datetime, str]] = []
         self._max_recent_embeddings = 50
+        self._embeddings_lock = asyncio.Lock()  # Protects _recent_embeddings
+        self._cache_lock = asyncio.Lock()  # Protects _session_cache and _preloaded_profiles
 
         # =================================================================
         # COST TRACKING
@@ -962,6 +965,9 @@ class UnifiedVoiceCacheManager:
         """
         Detect potential replay attacks by analyzing embedding patterns.
 
+        v2.7: Added asyncio.Lock to prevent race conditions when multiple
+        authentication attempts happen concurrently.
+
         Replay attacks are detected by:
         1. Exact embedding matches (recording playback)
         2. Suspiciously similar consecutive attempts
@@ -976,60 +982,61 @@ class UnifiedVoiceCacheManager:
         """
         current_time = datetime.now()
 
-        # Clean old entries from recent embeddings
-        window_start = current_time - timedelta(seconds=CacheConfig.REPLAY_DETECTION_WINDOW_SECONDS)
-        self._recent_embeddings = [
-            (emb, ts, fp) for emb, ts, fp in self._recent_embeddings
-            if ts > window_start
-        ]
+        async with self._embeddings_lock:
+            # Clean old entries from recent embeddings
+            window_start = current_time - timedelta(seconds=CacheConfig.REPLAY_DETECTION_WINDOW_SECONDS)
+            self._recent_embeddings = [
+                (emb, ts, fp) for emb, ts, fp in self._recent_embeddings
+                if ts > window_start
+            ]
 
-        # Check for suspiciously similar embeddings
-        for prev_embedding, prev_time, prev_fp in self._recent_embeddings:
-            similarity = self._compute_similarity(embedding, prev_embedding)
+            # Check for suspiciously similar embeddings
+            for prev_embedding, prev_time, prev_fp in self._recent_embeddings:
+                similarity = self._compute_similarity(embedding, prev_embedding)
 
-            # Exact match - strong indicator of replay
-            if similarity >= CacheConfig.MAX_REPLAY_SIMILARITY:
-                self._stats.replay_attacks_blocked += 1
-                self._stats.spoofing_attempts_detected += 1
-                return (
-                    True,
-                    0.95,
-                    f"Exact embedding match detected ({similarity:.4f}) - possible recording"
-                )
+                # Exact match - strong indicator of replay
+                if similarity >= CacheConfig.MAX_REPLAY_SIMILARITY:
+                    self._stats.replay_attacks_blocked += 1
+                    self._stats.spoofing_attempts_detected += 1
+                    return (
+                        True,
+                        0.95,
+                        f"Exact embedding match detected ({similarity:.4f}) - possible recording"
+                    )
 
-            # Audio fingerprint match
-            if audio_fingerprint and prev_fp and audio_fingerprint == prev_fp:
-                self._stats.replay_attacks_blocked += 1
-                self._stats.spoofing_attempts_detected += 1
-                return (
-                    True,
-                    0.90,
-                    "Audio fingerprint matches recent attempt - possible replay"
-                )
+                # Audio fingerprint match
+                if audio_fingerprint and prev_fp and audio_fingerprint == prev_fp:
+                    self._stats.replay_attacks_blocked += 1
+                    self._stats.spoofing_attempts_detected += 1
+                    return (
+                        True,
+                        0.90,
+                        "Audio fingerprint matches recent attempt - possible replay"
+                    )
 
-        # Check for unnaturally consistent voice (no micro-variations)
-        if len(self._recent_embeddings) >= 3:
-            recent_similarities = []
-            for prev_emb, _, _ in self._recent_embeddings[-3:]:
-                sim = self._compute_similarity(embedding, prev_emb)
-                recent_similarities.append(sim)
+            # Check for unnaturally consistent voice (no micro-variations)
+            if len(self._recent_embeddings) >= 3:
+                recent_similarities = []
+                for prev_emb, _, _ in self._recent_embeddings[-3:]:
+                    sim = self._compute_similarity(embedding, prev_emb)
+                    recent_similarities.append(sim)
 
-            # Natural voice has some variation between utterances
-            variation = np.std(recent_similarities)
-            if variation < CacheConfig.MIN_VOICE_VARIATION:
-                self._stats.spoofing_attempts_detected += 1
-                return (
-                    True,
-                    0.70,
-                    f"Unnaturally consistent voice pattern (variation={variation:.4f})"
-                )
+                # Natural voice has some variation between utterances
+                variation = np.std(recent_similarities)
+                if variation < CacheConfig.MIN_VOICE_VARIATION:
+                    self._stats.spoofing_attempts_detected += 1
+                    return (
+                        True,
+                        0.70,
+                        f"Unnaturally consistent voice pattern (variation={variation:.4f})"
+                    )
 
-        # Store current embedding for future comparison
-        self._recent_embeddings.append((embedding.copy(), current_time, audio_fingerprint))
+            # Store current embedding for future comparison
+            self._recent_embeddings.append((embedding.copy(), current_time, audio_fingerprint))
 
-        # Limit history size
-        if len(self._recent_embeddings) > self._max_recent_embeddings:
-            self._recent_embeddings.pop(0)
+            # Limit history size
+            if len(self._recent_embeddings) > self._max_recent_embeddings:
+                self._recent_embeddings.pop(0)
 
         return (False, 0.0, "No replay attack detected")
 
@@ -2598,46 +2605,52 @@ class UnifiedVoiceCacheManager:
         return result
 
     async def _emergency_profile_load(self):
-        """Emergency profile loading when cache is empty."""
+        """
+        Emergency profile loading when cache is empty.
+
+        v2.7: Added lock protection for thread-safe profile cache updates.
+        """
         try:
             # Try SQLite first (fastest)
             loaded = await self._preload_voice_profiles()
             if loaded > 0:
                 return
-            
+
             # Try CloudSQL bootstrap
             loaded = await self._bootstrap_from_cloudsql()
             if loaded > 0:
                 return
-            
+
             # Last resort: try to create profile from learning database directly
             try:
                 from intelligence.learning_database import get_learning_database
                 db = await get_learning_database()
                 profiles = await db.get_all_speaker_profiles()
-                
-                for profile in profiles:
-                    if profile.get('voiceprint_embedding'):
-                        embedding = np.frombuffer(
-                            profile['voiceprint_embedding'], 
-                            dtype=np.float32
-                        )
-                        if len(embedding) >= 50:
-                            is_owner = bool(profile.get('is_primary_user', False))
-                            self._preloaded_profiles[profile['speaker_name']] = VoiceProfile(
-                                speaker_name=profile['speaker_name'],
-                                embedding=embedding,
-                                embedding_dimensions=len(embedding),
-                                total_samples=profile.get('total_samples', 0),
-                                avg_confidence=profile.get('recognition_confidence', 0.0),
-                                source="emergency_learning_db",
-                                is_primary_user=is_owner,  # v7.0: Store owner status
+
+                loaded = 0
+                async with self._cache_lock:
+                    for profile in profiles:
+                        if profile.get('voiceprint_embedding'):
+                            embedding = np.frombuffer(
+                                profile['voiceprint_embedding'],
+                                dtype=np.float32
                             )
-                            loaded += 1
-                            
+                            if len(embedding) >= 50:
+                                is_owner = bool(profile.get('is_primary_user', False))
+                                self._preloaded_profiles[profile['speaker_name']] = VoiceProfile(
+                                    speaker_name=profile['speaker_name'],
+                                    embedding=embedding,
+                                    embedding_dimensions=len(embedding),
+                                    total_samples=profile.get('total_samples', 0),
+                                    avg_confidence=profile.get('recognition_confidence', 0.0),
+                                    source="emergency_learning_db",
+                                    is_primary_user=is_owner,  # v7.0: Store owner status
+                                )
+                                loaded += 1
+
                 if loaded > 0:
                     logger.info(f"✅ Emergency loaded {loaded} profiles from learning database")
-                    
+
             except Exception as e:
                 logger.debug(f"Emergency learning DB load failed: {e}")
                 

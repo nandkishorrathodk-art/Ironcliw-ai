@@ -665,35 +665,50 @@ class VoiceDriftDetector:
         user_id: str,
         new_embedding: List[float],
         weight: Optional[float] = None,
+        persist: bool = True,
     ) -> bool:
         """
-        Adapt the baseline for a user.
+        Adapt the baseline for a user with optional ChromaDB persistence.
+
+        v2.7 Enhancement: Automatically persists adapted baselines to ChromaDB
+        for cross-session storage, preventing voice drift learning loss on restart.
 
         Args:
             user_id: User identifier
             new_embedding: New voice embedding
             weight: Adaptation weight (default from config)
+            persist: Whether to persist to ChromaDB (default: True)
 
         Returns:
             True if adaptation was performed
         """
         async with self._lock:
-            if user_id not in self._baselines:
+            is_new_baseline = user_id not in self._baselines
+
+            if is_new_baseline:
                 self._baselines[user_id] = BaselineState(
                     user_id=user_id,
                     embedding=new_embedding,
                 )
                 logger.info(f"Created new baseline for {user_id}")
-                return True
+            else:
+                adaptation_weight = weight or DriftConfig.get_adaptation_rate()
+                self._baselines[user_id].update(new_embedding, adaptation_weight)
+                self._stats["adaptations"] += 1
+                logger.info(
+                    f"Adapted baseline for {user_id} with weight {adaptation_weight:.2f}"
+                )
 
-            adaptation_weight = weight or DriftConfig.get_adaptation_rate()
-            self._baselines[user_id].update(new_embedding, adaptation_weight)
-            self._stats["adaptations"] += 1
+        # Persist to ChromaDB (outside lock to avoid blocking)
+        if persist:
+            try:
+                await _persist_baseline_to_chromadb(
+                    user_id, self._baselines[user_id]
+                )
+            except Exception as e:
+                logger.warning(f"Baseline persistence failed (non-critical): {e}")
 
-            logger.info(
-                f"Adapted baseline for {user_id} with weight {adaptation_weight:.2f}"
-            )
-            return True
+        return True
 
     async def get_baseline(self, user_id: str) -> Optional[BaselineState]:
         """Get baseline state for a user."""
@@ -1072,6 +1087,133 @@ class VoiceDriftDetector:
 
 
 # =============================================================================
+# BASELINE PERSISTENCE (v2.7)
+# =============================================================================
+
+async def _persist_baseline_to_chromadb(
+    user_id: str,
+    baseline: BaselineState,
+    pattern_memory=None,
+) -> bool:
+    """
+    Persist a baseline to ChromaDB for cross-session storage.
+
+    Args:
+        user_id: User identifier
+        baseline: BaselineState to persist
+        pattern_memory: Optional VoicePatternMemory instance
+
+    Returns:
+        True if persistence succeeded
+    """
+    try:
+        # Get or import voice pattern memory
+        if pattern_memory is None:
+            from .voice_pattern_memory import get_voice_pattern_memory
+            pattern_memory = await get_voice_pattern_memory()
+
+        if not pattern_memory:
+            logger.warning("Voice pattern memory not available for baseline persistence")
+            return False
+
+        # Store as a voice evolution record with special metadata marking it as baseline
+        from .schemas import VoiceEvolutionRecord
+
+        baseline_record = VoiceEvolutionRecord(
+            user_id=user_id,
+            embedding=baseline.embedding,
+            embedding_model=baseline.embedding_model,
+            baseline_similarity=1.0,  # Baseline is 100% similar to itself
+            drift_magnitude=0.0,
+            audio_quality_score=1.0,  # High quality for baseline
+            is_high_quality=True,
+            used_for_adaptation=True,
+            adaptation_weight=1.0,  # Full weight for baseline
+            device_fingerprint="baseline",
+            session_id=f"baseline_{user_id}_{baseline.last_updated.isoformat()}",
+        )
+
+        # Store with special metadata to identify as baseline
+        await pattern_memory.store_voice_evolution(
+            baseline_record,
+            metadata_override={
+                "is_baseline": True,
+                "baseline_user_id": user_id,
+                "baseline_update_count": baseline.update_count,
+                "baseline_sample_count": baseline.sample_count,
+                "baseline_mean_similarity": baseline.mean_similarity,
+            }
+        )
+
+        logger.info(f"✅ Baseline persisted to ChromaDB for {user_id}")
+        return True
+
+    except ImportError as e:
+        logger.debug(f"ChromaDB persistence not available: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to persist baseline: {e}")
+        return False
+
+
+async def _load_baseline_from_chromadb(
+    user_id: str,
+    pattern_memory=None,
+) -> Optional[BaselineState]:
+    """
+    Load a baseline from ChromaDB.
+
+    Args:
+        user_id: User identifier
+        pattern_memory: Optional VoicePatternMemory instance
+
+    Returns:
+        BaselineState if found, None otherwise
+    """
+    try:
+        # Get or import voice pattern memory
+        if pattern_memory is None:
+            from .voice_pattern_memory import get_voice_pattern_memory
+            pattern_memory = await get_voice_pattern_memory()
+
+        if not pattern_memory:
+            return None
+
+        # Query for baseline records
+        results = await pattern_memory.query_voice_evolution(
+            user_id=user_id,
+            filters={"is_baseline": True},
+            limit=1,
+            order_by="created_at",
+            order_desc=True,
+        )
+
+        if results and len(results) > 0:
+            record = results[0]
+            baseline = BaselineState(
+                user_id=user_id,
+                embedding=record.embedding,
+                embedding_model=record.embedding_model,
+                created_at=record.created_at,
+                last_updated=record.created_at,
+                update_count=record.metadata.get("baseline_update_count", 0) if hasattr(record, 'metadata') else 0,
+                sample_count=record.metadata.get("baseline_sample_count", 1) if hasattr(record, 'metadata') else 1,
+                mean_similarity=record.metadata.get("baseline_mean_similarity", 1.0) if hasattr(record, 'metadata') else 1.0,
+            )
+            logger.info(f"✅ Loaded baseline from ChromaDB for {user_id}")
+            return baseline
+
+        return None
+
+    except ImportError as e:
+        logger.debug(f"ChromaDB loading not available: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to load baseline from ChromaDB: {e}")
+        return None
+
+
+# =============================================================================
 # FACTORY FUNCTIONS
 # =============================================================================
 
@@ -1080,12 +1222,29 @@ _detector_lock = asyncio.Lock()
 
 
 async def get_drift_detector() -> VoiceDriftDetector:
-    """Get or create the drift detector instance."""
+    """Get or create the drift detector instance with ChromaDB persistence."""
     global _detector_instance
 
     async with _detector_lock:
         if _detector_instance is None:
             _detector_instance = VoiceDriftDetector()
+
+            # Try to load any persisted baselines from ChromaDB
+            try:
+                from .voice_pattern_memory import get_voice_pattern_memory
+                pattern_memory = await get_voice_pattern_memory()
+
+                if pattern_memory:
+                    # Load baselines for known users (attempt owner first)
+                    owner_name = os.getenv('VBI_OWNER_NAME', 'owner')
+                    baseline = await _load_baseline_from_chromadb(owner_name, pattern_memory)
+                    if baseline:
+                        _detector_instance._baselines[owner_name] = baseline
+                        logger.info(f"Loaded persisted baseline for {owner_name}")
+
+            except Exception as e:
+                logger.debug(f"Could not load persisted baselines: {e}")
+
         return _detector_instance
 
 

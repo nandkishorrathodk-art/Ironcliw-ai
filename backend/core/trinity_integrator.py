@@ -10166,6 +10166,108 @@ class TrinityUnifiedOrchestrator:
         }
 
     # =========================================================================
+    # Voice Profile Synchronization (v2.7)
+    # =========================================================================
+
+    async def sync_voice_profiles(
+        self,
+        force: bool = False,
+        include_embeddings: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Synchronize voice profiles across Trinity repos (JARVIS, Prime, Reactor).
+
+        v2.7 Enhancement: Cross-repo voice profile synchronization for consistent
+        voice authentication across all components.
+
+        This ensures:
+        - Voice embeddings are consistent across repos
+        - Authentication thresholds are synchronized
+        - Drift adaptations are shared
+        - Voice evolution data is propagated
+
+        Args:
+            force: Force sync even if profiles haven't changed
+            include_embeddings: Include full embeddings (slower but complete)
+
+        Returns:
+            Sync result with stats and any errors
+        """
+        async with self._tracer.span("voice_profile_sync"):
+            result = {
+                "success": False,
+                "profiles_synced": 0,
+                "errors": [],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            try:
+                # Get voice profiles from JARVIS body
+                try:
+                    from voice_unlock.unified_voice_cache_manager import get_unified_voice_cache
+                    cache = await get_unified_voice_cache()
+
+                    if cache and cache.is_ready:
+                        profiles = cache._preloaded_profiles
+
+                        # Sync to JARVIS Prime (if enabled and connected)
+                        if self.enable_jprime and self._jprime_client:
+                            try:
+                                for speaker_name, profile in profiles.items():
+                                    # Send profile to Prime via event store
+                                    await self._event_store.publish(
+                                        event_type="voice.profile.sync",
+                                        source="jarvis_body",
+                                        payload={
+                                            "speaker_name": speaker_name,
+                                            "embedding_dimensions": profile.embedding_dimensions,
+                                            "total_samples": profile.total_samples,
+                                            "avg_confidence": profile.avg_confidence,
+                                            "is_primary_user": profile.is_primary_user,
+                                            "embedding": profile.embedding.tolist() if include_embeddings else None,
+                                        },
+                                    )
+                                    result["profiles_synced"] += 1
+
+                                logger.info(
+                                    f"[TrinityOrchestrator] Synced {result['profiles_synced']} "
+                                    f"voice profiles to JARVIS Prime"
+                                )
+
+                            except Exception as e:
+                                result["errors"].append(f"Prime sync error: {str(e)}")
+                                logger.warning(f"Voice profile sync to Prime failed: {e}")
+
+                        # Sync to Reactor Core (if enabled and connected)
+                        if self.enable_reactor and self._reactor_client:
+                            try:
+                                # Reactor Core may need profiles for training feedback
+                                await self._event_store.publish(
+                                    event_type="voice.profiles.batch",
+                                    source="jarvis_body",
+                                    payload={
+                                        "profile_count": len(profiles),
+                                        "speaker_names": list(profiles.keys()),
+                                        "sync_timestamp": result["timestamp"],
+                                    },
+                                )
+
+                            except Exception as e:
+                                result["errors"].append(f"Reactor sync error: {str(e)}")
+                                logger.warning(f"Voice profile sync to Reactor failed: {e}")
+
+                        result["success"] = len(result["errors"]) == 0
+
+                except ImportError as e:
+                    result["errors"].append(f"Voice cache not available: {str(e)}")
+
+            except Exception as e:
+                result["errors"].append(f"Sync failed: {str(e)}")
+                logger.error(f"Voice profile synchronization error: {e}")
+
+            return result
+
+    # =========================================================================
     # Health Monitoring
     # =========================================================================
 

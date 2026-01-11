@@ -75,9 +75,11 @@ class BayesianFusionConfig:
     MIN_PRIOR = float(os.getenv("BAYESIAN_MIN_PRIOR", "0.05"))
     MAX_PRIOR = float(os.getenv("BAYESIAN_MAX_PRIOR", "0.95"))
 
-    # Adaptive Exclusion Configuration (v2.6)
+    # Adaptive Exclusion Configuration (v2.7 - Enhanced Source Filtering)
     # Minimum valid confidence - below this, evidence is considered unavailable
-    MIN_VALID_CONFIDENCE = float(os.getenv("BAYESIAN_MIN_VALID_CONFIDENCE", "0.02"))
+    # INCREASED from 0.02 to 0.10 to properly exclude unreliable sources
+    # and prevent low-confidence noise from contaminating fusion
+    MIN_VALID_CONFIDENCE = float(os.getenv("BAYESIAN_MIN_VALID_CONFIDENCE", "0.10"))
 
     # Enable adaptive exclusion of unavailable evidence sources
     ADAPTIVE_EXCLUSION_ENABLED = os.getenv("BAYESIAN_ADAPTIVE_EXCLUSION", "true").lower() == "true"
@@ -85,8 +87,13 @@ class BayesianFusionConfig:
     # Threshold adjustment when ML is unavailable (reduce requirement)
     ML_UNAVAILABLE_THRESHOLD_REDUCTION = float(os.getenv("BAYESIAN_ML_UNAVAILABLE_REDUCTION", "0.10"))
 
+    # Physics-only fallback threshold (when ML is unavailable)
+    # Allows authentication with just physics + behavioral if both are high confidence
+    PHYSICS_ONLY_THRESHOLD = float(os.getenv("BAYESIAN_PHYSICS_ONLY_THRESHOLD", "0.88"))
+
     # Minimum sources required for authentication (graceful degradation)
-    MIN_SOURCES_FOR_AUTH = int(os.getenv("BAYESIAN_MIN_SOURCES", "2"))
+    # REDUCED from 2 to 1 to allow physics-only fallback mode
+    MIN_SOURCES_FOR_AUTH = int(os.getenv("BAYESIAN_MIN_SOURCES", "1"))
 
     # Weight redistribution strategy: "proportional" or "equal"
     WEIGHT_REDISTRIBUTION = os.getenv("BAYESIAN_WEIGHT_REDISTRIBUTION", "proportional")
@@ -405,6 +412,10 @@ class BayesianConfidenceFusion:
         """
         Compute adaptive authentication threshold based on available evidence.
 
+        v2.7 Enhancement: Physics-only fallback mode when ML is unavailable.
+        When ML is unavailable but physics + behavioral are both high confidence,
+        we can still authenticate using the PHYSICS_ONLY_THRESHOLD.
+
         When ML is unavailable, we lower the threshold since we have less information.
         When fewer sources are available, we also adjust accordingly.
 
@@ -412,19 +423,34 @@ class BayesianConfidenceFusion:
             Adjusted threshold for authentication
         """
         base_threshold = self.config.AUTHENTICATE_THRESHOLD
+        source_names = {e.source for e in valid_evidence}
 
-        # Reduce threshold when ML is unavailable
+        # Physics-only fallback mode (v2.7)
+        if ml_unavailable and "physics" in source_names:
+            # Check if physics confidence is high enough for fallback
+            physics_evidence = next((e for e in valid_evidence if e.source == "physics"), None)
+            if physics_evidence and physics_evidence.confidence >= self.config.PHYSICS_ONLY_THRESHOLD:
+                logger.info(
+                    f"🔬 Physics-only fallback mode: physics={physics_evidence.confidence:.1%} "
+                    f">= threshold={self.config.PHYSICS_ONLY_THRESHOLD:.1%}"
+                )
+                # Use physics-only threshold for this authentication
+                return self.config.PHYSICS_ONLY_THRESHOLD
+
+        # Standard ML unavailable adjustment
         if ml_unavailable:
             base_threshold -= self.config.ML_UNAVAILABLE_THRESHOLD_REDUCTION
+            logger.debug(f"ML unavailable: threshold reduced to {base_threshold:.1%}")
 
         # Further adjust based on number of sources
         source_count = len(valid_evidence)
         if source_count == 1:
-            # Single source: be more lenient but still require high confidence
-            base_threshold = max(0.70, base_threshold - 0.05)
+            # Single source: require high confidence from that source
+            base_threshold = max(0.80, base_threshold - 0.02)
+            logger.debug(f"Single source mode: threshold adjusted to {base_threshold:.1%}")
         elif source_count == 2:
             # Two sources: slight reduction
-            base_threshold = max(0.72, base_threshold - 0.03)
+            base_threshold = max(0.75, base_threshold - 0.03)
 
         # Clamp to valid range
         return max(0.50, min(0.95, base_threshold))
