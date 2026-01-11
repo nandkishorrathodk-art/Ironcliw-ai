@@ -373,6 +373,30 @@ except ImportError as e:
     RemediationAction = None
     ResourceUsage = None
 
+
+# v91.0: Lazy psutil import for process health monitoring
+_psutil_cache = None
+
+
+def _get_psutil():
+    """
+    v91.0: Lazy import psutil for process monitoring.
+
+    Avoids import overhead on startup while allowing ML-based health monitoring.
+
+    Returns:
+        psutil module or None if not available
+    """
+    global _psutil_cache
+    if _psutil_cache is None:
+        try:
+            import psutil
+            _psutil_cache = psutil
+        except ImportError:
+            _psutil_cache = False  # Mark as unavailable
+    return _psutil_cache if _psutil_cache is not False else None
+
+
 # v10.6: Structured Logging System with Real-Time Monitoring
 try:
     from core.logging import (
@@ -3211,6 +3235,65 @@ class SupervisorBootstrapper:
                 self.logger.info("[v90] System primitives initialized (SafeProcess, PortManager, TrueHeartbeat)")
             except Exception as e:
                 self.logger.warning(f"[v90] Could not initialize port manager: {e}")
+
+        # v91.0: Advanced System Primitives (ML Prediction, Self-Healing, Coordination)
+        self._health_predictor = None
+        self._self_healing_orchestrator = None
+        self._resource_quota_manager = None
+        self._distributed_state_coordinator = None
+        self._graceful_degradation_manager = None
+        self._health_prediction_task = None
+        self._self_healing_task = None
+        self._resource_monitoring_task = None
+        self._degradation_monitoring_task = None
+
+        # Initialize advanced primitives if available
+        if _ADVANCED_PRIMITIVES_AVAILABLE:
+            try:
+                # Resource quota manager (ulimit protection)
+                self._resource_quota_manager = ResourceQuotaManager()
+
+                # Process health predictor (ML-based failure prediction)
+                self._health_predictor = ProcessHealthPredictor(
+                    window_size=int(os.getenv("JARVIS_HEALTH_WINDOW_SIZE", "100")),
+                    ewma_alpha=float(os.getenv("JARVIS_HEALTH_EWMA_ALPHA", "0.3")),
+                    anomaly_threshold=float(os.getenv("JARVIS_HEALTH_ANOMALY_THRESHOLD", "2.5")),
+                )
+
+                # Self-healing orchestrator (automatic remediation)
+                self._self_healing_orchestrator = SelfHealingOrchestrator(
+                    health_predictor=self._health_predictor,
+                    max_remediation_attempts=int(os.getenv("JARVIS_MAX_HEAL_ATTEMPTS", "3")),
+                    cooldown_seconds=float(os.getenv("JARVIS_HEAL_COOLDOWN", "60.0")),
+                )
+
+                # Distributed state coordinator (cross-repo sync)
+                self._distributed_state_coordinator = DistributedStateCoordinator(
+                    component_name="JARVIS-Supervisor",
+                    state_dir=Path(os.getenv(
+                        "JARVIS_STATE_DIR",
+                        str(Path.home() / ".jarvis" / "state")
+                    )),
+                )
+
+                # Graceful degradation manager (resource-aware feature flags)
+                self._graceful_degradation_manager = GracefulDegradationManager(
+                    resource_manager=self._resource_quota_manager,
+                )
+
+                # Register features for graceful degradation
+                self._register_degradation_features()
+
+                self.logger.info(
+                    "[v91] Advanced primitives initialized: "
+                    "ProcessHealthPredictor, SelfHealingOrchestrator, "
+                    "ResourceQuotaManager, DistributedStateCoordinator, GracefulDegradationManager"
+                )
+            except Exception as e:
+                self.logger.warning(f"[v91] Could not initialize advanced primitives: {e}")
+                import traceback
+                self.logger.debug(f"[v91] Traceback: {traceback.format_exc()}")
+
         self._model_download_in_progress = False
 
         # v9.4: Enhanced Neural Mesh (Production agent system)
@@ -4666,16 +4749,22 @@ class SupervisorBootstrapper:
             
             # v5.0: Start hot reload watcher (dev mode)
             await self._hot_reload.start()
-            
+
+            # v91.0: Start advanced monitoring tasks (ML prediction, self-healing, resources)
+            await self._start_advanced_monitoring_tasks()
+
             try:
                 await supervisor.run()
             finally:
+                # v91.0: Stop advanced monitoring tasks first
+                await self._stop_advanced_monitoring_tasks()
+
                 # Cleanup remote resources (VMs)
                 await self.cleanup_resources()
-                
+
                 # Stop hot reload watcher
                 await self._hot_reload.stop()
-                
+
                 # Cancel monitoring if still running
                 if monitoring_task and not monitoring_task.done():
                     monitoring_task.cancel()
@@ -6234,6 +6323,475 @@ class SupervisorBootstrapper:
 
         self.logger.warning(f"Timeout waiting for ports to release after {max_wait}s")
         return False
+
+    # =========================================================================
+    # v91.0: ADVANCED SYSTEM PRIMITIVES - ML Prediction, Self-Healing, Coordination
+    # =========================================================================
+
+    def _register_degradation_features(self) -> None:
+        """
+        v91.0: Register features for graceful degradation management.
+
+        Features are registered with priority levels:
+        - Priority 10: Core functionality (never disabled)
+        - Priority 7-9: Important features (disabled under heavy load)
+        - Priority 4-6: Nice-to-have features (disabled under moderate load)
+        - Priority 1-3: Non-essential features (disabled early)
+        """
+        if not self._graceful_degradation_manager:
+            return
+
+        # Core features (priority 10 - never disabled)
+        self._graceful_degradation_manager.register_feature(
+            "voice_recognition", min_level=DegradationLevel.EMERGENCY, priority=10
+        )
+        self._graceful_degradation_manager.register_feature(
+            "command_processing", min_level=DegradationLevel.EMERGENCY, priority=10
+        )
+
+        # Important features (priority 7-9)
+        self._graceful_degradation_manager.register_feature(
+            "neural_mesh", min_level=DegradationLevel.MINIMAL, priority=8
+        )
+        self._graceful_degradation_manager.register_feature(
+            "trinity_coordination", min_level=DegradationLevel.MINIMAL, priority=8
+        )
+        self._graceful_degradation_manager.register_feature(
+            "health_monitoring", min_level=DegradationLevel.MINIMAL, priority=7
+        )
+
+        # Nice-to-have features (priority 4-6)
+        self._graceful_degradation_manager.register_feature(
+            "voice_narration", min_level=DegradationLevel.REDUCED, priority=5
+        )
+        self._graceful_degradation_manager.register_feature(
+            "hot_reload", min_level=DegradationLevel.REDUCED, priority=5
+        )
+        self._graceful_degradation_manager.register_feature(
+            "knowledge_indexing", min_level=DegradationLevel.REDUCED, priority=4
+        )
+
+        # Non-essential features (priority 1-3)
+        self._graceful_degradation_manager.register_feature(
+            "training_scheduler", min_level=DegradationLevel.FULL, priority=3
+        )
+        self._graceful_degradation_manager.register_feature(
+            "model_downloading", min_level=DegradationLevel.FULL, priority=2
+        )
+        self._graceful_degradation_manager.register_feature(
+            "experience_collection", min_level=DegradationLevel.FULL, priority=2
+        )
+
+        self.logger.debug("[v91] Registered 11 features for graceful degradation")
+
+    async def _start_advanced_monitoring_tasks(self) -> None:
+        """
+        v91.0: Start background tasks for advanced system monitoring.
+
+        Tasks:
+        - Health prediction: Continuous ML-based failure prediction
+        - Self-healing: Automatic remediation of predicted failures
+        - Resource monitoring: Track ulimits and quotas
+        - Degradation monitoring: Adjust feature levels based on load
+        """
+        if not _ADVANCED_PRIMITIVES_AVAILABLE:
+            self.logger.debug("[v91] Advanced primitives not available - skipping monitoring tasks")
+            return
+
+        try:
+            # Health prediction task
+            if self._health_predictor:
+                self._health_prediction_task = asyncio.create_task(
+                    self._run_health_prediction_loop(),
+                    name="health_prediction_loop"
+                )
+
+            # Self-healing task
+            if self._self_healing_orchestrator:
+                self._self_healing_task = asyncio.create_task(
+                    self._run_self_healing_loop(),
+                    name="self_healing_loop"
+                )
+
+            # Resource monitoring task
+            if self._resource_quota_manager:
+                self._resource_monitoring_task = asyncio.create_task(
+                    self._run_resource_monitoring_loop(),
+                    name="resource_monitoring_loop"
+                )
+
+            # Degradation monitoring task
+            if self._graceful_degradation_manager:
+                self._degradation_monitoring_task = asyncio.create_task(
+                    self._run_degradation_monitoring_loop(),
+                    name="degradation_monitoring_loop"
+                )
+
+            self.logger.info("[v91] Started advanced monitoring tasks (health, self-healing, resources, degradation)")
+
+        except Exception as e:
+            self.logger.warning(f"[v91] Could not start all monitoring tasks: {e}")
+
+    async def _run_health_prediction_loop(self) -> None:
+        """
+        v91.0: Continuous loop for ML-based health prediction.
+
+        Records metrics from running processes and predicts failures.
+        """
+        interval = float(os.getenv("JARVIS_HEALTH_CHECK_INTERVAL", "10.0"))
+
+        while not self._shutdown_event.is_set():
+            try:
+                await self._record_process_health_metrics()
+                await asyncio.sleep(interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"[v91] Health prediction error: {e}")
+                await asyncio.sleep(interval)
+
+    async def _record_process_health_metrics(self) -> None:
+        """
+        v91.0: Record health metrics for all managed processes.
+
+        Feeds data to the ML predictor for failure prediction.
+        """
+        if not self._health_predictor:
+            return
+
+        try:
+            psutil = _get_psutil()
+            if not psutil:
+                return
+
+            # Record metrics for J-Prime if running
+            if self._jprime_orchestrator_process and self._jprime_orchestrator_process.returncode is None:
+                try:
+                    pid = self._jprime_orchestrator_process.pid
+                    if pid and psutil.pid_exists(pid):
+                        proc = psutil.Process(pid)
+                        self._health_predictor.record_metric("jprime", "cpu", proc.cpu_percent())
+                        self._health_predictor.record_metric("jprime", "memory", proc.memory_percent())
+
+                        # Check for failure prediction
+                        failure_prob = self._health_predictor.predict_failure_probability("jprime")
+                        if failure_prob > 0.7:
+                            self.logger.warning(
+                                f"[v91] J-Prime failure prediction: {failure_prob*100:.1f}% probability in next 60s"
+                            )
+                except Exception:
+                    pass
+
+            # Record metrics for Reactor-Core if running
+            if self._reactor_core_orchestrator_process and self._reactor_core_orchestrator_process.returncode is None:
+                try:
+                    pid = self._reactor_core_orchestrator_process.pid
+                    if pid and psutil.pid_exists(pid):
+                        proc = psutil.Process(pid)
+                        self._health_predictor.record_metric("reactor_core", "cpu", proc.cpu_percent())
+                        self._health_predictor.record_metric("reactor_core", "memory", proc.memory_percent())
+
+                        failure_prob = self._health_predictor.predict_failure_probability("reactor_core")
+                        if failure_prob > 0.7:
+                            self.logger.warning(
+                                f"[v91] Reactor-Core failure prediction: {failure_prob*100:.1f}% probability in next 60s"
+                            )
+                except Exception:
+                    pass
+
+            # Record metrics for main JARVIS process
+            try:
+                main_proc = psutil.Process()
+                self._health_predictor.record_metric("jarvis_main", "cpu", main_proc.cpu_percent())
+                self._health_predictor.record_metric("jarvis_main", "memory", main_proc.memory_percent())
+                self._health_predictor.record_metric("jarvis_main", "fd_count", main_proc.num_fds() if hasattr(main_proc, 'num_fds') else 0)
+            except Exception:
+                pass
+
+        except Exception as e:
+            self.logger.debug(f"[v91] Metrics recording error: {e}")
+
+    async def _run_self_healing_loop(self) -> None:
+        """
+        v91.0: Continuous loop for automatic self-healing.
+
+        Monitors predicted failures and applies remediation.
+        """
+        interval = float(os.getenv("JARVIS_SELF_HEAL_INTERVAL", "30.0"))
+
+        while not self._shutdown_event.is_set():
+            try:
+                await self._check_and_heal_processes()
+                await asyncio.sleep(interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"[v91] Self-healing error: {e}")
+                await asyncio.sleep(interval)
+
+    async def _check_and_heal_processes(self) -> None:
+        """
+        v91.0: Check process health and apply remediation if needed.
+        """
+        if not self._self_healing_orchestrator or not self._health_predictor:
+            return
+
+        processes_to_check = [
+            ("jprime", self._restart_jprime_process),
+            ("reactor_core", self._restart_reactor_core_process),
+        ]
+
+        for process_name, restart_func in processes_to_check:
+            try:
+                failure_prob = self._health_predictor.predict_failure_probability(process_name)
+                health_score = self._health_predictor.get_health_score(process_name)
+
+                if failure_prob > 0.8 or health_score < 0.3:
+                    self.logger.warning(
+                        f"[v91] {process_name} needs healing: "
+                        f"failure_prob={failure_prob*100:.1f}%, health={health_score*100:.1f}%"
+                    )
+
+                    # Determine failure type based on health metrics
+                    failure_type = self._determine_failure_type(process_name, health_score, failure_prob)
+
+                    # Execute self-healing remediation
+                    result = await self._self_healing_orchestrator.execute_remediation(
+                        process_name=process_name,
+                        failure_type=failure_type,
+                    )
+
+                    if result and result.action:
+                        self.logger.info(f"[v91] Applied remediation to {process_name}: {result.action.name}")
+
+                        # If action suggests restart, do it
+                        if result.action in (RemediationAction.RESTART, RemediationAction.KILL_AND_RESTART):
+                            await restart_func()
+
+            except Exception as e:
+                self.logger.debug(f"[v91] Heal check error for {process_name}: {e}")
+
+    def _determine_failure_type(
+        self,
+        process_name: str,
+        health_score: float,
+        failure_prob: float,
+    ) -> str:
+        """
+        v91.0: Determine the type of failure based on health metrics.
+
+        Args:
+            process_name: Name of the process
+            health_score: Current health score (0.0 - 1.0)
+            failure_prob: Failure probability (0.0 - 1.0)
+
+        Returns:
+            Failure type string for remediation strategy selection
+        """
+        if not self._health_predictor:
+            return "unknown"
+
+        try:
+            # Check CPU metrics
+            cpu_key = f"{process_name}:cpu"
+            memory_key = f"{process_name}:memory"
+
+            cpu_z = 0.0
+            memory_z = 0.0
+
+            # Get z-scores from the predictor's internal data
+            if hasattr(self._health_predictor, '_metrics_history'):
+                with self._health_predictor._lock:
+                    if cpu_key in self._health_predictor._ewma_values:
+                        history = self._health_predictor._metrics_history.get(cpu_key, [])
+                        if history:
+                            latest = history[-1][1]
+                            ewma = self._health_predictor._ewma_values.get(cpu_key, latest)
+                            std = max(0.001, self._health_predictor._ewma_variance.get(cpu_key, 0.001) ** 0.5)
+                            cpu_z = abs(latest - ewma) / std
+
+                    if memory_key in self._health_predictor._ewma_values:
+                        history = self._health_predictor._metrics_history.get(memory_key, [])
+                        if history:
+                            latest = history[-1][1]
+                            ewma = self._health_predictor._ewma_values.get(memory_key, latest)
+                            std = max(0.001, self._health_predictor._ewma_variance.get(memory_key, 0.001) ** 0.5)
+                            memory_z = abs(latest - ewma) / std
+
+            # Determine failure type based on metrics
+            if cpu_z > 3.0:
+                return "high_cpu"
+            elif memory_z > 3.0:
+                return "memory_leak"
+            elif health_score < 0.2:
+                return "unresponsive"
+            elif failure_prob > 0.9:
+                return "crash"
+            else:
+                return "unknown"
+
+        except Exception:
+            return "unknown"
+
+    async def _restart_jprime_process(self) -> None:
+        """v91.0: Restart J-Prime process as part of self-healing."""
+        self.logger.info("[v91] Self-healing: Restarting J-Prime process...")
+        try:
+            await self._stop_jprime_orchestrator()
+            await asyncio.sleep(2.0)
+            await self._start_jprime_orchestrator()
+            self.logger.info("[v91] Self-healing: J-Prime restart complete")
+        except Exception as e:
+            self.logger.error(f"[v91] Self-healing: J-Prime restart failed: {e}")
+
+    async def _restart_reactor_core_process(self) -> None:
+        """v91.0: Restart Reactor-Core process as part of self-healing."""
+        self.logger.info("[v91] Self-healing: Restarting Reactor-Core process...")
+        try:
+            await self._stop_reactor_core_orchestrator()
+            await asyncio.sleep(2.0)
+            await self._start_reactor_core_orchestrator()
+            self.logger.info("[v91] Self-healing: Reactor-Core restart complete")
+        except Exception as e:
+            self.logger.error(f"[v91] Self-healing: Reactor-Core restart failed: {e}")
+
+    async def _run_resource_monitoring_loop(self) -> None:
+        """
+        v91.0: Continuous loop for resource quota monitoring.
+
+        Tracks ulimits, file descriptors, memory usage.
+        """
+        interval = float(os.getenv("JARVIS_RESOURCE_CHECK_INTERVAL", "15.0"))
+
+        while not self._shutdown_event.is_set():
+            try:
+                if self._resource_quota_manager:
+                    usage = self._resource_quota_manager.get_current_usage()
+
+                    # Log warnings for high usage
+                    if usage.fd_usage_ratio > 0.8:
+                        self.logger.warning(
+                            f"[v91] High file descriptor usage: {usage.fd_usage_ratio*100:.1f}% "
+                            f"({usage.open_fds}/{usage.max_fds})"
+                        )
+
+                    if usage.memory_usage_ratio > 0.85:
+                        self.logger.warning(
+                            f"[v91] High memory usage: {usage.memory_usage_ratio*100:.1f}% "
+                            f"({usage.memory_used_mb:.0f}MB/{usage.memory_total_mb:.0f}MB)"
+                        )
+
+                    if usage.cpu_percent > 90:
+                        self.logger.warning(f"[v91] High CPU usage: {usage.cpu_percent:.1f}%")
+
+                await asyncio.sleep(interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"[v91] Resource monitoring error: {e}")
+                await asyncio.sleep(interval)
+
+    async def _run_degradation_monitoring_loop(self) -> None:
+        """
+        v91.0: Continuous loop for graceful degradation management.
+
+        Adjusts feature levels based on system load.
+        """
+        interval = float(os.getenv("JARVIS_DEGRADATION_CHECK_INTERVAL", "20.0"))
+
+        while not self._shutdown_event.is_set():
+            try:
+                if self._graceful_degradation_manager:
+                    new_level = self._graceful_degradation_manager.update_degradation_level()
+
+                    # Log current state periodically
+                    enabled = self._graceful_degradation_manager.get_enabled_features()
+                    disabled = self._graceful_degradation_manager.get_disabled_features()
+
+                    if disabled:
+                        self.logger.info(
+                            f"[v91] Degradation level: {new_level.name}, "
+                            f"disabled features: {', '.join(disabled)}"
+                        )
+
+                await asyncio.sleep(interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"[v91] Degradation monitoring error: {e}")
+                await asyncio.sleep(interval)
+
+    def _is_feature_enabled(self, feature_name: str) -> bool:
+        """
+        v91.0: Check if a feature is currently enabled based on degradation level.
+
+        Args:
+            feature_name: Name of the feature to check
+
+        Returns:
+            True if feature is enabled or degradation manager not available
+        """
+        if not self._graceful_degradation_manager:
+            return True
+        return self._graceful_degradation_manager.is_feature_enabled(feature_name)
+
+    async def _broadcast_state_to_trinity(self, state_key: str, state_value: Any) -> None:
+        """
+        v91.0: Broadcast state to other Trinity components via distributed coordinator.
+
+        Args:
+            state_key: Key for the state
+            state_value: Value to broadcast (must be JSON-serializable)
+        """
+        if not self._distributed_state_coordinator:
+            return
+
+        try:
+            await self._distributed_state_coordinator.update_state(state_key, state_value)
+        except Exception as e:
+            self.logger.debug(f"[v91] State broadcast error: {e}")
+
+    async def _sync_state_from_trinity(self, state_key: str) -> Any:
+        """
+        v91.0: Sync state from other Trinity components.
+
+        Args:
+            state_key: Key for the state to retrieve
+
+        Returns:
+            The state value, or None if not found
+        """
+        if not self._distributed_state_coordinator:
+            return None
+
+        try:
+            return await self._distributed_state_coordinator.get_state(state_key)
+        except Exception as e:
+            self.logger.debug(f"[v91] State sync error: {e}")
+            return None
+
+    async def _stop_advanced_monitoring_tasks(self) -> None:
+        """v91.0: Stop all advanced monitoring background tasks."""
+        tasks_to_cancel = [
+            self._health_prediction_task,
+            self._self_healing_task,
+            self._resource_monitoring_task,
+            self._degradation_monitoring_task,
+        ]
+
+        for task in tasks_to_cancel:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+
+        self.logger.debug("[v91] Stopped advanced monitoring tasks")
 
     def _setup_signal_handlers(self) -> None:
         """
