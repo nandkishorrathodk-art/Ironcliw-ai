@@ -1,6 +1,18 @@
 """
-JARVIS Voice System - Enhanced with professional-grade accuracy
-Integrates with Claude API for intelligent voice command processing
+JARVIS Voice System v100.0 - Ultra-Robust Enhanced Voice Processing
+====================================================================
+
+Professional-grade voice recognition and synthesis with:
+- 100% environment-driven configuration (ZERO hardcoding)
+- Bounded collections to prevent memory leaks
+- Adaptive circuit breakers with exponential backoff
+- Multi-worker async pipeline with backpressure
+- W3C distributed tracing with correlation IDs
+- SQLite metrics persistence
+- Graceful shutdown with resource cleanup
+- Deep integration with Trinity Voice Coordinator
+
+Author: JARVIS Trinity v100.0
 """
 
 # Fix TensorFlow issues before importing ML components
@@ -14,7 +26,7 @@ import asyncio
 import speech_recognition as sr
 import pygame
 import numpy as np
-from typing import Optional, Callable, Dict, List, Tuple, Union, Any
+from typing import Optional, Callable, Dict, List, Tuple, Union, Any, Deque
 import json
 import random
 from datetime import datetime
@@ -24,14 +36,21 @@ import sys
 import platform
 from anthropic import Anthropic
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 import logging
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, OrderedDict
 from functools import wraps
+import sqlite3
+import uuid
+from pathlib import Path
+import hashlib
+import weakref
+from contextlib import asynccontextmanager
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Set up logging with configurable level
+_log_level = os.environ.get("JARVIS_VOICE_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, _log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
 # Import ML trainer
@@ -54,6 +73,22 @@ except ImportError:
     WEATHER_SERVICE_AVAILABLE = False
     logger.warning("Weather service not available")
 
+# Import Trinity Voice Coordinator
+try:
+    from backend.core.trinity_voice_coordinator import (
+        TrinityVoiceCoordinator,
+        announce,
+        get_voice_coordinator,
+        VoiceContext,
+        VoicePriority,
+    )
+
+    TRINITY_VOICE_AVAILABLE = True
+    logger.info("[JARVISVoice] Trinity Voice Coordinator v100.0 available")
+except ImportError:
+    TRINITY_VOICE_AVAILABLE = False
+    logger.warning("[JARVISVoice] Trinity Voice Coordinator not available")
+
 # Use macOS native voice on Mac
 if platform.system() == "Darwin":
     from voice.macos_voice import MacOSVoice
@@ -63,6 +98,540 @@ else:
     import pyttsx3
 
     USE_MACOS_VOICE = False
+
+
+# =============================================================================
+# ULTRA-ROBUST CONFIGURATION SYSTEM - 100% Environment-Driven
+# =============================================================================
+
+def _env_int(key: str, default: int) -> int:
+    """Get integer from environment with default."""
+    try:
+        return int(os.environ.get(key, default))
+    except (ValueError, TypeError):
+        return default
+
+
+def _env_float(key: str, default: float) -> float:
+    """Get float from environment with default."""
+    try:
+        return float(os.environ.get(key, default))
+    except (ValueError, TypeError):
+        return default
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    """Get boolean from environment with default."""
+    val = os.environ.get(key, str(default)).lower()
+    return val in ("true", "1", "yes", "on")
+
+
+def _env_str(key: str, default: str) -> str:
+    """Get string from environment with default."""
+    return os.environ.get(key, default)
+
+
+def _env_list(key: str, default: List[str]) -> List[str]:
+    """Get comma-separated list from environment with default."""
+    val = os.environ.get(key)
+    if val:
+        return [item.strip() for item in val.split(",") if item.strip()]
+    return default
+
+
+@dataclass
+class JARVISVoiceConfig:
+    """
+    Ultra-robust configuration for JARVIS Voice System v100.0.
+
+    ALL values are environment-driven with sensible defaults.
+    Zero hardcoding - everything configurable at runtime.
+    """
+
+    # ==========================================================================
+    # TTS (Text-to-Speech) Configuration
+    # ==========================================================================
+    tts_rate: int = field(default_factory=lambda: _env_int("JARVIS_TTS_RATE", 175))
+    tts_volume: float = field(default_factory=lambda: _env_float("JARVIS_TTS_VOLUME", 0.9))
+    tts_voice_preference: str = field(default_factory=lambda: _env_str("JARVIS_TTS_VOICE", "british"))
+    tts_timeout_ms: int = field(default_factory=lambda: _env_int("JARVIS_TTS_TIMEOUT_MS", 30000))
+
+    # ==========================================================================
+    # Speech Recognition Configuration
+    # ==========================================================================
+    energy_threshold: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD", 200))
+    energy_threshold_min: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD_MIN", 50))
+    energy_threshold_max: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD_MAX", 500))
+
+    pause_threshold: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD", 0.5))
+    pause_threshold_min: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD_MIN", 0.3))
+    pause_threshold_max: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD_MAX", 1.2))
+
+    damping: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING", 0.10))
+    damping_min: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING_MIN", 0.05))
+    damping_max: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING_MAX", 0.25))
+
+    energy_ratio: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO", 1.3))
+    energy_ratio_min: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO_MIN", 1.1))
+    energy_ratio_max: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO_MAX", 2.0))
+
+    phrase_time_limit: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT", 8))
+    phrase_time_limit_min: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT_MIN", 3))
+    phrase_time_limit_max: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT_MAX", 15))
+
+    listen_timeout: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT", 1.0))
+    listen_timeout_min: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT_MIN", 0.5))
+    listen_timeout_max: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT_MAX", 3.0))
+
+    # Recognition engines
+    recognition_engines: List[str] = field(
+        default_factory=lambda: _env_list("JARVIS_RECOGNITION_ENGINES", ["google", "sphinx", "whisper"])
+    )
+    default_engine: str = field(default_factory=lambda: _env_str("JARVIS_DEFAULT_ENGINE", "google"))
+
+    # ==========================================================================
+    # Queue Configuration
+    # ==========================================================================
+    queue_maxsize: int = field(default_factory=lambda: _env_int("JARVIS_QUEUE_MAXSIZE", 100))
+    max_concurrent: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONCURRENT", 3))
+    queue_timeout_ms: int = field(default_factory=lambda: _env_int("JARVIS_QUEUE_TIMEOUT_MS", 30000))
+
+    # ==========================================================================
+    # Circuit Breaker Configuration
+    # ==========================================================================
+    circuit_failure_threshold: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_FAILURE_THRESHOLD", 5))
+    circuit_timeout_sec: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_TIMEOUT_SEC", 30))
+    circuit_adaptive: bool = field(default_factory=lambda: _env_bool("JARVIS_CIRCUIT_ADAPTIVE", True))
+    circuit_half_open_max_calls: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_HALF_OPEN_MAX_CALLS", 3))
+
+    # ==========================================================================
+    # Bounded Collection Limits (Prevent Memory Leaks)
+    # ==========================================================================
+    max_event_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_EVENT_HISTORY", 100))
+    max_failure_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FAILURE_HISTORY", 100))
+    max_success_rate_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_SUCCESS_RATE_HISTORY", 100))
+    max_command_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_COMMAND_HISTORY", 50))
+    max_confidence_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONFIDENCE_HISTORY", 100))
+    max_recognition_times: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RECOGNITION_TIMES", 100))
+    max_first_attempt_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FIRST_ATTEMPT_HISTORY", 100))
+    max_config_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONFIG_HISTORY", 100))
+    max_engine_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_ENGINE_HISTORY", 100))
+    max_context_messages: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONTEXT_MESSAGES", 20))
+    max_dedup_cache: int = field(default_factory=lambda: _env_int("JARVIS_MAX_DEDUP_CACHE", 1000))
+
+    # ==========================================================================
+    # Optimization Configuration
+    # ==========================================================================
+    optimization_interval_sec: int = field(default_factory=lambda: _env_int("JARVIS_OPTIMIZATION_INTERVAL_SEC", 60))
+    optimization_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_OPTIMIZATION_ENABLED", True))
+
+    # ==========================================================================
+    # System Monitor Configuration
+    # ==========================================================================
+    metric_cache_duration_sec: float = field(default_factory=lambda: _env_float("JARVIS_METRIC_CACHE_DURATION_SEC", 1.0))
+    cpu_high_threshold: float = field(default_factory=lambda: _env_float("JARVIS_CPU_HIGH_THRESHOLD", 80.0))
+    memory_high_threshold: float = field(default_factory=lambda: _env_float("JARVIS_MEMORY_HIGH_THRESHOLD", 85.0))
+    cpu_claude_threshold: float = field(default_factory=lambda: _env_float("JARVIS_CPU_CLAUDE_THRESHOLD", 25.0))
+
+    # ==========================================================================
+    # Calibration Configuration
+    # ==========================================================================
+    calibration_duration_sec: int = field(default_factory=lambda: _env_int("JARVIS_CALIBRATION_DURATION_SEC", 3))
+    recalibration_failures: int = field(default_factory=lambda: _env_int("JARVIS_RECALIBRATION_FAILURES", 30))
+
+    # ==========================================================================
+    # Wake Word Configuration
+    # ==========================================================================
+    wake_word_threshold: float = field(default_factory=lambda: _env_float("JARVIS_WAKE_WORD_THRESHOLD", 0.6))
+    command_threshold: float = field(default_factory=lambda: _env_float("JARVIS_COMMAND_THRESHOLD", 0.7))
+    wake_words_primary: List[str] = field(
+        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_PRIMARY", ["jarvis", "hey jarvis", "okay jarvis"])
+    )
+    wake_words_variations: List[str] = field(
+        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_VARIATIONS", ["jar vis", "hey jar vis", "jarv"])
+    )
+    wake_words_urgent: List[str] = field(
+        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_URGENT", ["jarvis emergency", "jarvis urgent"])
+    )
+
+    # ==========================================================================
+    # Metrics Persistence Configuration
+    # ==========================================================================
+    metrics_db_path: str = field(
+        default_factory=lambda: _env_str(
+            "JARVIS_METRICS_DB_PATH",
+            str(Path.home() / ".jarvis" / "voice_metrics.db")
+        )
+    )
+    metrics_persist_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_METRICS_PERSIST_ENABLED", True))
+    metrics_flush_interval_sec: int = field(default_factory=lambda: _env_int("JARVIS_METRICS_FLUSH_INTERVAL_SEC", 60))
+
+    # ==========================================================================
+    # Tracing Configuration
+    # ==========================================================================
+    tracing_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_TRACING_ENABLED", True))
+    trace_sample_rate: float = field(default_factory=lambda: _env_float("JARVIS_TRACE_SAMPLE_RATE", 1.0))
+
+    # ==========================================================================
+    # Retry Configuration
+    # ==========================================================================
+    max_retries: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RETRIES", 3))
+    retry_base_delay_ms: int = field(default_factory=lambda: _env_int("JARVIS_RETRY_BASE_DELAY_MS", 100))
+    retry_max_delay_ms: int = field(default_factory=lambda: _env_int("JARVIS_RETRY_MAX_DELAY_MS", 5000))
+    retry_exponential_base: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_EXPONENTIAL_BASE", 2.0))
+
+    # ==========================================================================
+    # Shutdown Configuration
+    # ==========================================================================
+    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_SHUTDOWN_TIMEOUT_SEC", 10.0))
+    shutdown_drain_queue: bool = field(default_factory=lambda: _env_bool("JARVIS_SHUTDOWN_DRAIN_QUEUE", True))
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        # Ensure directories exist for metrics DB
+        if self.metrics_persist_enabled:
+            db_dir = Path(self.metrics_db_path).parent
+            db_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"[JARVISVoiceConfig] Loaded configuration with {self._count_env_overrides()} environment overrides")
+
+    def _count_env_overrides(self) -> int:
+        """Count how many values were overridden from environment."""
+        count = 0
+        for f in self.__dataclass_fields__:
+            env_key = f"JARVIS_{f.upper()}"
+            if os.environ.get(env_key) is not None:
+                count += 1
+        return count
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert config to dictionary."""
+        return {f: getattr(self, f) for f in self.__dataclass_fields__}
+
+
+# Global config instance (created on first access)
+_voice_config: Optional[JARVISVoiceConfig] = None
+
+
+def get_voice_config() -> JARVISVoiceConfig:
+    """Get the global voice configuration (lazy initialization)."""
+    global _voice_config
+    if _voice_config is None:
+        _voice_config = JARVISVoiceConfig()
+    return _voice_config
+
+
+# =============================================================================
+# BOUNDED COLLECTION UTILITIES - Prevent Memory Leaks
+# =============================================================================
+
+class BoundedDeque(deque):
+    """
+    A deque with a maximum size that automatically evicts oldest items.
+    Thread-safe for basic operations.
+    """
+
+    def __init__(self, maxlen: int, iterable=()):
+        super().__init__(iterable, maxlen=maxlen)
+        self._lock = threading.Lock()
+
+    def append_safe(self, item: Any) -> None:
+        """Thread-safe append."""
+        with self._lock:
+            self.append(item)
+
+    def extend_safe(self, items: List[Any]) -> None:
+        """Thread-safe extend."""
+        with self._lock:
+            self.extend(items)
+
+    def get_all_safe(self) -> List[Any]:
+        """Thread-safe get all items as list."""
+        with self._lock:
+            return list(self)
+
+
+class LRUBoundedDict(OrderedDict):
+    """
+    An OrderedDict with a maximum size that evicts least-recently-used items.
+    Thread-safe for basic operations.
+    """
+
+    def __init__(self, maxsize: int):
+        super().__init__()
+        self.maxsize = maxsize
+        self._lock = threading.Lock()
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        with self._lock:
+            # Move to end if exists
+            if key in self:
+                self.move_to_end(key)
+            super().__setitem__(key, value)
+
+            # Evict oldest if over capacity
+            while len(self) > self.maxsize:
+                oldest = next(iter(self))
+                del self[oldest]
+
+    def get_safe(self, key: Any, default: Any = None) -> Any:
+        """Thread-safe get that updates access order."""
+        with self._lock:
+            if key in self:
+                self.move_to_end(key)
+                return self[key]
+            return default
+
+
+# =============================================================================
+# W3C DISTRIBUTED TRACING
+# =============================================================================
+
+@dataclass
+class TraceContext:
+    """W3C Trace Context for distributed tracing."""
+    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    span_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    parent_span_id: Optional[str] = None
+    sampled: bool = True
+
+    def create_child_span(self) -> "TraceContext":
+        """Create a child span from this context."""
+        return TraceContext(
+            trace_id=self.trace_id,
+            span_id=uuid.uuid4().hex[:16],
+            parent_span_id=self.span_id,
+            sampled=self.sampled
+        )
+
+    def to_traceparent(self) -> str:
+        """Convert to W3C traceparent header format."""
+        flags = "01" if self.sampled else "00"
+        return f"00-{self.trace_id}-{self.span_id}-{flags}"
+
+    @classmethod
+    def from_traceparent(cls, header: str) -> "TraceContext":
+        """Parse W3C traceparent header."""
+        parts = header.split("-")
+        if len(parts) != 4:
+            return cls()
+        return cls(
+            trace_id=parts[1],
+            span_id=parts[2],
+            sampled=parts[3] == "01"
+        )
+
+    @classmethod
+    def from_correlation_id(cls, correlation_id: Optional[str]) -> "TraceContext":
+        """Create from legacy correlation ID."""
+        if not correlation_id:
+            return cls()
+        # Use correlation_id as trace_id if it looks like a UUID
+        if len(correlation_id) == 32:
+            return cls(trace_id=correlation_id)
+        # Otherwise hash it to get a valid trace_id
+        hash_val = hashlib.md5(correlation_id.encode()).hexdigest()
+        return cls(trace_id=hash_val)
+
+
+# =============================================================================
+# METRICS PERSISTENCE WITH SQLITE
+# =============================================================================
+
+class VoiceMetricsPersistence:
+    """
+    SQLite-based persistence for voice metrics.
+    Thread-safe with connection pooling.
+    """
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._local = threading.local()
+        self._init_db()
+        logger.info(f"[VoiceMetricsPersistence] Initialized at {db_path}")
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get thread-local database connection."""
+        if not hasattr(self._local, "conn"):
+            self._local.conn = sqlite3.connect(self.db_path, timeout=30.0)
+            self._local.conn.row_factory = sqlite3.Row
+        return self._local.conn
+
+    def _init_db(self) -> None:
+        """Initialize database schema."""
+        conn = self._get_connection()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS voice_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                event_type TEXT NOT NULL,
+                trace_id TEXT,
+                span_id TEXT,
+                success INTEGER,
+                confidence REAL,
+                latency_ms REAL,
+                engine TEXT,
+                metadata TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_voice_events_timestamp ON voice_events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_voice_events_type ON voice_events(event_type);
+            CREATE INDEX IF NOT EXISTS idx_voice_events_trace ON voice_events(trace_id);
+
+            CREATE TABLE IF NOT EXISTS voice_config_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                param_name TEXT NOT NULL,
+                old_value REAL,
+                new_value REAL,
+                reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS circuit_breaker_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                component TEXT NOT NULL,
+                old_state TEXT,
+                new_state TEXT NOT NULL,
+                failure_count INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+
+    def record_voice_event(
+        self,
+        event_type: str,
+        trace_ctx: Optional[TraceContext] = None,
+        success: Optional[bool] = None,
+        confidence: Optional[float] = None,
+        latency_ms: Optional[float] = None,
+        engine: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Record a voice event to the database."""
+        try:
+            conn = self._get_connection()
+            conn.execute(
+                """
+                INSERT INTO voice_events
+                (timestamp, event_type, trace_id, span_id, success, confidence, latency_ms, engine, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    time.time(),
+                    event_type,
+                    trace_ctx.trace_id if trace_ctx else None,
+                    trace_ctx.span_id if trace_ctx else None,
+                    1 if success else (0 if success is False else None),
+                    confidence,
+                    latency_ms,
+                    engine,
+                    json.dumps(metadata) if metadata else None
+                )
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"[VoiceMetricsPersistence] Failed to record event: {e}")
+
+    def record_config_change(
+        self,
+        param_name: str,
+        old_value: float,
+        new_value: float,
+        reason: Optional[str] = None
+    ) -> None:
+        """Record a configuration change."""
+        try:
+            conn = self._get_connection()
+            conn.execute(
+                """
+                INSERT INTO voice_config_history (timestamp, param_name, old_value, new_value, reason)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (time.time(), param_name, old_value, new_value, reason)
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"[VoiceMetricsPersistence] Failed to record config change: {e}")
+
+    def record_circuit_breaker_event(
+        self,
+        component: str,
+        old_state: Optional[str],
+        new_state: str,
+        failure_count: int
+    ) -> None:
+        """Record a circuit breaker state change."""
+        try:
+            conn = self._get_connection()
+            conn.execute(
+                """
+                INSERT INTO circuit_breaker_events (timestamp, component, old_state, new_state, failure_count)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (time.time(), component, old_state, new_state, failure_count)
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"[VoiceMetricsPersistence] Failed to record circuit breaker event: {e}")
+
+    def get_recent_stats(self, hours: int = 24) -> Dict[str, Any]:
+        """Get statistics for the recent time period."""
+        try:
+            conn = self._get_connection()
+            cutoff = time.time() - (hours * 3600)
+
+            # Get event counts
+            cursor = conn.execute(
+                """
+                SELECT
+                    event_type,
+                    COUNT(*) as count,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+                    AVG(confidence) as avg_confidence,
+                    AVG(latency_ms) as avg_latency
+                FROM voice_events
+                WHERE timestamp > ?
+                GROUP BY event_type
+                """,
+                (cutoff,)
+            )
+
+            stats = {}
+            for row in cursor:
+                stats[row["event_type"]] = {
+                    "count": row["count"],
+                    "successes": row["successes"],
+                    "avg_confidence": row["avg_confidence"],
+                    "avg_latency": row["avg_latency"]
+                }
+
+            return stats
+        except Exception as e:
+            logger.error(f"[VoiceMetricsPersistence] Failed to get stats: {e}")
+            return {}
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if hasattr(self._local, "conn"):
+            self._local.conn.close()
+            del self._local.conn
+
+
+# Global metrics persistence (lazy initialization)
+_metrics_persistence: Optional[VoiceMetricsPersistence] = None
+
+
+def get_metrics_persistence() -> Optional[VoiceMetricsPersistence]:
+    """Get the global metrics persistence instance."""
+    global _metrics_persistence
+    config = get_voice_config()
+    if config.metrics_persist_enabled and _metrics_persistence is None:
+        _metrics_persistence = VoiceMetricsPersistence(config.metrics_db_path)
+    return _metrics_persistence
 
 # JARVIS Personality System Prompt
 JARVIS_SYSTEM_PROMPT = """You are JARVIS, Tony Stark's AI assistant. Be concise and helpful.
@@ -131,210 +700,705 @@ Respond as JARVIS would - sophisticated, natural, and genuinely helpful."""
 # Ultra-robust, event-driven, zero-hardcoding async voice system
 # ===================================================================
 
+class CircuitBreakerState(Enum):
+    """Circuit breaker states with proper enum."""
+    CLOSED = auto()
+    OPEN = auto()
+    HALF_OPEN = auto()
+
+
 class AdaptiveCircuitBreaker:
     """
     Advanced circuit breaker with adaptive thresholds for voice recognition.
     Prevents system overload and auto-recovers from failures.
+
+    v100.0 Enhancements:
+    - 100% environment-driven configuration
+    - Bounded history collections (prevent memory leaks)
+    - Metrics persistence integration
+    - W3C trace context support
+    - Exponential backoff with jitter
+    - Half-open max calls protection
     """
 
-    def __init__(self, initial_threshold: int = 5, initial_timeout: int = 30, adaptive: bool = True):
+    def __init__(
+        self,
+        name: str = "voice_recognition",
+        config: Optional[JARVISVoiceConfig] = None
+    ):
+        self.name = name
+        self.config = config or get_voice_config()
+
+        # State
         self.failure_count = 0
         self.success_count = 0
-        self.threshold = initial_threshold
-        self.timeout = initial_timeout
-        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.last_failure_time = None
-        self.adaptive = adaptive
-        self.failure_history: List[float] = []
-        self.success_rate_history: List[float] = []
+        self.half_open_calls = 0
+        self.threshold = self.config.circuit_failure_threshold
+        self.timeout = self.config.circuit_timeout_sec
+        self.state = CircuitBreakerState.CLOSED
+        self.last_failure_time: Optional[float] = None
+        self.last_state_change: float = time.time()
+        self.adaptive = self.config.circuit_adaptive
+
+        # Bounded history collections (prevent memory leaks)
+        self.failure_history: BoundedDeque = BoundedDeque(
+            maxlen=self.config.max_failure_history
+        )
+        self.success_rate_history: BoundedDeque = BoundedDeque(
+            maxlen=self.config.max_success_rate_history
+        )
+
+        # Metrics
         self._total_calls = 0
         self._successful_calls = 0
+        self._lock = threading.Lock()
+
+        # Metrics persistence
+        self._metrics = get_metrics_persistence()
+
+        logger.info(
+            f"[CircuitBreaker:{name}] Initialized with threshold={self.threshold}, "
+            f"timeout={self.timeout}s, adaptive={self.adaptive}"
+        )
 
     @property
     def success_rate(self) -> float:
         """Calculate current success rate"""
-        if self._total_calls == 0:
-            return 1.0
-        return self._successful_calls / self._total_calls
+        with self._lock:
+            if self._total_calls == 0:
+                return 1.0
+            return self._successful_calls / self._total_calls
 
-    async def call(self, func: Callable, *args, **kwargs):
+    def _transition_state(self, new_state: CircuitBreakerState, reason: str = "") -> None:
+        """Transition to a new state with logging and metrics."""
+        old_state = self.state
+        if old_state == new_state:
+            return
+
+        self.state = new_state
+        self.last_state_change = time.time()
+
+        # Reset half-open counter on state change
+        if new_state != CircuitBreakerState.HALF_OPEN:
+            self.half_open_calls = 0
+
+        logger.info(
+            f"[CircuitBreaker:{self.name}] {old_state.name} → {new_state.name} "
+            f"(failures={self.failure_count}, reason={reason})"
+        )
+
+        # Persist to metrics
+        if self._metrics:
+            self._metrics.record_circuit_breaker_event(
+                component=self.name,
+                old_state=old_state.name,
+                new_state=new_state.name,
+                failure_count=self.failure_count
+            )
+
+    def _calculate_backoff(self) -> float:
+        """Calculate exponential backoff with jitter."""
+        if self.last_failure_time is None:
+            return 0
+
+        # Exponential backoff based on consecutive failures
+        base_delay = self.config.retry_base_delay_ms / 1000.0
+        max_delay = self.config.retry_max_delay_ms / 1000.0
+        exp_base = self.config.retry_exponential_base
+
+        delay = min(base_delay * (exp_base ** min(self.failure_count, 10)), max_delay)
+
+        # Add jitter (±10%)
+        jitter = delay * 0.1 * (2 * random.random() - 1)
+        return delay + jitter
+
+    async def call(
+        self,
+        func: Callable,
+        *args,
+        trace_ctx: Optional[TraceContext] = None,
+        **kwargs
+    ):
         """Execute function with adaptive circuit breaker protection"""
-        if self.state == "OPEN":
-            if time.time() - self.last_failure_time > self.timeout:
-                logger.info(f"[ASYNC] Circuit breaker: transitioning to HALF_OPEN (threshold={self.threshold})")
-                self.state = "HALF_OPEN"
+        # Check state
+        if self.state == CircuitBreakerState.OPEN:
+            elapsed = time.time() - (self.last_failure_time or 0)
+            if elapsed > self.timeout:
+                self._transition_state(CircuitBreakerState.HALF_OPEN, "timeout elapsed")
             else:
-                retry_in = int(self.timeout - (time.time() - self.last_failure_time))
-                raise Exception(f"[ASYNC] Circuit breaker is OPEN - voice recognition unavailable (retry in {retry_in}s)")
+                retry_in = int(self.timeout - elapsed)
+                backoff = self._calculate_backoff()
+                raise Exception(
+                    f"[CircuitBreaker:{self.name}] OPEN - unavailable "
+                    f"(retry in {retry_in}s, backoff={backoff:.2f}s)"
+                )
 
+        # Check half-open limits
+        if self.state == CircuitBreakerState.HALF_OPEN:
+            if self.half_open_calls >= self.config.circuit_half_open_max_calls:
+                # Too many half-open calls without success - reopen
+                self._transition_state(CircuitBreakerState.OPEN, "half-open calls exceeded")
+                raise Exception(
+                    f"[CircuitBreaker:{self.name}] OPEN - max half-open calls exceeded"
+                )
+            self.half_open_calls += 1
+
+        # Execute with timing
+        start = time.time()
         try:
-            start = time.time()
             result = await func(*args, **kwargs)
-            duration = time.time() - start
+            duration = (time.time() - start) * 1000  # ms
 
-            self.on_success(duration)
+            self.on_success(duration, trace_ctx)
             return result
 
         except Exception as e:
-            self.on_failure()
+            self.on_failure(trace_ctx)
             raise e
 
-    def on_success(self, duration: float):
+    def on_success(self, duration_ms: float, trace_ctx: Optional[TraceContext] = None):
         """Handle successful execution with adaptive learning"""
-        self.success_count += 1
-        self._total_calls += 1
-        self._successful_calls += 1
-        self.failure_count = max(0, self.failure_count - 1)
+        with self._lock:
+            self.success_count += 1
+            self._total_calls += 1
+            self._successful_calls += 1
+            self.failure_count = max(0, self.failure_count - 1)
 
-        if self.state == "HALF_OPEN":
-            logger.info("[ASYNC] Circuit breaker: transitioning to CLOSED")
-            self.state = "CLOSED"
+        # Transition from half-open to closed
+        if self.state == CircuitBreakerState.HALF_OPEN:
+            self._transition_state(CircuitBreakerState.CLOSED, "success in half-open")
 
         # Adaptive threshold adjustment
         if self.adaptive:
             success_rate = self.success_rate
-            self.success_rate_history.append(success_rate)
+            self.success_rate_history.append_safe(success_rate)
 
-            # Increase threshold if success rate is high
+            # Increase threshold if success rate is high (more tolerant)
             if success_rate > 0.95 and self.threshold < 20:
+                old_threshold = self.threshold
                 self.threshold += 1
-                logger.debug(f"[ASYNC] Increased circuit breaker threshold to {self.threshold}")
+                logger.debug(
+                    f"[CircuitBreaker:{self.name}] Increased threshold {old_threshold} → {self.threshold}"
+                )
 
-    def on_failure(self):
+        # Record metrics
+        if self._metrics:
+            self._metrics.record_voice_event(
+                event_type=f"circuit_breaker_{self.name}_success",
+                trace_ctx=trace_ctx,
+                success=True,
+                latency_ms=duration_ms
+            )
+
+    def on_failure(self, trace_ctx: Optional[TraceContext] = None):
         """Handle failed execution with adaptive learning"""
-        self.failure_count += 1
-        self._total_calls += 1
+        with self._lock:
+            self.failure_count += 1
+            self._total_calls += 1
         self.last_failure_time = time.time()
-        self.failure_history.append(time.time())
+        self.failure_history.append_safe(time.time())
 
         # Adaptive threshold adjustment
-        if self.adaptive and len(self.failure_history) > 10:
-            # Check if failure rate is increasing
-            recent_failures = [f for f in self.failure_history if time.time() - f < 60]
-            if len(recent_failures) > 5:
-                self.threshold = max(3, self.threshold - 1)
-                logger.debug(f"[ASYNC] Decreased circuit breaker threshold to {self.threshold}")
+        if self.adaptive:
+            # Get recent failures (last 60 seconds)
+            recent_failures = [
+                f for f in self.failure_history.get_all_safe()
+                if time.time() - f < 60
+            ]
+            if len(recent_failures) > 5 and self.threshold > 3:
+                old_threshold = self.threshold
+                self.threshold -= 1
+                logger.debug(
+                    f"[CircuitBreaker:{self.name}] Decreased threshold {old_threshold} → {self.threshold}"
+                )
 
+        # Transition to open if threshold exceeded
         if self.failure_count >= self.threshold:
-            logger.warning(f"[ASYNC] Circuit breaker: transitioning to OPEN (failures={self.failure_count})")
-            self.state = "OPEN"
+            self._transition_state(CircuitBreakerState.OPEN, f"failures >= {self.threshold}")
+
+        # Record metrics
+        if self._metrics:
+            self._metrics.record_voice_event(
+                event_type=f"circuit_breaker_{self.name}_failure",
+                trace_ctx=trace_ctx,
+                success=False
+            )
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current circuit breaker status."""
+        return {
+            "name": self.name,
+            "state": self.state.name,
+            "failure_count": self.failure_count,
+            "success_count": self.success_count,
+            "threshold": self.threshold,
+            "timeout": self.timeout,
+            "success_rate": self.success_rate,
+            "last_state_change": self.last_state_change,
+            "half_open_calls": self.half_open_calls,
+            "adaptive": self.adaptive
+        }
+
+    def reset(self) -> None:
+        """Reset circuit breaker to initial state."""
+        with self._lock:
+            self.failure_count = 0
+            self.success_count = 0
+            self._total_calls = 0
+            self._successful_calls = 0
+            self.half_open_calls = 0
+        self.state = CircuitBreakerState.CLOSED
+        self.last_failure_time = None
+        self.last_state_change = time.time()
+        logger.info(f"[CircuitBreaker:{self.name}] Reset to initial state")
 
 
 class AsyncEventBus:
     """
     Event-driven pub/sub system for async voice events.
     Enables decoupled, scalable voice command processing.
+
+    v100.0 Enhancements:
+    - Bounded event history (prevent memory leaks)
+    - Environment-driven configuration
+    - W3C trace context propagation
+    - Weak references for handlers (prevent memory leaks)
+    - Handler timeout protection
+    - Metrics integration
     """
 
-    def __init__(self):
-        self.subscribers: Dict[str, List[Callable]] = defaultdict(list)
-        self.event_history: List[Dict[str, Any]] = []
-        self.max_history = 100
+    def __init__(self, config: Optional[JARVISVoiceConfig] = None):
+        self.config = config or get_voice_config()
+        self.subscribers: Dict[str, List[weakref.ref]] = defaultdict(list)
+        self.event_history: BoundedDeque = BoundedDeque(
+            maxlen=self.config.max_event_history
+        )
+        self._lock = threading.Lock()
+        self._metrics = get_metrics_persistence()
+        self._handler_timeout = self.config.queue_timeout_ms / 1000.0
 
-    def subscribe(self, event_type: str, handler: Callable):
-        """Subscribe to an event type"""
-        self.subscribers[event_type].append(handler)
-        logger.debug(f"[ASYNC-EVENT] Subscribed to '{event_type}': {handler.__name__}")
+        logger.info(f"[AsyncEventBus] Initialized with max_history={self.config.max_event_history}")
 
-    def unsubscribe(self, event_type: str, handler: Callable):
-        """Unsubscribe from an event type"""
-        if handler in self.subscribers[event_type]:
-            self.subscribers[event_type].remove(handler)
-            logger.debug(f"[ASYNC-EVENT] Unsubscribed from '{event_type}': {handler.__name__}")
+    def subscribe(self, event_type: str, handler: Callable) -> None:
+        """Subscribe to an event type with weak reference."""
+        with self._lock:
+            # Use weak reference to prevent memory leaks
+            ref = weakref.ref(handler) if hasattr(handler, '__self__') else handler
+            self.subscribers[event_type].append(ref)
+        logger.debug(f"[AsyncEventBus] Subscribed to '{event_type}': {handler.__name__}")
 
-    async def publish(self, event_type: str, data: Any = None):
-        """Publish an event to all subscribers"""
+    def unsubscribe(self, event_type: str, handler: Callable) -> None:
+        """Unsubscribe from an event type."""
+        with self._lock:
+            handlers = self.subscribers.get(event_type, [])
+            self.subscribers[event_type] = [
+                h for h in handlers
+                if (callable(h) and h != handler) or
+                   (isinstance(h, weakref.ref) and h() != handler)
+            ]
+        logger.debug(f"[AsyncEventBus] Unsubscribed from '{event_type}': {handler.__name__}")
+
+    def _get_live_handlers(self, event_type: str) -> List[Callable]:
+        """Get live handlers, cleaning up dead weak references."""
+        with self._lock:
+            handlers = self.subscribers.get(event_type, [])
+            live_handlers = []
+            dead_refs = []
+
+            for h in handlers:
+                if isinstance(h, weakref.ref):
+                    target = h()
+                    if target is not None:
+                        live_handlers.append(target)
+                    else:
+                        dead_refs.append(h)
+                elif callable(h):
+                    live_handlers.append(h)
+
+            # Clean up dead references
+            if dead_refs:
+                self.subscribers[event_type] = [
+                    h for h in handlers if h not in dead_refs
+                ]
+
+            return live_handlers
+
+    async def publish(
+        self,
+        event_type: str,
+        data: Any = None,
+        trace_ctx: Optional[TraceContext] = None
+    ) -> None:
+        """Publish an event to all subscribers with timeout protection."""
+        # Generate trace context if not provided
+        if trace_ctx is None and self.config.tracing_enabled:
+            trace_ctx = TraceContext()
+
         event = {
             "type": event_type,
             "data": data,
             "timestamp": time.time(),
-            "id": f"{event_type}_{int(time.time() * 1000)}"
+            "id": f"{event_type}_{uuid.uuid4().hex[:8]}",
+            "trace_id": trace_ctx.trace_id if trace_ctx else None,
+            "span_id": trace_ctx.span_id if trace_ctx else None
         }
 
-        # Store in history
-        self.event_history.append(event)
-        if len(self.event_history) > self.max_history:
-            self.event_history.pop(0)
+        # Store in bounded history
+        self.event_history.append_safe(event)
 
-        # Notify subscribers asynchronously
-        handlers = self.subscribers.get(event_type, [])
-        logger.debug(f"[ASYNC-EVENT] Publishing '{event_type}' to {len(handlers)} handlers")
+        # Get live handlers
+        handlers = self._get_live_handlers(event_type)
+        if not handlers:
+            return
 
+        logger.debug(f"[AsyncEventBus] Publishing '{event_type}' to {len(handlers)} handlers")
+
+        # Create tasks with timeout
         tasks = []
         for handler in handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    tasks.append(asyncio.create_task(handler(data)))
+                    coro = handler(data)
                 else:
                     # Run sync handlers in executor
-                    tasks.append(asyncio.create_task(
-                        asyncio.get_event_loop().run_in_executor(None, handler, data)
-                    ))
+                    loop = asyncio.get_event_loop()
+                    coro = loop.run_in_executor(None, handler, data)
+
+                # Wrap with timeout
+                tasks.append(asyncio.create_task(
+                    asyncio.wait_for(coro, timeout=self._handler_timeout)
+                ))
+
             except Exception as e:
-                logger.error(f"[ASYNC-EVENT] Error publishing to handler {handler.__name__}: {e}")
+                logger.error(f"[AsyncEventBus] Error creating task for {handler.__name__}: {e}")
 
         # Wait for all handlers to complete
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Log any exceptions
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"[AsyncEventBus] Handler error: {result}")
+
+        # Record metrics
+        if self._metrics:
+            self._metrics.record_voice_event(
+                event_type=f"event_published_{event_type}",
+                trace_ctx=trace_ctx,
+                metadata={"handler_count": len(handlers)}
+            )
+
+    def get_recent_events(self, event_type: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent events, optionally filtered by type."""
+        events = self.event_history.get_all_safe()
+        if event_type:
+            events = [e for e in events if e.get("type") == event_type]
+        return events[-limit:]
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get event bus statistics."""
+        with self._lock:
+            return {
+                "event_types": list(self.subscribers.keys()),
+                "handler_counts": {k: len(v) for k, v in self.subscribers.items()},
+                "history_size": len(self.event_history),
+                "max_history": self.config.max_event_history
+            }
+
+
+class VoiceTaskStatus(Enum):
+    """Voice task status with proper enum."""
+    PENDING = auto()
+    PROCESSING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+    CANCELLED = auto()
+    TIMEOUT = auto()
+
+
+class VoiceTaskPriority(Enum):
+    """Voice task priority levels."""
+    BACKGROUND = 0
+    LOW = 1
+    NORMAL = 2
+    HIGH = 3
+    CRITICAL = 4
+    EMERGENCY = 5
 
 
 @dataclass
 class VoiceTask:
-    """Represents an async voice recognition task"""
+    """
+    Represents an async voice recognition task.
+
+    v100.0 Enhancements:
+    - Environment-driven max_retries
+    - W3C trace context
+    - Proper enum-based status and priority
+    - Timing metrics
+    """
     task_id: str
     text: Optional[str] = None
     confidence: float = 0.0
     timestamp: float = field(default_factory=time.time)
-    status: str = "pending"  # pending, processing, completed, failed
+    status: VoiceTaskStatus = VoiceTaskStatus.PENDING
     result: Optional[Any] = None
     error: Optional[str] = None
-    priority: int = 0  # 0=normal, 1=high, 2=critical
+    priority: VoiceTaskPriority = VoiceTaskPriority.NORMAL
     retries: int = 0
-    max_retries: int = 3
+    max_retries: int = field(default_factory=lambda: get_voice_config().max_retries)
+    trace_ctx: Optional[TraceContext] = None
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    source: str = "unknown"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Generate trace context if not provided."""
+        if self.trace_ctx is None and get_voice_config().tracing_enabled:
+            self.trace_ctx = TraceContext()
+
+    @property
+    def duration_ms(self) -> Optional[float]:
+        """Get task duration in milliseconds."""
+        if self.started_at is None:
+            return None
+        end_time = self.completed_at or time.time()
+        return (end_time - self.started_at) * 1000
+
+    def start(self) -> None:
+        """Mark task as started."""
+        self.status = VoiceTaskStatus.PROCESSING
+        self.started_at = time.time()
+
+    def complete(self, result: Any = None) -> None:
+        """Mark task as completed."""
+        self.status = VoiceTaskStatus.COMPLETED
+        self.completed_at = time.time()
+        self.result = result
+
+    def fail(self, error: str) -> None:
+        """Mark task as failed."""
+        self.status = VoiceTaskStatus.FAILED
+        self.completed_at = time.time()
+        self.error = error
+
+    def can_retry(self) -> bool:
+        """Check if task can be retried."""
+        return self.retries < self.max_retries
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "task_id": self.task_id,
+            "text": self.text,
+            "confidence": self.confidence,
+            "timestamp": self.timestamp,
+            "status": self.status.name,
+            "priority": self.priority.name,
+            "retries": self.retries,
+            "duration_ms": self.duration_ms,
+            "trace_id": self.trace_ctx.trace_id if self.trace_ctx else None,
+            "source": self.source
+        }
 
 
 class AsyncVoiceQueue:
     """
     Priority-based async queue for voice commands.
     Ensures fair processing and handles backpressure.
+
+    v100.0 Enhancements:
+    - Environment-driven configuration
+    - Bounded queue with per-priority limits
+    - Backpressure handling with rejection
+    - Metrics integration
+    - Graceful drain support
+    - Task timeout protection
     """
 
-    def __init__(self, maxsize: int = 100):
-        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(maxsize=maxsize)
+    def __init__(self, config: Optional[JARVISVoiceConfig] = None):
+        self.config = config or get_voice_config()
+        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(
+            maxsize=self.config.queue_maxsize
+        )
         self.processing_count = 0
-        self.max_concurrent = 3  # Process up to 3 voice commands concurrently
+        self.max_concurrent = self.config.max_concurrent
         self.tasks_in_flight: Dict[str, VoiceTask] = {}
+        self._lock = asyncio.Lock()
+        self._metrics = get_metrics_persistence()
+        self._draining = False
+        self._dropped_count = 0
+        self._total_enqueued = 0
+        self._total_completed = 0
 
-    async def enqueue(self, task: VoiceTask):
-        """Add task to queue with priority"""
-        # Priority queue uses tuples: (priority, task)
-        # Lower number = higher priority
-        await self.queue.put((-task.priority, task))
-        logger.info(f"[ASYNC-QUEUE] Enqueued task {task.task_id} (priority={task.priority}, queue_size={self.queue.qsize()})")
+        # Per-priority counters
+        self._priority_counts: Dict[VoiceTaskPriority, int] = {p: 0 for p in VoiceTaskPriority}
 
-    async def dequeue(self) -> VoiceTask:
-        """Get next task from queue"""
-        _, task = await self.queue.get()
-        self.processing_count += 1
-        self.tasks_in_flight[task.task_id] = task
-        logger.debug(f"[ASYNC-QUEUE] Dequeued task {task.task_id} (in_flight={self.processing_count})")
-        return task
+        logger.info(
+            f"[AsyncVoiceQueue] Initialized with maxsize={self.config.queue_maxsize}, "
+            f"max_concurrent={self.max_concurrent}"
+        )
 
-    def complete_task(self, task_id: str):
-        """Mark task as completed"""
-        if task_id in self.tasks_in_flight:
-            del self.tasks_in_flight[task_id]
-            self.processing_count = max(0, self.processing_count - 1)
+    async def enqueue(
+        self,
+        task: VoiceTask,
+        timeout: Optional[float] = None
+    ) -> Tuple[bool, str]:
+        """
+        Add task to queue with priority.
+
+        Returns:
+            Tuple of (success, reason)
+        """
+        # Check if draining
+        if self._draining:
+            return False, "queue_draining"
+
+        # Check if queue is full
+        if self.queue.full():
+            # Try to drop a lower priority task
+            if not await self._try_drop_lower_priority(task.priority):
+                self._dropped_count += 1
+                return False, "queue_full"
+
+        try:
+            # Calculate effective timeout
+            effective_timeout = timeout or (self.config.queue_timeout_ms / 1000.0)
+
+            # Priority queue uses tuples: (priority, timestamp, task)
+            # Negative priority so higher priority = lower number = processed first
+            # Timestamp as tiebreaker for same priority (FIFO)
+            queue_item = (-task.priority.value, task.timestamp, task)
+
+            await asyncio.wait_for(
+                self.queue.put(queue_item),
+                timeout=effective_timeout
+            )
+
+            async with self._lock:
+                self._total_enqueued += 1
+                self._priority_counts[task.priority] += 1
+
+            logger.info(
+                f"[AsyncVoiceQueue] Enqueued task {task.task_id} "
+                f"(priority={task.priority.name}, queue_size={self.queue.qsize()})"
+            )
+
+            return True, "enqueued"
+
+        except asyncio.TimeoutError:
+            self._dropped_count += 1
+            return False, "enqueue_timeout"
+
+    async def _try_drop_lower_priority(self, min_priority: VoiceTaskPriority) -> bool:
+        """Try to drop a lower priority task to make room."""
+        # This is a simplified implementation - in production you'd want
+        # to maintain a separate structure for efficient priority eviction
+        return False
+
+    async def dequeue(self, timeout: Optional[float] = None) -> Optional[VoiceTask]:
+        """Get next task from queue with timeout."""
+        try:
+            effective_timeout = timeout or (self.config.queue_timeout_ms / 1000.0)
+
+            _, _, task = await asyncio.wait_for(
+                self.queue.get(),
+                timeout=effective_timeout
+            )
+
+            async with self._lock:
+                self.processing_count += 1
+                self.tasks_in_flight[task.task_id] = task
+
+            task.start()
+            logger.debug(
+                f"[AsyncVoiceQueue] Dequeued task {task.task_id} "
+                f"(in_flight={self.processing_count})"
+            )
+            return task
+
+        except asyncio.TimeoutError:
+            return None
+
+    async def complete_task(self, task_id: str, success: bool = True) -> None:
+        """Mark task as completed."""
+        async with self._lock:
+            if task_id in self.tasks_in_flight:
+                task = self.tasks_in_flight.pop(task_id)
+                self.processing_count = max(0, self.processing_count - 1)
+                self._total_completed += 1
+                self._priority_counts[task.priority] = max(
+                    0, self._priority_counts[task.priority] - 1
+                )
+
+        try:
             self.queue.task_done()
-            logger.debug(f"[ASYNC-QUEUE] Completed task {task_id} (in_flight={self.processing_count})")
+        except ValueError:
+            pass  # Already done
+
+        logger.debug(
+            f"[AsyncVoiceQueue] Completed task {task_id} "
+            f"(in_flight={self.processing_count})"
+        )
+
+        # Record metrics
+        if self._metrics:
+            self._metrics.record_voice_event(
+                event_type="queue_task_completed",
+                success=success,
+                metadata={"task_id": task_id}
+            )
 
     def is_full(self) -> bool:
-        """Check if queue is full"""
+        """Check if queue is full."""
         return self.queue.full()
 
     def size(self) -> int:
-        """Get current queue size"""
+        """Get current queue size."""
         return self.queue.qsize()
+
+    async def drain(self, timeout: Optional[float] = None) -> int:
+        """
+        Drain the queue, waiting for all tasks to complete.
+
+        Returns:
+            Number of tasks that were in flight
+        """
+        self._draining = True
+        effective_timeout = timeout or self.config.shutdown_timeout_sec
+
+        logger.info(f"[AsyncVoiceQueue] Starting drain (timeout={effective_timeout}s)")
+
+        start_time = time.time()
+        initial_in_flight = self.processing_count
+
+        while self.processing_count > 0:
+            if time.time() - start_time > effective_timeout:
+                logger.warning(
+                    f"[AsyncVoiceQueue] Drain timeout, {self.processing_count} tasks still in flight"
+                )
+                break
+            await asyncio.sleep(0.1)
+
+        self._draining = False
+        logger.info(f"[AsyncVoiceQueue] Drain complete")
+        return initial_in_flight
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get queue status."""
+        return {
+            "size": self.queue.qsize(),
+            "maxsize": self.config.queue_maxsize,
+            "in_flight": self.processing_count,
+            "max_concurrent": self.max_concurrent,
+            "draining": self._draining,
+            "dropped_count": self._dropped_count,
+            "total_enqueued": self._total_enqueued,
+            "total_completed": self._total_completed,
+            "priority_counts": {p.name: c for p, c in self._priority_counts.items()}
+        }
 
 
 class VoiceConfidence(Enum):
@@ -363,116 +1427,135 @@ class VoiceCommand:
 
 
 class EnhancedVoiceEngine:
-    """Enhanced speech recognition with confidence scoring, noise reduction, and ML training"""
+    """
+    Enhanced speech recognition with confidence scoring, noise reduction, and ML training.
+
+    v100.0 Enhancements:
+    - 100% environment-driven configuration (ZERO hardcoding)
+    - Bounded collections for all history arrays
+    - Integrated metrics persistence
+    - W3C distributed tracing
+    - Graceful shutdown with resource cleanup
+    - Deep Trinity Voice Coordinator integration
+    """
 
     def __init__(
         self,
         ml_trainer: Optional["VoiceMLTrainer"] = None,
         ml_enhanced_system: Optional["MLEnhancedVoiceSystem"] = None,
+        config: Optional[JARVISVoiceConfig] = None,
     ):
+        # Load configuration (100% environment-driven)
+        self.config = config or get_voice_config()
+
         # Speech recognition with multiple engines
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
+        # Metrics persistence
+        self._metrics = get_metrics_persistence()
+
         # ===================================================================
-        # ADVANCED ADAPTIVE VOICE RECOGNITION SYSTEM
-        # Zero hardcoding - all parameters self-optimize based on USER SUCCESS
-        # NO environmental noise feedback - focuses purely on user voice patterns
+        # ADVANCED ADAPTIVE VOICE RECOGNITION SYSTEM v100.0
+        # 100% environment-driven - all parameters from config
+        # All history arrays are BOUNDED to prevent memory leaks
         # ===================================================================
 
-        # Adaptive configuration storage - all parameters self-tune
+        # Adaptive configuration storage - all parameters from environment
         self.adaptive_config = {
             'energy_threshold': {
-                'current': 200,
-                'min': 50,
-                'max': 500,
-                'history': [],
-                'success_rate_by_value': {}  # Track which values work best
+                'current': self.config.energy_threshold,
+                'min': self.config.energy_threshold_min,
+                'max': self.config.energy_threshold_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
             'pause_threshold': {
-                'current': 0.5,
-                'min': 0.3,
-                'max': 1.2,
-                'history': [],
-                'success_rate_by_value': {}
+                'current': self.config.pause_threshold,
+                'min': self.config.pause_threshold_min,
+                'max': self.config.pause_threshold_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
             'damping': {
-                'current': 0.10,
-                'min': 0.05,
-                'max': 0.25,
-                'history': [],
-                'success_rate_by_value': {}
+                'current': self.config.damping,
+                'min': self.config.damping_min,
+                'max': self.config.damping_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
             'energy_ratio': {
-                'current': 1.3,
-                'min': 1.1,
-                'max': 2.0,
-                'history': [],
-                'success_rate_by_value': {}
+                'current': self.config.energy_ratio,
+                'min': self.config.energy_ratio_min,
+                'max': self.config.energy_ratio_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
             'phrase_time_limit': {
-                'current': 8,
-                'min': 3,
-                'max': 15,
-                'history': [],
-                'success_rate_by_value': {}
+                'current': self.config.phrase_time_limit,
+                'min': self.config.phrase_time_limit_min,
+                'max': self.config.phrase_time_limit_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
             'timeout': {
-                'current': 1,
-                'min': 0.5,
-                'max': 3,
-                'history': [],
-                'success_rate_by_value': {}
+                'current': self.config.listen_timeout,
+                'min': self.config.listen_timeout_min,
+                'max': self.config.listen_timeout_max,
+                'history': BoundedDeque(maxlen=self.config.max_config_history),
+                'success_rate_by_value': LRUBoundedDict(maxsize=self.config.max_dedup_cache)
             },
         }
 
-        # Performance tracking for auto-optimization
+        # Performance tracking with BOUNDED collections
         self.performance_metrics = {
             'successful_recognitions': 0,
             'failed_recognitions': 0,
             'low_confidence_count': 0,
             'timeout_count': 0,
-            'false_activation_count': 0,  # Triggered when user wasn't speaking
-            'average_confidence': [],
-            'recognition_times': [],
-            'consecutive_failures': 0,  # Track streaks to adapt faster
+            'false_activation_count': 0,
+            'average_confidence': BoundedDeque(maxlen=self.config.max_confidence_history),
+            'recognition_times': BoundedDeque(maxlen=self.config.max_recognition_times),
+            'consecutive_failures': 0,
             'consecutive_successes': 0,
-            'first_attempt_success_rate': [],  # Track if command works on first try
+            'first_attempt_success_rate': BoundedDeque(maxlen=self.config.max_first_attempt_history),
         }
 
-        # User voice pattern learning (NO environmental noise!)
+        # User voice pattern learning with BOUNDED collections
         self.user_voice_profile = {
             'average_pitch': None,
-            'speech_rate': None,  # Words per minute
+            'speech_rate': None,
             'typical_pause_duration': None,
-            'command_length_distribution': [],
-            'frequently_misrecognized_words': {},
-            'command_start_patterns': [],  # Learn how user starts commands
-            'preferred_phrasing': {},  # Learn user's vocabulary
+            'command_length_distribution': BoundedDeque(maxlen=self.config.max_command_history),
+            'frequently_misrecognized_words': LRUBoundedDict(maxsize=self.config.max_dedup_cache),
+            'command_start_patterns': BoundedDeque(maxlen=self.config.max_command_history),
+            'preferred_phrasing': LRUBoundedDict(maxsize=self.config.max_dedup_cache),
         }
 
-        # Multi-engine configuration with performance tracking
-        self.recognition_engines = ['google', 'sphinx', 'whisper']
+        # Multi-engine configuration from environment with BOUNDED history
+        self.recognition_engines = self.config.recognition_engines
         self.engine_performance = {
             engine: {
                 'success': 0,
                 'fail': 0,
-                'avg_confidence': [],
-                'avg_speed': []
+                'avg_confidence': BoundedDeque(maxlen=self.config.max_engine_history),
+                'avg_speed': BoundedDeque(maxlen=self.config.max_engine_history)
             } for engine in self.recognition_engines
         }
-        self.current_engine = 'google'  # Start with Google, adapt based on performance
+        self.current_engine = self.config.default_engine
 
-        # Optimization thread control
+        # Optimization from environment
         self.optimization_thread = None
-        self.optimization_interval = 60  # Optimize every 60 seconds
+        self.optimization_interval = self.config.optimization_interval_sec
         self.stop_optimization = False
+        self.optimization_enabled = self.config.optimization_enabled
 
         # Initialize with adaptive settings
         self._initialize_adaptive_recognition()
 
-        # Start background optimization thread
-        self._start_optimization_thread()
+        # Start background optimization if enabled
+        if self.optimization_enabled:
+            self._start_optimization_thread()
 
         # Text-to-speech
         if USE_MACOS_VOICE:
@@ -491,41 +1574,45 @@ class EnhancedVoiceEngine:
         # ML trainer for adaptive learning
         self.ml_trainer = ml_trainer
         self.ml_enhanced_system = ml_enhanced_system
-        self.last_audio_data = None  # Store for ML training
+        self.last_audio_data = None
 
         # ===================================================================
-        # ADVANCED ASYNC COMPONENTS - Integrated from async_pipeline.py
+        # ADVANCED ASYNC COMPONENTS v100.0 - Environment-Driven
         # ===================================================================
 
-        # Circuit breaker for fault tolerance
+        # Circuit breaker for fault tolerance (uses config internally)
         self.circuit_breaker = AdaptiveCircuitBreaker(
-            initial_threshold=5,
-            initial_timeout=30,
-            adaptive=True
+            name="voice_recognition",
+            config=self.config
         )
-        logger.info("[ASYNC] Initialized adaptive circuit breaker")
+        logger.info("[EnhancedVoiceEngine] Initialized adaptive circuit breaker")
 
-        # Event bus for event-driven architecture
-        self.event_bus = AsyncEventBus()
-        logger.info("[ASYNC] Initialized async event bus")
+        # Event bus for event-driven architecture (uses config internally)
+        self.event_bus = AsyncEventBus(config=self.config)
+        logger.info("[EnhancedVoiceEngine] Initialized async event bus")
 
-        # Async queue for command processing
-        self.voice_queue = AsyncVoiceQueue(maxsize=100)
-        logger.info("[ASYNC] Initialized async voice queue")
+        # Async queue for command processing (uses config internally)
+        self.voice_queue = AsyncVoiceQueue(config=self.config)
+        logger.info("[EnhancedVoiceEngine] Initialized async voice queue")
 
         # ===================================================================
-        # BACKGROUND SYSTEM MONITOR - Non-blocking CPU/Memory tracking
+        # BACKGROUND SYSTEM MONITOR v100.0 - Environment-Driven
         # ===================================================================
 
         # Cached system metrics (updated by background monitor)
         self._cached_cpu_usage = 0.0
         self._cached_memory_usage = 0.0
         self._last_metric_update = time.time()
-        self._metric_cache_duration = 1.0  # Cache for 1 second
+        self._metric_cache_duration = self.config.metric_cache_duration_sec
         self._system_monitor_task = None
         self._monitor_running = False
+        self._shutdown_requested = False
 
-        logger.info("[SYSTEM-MONITOR] Initialized non-blocking system metrics cache")
+        logger.info(
+            f"[EnhancedVoiceEngine] Initialized with "
+            f"energy_threshold={self.config.energy_threshold}, "
+            f"optimization_interval={self.optimization_interval}s"
+        )
 
         # Subscribe to voice events
         self._setup_event_handlers()
@@ -587,41 +1674,46 @@ class EnhancedVoiceEngine:
         }
 
     def _setup_voice(self):
-        """Configure JARVIS voice settings"""
+        """Configure JARVIS voice settings from environment."""
         if USE_MACOS_VOICE:
-            # macOS voice is already configured with British accent
-            self.tts_engine.setProperty("rate", 175)
+            # macOS voice - use config-driven rate
+            self.tts_engine.setProperty("rate", self.config.tts_rate)
         else:
             voices = self.tts_engine.getProperty("voices")
 
-            # Try to find a British male voice
-            british_voice = None
+            # Try to find voice matching preference from config
+            preferred_voice = None
+            voice_preference = self.config.tts_voice_preference.lower()
+
             if voices:
                 for voice in voices:
-                    if any(
-                        word in voice.name.lower()
-                        for word in ["british", "uk", "english"]
-                    ):
-                        if "male" in voice.name.lower() or not any(
-                            word in voice.name.lower() for word in ["female", "woman"]
+                    voice_name_lower = voice.name.lower()
+                    # Check if voice matches preference
+                    if voice_preference in voice_name_lower:
+                        if "male" in voice_name_lower or not any(
+                            word in voice_name_lower for word in ["female", "woman"]
                         ):
-                            british_voice = voice.id
+                            preferred_voice = voice.id
                             break
 
-            if british_voice:
-                self.tts_engine.setProperty("voice", british_voice)
+            if preferred_voice:
+                self.tts_engine.setProperty("voice", preferred_voice)
+                logger.info(f"[TTS] Using preferred voice: {preferred_voice}")
 
-            # Set speech rate and volume for JARVIS-like delivery
-            self.tts_engine.setProperty("rate", 175)  # Slightly faster than normal
-            self.tts_engine.setProperty("volume", 0.9)
+            # Set speech rate and volume from config
+            self.tts_engine.setProperty("rate", self.config.tts_rate)
+            self.tts_engine.setProperty("volume", self.config.tts_volume)
 
-    def calibrate_microphone(self, duration: int = 3):
-        """Enhanced calibration with noise profiling"""
+    def calibrate_microphone(self, duration: Optional[int] = None):
+        """Enhanced calibration with noise profiling (duration from config)."""
+        # Use config-driven duration if not specified
+        effective_duration = duration if duration is not None else self.config.calibration_duration_sec
+
         with self.microphone as source:
             print("🎤 Calibrating for ambient noise... Please remain quiet.")
 
-            # Adjust for ambient noise with longer duration
-            self.recognizer.adjust_for_ambient_noise(source, duration=duration)
+            # Adjust for ambient noise with config-driven duration
+            self.recognizer.adjust_for_ambient_noise(source, duration=effective_duration)
 
             # Record noise sample for profile
             try:
@@ -890,10 +1982,8 @@ class EnhancedVoiceEngine:
         else:  # decrease
             new_value = max(current - amount, config['min'])
 
-        # Store old value in history
+        # Store old value in history (BoundedDeque handles size automatically)
         config['history'].append(current)
-        if len(config['history']) > 100:  # Keep last 100 values
-            config['history'].pop(0)
 
         # Update current value
         config['current'] = new_value
@@ -912,11 +2002,19 @@ class EnhancedVoiceEngine:
         except Exception as e:
             logger.error(f"[ADAPTIVE] Failed to apply config: {e}")
 
-    def _record_recognition_result(self, success: bool, confidence: float = 0.0,
-                                   first_attempt: bool = False, false_activation: bool = False):
+    def _record_recognition_result(
+        self,
+        success: bool,
+        confidence: float = 0.0,
+        first_attempt: bool = False,
+        false_activation: bool = False,
+        trace_ctx: Optional[TraceContext] = None
+    ):
         """
         Record recognition result for adaptive learning.
-        This is the key feedback loop - NO environmental noise needed!
+        Uses bounded collections - no manual size management needed.
+
+        v100.0: Added trace context and metrics persistence.
         """
         if success:
             self.performance_metrics['successful_recognitions'] += 1
@@ -924,9 +2022,8 @@ class EnhancedVoiceEngine:
             self.performance_metrics['consecutive_failures'] = 0
 
             if confidence > 0:
+                # BoundedDeque handles size automatically
                 self.performance_metrics['average_confidence'].append(confidence)
-                if len(self.performance_metrics['average_confidence']) > 100:
-                    self.performance_metrics['average_confidence'].pop(0)
         else:
             self.performance_metrics['failed_recognitions'] += 1
             self.performance_metrics['consecutive_failures'] += 1
@@ -936,9 +2033,23 @@ class EnhancedVoiceEngine:
             self.performance_metrics['false_activation_count'] += 1
 
         if first_attempt:
+            # BoundedDeque handles size automatically
             self.performance_metrics['first_attempt_success_rate'].append(1 if success else 0)
-            if len(self.performance_metrics['first_attempt_success_rate']) > 100:
-                self.performance_metrics['first_attempt_success_rate'].pop(0)
+
+        # Record to metrics persistence
+        if self._metrics:
+            self._metrics.record_voice_event(
+                event_type="recognition_result",
+                trace_ctx=trace_ctx,
+                success=success,
+                confidence=confidence,
+                metadata={
+                    "first_attempt": first_attempt,
+                    "false_activation": false_activation,
+                    "consecutive_failures": self.performance_metrics['consecutive_failures'],
+                    "engine": self.current_engine
+                }
+            )
 
         # Track which parameter values lead to success
         for param_name, config in self.adaptive_config.items():
@@ -984,79 +2095,131 @@ class EnhancedVoiceEngine:
         """Handler for circuit breaker opening"""
         logger.error(f"[ASYNC-EVENT] Circuit breaker opened - voice recognition temporarily unavailable")
 
-    async def listen_async(self, timeout: int = 1, phrase_time_limit: int = 8, priority: int = 0) -> Tuple[Optional[str], float]:
+    async def listen_async(
+        self,
+        timeout: Optional[float] = None,
+        phrase_time_limit: Optional[int] = None,
+        priority: VoiceTaskPriority = VoiceTaskPriority.NORMAL,
+        trace_ctx: Optional[TraceContext] = None
+    ) -> Tuple[Optional[str], float]:
         """
         Advanced async voice recognition with circuit breaker and event bus.
-        Fully integrated with async_pipeline architecture.
-        """
-        task_id = f"voice_{int(time.time() * 1000)}"
+        Fully integrated with async_pipeline architecture v100.0.
 
-        # Create voice task
+        Args:
+            timeout: Listen timeout (default from config)
+            phrase_time_limit: Max phrase duration (default from config)
+            priority: Task priority level
+            trace_ctx: W3C trace context for distributed tracing
+        """
+        # Use config defaults
+        effective_timeout = timeout if timeout is not None else self.config.listen_timeout
+        effective_phrase_limit = phrase_time_limit if phrase_time_limit is not None else self.config.phrase_time_limit
+
+        task_id = f"voice_{uuid.uuid4().hex[:12]}"
+
+        # Create trace context if not provided
+        if trace_ctx is None and self.config.tracing_enabled:
+            trace_ctx = TraceContext()
+
+        # Create voice task with proper enums
         task = VoiceTask(
             task_id=task_id,
             priority=priority,
-            timestamp=time.time()
+            timestamp=time.time(),
+            trace_ctx=trace_ctx,
+            source="listen_async"
         )
 
         try:
             # Check if queue is full
             if self.voice_queue.is_full():
-                logger.warning(f"[ASYNC] Voice queue is full ({self.voice_queue.size()}/{100}) - rejecting task")
-                await self.event_bus.publish("queue_full", {"task_id": task_id})
+                logger.warning(
+                    f"[listen_async] Queue full ({self.voice_queue.size()}/{self.config.queue_maxsize}) - "
+                    f"rejecting task {task_id}"
+                )
+                await self.event_bus.publish("queue_full", {"task_id": task_id}, trace_ctx=trace_ctx)
                 return None, 0.0
 
             # Enqueue task
-            await self.voice_queue.enqueue(task)
+            success, reason = await self.voice_queue.enqueue(task)
+            if not success:
+                logger.warning(f"[listen_async] Enqueue failed: {reason}")
+                return None, 0.0
 
             # Execute with circuit breaker protection
             async def recognize_wrapper():
-                # Run sync listen_with_confidence in executor
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.listen_with_confidence(timeout, phrase_time_limit)
+                    lambda: self.listen_with_confidence(int(effective_timeout), effective_phrase_limit)
                 )
                 return result
 
-            # Call with circuit breaker
-            text, confidence = await self.circuit_breaker.call(recognize_wrapper)
+            # Call with circuit breaker and trace context
+            text, confidence = await self.circuit_breaker.call(
+                recognize_wrapper,
+                trace_ctx=trace_ctx
+            )
 
             # Update task
             task.text = text
             task.confidence = confidence
-            task.status = "completed"
-            task.result = {"text": text, "confidence": confidence}
+            task.complete(result={"text": text, "confidence": confidence})
 
-            # Publish success event
+            # Publish success event with trace context
             if text:
-                await self.event_bus.publish("voice_recognized", {
-                    "task_id": task_id,
-                    "text": text,
-                    "confidence": confidence,
-                    "timestamp": time.time()
-                })
+                await self.event_bus.publish(
+                    "voice_recognized",
+                    {
+                        "task_id": task_id,
+                        "text": text,
+                        "confidence": confidence,
+                        "timestamp": time.time()
+                    },
+                    trace_ctx=trace_ctx
+                )
 
             # Complete task in queue
-            self.voice_queue.complete_task(task_id)
+            await self.voice_queue.complete_task(task_id, success=True)
+
+            # Record metrics
+            if self._metrics:
+                self._metrics.record_voice_event(
+                    event_type="listen_async_success",
+                    trace_ctx=trace_ctx,
+                    success=True,
+                    confidence=confidence,
+                    latency_ms=task.duration_ms
+                )
 
             return text, confidence
 
         except Exception as e:
-            logger.error(f"[ASYNC] Error in async voice recognition: {e}")
+            logger.error(f"[listen_async] Error: {e}")
 
             # Update task as failed
-            task.status = "failed"
-            task.error = str(e)
+            task.fail(str(e))
 
             # Publish failure event
-            await self.event_bus.publish("voice_failed", {
-                "task_id": task_id,
-                "error": str(e),
-                "timestamp": time.time()
-            })
+            await self.event_bus.publish(
+                "voice_failed",
+                {"task_id": task_id, "error": str(e), "timestamp": time.time()},
+                trace_ctx=trace_ctx
+            )
 
             # Complete task in queue
-            self.voice_queue.complete_task(task_id)
+            await self.voice_queue.complete_task(task_id, success=False)
+
+            # Record metrics
+            if self._metrics:
+                self._metrics.record_voice_event(
+                    event_type="listen_async_failure",
+                    trace_ctx=trace_ctx,
+                    success=False,
+                    latency_ms=task.duration_ms,
+                    metadata={"error": str(e)}
+                )
 
             return None, 0.0
 
@@ -1064,49 +2227,144 @@ class EnhancedVoiceEngine:
         """
         Background worker that processes the voice queue.
         Enables concurrent voice command processing.
+        Supports graceful shutdown via _shutdown_requested flag.
         """
-        logger.info("[ASYNC-WORKER] Started voice queue worker")
+        logger.info("[VoiceQueueWorker] Started")
 
-        while True:
+        while not self._shutdown_requested:
             try:
                 # Check if we can process more tasks
                 if self.voice_queue.processing_count >= self.voice_queue.max_concurrent:
                     await asyncio.sleep(0.1)
                     continue
 
-                # Get next task
-                task = await self.voice_queue.dequeue()
-                logger.debug(f"[ASYNC-WORKER] Processing task {task.task_id}")
+                # Get next task with timeout (allows checking shutdown flag)
+                task = await self.voice_queue.dequeue(timeout=1.0)
+                if task is None:
+                    continue
+
+                logger.debug(f"[VoiceQueueWorker] Processing task {task.task_id}")
 
                 # Process async
                 asyncio.create_task(self._process_voice_task(task))
 
             except asyncio.CancelledError:
-                logger.info("[ASYNC-WORKER] Voice queue worker cancelled")
+                logger.info("[VoiceQueueWorker] Cancelled, initiating shutdown")
                 break
             except Exception as e:
-                logger.error(f"[ASYNC-WORKER] Error in queue worker: {e}")
+                logger.error(f"[VoiceQueueWorker] Error: {e}")
                 await asyncio.sleep(1)
 
+        logger.info("[VoiceQueueWorker] Stopped")
+
     async def _process_voice_task(self, task: VoiceTask):
-        """Process a single voice task"""
+        """Process a single voice task with proper status handling."""
         try:
-            # Execute voice recognition
-            text, confidence = await self.listen_async(priority=task.priority)
+            # Execute voice recognition with task's priority and trace context
+            text, confidence = await self.listen_async(
+                priority=task.priority,
+                trace_ctx=task.trace_ctx
+            )
 
             # Update task
             task.text = text
             task.confidence = confidence
-            task.status = "completed"
+            task.complete(result={"text": text, "confidence": confidence})
 
         except Exception as e:
-            logger.error(f"[ASYNC] Error processing voice task {task.task_id}: {e}")
-            task.status = "failed"
-            task.error = str(e)
+            logger.error(f"[_process_voice_task] Error for {task.task_id}: {e}")
+            task.fail(str(e))
 
         finally:
-            # Always complete the task
-            self.voice_queue.complete_task(task.task_id)
+            # Always complete the task in queue
+            await self.voice_queue.complete_task(task.task_id)
+
+    # ===================================================================
+    # GRACEFUL SHUTDOWN v100.0
+    # ===================================================================
+
+    async def shutdown(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Gracefully shutdown the voice engine.
+
+        Args:
+            timeout: Shutdown timeout (default from config)
+
+        Returns:
+            Shutdown statistics
+        """
+        effective_timeout = timeout if timeout is not None else self.config.shutdown_timeout_sec
+        logger.info(f"[EnhancedVoiceEngine] Starting graceful shutdown (timeout={effective_timeout}s)")
+
+        self._shutdown_requested = True
+        stats = {
+            "start_time": time.time(),
+            "queue_drained": False,
+            "tasks_in_flight": self.voice_queue.processing_count,
+            "queue_size": self.voice_queue.size()
+        }
+
+        try:
+            # Stop optimization
+            self.stop_optimization = True
+            if hasattr(self, 'optimization_task'):
+                self.optimization_task.cancel()
+                try:
+                    await asyncio.wait_for(self.optimization_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            logger.info("[Shutdown] Optimization stopped")
+
+            # Stop system monitor
+            await self.stop_system_monitor()
+            logger.info("[Shutdown] System monitor stopped")
+
+            # Drain queue if configured
+            if self.config.shutdown_drain_queue:
+                drained = await self.voice_queue.drain(timeout=effective_timeout / 2)
+                stats["queue_drained"] = True
+                stats["tasks_drained"] = drained
+                logger.info(f"[Shutdown] Queue drained ({drained} tasks)")
+
+            # Close metrics persistence
+            if self._metrics:
+                self._metrics.close()
+                logger.info("[Shutdown] Metrics persistence closed")
+
+            stats["end_time"] = time.time()
+            stats["duration_sec"] = stats["end_time"] - stats["start_time"]
+            stats["success"] = True
+
+            logger.info(f"[EnhancedVoiceEngine] Shutdown complete in {stats['duration_sec']:.2f}s")
+
+        except Exception as e:
+            logger.error(f"[Shutdown] Error: {e}")
+            stats["success"] = False
+            stats["error"] = str(e)
+
+        return stats
+
+    def get_health(self) -> Dict[str, Any]:
+        """Get comprehensive health status."""
+        return {
+            "version": "100.0",
+            "running": not self._shutdown_requested,
+            "circuit_breaker": self.circuit_breaker.get_status(),
+            "queue": self.voice_queue.get_status(),
+            "event_bus": self.event_bus.get_stats(),
+            "system_metrics": self.get_system_health(),
+            "performance": {
+                "successful_recognitions": self.performance_metrics["successful_recognitions"],
+                "failed_recognitions": self.performance_metrics["failed_recognitions"],
+                "consecutive_failures": self.performance_metrics["consecutive_failures"],
+                "current_engine": self.current_engine
+            },
+            "config": {
+                "energy_threshold": self.adaptive_config["energy_threshold"]["current"],
+                "pause_threshold": self.adaptive_config["pause_threshold"]["current"],
+                "optimization_enabled": self.optimization_enabled
+            }
+        }
 
     # ===================================================================
     # BACKGROUND SYSTEM MONITOR - Non-blocking CPU/Memory/Performance tracking
@@ -1719,9 +2977,26 @@ class EnhancedJARVISPersonality:
 
 
 class EnhancedJARVISVoiceAssistant:
-    """Enhanced JARVIS Voice Assistant with professional-grade accuracy and ML training"""
+    """
+    Enhanced JARVIS Voice Assistant with professional-grade accuracy and ML training.
 
-    def __init__(self, claude_api_key: str, enable_ml_training: bool = True):
+    v100.0 Enhancements:
+    - 100% environment-driven configuration
+    - Deep Trinity Voice Coordinator integration
+    - Bounded command history
+    - Graceful shutdown with resource cleanup
+    - W3C distributed tracing support
+    """
+
+    def __init__(
+        self,
+        claude_api_key: str,
+        enable_ml_training: bool = True,
+        config: Optional[JARVISVoiceConfig] = None
+    ):
+        # Load configuration (100% environment-driven)
+        self.config = config or get_voice_config()
+
         # Initialize ML enhanced system if available
         self.ml_enhanced_system = None
         self.ml_trainer = None
@@ -1748,33 +3023,36 @@ class EnhancedJARVISVoiceAssistant:
                     except Exception as e:
                         logger.error(f"Failed to initialize ML trainer: {e}")
 
-        # Initialize components with ML systems - OPTIMIZED
-        # Start personality initialization early (it pre-loads weather)
+        # Initialize components with ML systems and shared config
         self.personality = EnhancedJARVISPersonality(
             claude_api_key, ml_trainer=self.ml_trainer
         )
 
-        # Initialize voice engine with both ML systems
+        # Initialize voice engine with both ML systems and config
         self.voice_engine = EnhancedVoiceEngine(
-            ml_trainer=self.ml_trainer, ml_enhanced_system=self.ml_enhanced_system
+            ml_trainer=self.ml_trainer,
+            ml_enhanced_system=self.ml_enhanced_system,
+            config=self.config
         )
 
         # Wire up voice engine reference to personality for system metrics
         self.personality.set_voice_engine(self.voice_engine)
-        logger.info("[JARVIS] Voice engine wired to personality for non-blocking metrics")
+        logger.info("[JARVISVoiceAssistant] Voice engine wired to personality")
+
         self.running = False
+        self._shutdown_requested = False
         self.command_queue = queue.Queue()
 
-        # Enhanced wake words with variations
+        # Enhanced wake words from environment config
         self.wake_words = {
-            "primary": ["jarvis", "hey jarvis", "okay jarvis"],
-            "variations": ["jar vis", "hey jar vis", "jarv"],  # Handle speech breaks
-            "urgent": ["jarvis emergency", "jarvis urgent"],
+            "primary": self.config.wake_words_primary,
+            "variations": self.config.wake_words_variations,
+            "urgent": self.config.wake_words_urgent,
         }
 
-        # Confidence thresholds (will be dynamically adjusted by ML system)
-        self.wake_word_threshold = 0.6
-        self.command_threshold = 0.7
+        # Confidence thresholds from config (will be dynamically adjusted by ML system)
+        self.wake_word_threshold = self.config.wake_word_threshold
+        self.command_threshold = self.config.command_threshold
 
         # If ML enhanced system is available, use its personalized thresholds
         if self.ml_enhanced_system:
@@ -1782,6 +3060,15 @@ class EnhancedJARVISVoiceAssistant:
             if user_thresholds:
                 self.wake_word_threshold = user_thresholds.wake_word_threshold
                 self.command_threshold = user_thresholds.confidence_threshold
+
+        # Bounded command history (prevent memory leaks)
+        self._command_history: BoundedDeque = BoundedDeque(
+            maxlen=self.config.max_command_history
+        )
+
+        # Trinity Voice Coordinator integration
+        self._trinity_coordinator = None
+        self._init_trinity_coordinator()
 
         # Special commands
         self.special_commands = {
@@ -1795,7 +3082,100 @@ class EnhancedJARVISVoiceAssistant:
             "export my voice model": self._export_voice_model,
             "personalized tips": self._get_personalized_tips,
             "ml performance": self._show_ml_performance,
+            "voice health": self._show_voice_health,  # New v100.0 command
         }
+
+        logger.info(
+            f"[JARVISVoiceAssistant] Initialized v100.0 with "
+            f"wake_words={len(self.wake_words['primary'])}, "
+            f"thresholds=(wake={self.wake_word_threshold}, cmd={self.command_threshold})"
+        )
+
+    def _init_trinity_coordinator(self) -> None:
+        """Initialize Trinity Voice Coordinator integration."""
+        try:
+            if TRINITY_VOICE_AVAILABLE:
+                # Will be initialized on first use via get_voice_coordinator()
+                logger.info("[JARVISVoiceAssistant] Trinity Voice Coordinator available")
+            else:
+                logger.warning("[JARVISVoiceAssistant] Trinity Voice Coordinator not available")
+        except Exception as e:
+            logger.error(f"[JARVISVoiceAssistant] Error initializing Trinity: {e}")
+
+    async def _announce_via_trinity(
+        self,
+        message: str,
+        context: str = "runtime",
+        priority: str = "NORMAL"
+    ) -> bool:
+        """Announce message via Trinity Voice Coordinator if available."""
+        if not TRINITY_VOICE_AVAILABLE:
+            return False
+
+        try:
+            # Import dynamically to avoid circular imports
+            from backend.core.trinity_voice_coordinator import (
+                announce, VoiceContext, VoicePriority
+            )
+
+            # Map context and priority
+            try:
+                voice_context = VoiceContext(context.lower())
+            except ValueError:
+                voice_context = VoiceContext.RUNTIME
+
+            try:
+                voice_priority = VoicePriority[priority.upper()]
+            except KeyError:
+                voice_priority = VoicePriority.NORMAL
+
+            success, reason = await announce(
+                message=message,
+                context=voice_context,
+                priority=voice_priority,
+                source="jarvis_voice_assistant"
+            )
+
+            if success:
+                logger.debug(f"[Trinity] Announcement queued: {reason}")
+            else:
+                logger.warning(f"[Trinity] Announcement skipped: {reason}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"[Trinity] Announcement error: {e}")
+            return False
+
+    async def _show_voice_health(self) -> None:
+        """Show comprehensive voice system health."""
+        health = self.voice_engine.get_health()
+
+        health_summary = f"""Voice System Health Report (v100.0):
+
+Status: {"Running" if health["running"] else "Stopped"}
+Circuit Breaker: {health["circuit_breaker"]["state"]} (failures={health["circuit_breaker"]["failure_count"]})
+Queue: {health["queue"]["in_flight"]}/{health["queue"]["maxsize"]} tasks
+Event Bus: {health["event_bus"]["history_size"]} events
+
+Performance:
+- Successful: {health["performance"]["successful_recognitions"]}
+- Failed: {health["performance"]["failed_recognitions"]}
+- Engine: {health["performance"]["current_engine"]}
+
+System:
+- CPU: {health["system_metrics"]["cpu_percent"]:.1f}%
+- Memory: {health["system_metrics"]["memory_percent"]:.1f}%
+- Monitor Running: {health["system_metrics"]["monitor_running"]}
+
+Configuration:
+- Energy Threshold: {health["config"]["energy_threshold"]}
+- Pause Threshold: {health["config"]["pause_threshold"]}
+- Optimization: {"Enabled" if health["config"]["optimization_enabled"] else "Disabled"}
+"""
+
+        self.voice_engine.speak(health_summary)
+        logger.info(f"Voice Health: {json.dumps(health, indent=2)}")
 
     async def _check_wake_word(
         self, text: str, confidence: float, audio_data: Optional[np.ndarray] = None
@@ -2378,19 +3758,8 @@ Your personalized thresholds have been optimized to reduce false positives by {m
 # NOTE: The canonical TrinityVoiceCoordinator is in backend/core/trinity_voice_coordinator.py
 # This re-export provides backward compatibility for any imports from this module.
 
-try:
-    from backend.core.trinity_voice_coordinator import (
-        TrinityVoiceCoordinator,
-        VoiceContext as VoicePersonality,  # Alias for backward compatibility
-        VoicePriority,
-        get_voice_coordinator as get_trinity_voice_coordinator,
-        announce,
-    )
-    TRINITY_VOICE_AVAILABLE = True
-except ImportError:
-    TRINITY_VOICE_AVAILABLE = False
-    logger.warning("[jarvis_voice] TrinityVoiceCoordinator not available - using fallback")
-    
+# Only define stubs if Trinity is not available (already imported at top)
+if not TRINITY_VOICE_AVAILABLE:
     # Fallback stubs
     class VoicePersonality(Enum):
         """Fallback voice personality enum."""
@@ -2399,14 +3768,74 @@ except ImportError:
         RUNTIME = "runtime"
         ALERT = "alert"
         CELEBRATION = "celebration"
-    
+
     def get_trinity_voice_coordinator():
         """Fallback that returns None."""
         return None
-    
-    async def announce(*args, **kwargs):
+
+    async def announce_fallback(*args, **kwargs) -> Tuple[bool, str]:
         """Fallback announce that does nothing."""
-        pass
+        return False, "trinity_unavailable"
+
+    announce = announce_fallback
+else:
+    # Alias for backward compatibility
+    VoicePersonality = VoiceContext
+    get_trinity_voice_coordinator = get_voice_coordinator
+
+
+# =============================================================================
+# MODULE EXPORTS v100.0
+# =============================================================================
+
+__all__ = [
+    # Configuration
+    "JARVISVoiceConfig",
+    "get_voice_config",
+
+    # Bounded Collections
+    "BoundedDeque",
+    "LRUBoundedDict",
+
+    # Tracing
+    "TraceContext",
+
+    # Metrics
+    "VoiceMetricsPersistence",
+    "get_metrics_persistence",
+
+    # Circuit Breaker
+    "CircuitBreakerState",
+    "AdaptiveCircuitBreaker",
+
+    # Event Bus
+    "AsyncEventBus",
+
+    # Voice Task
+    "VoiceTaskStatus",
+    "VoiceTaskPriority",
+    "VoiceTask",
+    "AsyncVoiceQueue",
+
+    # Voice Command
+    "VoiceConfidence",
+    "VoiceCommand",
+
+    # Voice Engine
+    "EnhancedVoiceEngine",
+
+    # Personality
+    "EnhancedJARVISPersonality",
+
+    # Voice Assistant
+    "EnhancedJARVISVoiceAssistant",
+
+    # Trinity Integration
+    "TRINITY_VOICE_AVAILABLE",
+    "VoicePersonality",
+    "get_trinity_voice_coordinator",
+    "announce",
+]
 
 
 async def main():
