@@ -398,6 +398,82 @@ def _get_psutil():
     return _psutil_cache if _psutil_cache is not False else None
 
 
+def _safe_read_file(path: Path, default: str = "") -> str:
+    """
+    v92.0: Robust file reading that handles "Bad file descriptor" and other I/O errors.
+
+    The pathlib.read_text() method can fail with errno 9 (EBADF) when:
+    - File descriptors are exhausted or recycled
+    - Race conditions with file operations
+    - System file descriptor limits are stressed (e.g., after setrlimit)
+
+    This function uses explicit file opening with proper error handling.
+
+    Args:
+        path: Path object to read
+        default: Default value to return on error
+
+    Returns:
+        File contents as string, or default on error
+    """
+    import errno
+
+    if not isinstance(path, Path):
+        path = Path(path)
+
+    try:
+        # Check existence first
+        if not path.exists():
+            return default
+    except OSError:
+        return default
+
+    try:
+        # Use explicit file open instead of path.read_text()
+        with open(str(path), 'r', encoding='utf-8') as f:
+            return f.read()
+    except (OSError, IOError) as e:
+        # Handle specific error codes gracefully
+        if hasattr(e, 'errno') and e.errno in (
+            errno.EBADF,    # Bad file descriptor
+            errno.ENOENT,   # File not found
+            errno.EACCES,   # Permission denied
+            errno.EIO,      # I/O error
+            errno.ESTALE,   # Stale file handle
+        ):
+            return default
+        # Log and return default for unexpected errors
+        return default
+    except Exception:
+        return default
+
+
+def _safe_read_json(path: Path, default: dict = None) -> dict:
+    """
+    v92.0: Robust JSON file reading with error handling.
+
+    Args:
+        path: Path to JSON file
+        default: Default value to return on error (None becomes {})
+
+    Returns:
+        Parsed JSON data or default on error
+    """
+    import json
+
+    if default is None:
+        default = {}
+
+    content = _safe_read_file(path, default="")
+    if not content:
+        return default
+
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return default
+
+
 # v10.6: Structured Logging System with Real-Time Monitoring
 try:
     from core.logging import (
@@ -1220,8 +1296,11 @@ class RobustVenvDetector:
         pyenv_file = repo_path / ".python-version"
         if pyenv_file.exists():
             try:
-                version = pyenv_file.read_text().strip()
-                pyenv_python = Path.home() / ".pyenv" / "versions" / version / "bin" / "python"
+                # v92.0: Use safe file reading to avoid "Bad file descriptor" errors
+                version = _safe_read_file(pyenv_file, default="").strip()
+                if not version:
+                    version = None  # Will skip pyenv if file is empty/unreadable
+                pyenv_python = Path.home() / ".pyenv" / "versions" / (version or "") / "bin" / "python"
                 if pyenv_python.exists():
                     self._logger.debug(f"Found pyenv Python: {pyenv_python}")
                     return str(pyenv_python)
@@ -1934,27 +2013,58 @@ class ParallelProcessCleaner:
         return discovered
     
     def _discover_from_pid_files(self) -> Dict[int, ProcessInfo]:
-        """Discover processes from PID files (runs in thread)."""
+        """
+        Discover processes from PID files (runs in thread).
+
+        v2.0 FIX: Uses explicit file handling to avoid "Bad file descriptor" errors.
+        The pathlib.read_text() method can fail with errno 9 when:
+        - File descriptors are exhausted or recycled
+        - Race conditions with file operations
+        - System file descriptor limits are stressed
+        """
         try:
             import psutil
         except ImportError:
             return {}
-        
+
         discovered = {}
-        
+
         for pid_file in self.config.pid_files:
-            if not pid_file.exists():
-                continue
-            
+            # v2.0: Check existence more carefully
             try:
-                pid = int(pid_file.read_text().strip())
-                if not psutil.pid_exists(pid) or pid in (self._my_pid, self._my_parent):
-                    pid_file.unlink(missing_ok=True)
+                if not pid_file.exists():
                     continue
-                
+            except OSError:
+                # Can't even check existence - skip this file
+                continue
+
+            pid = None
+            try:
+                # v2.0: Use explicit file open with proper context management
+                # This avoids the "Bad file descriptor" issue with read_text()
+                try:
+                    with open(str(pid_file), 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    pid = int(content) if content else None
+                except (OSError, IOError) as e:
+                    # Handle bad file descriptor, permission errors, etc.
+                    import errno
+                    if e.errno in (errno.EBADF, errno.ENOENT, errno.EACCES, errno.EIO):
+                        # Bad fd, file gone, no access, or I/O error - skip
+                        continue
+                    # Re-raise unexpected OSError
+                    raise
+
+                if pid is None:
+                    continue
+
+                if not psutil.pid_exists(pid) or pid in (self._my_pid, self._my_parent):
+                    self._safe_unlink(pid_file)
+                    continue
+
                 proc = psutil.Process(pid)
                 cmdline = " ".join(proc.cmdline()).lower()
-                
+
                 if any(p in cmdline for p in self.config.jarvis_patterns):
                     discovered[pid] = ProcessInfo(
                         pid=pid,
@@ -1964,12 +2074,21 @@ class ParallelProcessCleaner:
                         source="pid_file"
                     )
             except (ValueError, psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
-                try:
-                    pid_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
-        
+                self._safe_unlink(pid_file)
+            except Exception as e:
+                # Log unexpected errors but don't crash
+                self.logger.debug(f"[ProcessCleaner] Error reading PID file {pid_file}: {e}")
+                continue
+
         return discovered
+
+    def _safe_unlink(self, path: Path) -> bool:
+        """Safely unlink a file with proper error handling."""
+        try:
+            path.unlink(missing_ok=True)
+            return True
+        except (OSError, IOError, PermissionError):
+            return False
     
     def _discover_from_process_list(self) -> Dict[int, ProcessInfo]:
         """Scan process list for JARVIS processes (runs in thread)."""
@@ -5452,7 +5571,11 @@ class SupervisorBootstrapper:
                     # Check if the PID that created it is still running
                     if self.BROWSER_PID_FILE.exists():
                         try:
-                            pid = int(self.BROWSER_PID_FILE.read_text().strip())
+                            # v92.0: Use safe file reading to avoid "Bad file descriptor" errors
+                            pid_content = _safe_read_file(self.BROWSER_PID_FILE, default="").strip()
+                            pid = int(pid_content) if pid_content else 0
+                            if not pid:
+                                raise ValueError("Empty or invalid PID file")
                             # Check if process is still alive
                             os.kill(pid, 0)
                             self.logger.debug(f"Browser lock held by PID {pid}")
@@ -8751,7 +8874,8 @@ class SupervisorBootstrapper:
                     """Load previously discovered topics."""
                     if self.topics_file.exists():
                         try:
-                            data = json.loads(self.topics_file.read_text())
+                            # v92.0: Use safe file reading to avoid "Bad file descriptor" errors
+                            data = _safe_read_json(self.topics_file, default={})
                             for t in data.get("topics", []):
                                 topic = DiscoveredTopic(
                                     topic=t["topic"],
@@ -15958,7 +16082,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     metadata_file = self.models_dir / "models_metadata.json"
                     if metadata_file.exists():
                         try:
-                            self.model_registry = json.loads(metadata_file.read_text())
+                            # v92.0: Use safe file reading to avoid "Bad file descriptor" errors
+                            self.model_registry = _safe_read_json(metadata_file, default={})
                             if self.logger:
                                 self.logger.debug(f"Loaded model registry with {len(self.model_registry.get('models', {}))} models")
                         except Exception as e:
