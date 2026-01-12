@@ -8995,75 +8995,95 @@ class TrinityUnifiedOrchestrator:
                         jprime_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "120.0"))
                         reactor_timeout = float(os.getenv("REACTOR_CORE_COMPONENT_TIMEOUT", "90.0"))
 
+                        # v100.4: SINGLE SOURCE OF TRUTH - Check if supervisor handles launching
+                        # When run_supervisor.py is the entry point, it sets this env var to delegate
+                        # launch responsibility to its v100.0 SafeProcess-based launcher.
+                        # This prevents duplicate launch attempts and race conditions.
+                        supervisor_launches = os.getenv("TRINITY_SUPERVISOR_LAUNCHES", "true").lower() == "true"
+
                         # Step 2.3 & 2.4: Start external components with individual timeouts
                         jprime_ok = True
                         reactor_ok = True
 
-                        async with self._tracer.span("start_external_components"):
-                            tasks = []
-                            task_names = []
+                        if supervisor_launches:
+                            # v100.4: Skip component launch - run_supervisor.py handles it
+                            # TrinityIntegrator focuses on coordination, not launching
+                            logger.info("   ℹ️  [v100.4] Skipping component launch (supervisor handles)")
+                            logger.info("   ℹ️  [v100.4] TrinityIntegrator: coordination mode only")
+                            # Just check if components already running (via heartbeat or process)
+                            jprime_ok = await self._discover_running_component("jarvis_prime")
+                            reactor_ok = await self._discover_running_component("reactor_core")
+                            if not jprime_ok and self.enable_jprime:
+                                logger.info("   ⏳ [v100.4] J-Prime will be launched by supervisor")
+                            if not reactor_ok and self.enable_reactor:
+                                logger.info("   ⏳ [v100.4] Reactor-Core will be launched by supervisor")
+                        else:
+                            # Legacy mode: TrinityIntegrator launches components directly
+                            async with self._tracer.span("start_external_components"):
+                                tasks = []
+                                task_names = []
 
-                            if self.enable_jprime:
-                                logger.info(f"   🧠 [v86.0] Starting JARVIS Prime (timeout={jprime_timeout}s)...")
-                                tasks.append(
-                                    asyncio.wait_for(
-                                        self._start_jprime_with_recovery(),
-                                        timeout=jprime_timeout
+                                if self.enable_jprime:
+                                    logger.info(f"   🧠 [v86.0] Starting JARVIS Prime (timeout={jprime_timeout}s)...")
+                                    tasks.append(
+                                        asyncio.wait_for(
+                                            self._start_jprime_with_recovery(),
+                                            timeout=jprime_timeout
+                                        )
                                     )
-                                )
-                                task_names.append("jarvis_prime")
+                                    task_names.append("jarvis_prime")
 
-                            if self.enable_reactor:
-                                logger.info(f"   ⚛️  [v86.0] Starting Reactor-Core (timeout={reactor_timeout}s)...")
-                                tasks.append(
-                                    asyncio.wait_for(
-                                        self._start_reactor_with_recovery(),
-                                        timeout=reactor_timeout
+                                if self.enable_reactor:
+                                    logger.info(f"   ⚛️  [v86.0] Starting Reactor-Core (timeout={reactor_timeout}s)...")
+                                    tasks.append(
+                                        asyncio.wait_for(
+                                            self._start_reactor_with_recovery(),
+                                            timeout=reactor_timeout
+                                        )
                                     )
-                                )
-                                task_names.append("reactor_core")
+                                    task_names.append("reactor_core")
 
-                            if tasks:
-                                # v86.0: Parallel execution with per-component timeout enforcement
-                                results = await asyncio.gather(*tasks, return_exceptions=True)
+                                if tasks:
+                                    # v86.0: Parallel execution with per-component timeout enforcement
+                                    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                                # Process results with detailed logging
-                                for i, (result, name) in enumerate(zip(results, task_names)):
-                                    if isinstance(result, asyncio.TimeoutError):
-                                        logger.error(
-                                            f"   ❌ [v86.0] {name.replace('_', ' ').title()} "
-                                            f"TIMEOUT after {jprime_timeout if i == 0 else reactor_timeout}s"
-                                        )
-                                        if name == "jarvis_prime":
-                                            jprime_ok = False
+                                    # Process results with detailed logging
+                                    for i, (result, name) in enumerate(zip(results, task_names)):
+                                        if isinstance(result, asyncio.TimeoutError):
+                                            logger.error(
+                                                f"   ❌ [v86.0] {name.replace('_', ' ').title()} "
+                                                f"TIMEOUT after {jprime_timeout if i == 0 else reactor_timeout}s"
+                                            )
+                                            if name == "jarvis_prime":
+                                                jprime_ok = False
+                                            else:
+                                                reactor_ok = False
+                                        elif isinstance(result, Exception):
+                                            logger.error(
+                                                f"   ❌ [v86.0] {name.replace('_', ' ').title()} "
+                                                f"FAILED: {result}"
+                                            )
+                                            if name == "jarvis_prime":
+                                                jprime_ok = False
+                                            else:
+                                                reactor_ok = False
+                                        elif result:
+                                            logger.info(
+                                                f"   ✅ [v86.0] {name.replace('_', ' ').title()} started successfully"
+                                            )
+                                            if name == "jarvis_prime":
+                                                jprime_ok = True
+                                            else:
+                                                reactor_ok = True
                                         else:
-                                            reactor_ok = False
-                                    elif isinstance(result, Exception):
-                                        logger.error(
-                                            f"   ❌ [v86.0] {name.replace('_', ' ').title()} "
-                                            f"FAILED: {result}"
-                                        )
-                                        if name == "jarvis_prime":
-                                            jprime_ok = False
-                                        else:
-                                            reactor_ok = False
-                                    elif result:
-                                        logger.info(
-                                            f"   ✅ [v86.0] {name.replace('_', ' ').title()} started successfully"
-                                        )
-                                        if name == "jarvis_prime":
-                                            jprime_ok = True
-                                        else:
-                                            reactor_ok = True
-                                    else:
-                                        logger.warning(
-                                            f"   ⚠️  [v86.0] {name.replace('_', ' ').title()} "
-                                            "returned false (non-fatal)"
-                                        )
-                                        if name == "jarvis_prime":
-                                            jprime_ok = False
-                                        else:
-                                            reactor_ok = False
+                                            logger.warning(
+                                                f"   ⚠️  [v86.0] {name.replace('_', ' ').title()} "
+                                                "returned false (non-fatal)"
+                                            )
+                                            if name == "jarvis_prime":
+                                                jprime_ok = False
+                                            else:
+                                                reactor_ok = False
 
                     # ═══════════════════════════════════════════════════
                     # PHASE 3: VERIFY (Health Aggregation)

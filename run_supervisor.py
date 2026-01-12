@@ -6856,6 +6856,208 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.error(f"[v91] Self-healing: Reactor-Core restart failed: {e}")
 
+    # =========================================================================
+    # v100.4: Unified Stop/Start Methods (Fix for undefined method bug)
+    # =========================================================================
+    # These methods provide a consistent interface for stopping and starting
+    # Trinity components. They integrate with the v100.0 SafeProcess system
+    # and handle both process handles and PID-based termination.
+    # =========================================================================
+
+    async def _stop_jprime_orchestrator(self) -> None:
+        """
+        v100.4: Stop J-Prime orchestrator gracefully.
+
+        Handles multiple scenarios:
+        1. Process handle is available (started by this session)
+        2. Only PID is known (started by previous session)
+        3. Process discovered via heartbeat file
+        """
+        self.logger.info("[v100.4] Stopping J-Prime orchestrator...")
+
+        # Method 1: Use process handle if available
+        if self._jprime_orchestrator_process is not None:
+            try:
+                pid = self._jprime_orchestrator_process.pid
+                self.logger.debug(f"[v100.4] Terminating J-Prime via process handle (PID: {pid})")
+                self._jprime_orchestrator_process.terminate()
+                try:
+                    await asyncio.wait_for(
+                        self._jprime_orchestrator_process.wait(),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning("[v100.4] J-Prime didn't terminate gracefully, killing...")
+                    self._jprime_orchestrator_process.kill()
+                    await self._jprime_orchestrator_process.wait()
+            except Exception as e:
+                self.logger.warning(f"[v100.4] Error stopping J-Prime process: {e}")
+            finally:
+                self._jprime_orchestrator_process = None
+            return
+
+        # Method 2: Find and kill by heartbeat PID
+        heartbeat_path = Path.home() / ".jarvis" / "trinity" / "components" / "jarvis_prime.json"
+        if heartbeat_path.exists():
+            try:
+                with open(heartbeat_path) as f:
+                    heartbeat = json.load(f)
+                pid = heartbeat.get("pid")
+                if pid:
+                    import psutil
+                    try:
+                        proc = psutil.Process(pid)
+                        if proc.is_running():
+                            self.logger.debug(f"[v100.4] Terminating J-Prime via heartbeat PID: {pid}")
+                            proc.terminate()
+                            proc.wait(timeout=5.0)
+                    except psutil.NoSuchProcess:
+                        pass
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+            except Exception as e:
+                self.logger.debug(f"[v100.4] Heartbeat-based stop failed: {e}")
+
+        self.logger.info("[v100.4] J-Prime stop complete")
+
+    async def _stop_reactor_core_orchestrator(self) -> None:
+        """
+        v100.4: Stop Reactor-Core orchestrator gracefully.
+
+        Handles multiple scenarios:
+        1. Process handle is available (started by this session)
+        2. Only PID is known (started by previous session)
+        3. Process discovered via heartbeat file
+        """
+        self.logger.info("[v100.4] Stopping Reactor-Core orchestrator...")
+
+        # Method 1: Use process handle if available
+        if self._reactor_core_orchestrator_process is not None:
+            try:
+                pid = self._reactor_core_orchestrator_process.pid
+                self.logger.debug(f"[v100.4] Terminating Reactor-Core via process handle (PID: {pid})")
+                self._reactor_core_orchestrator_process.terminate()
+                try:
+                    await asyncio.wait_for(
+                        self._reactor_core_orchestrator_process.wait(),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning("[v100.4] Reactor-Core didn't terminate gracefully, killing...")
+                    self._reactor_core_orchestrator_process.kill()
+                    await self._reactor_core_orchestrator_process.wait()
+            except Exception as e:
+                self.logger.warning(f"[v100.4] Error stopping Reactor-Core process: {e}")
+            finally:
+                self._reactor_core_orchestrator_process = None
+            return
+
+        # Method 2: Find and kill by heartbeat PID
+        heartbeat_path = Path.home() / ".jarvis" / "trinity" / "components" / "reactor_core.json"
+        if heartbeat_path.exists():
+            try:
+                with open(heartbeat_path) as f:
+                    heartbeat = json.load(f)
+                pid = heartbeat.get("pid")
+                if pid:
+                    import psutil
+                    try:
+                        proc = psutil.Process(pid)
+                        if proc.is_running():
+                            self.logger.debug(f"[v100.4] Terminating Reactor-Core via heartbeat PID: {pid}")
+                            proc.terminate()
+                            proc.wait(timeout=5.0)
+                    except psutil.NoSuchProcess:
+                        pass
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+            except Exception as e:
+                self.logger.debug(f"[v100.4] Heartbeat-based stop failed: {e}")
+
+        self.logger.info("[v100.4] Reactor-Core stop complete")
+
+    async def _start_jprime_orchestrator(self) -> None:
+        """
+        v100.4: Start J-Prime orchestrator using the v100.0 launch system.
+
+        This is a thin wrapper that delegates to the robust v100.0 launcher
+        with dynamic repo discovery, venv detection, and SafeProcess.
+        """
+        self.logger.info("[v100.4] Starting J-Prime orchestrator...")
+
+        try:
+            # Get Trinity config
+            trinity_config = get_trinity_config()
+
+            # Discover J-Prime path dynamically
+            repo_discovery = DynamicRepoDiscovery(trinity_config)
+            jprime_path = await repo_discovery.discover_jprime()
+
+            if not jprime_path:
+                raise FileNotFoundError("J-Prime repository not found")
+
+            # Detect venv
+            venv_detector = RobustVenvDetector(trinity_config)
+
+            # Create trace context
+            trace_ctx = TrinityTraceContext(
+                component="supervisor",
+                operation="jprime_restart",
+                metadata={"reason": "self_healing"}
+            )
+
+            # Launch using v100.0 method
+            await self._launch_jprime_orchestrator_v100(
+                jprime_path, venv_detector, trinity_config, trace_ctx
+            )
+
+            self.logger.info("[v100.4] J-Prime orchestrator started")
+
+        except Exception as e:
+            self.logger.error(f"[v100.4] Failed to start J-Prime: {e}")
+            raise
+
+    async def _start_reactor_core_orchestrator(self) -> None:
+        """
+        v100.4: Start Reactor-Core orchestrator using the v100.0 launch system.
+
+        This is a thin wrapper that delegates to the robust v100.0 launcher
+        with dynamic repo discovery, venv detection, and SafeProcess.
+        """
+        self.logger.info("[v100.4] Starting Reactor-Core orchestrator...")
+
+        try:
+            # Get Trinity config
+            trinity_config = get_trinity_config()
+
+            # Discover Reactor-Core path dynamically
+            repo_discovery = DynamicRepoDiscovery(trinity_config)
+            reactor_path = await repo_discovery.discover_reactor_core()
+
+            if not reactor_path:
+                raise FileNotFoundError("Reactor-Core repository not found")
+
+            # Detect venv
+            venv_detector = RobustVenvDetector(trinity_config)
+
+            # Create trace context
+            trace_ctx = TrinityTraceContext(
+                component="supervisor",
+                operation="reactor_restart",
+                metadata={"reason": "self_healing"}
+            )
+
+            # Launch using v100.0 method
+            await self._launch_reactor_core_orchestrator_v100(
+                reactor_path, venv_detector, trinity_config, trace_ctx
+            )
+
+            self.logger.info("[v100.4] Reactor-Core orchestrator started")
+
+        except Exception as e:
+            self.logger.error(f"[v100.4] Failed to start Reactor-Core: {e}")
+            raise
+
     async def _run_resource_monitoring_loop(self) -> None:
         """
         v91.0: Continuous loop for resource quota monitoring.
