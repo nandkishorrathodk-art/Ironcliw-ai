@@ -58,6 +58,7 @@ import os
 import re
 import sys
 import time
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -358,10 +359,6 @@ def create_best_available_embedding_provider(
     # Ultimate fallback: simple hash embeddings
     provider = SimpleHashEmbeddingProvider(dimension=target_dimension)
     return provider, "⚠️ Using hash-based fallback (install sentence-transformers or sklearn for better quality)"
-
-
-# Import ABC for embedding provider base class
-from abc import ABC, abstractmethod
 
 
 # =============================================================================
