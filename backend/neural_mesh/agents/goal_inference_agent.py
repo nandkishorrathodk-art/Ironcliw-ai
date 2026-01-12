@@ -175,19 +175,21 @@ class GoalInferenceAgent(BaseNeuralMeshAgent):
             },
         }
 
-    async def on_initialize(self) -> None:
+    async def on_initialize(self, **kwargs) -> None:
         logger.info("Initializing GoalInferenceAgent v2.7 (previously dormant)")
 
         # Subscribe to command events for inference
-        await self.subscribe(
-            MessageType.TASK_ASSIGNMENT,
-            self._handle_task_for_inference,
-        )
+        # Note: Using TASK_ASSIGNED (the correct enum value, not TASK_ASSIGNMENT)
+        if self.message_bus:
+            await self.subscribe(
+                MessageType.TASK_ASSIGNED,
+                self._handle_task_for_inference,
+            )
 
-        await self.subscribe(
-            MessageType.CUSTOM,
-            self._handle_context_signal,
-        )
+            await self.subscribe(
+                MessageType.CUSTOM,
+                self._handle_context_signal,
+            )
 
         # Start background analysis
         self._analysis_task = asyncio.create_task(

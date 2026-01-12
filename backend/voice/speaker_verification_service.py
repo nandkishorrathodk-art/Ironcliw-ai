@@ -349,9 +349,44 @@ def _init_langgraph():
     return _LANGGRAPH_AVAILABLE
 
 
-# Backwards compatibility - these will trigger lazy import on first access
-LANGFUSE_AVAILABLE = property(lambda self: _init_langfuse())
-LANGGRAPH_AVAILABLE = property(lambda self: _init_langgraph())
+# ============================================================================
+# LANGFUSE/LANGGRAPH AVAILABILITY HELPERS
+# ============================================================================
+# These functions provide proper lazy-evaluated availability checks.
+# The old property() approach was incorrect at module level since properties
+# are class descriptors, not callables - they evaluate as truthy objects.
+# ============================================================================
+
+def is_langfuse_available() -> bool:
+    """
+    Check if Langfuse is available (with lazy initialization).
+
+    This is the correct way to check availability at runtime.
+    The previous LANGFUSE_AVAILABLE = property(...) was a bug - property()
+    at module level creates an always-truthy descriptor object.
+    """
+    return _init_langfuse()
+
+
+def is_langgraph_available() -> bool:
+    """
+    Check if LangGraph is available (with lazy initialization).
+
+    This is the correct way to check availability at runtime.
+    """
+    return _init_langgraph()
+
+
+# Deprecated: These are kept for backwards compatibility but should not be used.
+# They now call the proper functions when accessed via a __getattr__ wrapper.
+# Direct use of these module-level variables is deprecated.
+def _get_langfuse_available():
+    """Deprecated: Use is_langfuse_available() instead."""
+    return _init_langfuse()
+
+def _get_langgraph_available():
+    """Deprecated: Use is_langgraph_available() instead."""
+    return _init_langgraph()
 
 # ML Engine Registry for singleton ECAPA-TDNN engine
 # This prevents multiple instances and runtime HuggingFace downloads
@@ -496,6 +531,10 @@ class EdgeNativeConfig:
     embedding_cache_enabled: bool = True
     embedding_cache_max_size: int = field(default_factory=lambda: int(os.environ.get('JARVIS_EMBEDDING_CACHE_SIZE', '100')))
 
+    # Profile Reload Configuration
+    profile_reload_timeout: float = field(default_factory=lambda: float(os.environ.get('JARVIS_PROFILE_RELOAD_TIMEOUT', '30.0')))
+    profile_reload_check_interval: float = field(default_factory=lambda: float(os.environ.get('JARVIS_PROFILE_RELOAD_INTERVAL', '60.0')))
+
     # Async Cloud Sync Queue
     pending_cloud_syncs: List[Dict[str, Any]] = field(default_factory=list)
     max_pending_syncs: int = 1000
@@ -523,6 +562,8 @@ class EdgeNativeConfig:
             "fallback_to_cloud_on_local_failure": self.fallback_to_cloud_on_local_failure,
             "cache_profiles_in_memory": self.cache_profiles_in_memory,
             "embedding_cache_enabled": self.embedding_cache_enabled,
+            "profile_reload_timeout": self.profile_reload_timeout,
+            "profile_reload_check_interval": self.profile_reload_check_interval,
         }
 
 
@@ -1207,18 +1248,55 @@ class AuthenticationAuditTrail:
         self._current_session_id: Optional[str] = None
 
     async def initialize(self):
-        """Initialize Langfuse client (v3.x SDK)."""
-        if not LANGFUSE_AVAILABLE:
+        """
+        Initialize Langfuse client (v3.x SDK) with proper lazy loading.
+
+        This method uses the correct helper functions instead of bare module-level
+        variables that were incorrectly defined as property() objects.
+        """
+        # Use the proper helper function for availability check
+        if not is_langfuse_available():
             self.logger.info("Langfuse not available - using local audit trail")
             self._initialized = True  # Use local storage fallback
             return
 
         try:
-            # Use get_client() for v3.x SDK
-            self._langfuse = get_client() if get_client else Langfuse()
-            # Verify connection
-            if hasattr(self._langfuse, 'auth_check'):
-                self._langfuse.auth_check()
+            # Get the client factory from the lazy-loaded module
+            # This retrieves the actual functions from _langfuse_module dict
+            langfuse_get_client = get_langfuse_client()  # Returns the get_client function
+            langfuse_class = _langfuse_module.get('Langfuse') if _langfuse_module else None
+
+            # Use get_client() for v3.x SDK (preferred), fall back to Langfuse() for v2.x
+            if langfuse_get_client:
+                try:
+                    self._langfuse = langfuse_get_client()
+                    self.logger.debug("Using Langfuse v3.x get_client() SDK")
+                except Exception as e:
+                    self.logger.debug(f"get_client() failed ({e}), falling back to Langfuse()")
+                    if langfuse_class:
+                        self._langfuse = langfuse_class()
+            elif langfuse_class:
+                self._langfuse = langfuse_class()
+                self.logger.debug("Using Langfuse v2.x Langfuse() SDK")
+            else:
+                self.logger.warning("No Langfuse client available after lazy load")
+                self._initialized = True
+                return
+
+            # Verify connection (async-safe with timeout)
+            if self._langfuse and hasattr(self._langfuse, 'auth_check'):
+                try:
+                    # auth_check can be slow, run with timeout
+                    loop = asyncio.get_running_loop()
+                    await asyncio.wait_for(
+                        loop.run_in_executor(None, self._langfuse.auth_check),
+                        timeout=float(os.environ.get('LANGFUSE_AUTH_CHECK_TIMEOUT', '5.0'))
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning("Langfuse auth_check timeout - proceeding anyway")
+                except Exception as auth_err:
+                    self.logger.warning(f"Langfuse auth_check failed: {auth_err}")
+
             self._initialized = True
             self.logger.info("✅ Langfuse audit trail initialized (v3.x SDK)")
         except Exception as e:
@@ -7022,13 +7100,18 @@ class SpeakerVerificationService:
                             logger.info(f"🔄 Reloading profiles: {', '.join(updated_profiles)}")
 
                             try:
+                                # Use configurable timeout from EdgeNativeConfig
+                                reload_timeout = self._edge_config.profile_reload_timeout
                                 await asyncio.wait_for(
                                     self.refresh_profiles(),
-                                    timeout=15.0  # Max 15s for profile reload
+                                    timeout=reload_timeout
                                 )
                                 logger.info("✅ Profiles reloaded successfully")
                             except asyncio.TimeoutError:
-                                logger.warning("⏱️ Profile reload timeout - will retry next cycle")
+                                logger.warning(
+                                    f"⏱️ Profile reload timeout ({self._edge_config.profile_reload_timeout}s) - "
+                                    f"will retry next cycle. Consider increasing JARVIS_PROFILE_RELOAD_TIMEOUT"
+                                )
 
                     except asyncio.TimeoutError:
                         consecutive_failures += 1

@@ -38,6 +38,7 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -555,12 +556,16 @@ class HealthStatus:
 
 class CircuitBreaker:
     """
-    Circuit breaker pattern for backend resilience.
+    Circuit breaker pattern for backend resilience (thread-safe).
 
     States:
     - CLOSED: Normal operation, requests pass through
     - OPEN: Too many failures, skip requests
     - HALF_OPEN: Testing if backend recovered
+
+    Thread Safety:
+    - All state transitions are protected by a threading lock
+    - Prevents race conditions when multiple threads record success/failure
     """
 
     def __init__(
@@ -578,20 +583,24 @@ class CircuitBreaker:
         self._last_failure_time: Optional[float] = None
         self._success_count = 0
 
+        # Thread lock for atomic state transitions
+        self._lock = threading.Lock()
+
     @property
     def state(self) -> CircuitState:
-        """Get current state, checking for timeout."""
-        if self._state == CircuitState.OPEN:
-            if self._last_failure_time and \
-               (time.time() - self._last_failure_time) > self.timeout_seconds:
-                logger.info(f"[CircuitBreaker:{self.name}] Transitioning OPEN → HALF_OPEN")
-                self._state = CircuitState.HALF_OPEN
-                self._success_count = 0
-        return self._state
+        """Get current state, checking for timeout (thread-safe)."""
+        with self._lock:
+            if self._state == CircuitState.OPEN:
+                if self._last_failure_time and \
+                   (time.time() - self._last_failure_time) > self.timeout_seconds:
+                    logger.info(f"[CircuitBreaker:{self.name}] Transitioning OPEN → HALF_OPEN")
+                    self._state = CircuitState.HALF_OPEN
+                    self._success_count = 0
+            return self._state
 
     def allow_request(self) -> bool:
-        """Check if request should be allowed."""
-        state = self.state
+        """Check if request should be allowed (thread-safe)."""
+        state = self.state  # Uses lock internally
         if state == CircuitState.CLOSED:
             return True
         elif state == CircuitState.HALF_OPEN:
@@ -600,30 +609,32 @@ class CircuitBreaker:
             return False
 
     def record_success(self):
-        """Record a successful call."""
-        if self._state == CircuitState.HALF_OPEN:
-            self._success_count += 1
-            if self._success_count >= 2:  # 2 successes to close
-                logger.info(f"[CircuitBreaker:{self.name}] Transitioning HALF_OPEN → CLOSED")
-                self._state = CircuitState.CLOSED
+        """Record a successful call (thread-safe)."""
+        with self._lock:
+            if self._state == CircuitState.HALF_OPEN:
+                self._success_count += 1
+                if self._success_count >= 2:  # 2 successes to close
+                    logger.info(f"[CircuitBreaker:{self.name}] Transitioning HALF_OPEN → CLOSED")
+                    self._state = CircuitState.CLOSED
+                    self._failure_count = 0
+            else:
                 self._failure_count = 0
-        else:
-            self._failure_count = 0
 
     def record_failure(self):
-        """Record a failed call."""
-        self._failure_count += 1
-        self._last_failure_time = time.time()
+        """Record a failed call (thread-safe)."""
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
 
-        if self._state == CircuitState.HALF_OPEN:
-            logger.warning(f"[CircuitBreaker:{self.name}] Transitioning HALF_OPEN → OPEN")
-            self._state = CircuitState.OPEN
-        elif self._failure_count >= self.failure_threshold:
-            logger.warning(
-                f"[CircuitBreaker:{self.name}] Transitioning CLOSED → OPEN "
-                f"(failures: {self._failure_count})"
-            )
-            self._state = CircuitState.OPEN
+            if self._state == CircuitState.HALF_OPEN:
+                logger.warning(f"[CircuitBreaker:{self.name}] Transitioning HALF_OPEN → OPEN")
+                self._state = CircuitState.OPEN
+            elif self._failure_count >= self.failure_threshold:
+                logger.warning(
+                    f"[CircuitBreaker:{self.name}] Transitioning CLOSED → OPEN "
+                    f"(failures: {self._failure_count})"
+                )
+                self._state = CircuitState.OPEN
 
 
 # =============================================================================
@@ -631,47 +642,66 @@ class CircuitBreaker:
 # =============================================================================
 
 class MemoryMonitor:
-    """Monitors system memory for routing decisions."""
+    """
+    Monitors system memory for routing decisions (thread-safe).
+
+    Thread Safety:
+    - Uses threading lock for cache updates to prevent race conditions
+    - Multiple threads can safely call get_available_gb() concurrently
+    """
 
     def __init__(self):
         self._psutil = None
         self._last_check: Optional[float] = None
         self._cached_available_gb: float = 16.0  # Assume plenty
-        self._cache_ttl_seconds = 5.0
+        self._cache_ttl_seconds = float(os.getenv("JARVIS_MEMORY_CACHE_TTL", "5.0"))
+
+        # Thread lock for cache updates
+        self._lock = threading.Lock()
+        self._psutil_lock = threading.Lock()
 
     def _get_psutil(self):
-        """Lazy load psutil."""
+        """Lazy load psutil (thread-safe)."""
         if self._psutil is None:
-            try:
-                import psutil
-                self._psutil = psutil
-            except ImportError:
-                logger.warning("[MemoryMonitor] psutil not available")
+            with self._psutil_lock:
+                # Double-check after lock acquisition
+                if self._psutil is None:
+                    try:
+                        import psutil
+                        self._psutil = psutil
+                    except ImportError:
+                        logger.warning("[MemoryMonitor] psutil not available")
         return self._psutil
 
     def get_available_gb(self) -> float:
-        """Get available memory in GB with caching."""
+        """Get available memory in GB with caching (thread-safe)."""
         now = time.time()
 
-        # Use cache if fresh
+        # Fast path - check cache without lock
         if self._last_check and (now - self._last_check) < self._cache_ttl_seconds:
             return self._cached_available_gb
 
-        psutil = self._get_psutil()
-        if psutil is None:
-            return 16.0  # Optimistic default
+        # Slow path - need to refresh cache
+        with self._lock:
+            # Double-check cache freshness after acquiring lock
+            if self._last_check and (now - self._last_check) < self._cache_ttl_seconds:
+                return self._cached_available_gb
 
-        try:
-            mem = psutil.virtual_memory()
-            self._cached_available_gb = mem.available / (1024 ** 3)
-            self._last_check = now
-            return self._cached_available_gb
-        except Exception as e:
-            logger.debug(f"[MemoryMonitor] Error: {e}")
-            return self._cached_available_gb
+            psutil = self._get_psutil()
+            if psutil is None:
+                return 16.0  # Optimistic default
+
+            try:
+                mem = psutil.virtual_memory()
+                self._cached_available_gb = mem.available / (1024 ** 3)
+                self._last_check = now
+                return self._cached_available_gb
+            except Exception as e:
+                logger.debug(f"[MemoryMonitor] Error: {e}")
+                return self._cached_available_gb
 
     def get_pressure_percent(self) -> float:
-        """Get memory pressure as percentage (0-100)."""
+        """Get memory pressure as percentage (0-100) (thread-safe)."""
         psutil = self._get_psutil()
         if psutil is None:
             return 0.0
@@ -746,6 +776,9 @@ class JarvisPrimeClient:
         self._monitoring_task: Optional[asyncio.Task] = None
         self._monitoring_interval_seconds = float(os.getenv("JARVIS_PRIME_MONITOR_INTERVAL", "30"))
         self._shutdown_event = asyncio.Event()
+
+        # Background tasks tracking (prevents garbage collection and logs errors)
+        self._background_tasks: Set[asyncio.Task] = set()
 
         # Repo Map Enricher for coding questions
         self._repo_enricher: Optional[RepoMapEnricher] = None
@@ -1510,8 +1543,44 @@ class JarvisPrimeClient:
 
         self._total_cost += response.cost_estimate
 
-        # Record to observability hub (async-safe fire-and-forget)
-        asyncio.create_task(self._record_to_observability(mode, response))
+        # Record to observability hub (async-safe with proper task tracking)
+        self._schedule_background_task(
+            self._record_to_observability(mode, response),
+            name="observability_recording"
+        )
+
+    def _schedule_background_task(
+        self,
+        coro: Awaitable[Any],
+        name: str = "background"
+    ) -> asyncio.Task:
+        """
+        Schedule a background task with proper error handling and cleanup.
+
+        This prevents:
+        1. Task garbage collection before completion
+        2. Silent exception swallowing
+        3. Task leaks on shutdown
+        """
+        task = asyncio.create_task(coro, name=f"jarvis_prime_{name}")
+
+        # Track the task to prevent garbage collection
+        self._background_tasks.add(task)
+
+        def _task_done_callback(t: asyncio.Task):
+            # Remove from tracking set
+            self._background_tasks.discard(t)
+
+            # Log any exceptions that weren't handled
+            if t.cancelled():
+                logger.debug(f"[JarvisPrimeClient] Background task '{name}' cancelled")
+            elif t.exception() is not None:
+                logger.warning(
+                    f"[JarvisPrimeClient] Background task '{name}' failed: {t.exception()}"
+                )
+
+        task.add_done_callback(_task_done_callback)
+        return task
 
     async def _record_to_observability(self, mode: RoutingMode, response: CompletionResponse):
         """Record completion to the observability hub."""
@@ -1711,30 +1780,59 @@ class JarvisPrimeClient:
 
 
 # =============================================================================
-# Singleton Access
+# Singleton Access (Thread-Safe with Double-Checked Locking)
 # =============================================================================
 
 _client_instance: Optional[JarvisPrimeClient] = None
+_client_lock: threading.Lock = threading.Lock()
 
 
 def get_jarvis_prime_client() -> JarvisPrimeClient:
-    """Get the global JARVIS-Prime client instance."""
+    """
+    Get the global JARVIS-Prime client instance (thread-safe).
+
+    Uses double-checked locking pattern to ensure:
+    1. Thread safety - only one instance is ever created
+    2. Performance - lock is only acquired when instance is None
+    """
     global _client_instance
-    if _client_instance is None:
-        _client_instance = JarvisPrimeClient()
+
+    # Fast path - instance already exists
+    if _client_instance is not None:
+        return _client_instance
+
+    # Slow path - need to create instance (with lock)
+    with _client_lock:
+        # Double-check after acquiring lock
+        if _client_instance is None:
+            _client_instance = JarvisPrimeClient()
+            logger.debug("[JarvisPrimeClient] Singleton instance created")
+
     return _client_instance
 
 
 def set_jarvis_prime_client(client: JarvisPrimeClient):
-    """Set the global JARVIS-Prime client instance."""
+    """
+    Set the global JARVIS-Prime client instance (thread-safe).
+
+    This replaces the existing instance if one exists.
+    """
     global _client_instance
-    _client_instance = client
+    with _client_lock:
+        _client_instance = client
+        logger.debug("[JarvisPrimeClient] Singleton instance replaced")
 
 
 async def create_jarvis_prime_client(config: Optional[JarvisPrimeConfig] = None) -> JarvisPrimeClient:
-    """Create and configure a new JARVIS-Prime client."""
+    """
+    Create and configure a new JARVIS-Prime client (thread-safe).
+
+    This replaces the existing instance if one exists.
+    """
     global _client_instance
-    _client_instance = JarvisPrimeClient(config)
+    with _client_lock:
+        _client_instance = JarvisPrimeClient(config)
+        logger.debug("[JarvisPrimeClient] New singleton instance created with custom config")
     return _client_instance
 
 

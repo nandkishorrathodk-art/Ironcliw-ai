@@ -300,6 +300,12 @@ class CrossRepoStateInitializer:
             "heartbeat": self.config.base_dir / "heartbeat.json",
         }
 
+        # File locks for atomic read-modify-write operations (one per file)
+        # This prevents race conditions when multiple coroutines write to the same file
+        self._file_locks: Dict[str, asyncio.Lock] = {
+            key: asyncio.Lock() for key in self._state_files.keys()
+        }
+
         # Background tasks
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._state_update_task: Optional[asyncio.Task] = None
@@ -489,7 +495,10 @@ class CrossRepoStateInitializer:
 
     async def emit_event(self, event: VBIAEvent) -> None:
         """
-        Emit a VBIA event to the cross-repo system.
+        Emit a VBIA event to the cross-repo system (thread-safe).
+
+        Uses file-level locking to prevent race conditions in the
+        read-modify-write operation.
 
         Args:
             event: The event to emit
@@ -497,18 +506,20 @@ class CrossRepoStateInitializer:
         try:
             events_file = self._state_files["vbia_events"]
 
-            # Read existing events
-            events = await self._read_json_file(events_file, default=[])
+            # Acquire lock for atomic read-modify-write
+            async with self._file_locks["vbia_events"]:
+                # Read existing events
+                events = await self._read_json_file(events_file, default=[])
 
-            # Add new event
-            events.append(asdict(event))
+                # Add new event
+                events.append(asdict(event))
 
-            # Rotate if needed
-            if self.config.event_rotation_enabled and len(events) > self.config.max_events_per_file:
-                events = events[-self.config.max_events_per_file:]
+                # Rotate if needed
+                if self.config.event_rotation_enabled and len(events) > self.config.max_events_per_file:
+                    events = events[-self.config.max_events_per_file:]
 
-            # Write back
-            await self._write_json_file(events_file, events)
+                # Write back
+                await self._write_json_file(events_file, events)
 
             logger.debug(f"[CrossRepoState] Event emitted: {event.event_type.value}")
 
@@ -561,19 +572,21 @@ class CrossRepoStateInitializer:
     # =========================================================================
 
     async def _write_jarvis_state(self) -> None:
-        """Write JARVIS state to vbia_state.json."""
+        """Write JARVIS state to vbia_state.json (thread-safe)."""
         state_file = self._state_files["vbia_state"]
-        self._jarvis_state.last_update = datetime.now().isoformat()
-        await self._write_json_file(state_file, asdict(self._jarvis_state))
+        async with self._file_locks["vbia_state"]:
+            self._jarvis_state.last_update = datetime.now().isoformat()
+            await self._write_json_file(state_file, asdict(self._jarvis_state))
 
     async def update_jarvis_status(self, status: StateStatus, metrics: Optional[Dict[str, Any]] = None) -> None:
         """
-        Update JARVIS status.
+        Update JARVIS status (thread-safe).
 
         Args:
             status: New status
             metrics: Optional metrics to update
         """
+        # Lock is handled inside _write_jarvis_state
         self._jarvis_state.status = status
         if metrics:
             self._jarvis_state.metrics.update(metrics)
@@ -612,23 +625,25 @@ class CrossRepoStateInitializer:
     # =========================================================================
 
     async def _heartbeat_loop(self) -> None:
-        """Background task that emits heartbeats."""
+        """Background task that emits heartbeats (thread-safe)."""
         logger.info("[CrossRepoState] Heartbeat loop started")
 
         while self._running:
             try:
-                # Update heartbeat file
+                # Update heartbeat file with lock for atomic read-modify-write
                 heartbeat_file = self._state_files["heartbeat"]
-                heartbeats = await self._read_json_file(heartbeat_file, default={})
 
-                heartbeats["jarvis"] = asdict(Heartbeat(
-                    repo_type=RepoType.JARVIS,
-                    status=self._jarvis_state.status,
-                    uptime_seconds=time.time() - self._start_time,
-                    active_sessions=self._jarvis_state.metrics.get("active_sessions", 0),
-                ))
+                async with self._file_locks["heartbeat"]:
+                    heartbeats = await self._read_json_file(heartbeat_file, default={})
 
-                await self._write_json_file(heartbeat_file, heartbeats)
+                    heartbeats["jarvis"] = asdict(Heartbeat(
+                        repo_type=RepoType.JARVIS,
+                        status=self._jarvis_state.status,
+                        uptime_seconds=time.time() - self._start_time,
+                        active_sessions=self._jarvis_state.metrics.get("active_sessions", 0),
+                    ))
+
+                    await self._write_json_file(heartbeat_file, heartbeats)
 
                 # Update last heartbeat timestamp
                 self._jarvis_state.last_heartbeat = datetime.now().isoformat()

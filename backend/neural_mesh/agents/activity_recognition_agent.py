@@ -260,6 +260,64 @@ class ActivityRecognitionAgent(BaseNeuralMeshAgent):
             f"deep_work_threshold={self._deep_work_threshold}/min"
         )
 
+    async def on_initialize(self, **kwargs) -> None:
+        """Initialize the activity recognition agent."""
+        logger.info("[ACTIVITY-RECOGNITION] Agent initializing - setting up activity tracking")
+
+        # Subscribe to relevant message types for activity tracking if message bus available
+        if self.message_bus:
+            await self.subscribe(
+                MessageType.TASK_ASSIGNED,
+                self._on_task_assigned,
+            )
+            await self.subscribe(
+                MessageType.CONTEXT_UPDATE,
+                self._on_context_update,
+            )
+
+        logger.info("[ACTIVITY-RECOGNITION] Agent initialization complete")
+
+    async def _on_task_assigned(self, message: AgentMessage) -> None:
+        """Handle task assignment for activity tracking."""
+        # Track task as part of activity context
+        if message.payload.get("app_name") or message.payload.get("action"):
+            await self._recognize_activity({
+                "app_name": message.payload.get("app_name", "unknown"),
+                "window_title": message.payload.get("window_title", ""),
+            })
+
+    async def _on_context_update(self, message: AgentMessage) -> None:
+        """Handle context updates for activity tracking."""
+        if message.payload.get("activity_signal"):
+            await self._recognize_activity(message.payload)
+
+    async def execute_task(self, payload: Dict[str, Any]) -> Any:
+        """Execute an activity recognition task."""
+        action = payload.get("action", "")
+
+        if action == "recognize_activity":
+            return await self._recognize_activity(payload)
+        elif action == "get_focus_state":
+            return await self._get_focus_state()
+        elif action == "track_app_switch":
+            return await self._track_app_switch(payload)
+        elif action == "start_session":
+            return await self._start_session(payload)
+        elif action == "end_session":
+            return await self._end_session()
+        elif action == "get_activity_history":
+            return await self._get_activity_history(payload)
+        elif action == "get_session_stats":
+            return await self._get_session_stats()
+        elif action == "predict_next_activity":
+            return await self._predict_next_activity()
+        elif action == "analyze_productivity":
+            return await self._analyze_productivity(payload)
+        elif action == "get_current_context":
+            return await self._get_current_context()
+        else:
+            raise ValueError(f"Unknown activity recognition action: {action}")
+
     async def handle_message(self, message: AgentMessage) -> Optional[Dict[str, Any]]:
         """Handle incoming messages requesting activity recognition."""
         try:
