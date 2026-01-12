@@ -9685,14 +9685,24 @@ class TrinityUnifiedOrchestrator:
             max_retries = int(os.getenv("REACTOR_CORE_MAX_RETRIES", "3"))
 
             # Create launch configuration
+            # v87.0: Launch Reactor-Core API server (not orchestrator script)
+            # The API server provides HTTP health checks and is the proper component
+            reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
+
             config = LaunchConfig(
                 repo_id="reactor_core",
                 component_name="reactor_core",
-                entry_point="reactor_core/orchestration/trinity_orchestrator.py",  # Script path
-                port=None,  # Reactor-Core doesn't use HTTP port by default
-                extra_args=[],
+                entry_point="uvicorn",  # Launch API server via uvicorn
+                port=None,  # Don't auto-add --port (we specify in extra_args)
+                extra_args=[
+                    "reactor_core.api.server:app",
+                    "--host", "127.0.0.1",
+                    "--port", str(reactor_port),
+                    "--log-level", "warning",
+                ],
                 env_vars={
                     "REACTOR_CORE_MODE": os.getenv("REACTOR_CORE_MODE", "trinity"),
+                    "REACTOR_CORE_PORT": str(reactor_port),
                 },
                 resources=ResourceRequirements(
                     min_memory_mb=256,
@@ -9702,7 +9712,7 @@ class TrinityUnifiedOrchestrator:
                 ),
                 max_retries=max_retries,
                 retry_backoff_base=2.0,
-                health_check_url=None,  # No HTTP health check
+                health_check_url=f"http://127.0.0.1:{reactor_port}/health",
                 health_check_timeout=30.0,
                 startup_timeout=45.0,
             )
@@ -9722,55 +9732,66 @@ class TrinityUnifiedOrchestrator:
                 # Store process info for later management
                 self._managed_processes["reactor_core"] = {
                     **launcher._managed_processes.get("reactor_core", {}),
-                    "launched_by": "v86.0_intelligent_launcher",
+                    "launched_by": "v87.0_intelligent_launcher",
                 }
 
-                # v86.0: Verify reactor started by checking heartbeat file with retry loop
-                heartbeat_path = Path.home() / ".jarvis" / "trinity" / "components" / "reactor_core.json"
-                heartbeat_timeout = float(os.getenv("REACTOR_CORE_HEARTBEAT_TIMEOUT", "30.0"))
-                heartbeat_poll = 0.5  # v86.0: Faster polling
+                # v87.0: Verify reactor started via HTTP health check (API server)
+                health_url = f"http://127.0.0.1:{reactor_port}/health"
+                health_timeout = float(os.getenv("REACTOR_CORE_HEALTH_TIMEOUT", "30.0"))
+                health_poll = 0.5  # v87.0: Fast polling
 
                 logger.info(
-                    f"   💓 [v86.0] Waiting for Reactor-Core heartbeat "
-                    f"(timeout={heartbeat_timeout}s)..."
+                    f"   🏥 [v87.0] Waiting for Reactor-Core health endpoint "
+                    f"({health_url}, timeout={health_timeout}s)..."
                 )
 
-                heartbeat_start = time.time()
-                heartbeat_verified = False
+                health_start = time.time()
+                health_verified = False
 
-                while time.time() - heartbeat_start < heartbeat_timeout:
-                    if heartbeat_path.exists():
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    while time.time() - health_start < health_timeout:
                         try:
-                            # v86.0: Also verify heartbeat file content is valid and fresh
-                            with open(heartbeat_path, 'r') as f:
-                                heartbeat_data = json.load(f)
+                            async with session.get(
+                                health_url,
+                                timeout=aiohttp.ClientTimeout(total=5.0)
+                            ) as resp:
+                                if resp.status == 200:
+                                    elapsed = time.time() - health_start
+                                    logger.info(
+                                        f"   ✅ [v87.0] Reactor-Core health verified "
+                                        f"(after {elapsed:.1f}s)"
+                                    )
+                                    health_verified = True
+                                    break
+                        except Exception:
+                            pass  # Keep polling
 
-                            # Check timestamp freshness (within last 30 seconds)
-                            heartbeat_ts = heartbeat_data.get("timestamp", 0)
-                            heartbeat_age = time.time() - heartbeat_ts
+                        await asyncio.sleep(health_poll)
 
-                            if heartbeat_age < 30.0:
-                                elapsed = time.time() - heartbeat_start
-                                logger.info(
-                                    f"   ✅ [v86.0] Reactor-Core heartbeat verified "
-                                    f"(after {elapsed:.1f}s, age={heartbeat_age:.1f}s)"
-                                )
-                                heartbeat_verified = True
-                                break
-                            else:
-                                logger.debug(
-                                    f"      ⏱️  Heartbeat file exists but stale "
-                                    f"(age={heartbeat_age:.1f}s)"
-                                )
-                        except (json.JSONDecodeError, KeyError) as e:
-                            logger.debug(f"      ⚠️  Heartbeat file parse error: {e}")
+                if health_verified:
+                    logger.info(f"   ✅ [v87.0] Reactor-Core API server launched successfully (PID: {pid})")
 
-                    await asyncio.sleep(heartbeat_poll)
-
-                if heartbeat_verified:
-                    logger.info(f"   ✅ [v86.0] Reactor-Core launched successfully (PID: {pid})")
+                    # v87.0: Write heartbeat file for compatibility with other components
+                    heartbeat_path = Path.home() / ".jarvis" / "trinity" / "components" / "reactor_core.json"
+                    heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+                    heartbeat_data = {
+                        "component_type": "reactor_core",
+                        "instance_id": f"reactor-api-{pid}-{int(time.time())}",
+                        "timestamp": time.time(),
+                        "port": reactor_port,
+                        "pid": pid,
+                        "status": "online",
+                        "launched_by": "trinity_integrator_v87",
+                    }
+                    try:
+                        with open(heartbeat_path, 'w') as f:
+                            json.dump(heartbeat_data, f, indent=2)
+                        logger.debug(f"   📝 [v87.0] Reactor-Core heartbeat file written")
+                    except Exception as e:
+                        logger.warning(f"   ⚠️  [v87.0] Failed to write heartbeat: {e}")
                 else:
-                    logger.warning("   ⚠️  [v86.0] Reactor-Core started but no heartbeat yet")
+                    logger.warning("   ⚠️  [v87.0] Reactor-Core started but health check failed")
 
                 return True
             else:

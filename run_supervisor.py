@@ -247,6 +247,7 @@ except Exception as e:
 # NORMAL IMPORTS START HERE
 # =============================================================================
 import asyncio
+import json
 import logging
 import os
 import platform
@@ -1564,10 +1565,16 @@ class RetryWithBackoff:
 
         for attempt in range(max_attempts):
             try:
+                # v100.1: Fix for lambdas that return coroutines
+                # asyncio.iscoroutinefunction returns False for lambdas even when
+                # they return coroutines, so we must also check the result
                 if asyncio.iscoroutinefunction(operation):
                     result = await operation()
                 else:
                     result = operation()
+                    # If the result is a coroutine (e.g., from a lambda), await it
+                    if asyncio.iscoroutine(result):
+                        result = await result
 
                 if attempt > 0:
                     self._logger.info(f"[{operation_name}] Succeeded on attempt {attempt + 1}")
@@ -11459,7 +11466,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         try:
             from backend.core.trinity_event_bus import get_trinity_event_bus
 
-            self._trinity_event_bus = get_trinity_event_bus()
+            # v100.2: Await the async factory function
+            self._trinity_event_bus = await get_trinity_event_bus()
             await self._trinity_event_bus.start()
 
             self.logger.info("[v100.0] ✅ TrinityEventBus initialized - pub/sub messaging active")
@@ -11475,8 +11483,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         try:
             from backend.core.trinity_knowledge_graph import get_trinity_knowledge_graph
 
-            self._trinity_knowledge_graph = get_trinity_knowledge_graph()
-            await self._trinity_knowledge_graph.start()
+            # v100.2: Await the async factory function
+            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
+            self._trinity_knowledge_graph = await get_trinity_knowledge_graph()
 
             self.logger.info("[v100.0] ✅ TrinityKnowledgeGraph initialized - shared knowledge active")
             initialized_count += 1
@@ -11491,8 +11500,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         try:
             from backend.core.trinity_training_pipeline import get_training_pipeline
 
-            self._trinity_training_pipeline = get_training_pipeline()
-            await self._trinity_training_pipeline.start()
+            # v100.2: Await the async factory function
+            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
+            self._trinity_training_pipeline = await get_training_pipeline()
 
             self.logger.info("[v100.0] ✅ TrinityTrainingPipeline initialized - JARVIS→Reactor→Prime active")
             initialized_count += 1
@@ -11507,8 +11517,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         try:
             from backend.core.trinity_monitoring import get_trinity_monitoring
 
-            self._trinity_monitoring = get_trinity_monitoring()
-            await self._trinity_monitoring.start()
+            # v100.2: Await the async factory function
+            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
+            self._trinity_monitoring = await get_trinity_monitoring()
 
             self.logger.info("[v100.0] ✅ TrinityMonitoring initialized - observability active")
             initialized_count += 1
@@ -11544,50 +11555,60 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         await asyncio.sleep(30)  # Check every 30 seconds
 
                         # Record health metrics for each component
-                        if self._trinity_event_bus:
-                            stats = self._trinity_event_bus.get_stats()
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.event_bus.subscribers",
-                                value=stats.get("total_subscribers", 0),
-                                unit="count",
-                                component="event_bus"
-                            )
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.event_bus.events_published",
-                                value=stats.get("events_published", 0),
-                                unit="count",
-                                component="event_bus"
-                            )
+                        # v100.3: Use hasattr to check if get_stats exists (graceful degradation)
+                        if self._trinity_event_bus and hasattr(self._trinity_event_bus, 'get_stats'):
+                            try:
+                                stats = self._trinity_event_bus.get_stats()
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.event_bus.subscribers",
+                                    value=stats.get("total_subscribers", 0),
+                                    unit="count",
+                                    component="event_bus"
+                                )
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.event_bus.events_published",
+                                    value=stats.get("events_published", 0),
+                                    unit="count",
+                                    component="event_bus"
+                                )
+                            except Exception:
+                                pass  # Stats not available - continue
 
-                        if self._trinity_knowledge_graph:
-                            stats = self._trinity_knowledge_graph.get_stats()
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.knowledge_graph.nodes",
-                                value=stats.get("total_nodes", 0),
-                                unit="count",
-                                component="knowledge_graph"
-                            )
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.knowledge_graph.edges",
-                                value=stats.get("total_edges", 0),
-                                unit="count",
-                                component="knowledge_graph"
-                            )
+                        if self._trinity_knowledge_graph and hasattr(self._trinity_knowledge_graph, 'get_stats'):
+                            try:
+                                stats = self._trinity_knowledge_graph.get_stats()
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.knowledge_graph.nodes",
+                                    value=stats.get("total_nodes", 0),
+                                    unit="count",
+                                    component="knowledge_graph"
+                                )
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.knowledge_graph.edges",
+                                    value=stats.get("total_edges", 0),
+                                    unit="count",
+                                    component="knowledge_graph"
+                                )
+                            except Exception:
+                                pass  # Stats not available - continue
 
-                        if self._trinity_training_pipeline:
-                            stats = self._trinity_training_pipeline.get_stats()
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.training.experiences",
-                                value=stats.get("total_experiences", 0),
-                                unit="count",
-                                component="training_pipeline"
-                            )
-                            await self._trinity_monitoring.record_metric(
-                                name="trinity.training.active_jobs",
-                                value=stats.get("active_jobs", 0),
-                                unit="count",
-                                component="training_pipeline"
-                            )
+                        if self._trinity_training_pipeline and hasattr(self._trinity_training_pipeline, 'get_stats'):
+                            try:
+                                stats = self._trinity_training_pipeline.get_stats()
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.training.experiences",
+                                    value=stats.get("total_experiences", 0),
+                                    unit="count",
+                                    component="training_pipeline"
+                                )
+                                await self._trinity_monitoring.record_metric(
+                                    name="trinity.training.active_jobs",
+                                    value=stats.get("active_jobs", 0),
+                                    unit="count",
+                                    component="training_pipeline"
+                                )
+                            except Exception:
+                                pass  # Stats not available - continue
 
                 except asyncio.CancelledError:
                     pass

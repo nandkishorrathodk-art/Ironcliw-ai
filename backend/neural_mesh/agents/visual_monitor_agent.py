@@ -7216,16 +7216,23 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     try:
                         # Wait for OCR slot with timeout to prevent deadlock
                         ocr_timeout = float(os.getenv('JARVIS_OCR_ACQUIRE_TIMEOUT', '5.0'))
-                        async with asyncio.timeout(ocr_timeout):
+
+                        # Python 3.9 compatible (asyncio.timeout is 3.11+)
+                        async def _ocr_with_semaphore():
                             async with self._ocr_semaphore:
                                 # v32.3: Run OCR detection with intelligent fuzzy matching and context extraction
-                                detected, confidence, detected_text, ocr_context = await self._ocr_detect(
+                                _detected, _confidence, _detected_text, _ocr_context = await self._ocr_detect(
                                     frame=frame,
                                     trigger_text=trigger_text
                                 )
 
                                 # v14.0: Get all OCR text for activity/near-miss detection
-                                all_text = await self._ocr_get_all_text(frame)
+                                _all_text = await self._ocr_get_all_text(frame)
+                                return _detected, _confidence, _detected_text, _ocr_context, _all_text
+
+                        detected, confidence, detected_text, ocr_context, all_text = await asyncio.wait_for(
+                            _ocr_with_semaphore(), timeout=ocr_timeout
+                        )
                     except asyncio.TimeoutError:
                         # OCR slot not available - skip this frame
                         logger.debug(

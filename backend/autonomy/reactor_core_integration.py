@@ -762,13 +762,16 @@ class PrimeNeuralMeshBridge:
                 prime_url = f"ws://{self.config.prime_host}:{self.config.prime_port}/ws/events"
 
                 import websockets
-                async with asyncio.timeout(ws_connection_timeout):
-                    ws = await websockets.connect(
+                # Python 3.9 compatible (asyncio.timeout is 3.11+)
+                ws = await asyncio.wait_for(
+                    websockets.connect(
                         prime_url,
                         ping_interval=20,
                         ping_timeout=10,
                         close_timeout=5,
-                    )
+                    ),
+                    timeout=ws_connection_timeout
+                )
                 async with ws:
                     logger.info(f"[PrimeNeuralMesh] ✓ Connected to Prime WebSocket: {prime_url}")
                     retry_count = 0  # Reset on successful connection

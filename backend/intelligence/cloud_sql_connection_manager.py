@@ -1693,9 +1693,11 @@ class CloudSQLConnectionManager:
             # Check if pool is still valid
             if self.pool:
                 try:
-                    async with asyncio.timeout(5.0):
+                    # Python 3.9 compatible (asyncio.timeout is 3.11+)
+                    async def _validate_pool():
                         async with self.pool.acquire() as conn:
                             await conn.fetchval("SELECT 1")
+                    await asyncio.wait_for(_validate_pool(), timeout=5.0)
                     logger.info("   ✅ Pool is healthy after cleanup")
                     return True
                 except Exception as e:
