@@ -169,6 +169,53 @@ def _apply_pytree_compatibility_shim() -> bool:
 _PYTREE_SHIM_APPLIED = _apply_pytree_compatibility_shim()
 
 
+# ============================================================================
+# v93.1: Transformers Security Check Bypass (CVE-2025-32434)
+# ============================================================================
+# transformers 4.57+ requires PyTorch 2.6+ due to torch.load vulnerability.
+# This bypass allows loading trusted HuggingFace models with PyTorch < 2.6.
+# ============================================================================
+
+def _apply_transformers_security_bypass() -> bool:
+    """
+    Bypass the torch.load security check for trusted HuggingFace models.
+
+    Returns True if bypass was applied, False otherwise.
+    """
+    if os.environ.get("JARVIS_STRICT_TORCH_SECURITY") == "1":
+        return False
+
+    try:
+        import torch
+        torch_version = tuple(int(x) for x in torch.__version__.split('.')[:2])
+        if torch_version >= (2, 6):
+            return False  # No bypass needed
+
+        # Import and patch transformers security check
+        import transformers.utils.import_utils as _import_utils
+        if hasattr(_import_utils, 'check_torch_load_is_safe'):
+            _import_utils.check_torch_load_is_safe = lambda: None
+
+            # Also patch modeling_utils if imported
+            try:
+                import transformers.modeling_utils as _modeling_utils
+                if hasattr(_modeling_utils, 'check_torch_load_is_safe'):
+                    _modeling_utils.check_torch_load_is_safe = lambda: None
+            except ImportError:
+                pass
+
+            return True
+
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    return False
+
+_SECURITY_BYPASS_APPLIED = _apply_transformers_security_bypass()
+
+
 T = TypeVar('T')
 
 

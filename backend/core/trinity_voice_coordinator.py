@@ -1652,11 +1652,21 @@ class TrinityVoiceCoordinator:
             )
         return personality
 
+    # v93.1: Cache for detected voice to avoid repeated subprocess calls
+    _cached_voice: Optional[str] = None
+    _voice_cache_lock: threading.Lock = threading.Lock()
+
     def _detect_best_voice(self) -> str:
         """
-        Detect best available voice on system.
+        Detect best available voice on system with caching.
 
         ⭐ JARVIS CANONICAL VOICE: UK Daniel (professional, deep, authoritative)
+
+        v93.1 Improvements:
+        - Cached result to avoid repeated subprocess calls
+        - Increased timeout (5s) for heavily loaded systems
+        - Graceful fallback without error spam
+        - Async-safe with threading lock
 
         Priority:
         1. Daniel (UK Male) - JARVIS's signature voice - NON-NEGOTIABLE
@@ -1664,13 +1674,25 @@ class TrinityVoiceCoordinator:
         3. Alex (US Male) - macOS default
         4. Tom/Karen - Additional fallbacks
         5. First available voice
+        6. Environment default (JARVIS_DEFAULT_VOICE_NAME)
         """
+        # v93.1: Return cached voice if available
+        with self._voice_cache_lock:
+            if self._cached_voice is not None:
+                return self._cached_voice
+
+        default_voice = os.getenv("JARVIS_DEFAULT_VOICE_NAME", "Daniel")
+        detected_voice = default_voice
+
         try:
+            # v93.1: Increased timeout for heavily loaded systems
+            voice_timeout = float(os.getenv("JARVIS_VOICE_DETECT_TIMEOUT", "5.0"))
+
             result = subprocess.run(
                 ["say", "-v", "?"],
                 capture_output=True,
                 text=True,
-                timeout=2.0
+                timeout=voice_timeout
             )
 
             if result.returncode == 0:
@@ -1682,34 +1704,49 @@ class TrinityVoiceCoordinator:
                         logger.info(
                             "[Trinity Voice] ✅ Using JARVIS signature voice: Daniel (UK Male)"
                         )
-                        return "Daniel"
+                        detected_voice = "Daniel"
+                        break
+                else:
+                    # Fallback chain (only log once, not as error)
+                    logger.info(
+                        "[Trinity Voice] UK Daniel voice not found, checking fallbacks..."
+                    )
 
-                # Fallback chain
-                logger.warning(
-                    "[Trinity Voice] ⚠️  UK Daniel voice not found! "
-                    "Install it via: System Settings → Accessibility → Spoken Content → "
-                    "System Voice → Download 'Daniel (United Kingdom)'"
-                )
+                    preferred_fallbacks = ["Samantha", "Alex", "Tom", "Karen"]
+                    found_fallback = False
 
-                preferred_fallbacks = ["Samantha", "Alex", "Tom", "Karen"]
+                    for pref in preferred_fallbacks:
+                        for voice_line in voices:
+                            if pref.lower() in voice_line.lower():
+                                logger.info(f"[Trinity Voice] Using fallback voice: {pref}")
+                                detected_voice = pref
+                                found_fallback = True
+                                break
+                        if found_fallback:
+                            break
 
-                for pref in preferred_fallbacks:
-                    for voice_line in voices:
-                        if pref.lower() in voice_line.lower():
-                            logger.warning(
-                                f"[Trinity Voice] Using fallback voice: {pref}"
-                            )
-                            return pref
+                    if not found_fallback and voices:
+                        first_voice = voices[0].split()[0]
+                        detected_voice = first_voice
+                        logger.info(f"[Trinity Voice] Using first available voice: {first_voice}")
 
-                if voices:
-                    first_voice = voices[0].split()[0]
-                    return first_voice
-
+        except subprocess.TimeoutExpired:
+            # v93.1: Graceful timeout handling - not an error, just use default
+            logger.info(
+                f"[Trinity Voice] Voice detection timed out, using default: {default_voice}"
+            )
+        except FileNotFoundError:
+            # say command not available (not macOS)
+            logger.debug("[Trinity Voice] macOS 'say' command not found, using default")
         except Exception as e:
-            logger.error(f"[Trinity Voice] Voice detection failed: {e}")
+            # v93.1: Log as debug, not error - we have a working fallback
+            logger.debug(f"[Trinity Voice] Voice detection issue: {e}, using default")
 
-        default = os.getenv("JARVIS_DEFAULT_VOICE_NAME", "Daniel")
-        return default
+        # v93.1: Cache the result
+        with self._voice_cache_lock:
+            self._cached_voice = detected_voice
+
+        return detected_voice
 
     async def announce(
         self,
