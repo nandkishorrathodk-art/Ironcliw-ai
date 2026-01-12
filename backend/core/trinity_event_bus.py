@@ -667,18 +667,39 @@ class CrossRepoTransport:
                 self._processed_events = set(list(self._processed_events)[-5000:])
 
     async def _receive_loop(self) -> None:
-        """Receive events via UDP multicast."""
+        """
+        Receive events via UDP multicast.
+
+        v2.8 FIX: Uses asyncio's native sock_recvfrom() for non-blocking sockets
+        instead of run_in_executor which causes EAGAIN (errno 35) errors.
+        Also implements proper backoff and error classification.
+        """
         sock = self._sockets.get("multicast")
         if not sock:
             return
 
+        loop = asyncio.get_event_loop()
+        consecutive_errors = 0
+        max_consecutive_errors = 10
+        base_backoff = 0.1
+        max_backoff = 5.0
+
         while self._running:
             try:
-                loop = asyncio.get_event_loop()
-                data, addr = await loop.run_in_executor(
-                    None,
-                    lambda: sock.recvfrom(65535)
-                )
+                # v2.8: Use asyncio's native non-blocking socket receive
+                # This properly integrates with the event loop without EAGAIN errors
+                try:
+                    data, addr = await asyncio.wait_for(
+                        loop.sock_recvfrom(sock, 65535),
+                        timeout=1.0  # 1 second timeout to check _running flag
+                    )
+                except asyncio.TimeoutError:
+                    # No data received within timeout - normal for UDP multicast
+                    consecutive_errors = 0  # Reset on successful poll
+                    continue
+
+                # Reset error counter on successful receive
+                consecutive_errors = 0
 
                 try:
                     event = TrinityEvent.from_bytes(data)
@@ -705,10 +726,37 @@ class CrossRepoTransport:
 
             except asyncio.CancelledError:
                 break
+            except OSError as e:
+                # Handle specific socket errors
+                import errno
+                if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                    # Resource temporarily unavailable - normal for non-blocking
+                    await asyncio.sleep(0.01)  # Small yield
+                    continue
+                elif e.errno == errno.EBADF:
+                    # Bad file descriptor - socket was closed
+                    logger.warning("[Transport] Multicast socket closed, stopping receive loop")
+                    break
+                else:
+                    # Other socket error
+                    consecutive_errors += 1
+                    if self._running:
+                        logger.warning(f"[Transport] Socket error (errno={e.errno}): {e}")
+                    backoff = min(base_backoff * (2 ** consecutive_errors), max_backoff)
+                    await asyncio.sleep(backoff)
             except Exception as e:
-                if self._running:
-                    logger.warning(f"[Transport] Receive error: {e}")
-                await asyncio.sleep(0.1)
+                consecutive_errors += 1
+                if self._running and consecutive_errors <= max_consecutive_errors:
+                    logger.warning(f"[Transport] Receive error ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                elif consecutive_errors > max_consecutive_errors:
+                    logger.error(f"[Transport] Too many consecutive errors, reducing log frequency")
+                    # Only log every 10th error after threshold
+                    if consecutive_errors % 10 == 0:
+                        logger.warning(f"[Transport] Receive errors continue: {e}")
+
+                # Exponential backoff with cap
+                backoff = min(base_backoff * (2 ** min(consecutive_errors, 6)), max_backoff)
+                await asyncio.sleep(backoff)
 
     def on_event(self, handler: Callable[[TrinityEvent], Awaitable[None]]) -> None:
         """Register event handler."""

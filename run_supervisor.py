@@ -11563,40 +11563,73 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Import and start the indexer
             try:
-                from backend.autonomy.trinity_knowledge_indexer import get_knowledge_indexer
+                from backend.autonomy.trinity_knowledge_indexer import (
+                    get_knowledge_indexer,
+                    start_knowledge_indexer
+                )
 
-                # Get the global indexer instance
-                indexer = await get_knowledge_indexer()
+                # v2.0: Get the global indexer instance with proper initialization
+                # Note: Does NOT raise on degraded mode - allows fallback embedding providers
+                indexer = await get_knowledge_indexer(
+                    raise_on_failure=False,  # Allow degraded mode with fallback providers
+                    raise_on_degraded=False  # Accept TF-IDF/hash fallbacks
+                )
 
                 # Store reference for later use
                 self._trinity_knowledge_indexer = indexer
 
-                # Start background indexing and export loops
-                await indexer.start()
+                # v2.0: Check initialization status and log appropriately
+                if indexer.is_initialized:
+                    # Start background indexing and export loops
+                    await indexer.start()
 
-                self.logger.info(
-                    f"[v88.0] ✅ Trinity Knowledge Indexer started "
-                    f"(indexing every {indexer.config.index_interval_seconds}s, "
-                    f"exporting every {indexer.config.export_interval_seconds}s)"
-                )
+                    # Log success with new provider info
+                    quality_emoji = {
+                        "high": "🌟",
+                        "medium": "⚠️",
+                        "low": "📊",
+                        "none": "❌"
+                    }.get(indexer.embedding_quality, "❓")
 
-                # Log configuration
-                self.logger.info(
-                    f"[v88.0]    Embedding model: {indexer.config.embedding_model_name}"
-                )
-                self.logger.info(
-                    f"[v88.0]    Chunk size: {indexer.config.chunk_size} tokens"
-                )
-                self.logger.info(
-                    f"[v88.0]    Min quality: {indexer.config.min_quality_score}"
-                )
-                self.logger.info(
-                    f"[v88.0]    Vector DB: {indexer.config.vector_db_path}"
-                )
-
-                if indexer.config.export_to_reactor:
                     self.logger.info(
-                        f"[v88.0]    Training export: {indexer.config.reactor_export_path}"
+                        f"[v88.0] ✅ Trinity Knowledge Indexer started "
+                        f"(indexing every {indexer.config.index_interval_seconds}s, "
+                        f"exporting every {indexer.config.export_interval_seconds}s)"
+                    )
+
+                    # v2.0: Log embedding provider status
+                    self.logger.info(
+                        f"[v88.0]    {quality_emoji} Embedding: {indexer.initialization_status}"
+                    )
+                    self.logger.info(
+                        f"[v88.0]    Embedding quality: {indexer.embedding_quality}"
+                    )
+                    self.logger.info(
+                        f"[v88.0]    Chunk size: {indexer.config.chunk_size} tokens"
+                    )
+                    self.logger.info(
+                        f"[v88.0]    Min quality: {indexer.config.min_quality_score}"
+                    )
+                    self.logger.info(
+                        f"[v88.0]    Vector DB: {indexer.config.vector_db_path}"
+                    )
+
+                    if indexer.config.export_to_reactor:
+                        self.logger.info(
+                            f"[v88.0]    Training export: {indexer.config.reactor_export_path}"
+                        )
+
+                    # Warn if using degraded embedding mode
+                    if indexer.embedding_quality != "high":
+                        self.logger.warning(
+                            f"[v88.0] ⚠️ Knowledge Indexer running in degraded mode. "
+                            f"Install sentence-transformers for best quality: "
+                            f"pip install sentence-transformers"
+                        )
+                else:
+                    self.logger.warning(
+                        f"[v88.0] ⚠️ Trinity Knowledge Indexer initialized but not fully operational: "
+                        f"{indexer.initialization_status}"
                     )
 
             except ImportError as e:

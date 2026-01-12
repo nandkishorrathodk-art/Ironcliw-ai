@@ -74,13 +74,43 @@ logger = logging.getLogger(__name__)
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Conditional imports (graceful degradation if not available)
+# =============================================================================
+# Conditional Imports with Fallback Embedding Support
+# =============================================================================
+
+# Primary: sentence-transformers (high quality)
+SENTENCE_TRANSFORMERS_AVAILABLE = False
+SentenceTransformer = None
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer as _ST
+    SentenceTransformer = _ST
     SENTENCE_TRANSFORMERS_AVAILABLE = True
+    logger.info("[Trinity Indexer] ✅ sentence-transformers available")
 except ImportError:
-    logger.warning("[Trinity Indexer] sentence-transformers not available")
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    logger.info("[Trinity Indexer] sentence-transformers not installed - will use fallback")
+
+# Secondary: scikit-learn TF-IDF (fallback - good quality)
+SKLEARN_AVAILABLE = False
+TfidfVectorizer = None
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer as _TV
+    from sklearn.decomposition import TruncatedSVD as _SVD
+    TfidfVectorizer = _TV
+    TruncatedSVD = _SVD
+    SKLEARN_AVAILABLE = True
+    logger.info("[Trinity Indexer] ✅ sklearn available as fallback embedding provider")
+except ImportError:
+    logger.debug("[Trinity Indexer] sklearn not available for TF-IDF fallback")
+
+# Tertiary: OpenAI API embeddings (optional - highest quality but requires API key)
+OPENAI_EMBEDDINGS_AVAILABLE = False
+try:
+    import openai
+    if os.getenv("OPENAI_API_KEY"):
+        OPENAI_EMBEDDINGS_AVAILABLE = True
+        logger.info("[Trinity Indexer] ✅ OpenAI embeddings available as fallback")
+except ImportError:
+    pass
 
 try:
     import chromadb
@@ -96,6 +126,242 @@ try:
 except ImportError:
     logger.warning("[Trinity Indexer] faiss not available")
     FAISS_AVAILABLE = False
+
+
+# =============================================================================
+# Fallback Embedding Providers
+# =============================================================================
+
+class EmbeddingProvider(ABC):
+    """Abstract base class for embedding providers."""
+
+    @abstractmethod
+    async def encode(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings for a list of texts."""
+        pass
+
+    @property
+    @abstractmethod
+    def dimension(self) -> int:
+        """Return the embedding dimension."""
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the provider name."""
+        pass
+
+
+class SentenceTransformerProvider(EmbeddingProvider):
+    """Primary provider using sentence-transformers (high quality)."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise RuntimeError("sentence-transformers not available")
+        self._model = SentenceTransformer(model_name)
+        self._model_name = model_name
+        self._dimension = self._model.get_sentence_embedding_dimension()
+
+    async def encode(self, texts: List[str]) -> np.ndarray:
+        loop = asyncio.get_event_loop()
+        embeddings = await loop.run_in_executor(
+            None,
+            lambda: self._model.encode(texts, convert_to_numpy=True)
+        )
+        return np.array(embeddings)
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    @property
+    def name(self) -> str:
+        return f"SentenceTransformer({self._model_name})"
+
+
+class TfidfEmbeddingProvider(EmbeddingProvider):
+    """
+    Fallback provider using TF-IDF + SVD for dimensionality reduction.
+
+    Produces reasonable quality embeddings without heavy ML dependencies.
+    Good for development/testing when sentence-transformers isn't installed.
+    """
+
+    def __init__(self, dimension: int = 192, min_samples_for_fit: int = 10):
+        if not SKLEARN_AVAILABLE:
+            raise RuntimeError("sklearn not available")
+        self._target_dimension = dimension
+        self._min_samples = min_samples_for_fit
+        self._vectorizer = TfidfVectorizer(
+            max_features=5000,
+            stop_words='english',
+            ngram_range=(1, 2),
+            sublinear_tf=True
+        )
+        self._svd = TruncatedSVD(n_components=dimension, random_state=42)
+        self._fitted = False
+        self._corpus_cache: List[str] = []
+
+    async def encode(self, texts: List[str]) -> np.ndarray:
+        loop = asyncio.get_event_loop()
+
+        def _encode_sync():
+            if not self._fitted:
+                # Accumulate corpus for initial fitting
+                self._corpus_cache.extend(texts)
+                if len(self._corpus_cache) >= self._min_samples:
+                    # Fit vectorizer and SVD on accumulated corpus
+                    tfidf_matrix = self._vectorizer.fit_transform(self._corpus_cache)
+                    # Adjust SVD components if matrix is smaller
+                    n_components = min(self._target_dimension, tfidf_matrix.shape[1] - 1, tfidf_matrix.shape[0] - 1)
+                    if n_components > 0:
+                        self._svd = TruncatedSVD(n_components=n_components, random_state=42)
+                        self._svd.fit(tfidf_matrix)
+                    self._fitted = True
+                    self._corpus_cache = []  # Clear cache after fitting
+                else:
+                    # Not enough samples yet - return simple hash-based embeddings
+                    return self._simple_hash_embeddings(texts)
+
+            # Transform texts
+            tfidf_matrix = self._vectorizer.transform(texts)
+            embeddings = self._svd.transform(tfidf_matrix)
+
+            # Pad/truncate to target dimension
+            if embeddings.shape[1] < self._target_dimension:
+                padding = np.zeros((embeddings.shape[0], self._target_dimension - embeddings.shape[1]))
+                embeddings = np.hstack([embeddings, padding])
+
+            return embeddings.astype('float32')
+
+        return await loop.run_in_executor(None, _encode_sync)
+
+    def _simple_hash_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Generate simple hash-based embeddings for bootstrap phase."""
+        embeddings = []
+        for text in texts:
+            # Create deterministic embedding from text hash
+            text_hash = hashlib.sha256(text.encode()).digest()
+            # Expand hash to target dimension
+            embedding = np.zeros(self._target_dimension, dtype='float32')
+            for i in range(min(32, self._target_dimension)):
+                embedding[i] = (text_hash[i % len(text_hash)] - 128) / 128.0
+            # Add some text-derived features
+            words = text.lower().split()
+            if words:
+                embedding[32 % self._target_dimension] = len(words) / 100.0
+                embedding[33 % self._target_dimension] = len(text) / 1000.0
+                embedding[34 % self._target_dimension] = len(set(words)) / len(words)
+            embeddings.append(embedding)
+        return np.array(embeddings, dtype='float32')
+
+    @property
+    def dimension(self) -> int:
+        return self._target_dimension
+
+    @property
+    def name(self) -> str:
+        return "TF-IDF+SVD"
+
+
+class SimpleHashEmbeddingProvider(EmbeddingProvider):
+    """
+    Ultra-lightweight fallback using deterministic hashing.
+
+    Works without any ML dependencies. Low quality but ensures system doesn't fail.
+    """
+
+    def __init__(self, dimension: int = 192):
+        self._dimension = dimension
+
+    async def encode(self, texts: List[str]) -> np.ndarray:
+        embeddings = []
+        for text in texts:
+            # Deterministic embedding from multiple hash sources
+            combined = np.zeros(self._dimension, dtype='float32')
+
+            # SHA-256 based features
+            sha_hash = hashlib.sha256(text.encode()).digest()
+            for i in range(min(32, self._dimension)):
+                combined[i] = (sha_hash[i] - 128) / 128.0
+
+            # MD5 based features (different distribution)
+            md5_hash = hashlib.md5(text.encode()).digest()
+            for i in range(min(16, self._dimension - 32)):
+                combined[32 + i] = (md5_hash[i] - 128) / 128.0
+
+            # Text statistics features
+            words = text.lower().split()
+            if len(words) > 0:
+                combined[48 % self._dimension] = min(len(words) / 100.0, 1.0)
+                combined[49 % self._dimension] = min(len(text) / 1000.0, 1.0)
+                combined[50 % self._dimension] = len(set(words)) / max(len(words), 1)
+
+                # Character n-gram features
+                chars = ''.join(words)
+                for i, ngram_size in enumerate([2, 3, 4]):
+                    if len(chars) >= ngram_size:
+                        ngrams = [chars[j:j+ngram_size] for j in range(len(chars) - ngram_size + 1)]
+                        unique_ratio = len(set(ngrams)) / max(len(ngrams), 1)
+                        combined[(51 + i) % self._dimension] = unique_ratio
+
+            # Normalize
+            norm = np.linalg.norm(combined)
+            if norm > 0:
+                combined = combined / norm
+
+            embeddings.append(combined)
+
+        return np.array(embeddings, dtype='float32')
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    @property
+    def name(self) -> str:
+        return "SimpleHash"
+
+
+def create_best_available_embedding_provider(
+    model_name: str = "all-MiniLM-L6-v2",
+    target_dimension: int = 192
+) -> Tuple[EmbeddingProvider, str]:
+    """
+    Create the best available embedding provider with automatic fallback.
+
+    Priority:
+    1. sentence-transformers (best quality)
+    2. TF-IDF + SVD (good quality, requires sklearn)
+    3. Simple hash embeddings (works everywhere, low quality)
+
+    Returns:
+        Tuple of (provider, status_message)
+    """
+    # Try sentence-transformers first
+    if SENTENCE_TRANSFORMERS_AVAILABLE:
+        try:
+            provider = SentenceTransformerProvider(model_name)
+            return provider, f"✅ Using sentence-transformers ({model_name})"
+        except Exception as e:
+            logger.warning(f"[Trinity Indexer] Failed to load sentence-transformers: {e}")
+
+    # Try TF-IDF fallback
+    if SKLEARN_AVAILABLE:
+        try:
+            provider = TfidfEmbeddingProvider(dimension=target_dimension)
+            return provider, "⚠️ Using TF-IDF fallback (install sentence-transformers for better quality)"
+        except Exception as e:
+            logger.warning(f"[Trinity Indexer] Failed to initialize TF-IDF: {e}")
+
+    # Ultimate fallback: simple hash embeddings
+    provider = SimpleHashEmbeddingProvider(dimension=target_dimension)
+    return provider, "⚠️ Using hash-based fallback (install sentence-transformers or sklearn for better quality)"
+
+
+# Import ABC for embedding provider base class
+from abc import ABC, abstractmethod
 
 
 # =============================================================================
@@ -406,6 +672,11 @@ class TrinityKnowledgeIndexer:
     Ultra-robust knowledge indexer that bridges scraped content to JARVIS's brain.
 
     This is the "missing link" that makes web scraping actually useful.
+
+    v2.0 ENHANCEMENTS:
+    - Automatic fallback embedding providers (sentence-transformers → TF-IDF → hash)
+    - Never fails initialization - always has a working embedding strategy
+    - Proper error propagation with detailed status messages
     """
 
     def __init__(self, config: Optional[IndexerConfig] = None):
@@ -413,11 +684,16 @@ class TrinityKnowledgeIndexer:
         self._running = False
         self._index_task: Optional[asyncio.Task] = None
         self._export_task: Optional[asyncio.Task] = None
+        self._initialized = False
+        self._initialization_status: str = "Not initialized"
 
         # Components
         self._chunker = SemanticChunker(self.config)
         self._quality_scorer = QualityScorer()
-        self._embedding_model: Optional[Any] = None
+
+        # v2.0: Use abstract embedding provider with automatic fallback
+        self._embedding_provider: Optional[EmbeddingProvider] = None
+        self._embedding_model: Optional[Any] = None  # Legacy - kept for backward compatibility
 
         # Metrics
         self._metrics = IndexingMetrics()
@@ -432,43 +708,99 @@ class TrinityKnowledgeIndexer:
 
         logger.info("[Trinity Indexer] Initialized with config")
 
-    async def initialize(self) -> bool:
-        """Initialize embedding model and vector stores."""
+    async def initialize(self, raise_on_degraded: bool = False) -> bool:
+        """
+        Initialize embedding model and vector stores.
+
+        v2.0: NEVER fails completely - always falls back to a working embedding strategy.
+
+        Args:
+            raise_on_degraded: If True, raise exception when using fallback provider.
+                              If False (default), continue with degraded functionality.
+
+        Returns:
+            True if initialization succeeded (possibly with fallback).
+
+        Raises:
+            RuntimeError: Only if raise_on_degraded=True and using fallback provider.
+        """
         try:
             logger.info("[Trinity Indexer] Initializing...")
 
-            # Initialize embedding model
-            if SENTENCE_TRANSFORMERS_AVAILABLE:
-                self._embedding_model = SentenceTransformer(self.config.embedding_model_name)
-                logger.info(f"[Trinity Indexer] ✅ Loaded embedding model: {self.config.embedding_model_name}")
-            else:
-                logger.error("[Trinity Indexer] ❌ sentence-transformers not available")
-                return False
+            # v2.0: Use automatic fallback embedding provider
+            self._embedding_provider, status_msg = create_best_available_embedding_provider(
+                model_name=self.config.embedding_model_name,
+                target_dimension=192  # Standard dimension for compatibility
+            )
+            self._initialization_status = status_msg
+            logger.info(f"[Trinity Indexer] {status_msg}")
+
+            # Check if we got a degraded provider and user wants strict mode
+            is_degraded = not isinstance(self._embedding_provider, SentenceTransformerProvider)
+            if is_degraded and raise_on_degraded:
+                raise RuntimeError(
+                    f"Embedding provider is degraded: {status_msg}. "
+                    "Install sentence-transformers for full functionality: pip install sentence-transformers"
+                )
+
+            # Legacy compatibility: expose model if available
+            if isinstance(self._embedding_provider, SentenceTransformerProvider):
+                self._embedding_model = self._embedding_provider._model
 
             # Initialize ChromaDB
             if self.config.use_chromadb and CHROMADB_AVAILABLE:
-                Path(self.config.vector_db_path).mkdir(parents=True, exist_ok=True)
-                self._chroma_client = chromadb.PersistentClient(
-                    path=self.config.vector_db_path,
-                    settings=Settings(anonymized_telemetry=False)
-                )
-                self._chroma_collection = self._chroma_client.get_or_create_collection(
-                    name="jarvis_knowledge",
-                    metadata={"description": "JARVIS scraped knowledge base"}
-                )
-                logger.info("[Trinity Indexer] ✅ ChromaDB initialized")
+                try:
+                    Path(self.config.vector_db_path).mkdir(parents=True, exist_ok=True)
+                    self._chroma_client = chromadb.PersistentClient(
+                        path=self.config.vector_db_path,
+                        settings=Settings(anonymized_telemetry=False)
+                    )
+                    self._chroma_collection = self._chroma_client.get_or_create_collection(
+                        name="jarvis_knowledge",
+                        metadata={"description": "JARVIS scraped knowledge base"}
+                    )
+                    logger.info("[Trinity Indexer] ✅ ChromaDB initialized")
+                except Exception as e:
+                    logger.warning(f"[Trinity Indexer] ⚠️ ChromaDB init failed, continuing without: {e}")
+                    self._chroma_collection = None
 
             # Initialize FAISS (for fast similarity search)
             if self.config.use_faiss and FAISS_AVAILABLE:
                 # FAISS index will be created when we know embedding dimension
                 logger.info("[Trinity Indexer] ✅ FAISS ready")
 
-            logger.info("[Trinity Indexer] ✅ Initialization complete")
+            self._initialized = True
+            logger.info(f"[Trinity Indexer] ✅ Initialization complete (provider: {self._embedding_provider.name})")
             return True
 
+        except RuntimeError:
+            # Re-raise RuntimeError from strict mode check
+            raise
         except Exception as e:
             logger.error(f"[Trinity Indexer] ❌ Initialization failed: {e}", exc_info=True)
+            self._initialization_status = f"Failed: {e}"
             return False
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if indexer is properly initialized."""
+        return self._initialized and self._embedding_provider is not None
+
+    @property
+    def initialization_status(self) -> str:
+        """Get detailed initialization status message."""
+        return self._initialization_status
+
+    @property
+    def embedding_quality(self) -> str:
+        """Get embedding quality level: 'high', 'medium', or 'low'."""
+        if not self._embedding_provider:
+            return "none"
+        if isinstance(self._embedding_provider, SentenceTransformerProvider):
+            return "high"
+        if isinstance(self._embedding_provider, TfidfEmbeddingProvider):
+            return "medium"
+        return "low"
 
     async def start(self):
         """Start background indexing and export tasks."""
@@ -677,31 +1009,43 @@ class TrinityKnowledgeIndexer:
         """
         Generate embeddings for batch of texts.
 
+        v2.0: Uses the abstract EmbeddingProvider which automatically
+        handles fallback to TF-IDF or hash-based embeddings.
+
         Args:
             texts: List of text strings
 
         Returns:
             Numpy array of embeddings (shape: [len(texts), embedding_dim])
         """
-        if not self._embedding_model:
-            raise RuntimeError("Embedding model not initialized")
+        # v2.0: Check for new provider first, fall back to legacy model
+        if not self._embedding_provider and not self._embedding_model:
+            raise RuntimeError(
+                "Embedding provider not initialized. Call initialize() first. "
+                f"Status: {self._initialization_status}"
+            )
 
         try:
             start_time = time.time()
 
-            # Generate embeddings (runs in thread pool to avoid blocking)
-            loop = asyncio.get_event_loop()
-            embeddings = await loop.run_in_executor(
-                None,
-                self._embedding_model.encode,
-                texts,
-                self.config.batch_size
-            )
+            # v2.0: Use the abstract provider (handles all embedding strategies)
+            if self._embedding_provider:
+                embeddings = await self._embedding_provider.encode(texts)
+            else:
+                # Legacy fallback for backward compatibility
+                loop = asyncio.get_event_loop()
+                embeddings = await loop.run_in_executor(
+                    None,
+                    self._embedding_model.encode,
+                    texts,
+                    self.config.batch_size
+                )
+                embeddings = np.array(embeddings)
 
             elapsed_ms = (time.time() - start_time) * 1000
-            self._metrics.avg_embedding_time_ms = elapsed_ms / len(texts)
+            self._metrics.avg_embedding_time_ms = elapsed_ms / max(len(texts), 1)
 
-            return np.array(embeddings)
+            return embeddings
 
         except Exception as e:
             logger.error(f"[Trinity Indexer] Embedding generation failed: {e}")
@@ -943,6 +1287,10 @@ class TrinityKnowledgeIndexer:
         """Get indexer status and metrics."""
         return {
             "running": self._running,
+            "initialized": self._initialized,
+            "initialization_status": self._initialization_status,
+            "embedding_provider": self._embedding_provider.name if self._embedding_provider else "none",
+            "embedding_quality": self.embedding_quality,
             "config": {
                 "enabled": self.config.enabled,
                 "chunk_size": self.config.chunk_size,
@@ -979,30 +1327,108 @@ _indexer_instance: Optional[TrinityKnowledgeIndexer] = None
 _indexer_lock = LazyAsyncLock()  # v100.1: Lazy initialization to avoid "no running event loop" error
 
 
-async def get_knowledge_indexer() -> TrinityKnowledgeIndexer:
-    """Get or create global knowledge indexer instance."""
+async def get_knowledge_indexer(
+    raise_on_failure: bool = False,
+    raise_on_degraded: bool = False
+) -> TrinityKnowledgeIndexer:
+    """
+    Get or create global knowledge indexer instance.
+
+    v2.0 ENHANCEMENTS:
+    - Proper initialization verification
+    - Configurable error handling for degraded mode
+    - Detailed status logging
+
+    Args:
+        raise_on_failure: If True, raise exception if initialization fails completely.
+        raise_on_degraded: If True, raise exception if using fallback embedding provider.
+
+    Returns:
+        Initialized TrinityKnowledgeIndexer instance.
+
+    Raises:
+        RuntimeError: If raise_on_failure=True and initialization fails,
+                     or if raise_on_degraded=True and using fallback provider.
+    """
     global _indexer_instance
 
     if _indexer_instance is None:
         async with _indexer_lock:
             if _indexer_instance is None:
                 _indexer_instance = TrinityKnowledgeIndexer()
-                await _indexer_instance.initialize()
+                success = await _indexer_instance.initialize(raise_on_degraded=raise_on_degraded)
+
+                if not success and raise_on_failure:
+                    status = _indexer_instance.initialization_status
+                    _indexer_instance = None  # Reset on failure
+                    raise RuntimeError(f"Knowledge indexer initialization failed: {status}")
+
+                # Log initialization status
+                if _indexer_instance:
+                    logger.info(
+                        f"[Trinity Indexer] Global instance created: "
+                        f"initialized={_indexer_instance.is_initialized}, "
+                        f"quality={_indexer_instance.embedding_quality}, "
+                        f"status={_indexer_instance.initialization_status}"
+                    )
 
     return _indexer_instance
+
+
+async def get_knowledge_indexer_status() -> Dict[str, Any]:
+    """
+    Get the status of the global knowledge indexer without initializing it.
+
+    Returns:
+        Status dict if indexer exists, or status indicating not initialized.
+    """
+    if _indexer_instance is None:
+        return {
+            "exists": False,
+            "initialized": False,
+            "status": "Not created yet"
+        }
+    return {
+        "exists": True,
+        **_indexer_instance.get_status()
+    }
 
 
 # =============================================================================
 # Convenience Functions
 # =============================================================================
 
-async def start_knowledge_indexer():
-    """Start the global knowledge indexer."""
-    indexer = await get_knowledge_indexer()
-    await indexer.start()
+async def start_knowledge_indexer(raise_on_degraded: bool = False):
+    """
+    Start the global knowledge indexer.
+
+    Args:
+        raise_on_degraded: If True, raise exception if using fallback embedding provider.
+    """
+    indexer = await get_knowledge_indexer(raise_on_degraded=raise_on_degraded)
+    if indexer.is_initialized:
+        await indexer.start()
+        logger.info(
+            f"[Trinity Indexer] Started with embedding quality: {indexer.embedding_quality}"
+        )
+    else:
+        logger.warning(
+            f"[Trinity Indexer] Not starting - initialization incomplete: "
+            f"{indexer.initialization_status}"
+        )
 
 
 async def stop_knowledge_indexer():
     """Stop the global knowledge indexer."""
     if _indexer_instance:
         await _indexer_instance.stop()
+
+
+async def reset_knowledge_indexer():
+    """Reset the global knowledge indexer instance (for testing/recovery)."""
+    global _indexer_instance
+    async with _indexer_lock:
+        if _indexer_instance:
+            await _indexer_instance.stop()
+        _indexer_instance = None
+        logger.info("[Trinity Indexer] Global instance reset")
