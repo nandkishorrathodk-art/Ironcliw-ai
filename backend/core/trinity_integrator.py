@@ -9170,10 +9170,22 @@ class TrinityUnifiedOrchestrator:
                     logger.info(f"   📊 [v86.0] Component Status:")
                     logger.info(f"      • JARVIS Body:    ✅ ONLINE")
                     if self.enable_jprime:
-                        status = "✅ ONLINE" if jprime_ok else "❌ OFFLINE"
+                        # v86.1: Show PENDING when supervisor handles launch
+                        if jprime_ok:
+                            status = "✅ ONLINE"
+                        elif supervisor_launches:
+                            status = "⏳ PENDING (supervisor launch)"
+                        else:
+                            status = "❌ OFFLINE"
                         logger.info(f"      • JARVIS Prime:   {status}")
                     if self.enable_reactor:
-                        status = "✅ ONLINE" if reactor_ok else "❌ OFFLINE"
+                        # v86.1: Show PENDING when supervisor handles launch
+                        if reactor_ok:
+                            status = "✅ ONLINE"
+                        elif supervisor_launches:
+                            status = "⏳ PENDING (supervisor launch)"
+                        else:
+                            status = "❌ OFFLINE"
                         logger.info(f"      • Reactor-Core:   {status}")
                     logger.info("=" * 70)
 

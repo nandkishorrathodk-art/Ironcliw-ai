@@ -494,8 +494,9 @@ class CrossRepoTransactionCoordinator:
             f"{[r.value for r in self._repo_paths.keys()]}"
         )
 
-        # Warn about missing repos
-        missing = set(RepoScope) - set(self._repo_paths.keys())
+        # Warn about missing repos (exclude ALL since it's not a real repo)
+        actual_repos = {RepoScope.JARVIS, RepoScope.JPRIME, RepoScope.REACTOR}
+        missing = actual_repos - set(self._repo_paths.keys())
         if missing:
             self.log.warning(
                 f"[CrossRepo] Missing repos: {[r.value for r in missing]}. "
