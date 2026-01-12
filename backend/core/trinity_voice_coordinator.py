@@ -1611,6 +1611,47 @@ class TrinityVoiceCoordinator:
             emotion=trinity_emotion
         )
 
+    def _get_personality(self, context: Union[VoiceContext, str]) -> VoicePersonality:
+        """
+        Get voice personality for a given context.
+
+        Args:
+            context: VoiceContext enum or string context name
+
+        Returns:
+            VoicePersonality for the context, or default RUNTIME personality
+        """
+        # Handle string context names
+        if isinstance(context, str):
+            try:
+                context = VoiceContext(context.lower())
+            except ValueError:
+                # Try to match by name
+                for ctx in VoiceContext:
+                    if ctx.name.lower() == context.lower():
+                        context = ctx
+                        break
+                else:
+                    # Default to RUNTIME if unknown context
+                    logger.debug(f"[TrinityVoice] Unknown context '{context}', using RUNTIME")
+                    context = VoiceContext.RUNTIME
+
+        # Return personality or default
+        personality = self._personality_profiles.get(context)
+        if personality is None:
+            # Fallback to RUNTIME personality
+            personality = self._personality_profiles.get(
+                VoiceContext.RUNTIME,
+                VoicePersonality(
+                    voice_name=self._detect_best_voice(),
+                    rate=190,
+                    pitch=55,
+                    volume=0.8,
+                    emotion="friendly"
+                )
+            )
+        return personality
+
     def _detect_best_voice(self) -> str:
         """
         Detect best available voice on system.
