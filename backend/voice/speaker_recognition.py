@@ -364,7 +364,10 @@ class SpeakerRecognitionEngine:
             embedding = await self._extract_embedding(audio_data)
 
             if embedding is None:
-                return None, 0.0
+                # GRACEFUL DEGRADATION: Return low confidence instead of hard fail
+                # This allows fallback to physics-only or alternative authentication
+                logger.info("🔄 Embedding extraction failed - enabling graceful degradation")
+                return None, 0.08  # Very low confidence signals degradation mode
 
             # Compare with all known profiles
             best_match = None
@@ -397,7 +400,10 @@ class SpeakerRecognitionEngine:
 
         except Exception as e:
             logger.error(f"Speaker identification failed: {e}")
-            return None, 0.0
+            # GRACEFUL DEGRADATION: Return minimal confidence instead of hard fail
+            # This allows the authentication system to try alternative methods
+            logger.info("🔄 Speaker identification exception - enabling graceful degradation")
+            return None, 0.05
 
     async def verify_speaker(self, audio_data: bytes, claimed_speaker: str) -> Tuple[bool, float]:
         """

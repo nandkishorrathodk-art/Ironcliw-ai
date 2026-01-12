@@ -2849,7 +2849,10 @@ class IntelligentVoiceUnlockService:
             logger.error(f"Speaker identification failed with exception: {e}")
             import traceback
             logger.debug(traceback.format_exc())
-            return None, 0.0 
+            # GRACEFUL DEGRADATION: Return low confidence instead of hard fail
+            # This allows the authentication flow to continue with physics-only mode
+            logger.info("🔄 Speaker identification exception - attempting graceful degradation")
+            return None, 0.05  # Very low confidence signals to try alternative methods
 
     async def _get_speaker_confidence(self, audio_data: bytes, speaker_name: str) -> float:
         """Get confidence score for identified speaker with VAD preprocessing"""

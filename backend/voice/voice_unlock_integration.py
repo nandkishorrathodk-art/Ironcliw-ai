@@ -383,11 +383,16 @@ class VoiceUnlockIntegration:
 
                 return speaker_name, confidence, is_owner
             else:
-                return None, 0.0, False
+                # GRACEFUL DEGRADATION: Return low confidence instead of hard fail
+                logger.info("🔄 No speaker result - returning low confidence for fallback")
+                return None, 0.10, False
 
         except Exception as e:
             logger.error(f"Error identifying speaker: {e}", exc_info=True)
-            return None, 0.0, False
+            # GRACEFUL DEGRADATION: Return minimal confidence instead of hard fail
+            # This allows upstream systems to attempt alternative authentication
+            logger.info("🔄 Speaker identification error - enabling graceful degradation")
+            return None, 0.05, False
 
     def get_stats(self) -> dict:
         """Get unlock statistics"""

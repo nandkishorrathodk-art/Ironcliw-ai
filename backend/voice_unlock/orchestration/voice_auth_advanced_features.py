@@ -725,7 +725,10 @@ class MultiSpeakerManager:
             (speaker_id, confidence)
         """
         if not self._speakers:
-            return None, 0.0
+            # GRACEFUL DEGRADATION: Return low confidence instead of hard fail
+            # No speakers registered, but physics-only mode may still work
+            logger.info("🔄 No speakers registered - physics-only mode available")
+            return None, 0.10  # Low confidence signals to try physics-only
 
         best_match_id = None
         best_confidence = 0.0

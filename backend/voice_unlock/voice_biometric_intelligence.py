@@ -3108,6 +3108,9 @@ class VoiceBiometricIntelligence:
         # =================================================================
         # AUDIO NORMALIZATION: Handle all input types
         # =================================================================
+        # GRACEFUL DEGRADATION: Track if we should try physics-only fallback
+        audio_normalization_failed = False
+
         try:
             from voice_unlock.unified_voice_cache_manager import normalize_audio_data
             normalized_audio = normalize_audio_data(audio_data)
@@ -3121,13 +3124,17 @@ class VoiceBiometricIntelligence:
                         normalized_audio = base64.b64decode(audio_data)
                     except Exception:
                         logger.warning("⚠️ Audio data is string but not valid base64")
-                        return None, 0.0, False
+                        audio_normalization_failed = True
+                        diagnostics['degradation_mode'] = 'physics_only_base64_fail'
                 elif isinstance(audio_data, bytes):
                     normalized_audio = audio_data
                 else:
-                    return None, 0.0, False
-            audio_data = normalized_audio
-            diagnostics['audio_normalized'] = True
+                    audio_normalization_failed = True
+                    diagnostics['degradation_mode'] = 'physics_only_unknown_type'
+
+            if not audio_normalization_failed:
+                audio_data = normalized_audio
+                diagnostics['audio_normalized'] = True
         except ImportError:
             # Fallback: inline conversion if import fails
             if isinstance(audio_data, str):
@@ -3138,7 +3145,33 @@ class VoiceBiometricIntelligence:
                 except Exception:
                     diagnostics['failure_reasons'].append('base64_decode_failed')
                     logger.warning("⚠️ Audio data is string but not valid base64")
-                    return None, 0.0, False
+                    audio_normalization_failed = True
+                    diagnostics['degradation_mode'] = 'physics_only_import_fallback'
+
+        # GRACEFUL DEGRADATION: If audio normalization failed, try physics-only
+        if audio_normalization_failed:
+            logger.info("🔄 Attempting physics-only authentication (graceful degradation)")
+            try:
+                # Try to get physics features from raw audio if possible
+                if hasattr(self, '_physics_extractor') and self._physics_extractor:
+                    physics_result = await self._physics_extractor.extract_features_async(
+                        audio_data if isinstance(audio_data, bytes) else b'',
+                        ml_confidence=0.0,  # Signal physics-only mode
+                    )
+                    if physics_result and physics_result.physics_confidence > 0.3:
+                        diagnostics['physics_only_success'] = True
+                        # Return physics-based result
+                        return self._owner_name, physics_result.physics_confidence * 0.8, True
+                    else:
+                        logger.warning("⚠️ Physics-only mode failed, returning low confidence")
+                        return None, 0.15, False  # Low confidence instead of hard fail
+                else:
+                    # No physics extractor available
+                    logger.warning("⚠️ No physics extractor available for degradation")
+                    return None, 0.10, False  # Minimal confidence instead of hard fail
+            except Exception as physics_err:
+                logger.warning(f"⚠️ Physics-only fallback error: {physics_err}")
+                return None, 0.05, False  # Very low confidence instead of hard fail
 
         diagnostics['audio_length_bytes'] = len(audio_data) if audio_data else 0
 

@@ -1370,13 +1370,21 @@ class PhysicsAwareFeatureExtractor:
             # Detect anomalies
             result.anomalies_detected = self._detect_anomalies(result)
 
-            # Bayesian fusion if ML confidence provided
-            if ml_confidence is not None:
+            # Bayesian fusion if ML confidence provided AND valid
+            # FIX: Check for both not None AND > MIN_VALID_CONFIDENCE to avoid
+            # passing 0.0 to fusion (which should trigger physics-only mode)
+            MIN_VALID_ML_CONFIDENCE = 0.10  # Match Bayesian fusion threshold
+            if ml_confidence is not None and ml_confidence > MIN_VALID_ML_CONFIDENCE:
                 auth_prob, spoof_prob, fusion_details = await self._bayesian_fusion.fuse_confidence_async(
                     ml_confidence, result, behavioral_confidence, context_confidence
                 )
                 result.bayesian_authentic_probability = auth_prob
                 result.bayesian_spoof_probability = spoof_prob
+            elif ml_confidence is not None and ml_confidence <= MIN_VALID_ML_CONFIDENCE:
+                # ML confidence too low - use physics-only mode
+                logger.info(f"ML confidence {ml_confidence:.3f} below threshold, using physics-only mode")
+                result.bayesian_authentic_probability = result.physics_confidence
+                result.bayesian_spoof_probability = 1.0 - result.physics_confidence
 
             # Update baselines with good samples
             if result.physics_confidence > 0.7:
