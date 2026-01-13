@@ -80,6 +80,11 @@ class TaskType(Enum):
     CREATIVE = "creative"      # Creative writing, stories
     FACTUAL = "factual"        # Fact-based Q&A
     COMPLEX = "complex"        # Multi-step reasoning
+    # v3.0: Google Workspace task types
+    WORKSPACE_EMAIL = "workspace_email"       # Email drafting/sending (fast)
+    WORKSPACE_CALENDAR = "workspace_calendar" # Calendar operations (fast)
+    WORKSPACE_DOC = "workspace_doc"           # Document analysis/creation (smart)
+    WORKSPACE_SHEETS = "workspace_sheets"     # Spreadsheet operations (depends on task)
     
 
 @dataclass
@@ -154,7 +159,28 @@ class TaskRouter:
             TaskType.COMPLEX: [
                 r"step by step", r"plan", r"strategy", r"multiple", r"stages",
                 r"phases", r"comprehensive"
-            ]
+            ],
+            # v3.0: Google Workspace task patterns
+            TaskType.WORKSPACE_EMAIL: [
+                r"email", r"reply", r"draft", r"send.*email", r"compose",
+                r"inbox", r"unread", r"gmail", r"mail", r"message.*to",
+                r"forward", r"respond", r"cc", r"bcc"
+            ],
+            TaskType.WORKSPACE_CALENDAR: [
+                r"calendar", r"schedule", r"meeting", r"event", r"appointment",
+                r"busy", r"free.*time", r"available", r"remind", r"next week",
+                r"today.*schedule", r"tomorrow"
+            ],
+            TaskType.WORKSPACE_DOC: [
+                r"document", r"docs?", r"write.*essay", r"create.*report",
+                r"google.*doc", r"analyze.*document", r"summarize.*doc",
+                r"quarterly report", r"write.*about"
+            ],
+            TaskType.WORKSPACE_SHEETS: [
+                r"spreadsheet", r"sheet", r"excel", r"cell", r"column",
+                r"row", r"data.*from.*sheet", r"calculate", r"read.*sheet",
+                r"write.*sheet", r"update.*cell"
+            ],
         }
         
         # Performance tracking
@@ -272,6 +298,22 @@ class TaskRouter:
             complexity += 0.1
         elif task_type == TaskType.CHAT:
             complexity -= 0.1
+        # v3.0: Workspace task complexity adjustments
+        elif task_type == TaskType.WORKSPACE_EMAIL:
+            # Email drafts are fast tasks (Prime-7B-Chat)
+            complexity -= 0.15
+        elif task_type == TaskType.WORKSPACE_CALENDAR:
+            # Calendar queries are simple (Prime-7B-Chat)
+            complexity -= 0.2
+        elif task_type == TaskType.WORKSPACE_DOC:
+            # Document analysis needs reasoning (Claude/Prime-13B-Reasoning)
+            complexity += 0.25
+        elif task_type == TaskType.WORKSPACE_SHEETS:
+            # Spreadsheet tasks vary - calculation needs reasoning
+            if re.search(r"(calculate|analyze|growth|trend|formula)", query):
+                complexity += 0.2  # Complex sheet task
+            else:
+                complexity -= 0.1  # Simple read/write
             
         # Query length adjustment
         word_count = len(word_tokenize(query))
@@ -385,6 +427,102 @@ class TaskRouter:
             "task_type_distribution": self.routing_stats["task_types"]
         }
         
+    def get_workspace_model_preference(self, task_type: TaskType, query: str) -> Dict[str, Any]:
+        """
+        Get model preference for Google Workspace tasks.
+
+        v3.0: Trinity Loop integration - routes workspace tasks to appropriate models:
+        - WORKSPACE_EMAIL: Fast model (Prime-7B-Chat) for quick drafts
+        - WORKSPACE_CALENDAR: Fast model for simple queries
+        - WORKSPACE_DOC: Smart model (Claude/Prime-13B) for analysis/creation
+        - WORKSPACE_SHEETS: Depends on task complexity
+
+        Returns:
+            Dict with:
+                - preferred_model: str ("fast", "smart", "reasoning")
+                - reason: str
+                - allow_fallback: bool
+        """
+        query_lower = query.lower()
+
+        if task_type == TaskType.WORKSPACE_EMAIL:
+            # Check if it's just a quick reply or needs deep thinking
+            if re.search(r"(analyze|summarize|complex|professional)", query_lower):
+                return {
+                    "preferred_model": "smart",
+                    "reason": "Email requires careful composition",
+                    "allow_fallback": True,
+                }
+            return {
+                "preferred_model": "fast",
+                "reason": "Simple email draft - use fast model",
+                "allow_fallback": True,
+            }
+
+        elif task_type == TaskType.WORKSPACE_CALENDAR:
+            # Calendar operations are typically fast
+            return {
+                "preferred_model": "fast",
+                "reason": "Calendar query - use fast model",
+                "allow_fallback": True,
+            }
+
+        elif task_type == TaskType.WORKSPACE_DOC:
+            # Document tasks usually need reasoning
+            if re.search(r"(create|write|compose|essay)", query_lower):
+                return {
+                    "preferred_model": "reasoning",
+                    "reason": "Document creation requires reasoning model",
+                    "allow_fallback": True,
+                }
+            elif re.search(r"(analyze|summarize|extract)", query_lower):
+                return {
+                    "preferred_model": "smart",
+                    "reason": "Document analysis needs smart model",
+                    "allow_fallback": True,
+                }
+            return {
+                "preferred_model": "smart",
+                "reason": "Document task - default to smart model",
+                "allow_fallback": True,
+            }
+
+        elif task_type == TaskType.WORKSPACE_SHEETS:
+            # Sheets tasks vary
+            if re.search(r"(calculate|analyze|growth|trend|formula|year.*over.*year)", query_lower):
+                return {
+                    "preferred_model": "reasoning",
+                    "reason": "Complex spreadsheet analysis needs reasoning",
+                    "allow_fallback": True,
+                }
+            elif re.search(r"(visualize|chart|graph)", query_lower):
+                return {
+                    "preferred_model": "smart",
+                    "reason": "Visualization task needs smart model",
+                    "allow_fallback": True,
+                }
+            return {
+                "preferred_model": "fast",
+                "reason": "Simple sheet read/write - use fast model",
+                "allow_fallback": True,
+            }
+
+        # Default for non-workspace tasks
+        return {
+            "preferred_model": "auto",
+            "reason": "Use automatic routing",
+            "allow_fallback": True,
+        }
+
+    def is_workspace_task(self, task_type: TaskType) -> bool:
+        """Check if a task type is a workspace task."""
+        return task_type in [
+            TaskType.WORKSPACE_EMAIL,
+            TaskType.WORKSPACE_CALENDAR,
+            TaskType.WORKSPACE_DOC,
+            TaskType.WORKSPACE_SHEETS,
+        ]
+
     def suggest_optimization(self) -> List[str]:
         """Suggest optimizations based on usage patterns"""
         suggestions = []

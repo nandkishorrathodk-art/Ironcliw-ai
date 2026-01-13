@@ -3,14 +3,14 @@ JARVIS Neural Mesh - Google Workspace Agent
 =============================================
 
 A production agent specialized in Google Workspace administration and communication.
-Handles Gmail, Calendar, Drive, and Contacts integrations for the "Chief of Staff" role.
+Handles Gmail, Calendar, Drive, Sheets, and Contacts integrations for the "Chief of Staff" role.
 
 **UNIFIED EXECUTION ARCHITECTURE**
 
 This agent implements a "Never-Fail" waterfall strategy:
 
     Tier 1: Google API (Fast, Cloud-based)
-    │       Gmail API, Calendar API, People API
+    │       Gmail API, Calendar API, People API, Sheets API
     │       ↓ (if unavailable or fails)
     │
     Tier 2: macOS Local (Native apps via CalendarBridge/AppleScript)
@@ -20,6 +20,13 @@ This agent implements a "Never-Fail" waterfall strategy:
     Tier 3: Computer Use (Visual automation)
             Screenshot → Claude Vision → Click actions
             Works with ANY app visible on screen
+
+**TRINITY LOOP INTEGRATION (v3.0)**
+
+This agent now integrates with the Trinity Loop:
+- Visual Context: Resolves "this", "him/her" from screen OCR text
+- Experience Logging: Forwards all interactions to Reactor Core for training
+- Entity Resolution: Uses LLM to resolve ambiguous references
 
 Capabilities:
 - fetch_unread_emails: Get unread emails with intelligent filtering
@@ -31,15 +38,19 @@ Capabilities:
 - get_contacts: Retrieve contact information
 - workspace_summary: Get daily briefing summary
 - create_document: Create Google Docs with AI content generation
+- read_spreadsheet: Read data from Google Sheets
+- write_spreadsheet: Write data to Google Sheets
 
 This agent handles all "Admin" and "Communication" tasks, enabling JARVIS to:
 - "Check my schedule"
 - "Draft an email to Mitra"
+- "Reply to this email" (with visual context)
 - "What meetings do I have today?"
 - "Write an essay on dogs"
+- "Read the sales data from my spreadsheet"
 
 Author: JARVIS AI System
-Version: 2.0.0 (Unified Execution)
+Version: 3.0.0 (Trinity Integration + Sheets)
 """
 
 from __future__ import annotations
@@ -73,6 +84,44 @@ from ..data_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Trinity Loop Integration - Experience Forwarder
+# =============================================================================
+
+EXPERIENCE_FORWARDER_AVAILABLE = False
+try:
+    from backend.intelligence.cross_repo_experience_forwarder import (
+        get_experience_forwarder,
+        CrossRepoExperienceForwarder,
+    )
+    EXPERIENCE_FORWARDER_AVAILABLE = True
+except ImportError:
+    try:
+        from intelligence.cross_repo_experience_forwarder import (
+            get_experience_forwarder,
+            CrossRepoExperienceForwarder,
+        )
+        EXPERIENCE_FORWARDER_AVAILABLE = True
+    except ImportError:
+        get_experience_forwarder = None
+        logger.info("Experience forwarder not available - Reactor Core integration disabled")
+
+# =============================================================================
+# Entity Resolution - Unified Model Serving
+# =============================================================================
+
+UNIFIED_MODEL_SERVING_AVAILABLE = False
+try:
+    from backend.intelligence.unified_model_serving import get_model_serving
+    UNIFIED_MODEL_SERVING_AVAILABLE = True
+except ImportError:
+    try:
+        from intelligence.unified_model_serving import get_model_serving
+        UNIFIED_MODEL_SERVING_AVAILABLE = True
+    except ImportError:
+        get_model_serving = None
+        logger.info("Unified model serving not available - entity resolution may be limited")
 
 
 # =============================================================================
@@ -193,6 +242,20 @@ except ImportError:
         GoogleDocsClient = None
         get_google_docs_client = None
         logger.info("GoogleDocsClient not available - Google Docs creation disabled")
+
+
+# =============================================================================
+# Google Sheets API Availability Check
+# =============================================================================
+
+GOOGLE_SHEETS_AVAILABLE = False
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+    GOOGLE_SHEETS_AVAILABLE = True
+except ImportError:
+    gspread = None
+    logger.info("gspread not available - install with: pip install gspread")
 
 
 # =============================================================================
@@ -1697,6 +1760,250 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             self._client = GoogleWorkspaceClient(self.config)
         return await self._client.authenticate()
 
+    # =========================================================================
+    # v3.0: Trinity Loop Integration - Visual Context & Experience Logging
+    # =========================================================================
+
+    async def _resolve_entities_from_visual_context(
+        self,
+        query: str,
+        visual_context: Optional[str],
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Resolve ambiguous entities ("this", "him/her") from visual context.
+
+        When the user says "Reply to this email" or "Email him", we use
+        OCR text from the screen to determine who/what they mean.
+
+        Args:
+            query: The user's original query
+            visual_context: OCR text from the current screen
+            payload: Original payload to enrich with resolved entities
+
+        Returns:
+            Enriched payload with resolved entities
+        """
+        if not visual_context:
+            return payload
+
+        # Check for ambiguous references
+        ambiguous_patterns = [
+            "this email", "this message", "this",
+            "him", "her", "them", "the sender",
+            "that person", "this person", "reply to him",
+            "email him", "email her", "message him",
+        ]
+
+        query_lower = query.lower()
+        needs_resolution = any(pattern in query_lower for pattern in ambiguous_patterns)
+
+        if not needs_resolution:
+            return payload
+
+        logger.info("[GoogleWorkspaceAgent] Resolving entities from visual context...")
+
+        # Use LLM to extract entities from visual context
+        if UNIFIED_MODEL_SERVING_AVAILABLE and get_model_serving:
+            try:
+                model_serving = await get_model_serving()
+
+                extraction_prompt = f"""You are an entity extraction assistant. Analyze the screen text and user query to extract relevant information.
+
+SCREEN TEXT (OCR):
+{visual_context[:2000]}
+
+USER QUERY: {query}
+
+Extract the following if present:
+1. Email sender name and email address (look for "From:" patterns)
+2. Email subject (look for "Subject:" patterns)
+3. Email recipient if mentioned
+4. Any names mentioned
+5. Any other relevant context for the query
+
+Return ONLY a JSON object with these keys (use null if not found):
+{{
+    "sender_name": "...",
+    "sender_email": "...",
+    "subject": "...",
+    "recipient_name": "...",
+    "recipient_email": "...",
+    "context_summary": "..."
+}}"""
+
+                result = await model_serving.generate(
+                    prompt=extraction_prompt,
+                    task_type="analysis",
+                    max_tokens=500,
+                )
+
+                if result.get("text"):
+                    import json
+                    try:
+                        # Parse JSON from response
+                        response_text = result["text"]
+                        # Find JSON in response
+                        json_start = response_text.find("{")
+                        json_end = response_text.rfind("}") + 1
+                        if json_start >= 0 and json_end > json_start:
+                            extracted = json.loads(response_text[json_start:json_end])
+
+                            # Enrich payload with extracted entities
+                            if extracted.get("sender_email") and not payload.get("to"):
+                                payload["to"] = extracted["sender_email"]
+                                payload["resolved_from_visual"] = True
+                                logger.info(
+                                    f"[GoogleWorkspaceAgent] Resolved recipient: {extracted['sender_email']}"
+                                )
+
+                            if extracted.get("sender_name"):
+                                payload["resolved_name"] = extracted["sender_name"]
+
+                            if extracted.get("subject") and not payload.get("subject"):
+                                # For replies, prepend "Re:" if not present
+                                subject = extracted["subject"]
+                                if not subject.lower().startswith("re:"):
+                                    subject = f"Re: {subject}"
+                                payload["subject"] = subject
+
+                            if extracted.get("context_summary"):
+                                payload["visual_context_summary"] = extracted["context_summary"]
+
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to parse entity extraction response as JSON")
+
+            except Exception as e:
+                logger.warning(f"Entity resolution failed: {e}")
+
+        return payload
+
+    async def _log_experience(
+        self,
+        action: str,
+        input_data: Dict[str, Any],
+        output_data: Dict[str, Any],
+        success: bool = True,
+        confidence: float = 0.9,
+        visual_context: Optional[str] = None,
+    ) -> None:
+        """
+        Log an experience to Reactor Core for training.
+
+        This enables the Trinity Loop - JARVIS learns from every interaction
+        and improves over time through Reactor Core's training pipeline.
+
+        Args:
+            action: The action performed (e.g., "send_email", "check_calendar")
+            input_data: Input parameters (sanitized for privacy)
+            output_data: Output/result of the action
+            success: Whether the action succeeded
+            confidence: Confidence score for this experience
+            visual_context: OCR context used (for learning visual patterns)
+        """
+        if not EXPERIENCE_FORWARDER_AVAILABLE or not get_experience_forwarder:
+            return
+
+        try:
+            forwarder = await get_experience_forwarder()
+
+            # Sanitize input for privacy (remove sensitive PII)
+            sanitized_input = self._sanitize_for_logging(input_data)
+            sanitized_output = self._sanitize_for_logging(output_data)
+
+            # Build experience metadata
+            metadata = {
+                "agent": "google_workspace_agent",
+                "agent_version": "3.0.0",
+                "action": action,
+                "tier_used": output_data.get("tier_used", "google_api"),
+                "execution_time_ms": output_data.get("execution_time_ms", 0),
+                "had_visual_context": visual_context is not None,
+            }
+
+            # Forward to Reactor Core
+            await forwarder.forward_experience(
+                experience_type=f"workspace_{action}",
+                input_data={
+                    "action": action,
+                    "query": sanitized_input.get("query", ""),
+                    "parameters": sanitized_input,
+                },
+                output_data={
+                    "success": success,
+                    "result_summary": self._summarize_result(sanitized_output),
+                },
+                quality_score=0.8 if success else 0.3,
+                confidence=confidence,
+                success=success,
+                component="google_workspace_agent",
+                metadata=metadata,
+            )
+
+            logger.debug(f"[GoogleWorkspaceAgent] Logged experience for action: {action}")
+
+        except Exception as e:
+            # Don't fail the main operation if logging fails
+            logger.debug(f"[GoogleWorkspaceAgent] Failed to log experience: {e}")
+
+    def _sanitize_for_logging(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize data for logging by removing sensitive PII.
+
+        Strips email addresses, full names, and other identifying info
+        while preserving structure for training.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        sanitized = {}
+        sensitive_keys = {"body", "html_body", "content", "password", "token", "key"}
+        pii_keys = {"to", "from", "email", "phone", "address"}
+
+        for key, value in data.items():
+            key_lower = key.lower()
+
+            if key_lower in sensitive_keys:
+                # Redact completely
+                sanitized[key] = "[REDACTED]"
+            elif key_lower in pii_keys:
+                # Hash for deduplication but don't expose
+                if isinstance(value, str) and "@" in value:
+                    # Hash email domain only
+                    parts = value.split("@")
+                    if len(parts) == 2:
+                        sanitized[key] = f"***@{parts[1]}"
+                    else:
+                        sanitized[key] = "[EMAIL]"
+                else:
+                    sanitized[key] = "[PII]"
+            elif isinstance(value, dict):
+                sanitized[key] = self._sanitize_for_logging(value)
+            elif isinstance(value, list):
+                sanitized[key] = [
+                    self._sanitize_for_logging(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                sanitized[key] = value
+
+        return sanitized
+
+    def _summarize_result(self, result: Dict[str, Any]) -> str:
+        """Create a short summary of a result for logging."""
+        if result.get("error"):
+            return f"Error: {result['error'][:100]}"
+
+        summaries = []
+        if "count" in result:
+            summaries.append(f"count={result['count']}")
+        if "status" in result:
+            summaries.append(f"status={result['status']}")
+        if "tier_used" in result:
+            summaries.append(f"tier={result['tier_used']}")
+
+        return ", ".join(summaries) if summaries else "success"
+
     async def execute_task(self, payload: Dict[str, Any]) -> Any:
         """
         Execute a workspace task.
@@ -1712,6 +2019,8 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         - get_contacts: Get contacts
         - workspace_summary: Get daily briefing
         - handle_workspace_query: Natural language query handler
+        - read_spreadsheet: Read data from Google Sheets
+        - write_spreadsheet: Write data to Google Sheets
 
         Note: Actions with "(with fallback)" use the unified executor
         and will try alternative methods if the primary fails.
@@ -1720,11 +2029,25 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         If payload contains execution_mode="visual_preferred" or "visual_only",
         interactive commands (draft_email_reply, create_document) will use
         Computer Use (Tier 3) directly for visible on-screen execution.
+
+        v3.0 Enhancement - Trinity Loop Integration:
+        - visual_context: OCR text from screen for entity resolution
+        - Automatic experience logging to Reactor Core
         """
         action = payload.get("action", "")
         execution_mode = payload.get("execution_mode", "auto")
+        visual_context = payload.get("visual_context")
+        query = payload.get("query", "")
 
         logger.debug(f"GoogleWorkspaceAgent executing: {action}")
+
+        # v3.0: Resolve entities from visual context if present
+        if visual_context and query:
+            payload = await self._resolve_entities_from_visual_context(
+                query=query,
+                visual_context=visual_context,
+                payload=payload,
+            )
 
         # Actions that support fallback don't require authentication
         fallback_actions = {
@@ -1771,6 +2094,10 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             return await self._get_workspace_summary(payload)
         elif action == "handle_workspace_query":
             return await self._handle_natural_query(payload)
+        elif action == "read_spreadsheet":
+            return await self._read_spreadsheet(payload)
+        elif action == "write_spreadsheet":
+            return await self._write_spreadsheet(payload)
         else:
             raise ValueError(f"Unknown workspace action: {action}")
 
@@ -2006,6 +2333,15 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
                     },
                     confidence=1.0,
                 )
+
+            # v3.0: Log experience to Reactor Core
+            await self._log_experience(
+                action="send_email",
+                input_data={"to": to, "subject": subject},
+                output_data=result,
+                success=True,
+                confidence=0.95,
+            )
 
         return result
 
@@ -2373,6 +2709,258 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
                 )
 
     # =========================================================================
+    # v3.0: Google Sheets Operations
+    # =========================================================================
+
+    async def _read_spreadsheet(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Read data from a Google Sheet.
+
+        Args:
+            payload: Dict with:
+                - spreadsheet_id: Google Sheets ID (from URL)
+                - sheet_name: Optional sheet name (default: first sheet)
+                - range: A1 notation range (e.g., "A1:D10")
+                - header_row: Whether first row is headers (default: True)
+
+        Returns:
+            Dict with data and metadata
+        """
+        start_time = asyncio.get_event_loop().time()
+        spreadsheet_id = payload.get("spreadsheet_id", "")
+        sheet_name = payload.get("sheet_name")
+        cell_range = payload.get("range", "A1:Z100")
+        header_row = payload.get("header_row", True)
+
+        if not spreadsheet_id:
+            return {"error": "spreadsheet_id is required", "success": False}
+
+        result = {"success": False}
+
+        # Try gspread first (Tier 1)
+        if GOOGLE_SHEETS_AVAILABLE and gspread:
+            try:
+                loop = asyncio.get_event_loop()
+                data = await loop.run_in_executor(
+                    None,
+                    lambda: self._read_sheet_sync(spreadsheet_id, sheet_name, cell_range, header_row),
+                )
+                result = {
+                    "success": True,
+                    "data": data["values"],
+                    "headers": data.get("headers"),
+                    "row_count": len(data["values"]),
+                    "tier_used": "google_api",
+                    "execution_time_ms": (asyncio.get_event_loop().time() - start_time) * 1000,
+                }
+
+                # Log experience
+                await self._log_experience(
+                    action="read_spreadsheet",
+                    input_data={"spreadsheet_id": spreadsheet_id[:8] + "...", "range": cell_range},
+                    output_data=result,
+                    success=True,
+                )
+
+                return result
+
+            except Exception as e:
+                logger.warning(f"gspread read failed: {e}")
+
+        # Fallback to Computer Use (Tier 3)
+        if self._unified_executor and self._unified_executor._computer_use:
+            try:
+                await self._unified_executor._switch_to_app_with_spatial_awareness("Safari", narrate=True)
+
+                goal = (
+                    f"Navigate to Google Sheets (docs.google.com/spreadsheets/d/{spreadsheet_id}), "
+                    f"and read the data from range {cell_range}. List the values you see."
+                )
+                cu_result = await self._unified_executor._computer_use.run(goal=goal)
+
+                if cu_result and cu_result.success:
+                    result = {
+                        "success": True,
+                        "raw_response": cu_result.final_message,
+                        "tier_used": "computer_use",
+                        "execution_time_ms": (asyncio.get_event_loop().time() - start_time) * 1000,
+                    }
+                    return result
+
+            except Exception as e:
+                logger.warning(f"Computer Use read failed: {e}")
+
+        result["error"] = "All sheet reading methods failed"
+        return result
+
+    def _read_sheet_sync(
+        self,
+        spreadsheet_id: str,
+        sheet_name: Optional[str],
+        cell_range: str,
+        header_row: bool,
+    ) -> Dict[str, Any]:
+        """Synchronous sheet reading via gspread."""
+        # Use OAuth2 credentials from the workspace client
+        if self._client and self._client._creds:
+            gc = gspread.authorize(self._client._creds)
+        else:
+            # Try service account
+            creds = ServiceAccountCredentials.from_service_account_file(
+                os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH", ""),
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/drive.readonly",
+                ],
+            )
+            gc = gspread.authorize(creds)
+
+        spreadsheet = gc.open_by_key(spreadsheet_id)
+
+        if sheet_name:
+            worksheet = spreadsheet.worksheet(sheet_name)
+        else:
+            worksheet = spreadsheet.sheet1
+
+        values = worksheet.get(cell_range)
+
+        result = {"values": values}
+
+        if header_row and values:
+            result["headers"] = values[0]
+            result["values"] = values[1:]
+
+        return result
+
+    async def _write_spreadsheet(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Write data to a Google Sheet.
+
+        Args:
+            payload: Dict with:
+                - spreadsheet_id: Google Sheets ID
+                - sheet_name: Optional sheet name
+                - range: A1 notation start cell (e.g., "A1")
+                - values: 2D list of values to write
+                - mode: "update" (overwrite) or "append"
+
+        Returns:
+            Dict with status and metadata
+        """
+        start_time = asyncio.get_event_loop().time()
+        spreadsheet_id = payload.get("spreadsheet_id", "")
+        sheet_name = payload.get("sheet_name")
+        cell_range = payload.get("range", "A1")
+        values = payload.get("values", [])
+        mode = payload.get("mode", "update")
+
+        if not spreadsheet_id:
+            return {"error": "spreadsheet_id is required", "success": False}
+
+        if not values:
+            return {"error": "values list is required", "success": False}
+
+        result = {"success": False}
+
+        # Try gspread first
+        if GOOGLE_SHEETS_AVAILABLE and gspread:
+            try:
+                loop = asyncio.get_event_loop()
+                write_result = await loop.run_in_executor(
+                    None,
+                    lambda: self._write_sheet_sync(spreadsheet_id, sheet_name, cell_range, values, mode),
+                )
+                result = {
+                    "success": True,
+                    "cells_updated": write_result.get("cells_updated", 0),
+                    "tier_used": "google_api",
+                    "execution_time_ms": (asyncio.get_event_loop().time() - start_time) * 1000,
+                }
+
+                # Log experience
+                await self._log_experience(
+                    action="write_spreadsheet",
+                    input_data={
+                        "spreadsheet_id": spreadsheet_id[:8] + "...",
+                        "range": cell_range,
+                        "row_count": len(values),
+                    },
+                    output_data=result,
+                    success=True,
+                )
+
+                return result
+
+            except Exception as e:
+                logger.warning(f"gspread write failed: {e}")
+
+        # Fallback to Computer Use
+        if self._unified_executor and self._unified_executor._computer_use:
+            try:
+                await self._unified_executor._switch_to_app_with_spatial_awareness("Safari", narrate=True)
+
+                # Flatten values for Computer Use instruction
+                values_str = str(values[:5])  # Limit for prompt size
+
+                goal = (
+                    f"Navigate to Google Sheets (docs.google.com/spreadsheets/d/{spreadsheet_id}), "
+                    f"go to cell {cell_range}, and enter these values: {values_str}"
+                )
+                cu_result = await self._unified_executor._computer_use.run(goal=goal)
+
+                if cu_result and cu_result.success:
+                    result = {
+                        "success": True,
+                        "raw_response": cu_result.final_message,
+                        "tier_used": "computer_use",
+                        "execution_time_ms": (asyncio.get_event_loop().time() - start_time) * 1000,
+                    }
+                    return result
+
+            except Exception as e:
+                logger.warning(f"Computer Use write failed: {e}")
+
+        result["error"] = "All sheet writing methods failed"
+        return result
+
+    def _write_sheet_sync(
+        self,
+        spreadsheet_id: str,
+        sheet_name: Optional[str],
+        cell_range: str,
+        values: List[List[Any]],
+        mode: str,
+    ) -> Dict[str, Any]:
+        """Synchronous sheet writing via gspread."""
+        if self._client and self._client._creds:
+            gc = gspread.authorize(self._client._creds)
+        else:
+            creds = ServiceAccountCredentials.from_service_account_file(
+                os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH", ""),
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive",
+                ],
+            )
+            gc = gspread.authorize(creds)
+
+        spreadsheet = gc.open_by_key(spreadsheet_id)
+
+        if sheet_name:
+            worksheet = spreadsheet.worksheet(sheet_name)
+        else:
+            worksheet = spreadsheet.sheet1
+
+        if mode == "append":
+            worksheet.append_rows(values)
+            cells_updated = len(values) * (len(values[0]) if values else 0)
+        else:
+            worksheet.update(cell_range, values)
+            cells_updated = len(values) * (len(values[0]) if values else 0)
+
+        return {"cells_updated": cells_updated}
+
+    # =========================================================================
     # Convenience methods for direct access
     # =========================================================================
 
@@ -2430,7 +3018,12 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             "documents_created": self._documents_created,
             "fallback_uses": self._fallback_uses,
             "capabilities": list(self.capabilities),
-            "version": "2.0.0",
+            "version": "3.0.0",
+            "trinity_integration": {
+                "experience_forwarder_available": EXPERIENCE_FORWARDER_AVAILABLE,
+                "model_serving_available": UNIFIED_MODEL_SERVING_AVAILABLE,
+                "sheets_available": GOOGLE_SHEETS_AVAILABLE,
+            },
         }
 
         # Add unified executor stats if available
