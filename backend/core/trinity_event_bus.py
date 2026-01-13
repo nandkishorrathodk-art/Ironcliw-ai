@@ -967,6 +967,60 @@ class TrinityEventBus:
         logger.debug(f"[TrinityEventBus] Published {event.topic} (id={event.event_id[:8]})")
         return event.event_id
 
+    async def publish_raw(
+        self,
+        topic: str,
+        data: Dict[str, Any],
+        priority: EventPriority = EventPriority.NORMAL,
+        target: RepoType = RepoType.BROADCAST,
+        persist: bool = True,
+        correlation_id: Optional[str] = None,
+        causation_id: Optional[str] = None,
+    ) -> str:
+        """
+        Publish raw dict data as an event (convenience method).
+
+        This method wraps raw dictionary data into a TrinityEvent and publishes it.
+        Useful for cross-repo forwarding where the caller has raw data rather than
+        a pre-constructed TrinityEvent object.
+
+        Args:
+            topic: Event topic (e.g., "reactor.experiences", "training.started")
+            data: Raw payload dictionary to include in the event
+            priority: Event priority level (default: NORMAL)
+            target: Target repository (default: BROADCAST to all)
+            persist: Whether to persist to event store (default: True)
+            correlation_id: Optional correlation ID for tracing
+            causation_id: Optional ID of event that caused this one
+
+        Returns:
+            Event ID of the published event
+        """
+        # Extract event metadata from data if present (for Trinity-formatted events)
+        event_id = data.get("event_id", str(uuid.uuid4()))
+        source_str = data.get("source", self.local_repo.value)
+
+        # Resolve source repo type
+        try:
+            source = RepoType(source_str) if isinstance(source_str, str) else source_str
+        except ValueError:
+            source = self.local_repo
+
+        # Build the event
+        event = TrinityEvent(
+            event_id=event_id,
+            topic=topic,
+            source=source,
+            target=target,
+            priority=priority,
+            payload=data.get("payload", data),  # Use payload field if present, else whole data
+            metadata=data.get("metadata", {}),
+            correlation_id=correlation_id or data.get("correlation_id", ""),
+            causation_id=causation_id or data.get("causation_id", ""),
+        )
+
+        return await self.publish(event, persist=persist)
+
     async def subscribe(
         self,
         pattern: str,

@@ -132,11 +132,12 @@ except ImportError:
 get_unified_model_serving = None
 UNIFIED_MODEL_SERVING_AVAILABLE = False
 try:
-    from backend.core.unified_model_serving import get_unified_model_serving
+    # v101.1: Correct import path (intelligence, not core)
+    from backend.intelligence.unified_model_serving import get_unified_model_serving
     UNIFIED_MODEL_SERVING_AVAILABLE = True
 except ImportError:
     try:
-        from core.unified_model_serving import get_unified_model_serving
+        from intelligence.unified_model_serving import get_unified_model_serving
         UNIFIED_MODEL_SERVING_AVAILABLE = True
     except ImportError:
         pass

@@ -903,11 +903,57 @@ class ModelRouter:
         return result
 
 
+@dataclass
+class RegisteredModel:
+    """A model registered with the serving layer."""
+    model_id: str
+    model_path: Path
+    model_type: str  # "lora", "merged", "gguf", "base"
+    version: str
+    registered_at: float = field(default_factory=time.time)
+    source: str = "reactor_core"  # Where the model came from
+    base_model: Optional[str] = None  # Base model this was fine-tuned from
+    metrics: Dict[str, Any] = field(default_factory=dict)  # Training metrics
+    active: bool = True  # Whether this model is currently being served
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "model_id": self.model_id,
+            "model_path": str(self.model_path),
+            "model_type": self.model_type,
+            "version": self.version,
+            "registered_at": self.registered_at,
+            "source": self.source,
+            "base_model": self.base_model,
+            "metrics": self.metrics,
+            "active": self.active,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RegisteredModel":
+        return cls(
+            model_id=data["model_id"],
+            model_path=Path(data["model_path"]),
+            model_type=data.get("model_type", "unknown"),
+            version=data.get("version", "1.0.0"),
+            registered_at=data.get("registered_at", time.time()),
+            source=data.get("source", "unknown"),
+            base_model=data.get("base_model"),
+            metrics=data.get("metrics", {}),
+            active=data.get("active", True),
+            metadata=data.get("metadata", {}),
+        )
+
+
 class UnifiedModelServing:
     """
     Unified model serving layer with Prime + Claude fallback.
 
     Provides seamless inference across local Prime models and Claude API.
+
+    v100.1: Added model registration, hot-swap, and routing for Trinity Loop integration.
     """
 
     def __init__(self):
@@ -922,12 +968,23 @@ class UnifiedModelServing:
         self._running = False
         self._lock = asyncio.Lock()
 
+        # v100.1: Model registry for Trinity Loop hot-swap
+        self._registered_models: Dict[str, RegisteredModel] = {}
+        self._model_versions: Dict[str, List[str]] = defaultdict(list)  # model_id -> [versions]
+        self._active_model_id: Optional[str] = None
+        self._registry_file = MODEL_SERVING_DATA_DIR / "model_registry.json"
+
+        # v100.1: Routing configuration
+        self._routing_config: Dict[str, Dict[str, Any]] = {}
+        self._routing_file = MODEL_SERVING_DATA_DIR / "routing_config.json"
+
         # Metrics
         self._request_count = 0
         self._total_latency_ms = 0.0
         self._total_cost_usd = 0.0
         self._provider_usage: Dict[str, int] = defaultdict(int)
         self._fallback_count = 0
+        self._hot_swaps: int = 0
 
         # Ensure data directory
         MODEL_SERVING_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -939,6 +996,10 @@ class UnifiedModelServing:
 
         self._running = True
         self.logger.info("UnifiedModelServing starting...")
+
+        # v100.1: Load persisted state
+        await self._load_registry()
+        await self._load_routing_config()
 
         # Initialize clients based on configuration
         if PRIME_LOCAL_ENABLED:
@@ -1085,6 +1146,342 @@ class UnifiedModelServing:
         else:
             return f"[Error: {response.error}]"
 
+    # =========================================================================
+    # v100.1: Model Registration and Hot-Swap Methods (Trinity Loop Integration)
+    # =========================================================================
+
+    async def register_model(
+        self,
+        model_id: str,
+        model_path: Union[str, Path],
+        model_type: str = "lora",
+        version: Optional[str] = None,
+        source: str = "reactor_core",
+        base_model: Optional[str] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        activate: bool = True,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Register a new trained model for serving.
+
+        This method is called by trinity_handlers.py when Reactor Core
+        completes training and sends a MODEL_READY event.
+
+        Args:
+            model_id: Unique identifier for the model
+            model_path: Path to the model files
+            model_type: Type of model ("lora", "merged", "gguf", "base")
+            version: Model version (auto-generated if not provided)
+            source: Where the model came from ("reactor_core", "manual", etc.)
+            base_model: Base model this was fine-tuned from
+            metrics: Training metrics (loss, accuracy, etc.)
+            activate: Whether to make this the active model immediately
+            metadata: Additional metadata
+
+        Returns:
+            True if registration successful
+        """
+        async with self._lock:
+            try:
+                path = Path(model_path)
+
+                # Validate model path exists
+                if not path.exists():
+                    self.logger.error(f"Model path does not exist: {path}")
+                    return False
+
+                # Auto-generate version if not provided
+                if version is None:
+                    existing_versions = self._model_versions.get(model_id, [])
+                    version = f"1.0.{len(existing_versions)}"
+
+                # Create registered model entry
+                registered_model = RegisteredModel(
+                    model_id=model_id,
+                    model_path=path,
+                    model_type=model_type,
+                    version=version,
+                    source=source,
+                    base_model=base_model,
+                    metrics=metrics or {},
+                    active=activate,
+                    metadata=metadata or {},
+                )
+
+                # Generate unique key combining model_id and version
+                registry_key = f"{model_id}@{version}"
+
+                # Deactivate previous version if activating this one
+                if activate:
+                    for key, model in self._registered_models.items():
+                        if model.model_id == model_id and model.active:
+                            model.active = False
+
+                # Register the model
+                self._registered_models[registry_key] = registered_model
+                self._model_versions[model_id].append(version)
+
+                if activate:
+                    self._active_model_id = registry_key
+                    self._hot_swaps += 1
+
+                # Persist registry
+                await self._save_registry()
+
+                self.logger.info(
+                    f"Registered model: {model_id}@{version} "
+                    f"(type={model_type}, active={activate}, source={source})"
+                )
+
+                # If it's a GGUF model and we have Prime Local client, trigger reload
+                if model_type == "gguf" and ModelProvider.PRIME_LOCAL in self._clients:
+                    client = self._clients[ModelProvider.PRIME_LOCAL]
+                    if isinstance(client, PrimeLocalClient):
+                        client._model_path = path
+                        client._loaded = False
+                        await client.load_model(str(path.name))
+                        self.logger.info(f"Hot-swapped Prime Local model to: {path.name}")
+
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Model registration failed: {e}")
+                return False
+
+    async def rollback_model(
+        self,
+        model_id: str,
+        target_version: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Rollback to a previous model version.
+
+        This method is called by trinity_handlers.py when a MODEL_ROLLBACK
+        event is received, typically due to model validation failure.
+
+        Args:
+            model_id: Model identifier to rollback
+            target_version: Specific version to rollback to (default: previous)
+            reason: Reason for rollback (logged for auditing)
+
+        Returns:
+            True if rollback successful
+        """
+        async with self._lock:
+            try:
+                versions = self._model_versions.get(model_id, [])
+                if len(versions) < 2:
+                    self.logger.warning(f"No previous version to rollback to for {model_id}")
+                    return False
+
+                # Determine target version
+                if target_version is None:
+                    # Rollback to previous version
+                    target_version = versions[-2]
+
+                if target_version not in versions:
+                    self.logger.error(f"Target version {target_version} not found for {model_id}")
+                    return False
+
+                target_key = f"{model_id}@{target_version}"
+                if target_key not in self._registered_models:
+                    self.logger.error(f"Model {target_key} not in registry")
+                    return False
+
+                # Deactivate current active model
+                for key, model in self._registered_models.items():
+                    if model.model_id == model_id and model.active:
+                        model.active = False
+
+                # Activate target version
+                target_model = self._registered_models[target_key]
+                target_model.active = True
+                self._active_model_id = target_key
+
+                # Persist changes
+                await self._save_registry()
+
+                self.logger.info(
+                    f"Rolled back {model_id} to version {target_version}"
+                    f"{f' (reason: {reason})' if reason else ''}"
+                )
+
+                # If it's a GGUF model, reload in Prime Local
+                if target_model.model_type == "gguf" and ModelProvider.PRIME_LOCAL in self._clients:
+                    client = self._clients[ModelProvider.PRIME_LOCAL]
+                    if isinstance(client, PrimeLocalClient):
+                        client._model_path = target_model.model_path
+                        client._loaded = False
+                        await client.load_model(str(target_model.model_path.name))
+
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Rollback failed: {e}")
+                return False
+
+    async def update_routing(
+        self,
+        model_id: Optional[str] = None,
+        task_preferences: Optional[Dict[str, List[str]]] = None,
+        provider_weights: Optional[Dict[str, float]] = None,
+        circuit_config: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Update model routing configuration.
+
+        This method allows dynamic adjustment of which models handle
+        which task types, useful after training new specialized models.
+
+        Args:
+            model_id: Optional model to configure routing for
+            task_preferences: Task type -> provider list mapping
+            provider_weights: Provider -> weight mapping for load balancing
+            circuit_config: Circuit breaker configuration updates
+
+        Returns:
+            True if update successful
+        """
+        async with self._lock:
+            try:
+                config_key = model_id or "_default"
+
+                if config_key not in self._routing_config:
+                    self._routing_config[config_key] = {}
+
+                if task_preferences:
+                    # Update router task preferences
+                    for task_str, providers in task_preferences.items():
+                        try:
+                            task = TaskType(task_str)
+                            provider_enums = [ModelProvider(p) for p in providers]
+                            self._router._task_preferences[task] = provider_enums
+                        except ValueError as e:
+                            self.logger.warning(f"Invalid task/provider in routing update: {e}")
+
+                    self._routing_config[config_key]["task_preferences"] = task_preferences
+
+                if provider_weights:
+                    self._routing_config[config_key]["provider_weights"] = provider_weights
+                    # Could be used for weighted load balancing (future enhancement)
+
+                if circuit_config:
+                    # Update circuit breaker settings
+                    if "failure_threshold" in circuit_config:
+                        self._circuit_breaker.failure_threshold = circuit_config["failure_threshold"]
+                    if "recovery_seconds" in circuit_config:
+                        self._circuit_breaker.recovery_seconds = circuit_config["recovery_seconds"]
+
+                    self._routing_config[config_key]["circuit_config"] = circuit_config
+
+                # Persist routing config
+                await self._save_routing_config()
+
+                self.logger.info(f"Updated routing config for {config_key}")
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Routing update failed: {e}")
+                return False
+
+    async def get_registered_models(
+        self,
+        model_id: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get list of registered models.
+
+        Args:
+            model_id: Filter by model ID
+            active_only: Only return active models
+
+        Returns:
+            List of model info dictionaries
+        """
+        result = []
+
+        for key, model in self._registered_models.items():
+            if model_id and model.model_id != model_id:
+                continue
+            if active_only and not model.active:
+                continue
+
+            result.append(model.to_dict())
+
+        return result
+
+    async def _save_registry(self) -> None:
+        """Persist model registry to disk."""
+        try:
+            import aiofiles
+
+            data = {
+                key: model.to_dict()
+                for key, model in self._registered_models.items()
+            }
+
+            async with aiofiles.open(self._registry_file, "w") as f:
+                await f.write(json.dumps(data, indent=2, default=str))
+
+        except Exception as e:
+            self.logger.error(f"Failed to save registry: {e}")
+
+    async def _load_registry(self) -> None:
+        """Load model registry from disk."""
+        try:
+            if not self._registry_file.exists():
+                return
+
+            import aiofiles
+
+            async with aiofiles.open(self._registry_file, "r") as f:
+                content = await f.read()
+                data = json.loads(content)
+
+            for key, model_data in data.items():
+                model = RegisteredModel.from_dict(model_data)
+                self._registered_models[key] = model
+                if model.version not in self._model_versions[model.model_id]:
+                    self._model_versions[model.model_id].append(model.version)
+                if model.active:
+                    self._active_model_id = key
+
+            self.logger.info(f"Loaded {len(self._registered_models)} models from registry")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to load registry: {e}")
+
+    async def _save_routing_config(self) -> None:
+        """Persist routing configuration to disk."""
+        try:
+            import aiofiles
+
+            async with aiofiles.open(self._routing_file, "w") as f:
+                await f.write(json.dumps(self._routing_config, indent=2))
+
+        except Exception as e:
+            self.logger.error(f"Failed to save routing config: {e}")
+
+    async def _load_routing_config(self) -> None:
+        """Load routing configuration from disk."""
+        try:
+            if not self._routing_file.exists():
+                return
+
+            import aiofiles
+
+            async with aiofiles.open(self._routing_file, "r") as f:
+                content = await f.read()
+                self._routing_config = json.loads(content)
+
+            self.logger.info("Loaded routing configuration")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to load routing config: {e}")
+
     def get_stats(self) -> Dict[str, Any]:
         """Get current statistics."""
         return {
@@ -1095,6 +1492,9 @@ class UnifiedModelServing:
             "total_cost_usd": self._total_cost_usd,
             "provider_usage": dict(self._provider_usage),
             "fallback_count": self._fallback_count,
+            "hot_swaps": self._hot_swaps,
+            "registered_models": len(self._registered_models),
+            "active_model": self._active_model_id,
             "circuit_states": {
                 p: s.state.value
                 for p, s in self._circuit_breaker._states.items()
@@ -1117,3 +1517,13 @@ async def get_model_serving() -> UnifiedModelServing:
             await _model_serving.start()
 
         return _model_serving
+
+
+# v100.1: Alias for Trinity Loop integration (trinity_handlers.py uses this name)
+async def get_unified_model_serving() -> UnifiedModelServing:
+    """
+    Get the global UnifiedModelServing instance.
+
+    Alias for get_model_serving() for Trinity Loop integration compatibility.
+    """
+    return await get_model_serving()
