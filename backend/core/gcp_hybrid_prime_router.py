@@ -83,10 +83,28 @@ except ImportError:
 LOCAL_PRIME_MIN_RAM_GB = float(os.getenv("LOCAL_PRIME_MIN_RAM_GB", "8.0"))
 GCP_TRIGGER_RAM_PERCENT = float(os.getenv("GCP_TRIGGER_RAM_PERCENT", "85.0"))
 CRITICAL_RAM_PERCENT = float(os.getenv("CRITICAL_RAM_PERCENT", "95.0"))
+VM_PROVISIONING_THRESHOLD = float(os.getenv("VM_PROVISIONING_THRESHOLD", "80.0"))
 
 # Cost thresholds
 MAX_SINGLE_REQUEST_COST = float(os.getenv("MAX_SINGLE_REQUEST_COST", "0.50"))
 PREFER_LOCAL_BELOW_COST = float(os.getenv("PREFER_LOCAL_BELOW_COST", "0.10"))
+
+# VM provisioning (v2.0)
+VM_PROVISIONING_ENABLED = os.getenv("GCP_VM_PROVISIONING_ENABLED", "true").lower() == "true"
+VM_PROVISIONING_LOCK_TTL = int(os.getenv("VM_PROVISIONING_LOCK_TTL", "300"))  # 5 minutes
+VM_MIN_ACTIVE_REQUESTS = int(os.getenv("VM_MIN_ACTIVE_REQUESTS", "1"))  # Min requests before termination
+
+# =============================================================================
+# Distributed Locking for VM Provisioning (v2.0)
+# =============================================================================
+
+_VM_LOCK_AVAILABLE = False
+try:
+    from backend.core.resilience import DistributedLock, DistributedLockConfig
+    _VM_LOCK_AVAILABLE = True
+except ImportError:
+    DistributedLock = None
+    DistributedLockConfig = None
 
 # Timeouts
 LOCAL_TIMEOUT_MS = int(os.getenv("LOCAL_PRIME_TIMEOUT_MS", "5000"))
@@ -249,6 +267,35 @@ class GCPHybridPrimeRouter:
             "permanent": {"max_retries": 0, "delay": 0.0},
         }
 
+        # v2.0: VM provisioning with distributed locking
+        self._vm_provisioning_enabled = VM_PROVISIONING_ENABLED and self._use_resilience
+        self._vm_provisioning_lock: Optional[DistributedLock] = None
+        self._vm_provisioning_in_progress = False
+        self._active_requests: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
+        self._vm_provisioning_task: Optional[asyncio.Task] = None
+        self._memory_pressure_task: Optional[asyncio.Task] = None
+
+        # v2.0: Graceful degradation
+        self._degradation_mode = False
+        self._degradation_reason: Optional[str] = None
+        self._last_successful_tier: Optional[RoutingTier] = None
+        self._tier_failure_counts: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
+        self._tier_last_success: Dict[RoutingTier, float] = {tier: 0.0 for tier in RoutingTier}
+
+        # Initialize VM provisioning lock if available
+        if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
+            try:
+                self._vm_provisioning_lock = DistributedLock(
+                    lock_name="gcp_vm_provisioning",
+                    config=DistributedLockConfig(
+                        ttl_seconds=VM_PROVISIONING_LOCK_TTL,
+                        retry_count=3,
+                        retry_delay=1.0,
+                    ),
+                )
+            except Exception as e:
+                self.logger.warning(f"VM provisioning lock initialization failed: {e}")
+
     async def start(self) -> bool:
         """Start the hybrid router."""
         if self._running:
@@ -272,11 +319,194 @@ class GCPHybridPrimeRouter:
             f"gcp_trigger: {GCP_TRIGGER_RAM_PERCENT}%, "
             f"resilience: {self._use_resilience})"
         )
+
+        # v2.0: Start memory pressure monitoring
+        if self._vm_provisioning_enabled:
+            self._memory_pressure_task = asyncio.create_task(
+                self._memory_pressure_monitor(),
+                name="gcp_memory_pressure_monitor",
+            )
+            self.logger.info("GCPHybridPrimeRouter: Memory pressure monitoring active")
+
         return True
+
+    async def _memory_pressure_monitor(self) -> None:
+        """
+        v2.0: Monitor memory pressure and trigger VM provisioning.
+
+        When RAM usage exceeds VM_PROVISIONING_THRESHOLD, attempts to provision
+        a GCP VM using distributed locking to prevent race conditions.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(5.0)  # Check every 5 seconds
+
+                ram_info = await self._get_ram_info()
+                if not ram_info:
+                    continue
+
+                used_percent = ram_info.get("used_percent", 0)
+
+                # Check if we should trigger VM provisioning
+                if used_percent >= VM_PROVISIONING_THRESHOLD:
+                    if not self._vm_provisioning_in_progress:
+                        self.logger.warning(
+                            f"Memory pressure detected: {used_percent:.1f}% "
+                            f"(threshold: {VM_PROVISIONING_THRESHOLD}%)"
+                        )
+                        await self._trigger_vm_provisioning(reason="memory_pressure")
+
+                # Check if we should terminate VM (low usage)
+                elif used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
+                    await self._check_vm_termination()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Memory pressure monitor error: {e}")
+                await asyncio.sleep(10.0)
+
+    async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
+        """
+        v2.0: Trigger GCP VM provisioning with distributed locking.
+
+        Uses Redis-based distributed lock to prevent concurrent VM creation
+        across multiple repos (JARVIS, JARVIS Prime).
+
+        Args:
+            reason: Reason for triggering provisioning
+
+        Returns:
+            True if VM was provisioned, False otherwise
+        """
+        if self._vm_provisioning_in_progress:
+            self.logger.debug("VM provisioning already in progress")
+            return False
+
+        self._vm_provisioning_in_progress = True
+        token: Optional[str] = None
+
+        try:
+            # Acquire distributed lock
+            if self._vm_provisioning_lock:
+                try:
+                    token = await self._vm_provisioning_lock.acquire_lock(timeout=10.0)
+                    self.logger.info(f"Acquired VM provisioning lock (token: {token[:8]}...)")
+                except Exception as e:
+                    self.logger.warning(f"Could not acquire VM provisioning lock: {e}")
+                    # Another instance is provisioning - skip
+                    return False
+
+            # Check if GCP controller is available
+            if not self._gcp_controller:
+                self.logger.warning("GCP controller not available for VM provisioning")
+                return False
+
+            # Check if VM already exists
+            if hasattr(self._gcp_controller, 'is_vm_available'):
+                if self._gcp_controller.is_vm_available():
+                    self.logger.info("GCP VM already available, skipping provisioning")
+                    return True
+
+            # Trigger VM creation
+            self.logger.info(f"Triggering GCP VM provisioning (reason: {reason})")
+
+            if hasattr(self._gcp_controller, 'create_vm'):
+                result = await self._gcp_controller.create_vm()
+                if result:
+                    self.logger.info("GCP VM provisioned successfully")
+                    self._metrics.gcp_requests += 1
+                    return True
+                else:
+                    self.logger.error("GCP VM provisioning failed")
+                    return False
+            else:
+                self.logger.warning("GCP controller doesn't support create_vm()")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"VM provisioning error: {e}")
+            return False
+
+        finally:
+            self._vm_provisioning_in_progress = False
+            # Release distributed lock
+            if self._vm_provisioning_lock and token:
+                try:
+                    await self._vm_provisioning_lock.release_lock(token)
+                    self.logger.debug("Released VM provisioning lock")
+                except Exception as e:
+                    self.logger.warning(f"Error releasing VM lock: {e}")
+
+    async def _check_vm_termination(self) -> None:
+        """
+        v2.0: Check if GCP VM can be terminated (low usage, no active requests).
+
+        Uses reference counting to ensure no active requests before termination.
+        """
+        # Check active requests on GCP tier
+        active_gcp_requests = self._active_requests.get(RoutingTier.GCP_VM, 0)
+
+        if active_gcp_requests > VM_MIN_ACTIVE_REQUESTS:
+            return  # Still have active requests
+
+        # Check if GCP controller supports termination
+        if not self._gcp_controller:
+            return
+
+        if not hasattr(self._gcp_controller, 'terminate_vm'):
+            return
+
+        # Acquire lock before termination
+        token: Optional[str] = None
+        if self._vm_provisioning_lock:
+            try:
+                token = await self._vm_provisioning_lock.acquire_lock(timeout=5.0)
+            except Exception:
+                return  # Another instance has the lock
+
+        try:
+            if hasattr(self._gcp_controller, 'is_vm_available'):
+                if self._gcp_controller.is_vm_available():
+                    self.logger.info("Terminating GCP VM (low usage, no active requests)")
+                    await self._gcp_controller.terminate_vm()
+        except Exception as e:
+            self.logger.error(f"VM termination error: {e}")
+        finally:
+            if self._vm_provisioning_lock and token:
+                try:
+                    await self._vm_provisioning_lock.release_lock(token)
+                except Exception:
+                    pass
+
+    def _increment_active_requests(self, tier: RoutingTier) -> None:
+        """v2.0: Increment active request count for reference counting."""
+        self._active_requests[tier] = self._active_requests.get(tier, 0) + 1
+
+    def _decrement_active_requests(self, tier: RoutingTier) -> None:
+        """v2.0: Decrement active request count for reference counting."""
+        current = self._active_requests.get(tier, 0)
+        self._active_requests[tier] = max(0, current - 1)
 
     async def stop(self) -> None:
         """Stop the hybrid router."""
         self._running = False
+
+        # v2.0: Cancel memory pressure monitoring
+        if self._memory_pressure_task:
+            self._memory_pressure_task.cancel()
+            try:
+                await self._memory_pressure_task
+            except asyncio.CancelledError:
+                pass
+
+        # v2.0: Cancel VM provisioning task if running
+        if self._vm_provisioning_task:
+            self._vm_provisioning_task.cancel()
+            try:
+                await self._vm_provisioning_task
+            except asyncio.CancelledError:
+                pass
 
         if self._monitoring_task:
             self._monitoring_task.cancel()
@@ -773,61 +1003,169 @@ class GCPHybridPrimeRouter:
         last_error: Optional[Exception] = None
         start_time = time.time()
 
-        while True:
+        # v2.0: Reference counting for VM lifecycle management
+        self._increment_active_requests(decision.tier)
+
+        try:
+            while True:
+                try:
+                    # Use circuit breaker if available
+                    if self._circuit_breaker and self._use_resilience:
+                        result = await self._circuit_breaker.execute(
+                            tier=decision.tier.value,
+                            func=lambda: self._execute_on_tier(decision.tier, payload),
+                            timeout=decision.timeout_ms / 1000,
+                        )
+                    else:
+                        result = await self._execute_on_tier(decision.tier, payload)
+
+                    latency_ms = (time.time() - start_time) * 1000
+                    self._record_success(decision.tier, latency_ms)
+
+                    # v2.0: Track successful tier and exit degradation mode
+                    self._last_successful_tier = decision.tier
+                    self._tier_failure_counts[decision.tier] = 0
+                    self._tier_last_success[decision.tier] = time.time()
+
+                    if self._degradation_mode:
+                        self.logger.info(f"Exiting degradation mode - {decision.tier.value} succeeded")
+                        self._degradation_mode = False
+                        self._degradation_reason = None
+
+                    # Track cost
+                    if self._cost_sync:
+                        self._cost_sync.record_inference(
+                            tokens_in=payload.get("max_tokens", 1000),
+                            tokens_out=result.get("tokens_used", 500),
+                            cost=decision.estimated_cost,
+                            is_local=decision.tier == RoutingTier.LOCAL_PRIME,
+                        )
+
+                    # Track retry success
+                    if retries > 0:
+                        self._metrics.retries_successful += 1
+
+                    return result
+
+                except Exception as e:
+                    last_error = e
+                    failure_type = self._classify_failure(e)
+
+                    # Record failure
+                    self._record_failure(decision.tier, e)
+
+                    # v2.0: Track tier failures for degradation detection
+                    self._tier_failure_counts[decision.tier] = self._tier_failure_counts.get(decision.tier, 0) + 1
+
+                    # Check if should retry
+                    should_retry, delay = self._should_retry(failure_type, retries)
+
+                    if should_retry:
+                        retries += 1
+                        self._metrics.retries_total += 1
+                        self.logger.warning(
+                            f"Retry {retries} for {decision.tier.value}: "
+                            f"{failure_type} failure - {e}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        # No more retries - try graceful degradation
+                        fallback_result = await self._try_graceful_degradation(
+                            decision, payload, last_error
+                        )
+                        if fallback_result:
+                            return fallback_result
+
+                        # No fallback available
+                        self.logger.error(
+                            f"Failed on {decision.tier.value} after {retries} retries: "
+                            f"{failure_type} failure - {e}"
+                        )
+                        raise
+        finally:
+            # v2.0: Always decrement reference count
+            self._decrement_active_requests(decision.tier)
+
+    async def _try_graceful_degradation(
+        self,
+        original_decision: RoutingDecision,
+        payload: Dict[str, Any],
+        last_error: Exception,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        v2.0: Attempt graceful degradation when primary tier fails.
+
+        Tries fallback tiers in order:
+        1. If GCP failed → try local (if RAM available)
+        2. If local failed → try cloud Claude
+        3. If all failed → return degraded response
+
+        Returns:
+            Result from fallback tier, or None if all tiers failed
+        """
+        original_tier = original_decision.tier
+        self.logger.warning(f"Attempting graceful degradation from {original_tier.value}")
+
+        # Define fallback chain
+        fallback_chain: List[RoutingTier] = []
+
+        if original_tier == RoutingTier.LOCAL_PRIME:
+            fallback_chain = [RoutingTier.GCP_VM, RoutingTier.GCP_CLOUD_RUN, RoutingTier.CLOUD_CLAUDE]
+        elif original_tier == RoutingTier.GCP_VM:
+            fallback_chain = [RoutingTier.LOCAL_PRIME, RoutingTier.GCP_CLOUD_RUN, RoutingTier.CLOUD_CLAUDE]
+        elif original_tier == RoutingTier.GCP_CLOUD_RUN:
+            fallback_chain = [RoutingTier.LOCAL_PRIME, RoutingTier.GCP_VM, RoutingTier.CLOUD_CLAUDE]
+        elif original_tier == RoutingTier.CLOUD_CLAUDE:
+            fallback_chain = [RoutingTier.LOCAL_PRIME, RoutingTier.GCP_VM, RoutingTier.GCP_CLOUD_RUN]
+
+        # Try each fallback tier
+        for fallback_tier in fallback_chain:
+            # Check circuit breaker
+            if not self._check_circuit_breaker(fallback_tier):
+                self.logger.debug(f"Skipping {fallback_tier.value} - circuit breaker open")
+                continue
+
+            # Check if tier is available
+            if fallback_tier == RoutingTier.LOCAL_PRIME:
+                ram_info = await self._get_ram_info()
+                if not self._can_use_local(ram_info):
+                    self.logger.debug(f"Skipping {fallback_tier.value} - insufficient RAM")
+                    continue
+
+            self.logger.info(f"Attempting fallback to {fallback_tier.value}")
+
             try:
-                # Use circuit breaker if available
-                if self._circuit_breaker and self._use_resilience:
-                    result = await self._circuit_breaker.execute(
-                        tier=decision.tier.value,
-                        func=lambda: self._execute_on_tier(decision.tier, payload),
-                        timeout=decision.timeout_ms / 1000,
-                    )
-                else:
-                    result = await self._execute_on_tier(decision.tier, payload)
+                self._increment_active_requests(fallback_tier)
+                result = await self._execute_on_tier(fallback_tier, payload)
 
-                latency_ms = (time.time() - start_time) * 1000
-                self._record_success(decision.tier, latency_ms)
+                # Mark as degraded response
+                result["degraded"] = True
+                result["original_tier"] = original_tier.value
+                result["fallback_tier"] = fallback_tier.value
 
-                # Track cost
-                if self._cost_sync:
-                    self._cost_sync.record_inference(
-                        tokens_in=payload.get("max_tokens", 1000),
-                        tokens_out=result.get("tokens_used", 500),
-                        cost=decision.estimated_cost,
-                        is_local=decision.tier == RoutingTier.LOCAL_PRIME,
-                    )
+                self._metrics.fallback_requests += 1
+                self._last_successful_tier = fallback_tier
 
-                # Track retry success
-                if retries > 0:
-                    self._metrics.retries_successful += 1
-
+                self.logger.info(f"Graceful degradation successful: {fallback_tier.value}")
                 return result
 
             except Exception as e:
-                last_error = e
-                failure_type = self._classify_failure(e)
+                self.logger.warning(f"Fallback to {fallback_tier.value} failed: {e}")
+                self._decrement_active_requests(fallback_tier)
+                continue
 
-                # Record failure
-                self._record_failure(decision.tier, e)
+        # All tiers failed - enter degradation mode
+        self._degradation_mode = True
+        self._degradation_reason = f"All tiers failed after {original_tier.value}: {last_error}"
 
-                # Check if should retry
-                should_retry, delay = self._should_retry(failure_type, retries)
-
-                if should_retry:
-                    retries += 1
-                    self._metrics.retries_total += 1
-                    self.logger.warning(
-                        f"Retry {retries} for {decision.tier.value}: "
-                        f"{failure_type} failure - {e}"
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    # No more retries
-                    self.logger.error(
-                        f"Failed on {decision.tier.value} after {retries} retries: "
-                        f"{failure_type} failure - {e}"
-                    )
-                    raise
+        # Return minimal degraded response
+        self.logger.error(f"All fallback tiers failed - entering degradation mode")
+        return {
+            "response": "[System operating in degraded mode - please try again later]",
+            "degraded": True,
+            "all_tiers_failed": True,
+            "error": str(last_error),
+        }
 
     async def _execute_on_tier(
         self,
@@ -983,6 +1321,14 @@ class GCPHybridPrimeRouter:
                 if self._metrics.retries_total > 0 else 0.0
             ),
             "circuit_breakers": cb_status,
+            # v2.0 VM provisioning and degradation
+            "vm_provisioning_enabled": self._vm_provisioning_enabled,
+            "vm_provisioning_in_progress": self._vm_provisioning_in_progress,
+            "active_requests": {tier.value: count for tier, count in self._active_requests.items()},
+            "degradation_mode": self._degradation_mode,
+            "degradation_reason": self._degradation_reason,
+            "last_successful_tier": self._last_successful_tier.value if self._last_successful_tier else None,
+            "tier_failure_counts": {tier.value: count for tier, count in self._tier_failure_counts.items()},
         }
 
     def on_decision(self, callback: Callable) -> None:

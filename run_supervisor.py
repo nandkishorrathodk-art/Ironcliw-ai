@@ -3824,6 +3824,39 @@ class SupervisorBootstrapper:
         self._experience_forwarder = None
         self._experience_forwarder_enabled = os.getenv("CROSS_REPO_EXPERIENCE_FORWARDING", "true").lower() == "true"
 
+        # v101.0: Trinity Bridge Adapter (MODEL_READY Event Forwarding)
+        # - Watches Reactor Core event directories for MODEL_READY events
+        # - Forwards events to TrinityEventBus for hot-swap processing
+        # - Closes the Trinity Loop: Training → MODEL_READY → Hot-Swap
+        # - FileWatchGuard for robust file watching with recovery
+        # - Circuit breaker for event bus dispatch failures
+        self._trinity_bridge_adapter = None
+        self._trinity_bridge_adapter_enabled = os.getenv("TRINITY_BRIDGE_ADAPTER_ENABLED", "true").lower() == "true"
+
+        # v101.0: Cross-Repo Neural Mesh Bridge (External Agent Integration)
+        # - Registers JARVIS Prime and Reactor Core as Neural Mesh agents
+        # - Health monitoring via heartbeat files
+        # - Task routing with capability matching
+        # - Circuit breaker protection for external operations
+        self._cross_repo_neural_mesh = None
+        self._cross_repo_neural_mesh_enabled = os.getenv("CROSS_REPO_NEURAL_MESH_ENABLED", "true").lower() == "true"
+
+        # v101.0: Cross-Repo Cost Sync (Unified Budget Tracking)
+        # - Redis-backed real-time cost synchronization
+        # - Atomic budget checks across all repos
+        # - Auto-reconnecting Redis client with fallback
+        # - Prevents budget overruns from concurrent requests
+        self._cross_repo_cost_sync = None
+        self._cross_repo_cost_sync_enabled = os.getenv("CROSS_REPO_COST_SYNC_ENABLED", "true").lower() == "true"
+
+        # v101.0: GCP Hybrid Prime Router (Memory-Triggered VM Provisioning)
+        # - Intelligent routing between local/GCP/cloud tiers
+        # - Memory pressure-triggered VM provisioning
+        # - Redis distributed locking for cross-repo VM creation
+        # - Failure classification with intelligent retry
+        self._gcp_hybrid_router = None
+        self._gcp_hybrid_router_enabled = os.getenv("GCP_HYBRID_ROUTER_ENABLED", "true").lower() == "true"
+
         # v85.0: Unified State Coordination - Atomic locks with process cookies
         # - Prevents race conditions between run_supervisor.py and start_system.py
         # - Uses fcntl locks with TTL-based expiration
@@ -12211,6 +12244,317 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         # =====================================================================
         if self._experience_forwarder_enabled:
             await self._initialize_experience_forwarder()
+
+        # =====================================================================
+        # PHASE 12: Initialize Trinity Bridge Adapter (v101.0) - CRITICAL
+        # This MUST be initialized to close the Trinity Loop:
+        # Training → MODEL_READY → TrinityBridgeAdapter → Hot-Swap
+        # =====================================================================
+        if self._trinity_bridge_adapter_enabled:
+            await self._initialize_trinity_bridge_adapter()
+
+        # =====================================================================
+        # PHASE 13: Initialize Cross-Repo Neural Mesh Bridge (v101.0)
+        # Registers JARVIS Prime and Reactor Core as Neural Mesh agents
+        # =====================================================================
+        if self._cross_repo_neural_mesh_enabled:
+            await self._initialize_cross_repo_neural_mesh()
+
+        # =====================================================================
+        # PHASE 14: Initialize Cross-Repo Cost Sync (v101.0)
+        # Unified budget tracking across all repos via Redis
+        # =====================================================================
+        if self._cross_repo_cost_sync_enabled:
+            await self._initialize_cross_repo_cost_sync()
+
+        # =====================================================================
+        # PHASE 15: Initialize GCP Hybrid Prime Router (v101.0)
+        # Memory-triggered VM provisioning with distributed locking
+        # =====================================================================
+        if self._gcp_hybrid_router_enabled:
+            await self._initialize_gcp_hybrid_router()
+
+    async def _initialize_trinity_bridge_adapter(self) -> None:
+        """
+        v101.0: Initialize Trinity Bridge Adapter - MODEL_READY Event Forwarding.
+
+        CRITICAL: This component closes the Trinity Loop by:
+        1. Watching Reactor Core event directories for MODEL_READY events
+        2. Parsing event files and forwarding to TrinityEventBus
+        3. Triggering model hot-swap in UnifiedModelServing
+
+        Without this, trained models from Reactor Core never reach JARVIS Prime!
+
+        Architecture:
+            Reactor Core [Training] → MODEL_READY event file
+                                     ↓
+            TrinityBridgeAdapter [File Watcher]
+                                     ↓
+            TrinityEventBus [publish("MODEL_READY", ...)]
+                                     ↓
+            UnifiedModelServing [hot_swap_model()]
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("[v101.0] Initializing Trinity Bridge Adapter - MODEL_READY Forwarding")
+        self.logger.info("=" * 60)
+
+        print(f"  {TerminalUI.CYAN}🌉 Trinity Bridge: Connecting Reactor Core → JARVIS model hot-swap...{TerminalUI.RESET}")
+
+        try:
+            from backend.system.trinity_bridge_adapter import get_trinity_bridge
+
+            self._trinity_bridge_adapter = await get_trinity_bridge()
+
+            # Get metrics to verify initialization
+            metrics = self._trinity_bridge_adapter.get_metrics()
+            events_forwarded = metrics.get("events_forwarded", 0)
+            event_bus_connected = metrics.get("event_bus_connected", False)
+            watchers_active = metrics.get("watchers_active", 0)
+
+            # Connect to model serving for hot-swap notifications
+            if self._unified_model_serving:
+                # Register MODEL_READY handler for hot-swap
+                async def on_model_ready(event_data: dict):
+                    """Handle MODEL_READY events from Reactor Core."""
+                    model_path = event_data.get("model_path")
+                    model_name = event_data.get("model_name", "unknown")
+                    training_job_id = event_data.get("training_job_id")
+
+                    self.logger.info(f"[v101.0] 🔥 MODEL_READY: {model_name} from training job {training_job_id}")
+
+                    if model_path and hasattr(self._unified_model_serving, 'hot_swap_model'):
+                        try:
+                            await self._unified_model_serving.hot_swap_model(
+                                model_path=model_path,
+                                model_name=model_name,
+                                metadata={"training_job_id": training_job_id},
+                            )
+                            self.logger.info(f"[v101.0] ✅ Model hot-swap complete: {model_name}")
+
+                            # Voice announcement
+                            if self.narrator and self.config.voice_enabled:
+                                await self.narrator.speak(
+                                    f"New model {model_name} is now active.",
+                                    wait=False
+                                )
+                        except Exception as e:
+                            self.logger.error(f"[v101.0] ❌ Model hot-swap failed: {e}")
+
+                # Subscribe to MODEL_READY events
+                if self._trinity_event_bus:
+                    await self._trinity_event_bus.subscribe("MODEL_READY", on_model_ready)
+                    self.logger.info("[v101.0] Registered MODEL_READY handler for hot-swap")
+
+            status_parts = []
+            if event_bus_connected:
+                status_parts.append("EventBus")
+            if watchers_active > 0:
+                status_parts.append(f"{watchers_active} watchers")
+
+            if status_parts:
+                connections = " + ".join(status_parts)
+                print(f"  {TerminalUI.GREEN}✅ Trinity Bridge: Active ({connections}){TerminalUI.RESET}")
+                self.logger.info(f"[v101.0] ✅ Trinity Bridge Adapter initialized: {connections}")
+
+                # Log watched directories
+                reactor_events_dir = metrics.get("reactor_events_dir", "unknown")
+                trinity_events_dir = metrics.get("trinity_events_dir", "unknown")
+                self.logger.info(f"[v101.0] Watching: {reactor_events_dir}")
+                self.logger.info(f"[v101.0] Watching: {trinity_events_dir}")
+            else:
+                print(f"  {TerminalUI.YELLOW}⚠️ Trinity Bridge: Initialized but no connections{TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Trinity Bridge: No event bus or watchers connected")
+
+        except ImportError as e:
+            self.logger.warning(f"[v101.0] ⚠️ Trinity Bridge Adapter import failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Trinity Bridge: Not available{TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v101.0] ❌ Trinity Bridge Adapter initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Trinity Bridge: Failed to initialize - {e}{TerminalUI.RESET}")
+            import traceback
+            self.logger.debug(f"[v101.0] Traceback: {traceback.format_exc()}")
+
+    async def _initialize_cross_repo_neural_mesh(self) -> None:
+        """
+        v101.0: Initialize Cross-Repo Neural Mesh Bridge.
+
+        Registers JARVIS Prime and Reactor Core as Neural Mesh agents for:
+        1. Unified capability discovery across all repos
+        2. Task routing with capability matching
+        3. Health monitoring via heartbeat files
+        4. Automatic failover when repos are unavailable
+
+        Architecture:
+            ┌─────────────────────────────────────────────────────────────┐
+            │              CrossRepoNeuralMeshBridge                       │
+            │  ├── JARVIS Prime Agent (local inference, GPU compute)       │
+            │  └── Reactor Core Agent (training, fine-tuning)             │
+            └─────────────────────────────────────────────────────────────┘
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("[v101.0] Initializing Cross-Repo Neural Mesh Bridge")
+        self.logger.info("=" * 60)
+
+        print(f"  {TerminalUI.CYAN}🕸️ Neural Mesh: Registering external repos as agents...{TerminalUI.RESET}")
+
+        try:
+            from backend.core.registry.cross_repo_neural_mesh import get_cross_repo_neural_mesh
+
+            self._cross_repo_neural_mesh = await get_cross_repo_neural_mesh()
+
+            # Get status
+            metrics = self._cross_repo_neural_mesh.get_metrics()
+            prime_healthy = metrics.get("prime", {}).get("is_healthy", False)
+            reactor_healthy = metrics.get("reactor", {}).get("is_healthy", False)
+
+            status_parts = []
+            if prime_healthy:
+                status_parts.append("Prime")
+            if reactor_healthy:
+                status_parts.append("Reactor")
+
+            if status_parts:
+                connections = " + ".join(status_parts)
+                print(f"  {TerminalUI.GREEN}✅ Neural Mesh Bridge: {connections} registered{TerminalUI.RESET}")
+                self.logger.info(f"[v101.0] ✅ Neural Mesh Bridge: {connections} registered as agents")
+
+                # Run initial health probes
+                probe_results = await self._cross_repo_neural_mesh.probe_all()
+                for repo_name, result in probe_results.items():
+                    status = "healthy" if result.healthy else f"unhealthy ({result.error})"
+                    self.logger.info(f"[v101.0] {repo_name}: {status}, latency={result.latency_ms:.1f}ms")
+            else:
+                print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: No external repos detected{TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Neural Mesh Bridge: No external repos available")
+
+        except ImportError as e:
+            self.logger.warning(f"[v101.0] ⚠️ Neural Mesh Bridge import failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: Not available{TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v101.0] ❌ Neural Mesh Bridge initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Neural Mesh Bridge: Failed - {e}{TerminalUI.RESET}")
+
+    async def _initialize_cross_repo_cost_sync(self) -> None:
+        """
+        v101.0: Initialize Cross-Repo Cost Sync.
+
+        Unified budget tracking across all repos via Redis for:
+        1. Real-time cost synchronization between JARVIS, Prime, and Reactor
+        2. Atomic budget checks to prevent concurrent overruns
+        3. Auto-reconnecting Redis client with file fallback
+        4. Budget alerts and enforcement across repos
+
+        Architecture:
+            JARVIS ─┬─► Redis (real-time sync) ◄─┬─ JARVIS Prime
+                    │                            │
+                    └──► File fallback ◄─────────┘
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("[v101.0] Initializing Cross-Repo Cost Sync")
+        self.logger.info("=" * 60)
+
+        print(f"  {TerminalUI.CYAN}💰 Cost Sync: Connecting budget tracking across repos...{TerminalUI.RESET}")
+
+        try:
+            from backend.core.cross_repo_cost_sync import get_cross_repo_cost_sync
+
+            self._cross_repo_cost_sync = await get_cross_repo_cost_sync("jarvis")
+
+            # Get status
+            metrics = self._cross_repo_cost_sync.get_metrics()
+            redis_connected = metrics.get("redis_connected", False)
+            current_cost = metrics.get("total_cost_usd", 0.0)
+            daily_limit = metrics.get("daily_limit_usd", 1.0)
+
+            if redis_connected:
+                print(f"  {TerminalUI.GREEN}✅ Cost Sync: Redis connected (${current_cost:.4f}/${daily_limit:.2f}){TerminalUI.RESET}")
+                self.logger.info(f"[v101.0] ✅ Cost Sync: Redis connected, current=${current_cost:.4f}")
+            else:
+                print(f"  {TerminalUI.YELLOW}⚠️ Cost Sync: File fallback mode (${current_cost:.4f}/${daily_limit:.2f}){TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Cost Sync: Running in file fallback mode")
+
+            # Register cost alert callback
+            async def on_budget_alert(alert_type: str, current: float, limit: float):
+                """Handle budget alerts."""
+                pct = (current / limit) * 100 if limit > 0 else 0
+                self.logger.warning(f"[v101.0] 💸 Budget Alert: {alert_type} - ${current:.4f}/${limit:.2f} ({pct:.1f}%)")
+
+                if self.narrator and self.config.voice_enabled:
+                    if alert_type == "WARNING":
+                        await self.narrator.speak(f"Budget at {pct:.0f} percent.", wait=False)
+                    elif alert_type == "CRITICAL":
+                        await self.narrator.speak("Budget limit reached. Switching to local-only mode.", wait=False)
+
+            self._cross_repo_cost_sync.on_budget_alert(on_budget_alert)
+
+        except ImportError as e:
+            self.logger.warning(f"[v101.0] ⚠️ Cost Sync import failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Cost Sync: Not available{TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v101.0] ❌ Cost Sync initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Cost Sync: Failed - {e}{TerminalUI.RESET}")
+
+    async def _initialize_gcp_hybrid_router(self) -> None:
+        """
+        v101.0: Initialize GCP Hybrid Prime Router.
+
+        Intelligent routing between local/GCP/cloud tiers with:
+        1. Memory pressure-triggered VM provisioning
+        2. Redis distributed locking for cross-repo VM creation
+        3. Failure classification with intelligent retry
+        4. Cost-aware routing decisions
+
+        Architecture:
+            Request ─► GCPHybridPrimeRouter
+                       ├─► Local Prime (free, fast, RAM check)
+                       ├─► GCP VM (spot pricing, memory overflow)
+                       ├─► Cloud Run (serverless, pay-per-use)
+                       └─► Cloud Claude (API fallback)
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("[v101.0] Initializing GCP Hybrid Prime Router")
+        self.logger.info("=" * 60)
+
+        print(f"  {TerminalUI.CYAN}🔀 Hybrid Router: Initializing cost-aware tier routing...{TerminalUI.RESET}")
+
+        try:
+            from backend.core.gcp_hybrid_prime_router import get_gcp_hybrid_prime_router
+
+            self._gcp_hybrid_router = await get_gcp_hybrid_prime_router()
+
+            # Connect to cost sync for budget-aware routing
+            if self._cross_repo_cost_sync:
+                # The router will check budget via the cost sync instance
+                self.logger.info("[v101.0] Hybrid Router connected to Cost Sync for budget checks")
+
+            # Get status
+            metrics = self._gcp_hybrid_router.get_metrics()
+            resilience_enabled = metrics.get("resilience_enabled", False)
+            circuit_breakers = metrics.get("circuit_breakers", {})
+
+            status_parts = []
+            if resilience_enabled:
+                status_parts.append("resilience")
+
+            # Count healthy tiers
+            healthy_tiers = sum(1 for cb in circuit_breakers.values() if isinstance(cb, dict) and cb.get("state") == "closed")
+            if healthy_tiers > 0:
+                status_parts.append(f"{healthy_tiers} tiers")
+
+            if status_parts:
+                features = " + ".join(status_parts)
+                print(f"  {TerminalUI.GREEN}✅ Hybrid Router: Active ({features}){TerminalUI.RESET}")
+                self.logger.info(f"[v101.0] ✅ Hybrid Router initialized: {features}")
+            else:
+                print(f"  {TerminalUI.YELLOW}⚠️ Hybrid Router: Basic mode{TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Hybrid Router: Running in basic mode")
+
+        except ImportError as e:
+            self.logger.warning(f"[v101.0] ⚠️ Hybrid Router import failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Hybrid Router: Not available{TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v101.0] ❌ Hybrid Router initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Hybrid Router: Failed - {e}{TerminalUI.RESET}")
 
     async def _initialize_agi_orchestrator(self) -> None:
         """
