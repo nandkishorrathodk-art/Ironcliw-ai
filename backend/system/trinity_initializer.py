@@ -241,6 +241,7 @@ JARVIS_INSTANCE_ID = os.getenv(
 _trinity_initialized = False
 _heartbeat_task: Optional[asyncio.Task] = None
 _bridge = None
+_bridge_adapter = None  # TrinityBridgeAdapter for Reactor event watching
 _app = None
 _start_time = time.time()
 
@@ -305,6 +306,158 @@ def _get_yabai_detector():
             return None
 
 
+async def _get_trinity_bridge_adapter():
+    """Lazy import and initialization of TrinityBridgeAdapter."""
+    global _bridge_adapter
+    if _bridge_adapter is None:
+        try:
+            from backend.system.trinity_bridge_adapter import get_trinity_bridge
+            _bridge_adapter = await get_trinity_bridge()
+        except ImportError:
+            try:
+                from system.trinity_bridge_adapter import get_trinity_bridge
+                _bridge_adapter = await get_trinity_bridge()
+            except ImportError:
+                logger.warning("[Trinity] TrinityBridgeAdapter not available")
+                return None
+    return _bridge_adapter
+
+
+async def _shutdown_trinity_bridge_adapter():
+    """Shutdown TrinityBridgeAdapter."""
+    global _bridge_adapter
+    if _bridge_adapter:
+        try:
+            from backend.system.trinity_bridge_adapter import shutdown_trinity_bridge
+        except ImportError:
+            try:
+                from system.trinity_bridge_adapter import shutdown_trinity_bridge
+            except ImportError:
+                _bridge_adapter = None
+                return
+
+        await shutdown_trinity_bridge()
+        _bridge_adapter = None
+
+
+async def _get_cross_repo_registry():
+    """Lazy import and initialization of CrossRepoComponentRegistry."""
+    try:
+        from backend.system.cross_repo_component_registry import (
+            get_component_registry,
+            register_jarvis_components,
+        )
+        registry = await get_component_registry()
+        await register_jarvis_components(registry)
+        return registry
+    except ImportError:
+        try:
+            from system.cross_repo_component_registry import (
+                get_component_registry,
+                register_jarvis_components,
+            )
+            registry = await get_component_registry()
+            await register_jarvis_components(registry)
+            return registry
+        except ImportError:
+            logger.warning("[Trinity] CrossRepoComponentRegistry not available")
+            return None
+
+
+async def _shutdown_cross_repo_registry():
+    """Shutdown CrossRepoComponentRegistry."""
+    try:
+        from backend.system.cross_repo_component_registry import shutdown_component_registry
+    except ImportError:
+        try:
+            from system.cross_repo_component_registry import shutdown_component_registry
+        except ImportError:
+            return
+
+    await shutdown_component_registry()
+
+
+async def _get_cross_repo_cost_sync():
+    """Lazy import and initialization of CrossRepoCostSync."""
+    try:
+        from backend.core.cross_repo_cost_sync import get_cross_repo_cost_sync
+        return await get_cross_repo_cost_sync("jarvis")
+    except ImportError:
+        try:
+            from core.cross_repo_cost_sync import get_cross_repo_cost_sync
+            return await get_cross_repo_cost_sync("jarvis")
+        except ImportError:
+            logger.warning("[Trinity] CrossRepoCostSync not available")
+            return None
+
+
+async def _shutdown_cross_repo_cost_sync():
+    """Shutdown CrossRepoCostSync."""
+    try:
+        from backend.core.cross_repo_cost_sync import shutdown_cross_repo_cost_sync
+    except ImportError:
+        try:
+            from core.cross_repo_cost_sync import shutdown_cross_repo_cost_sync
+        except ImportError:
+            return
+
+    await shutdown_cross_repo_cost_sync()
+
+
+async def _get_cross_repo_neural_mesh():
+    """Lazy import and initialization of CrossRepoNeuralMeshBridge."""
+    try:
+        from backend.core.registry.cross_repo_neural_mesh import get_cross_repo_neural_mesh
+        return await get_cross_repo_neural_mesh()
+    except ImportError:
+        try:
+            from core.registry.cross_repo_neural_mesh import get_cross_repo_neural_mesh
+            return await get_cross_repo_neural_mesh()
+        except ImportError:
+            logger.warning("[Trinity] CrossRepoNeuralMeshBridge not available")
+            return None
+
+
+async def _shutdown_cross_repo_neural_mesh():
+    """Shutdown CrossRepoNeuralMeshBridge."""
+    try:
+        from backend.core.registry.cross_repo_neural_mesh import shutdown_cross_repo_neural_mesh
+    except ImportError:
+        try:
+            from core.registry.cross_repo_neural_mesh import shutdown_cross_repo_neural_mesh
+        except ImportError:
+            return
+
+    await shutdown_cross_repo_neural_mesh()
+
+
+async def _get_gcp_hybrid_prime_router():
+    """Lazy import and initialization of GCPHybridPrimeRouter."""
+    try:
+        from backend.core.gcp_hybrid_prime_router import get_gcp_hybrid_prime_router
+        return await get_gcp_hybrid_prime_router()
+    except ImportError:
+        try:
+            from core.gcp_hybrid_prime_router import get_gcp_hybrid_prime_router
+            return await get_gcp_hybrid_prime_router()
+        except ImportError:
+            logger.warning("[Trinity] GCPHybridPrimeRouter not available")
+            return None
+
+
+async def _shutdown_gcp_hybrid_prime_router():
+    """Shutdown GCPHybridPrimeRouter."""
+    try:
+        from backend.core.gcp_hybrid_prime_router import shutdown_gcp_hybrid_prime_router
+    except ImportError:
+        try:
+            from core.gcp_hybrid_prime_router import shutdown_gcp_hybrid_prime_router
+        except ImportError:
+            return
+
+    await shutdown_gcp_hybrid_prime_router()
+
+
 # =============================================================================
 # INITIALIZATION
 # =============================================================================
@@ -365,7 +518,67 @@ async def initialize_trinity(app=None) -> bool:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
         logger.info(f"[Trinity] ✓ Heartbeat started (interval={TRINITY_HEARTBEAT_INTERVAL}s)")
 
-        # Step 5: Attach to app state if available
+        # Step 5: Start TrinityBridgeAdapter (watches Reactor events)
+        try:
+            bridge_adapter = await _get_trinity_bridge_adapter()
+            if bridge_adapter:
+                logger.info("[Trinity] ✓ TrinityBridgeAdapter started (watching Reactor events)")
+                if app is not None:
+                    app.state.trinity_bridge_adapter = bridge_adapter
+            else:
+                logger.warning("[Trinity] TrinityBridgeAdapter not available - Trinity Loop incomplete")
+        except Exception as e:
+            logger.warning(f"[Trinity] TrinityBridgeAdapter failed to start: {e}")
+
+        # Step 6: Start CrossRepoComponentRegistry (exposes JARVIS components)
+        try:
+            registry = await _get_cross_repo_registry()
+            if registry:
+                logger.info("[Trinity] ✓ CrossRepoComponentRegistry started (exposing JARVIS components)")
+                if app is not None:
+                    app.state.cross_repo_registry = registry
+            else:
+                logger.warning("[Trinity] CrossRepoComponentRegistry not available")
+        except Exception as e:
+            logger.warning(f"[Trinity] CrossRepoComponentRegistry failed to start: {e}")
+
+        # Step 7: Start CrossRepoCostSync (unified cost tracking)
+        try:
+            cost_sync = await _get_cross_repo_cost_sync()
+            if cost_sync:
+                logger.info("[Trinity] ✓ CrossRepoCostSync started (unified cost tracking)")
+                if app is not None:
+                    app.state.cross_repo_cost_sync = cost_sync
+            else:
+                logger.warning("[Trinity] CrossRepoCostSync not available")
+        except Exception as e:
+            logger.warning(f"[Trinity] CrossRepoCostSync failed to start: {e}")
+
+        # Step 8: Start CrossRepoNeuralMeshBridge (Prime + Reactor integration)
+        try:
+            neural_mesh_bridge = await _get_cross_repo_neural_mesh()
+            if neural_mesh_bridge:
+                logger.info("[Trinity] ✓ CrossRepoNeuralMeshBridge started (Prime + Reactor)")
+                if app is not None:
+                    app.state.cross_repo_neural_mesh = neural_mesh_bridge
+            else:
+                logger.warning("[Trinity] CrossRepoNeuralMeshBridge not available")
+        except Exception as e:
+            logger.warning(f"[Trinity] CrossRepoNeuralMeshBridge failed to start: {e}")
+
+        # Step 9: Start GCPHybridPrimeRouter (intelligent routing)
+        try:
+            hybrid_router = await _get_gcp_hybrid_prime_router()
+            if hybrid_router:
+                logger.info("[Trinity] ✓ GCPHybridPrimeRouter started (cost-aware routing)")
+                if app is not None:
+                    app.state.gcp_hybrid_router = hybrid_router
+            else:
+                logger.warning("[Trinity] GCPHybridPrimeRouter not available")
+        except Exception as e:
+            logger.warning(f"[Trinity] GCPHybridPrimeRouter failed to start: {e}")
+
+        # Step 10: Attach to app state if available
         if app is not None:
             app.state.trinity_bridge = bridge
             app.state.trinity_instance_id = JARVIS_INSTANCE_ID
@@ -390,7 +603,7 @@ async def shutdown_trinity() -> None:
 
     This should be called during FastAPI lifespan shutdown.
     """
-    global _trinity_initialized, _heartbeat_task, _bridge
+    global _trinity_initialized, _heartbeat_task, _bridge, _bridge_adapter
 
     if not _trinity_initialized:
         return
@@ -406,6 +619,41 @@ async def shutdown_trinity() -> None:
             pass
         _heartbeat_task = None
 
+    # Stop TrinityBridgeAdapter
+    try:
+        await _shutdown_trinity_bridge_adapter()
+        logger.info("[Trinity] ✓ TrinityBridgeAdapter stopped")
+    except Exception as e:
+        logger.warning(f"[Trinity] TrinityBridgeAdapter shutdown error: {e}")
+
+    # Stop CrossRepoComponentRegistry
+    try:
+        await _shutdown_cross_repo_registry()
+        logger.info("[Trinity] ✓ CrossRepoComponentRegistry stopped")
+    except Exception as e:
+        logger.warning(f"[Trinity] CrossRepoComponentRegistry shutdown error: {e}")
+
+    # Stop CrossRepoCostSync
+    try:
+        await _shutdown_cross_repo_cost_sync()
+        logger.info("[Trinity] ✓ CrossRepoCostSync stopped")
+    except Exception as e:
+        logger.warning(f"[Trinity] CrossRepoCostSync shutdown error: {e}")
+
+    # Stop CrossRepoNeuralMeshBridge
+    try:
+        await _shutdown_cross_repo_neural_mesh()
+        logger.info("[Trinity] ✓ CrossRepoNeuralMeshBridge stopped")
+    except Exception as e:
+        logger.warning(f"[Trinity] CrossRepoNeuralMeshBridge shutdown error: {e}")
+
+    # Stop GCPHybridPrimeRouter
+    try:
+        await _shutdown_gcp_hybrid_prime_router()
+        logger.info("[Trinity] ✓ GCPHybridPrimeRouter stopped")
+    except Exception as e:
+        logger.warning(f"[Trinity] GCPHybridPrimeRouter shutdown error: {e}")
+
     # Disconnect bridge
     bridge = _get_reactor_bridge()
     if bridge and bridge.is_connected():
@@ -413,6 +661,7 @@ async def shutdown_trinity() -> None:
 
     _trinity_initialized = False
     _bridge = None
+    _bridge_adapter = None
 
     logger.info("[Trinity] JARVIS Body disconnected")
 
@@ -1281,6 +1530,9 @@ __all__ = [
     "stop_health_monitor",
     # v75.0: File system resilience
     "FileSystemGuard",
+    # v80.0: TrinityBridgeAdapter - Closes the Trinity Loop
+    # Watches Reactor Core events and forwards to JARVIS handlers
+    # Access via: app.state.trinity_bridge_adapter after initialization
 ]
 
 # v78.1 methods are available on TrinityHealthMonitor instance:
