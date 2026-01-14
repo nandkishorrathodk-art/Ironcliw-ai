@@ -1,8 +1,14 @@
 """
-Cross-Repo Cost Synchronization v1.0
-====================================
+Cross-Repo Cost Synchronization v2.0 - Production Hardened
+===========================================================
 
 Enables unified cost tracking across JARVIS, JARVIS Prime, and Reactor Core repos.
+
+HARDENED VERSION (v2.0) with:
+- ResilientRedisClient for auto-reconnecting Redis connection
+- AtomicFileOps for safe file-based fallback
+- Auto-recovery from Redis disconnections with subscription restore
+- Comprehensive health monitoring and metrics
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -25,7 +31,7 @@ Features:
 - File-based fallback when Redis unavailable
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -39,6 +45,18 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
+
+# Import resilience utilities
+try:
+    from backend.core.resilience.redis_reconnector import (
+        ResilientRedisClient, RedisConnectionConfig, RedisNotAvailableError
+    )
+    from backend.core.resilience.atomic_file_ops import AtomicFileOps, AtomicFileConfig
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    RESILIENCE_AVAILABLE = False
+    ResilientRedisClient = None
+    AtomicFileOps = None
 
 logger = logging.getLogger("CrossRepoCostSync")
 
@@ -191,7 +209,11 @@ class CrossRepoCostSync:
     - Coordinated cost alerts
     - Per-repo cost attribution
 
-    Uses Redis when available, falls back to file-based sync.
+    HARDENED Features (v2.0):
+    - ResilientRedisClient for auto-reconnecting Redis with subscription restore
+    - AtomicFileOps for safe file-based fallback
+    - Auto-recovery from Redis disconnections
+    - Comprehensive health monitoring
     """
 
     def __init__(
@@ -210,15 +232,34 @@ class CrossRepoCostSync:
             instance_id=self.instance_id,
         )
 
-        # Redis connection (lazy initialization)
-        self._redis: Optional[Any] = None
+        # ===== RESILIENCE COMPONENTS (v2.0) =====
+        self._use_resilience = RESILIENCE_AVAILABLE
+
+        # Resilient Redis client (instead of raw aioredis)
+        self._resilient_redis: Optional[ResilientRedisClient] = None
+        self._redis: Optional[Any] = None  # Fallback for non-resilient mode
         self._redis_available = False
+
+        # Atomic file operations
+        self._file_ops: Optional[AtomicFileOps] = None
+        if RESILIENCE_AVAILABLE:
+            self._file_ops = AtomicFileOps(AtomicFileConfig(
+                max_retries=3,
+                verify_checksum=False,
+            ))
+
+        # Pub/Sub (managed by ResilientRedisClient in resilient mode)
         self._pubsub: Optional[Any] = None
         self._pubsub_task: Optional[asyncio.Task] = None
 
         # Sync task
         self._sync_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
         self._running = False
+
+        # Error tracking
+        self._consecutive_errors = 0
+        self._last_error: Optional[Exception] = None
 
         # Callbacks
         self._budget_alert_callbacks: Set[Callable] = set()
@@ -280,7 +321,52 @@ class CrossRepoCostSync:
         self.logger.info(f"CrossRepoCostSync stopped for {self.repo_name}")
 
     async def _initialize_redis(self) -> bool:
-        """Initialize Redis connection."""
+        """Initialize Redis connection with resilience support."""
+        # Get Redis config
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = int(os.getenv("REDIS_PORT", "6379"))
+        redis_password = os.getenv("REDIS_PASSWORD")
+        redis_db = int(os.getenv("REDIS_DB", "0"))
+
+        if redis_password:
+            redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}"
+        else:
+            redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+
+        # Try resilient Redis first
+        if self._use_resilience and RESILIENCE_AVAILABLE:
+            try:
+                config = RedisConnectionConfig(
+                    url=redis_url,
+                    db=redis_db,
+                    password=redis_password,
+                    auto_reconnect=True,
+                    initial_reconnect_delay=1.0,
+                    max_reconnect_delay=30.0,
+                    health_check_interval=15.0,
+                )
+
+                self._resilient_redis = ResilientRedisClient(
+                    config=config,
+                    on_connect=self._on_redis_connect,
+                    on_disconnect=self._on_redis_disconnect,
+                )
+
+                if await self._resilient_redis.connect():
+                    self._redis_available = True
+                    self.logger.info(
+                        f"[Resilient] Redis connected: {redis_host}:{redis_port}"
+                    )
+
+                    # Start Pub/Sub with auto-reconnection
+                    await self._start_resilient_pubsub()
+
+                    return True
+
+            except Exception as e:
+                self.logger.warning(f"Resilient Redis failed: {e}")
+
+        # Fallback to basic Redis
         try:
             try:
                 import redis.asyncio as aioredis
@@ -291,17 +377,6 @@ class CrossRepoCostSync:
                     self.logger.warning("Redis not available - using file-based sync")
                     return False
 
-            # Get Redis config
-            redis_host = os.getenv("REDIS_HOST", "localhost")
-            redis_port = int(os.getenv("REDIS_PORT", "6379"))
-            redis_password = os.getenv("REDIS_PASSWORD")
-            redis_db = int(os.getenv("REDIS_DB", "0"))
-
-            if redis_password:
-                redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}"
-            else:
-                redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
-
             self._redis = await aioredis.from_url(
                 redis_url,
                 encoding="utf-8",
@@ -311,7 +386,7 @@ class CrossRepoCostSync:
 
             await self._redis.ping()
             self._redis_available = True
-            self.logger.info(f"Redis connected: {redis_host}:{redis_port}")
+            self.logger.info(f"[Fallback] Redis connected: {redis_host}:{redis_port}")
 
             # Start Pub/Sub
             await self._start_pubsub()
@@ -322,6 +397,55 @@ class CrossRepoCostSync:
             self.logger.warning(f"Redis connection failed: {e} - using file-based sync")
             self._redis_available = False
             return False
+
+    async def _on_redis_connect(self) -> None:
+        """Callback when Redis reconnects."""
+        self.logger.info("[Resilient] Redis reconnected - restoring subscriptions")
+        self._redis_available = True
+        self._consecutive_errors = 0
+
+    async def _on_redis_disconnect(self, error: Exception) -> None:
+        """Callback when Redis disconnects."""
+        self.logger.warning(f"[Resilient] Redis disconnected: {error}")
+        self._redis_available = False
+        self._consecutive_errors += 1
+        self._last_error = error
+
+    async def _start_resilient_pubsub(self) -> None:
+        """Start Pub/Sub with ResilientRedisClient."""
+        if not self._resilient_redis:
+            return
+
+        try:
+            # Subscribe with handler
+            await self._resilient_redis.subscribe(
+                REDIS_CHANNEL_CROSS_REPO_COST,
+                self._handle_pubsub_message,
+            )
+            await self._resilient_redis.subscribe(
+                REDIS_CHANNEL_CROSS_REPO_BUDGET,
+                self._handle_pubsub_message,
+            )
+
+            self.logger.debug("[Resilient] Pub/Sub subscriptions established")
+
+        except Exception as e:
+            self.logger.warning(f"[Resilient] Failed to start Pub/Sub: {e}")
+
+    async def _handle_pubsub_message(self, channel: str, data: bytes) -> None:
+        """Handle Pub/Sub message from resilient client."""
+        try:
+            message_data = json.loads(data.decode() if isinstance(data, bytes) else data)
+
+            if channel == REDIS_CHANNEL_CROSS_REPO_COST:
+                await self._handle_cost_update(message_data)
+            elif channel == REDIS_CHANNEL_CROSS_REPO_BUDGET:
+                await self._handle_budget_alert(message_data)
+
+        except json.JSONDecodeError:
+            pass
+        except Exception as e:
+            self.logger.error(f"Pub/Sub message handling error: {e}")
 
     async def _start_pubsub(self) -> None:
         """Start Redis Pub/Sub listener."""

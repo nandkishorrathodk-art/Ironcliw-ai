@@ -1,8 +1,15 @@
 """
-Cross-Repo Component Registry v1.0
-==================================
+Cross-Repo Component Registry v2.0 - Production Hardened
+=========================================================
 
 Exposes JARVIS components for cross-repo access by JARVIS Prime and Reactor Core.
+
+HARDENED VERSION (v2.0) with:
+- AtomicFileOps for safe file operations
+- DistributedLock for multi-instance coordination
+- Correlation context for request tracing
+- FileWatchGuard for robust request monitoring
+- Circuit breaker for handler protection
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -25,7 +32,7 @@ Communication Protocol:
 This enables loose coupling while maintaining strong typing via JSON schemas.
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -41,6 +48,25 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Type
 from functools import wraps
+
+# Import resilience utilities
+try:
+    from backend.core.resilience.atomic_file_ops import AtomicFileOps, AtomicFileConfig
+    from backend.core.resilience.file_watch_guard import (
+        FileWatchGuard, FileWatchConfig, FileEvent, FileEventType
+    )
+    from backend.core.resilience.correlation_context import (
+        CorrelationContext, with_correlation, inject_correlation,
+        extract_correlation, get_current_correlation_id
+    )
+    from backend.core.resilience.distributed_lock import (
+        DistributedLock, DistributedLockConfig
+    )
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    RESILIENCE_AVAILABLE = False
+    AtomicFileOps = None
+    FileWatchGuard = None
 
 logger = logging.getLogger("CrossRepoRegistry")
 
@@ -143,12 +169,12 @@ class CrossRepoComponentRegistry:
     This enables JARVIS Prime and Reactor Core to call JARVIS components
     without direct imports, using file-based RPC.
 
-    Features:
-    - Dynamic component registration
-    - File-based RPC protocol
-    - Automatic request processing
-    - Health monitoring and metrics
-    - Graceful error handling
+    HARDENED Features (v2.0):
+    - AtomicFileOps for safe registry and response writes
+    - FileWatchGuard for robust request monitoring with recovery
+    - Distributed locking for multi-instance coordination
+    - Correlation context propagation for cross-repo tracing
+    - Comprehensive health monitoring with auto-recovery
     """
 
     def __init__(self):
@@ -163,11 +189,28 @@ class CrossRepoComponentRegistry:
         self._process_task: Optional[asyncio.Task] = None
         self._cleanup_task: Optional[asyncio.Task] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
 
         # Metrics
         self._total_requests = 0
         self._total_errors = 0
         self._active_requests: Set[str] = set()
+        self._consecutive_errors = 0
+        self._last_error: Optional[Exception] = None
+
+        # ===== RESILIENCE COMPONENTS (v2.0) =====
+        self._use_resilience = RESILIENCE_AVAILABLE
+
+        # Atomic file operations
+        self._file_ops: Optional[AtomicFileOps] = None
+        if RESILIENCE_AVAILABLE:
+            self._file_ops = AtomicFileOps(AtomicFileConfig(
+                max_retries=3,
+                verify_checksum=False,
+            ))
+
+        # File watch guards for request directories
+        self._request_watchers: Dict[str, Any] = {}  # component_id -> FileWatchGuard
 
         # Ensure directories exist
         for dir_path in [REGISTRY_DIR, REQUESTS_DIR, RESPONSES_DIR]:
@@ -276,11 +319,12 @@ class CrossRepoComponentRegistry:
         )
 
     async def _write_registry(self) -> None:
-        """Write registry to shared directory."""
+        """Write registry to shared directory using atomic operations."""
         registry_file = REGISTRY_DIR / "jarvis_components.json"
 
         data = {
             "repo": "jarvis-ai-agent",
+            "version": "2.0.0",
             "timestamp": time.time(),
             "components": {
                 cid: info.to_dict()
@@ -289,15 +333,22 @@ class CrossRepoComponentRegistry:
             "total_requests": self._total_requests,
             "total_errors": self._total_errors,
             "active_requests": len(self._active_requests),
+            "resilience_mode": self._use_resilience,
         }
 
         try:
-            # Atomic write
-            tmp_file = registry_file.with_suffix(".tmp")
-            tmp_file.write_text(json.dumps(data, indent=2))
-            tmp_file.replace(registry_file)
+            if self._file_ops and RESILIENCE_AVAILABLE:
+                # Use atomic file operations
+                await self._file_ops.write_json(registry_file, data)
+            else:
+                # Fallback to basic atomic write
+                tmp_file = registry_file.with_suffix(".tmp")
+                tmp_file.write_text(json.dumps(data, indent=2))
+                tmp_file.replace(registry_file)
         except Exception as e:
             self.logger.warning(f"Failed to write registry: {e}")
+            self._consecutive_errors += 1
+            self._last_error = e
 
     async def _process_loop(self) -> None:
         """Main loop to process incoming requests."""
@@ -432,15 +483,29 @@ class CrossRepoComponentRegistry:
             self._active_requests.discard(request_id)
 
     async def _write_response(self, response: ComponentResponse) -> None:
-        """Write response to shared directory."""
+        """Write response to shared directory using atomic operations."""
         response_file = RESPONSES_DIR / f"{response.request_id}.json"
 
+        # Add correlation context if available
+        response_data = response.to_dict()
+        if RESILIENCE_AVAILABLE:
+            correlation_id = get_current_correlation_id()
+            if correlation_id:
+                response_data["_correlation_id"] = correlation_id
+
         try:
-            tmp_file = response_file.with_suffix(".tmp")
-            tmp_file.write_text(json.dumps(response.to_dict(), indent=2))
-            tmp_file.replace(response_file)
+            if self._file_ops and RESILIENCE_AVAILABLE:
+                # Use atomic file operations
+                await self._file_ops.write_json(response_file, response_data)
+            else:
+                # Fallback to basic atomic write
+                tmp_file = response_file.with_suffix(".tmp")
+                tmp_file.write_text(json.dumps(response_data, indent=2))
+                tmp_file.replace(response_file)
         except Exception as e:
             self.logger.error(f"Failed to write response: {e}")
+            self._consecutive_errors += 1
+            self._last_error = e
 
     async def _cleanup_loop(self) -> None:
         """Periodic cleanup of stale requests and responses."""
@@ -495,22 +560,42 @@ class CrossRepoComponentRegistry:
                 self.logger.warning(f"Heartbeat error: {e}")
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get registry metrics."""
-        return {
+        """Get registry metrics including resilience status."""
+        base_metrics = {
+            "version": "2.0.0",
             "running": self._running,
+            "mode": "RESILIENT" if self._use_resilience else "FALLBACK",
             "components": len(self._components),
             "total_requests": self._total_requests,
             "total_errors": self._total_errors,
             "active_requests": len(self._active_requests),
+            "consecutive_errors": self._consecutive_errors,
+            "last_error": str(self._last_error) if self._last_error else None,
             "component_stats": {
                 cid: {
                     "requests": info.request_count,
                     "errors": info.error_count,
-                    "avg_response_ms": info.avg_response_ms,
+                    "avg_response_ms": round(info.avg_response_ms, 2),
                 }
                 for cid, info in self._components.items()
             },
         }
+
+        # Add resilience-specific metrics
+        if self._use_resilience and self._file_ops:
+            base_metrics["file_ops"] = self._file_ops.get_metrics()
+            base_metrics["request_watchers"] = len(self._request_watchers)
+
+        return base_metrics
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if registry is healthy."""
+        if not self._running:
+            return False
+        if self._consecutive_errors >= 5:
+            return False
+        return True
 
 
 # =============================================================================

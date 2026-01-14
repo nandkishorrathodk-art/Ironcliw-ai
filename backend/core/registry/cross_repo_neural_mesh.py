@@ -1,5 +1,5 @@
 """
-Cross-Repo Neural Mesh Bridge v1.0
+Cross-Repo Neural Mesh Bridge v2.0
 ==================================
 
 Integrates JARVIS Prime and Reactor Core as Neural Mesh agents.
@@ -31,12 +31,20 @@ Reactor Core provides:
 
 This bridge:
 1. Registers external repos as agents in Neural Mesh
-2. Monitors their health via heartbeat files
-3. Routes tasks to appropriate repos
+2. Monitors their health via heartbeat files (with FileWatchGuard)
+3. Routes tasks to appropriate repos (with circuit breakers)
 4. Handles failover when repos are unavailable
+5. Provides health probes and observability
+
+v2.0 Changes:
+- Added FileWatchGuard for robust heartbeat monitoring
+- Added CrossRepoCircuitBreaker for external operations
+- Added AtomicFileOps for safe file operations
+- Added CorrelationContext for distributed tracing
+- Added detailed health probes and metrics
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -50,9 +58,36 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("CrossRepoNeuralMesh")
+
+# =============================================================================
+# Resilience Utilities (optional but recommended)
+# =============================================================================
+
+RESILIENCE_AVAILABLE = False
+try:
+    from backend.core.resilience import (
+        AtomicFileOps,
+        AtomicFileOpsConfig,
+        CrossRepoCircuitBreaker,
+        CircuitBreakerConfig,
+        FileWatchGuard,
+        FileWatchConfig,
+        CorrelationContext,
+        get_correlation_context,
+    )
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    AtomicFileOps = None
+    AtomicFileOpsConfig = None
+    CrossRepoCircuitBreaker = None
+    CircuitBreakerConfig = None
+    FileWatchGuard = None
+    FileWatchConfig = None
+    CorrelationContext = None
+    get_correlation_context = lambda: None
 
 # =============================================================================
 # Configuration
@@ -150,6 +185,23 @@ class CrossRepoMetrics:
     heartbeat_timeouts: int = 0
     capabilities_queries: int = 0
     last_health_check: float = 0.0
+    # v2.0 additions
+    circuit_breaker_trips: int = 0
+    file_watch_restarts: int = 0
+    atomic_write_failures: int = 0
+    health_probe_failures: int = 0
+    consecutive_prime_failures: int = 0
+    consecutive_reactor_failures: int = 0
+
+
+@dataclass
+class HealthProbeResult:
+    """Result of a health probe."""
+    healthy: bool
+    latency_ms: float
+    details: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+    error: Optional[str] = None
 
 
 # =============================================================================
@@ -162,14 +214,16 @@ class CrossRepoNeuralMeshBridge:
 
     Features:
     - Registers external repos as Neural Mesh agents
-    - Monitors health via heartbeat files
-    - Routes tasks to appropriate repos
+    - Monitors health via heartbeat files (with FileWatchGuard)
+    - Routes tasks to appropriate repos (with circuit breakers)
     - Handles failover when repos unavailable
     - Provides unified capability lookup
+    - Health probes and observability (v2.0)
     """
 
-    def __init__(self):
+    def __init__(self, use_resilience: bool = True):
         self.logger = logging.getLogger("CrossRepoNeuralMesh")
+        self._use_resilience = use_resilience and RESILIENCE_AVAILABLE
 
         # External repo agents
         self._prime_agent = ExternalRepoAgent(
@@ -217,13 +271,104 @@ class CrossRepoNeuralMeshBridge:
         CROSS_REPO_DIR.mkdir(parents=True, exist_ok=True)
         TRINITY_COMPONENTS_DIR.mkdir(parents=True, exist_ok=True)
 
+        # v2.0: Resilience components
+        self._file_ops: Optional[AtomicFileOps] = None
+        self._circuit_breaker: Optional[CrossRepoCircuitBreaker] = None
+        self._heartbeat_watchers: Dict[str, FileWatchGuard] = {}
+        self._health_probe_results: Dict[str, HealthProbeResult] = {}
+
+        if self._use_resilience:
+            self._init_resilience_components()
+
+    def _init_resilience_components(self) -> None:
+        """Initialize resilience components (v2.0)."""
+        if not RESILIENCE_AVAILABLE:
+            return
+
+        # Atomic file operations for safe reads/writes
+        self._file_ops = AtomicFileOps(
+            config=AtomicFileOpsConfig(
+                temp_dir=CROSS_REPO_DIR / ".tmp",
+                backup_count=2,
+                sync_writes=True,
+            )
+        )
+
+        # Circuit breaker for external operations
+        self._circuit_breaker = CrossRepoCircuitBreaker(
+            config=CircuitBreakerConfig(
+                failure_threshold=5,
+                recovery_timeout=30.0,
+                half_open_max_calls=2,
+            )
+        )
+
+        self.logger.debug("Resilience components initialized")
+
+    async def _start_heartbeat_watchers(self) -> None:
+        """Start FileWatchGuard for heartbeat directories (v2.0)."""
+        if not self._use_resilience or not FileWatchGuard:
+            return
+
+        # Watch for Prime heartbeats
+        prime_watch = FileWatchGuard(
+            config=FileWatchConfig(
+                watch_paths=[
+                    TRINITY_COMPONENTS_DIR / "jarvis_prime.json",
+                    CROSS_REPO_DIR / "jarvis_prime_heartbeat.json",
+                ],
+                patterns=["*.json"],
+                debounce_seconds=1.0,
+            ),
+            on_event=lambda e: self._on_heartbeat_event("jarvis_prime", e),
+            on_error=lambda e: self._on_watch_error("jarvis_prime", e),
+        )
+
+        # Watch for Reactor heartbeats
+        reactor_watch = FileWatchGuard(
+            config=FileWatchConfig(
+                watch_paths=[
+                    TRINITY_COMPONENTS_DIR / "reactor_core.json",
+                    CROSS_REPO_DIR / "reactor_core_heartbeat.json",
+                ],
+                patterns=["*.json"],
+                debounce_seconds=1.0,
+            ),
+            on_event=lambda e: self._on_heartbeat_event("reactor_core", e),
+            on_error=lambda e: self._on_watch_error("reactor_core", e),
+        )
+
+        # Start watchers
+        for name, watcher in [("jarvis_prime", prime_watch), ("reactor_core", reactor_watch)]:
+            started = await watcher.start()
+            if started:
+                self._heartbeat_watchers[name] = watcher
+                self.logger.debug(f"Heartbeat watcher started for {name}")
+            else:
+                self.logger.warning(f"Failed to start heartbeat watcher for {name}")
+
+    async def _on_heartbeat_event(self, repo_name: str, event: Dict[str, Any]) -> None:
+        """Handle heartbeat file change event (v2.0)."""
+        agent = self._prime_agent if repo_name == "jarvis_prime" else self._reactor_agent
+
+        # Re-check health immediately on heartbeat change
+        if repo_name == "jarvis_prime":
+            await self._check_repo_health(agent, "jarvis_prime.json")
+        else:
+            await self._check_repo_health(agent, "reactor_core.json")
+
+    def _on_watch_error(self, repo_name: str, error: Exception) -> None:
+        """Handle watcher error (v2.0)."""
+        self.logger.warning(f"Heartbeat watcher error for {repo_name}: {error}")
+        self._metrics.file_watch_restarts += 1
+
     async def start(self) -> bool:
         """Start the cross-repo bridge."""
         if self._running:
             return True
 
         self._running = True
-        self.logger.info("CrossRepoNeuralMeshBridge starting...")
+        self.logger.info("CrossRepoNeuralMeshBridge v2.0 starting...")
 
         # Connect to Neural Mesh
         await self._connect_neural_mesh()
@@ -234,6 +379,9 @@ class CrossRepoNeuralMeshBridge:
         # Register agents with Neural Mesh
         await self._register_agents_with_mesh()
 
+        # Start heartbeat watchers (v2.0)
+        await self._start_heartbeat_watchers()
+
         # Start health monitoring
         self._health_task = asyncio.create_task(
             self._health_loop(),
@@ -243,7 +391,8 @@ class CrossRepoNeuralMeshBridge:
         self.logger.info(
             f"CrossRepoNeuralMeshBridge ready "
             f"(Prime: {self._prime_agent.status.value}, "
-            f"Reactor: {self._reactor_agent.status.value})"
+            f"Reactor: {self._reactor_agent.status.value}, "
+            f"resilience: {self._use_resilience})"
         )
         return True
 
@@ -257,6 +406,15 @@ class CrossRepoNeuralMeshBridge:
                 await self._health_task
             except asyncio.CancelledError:
                 pass
+
+        # Stop heartbeat watchers (v2.0)
+        for name, watcher in self._heartbeat_watchers.items():
+            try:
+                await watcher.stop()
+                self.logger.debug(f"Stopped heartbeat watcher for {name}")
+            except Exception as e:
+                self.logger.debug(f"Error stopping watcher {name}: {e}")
+        self._heartbeat_watchers.clear()
 
         # Deregister from Neural Mesh
         await self._deregister_from_mesh()
@@ -512,31 +670,61 @@ class CrossRepoNeuralMeshBridge:
         Route task to JARVIS Prime.
 
         Uses file-based RPC for cross-repo communication.
+        v2.0: Uses circuit breaker and atomic file operations.
         """
         if not self._prime_agent.is_healthy():
             self._metrics.prime_failures += 1
+            self._metrics.consecutive_prime_failures += 1
             return None
 
+        # Reset consecutive failures on healthy agent
+        self._metrics.consecutive_prime_failures = 0
         self._metrics.tasks_routed_to_prime += 1
 
         # Write request to cross-repo directory
         request_file = CROSS_REPO_DIR / "prime_requests" / f"{task_type}_{int(time.time()*1000)}.json"
         request_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Add correlation context if available
+        ctx = get_correlation_context() if get_correlation_context else None
         request_data = {
             "task_type": task_type,
             "payload": payload,
             "timestamp": time.time(),
             "source": "jarvis_neural_mesh",
+            "correlation_id": ctx.correlation_id if ctx else None,
         }
 
+        # v2.0: Use circuit breaker for the write operation
+        async def _do_write() -> Dict[str, Any]:
+            if self._file_ops and self._use_resilience:
+                # Use atomic write
+                checksum = await self._file_ops.write_json(request_file, request_data)
+                return {"status": "routed", "request_file": str(request_file), "checksum": checksum}
+            else:
+                # Fallback to basic write
+                request_file.write_text(json.dumps(request_data))
+                return {"status": "routed", "request_file": str(request_file)}
+
         try:
-            request_file.write_text(json.dumps(request_data))
+            if self._circuit_breaker and self._use_resilience:
+                result = await self._circuit_breaker.execute(
+                    tier="jarvis_prime",
+                    func=_do_write,
+                    timeout=5.0,
+                )
+            else:
+                result = await _do_write()
+
             self.logger.debug(f"Routed task to Prime: {task_type}")
-            return {"status": "routed", "request_file": str(request_file)}
+            return result
+
         except Exception as e:
             self.logger.error(f"Failed to route to Prime: {e}")
             self._metrics.prime_failures += 1
+            self._metrics.consecutive_prime_failures += 1
+            if self._circuit_breaker:
+                self._metrics.circuit_breaker_trips += 1
             return None
 
     async def route_to_reactor(
@@ -548,42 +736,172 @@ class CrossRepoNeuralMeshBridge:
         Route task to Reactor Core.
 
         Uses file-based RPC for cross-repo communication.
+        v2.0: Uses circuit breaker and atomic file operations.
         """
         if not self._reactor_agent.is_healthy():
             self._metrics.reactor_failures += 1
+            self._metrics.consecutive_reactor_failures += 1
             return None
 
+        # Reset consecutive failures on healthy agent
+        self._metrics.consecutive_reactor_failures = 0
         self._metrics.tasks_routed_to_reactor += 1
 
         # Write request to cross-repo directory
         request_file = CROSS_REPO_DIR / "reactor_requests" / f"{task_type}_{int(time.time()*1000)}.json"
         request_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Add correlation context if available
+        ctx = get_correlation_context() if get_correlation_context else None
         request_data = {
             "task_type": task_type,
             "payload": payload,
             "timestamp": time.time(),
             "source": "jarvis_neural_mesh",
+            "correlation_id": ctx.correlation_id if ctx else None,
         }
 
+        # v2.0: Use circuit breaker for the write operation
+        async def _do_write() -> Dict[str, Any]:
+            if self._file_ops and self._use_resilience:
+                # Use atomic write
+                checksum = await self._file_ops.write_json(request_file, request_data)
+                return {"status": "routed", "request_file": str(request_file), "checksum": checksum}
+            else:
+                # Fallback to basic write
+                request_file.write_text(json.dumps(request_data))
+                return {"status": "routed", "request_file": str(request_file)}
+
         try:
-            request_file.write_text(json.dumps(request_data))
+            if self._circuit_breaker and self._use_resilience:
+                result = await self._circuit_breaker.execute(
+                    tier="reactor_core",
+                    func=_do_write,
+                    timeout=5.0,
+                )
+            else:
+                result = await _do_write()
+
             self.logger.debug(f"Routed task to Reactor: {task_type}")
-            return {"status": "routed", "request_file": str(request_file)}
+            return result
+
         except Exception as e:
             self.logger.error(f"Failed to route to Reactor: {e}")
             self._metrics.reactor_failures += 1
+            self._metrics.consecutive_reactor_failures += 1
+            if self._circuit_breaker:
+                self._metrics.circuit_breaker_trips += 1
             return None
 
     def on_status_change(self, callback: Callable) -> None:
         """Register callback for status changes."""
         self._status_change_callbacks.add(callback)
 
+    # =========================================================================
+    # Health Probes (v2.0)
+    # =========================================================================
+
+    async def probe_health(self, repo_name: str) -> HealthProbeResult:
+        """
+        Execute health probe for a repo.
+
+        Args:
+            repo_name: "jarvis_prime" or "reactor_core"
+
+        Returns:
+            HealthProbeResult with latency and status details
+        """
+        start = time.time()
+        agent = self._prime_agent if repo_name == "jarvis_prime" else self._reactor_agent
+
+        try:
+            # Check heartbeat file freshness
+            heartbeat_file = TRINITY_COMPONENTS_DIR / f"{repo_name}.json"
+            if not heartbeat_file.exists():
+                heartbeat_file = CROSS_REPO_DIR / f"{repo_name}_heartbeat.json"
+
+            if not heartbeat_file.exists():
+                return HealthProbeResult(
+                    healthy=False,
+                    latency_ms=(time.time() - start) * 1000,
+                    error="No heartbeat file found",
+                    details={"repo_name": repo_name},
+                )
+
+            # Read heartbeat
+            data = json.loads(heartbeat_file.read_text())
+            timestamp = data.get("timestamp", 0)
+            age = time.time() - timestamp
+
+            if age > HEARTBEAT_TIMEOUT:
+                return HealthProbeResult(
+                    healthy=False,
+                    latency_ms=(time.time() - start) * 1000,
+                    error=f"Heartbeat stale: {age:.1f}s old",
+                    details={"repo_name": repo_name, "heartbeat_age": age},
+                )
+
+            # Check circuit breaker state if available
+            cb_state = "unknown"
+            if self._circuit_breaker:
+                tier_health = self._circuit_breaker.get_tier_health(repo_name)
+                cb_state = tier_health.state.value if tier_health else "unknown"
+
+            result = HealthProbeResult(
+                healthy=True,
+                latency_ms=(time.time() - start) * 1000,
+                details={
+                    "repo_name": repo_name,
+                    "heartbeat_age": age,
+                    "health_score": data.get("health_score", 1.0),
+                    "load": data.get("load", 0.0),
+                    "version": data.get("version", "unknown"),
+                    "circuit_breaker_state": cb_state,
+                },
+            )
+            self._health_probe_results[repo_name] = result
+            return result
+
+        except Exception as e:
+            self._metrics.health_probe_failures += 1
+            result = HealthProbeResult(
+                healthy=False,
+                latency_ms=(time.time() - start) * 1000,
+                error=str(e),
+                details={"repo_name": repo_name},
+            )
+            self._health_probe_results[repo_name] = result
+            return result
+
+    async def probe_all(self) -> Dict[str, HealthProbeResult]:
+        """Execute health probes for all repos."""
+        results = {}
+        for repo_name in ["jarvis_prime", "reactor_core"]:
+            results[repo_name] = await self.probe_health(repo_name)
+        return results
+
+    def get_last_probe_result(self, repo_name: str) -> Optional[HealthProbeResult]:
+        """Get last health probe result for a repo."""
+        return self._health_probe_results.get(repo_name)
+
     def get_metrics(self) -> Dict[str, Any]:
-        """Get bridge metrics."""
+        """Get bridge metrics (v2.0 extended)."""
+        # Get circuit breaker status if available
+        cb_status = {}
+        if self._circuit_breaker:
+            for tier in ["jarvis_prime", "reactor_core"]:
+                health = self._circuit_breaker.get_tier_health(tier)
+                if health:
+                    cb_status[tier] = {
+                        "state": health.state.value,
+                        "failure_count": health.failure_count,
+                        "success_rate": health.success_rate,
+                    }
+
         return {
             "running": self._running,
             "mesh_registered": self._mesh_registered,
+            "resilience_enabled": self._use_resilience,
             "health_checks": self._metrics.health_checks,
             "tasks_routed_to_prime": self._metrics.tasks_routed_to_prime,
             "tasks_routed_to_reactor": self._metrics.tasks_routed_to_reactor,
@@ -592,6 +910,15 @@ class CrossRepoNeuralMeshBridge:
             "heartbeat_timeouts": self._metrics.heartbeat_timeouts,
             "capabilities_queries": self._metrics.capabilities_queries,
             "last_health_check": self._metrics.last_health_check,
+            # v2.0 additions
+            "circuit_breaker_trips": self._metrics.circuit_breaker_trips,
+            "file_watch_restarts": self._metrics.file_watch_restarts,
+            "atomic_write_failures": self._metrics.atomic_write_failures,
+            "health_probe_failures": self._metrics.health_probe_failures,
+            "consecutive_prime_failures": self._metrics.consecutive_prime_failures,
+            "consecutive_reactor_failures": self._metrics.consecutive_reactor_failures,
+            "circuit_breaker_status": cb_status,
+            "heartbeat_watchers_active": len(self._heartbeat_watchers),
             "prime": self._prime_agent.to_dict(),
             "reactor": self._reactor_agent.to_dict(),
         }
@@ -644,6 +971,8 @@ __all__ = [
     "ExternalRepoAgent",
     "ExternalRepoStatus",
     "ExternalRepoCapability",
+    "CrossRepoMetrics",
+    "HealthProbeResult",
     "get_cross_repo_neural_mesh",
     "shutdown_cross_repo_neural_mesh",
 ]

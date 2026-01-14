@@ -1,5 +1,5 @@
 """
-GCP Hybrid Prime Router v1.0
+GCP Hybrid Prime Router v2.0
 ============================
 
 Intelligent routing between local JARVIS Prime, GCP VMs, and cloud APIs
@@ -31,8 +31,15 @@ Routing Logic:
 3. Check GCP VM availability - if available and budget allows, use GCP
 4. Fallback to Cloud Claude API if all else fails
 
+v2.0 Changes:
+- Replaced inline circuit breaker with CrossRepoCircuitBreaker
+- Added failure classification for intelligent retry decisions
+- Added CorrelationContext for distributed tracing
+- Added detailed execution metrics and latency tracking
+- Improved error handling with categorized failures
+
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -43,9 +50,30 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("GCPHybridPrimeRouter")
+
+# =============================================================================
+# Resilience Utilities (optional but recommended)
+# =============================================================================
+
+RESILIENCE_AVAILABLE = False
+try:
+    from backend.core.resilience import (
+        CrossRepoCircuitBreaker,
+        CircuitBreakerConfig,
+        CorrelationContext,
+        get_correlation_context,
+        FailureType,
+    )
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    CrossRepoCircuitBreaker = None
+    CircuitBreakerConfig = None
+    CorrelationContext = None
+    get_correlation_context = lambda: None
+    FailureType = None
 
 # =============================================================================
 # Configuration
@@ -119,6 +147,30 @@ class RouterMetrics:
     total_cost: float = 0.0
     avg_latency_ms: float = 0.0
     last_request_time: float = 0.0
+    # v2.0 additions
+    circuit_breaker_trips: int = 0
+    timeout_failures: int = 0
+    network_failures: int = 0
+    resource_failures: int = 0
+    transient_failures: int = 0
+    permanent_failures: int = 0
+    retries_total: int = 0
+    retries_successful: int = 0
+    latency_samples: List[float] = field(default_factory=list)
+    max_latency_samples: int = 100
+
+
+@dataclass
+class ExecutionResult:
+    """Result of tier execution (v2.0)."""
+    success: bool
+    tier: RoutingTier
+    response: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    failure_type: Optional[str] = None
+    latency_ms: float = 0.0
+    retries: int = 0
+    cost: float = 0.0
 
 
 # =============================================================================
@@ -134,27 +186,42 @@ class GCPHybridPrimeRouter:
     - RAM-based local Prime preference
     - GCP VM integration for overflow
     - Cloud API fallback chain
-    - Circuit breaker per tier
+    - Circuit breaker per tier (v2.0: using CrossRepoCircuitBreaker)
+    - Failure classification for intelligent retries (v2.0)
     """
 
-    def __init__(self):
+    def __init__(self, use_resilience: bool = True):
         self.logger = logging.getLogger("GCPHybridPrimeRouter")
+        self._use_resilience = use_resilience and RESILIENCE_AVAILABLE
 
         # State
         self._running = False
         self._monitoring_task: Optional[asyncio.Task] = None
 
-        # Circuit breakers per tier
-        self._circuit_breakers: Dict[RoutingTier, dict] = {
-            tier: {
-                "failures": 0,
-                "last_failure": 0.0,
-                "state": "closed",  # closed, open, half_open
-                "threshold": 3,
-                "timeout": 60.0,
+        # v2.0: Use CrossRepoCircuitBreaker if available, fallback to inline
+        self._circuit_breaker: Optional[CrossRepoCircuitBreaker] = None
+        self._legacy_circuit_breakers: Dict[RoutingTier, dict] = {}
+
+        if self._use_resilience and CrossRepoCircuitBreaker:
+            self._circuit_breaker = CrossRepoCircuitBreaker(
+                config=CircuitBreakerConfig(
+                    failure_threshold=3,
+                    recovery_timeout=60.0,
+                    half_open_max_calls=2,
+                )
+            )
+        else:
+            # Legacy inline circuit breakers
+            self._legacy_circuit_breakers = {
+                tier: {
+                    "failures": 0,
+                    "last_failure": 0.0,
+                    "state": "closed",
+                    "threshold": 3,
+                    "timeout": 60.0,
+                }
+                for tier in RoutingTier
             }
-            for tier in RoutingTier
-        }
 
         # Metrics
         self._metrics = RouterMetrics()
@@ -173,13 +240,22 @@ class GCPHybridPrimeRouter:
         # Callbacks
         self._decision_callbacks: Set[Callable] = set()
 
+        # v2.0: Retry configuration per failure type
+        self._retry_config: Dict[str, dict] = {
+            "timeout": {"max_retries": 2, "delay": 1.0},
+            "network": {"max_retries": 3, "delay": 0.5},
+            "transient": {"max_retries": 2, "delay": 0.5},
+            "resource": {"max_retries": 1, "delay": 2.0},
+            "permanent": {"max_retries": 0, "delay": 0.0},
+        }
+
     async def start(self) -> bool:
         """Start the hybrid router."""
         if self._running:
             return True
 
         self._running = True
-        self.logger.info("GCPHybridPrimeRouter starting...")
+        self.logger.info("GCPHybridPrimeRouter v2.0 starting...")
 
         # Connect to integrations
         await self._connect_integrations()
@@ -193,7 +269,8 @@ class GCPHybridPrimeRouter:
         self.logger.info(
             f"GCPHybridPrimeRouter ready "
             f"(local_min_ram: {LOCAL_PRIME_MIN_RAM_GB}GB, "
-            f"gcp_trigger: {GCP_TRIGGER_RAM_PERCENT}%)"
+            f"gcp_trigger: {GCP_TRIGGER_RAM_PERCENT}%, "
+            f"resilience: {self._use_resilience})"
         )
         return True
 
@@ -284,14 +361,23 @@ class GCPHybridPrimeRouter:
             return None
 
     def _check_circuit_breaker(self, tier: RoutingTier) -> bool:
-        """Check if circuit breaker allows requests."""
-        cb = self._circuit_breakers[tier]
+        """Check if circuit breaker allows requests (v2.0)."""
+        # v2.0: Use CrossRepoCircuitBreaker if available
+        if self._circuit_breaker:
+            health = self._circuit_breaker.get_tier_health(tier.value)
+            if health:
+                return health.state.value in ("closed", "half_open")
+            return True  # Default to allowing if no history
+
+        # Legacy implementation
+        cb = self._legacy_circuit_breakers.get(tier)
+        if not cb:
+            return True
 
         if cb["state"] == "closed":
             return True
 
         if cb["state"] == "open":
-            # Check if timeout has passed
             if time.time() - cb["last_failure"] > cb["timeout"]:
                 cb["state"] = "half_open"
                 return True
@@ -302,31 +388,117 @@ class GCPHybridPrimeRouter:
 
         return False
 
-    def _record_success(self, tier: RoutingTier) -> None:
-        """Record successful request."""
-        cb = self._circuit_breakers[tier]
-        if cb["state"] == "half_open":
+    def _record_success(self, tier: RoutingTier, latency_ms: float = 0.0) -> None:
+        """Record successful request (v2.0)."""
+        # v2.0: Use CrossRepoCircuitBreaker
+        if self._circuit_breaker:
+            # Success is recorded via execute() completion
+            pass
+
+        # Legacy implementation
+        cb = self._legacy_circuit_breakers.get(tier)
+        if cb and cb["state"] == "half_open":
             cb["state"] = "closed"
             cb["failures"] = 0
 
-    def _record_failure(self, tier: RoutingTier) -> None:
-        """Record failed request."""
-        cb = self._circuit_breakers[tier]
-        cb["failures"] += 1
-        cb["last_failure"] = time.time()
+        # v2.0: Track latency samples
+        self._metrics.latency_samples.append(latency_ms)
+        if len(self._metrics.latency_samples) > self._metrics.max_latency_samples:
+            self._metrics.latency_samples.pop(0)
 
-        if cb["failures"] >= cb["threshold"]:
-            cb["state"] = "open"
-            self.logger.warning(f"Circuit breaker OPEN for {tier.value}")
+        # Update average
+        if self._metrics.latency_samples:
+            self._metrics.avg_latency_ms = sum(self._metrics.latency_samples) / len(self._metrics.latency_samples)
+
+    def _record_failure(self, tier: RoutingTier, error: Optional[Exception] = None) -> None:
+        """Record failed request with failure classification (v2.0)."""
+        # v2.0: Classify failure type
+        failure_type = self._classify_failure(error) if error else "unknown"
+
+        # Update failure metrics by type
+        if failure_type == "timeout":
+            self._metrics.timeout_failures += 1
+        elif failure_type == "network":
+            self._metrics.network_failures += 1
+        elif failure_type == "resource":
+            self._metrics.resource_failures += 1
+        elif failure_type == "transient":
+            self._metrics.transient_failures += 1
+        elif failure_type == "permanent":
+            self._metrics.permanent_failures += 1
+
+        # v2.0: Use CrossRepoCircuitBreaker
+        if self._circuit_breaker:
+            # Failure is recorded via execute() exception
+            self._metrics.circuit_breaker_trips += 1
+
+        # Legacy implementation
+        cb = self._legacy_circuit_breakers.get(tier)
+        if cb:
+            cb["failures"] += 1
+            cb["last_failure"] = time.time()
+
+            if cb["failures"] >= cb["threshold"]:
+                cb["state"] = "open"
+                self.logger.warning(f"Circuit breaker OPEN for {tier.value}")
 
     async def _check_circuit_breakers(self) -> None:
-        """Check and potentially reset circuit breakers."""
+        """Check and potentially reset circuit breakers (v2.0)."""
+        # v2.0: CrossRepoCircuitBreaker handles this internally
+        if self._circuit_breaker:
+            return
+
+        # Legacy implementation
         now = time.time()
-        for tier, cb in self._circuit_breakers.items():
+        for tier, cb in self._legacy_circuit_breakers.items():
             if cb["state"] == "open":
                 if now - cb["last_failure"] > cb["timeout"]:
                     cb["state"] = "half_open"
                     self.logger.info(f"Circuit breaker HALF_OPEN for {tier.value}")
+
+    def _classify_failure(self, error: Optional[Exception]) -> str:
+        """Classify failure type for intelligent retry decisions (v2.0)."""
+        if error is None:
+            return "unknown"
+
+        error_str = str(error).lower()
+        error_type = type(error).__name__
+
+        # Timeout failures
+        if "timeout" in error_str or error_type in ("TimeoutError", "asyncio.TimeoutError"):
+            return "timeout"
+
+        # Network failures
+        if any(kw in error_str for kw in ["connection", "network", "refused", "reset"]):
+            return "network"
+        if error_type in ("ConnectionError", "ConnectionRefusedError", "ConnectionResetError"):
+            return "network"
+
+        # Resource failures (OOM, disk full, etc.)
+        if any(kw in error_str for kw in ["memory", "oom", "disk", "space", "resource"]):
+            return "resource"
+        if error_type in ("MemoryError", "OSError"):
+            return "resource"
+
+        # Transient failures (temporary issues)
+        if any(kw in error_str for kw in ["retry", "temporary", "unavailable", "busy", "overload"]):
+            return "transient"
+        if error_type in ("BrokenPipeError",):
+            return "transient"
+
+        # Permanent failures (auth, config, etc.)
+        if any(kw in error_str for kw in ["auth", "permission", "denied", "invalid", "not found"]):
+            return "permanent"
+        if error_type in ("PermissionError", "ValueError", "KeyError"):
+            return "permanent"
+
+        return "transient"  # Default to transient for unknown errors
+
+    def _should_retry(self, failure_type: str, current_retries: int) -> Tuple[bool, float]:
+        """Determine if should retry based on failure type (v2.0)."""
+        config = self._retry_config.get(failure_type, {"max_retries": 1, "delay": 0.5})
+        should_retry = current_retries < config["max_retries"]
+        return should_retry, config["delay"]
 
     # =========================================================================
     # Core Routing Logic
@@ -561,6 +733,8 @@ class GCPHybridPrimeRouter:
         """
         Execute a request using the determined routing tier.
 
+        v2.0: Added retry logic with failure classification and circuit breaker.
+
         Args:
             task_type: Type of task
             payload: Request payload
@@ -575,30 +749,85 @@ class GCPHybridPrimeRouter:
                 estimated_tokens=payload.get("max_tokens", 1000),
             )
 
+        # Add correlation context if available
+        ctx = get_correlation_context() if get_correlation_context else None
+        if ctx:
+            payload = {**payload, "_correlation_id": ctx.correlation_id}
+
         # Record decision
         self.logger.info(
             f"Routing {task_type} to {decision.tier.value} "
             f"(reason: {decision.reason.value})"
         )
 
-        try:
-            result = await self._execute_on_tier(decision.tier, payload)
-            self._record_success(decision.tier)
+        # v2.0: Execute with retry logic
+        return await self._execute_with_retry(decision, payload)
 
-            # Track cost
-            if self._cost_sync:
-                self._cost_sync.record_inference(
-                    tokens_in=payload.get("max_tokens", 1000),
-                    tokens_out=result.get("tokens_used", 500),
-                    cost=decision.estimated_cost,
-                    is_local=decision.tier == RoutingTier.LOCAL_PRIME,
-                )
+    async def _execute_with_retry(
+        self,
+        decision: RoutingDecision,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Execute with intelligent retry based on failure classification (v2.0)."""
+        retries = 0
+        last_error: Optional[Exception] = None
+        start_time = time.time()
 
-            return result
+        while True:
+            try:
+                # Use circuit breaker if available
+                if self._circuit_breaker and self._use_resilience:
+                    result = await self._circuit_breaker.execute(
+                        tier=decision.tier.value,
+                        func=lambda: self._execute_on_tier(decision.tier, payload),
+                        timeout=decision.timeout_ms / 1000,
+                    )
+                else:
+                    result = await self._execute_on_tier(decision.tier, payload)
 
-        except Exception as e:
-            self._record_failure(decision.tier)
-            raise
+                latency_ms = (time.time() - start_time) * 1000
+                self._record_success(decision.tier, latency_ms)
+
+                # Track cost
+                if self._cost_sync:
+                    self._cost_sync.record_inference(
+                        tokens_in=payload.get("max_tokens", 1000),
+                        tokens_out=result.get("tokens_used", 500),
+                        cost=decision.estimated_cost,
+                        is_local=decision.tier == RoutingTier.LOCAL_PRIME,
+                    )
+
+                # Track retry success
+                if retries > 0:
+                    self._metrics.retries_successful += 1
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                failure_type = self._classify_failure(e)
+
+                # Record failure
+                self._record_failure(decision.tier, e)
+
+                # Check if should retry
+                should_retry, delay = self._should_retry(failure_type, retries)
+
+                if should_retry:
+                    retries += 1
+                    self._metrics.retries_total += 1
+                    self.logger.warning(
+                        f"Retry {retries} for {decision.tier.value}: "
+                        f"{failure_type} failure - {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # No more retries
+                    self.logger.error(
+                        f"Failed on {decision.tier.value} after {retries} retries: "
+                        f"{failure_type} failure - {e}"
+                    )
+                    raise
 
     async def _execute_on_tier(
         self,
@@ -710,9 +939,28 @@ class GCPHybridPrimeRouter:
     # =========================================================================
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get router metrics."""
+        """Get router metrics (v2.0 extended)."""
+        # Get circuit breaker status
+        cb_status = {}
+        if self._circuit_breaker:
+            for tier in RoutingTier:
+                health = self._circuit_breaker.get_tier_health(tier.value)
+                if health:
+                    cb_status[tier.value] = {
+                        "state": health.state.value,
+                        "failure_count": health.failure_count,
+                        "success_rate": health.success_rate,
+                    }
+        else:
+            # Legacy circuit breakers
+            cb_status = {
+                tier.value: cb["state"]
+                for tier, cb in self._legacy_circuit_breakers.items()
+            }
+
         return {
             "running": self._running,
+            "resilience_enabled": self._use_resilience,
             "total_requests": self._metrics.total_requests,
             "local_requests": self._metrics.local_requests,
             "gcp_requests": self._metrics.gcp_requests,
@@ -721,10 +969,20 @@ class GCPHybridPrimeRouter:
             "budget_blocks": self._metrics.budget_blocks,
             "total_cost": self._metrics.total_cost,
             "avg_latency_ms": self._metrics.avg_latency_ms,
-            "circuit_breakers": {
-                tier.value: cb["state"]
-                for tier, cb in self._circuit_breakers.items()
-            },
+            # v2.0 additions
+            "circuit_breaker_trips": self._metrics.circuit_breaker_trips,
+            "timeout_failures": self._metrics.timeout_failures,
+            "network_failures": self._metrics.network_failures,
+            "resource_failures": self._metrics.resource_failures,
+            "transient_failures": self._metrics.transient_failures,
+            "permanent_failures": self._metrics.permanent_failures,
+            "retries_total": self._metrics.retries_total,
+            "retries_successful": self._metrics.retries_successful,
+            "retry_success_rate": (
+                self._metrics.retries_successful / self._metrics.retries_total
+                if self._metrics.retries_total > 0 else 0.0
+            ),
+            "circuit_breakers": cb_status,
         }
 
     def on_decision(self, callback: Callable) -> None:
@@ -779,6 +1037,8 @@ __all__ = [
     "RoutingTier",
     "RoutingReason",
     "RoutingDecision",
+    "RouterMetrics",
+    "ExecutionResult",
     "get_gcp_hybrid_prime_router",
     "shutdown_gcp_hybrid_prime_router",
 ]

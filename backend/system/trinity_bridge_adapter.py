@@ -1,9 +1,16 @@
 """
-Trinity Bridge Adapter v1.0
-===========================
+Trinity Bridge Adapter v2.0 - Production Hardened
+=================================================
 
 Closes the Trinity Loop by watching Reactor Core event directories
 and forwarding MODEL_READY and other events to JARVIS.
+
+HARDENED VERSION (v2.0) with:
+- FileWatchGuard for robust file watching with recovery
+- AtomicFileOps for safe file operations
+- Correlation context for cross-repo tracing
+- Circuit breaker for event bus dispatch
+- Comprehensive health monitoring and metrics
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -31,7 +38,7 @@ This adapter:
 5. Cleans up processed files
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -45,8 +52,34 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent
+
+# Import resilience utilities
+try:
+    from backend.core.resilience.file_watch_guard import (
+        FileWatchGuard, FileWatchConfig, FileEvent, FileEventType
+    )
+    from backend.core.resilience.atomic_file_ops import AtomicFileOps, AtomicFileConfig
+    from backend.core.resilience.correlation_context import (
+        CorrelationContext, with_correlation, inject_correlation,
+        extract_correlation, get_correlated_logger
+    )
+    from backend.core.resilience.cross_repo_circuit_breaker import (
+        CrossRepoCircuitBreaker, CircuitBreakerConfig, CircuitOpenError, FailureType
+    )
+    RESILIENCE_AVAILABLE = True
+except ImportError:
+    RESILIENCE_AVAILABLE = False
+    FileWatchGuard = None
+    AtomicFileOps = None
+
+# Fallback to watchdog if resilience not available
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler, FileCreatedEvent
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    Observer = None
 
 logger = logging.getLogger("TrinityBridgeAdapter")
 
@@ -176,12 +209,13 @@ class TrinityBridgeAdapter:
     - This adapter picks up the event and forwards to TrinityEventBus
     - TrinityHandlers receive the event and hot-swap the model
 
-    Features:
-    - Async file watching via watchdog + asyncio bridge
-    - Fallback polling for reliability
-    - Deduplication to prevent double-processing
-    - Graceful error handling with retry
-    - Event metrics and observability
+    HARDENED Features (v2.0):
+    - FileWatchGuard for robust file watching with automatic recovery
+    - AtomicFileOps for safe file read/delete operations
+    - Circuit breaker for event bus dispatch (prevents cascading failures)
+    - Correlation context for cross-repo request tracing
+    - Comprehensive health monitoring with auto-restart
+    - Fallback to basic watchdog if resilience utilities unavailable
     """
 
     def __init__(
@@ -200,24 +234,55 @@ class TrinityBridgeAdapter:
             CROSS_REPO_EVENTS_DIR,
         ]
 
-        # Async queue for events from watchdog
+        # ===== RESILIENCE COMPONENTS (v2.0) =====
+        self._use_resilience = RESILIENCE_AVAILABLE
+
+        # File watch guards (one per directory)
+        self._file_guards: List[Any] = []
+
+        # Atomic file operations
+        self._file_ops: Optional[AtomicFileOps] = None
+        if RESILIENCE_AVAILABLE:
+            self._file_ops = AtomicFileOps(AtomicFileConfig(
+                max_retries=3,
+                verify_checksum=False,  # Speed over verification for events
+            ))
+
+        # Circuit breaker for event bus dispatch
+        self._circuit_breaker: Optional[CrossRepoCircuitBreaker] = None
+        if RESILIENCE_AVAILABLE:
+            self._circuit_breaker = CrossRepoCircuitBreaker(
+                name="trinity_bridge_eventbus",
+                config=CircuitBreakerConfig(
+                    failure_threshold=5,
+                    success_threshold=2,
+                    timeout_seconds=30.0,
+                    adaptive_thresholds=True,
+                ),
+            )
+
+        # ===== FALLBACK COMPONENTS =====
+        # Async queue for events from watchdog (fallback mode)
         self._event_queue: asyncio.Queue[Path] = asyncio.Queue(maxsize=1000)
 
-        # Watchdog observers (one per directory)
-        self._observers: List[Observer] = []
+        # Watchdog observers (fallback mode)
+        self._observers: List[Any] = []
 
-        # Deduplication
+        # ===== DEDUPLICATION =====
         self._processed_events: Set[str] = set()
         self._processed_queue: List[str] = []  # For LRU eviction
         self._max_processed = 10000
 
-        # Metrics
+        # ===== METRICS =====
         self._metrics = BridgeMetrics()
 
-        # State
+        # ===== STATE =====
         self._running = False
         self._process_task: Optional[asyncio.Task] = None
         self._poll_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
+        self._consecutive_errors = 0
+        self._last_error: Optional[Exception] = None
 
         # Ensure directories exist
         for dir_path in self._watch_dirs:
@@ -232,12 +297,76 @@ class TrinityBridgeAdapter:
             return True
 
         self._running = True
-        self.logger.info("TrinityBridgeAdapter starting...")
+        self.logger.info("TrinityBridgeAdapter v2.0 starting...")
 
-        # Get current event loop
+        if self._use_resilience and RESILIENCE_AVAILABLE:
+            # ===== HARDENED MODE: Use FileWatchGuard =====
+            await self._start_resilient_watchers()
+        else:
+            # ===== FALLBACK MODE: Use basic watchdog =====
+            await self._start_fallback_watchers()
+
+        # Start health monitoring task
+        self._health_task = asyncio.create_task(
+            self._health_monitor_loop(),
+            name="trinity_bridge_health_monitor",
+        )
+
+        # Process any existing files on startup
+        await self._process_existing_files()
+
+        mode = "RESILIENT" if self._use_resilience else "FALLBACK"
+        watch_count = len(self._file_guards) if self._use_resilience else len(self._observers)
+
+        self.logger.info(
+            f"TrinityBridgeAdapter v2.0 ready [{mode} mode] "
+            f"(watching {watch_count} directories)"
+        )
+        return True
+
+    async def _start_resilient_watchers(self) -> None:
+        """Start resilient file watchers using FileWatchGuard."""
+        for dir_path in self._watch_dirs:
+            try:
+                config = FileWatchConfig(
+                    recursive=False,
+                    patterns=["*.json"],
+                    ignore_patterns=[".*", "_*", "*.tmp", "*.bak"],
+                    debounce_seconds=0.05,
+                    verify_checksum=True,
+                    restart_on_error=True,
+                    max_consecutive_errors=5,
+                )
+
+                guard = FileWatchGuard(
+                    watch_dir=dir_path,
+                    on_event=self._on_file_event,
+                    config=config,
+                    on_error=self._on_watch_error,
+                )
+
+                if await guard.start():
+                    self._file_guards.append(guard)
+                    self.logger.info(f"[Resilient] Watching directory: {dir_path}")
+                else:
+                    self.logger.warning(f"[Resilient] Failed to start guard for {dir_path}")
+
+            except Exception as e:
+                self.logger.warning(f"[Resilient] Error setting up {dir_path}: {e}")
+
+    async def _start_fallback_watchers(self) -> None:
+        """Start fallback watchdog observers."""
+        if not WATCHDOG_AVAILABLE:
+            self.logger.warning("Watchdog not available, using polling only")
+            # Start polling task
+            self._poll_task = asyncio.create_task(
+                self._poll_loop(),
+                name="trinity_bridge_poll_loop",
+            )
+            return
+
         loop = asyncio.get_event_loop()
 
-        # Start watchdog observers for each directory
         for dir_path in self._watch_dirs:
             if dir_path.exists():
                 try:
@@ -246,11 +375,11 @@ class TrinityBridgeAdapter:
                     observer.schedule(handler, str(dir_path), recursive=False)
                     observer.start()
                     self._observers.append(observer)
-                    self.logger.info(f"Watching directory: {dir_path}")
+                    self.logger.info(f"[Fallback] Watching directory: {dir_path}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to watch {dir_path}: {e}")
+                    self.logger.warning(f"[Fallback] Failed to watch {dir_path}: {e}")
 
-        # Start async processing task
+        # Start async processing task for fallback mode
         self._process_task = asyncio.create_task(
             self._process_loop(),
             name="trinity_bridge_process_loop",
@@ -262,30 +391,65 @@ class TrinityBridgeAdapter:
             name="trinity_bridge_poll_loop",
         )
 
-        # Process any existing files on startup
-        await self._process_existing_files()
+    async def _on_file_event(self, event: "FileEvent") -> None:
+        """Handle file event from FileWatchGuard (resilient mode)."""
+        if event.event_type != FileEventType.CREATED:
+            return
 
-        self.logger.info(
-            f"TrinityBridgeAdapter ready "
-            f"(watching {len(self._observers)} directories)"
-        )
-        return True
+        await self._process_file(event.path)
+
+    async def _on_watch_error(self, error: Exception) -> None:
+        """Handle file watch error."""
+        self._consecutive_errors += 1
+        self._last_error = error
+        self.logger.error(f"File watch error: {error}")
+
+    async def _health_monitor_loop(self) -> None:
+        """Monitor health and auto-restart unhealthy watchers."""
+        while self._running:
+            try:
+                await asyncio.sleep(30.0)  # Check every 30 seconds
+
+                if self._use_resilience:
+                    # Check FileWatchGuard health
+                    for guard in self._file_guards:
+                        if not guard.is_healthy:
+                            self.logger.warning(
+                                f"FileWatchGuard unhealthy for {guard.watch_dir}, restarting..."
+                            )
+                            await guard.stop()
+                            await guard.start()
+                else:
+                    # Check watchdog observer health
+                    for observer in self._observers:
+                        if not observer.is_alive():
+                            self.logger.warning("Watchdog observer died, restarting...")
+                            # Restart all observers
+                            await self._stop_fallback_watchers()
+                            await self._start_fallback_watchers()
+                            break
+
+                # Reset error count on successful health check
+                self._consecutive_errors = 0
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Health monitor error: {e}")
 
     async def stop(self) -> None:
         """Stop the bridge adapter."""
         self._running = False
 
-        # Stop watchdog observers
-        for observer in self._observers:
-            try:
-                observer.stop()
-                observer.join(timeout=2.0)
-            except Exception as e:
-                self.logger.debug(f"Observer stop error: {e}")
-        self._observers.clear()
+        if self._use_resilience:
+            # Stop FileWatchGuard instances
+            await self._stop_resilient_watchers()
+        else:
+            # Stop fallback watchdog observers
+            await self._stop_fallback_watchers()
 
         # Cancel async tasks
-        for task in [self._process_task, self._poll_task]:
+        for task in [self._process_task, self._poll_task, self._health_task]:
             if task:
                 task.cancel()
                 try:
@@ -294,9 +458,28 @@ class TrinityBridgeAdapter:
                     pass
 
         self.logger.info(
-            f"TrinityBridgeAdapter stopped "
+            f"TrinityBridgeAdapter v2.0 stopped "
             f"(processed {self._metrics.events_forwarded} events)"
         )
+
+    async def _stop_resilient_watchers(self) -> None:
+        """Stop resilient file watchers."""
+        for guard in self._file_guards:
+            try:
+                await guard.stop()
+            except Exception as e:
+                self.logger.debug(f"FileWatchGuard stop error: {e}")
+        self._file_guards.clear()
+
+    async def _stop_fallback_watchers(self) -> None:
+        """Stop fallback watchdog observers."""
+        for observer in self._observers:
+            try:
+                observer.stop()
+                observer.join(timeout=2.0)
+            except Exception as e:
+                self.logger.debug(f"Observer stop error: {e}")
+        self._observers.clear()
 
     async def _process_existing_files(self) -> None:
         """Process any existing event files on startup."""
@@ -453,16 +636,33 @@ class TrinityBridgeAdapter:
             self._processed_events.discard(old_id)
 
     async def _forward_event(self, event: Dict[str, Any]) -> None:
-        """Forward event to TrinityEventBus or callback."""
+        """Forward event to TrinityEventBus or callback with circuit breaker protection."""
         try:
             if self._event_callback:
-                # Use provided callback
+                # Use provided callback (no circuit breaker for custom callbacks)
                 result = self._event_callback(event)
                 if asyncio.iscoroutine(result):
                     await result
             else:
-                # Try to get TrinityEventBus and dispatch
-                await self._dispatch_to_event_bus(event)
+                # Use circuit breaker for event bus dispatch
+                if self._circuit_breaker and RESILIENCE_AVAILABLE:
+                    try:
+                        await self._circuit_breaker.execute(
+                            tier="event_bus",
+                            func=self._dispatch_to_event_bus,
+                            args=(event,),
+                        )
+                    except CircuitOpenError as e:
+                        self.logger.warning(
+                            f"[TrinityBridge] Circuit breaker OPEN for event bus: {e.reason}. "
+                            f"Retry in {e.retry_after:.1f}s"
+                        )
+                        # Queue event for later retry
+                        self._metrics.events_failed += 1
+                        return
+                else:
+                    # No circuit breaker, dispatch directly
+                    await self._dispatch_to_event_bus(event)
 
             self._metrics.events_forwarded += 1
             self.logger.info(
@@ -501,8 +701,9 @@ class TrinityBridgeAdapter:
             raise
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get bridge metrics."""
-        return {
+        """Get bridge metrics including resilience status."""
+        base_metrics = {
+            "version": "2.0.0",
             "events_received": self._metrics.events_received,
             "events_forwarded": self._metrics.events_forwarded,
             "events_failed": self._metrics.events_failed,
@@ -511,8 +712,40 @@ class TrinityBridgeAdapter:
             "events_by_type": self._metrics.events_by_type,
             "running": self._running,
             "watch_dirs": [str(d) for d in self._watch_dirs],
-            "observers_active": len(self._observers),
+            "consecutive_errors": self._consecutive_errors,
+            "last_error": str(self._last_error) if self._last_error else None,
         }
+
+        # Add resilience-specific metrics
+        if self._use_resilience:
+            base_metrics["mode"] = "RESILIENT"
+            base_metrics["file_guards_active"] = len(self._file_guards)
+            base_metrics["file_guards"] = [
+                guard.get_metrics() for guard in self._file_guards
+            ]
+            if self._circuit_breaker:
+                base_metrics["circuit_breaker"] = self._circuit_breaker.get_status()
+            if self._file_ops:
+                base_metrics["file_ops"] = self._file_ops.get_metrics()
+        else:
+            base_metrics["mode"] = "FALLBACK"
+            base_metrics["observers_active"] = len(self._observers)
+
+        return base_metrics
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if bridge is healthy."""
+        if not self._running:
+            return False
+
+        if self._consecutive_errors >= 5:
+            return False
+
+        if self._use_resilience:
+            return all(guard.is_healthy for guard in self._file_guards)
+        else:
+            return all(obs.is_alive() for obs in self._observers)
 
 
 # =============================================================================
