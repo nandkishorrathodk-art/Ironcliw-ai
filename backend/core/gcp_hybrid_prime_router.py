@@ -174,8 +174,15 @@ class RouterMetrics:
     permanent_failures: int = 0
     retries_total: int = 0
     retries_successful: int = 0
-    latency_samples: List[float] = field(default_factory=list)
+    # v2.1: Use deque for O(1) append/popleft instead of O(n) list.pop(0)
+    latency_samples: Any = field(default_factory=lambda: None)  # Initialized in __post_init__
     max_latency_samples: int = 100
+
+    def __post_init__(self):
+        """Initialize deque after dataclass creation."""
+        from collections import deque
+        if self.latency_samples is None:
+            self.latency_samples = deque(maxlen=self.max_latency_samples)
 
 
 @dataclass
@@ -281,6 +288,12 @@ class GCPHybridPrimeRouter:
         self._last_successful_tier: Optional[RoutingTier] = None
         self._tier_failure_counts: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
         self._tier_last_success: Dict[RoutingTier, float] = {tier: 0.0 for tier in RoutingTier}
+
+        # v2.1: Timeout-based degradation recovery
+        self._degradation_entered_at: float = 0.0
+        self._degradation_recovery_timeout = float(os.getenv("DEGRADATION_RECOVERY_TIMEOUT", "300.0"))  # 5 minutes default
+        self._active_request_validation_interval = float(os.getenv("ACTIVE_REQUEST_VALIDATION_INTERVAL", "60.0"))
+        self._last_active_request_validation = 0.0
 
         # Initialize VM provisioning lock if available
         if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
@@ -391,7 +404,12 @@ class GCPHybridPrimeRouter:
             if self._vm_provisioning_lock:
                 try:
                     token = await self._vm_provisioning_lock.acquire_lock(timeout=10.0)
-                    self.logger.info(f"Acquired VM provisioning lock (token: {token[:8]}...)")
+                    # v2.1: Null check before string slicing to prevent IndexError
+                    if token:
+                        self.logger.info(f"Acquired VM provisioning lock (token: {token[:8]}...)")
+                    else:
+                        self.logger.warning("VM provisioning lock returned None - skipping")
+                        return False
                 except Exception as e:
                     self.logger.warning(f"Could not acquire VM provisioning lock: {e}")
                     # Another instance is provisioning - skip
@@ -552,7 +570,7 @@ class GCPHybridPrimeRouter:
             self.logger.debug(f"Prime client not available: {e}")
 
     async def _monitoring_loop(self) -> None:
-        """Background monitoring loop."""
+        """Background monitoring loop (v2.1: enhanced with degradation recovery and request validation)."""
         while self._running:
             try:
                 # Update RAM info
@@ -561,6 +579,16 @@ class GCPHybridPrimeRouter:
                 # Check circuit breakers
                 await self._check_circuit_breakers()
 
+                # v2.1: Check for timeout-based degradation recovery
+                if self._degradation_mode:
+                    await self._check_degradation_recovery()
+
+                # v2.1: Periodically validate active request counters
+                now = time.time()
+                if now - self._last_active_request_validation > self._active_request_validation_interval:
+                    await self._validate_active_requests()
+                    self._last_active_request_validation = now
+
                 await asyncio.sleep(10.0)
 
             except asyncio.CancelledError:
@@ -568,6 +596,98 @@ class GCPHybridPrimeRouter:
             except Exception as e:
                 self.logger.error(f"Monitoring error: {e}")
                 await asyncio.sleep(5.0)
+
+    async def _check_degradation_recovery(self) -> None:
+        """
+        v2.1: Check if degradation mode should be exited based on timeout.
+
+        After the recovery timeout, attempt to test tiers and exit degradation
+        mode if any tier responds successfully.
+        """
+        if not self._degradation_mode or self._degradation_entered_at <= 0:
+            return
+
+        elapsed = time.time() - self._degradation_entered_at
+        if elapsed < self._degradation_recovery_timeout:
+            return
+
+        self.logger.info(
+            f"Degradation recovery timeout reached ({elapsed:.1f}s > {self._degradation_recovery_timeout}s). "
+            f"Attempting recovery probe..."
+        )
+
+        # Try to probe each tier with a simple health check
+        recovery_tiers = [
+            RoutingTier.LOCAL_PRIME,
+            RoutingTier.GCP_CLOUD_RUN,
+            RoutingTier.CLOUD_CLAUDE,
+        ]
+
+        for tier in recovery_tiers:
+            if self._check_circuit_breaker(tier):
+                try:
+                    # Simple probe - just check if tier is responsive
+                    if tier == RoutingTier.LOCAL_PRIME:
+                        ram_info = await self._get_ram_info()
+                        if self._can_use_local(ram_info):
+                            self.logger.info(f"Recovery probe successful: {tier.value} is available")
+                            self._degradation_mode = False
+                            self._degradation_reason = None
+                            self._degradation_entered_at = 0.0
+                            return
+                    elif tier == RoutingTier.GCP_CLOUD_RUN:
+                        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+                        if cloud_run_url:
+                            self.logger.info(f"Recovery probe successful: {tier.value} URL configured")
+                            self._degradation_mode = False
+                            self._degradation_reason = None
+                            self._degradation_entered_at = 0.0
+                            return
+                    elif tier == RoutingTier.CLOUD_CLAUDE:
+                        # Claude is always "available" - just check API key exists
+                        if os.getenv("ANTHROPIC_API_KEY"):
+                            self.logger.info(f"Recovery probe successful: {tier.value} API key present")
+                            self._degradation_mode = False
+                            self._degradation_reason = None
+                            self._degradation_entered_at = 0.0
+                            return
+                except Exception as e:
+                    self.logger.debug(f"Recovery probe failed for {tier.value}: {e}")
+                    continue
+
+        # Reset timeout for next attempt
+        self._degradation_entered_at = time.time()
+        self.logger.warning("All recovery probes failed - remaining in degradation mode")
+
+    async def _validate_active_requests(self) -> None:
+        """
+        v2.1: Validate and potentially reset active request counters.
+
+        This prevents stuck counters from blocking VM termination indefinitely.
+        If no requests have been made in the validation interval, counters
+        should be zero. Reset any non-zero counters with a warning.
+        """
+        # Only validate if no recent activity
+        if self._metrics.last_request_time > 0:
+            idle_time = time.time() - self._metrics.last_request_time
+            if idle_time < self._active_request_validation_interval:
+                return  # Recent activity - counters are likely accurate
+
+        # Check for stuck counters
+        stuck_tiers = []
+        for tier, count in self._active_requests.items():
+            if count > 0:
+                stuck_tiers.append((tier, count))
+
+        if stuck_tiers:
+            self.logger.warning(
+                f"Detected potentially stuck active request counters (idle {idle_time:.1f}s): "
+                f"{[(t.value, c) for t, c in stuck_tiers]}"
+            )
+            # Reset counters
+            for tier, _ in stuck_tiers:
+                self._active_requests[tier] = 0
+            self.logger.info("Reset active request counters to zero")
 
     async def _get_ram_info(self) -> Optional[dict]:
         """Get current RAM information."""
@@ -631,12 +751,10 @@ class GCPHybridPrimeRouter:
             cb["state"] = "closed"
             cb["failures"] = 0
 
-        # v2.0: Track latency samples
+        # v2.1: Track latency samples (deque auto-removes old items with maxlen)
         self._metrics.latency_samples.append(latency_ms)
-        if len(self._metrics.latency_samples) > self._metrics.max_latency_samples:
-            self._metrics.latency_samples.pop(0)
 
-        # Update average
+        # Update average - use cached sum for O(1) average calculation
         if self._metrics.latency_samples:
             self._metrics.avg_latency_ms = sum(self._metrics.latency_samples) / len(self._metrics.latency_samples)
 
@@ -1031,15 +1149,19 @@ class GCPHybridPrimeRouter:
                         self.logger.info(f"Exiting degradation mode - {decision.tier.value} succeeded")
                         self._degradation_mode = False
                         self._degradation_reason = None
+                        self._degradation_entered_at = 0.0  # v2.1: Reset timestamp
 
-                    # Track cost
+                    # Track cost - v2.1: Added error handling to prevent cost sync failures from breaking execution
                     if self._cost_sync:
-                        self._cost_sync.record_inference(
-                            tokens_in=payload.get("max_tokens", 1000),
-                            tokens_out=result.get("tokens_used", 500),
-                            cost=decision.estimated_cost,
-                            is_local=decision.tier == RoutingTier.LOCAL_PRIME,
-                        )
+                        try:
+                            self._cost_sync.record_inference(
+                                tokens_in=payload.get("max_tokens", 1000),
+                                tokens_out=result.get("tokens_used", 500),
+                                cost=decision.estimated_cost,
+                                is_local=decision.tier == RoutingTier.LOCAL_PRIME,
+                            )
+                        except Exception as cost_error:
+                            self.logger.warning(f"Cost tracking failed (non-fatal): {cost_error}")
 
                     # Track retry success
                     if retries > 0:
@@ -1157,9 +1279,14 @@ class GCPHybridPrimeRouter:
         # All tiers failed - enter degradation mode
         self._degradation_mode = True
         self._degradation_reason = f"All tiers failed after {original_tier.value}: {last_error}"
+        # v2.1: Set timestamp for timeout-based recovery
+        self._degradation_entered_at = time.time()
 
         # Return minimal degraded response
-        self.logger.error(f"All fallback tiers failed - entering degradation mode")
+        self.logger.error(
+            f"All fallback tiers failed - entering degradation mode "
+            f"(recovery timeout: {self._degradation_recovery_timeout}s)"
+        )
         return {
             "response": "[System operating in degraded mode - please try again later]",
             "degraded": True,

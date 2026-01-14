@@ -19,6 +19,10 @@ Features:
 - Health check and heartbeat management
 - Event emission and consumption APIs
 - Thread-safe file operations with proper locking
+- v6.3: Coordinated multi-repo startup with dependency ordering
+- v6.3: Health probing for external repos (JARVIS-Prime, Reactor-Core)
+- v6.3: Timeout handling with graceful degradation
+- v6.3: Cross-repo connection validation
 
 Architecture:
     ┌──────────────────────────────────────────────────────────┐
@@ -33,7 +37,7 @@ Architecture:
     └──────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 6.2.0
+Version: 6.3.0
 """
 
 from __future__ import annotations
@@ -150,6 +154,26 @@ class CrossRepoStateConfig:
     )
     visual_security_mode: str = field(
         default_factory=lambda: _get_env("JARVIS_VISUAL_SECURITY_MODE", "omniparser")
+    )
+
+    # v6.3: Coordinated multi-repo startup settings
+    coordinated_startup_enabled: bool = field(
+        default_factory=lambda: _get_env_bool("JARVIS_COORDINATED_STARTUP_ENABLED", True)
+    )
+    repo_startup_timeout_seconds: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_REPO_STARTUP_TIMEOUT", 30.0)
+    )
+    repo_health_probe_timeout_seconds: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_REPO_HEALTH_PROBE_TIMEOUT", 5.0)
+    )
+    repo_health_retry_count: int = field(
+        default_factory=lambda: _get_env_int("JARVIS_REPO_HEALTH_RETRY_COUNT", 3)
+    )
+    repo_health_retry_delay_seconds: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_REPO_HEALTH_RETRY_DELAY", 2.0)
+    )
+    graceful_degradation_enabled: bool = field(
+        default_factory=lambda: _get_env_bool("JARVIS_GRACEFUL_DEGRADATION_ENABLED", True)
     )
 
 
@@ -672,6 +696,325 @@ class CrossRepoStateInitializer:
                 await asyncio.sleep(self.config.state_update_interval_seconds)
 
     # =========================================================================
+    # v6.3: Coordinated Multi-Repo Startup
+    # =========================================================================
+
+    async def initialize_all_repos(self) -> Dict[RepoType, bool]:
+        """
+        v6.3: Coordinated initialization of all repos with dependency ordering.
+
+        This method initializes repos in the correct order:
+        1. JARVIS (local) - Required, must succeed
+        2. JARVIS Prime - Optional, can degrade gracefully
+        3. Reactor Core - Optional, can degrade gracefully
+
+        Returns:
+            Dict mapping repo type to initialization success status
+        """
+        if not self.config.coordinated_startup_enabled:
+            logger.info("[CrossRepoState] Coordinated startup disabled, skipping")
+            return {RepoType.JARVIS: True}
+
+        logger.info("[CrossRepoState] ═══════════════════════════════════════════════")
+        logger.info("[CrossRepoState] v6.3: Starting coordinated multi-repo initialization")
+        logger.info("[CrossRepoState] ═══════════════════════════════════════════════")
+
+        results: Dict[RepoType, bool] = {}
+        startup_start = time.time()
+
+        # Phase 1: Initialize JARVIS (local) - This is required
+        try:
+            async with asyncio.timeout(self.config.repo_startup_timeout_seconds):
+                jarvis_success = await self._initialize_jarvis_local()
+                results[RepoType.JARVIS] = jarvis_success
+
+                if not jarvis_success:
+                    logger.error("[CrossRepoState] JARVIS local initialization failed - aborting")
+                    return results
+        except asyncio.TimeoutError:
+            logger.error("[CrossRepoState] JARVIS local initialization timed out")
+            results[RepoType.JARVIS] = False
+            return results
+
+        # Phase 2: Initialize external repos in parallel (with individual timeouts)
+        external_init_tasks = [
+            self._initialize_jarvis_prime_with_retry(),
+            self._initialize_reactor_core_with_retry(),
+        ]
+
+        try:
+            async with asyncio.timeout(self.config.repo_startup_timeout_seconds * 2):
+                external_results = await asyncio.gather(*external_init_tasks, return_exceptions=True)
+
+                # Process results
+                for i, result in enumerate(external_results):
+                    repo_type = RepoType.JARVIS_PRIME if i == 0 else RepoType.REACTOR_CORE
+                    if isinstance(result, Exception):
+                        logger.warning(f"[CrossRepoState] {repo_type.value} initialization failed: {result}")
+                        results[repo_type] = False
+                    else:
+                        results[repo_type] = result
+
+        except asyncio.TimeoutError:
+            logger.warning("[CrossRepoState] External repo initialization timed out")
+            for repo_type in [RepoType.JARVIS_PRIME, RepoType.REACTOR_CORE]:
+                if repo_type not in results:
+                    results[repo_type] = False
+
+        # Log summary
+        elapsed = time.time() - startup_start
+        success_count = sum(1 for v in results.values() if v)
+        total_count = len(results)
+
+        logger.info("[CrossRepoState] ═══════════════════════════════════════════════")
+        logger.info(f"[CrossRepoState] v6.3: Coordinated startup complete ({elapsed:.2f}s)")
+        logger.info(f"[CrossRepoState]   • Success: {success_count}/{total_count} repos")
+        for repo_type, success in results.items():
+            status = "✅ Ready" if success else "⚠️ Degraded"
+            logger.info(f"[CrossRepoState]   • {repo_type.value}: {status}")
+        logger.info("[CrossRepoState] ═══════════════════════════════════════════════")
+
+        # Emit coordinated startup event
+        await self.emit_event(VBIAEvent(
+            event_type=EventType.SYSTEM_READY,
+            source_repo=RepoType.JARVIS,
+            payload={
+                "coordinated_startup": True,
+                "repos_initialized": {k.value: v for k, v in results.items()},
+                "elapsed_seconds": elapsed,
+                "graceful_degradation": self.config.graceful_degradation_enabled,
+            }
+        ))
+
+        return results
+
+    async def _initialize_jarvis_local(self) -> bool:
+        """Initialize JARVIS local state (required)."""
+        logger.info("[CrossRepoState] Phase 1: Initializing JARVIS local...")
+        try:
+            # This reuses the existing initialize() logic if not already initialized
+            if not self._initialized:
+                return await self.initialize()
+            return True
+        except Exception as e:
+            logger.error(f"[CrossRepoState] JARVIS local init failed: {e}")
+            return False
+
+    async def _initialize_jarvis_prime_with_retry(self) -> bool:
+        """Initialize JARVIS Prime with retry and health probing."""
+        logger.info("[CrossRepoState] Phase 2a: Initializing JARVIS Prime...")
+
+        for attempt in range(self.config.repo_health_retry_count):
+            try:
+                success = await self._probe_jarvis_prime_health()
+                if success:
+                    # Update prime state to ready
+                    await self._update_prime_state(StateStatus.READY)
+                    logger.info("[CrossRepoState] ✅ JARVIS Prime initialized")
+                    return True
+
+                logger.debug(f"[CrossRepoState] JARVIS Prime probe attempt {attempt + 1} failed")
+
+            except Exception as e:
+                logger.debug(f"[CrossRepoState] JARVIS Prime probe error: {e}")
+
+            if attempt < self.config.repo_health_retry_count - 1:
+                await asyncio.sleep(self.config.repo_health_retry_delay_seconds)
+
+        # All retries failed - graceful degradation
+        if self.config.graceful_degradation_enabled:
+            logger.warning("[CrossRepoState] ⚠️ JARVIS Prime unavailable - degraded mode")
+            await self._update_prime_state(StateStatus.DEGRADED)
+            return False
+        else:
+            raise RuntimeError("JARVIS Prime initialization failed and graceful degradation disabled")
+
+    async def _initialize_reactor_core_with_retry(self) -> bool:
+        """Initialize Reactor Core with retry and health probing."""
+        logger.info("[CrossRepoState] Phase 2b: Initializing Reactor Core...")
+
+        for attempt in range(self.config.repo_health_retry_count):
+            try:
+                success = await self._probe_reactor_core_health()
+                if success:
+                    # Update reactor state to ready
+                    await self._update_reactor_state(StateStatus.READY)
+                    logger.info("[CrossRepoState] ✅ Reactor Core initialized")
+                    return True
+
+                logger.debug(f"[CrossRepoState] Reactor Core probe attempt {attempt + 1} failed")
+
+            except Exception as e:
+                logger.debug(f"[CrossRepoState] Reactor Core probe error: {e}")
+
+            if attempt < self.config.repo_health_retry_count - 1:
+                await asyncio.sleep(self.config.repo_health_retry_delay_seconds)
+
+        # All retries failed - graceful degradation
+        if self.config.graceful_degradation_enabled:
+            logger.warning("[CrossRepoState] ⚠️ Reactor Core unavailable - degraded mode")
+            await self._update_reactor_state(StateStatus.DEGRADED)
+            return False
+        else:
+            raise RuntimeError("Reactor Core initialization failed and graceful degradation disabled")
+
+    async def _probe_jarvis_prime_health(self) -> bool:
+        """
+        Probe JARVIS Prime health.
+
+        Checks:
+        1. Prime state file exists and has recent heartbeat
+        2. (Optional) HTTP health check if endpoint configured
+        """
+        try:
+            async with asyncio.timeout(self.config.repo_health_probe_timeout_seconds):
+                # Method 1: Check heartbeat file
+                heartbeat_data = await self._read_json_file(self._state_files["heartbeat"], default={})
+                prime_heartbeat = heartbeat_data.get("jarvis_prime", {})
+
+                if prime_heartbeat:
+                    last_heartbeat = prime_heartbeat.get("timestamp", "")
+                    if last_heartbeat:
+                        try:
+                            heartbeat_time = datetime.fromisoformat(last_heartbeat)
+                            age = datetime.now() - heartbeat_time
+                            if age < timedelta(seconds=self.config.heartbeat_timeout_seconds):
+                                logger.debug("[CrossRepoState] JARVIS Prime heartbeat valid")
+                                return True
+                        except (ValueError, TypeError):
+                            pass
+
+                # Method 2: Check Prime state file
+                prime_state = await self._read_json_file(self._state_files["prime_state"], default={})
+                if prime_state.get("status") in ("ready", "active"):
+                    logger.debug("[CrossRepoState] JARVIS Prime state valid")
+                    return True
+
+                # Method 3: Try HTTP health check if configured
+                prime_url = _get_env("JARVIS_PRIME_HEALTH_URL", "")
+                if prime_url:
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                prime_url,
+                                timeout=aiohttp.ClientTimeout(total=self.config.repo_health_probe_timeout_seconds)
+                            ) as resp:
+                                if resp.status == 200:
+                                    logger.debug("[CrossRepoState] JARVIS Prime HTTP health check passed")
+                                    return True
+                    except Exception:
+                        pass
+
+                return False
+
+        except asyncio.TimeoutError:
+            logger.debug("[CrossRepoState] JARVIS Prime health probe timed out")
+            return False
+        except Exception as e:
+            logger.debug(f"[CrossRepoState] JARVIS Prime health probe error: {e}")
+            return False
+
+    async def _probe_reactor_core_health(self) -> bool:
+        """
+        Probe Reactor Core health.
+
+        Checks:
+        1. Reactor state file exists and has recent heartbeat
+        2. (Optional) HTTP health check if endpoint configured
+        """
+        try:
+            async with asyncio.timeout(self.config.repo_health_probe_timeout_seconds):
+                # Method 1: Check heartbeat file
+                heartbeat_data = await self._read_json_file(self._state_files["heartbeat"], default={})
+                reactor_heartbeat = heartbeat_data.get("reactor_core", {})
+
+                if reactor_heartbeat:
+                    last_heartbeat = reactor_heartbeat.get("timestamp", "")
+                    if last_heartbeat:
+                        try:
+                            heartbeat_time = datetime.fromisoformat(last_heartbeat)
+                            age = datetime.now() - heartbeat_time
+                            if age < timedelta(seconds=self.config.heartbeat_timeout_seconds):
+                                logger.debug("[CrossRepoState] Reactor Core heartbeat valid")
+                                return True
+                        except (ValueError, TypeError):
+                            pass
+
+                # Method 2: Check Reactor state file
+                reactor_state = await self._read_json_file(self._state_files["reactor_state"], default={})
+                if reactor_state.get("status") in ("ready", "active"):
+                    logger.debug("[CrossRepoState] Reactor Core state valid")
+                    return True
+
+                # Method 3: Try HTTP health check if configured
+                reactor_url = _get_env("REACTOR_CORE_HEALTH_URL", "")
+                if reactor_url:
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                reactor_url,
+                                timeout=aiohttp.ClientTimeout(total=self.config.repo_health_probe_timeout_seconds)
+                            ) as resp:
+                                if resp.status == 200:
+                                    logger.debug("[CrossRepoState] Reactor Core HTTP health check passed")
+                                    return True
+                    except Exception:
+                        pass
+
+                return False
+
+        except asyncio.TimeoutError:
+            logger.debug("[CrossRepoState] Reactor Core health probe timed out")
+            return False
+        except Exception as e:
+            logger.debug(f"[CrossRepoState] Reactor Core health probe error: {e}")
+            return False
+
+    async def _update_prime_state(self, status: StateStatus) -> None:
+        """Update JARVIS Prime state file."""
+        prime_file = self._state_files["prime_state"]
+        async with self._file_locks["prime_state"]:
+            prime_state = await self._read_json_file(prime_file, default={})
+            prime_state["status"] = status.value
+            prime_state["last_update"] = datetime.now().isoformat()
+            await self._write_json_file(prime_file, prime_state)
+
+    async def _update_reactor_state(self, status: StateStatus) -> None:
+        """Update Reactor Core state file."""
+        reactor_file = self._state_files["reactor_state"]
+        async with self._file_locks["reactor_state"]:
+            reactor_state = await self._read_json_file(reactor_file, default={})
+            reactor_state["status"] = status.value
+            reactor_state["last_update"] = datetime.now().isoformat()
+            await self._write_json_file(reactor_file, reactor_state)
+
+    async def get_initialization_status(self) -> Dict[str, Any]:
+        """
+        v6.3: Get current initialization status of all repos.
+
+        Returns:
+            Dict with status information for all repos
+        """
+        states = await self.get_repo_states()
+
+        return {
+            "coordinated_startup_enabled": self.config.coordinated_startup_enabled,
+            "graceful_degradation_enabled": self.config.graceful_degradation_enabled,
+            "repos": {
+                repo_name: {
+                    "status": state.status.value if hasattr(state, "status") else "unknown",
+                    "last_update": getattr(state, "last_update", "unknown"),
+                    "capabilities": getattr(state, "capabilities", {}),
+                }
+                for repo_name, state in states.items()
+            },
+            "jarvis_initialized": self._initialized,
+            "uptime_seconds": time.time() - self._start_time,
+        }
+
+    # =========================================================================
     # File I/O Utilities
     # =========================================================================
 
@@ -753,3 +1096,41 @@ async def shutdown_cross_repo_state() -> None:
     if _cross_repo_initializer:
         await _cross_repo_initializer.shutdown()
         _cross_repo_initializer = None
+
+
+async def initialize_all_repos_coordinated(
+    config: Optional[CrossRepoStateConfig] = None
+) -> Dict[RepoType, bool]:
+    """
+    v6.3: Initialize all repos with coordinated startup.
+
+    This is the main entry point for coordinated multi-repo initialization.
+    It initializes JARVIS first (required), then JARVIS Prime and Reactor Core
+    in parallel with graceful degradation if they're unavailable.
+
+    Args:
+        config: Optional configuration
+
+    Returns:
+        Dict mapping repo type to initialization success status
+
+    Example:
+        results = await initialize_all_repos_coordinated()
+        if results[RepoType.JARVIS]:
+            print("JARVIS initialized successfully")
+        if results.get(RepoType.JARVIS_PRIME, False):
+            print("JARVIS Prime connected")
+    """
+    initializer = await get_cross_repo_initializer(config)
+    return await initializer.initialize_all_repos()
+
+
+async def get_initialization_status() -> Dict[str, Any]:
+    """
+    v6.3: Get current initialization status of all repos.
+
+    Returns:
+        Dict with status information for all repos
+    """
+    initializer = await get_cross_repo_initializer()
+    return await initializer.get_initialization_status()

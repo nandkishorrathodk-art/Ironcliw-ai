@@ -858,27 +858,122 @@ class ModelRouter:
     def __init__(self):
         self.logger = logging.getLogger("ModelRouter")
 
-        # Task to preferred provider mapping
+        # Task to preferred provider mapping - J-Prime is PRIMARY for all task types
+        # Cloud APIs (Claude) serve as fallbacks for resilience
+        # v100.2: Dynamic preferences loaded from config, with J-Prime as default primary
         self._task_preferences: Dict[TaskType, List[ModelProvider]] = {
             TaskType.CHAT: [ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],
-            TaskType.REASONING: [ModelProvider.CLAUDE, ModelProvider.PRIME_LOCAL],  # Claude better for reasoning
-            TaskType.VISION: [ModelProvider.CLAUDE, ModelProvider.PRIME_CLOUD_RUN],  # Claude has vision
-            TaskType.CODE: [ModelProvider.PRIME_LOCAL, ModelProvider.CLAUDE],
-            TaskType.TOOL_USE: [ModelProvider.CLAUDE],  # Only Claude supports tool use
-            TaskType.EMBEDDING: [ModelProvider.PRIME_LOCAL],
+            TaskType.REASONING: [ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],  # J-Prime primary
+            TaskType.VISION: [ModelProvider.PRIME_CLOUD_RUN, ModelProvider.PRIME_LOCAL, ModelProvider.CLAUDE],  # J-Prime primary (Cloud Run has vision)
+            TaskType.CODE: [ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],
+            TaskType.TOOL_USE: [ModelProvider.CLAUDE, ModelProvider.PRIME_LOCAL],  # Claude primary (Prime tool use experimental)
+            TaskType.EMBEDDING: [ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN],
         }
+
+        # v100.2: Performance-based preference weighting (adaptive routing)
+        self._provider_performance: Dict[ModelProvider, Dict[str, float]] = {
+            provider: {
+                "success_rate": 1.0,
+                "avg_latency_ms": 0.0,
+                "error_count": 0,
+                "total_requests": 0,
+                "last_success": 0.0,
+            }
+            for provider in ModelProvider
+        }
+
+    def record_provider_result(
+        self,
+        provider: ModelProvider,
+        success: bool,
+        latency_ms: float = 0.0,
+    ) -> None:
+        """
+        Record provider performance for adaptive routing (v100.2).
+
+        This enables learning-based routing where providers with better
+        performance metrics get higher priority dynamically.
+        """
+        perf = self._provider_performance[provider]
+        perf["total_requests"] += 1
+
+        if success:
+            perf["last_success"] = time.time()
+            # Exponential moving average for success rate (alpha=0.1)
+            perf["success_rate"] = 0.9 * perf["success_rate"] + 0.1 * 1.0
+            # Exponential moving average for latency
+            if latency_ms > 0:
+                if perf["avg_latency_ms"] == 0:
+                    perf["avg_latency_ms"] = latency_ms
+                else:
+                    perf["avg_latency_ms"] = 0.9 * perf["avg_latency_ms"] + 0.1 * latency_ms
+        else:
+            perf["error_count"] += 1
+            perf["success_rate"] = 0.9 * perf["success_rate"] + 0.1 * 0.0
+
+    def _calculate_provider_score(self, provider: ModelProvider) -> float:
+        """
+        Calculate dynamic score for provider based on performance (v100.2).
+
+        Higher score = better provider. Used for adaptive preference ordering.
+
+        Score components:
+        - Success rate: 0.6 weight (most important)
+        - Latency: 0.2 weight (lower is better)
+        - Recency: 0.2 weight (recently successful = higher score)
+        """
+        perf = self._provider_performance[provider]
+
+        # Success rate component (0-1, higher is better)
+        success_score = perf["success_rate"]
+
+        # Latency component (normalize: 0-5000ms maps to 1-0)
+        latency_ms = perf["avg_latency_ms"]
+        if latency_ms <= 0:
+            latency_score = 1.0  # No data = assume good
+        else:
+            latency_score = max(0.0, 1.0 - (latency_ms / 5000.0))
+
+        # Recency component (how recently did this provider succeed)
+        last_success = perf["last_success"]
+        if last_success <= 0:
+            recency_score = 0.5  # No data = neutral
+        else:
+            age_seconds = time.time() - last_success
+            # Decay over 1 hour (3600 seconds)
+            recency_score = max(0.0, 1.0 - (age_seconds / 3600.0))
+
+        # Weighted combination
+        return 0.6 * success_score + 0.2 * latency_score + 0.2 * recency_score
 
     def get_preferred_providers(
         self,
         request: ModelRequest,
         available_providers: List[ModelProvider]
     ) -> List[ModelProvider]:
-        """Get ordered list of preferred providers for a request."""
+        """
+        Get ordered list of preferred providers for a request.
+
+        v100.2: Now uses adaptive routing based on provider performance.
+        Providers are scored dynamically and ordered by score within
+        their task preference tier.
+        """
         # Start with task preferences
         preferred = self._task_preferences.get(request.task_type, [ModelProvider.CLAUDE])
 
         # Filter to available providers
         result = [p for p in preferred if p in available_providers]
+
+        # v100.2: Apply adaptive scoring within preference tiers
+        # Providers with significantly better scores can be promoted
+        if len(result) > 1:
+            scored = [(p, self._calculate_provider_score(p)) for p in result]
+            # Sort by score but respect tier boundaries (don't fully reorder)
+            # Only swap adjacent items if score difference > 0.3
+            for i in range(len(scored) - 1):
+                if scored[i+1][1] - scored[i][1] > 0.3:
+                    scored[i], scored[i+1] = scored[i+1], scored[i]
+            result = [p for p, _ in scored]
 
         # Apply request hints
         if request.preferred_provider and request.preferred_provider in available_providers:
@@ -893,7 +988,7 @@ class ModelRouter:
             result = [p for p in result if p in vision_providers]
 
         if request.require_tool_use:
-            # Only Claude supports tool use
+            # Only Claude supports tool use (Prime tool use is experimental)
             result = [p for p in result if p == ModelProvider.CLAUDE]
 
         # Ensure we have at least one fallback
@@ -901,6 +996,16 @@ class ModelRouter:
             result = [ModelProvider.CLAUDE]
 
         return result
+
+    def get_provider_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Get performance statistics for all providers (v100.2)."""
+        return {
+            provider.value: {
+                **self._provider_performance[provider],
+                "score": self._calculate_provider_score(provider),
+            }
+            for provider in ModelProvider
+        }
 
 
 @dataclass
