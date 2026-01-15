@@ -1,9 +1,19 @@
 """
-Ouroboros Self-Improvement Engine v1.0
+Ouroboros Self-Improvement Engine v2.0
 ======================================
 
 The autonomous code evolution system for JARVIS. Uses local LLM (JARVIS Prime)
 to analyze, improve, and evolve its own codebase without human intervention.
+
+v2.0 Enhancements:
+    - Trinity Integration Layer v2.0 with full ecosystem connectivity
+    - Distributed locking for concurrent improvements
+    - Coding Council integration for peer code review
+    - Automatic rollback mechanism
+    - Learning cache to avoid repeated failures
+    - Experience deduplication across channels
+    - Model hot-swap support
+    - Manual review queue for complete failures
 
 Named after the ancient symbol of a serpent eating its own tail - representing
 eternal cyclic renewal and self-sustaining evolution.
@@ -54,7 +64,7 @@ Components:
     - LearningMemory: Failed attempt tracking to avoid repetition
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from backend.core.ouroboros.engine import (
@@ -192,13 +202,28 @@ from backend.core.ouroboros.neural_mesh import (
 )
 
 from backend.core.ouroboros.trinity_integration import (
+    # Core Trinity v2.0 Components
     TrinityIntegration,
     TrinityModelClient,
     TrinityExperiencePublisher,
     TrinityHealthMonitor,
     TrinityConfig,
+    # v2.0 Components
+    TrinityLockManager,
+    TrinityCodeReviewer,
+    TrinityRollbackManager,
+    TrinityLearningCache,
+    TrinityCoordinator,
+    ManualReviewQueue,
+    # Enums and Data Classes
+    ImprovementPriority,
     ComponentHealth,
+    ReviewResult,
     HealthStatus,
+    CodeReview,
+    ImprovementHistory,
+    PrioritizedImprovement,
+    # Functions
     get_trinity_integration,
     initialize_trinity_integration,
     shutdown_trinity_integration,
@@ -315,14 +340,28 @@ __all__ = [
     "get_neural_mesh",
     "initialize_neural_mesh",
     "shutdown_neural_mesh",
-    # Trinity Integration (Unified Layer)
+    # Trinity Integration v2.0 (Unified Layer)
     "TrinityIntegration",
     "TrinityModelClient",
     "TrinityExperiencePublisher",
     "TrinityHealthMonitor",
     "TrinityConfig",
+    # v2.0 Components
+    "TrinityLockManager",
+    "TrinityCodeReviewer",
+    "TrinityRollbackManager",
+    "TrinityLearningCache",
+    "TrinityCoordinator",
+    "ManualReviewQueue",
+    # Enums and Data Classes
+    "ImprovementPriority",
     "ComponentHealth",
+    "ReviewResult",
     "HealthStatus",
+    "CodeReview",
+    "ImprovementHistory",
+    "PrioritizedImprovement",
+    # Functions
     "get_trinity_integration",
     "initialize_trinity_integration",
     "shutdown_trinity_integration",

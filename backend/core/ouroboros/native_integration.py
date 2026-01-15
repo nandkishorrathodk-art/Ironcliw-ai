@@ -1,10 +1,19 @@
 """
-Native Self-Improvement Integration v1.0
+Native Self-Improvement Integration v2.0
 ========================================
 
 This module transforms Ouroboros from an external CLI into a native capability
 of the JARVIS Body. Like how your hand is part of your body - you don't "exit"
 yourself to use your hand, you simply think and your hand moves.
+
+v2.0 Enhancements:
+    - Integrates with Trinity Integration Layer v2.0
+    - Distributed locking for concurrent improvements
+    - Code review before applying changes (Coding Council)
+    - Automatic rollback on failure
+    - Learning cache to avoid repeated failures
+    - Circular dependency detection
+    - Manual review queue for complete failures
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
@@ -53,7 +62,7 @@ Security Features:
     - Sandbox environment isolation
 
 Author: Trinity System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -977,8 +986,91 @@ class NativeSelfImprovement:
         request: ImprovementRequest,
         progress: ImprovementProgress,
     ) -> ImprovementResult:
-        """Execute the improvement loop."""
+        """Execute the improvement loop with Trinity v2.0 integration."""
         start_time = time.time()
+        target_str = str(request.target_file)
+
+        # =====================================================================
+        # PRE-FLIGHT CHECKS (Trinity v2.0)
+        # =====================================================================
+
+        # Check 1: Circular dependency detection
+        if self._trinity_integration:
+            is_circular, reason = await self._trinity_integration.coordinator.check_circular_dependency(
+                target_str
+            )
+            if is_circular:
+                self.logger.warning(f"Circular dependency detected: {reason}")
+                return ImprovementResult(
+                    success=False,
+                    task_id=task_id,
+                    target_file=target_str,
+                    goal=request.goal,
+                    iterations=0,
+                    total_time=time.time() - start_time,
+                    error=f"Circular dependency: {reason}",
+                )
+
+        # Check 2: Learning cache - should we skip?
+        if self._trinity_integration:
+            should_skip, skip_reason = await self._trinity_integration.check_should_skip(
+                target_str, request.goal
+            )
+            if should_skip:
+                self.logger.info(f"Skipping improvement (learning cache): {skip_reason}")
+                return ImprovementResult(
+                    success=False,
+                    task_id=task_id,
+                    target_file=target_str,
+                    goal=request.goal,
+                    iterations=0,
+                    total_time=time.time() - start_time,
+                    error=f"Skipped: {skip_reason}",
+                )
+
+        # =====================================================================
+        # ACQUIRE DISTRIBUTED LOCK (Trinity v2.0)
+        # =====================================================================
+
+        lock_acquired = True  # Default to True if no lock manager
+        if self._trinity_integration:
+            try:
+                async with self._trinity_integration.acquire_lock(target_str) as acquired:
+                    lock_acquired = acquired
+                    if not acquired:
+                        self.logger.warning(f"Could not acquire lock for: {target_str}")
+                        return ImprovementResult(
+                            success=False,
+                            task_id=task_id,
+                            target_file=target_str,
+                            goal=request.goal,
+                            iterations=0,
+                            total_time=time.time() - start_time,
+                            error="Could not acquire distributed lock - file may be locked by another process",
+                        )
+
+                    # Execute within lock context
+                    return await self._execute_locked_improvement(
+                        task_id, request, progress, start_time
+                    )
+            except Exception as e:
+                self.logger.warning(f"Lock acquisition failed, proceeding without lock: {e}")
+                # Fall through to execute without lock
+
+        # Execute without lock (fallback or no Trinity integration)
+        return await self._execute_locked_improvement(
+            task_id, request, progress, start_time
+        )
+
+    async def _execute_locked_improvement(
+        self,
+        task_id: str,
+        request: ImprovementRequest,
+        progress: ImprovementProgress,
+        start_time: float,
+    ) -> ImprovementResult:
+        """Execute improvement with lock already held."""
+        target_str = str(request.target_file)
 
         # Phase 1: Analyze
         progress.phase = ImprovementPhase.ANALYZING
@@ -1041,6 +1133,39 @@ class NativeSelfImprovement:
                         last_error = f"Tests failed: {test_output[:500]}"
                         continue
 
+                # =========================================================
+                # CODE REVIEW (Trinity v2.0 - Coding Council Integration)
+                # =========================================================
+                if self._trinity_integration:
+                    try:
+                        review = await self._trinity_integration.review_code(
+                            original_code=original_content,
+                            improved_code=improved_content,
+                            goal=request.goal,
+                            file_path=str(request.target_file),
+                        )
+
+                        # Import ReviewResult from trinity_integration
+                        from backend.core.ouroboros.trinity_integration import ReviewResult
+
+                        if review.result == ReviewResult.REJECTED:
+                            last_error = f"Code review rejected: {review.feedback}"
+                            self.logger.warning(f"Code review rejected: {review.feedback}")
+                            if review.security_issues:
+                                self.logger.warning(f"Security issues: {review.security_issues}")
+                            continue
+
+                        if review.result == ReviewResult.NEEDS_REVISION:
+                            last_error = f"Code needs revision: {review.feedback}"
+                            self.logger.info(f"Code needs revision: {review.suggestions}")
+                            continue
+
+                        # APPROVED - proceed with apply
+                        self.logger.info(f"Code review passed (risk: {review.risk_score:.2f})")
+
+                    except Exception as e:
+                        self.logger.warning(f"Code review failed, proceeding: {e}")
+
                 # Success! Apply changes
                 if not request.dry_run:
                     progress.phase = ImprovementPhase.APPLYING
@@ -1048,7 +1173,26 @@ class NativeSelfImprovement:
                     progress.message = "Applying changes..."
                     await self._progress_broadcaster.broadcast(progress)
 
-                    await self._write_file_safe(request.target_file, improved_content)
+                    # =========================================================
+                    # APPLY WITH ROLLBACK (Trinity v2.0)
+                    # =========================================================
+                    if self._trinity_integration:
+                        try:
+                            async with self._trinity_integration.with_rollback(
+                                request.target_file, task_id
+                            ) as snapshot_ok:
+                                if snapshot_ok:
+                                    await self._write_file_safe(request.target_file, improved_content)
+                                else:
+                                    # No snapshot (file didn't exist?), write anyway
+                                    await self._write_file_safe(request.target_file, improved_content)
+                        except Exception as e:
+                            # Rollback happened automatically
+                            last_error = f"Apply failed (rolled back): {e}"
+                            self.logger.error(f"Apply failed, rolled back: {e}")
+                            continue
+                    else:
+                        await self._write_file_safe(request.target_file, improved_content)
 
                     # Auto-commit if requested
                     if request.auto_commit:
@@ -1073,6 +1217,17 @@ class NativeSelfImprovement:
                     duration_seconds=time.time() - start_time,
                 )
 
+                # =========================================================
+                # RECORD SUCCESS IN LEARNING CACHE (Trinity v2.0)
+                # =========================================================
+                if self._trinity_integration:
+                    await self._trinity_integration.record_improvement_attempt(
+                        target=target_str,
+                        goal=request.goal,
+                        success=True,
+                        error=None,
+                    )
+
                 # Complete!
                 progress.phase = ImprovementPhase.COMPLETED
                 progress.progress_percent = 100
@@ -1096,7 +1251,38 @@ class NativeSelfImprovement:
                 self.logger.warning(f"Iteration {iteration} failed: {e}")
                 continue
 
-        # All iterations failed
+        # =====================================================================
+        # ALL ITERATIONS FAILED - Trinity v2.0 Failure Handling
+        # =====================================================================
+
+        # Record failure in learning cache
+        if self._trinity_integration:
+            await self._trinity_integration.record_improvement_attempt(
+                target=target_str,
+                goal=request.goal,
+                success=False,
+                error=last_error,
+            )
+
+        # Queue for manual review if all automated attempts failed
+        if self._trinity_integration:
+            try:
+                review_id = await self._trinity_integration.queue_for_manual_review(
+                    target=target_str,
+                    goal=request.goal,
+                    original_code=original_content,
+                    failure_reason=last_error or "Unknown failure after all iterations",
+                    attempts=request.max_iterations,
+                )
+                self.logger.warning(
+                    f"Improvement queued for manual review: {review_id}\n"
+                    f"  Target: {target_str}\n"
+                    f"  Goal: {request.goal[:100]}...\n"
+                    f"  Reason: {last_error}"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to queue for manual review: {e}")
+
         progress.phase = ImprovementPhase.FAILED
         progress.error = last_error
         await self._progress_broadcaster.broadcast(progress)

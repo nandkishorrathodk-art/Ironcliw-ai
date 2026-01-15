@@ -1,10 +1,22 @@
 """
-Cross-Repo Resilience Utilities - Production-Hardened Components
-================================================================
+Cross-Repo Resilience Utilities - Production-Hardened Components v2.0
+=====================================================================
 
-Provides distributed coordination primitives for robust cross-repo communication.
+Provides distributed coordination primitives for robust cross-repo communication
+across JARVIS (Body), JARVIS Prime (Mind), and Reactor Core (Learning).
 
-Features:
+v2.0 Features (Unified Resilience Engine):
+    - Bulkhead isolation with semaphore-based resource pools
+    - Priority request queuing with backpressure support
+    - Dead letter queue with persistent retry scheduling
+    - Health-based routing with intelligent endpoint selection
+    - Automatic failover with zero-downtime orchestration
+    - Chaos engineering framework for controlled failure testing
+    - Failure injection for programmable fault simulation
+    - Adaptive timeouts based on operation latency history
+    - Decorrelated jitter retry for optimal backoff
+
+v1.x Features (Original):
     - Redis-backed distributed locks with fencing tokens
     - Atomic file operations with retry and temp file safety
     - Auto-reconnecting Redis client with exponential backoff
@@ -58,7 +70,7 @@ from backend.core.resilience.vector_clock import (
     CausalEvent,
     CausalEventManager,
     CausalBarrier,
-    CausalOrdering,
+    CausalityRelation,
 )
 from backend.core.resilience.distributed_dedup import (
     BloomFilter,
@@ -75,8 +87,8 @@ from backend.core.resilience.crdt import (
     ORSet,
     LWWMap,
     CRDTStateManager,
-    get_crdt_manager,
-    shutdown_crdt_manager,
+    get_crdt_state_manager,
+    shutdown_crdt_state_manager,
 )
 from backend.core.resilience.adaptive_rate_limiter import (
     AdaptiveRateLimiter,
@@ -140,6 +152,95 @@ from backend.core.resilience.model_versioning import (
     shutdown_model_version_manager,
 )
 
+# v2.0: Unified Resilience Engine
+from backend.core.resilience.unified_resilience_engine import (
+    # Configuration
+    ResilienceConfig,
+    # Enums
+    BulkheadState,
+    RequestPriority,
+    FailureMode,
+    ServiceHealth,
+    RoutingStrategy,
+    # Data Structures
+    BulkheadMetrics,
+    QueuedRequest,
+    DeadLetterEntry,
+    ServiceEndpoint,
+    AdaptiveTimeoutState,
+    ChaosExperiment,
+    # Bulkhead
+    BulkheadPool,
+    BulkheadRejectedError,
+    BulkheadTimeoutError,
+    BulkheadManager,
+    # Queue
+    BackpressureSignal as UnifiedBackpressureSignal,
+    PriorityRequestQueue as UnifiedPriorityRequestQueue,
+    # DLQ
+    DeadLetterQueue,
+    # Routing
+    HealthBasedRouter,
+    # Failover
+    FailoverOrchestrator,
+    # Chaos
+    ChaosController,
+    ChaosInjectedException,
+    # Timeout
+    AdaptiveTimeoutManager,
+    # Retry
+    DecorrelatedJitterRetry,
+    with_retry,
+    # Main Engine
+    UnifiedResilienceEngine,
+    # Global Functions
+    get_resilience_engine,
+    initialize_resilience,
+    shutdown_resilience,
+    # Decorators
+    with_bulkhead,
+    with_adaptive_timeout,
+)
+
+# v2.0: Neural Mesh Resilience Integration
+from backend.core.resilience.neural_mesh_resilience import (
+    # Configuration
+    MeshResilienceConfig,
+    # Enums
+    MeshTarget,
+    MeshOperation,
+    # Data Structures
+    MeshCallResult,
+    MeshHealthSnapshot,
+    # Main Class
+    NeuralMeshResilienceBridge,
+    # Global Functions
+    get_mesh_resilience_bridge,
+    initialize_mesh_resilience,
+    shutdown_mesh_resilience,
+    # Decorator
+    with_mesh_resilience,
+)
+
+# v2.0: Supervisor Resilience Integration
+from backend.core.resilience.supervisor_integration import (
+    # Configuration
+    SupervisorResilienceConfig,
+    # Data Structures
+    ResilienceInitializationResult,
+    ResilienceHealthReport,
+    # Main Coordinator
+    SupervisorResilienceCoordinator,
+    # Global Functions
+    get_supervisor_resilience_coordinator,
+    initialize_supervisor_resilience,
+    shutdown_supervisor_resilience,
+    get_supervisor_resilience_status,
+    get_supervisor_resilience_health,
+    # Context Manager
+    SupervisorResilienceContext,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -172,7 +273,7 @@ __all__ = [
     "CausalEvent",
     "CausalEventManager",
     "CausalBarrier",
-    "CausalOrdering",
+    "CausalityRelation",
     # Distributed Deduplication
     "BloomFilter",
     "LRUCache",
@@ -187,8 +288,8 @@ __all__ = [
     "ORSet",
     "LWWMap",
     "CRDTStateManager",
-    "get_crdt_manager",
-    "shutdown_crdt_manager",
+    "get_crdt_state_manager",
+    "shutdown_crdt_state_manager",
     # Adaptive Rate Limiter
     "AdaptiveRateLimiter",
     "TierRateLimiter",
@@ -245,4 +346,90 @@ __all__ = [
     "VersionMetricTracker",
     "get_model_version_manager",
     "shutdown_model_version_manager",
+    # =========================================================================
+    # v2.0: UNIFIED RESILIENCE ENGINE
+    # =========================================================================
+    # Configuration
+    "ResilienceConfig",
+    # Enums
+    "BulkheadState",
+    "RequestPriority",
+    "FailureMode",
+    "ServiceHealth",
+    "RoutingStrategy",
+    # Data Structures
+    "BulkheadMetrics",
+    "QueuedRequest",
+    "DeadLetterEntry",
+    "ServiceEndpoint",
+    "AdaptiveTimeoutState",
+    "ChaosExperiment",
+    # Bulkhead Isolation
+    "BulkheadPool",
+    "BulkheadRejectedError",
+    "BulkheadTimeoutError",
+    "BulkheadManager",
+    # Priority Queue
+    "UnifiedBackpressureSignal",
+    "UnifiedPriorityRequestQueue",
+    # Dead Letter Queue
+    "DeadLetterQueue",
+    # Health-Based Routing
+    "HealthBasedRouter",
+    # Automatic Failover
+    "FailoverOrchestrator",
+    # Chaos Engineering
+    "ChaosController",
+    "ChaosInjectedException",
+    # Adaptive Timeout
+    "AdaptiveTimeoutManager",
+    # Decorrelated Jitter Retry
+    "DecorrelatedJitterRetry",
+    "with_retry",
+    # Main Engine
+    "UnifiedResilienceEngine",
+    # Global Functions
+    "get_resilience_engine",
+    "initialize_resilience",
+    "shutdown_resilience",
+    # Decorators
+    "with_bulkhead",
+    "with_adaptive_timeout",
+    # =========================================================================
+    # v2.0: NEURAL MESH RESILIENCE INTEGRATION
+    # =========================================================================
+    # Configuration
+    "MeshResilienceConfig",
+    # Enums
+    "MeshTarget",
+    "MeshOperation",
+    # Data Structures
+    "MeshCallResult",
+    "MeshHealthSnapshot",
+    # Main Class
+    "NeuralMeshResilienceBridge",
+    # Global Functions
+    "get_mesh_resilience_bridge",
+    "initialize_mesh_resilience",
+    "shutdown_mesh_resilience",
+    # Decorator
+    "with_mesh_resilience",
+    # =========================================================================
+    # v2.0: SUPERVISOR RESILIENCE INTEGRATION
+    # =========================================================================
+    # Configuration
+    "SupervisorResilienceConfig",
+    # Data Structures
+    "ResilienceInitializationResult",
+    "ResilienceHealthReport",
+    # Main Coordinator
+    "SupervisorResilienceCoordinator",
+    # Global Functions
+    "get_supervisor_resilience_coordinator",
+    "initialize_supervisor_resilience",
+    "shutdown_supervisor_resilience",
+    "get_supervisor_resilience_status",
+    "get_supervisor_resilience_health",
+    # Context Manager
+    "SupervisorResilienceContext",
 ]
