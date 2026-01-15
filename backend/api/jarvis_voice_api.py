@@ -1881,6 +1881,111 @@ class JARVISVoiceAPI:
 
             is_surveillance = (has_monitoring and has_surveillance_structure) or (has_monitoring and has_multi_target)
 
+            # =====================================================================
+            # 🐍 OUROBOROS SELF-IMPROVEMENT COMMAND DETECTION (Trinity v2.0)
+            # =====================================================================
+            # Detect: "improve [file]", "fix [file]", "enhance [file]", "refactor [file]"
+            # Routes to native_integration.execute_self_improvement()
+            # =====================================================================
+            improvement_keywords = ["improve", "fix", "enhance", "optimize", "refactor", "debug"]
+            file_pattern = r'(?:improve|fix|enhance|optimize|refactor|debug)\s+(?:the\s+)?(?:file\s+)?([^\s]+\.py)'
+            file_match = re.search(file_pattern, cmd_lower, re.IGNORECASE)
+
+            has_improvement_keyword = any(k in cmd_lower for k in improvement_keywords)
+            has_file_target = file_match is not None or ".py" in cmd_lower
+
+            if has_improvement_keyword and has_file_target:
+                logger.info(f"[JARVIS API] 🐍 SELF-IMPROVEMENT DETECTED: '{command.text}'")
+
+                try:
+                    from backend.core.ouroboros.native_integration import (
+                        execute_self_improvement,
+                        get_native_self_improvement,
+                    )
+
+                    # Extract file path and goal
+                    if file_match:
+                        target_file = file_match.group(1)
+                    else:
+                        # Try to extract any .py file mentioned
+                        py_match = re.search(r'([^\s]+\.py)', cmd_lower)
+                        target_file = py_match.group(1) if py_match else None
+
+                    if target_file:
+                        # Extract the goal (everything after the file or the full command)
+                        goal = command.text
+
+                        logger.info(f"[JARVIS API] 🐍 Starting improvement: {target_file}")
+                        logger.info(f"[JARVIS API] 🐍 Goal: {goal}")
+
+                        # Check if engine is running
+                        engine = get_native_self_improvement()
+                        if not engine._running:
+                            from backend.core.ouroboros.native_integration import initialize_native_self_improvement
+                            await initialize_native_self_improvement()
+
+                        # Execute improvement with progress feedback
+                        result = await execute_self_improvement(
+                            target=target_file,
+                            goal=goal,
+                            max_iterations=5,
+                            dry_run=False,
+                        )
+
+                        if result.success:
+                            response_text = (
+                                f"I've successfully improved {result.target_file}. "
+                                f"It took {result.iterations} iteration(s) and "
+                                f"{result.total_time:.1f} seconds. "
+                                f"The changes have been applied."
+                            )
+                            logger.info(f"[JARVIS API] 🐍 ✅ Improvement success: {result.target_file}")
+                        else:
+                            response_text = (
+                                f"I wasn't able to improve {result.target_file}. "
+                                f"The issue was: {result.error or 'unknown error'}. "
+                                f"The improvement has been queued for manual review."
+                            )
+                            logger.warning(f"[JARVIS API] 🐍 ⚠️ Improvement failed: {result.error}")
+
+                        return {
+                            "response": response_text,
+                            "status": "success" if result.success else "error",
+                            "command_type": "self_improvement",
+                            "success": result.success,
+                            "improvement_result": {
+                                "task_id": result.task_id,
+                                "target_file": result.target_file,
+                                "iterations": result.iterations,
+                                "total_time": result.total_time,
+                                "provider": result.provider_used,
+                            },
+                        }
+                    else:
+                        return {
+                            "response": "I couldn't determine which file to improve. Please specify a file like 'improve main.py' or 'fix utils.py'.",
+                            "status": "error",
+                            "command_type": "self_improvement",
+                            "success": False,
+                        }
+
+                except ImportError as e:
+                    logger.warning(f"[JARVIS API] 🐍 Self-improvement not available: {e}")
+                    return {
+                        "response": "The self-improvement engine is not available. Please ensure Ouroboros is enabled.",
+                        "status": "error",
+                        "command_type": "self_improvement",
+                        "success": False,
+                    }
+                except Exception as e:
+                    logger.error(f"[JARVIS API] 🐍 Self-improvement error: {e}", exc_info=True)
+                    return {
+                        "response": f"I encountered an error during self-improvement: {str(e)}",
+                        "status": "error",
+                        "command_type": "self_improvement",
+                        "success": False,
+                    }
+
             if is_surveillance:
                 logger.info(
                     f"[JARVIS API] 👁️ SURVEILLANCE DETECTED: '{command.text}' | "

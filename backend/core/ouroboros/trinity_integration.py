@@ -459,12 +459,15 @@ class TrinityCodeReviewer:
         if TrinityConfig.USE_CODING_COUNCIL:
             try:
                 from backend.core.coding_council.orchestrator import (
-                    CodingCouncilOrchestrator,
+                    UnifiedCodingCouncil,
                 )
-                # Note: Coding Council orchestrator is typically singleton
+                # Initialize the coding council
+                self._coding_council = UnifiedCodingCouncil()
                 self.logger.info("✅ Coding Council available")
             except ImportError as e:
                 self.logger.warning(f"Coding Council not available: {e}")
+            except Exception as e:
+                self.logger.warning(f"Coding Council init failed: {e}")
 
         # Try to load safety validators
         try:
@@ -472,11 +475,18 @@ class TrinityCodeReviewer:
                 ASTValidator,
                 SecurityScanner,
             )
-            self._ast_validator = ASTValidator()
-            self._security_scanner = SecurityScanner()
+            # Get repo root from environment or default
+            repo_root = Path(os.getenv(
+                "JARVIS_REPO_PATH",
+                str(Path(__file__).parent.parent.parent.parent)
+            ))
+            self._ast_validator = ASTValidator(repo_root)
+            self._security_scanner = SecurityScanner(repo_root)
             self.logger.info("✅ Safety validators loaded")
         except ImportError as e:
             self.logger.warning(f"Safety validators not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"Safety validators init failed: {e}")
 
         self._initialized = True
         return True
@@ -605,10 +615,11 @@ class TrinityRollbackManager:
         self._active_snapshots: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
-    async def initialize(self) -> None:
+    async def initialize(self) -> bool:
         """Initialize rollback manager."""
         self._rollback_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Rollback directory: {self._rollback_dir}")
+        return True
 
     @asynccontextmanager
     async def snapshot(
@@ -739,11 +750,12 @@ class TrinityLearningCache:
         self._lock = asyncio.Lock()
         self._dirty = False
 
-    async def initialize(self) -> None:
+    async def initialize(self) -> bool:
         """Initialize learning cache."""
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         await self._load_cache()
         self.logger.info(f"Learning cache initialized with {len(self._cache)} entries")
+        return True
 
     async def _load_cache(self) -> None:
         """Load cache from disk."""
@@ -1767,9 +1779,10 @@ class ManualReviewQueue:
         self.logger = logging.getLogger("Ouroboros.ManualReviewQueue")
         self._review_dir = TrinityConfig.get_manual_review_dir()
 
-    async def initialize(self) -> None:
+    async def initialize(self) -> bool:
         """Initialize manual review queue."""
         self._review_dir.mkdir(parents=True, exist_ok=True)
+        return True
 
     async def queue_for_review(
         self,
