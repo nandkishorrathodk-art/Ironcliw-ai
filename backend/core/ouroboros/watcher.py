@@ -312,8 +312,10 @@ class IntelligentCommandResolver:
         Async wrapper for finding executables.
 
         Uses thread pool to avoid blocking the event loop during file I/O.
+        Note: Uses get_running_loop() which is the modern pattern (Python 3.7+)
+        and avoids issues with closed event loops.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._find_executable_sync, command)
 
     async def find_any_executable(self, commands: List[str]) -> Optional[Tuple[str, str]]:
@@ -860,30 +862,125 @@ class JsonRpcClient:
             return False
 
     async def stop(self) -> None:
-        """Stop the LSP server process."""
+        """
+        Stop the LSP server process with proper cleanup.
+
+        This method ensures all subprocess transports, streams, and tasks
+        are properly cleaned up BEFORE the event loop closes, preventing
+        "RuntimeError: Event loop is closed" from __del__ garbage collection.
+
+        The root cause of the event loop closed error in Python 3.9:
+        - asyncio.create_subprocess_exec() creates a Process with 3 pipe transports
+          (stdin, stdout, stderr) managed by a BaseSubprocessTransport
+        - These transports have __del__ methods that call loop.call_soon()
+        - If garbage collection runs after asyncio.run() closes the loop,
+          these __del__ methods fail with "Event loop is closed"
+
+        Solution: Explicitly close ALL transports and force GC while loop is running.
+
+        Cleanup order is critical:
+        1. Stop the running flag (prevents new operations)
+        2. Cancel the reader task (stops async reads)
+        3. Close stdin (writer) stream
+        4. Terminate/kill the process
+        5. Drain and close stderr
+        6. Close the subprocess transport explicitly
+        7. Cancel pending futures
+        8. Clear all references
+        9. Force garbage collection
+        """
+        import gc
+
         self._running = False
 
+        # Step 1: Cancel the reader task first
         if self._reader_task:
             self._reader_task.cancel()
             try:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+            except Exception:
+                pass  # Task may already be done
 
-        if self._process:
+        # Step 2: Close the writer (stdin) stream
+        if self._writer:
             try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                self._process.kill()
+                self._writer.close()
+                if hasattr(self._writer, 'wait_closed'):
+                    try:
+                        await asyncio.wait_for(self._writer.wait_closed(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        pass
             except Exception:
                 pass
 
-        # Cancel pending requests
+        # Step 3: Terminate the process and handle all pipes
+        process = self._process
+        if process:
+            try:
+                # Terminate if still running
+                if process.returncode is None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        try:
+                            await asyncio.wait_for(process.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            pass
+            except ProcessLookupError:
+                pass
+            except Exception:
+                pass
+
+            # Step 4: Drain stderr to release its transport
+            # This prevents the stderr pipe transport from being orphaned
+            if process.stderr:
+                try:
+                    # Read any remaining stderr data (non-blocking drain)
+                    await asyncio.wait_for(process.stderr.read(), timeout=0.5)
+                except (asyncio.TimeoutError, Exception):
+                    pass
+
+            # Step 5: Close the subprocess transport explicitly
+            # This is the KEY FIX for Python 3.9 - the subprocess transport
+            # (_transport attribute) holds references to pipe transports that
+            # will otherwise be garbage collected after the loop closes
+            if hasattr(process, '_transport') and process._transport:
+                try:
+                    process._transport.close()
+                except Exception:
+                    pass
+
+            # Also close individual pipe transports if accessible
+            for pipe_attr in ['stdin', 'stdout', 'stderr']:
+                pipe = getattr(process, pipe_attr, None)
+                if pipe:
+                    try:
+                        # Get the underlying transport if it exists
+                        transport = getattr(pipe, '_transport', None)
+                        if transport and hasattr(transport, 'close'):
+                            transport.close()
+                    except Exception:
+                        pass
+
+        # Step 6: Cancel pending requests
         for future in self._pending_requests.values():
             if not future.done():
                 future.cancel()
         self._pending_requests.clear()
+
+        # Step 7: Clear all references to break reference cycles
+        self._reader_task = None
+        self._writer = None
+        self._reader = None
+        self._process = None
+
+        # Step 8: Force garbage collection while event loop is still running
+        # This ensures any __del__ methods run NOW, not after loop.close()
+        gc.collect()
 
         logger.info("LSP server stopped")
 
@@ -1289,7 +1386,7 @@ class SynapticLSPClient:
                 return
 
             logger.debug("Building workspace file index...")
-            start_time = asyncio.get_event_loop().time()
+            start_time = time.monotonic()
 
             # Build index structure: {workspace_name: [files]}
             self._workspace_file_index = {}
@@ -1327,7 +1424,7 @@ class SynapticLSPClient:
                     logger.debug(f"Indexed {len(files)} files in {name}")
 
             self._index_built = True
-            elapsed = asyncio.get_event_loop().time() - start_time
+            elapsed = time.monotonic() - start_time
             total_files = sum(len(f) for f in self._workspace_file_index.values())
             logger.debug(f"Workspace index built: {total_files} files in {elapsed:.2f}s")
 
