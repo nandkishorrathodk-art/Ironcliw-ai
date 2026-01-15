@@ -1030,12 +1030,17 @@ class SynapticLSPClient:
     def __init__(self):
         self._rpc_client = JsonRpcClient()
         self._server_name: Optional[str] = None
+        self._server_path: Optional[str] = None
         self._capabilities: Set[str] = set()
         self._initialized = False
         self._workspace_folders: List[Path] = []
         self._open_documents: Dict[str, int] = {}  # uri -> version
         self._diagnostics_cache: Dict[str, List[Diagnostic]] = {}
         self._lock = asyncio.Lock()
+
+        # v2.0: Use intelligent server manager
+        self._server_manager = get_server_manager()
+        self._command_resolver = get_command_resolver()
 
         # Trinity workspace configuration
         self._trinity_workspaces = {
@@ -1044,11 +1049,18 @@ class SynapticLSPClient:
             "reactor": WatcherConfig.REACTOR_CORE_PATH,
         }
 
+        # Reconnection state
+        self._reconnect_attempts = 0
+        self._last_reconnect_time = 0.0
+
     async def initialize(self, workspace_folders: Optional[List[Path]] = None) -> bool:
         """
         Initialize the LSP client by starting a language server.
 
-        Tries servers in order of preference until one works.
+        v2.0 Enhancement:
+        - Uses IntelligentCommandResolver to find executables in ALL locations
+        - Auto-installs LSP servers if none are found
+        - Supports cross-platform path discovery
         """
         if workspace_folders:
             self._workspace_folders = workspace_folders
@@ -1063,27 +1075,58 @@ class SynapticLSPClient:
             logger.error("No workspace folders found")
             return False
 
-        # Try each LSP server
-        for server_config in WatcherConfig.LSP_SERVERS:
-            server_name = server_config["name"]
-            command = server_config["command"]
+        logger.info(f"Initializing Watcher with {len(self._workspace_folders)} workspace(s)")
 
-            # Check if command exists
-            if not self._is_command_available(command[0]):
-                logger.debug(f"LSP server '{server_name}' not installed")
-                continue
+        # v2.0: Use LSPServerManager for intelligent discovery and auto-installation
+        server_info = await self._server_manager.ensure_server_available()
 
-            logger.info(f"Attempting to start LSP server: {server_name}")
+        if server_info is None:
+            logger.error(
+                "No LSP server available and auto-installation failed. "
+                "Please install manually: pip install pyright"
+            )
+            return False
 
-            if await self._start_server(server_name, command, server_config["capabilities"]):
+        server_name, server_path, capabilities_info = server_info
+
+        # Build the command to start the server
+        command = self._server_manager.get_server_command(server_name, server_path)
+
+        logger.info(f"Starting LSP server: {server_name} ({server_path})")
+
+        if await self._start_server(server_name, command, capabilities_info["capabilities"]):
+            self._server_path = server_path
+            return True
+
+        # If first attempt failed, try with full path
+        if server_path not in command[0]:
+            command[0] = server_path
+            logger.info(f"Retrying with full path: {command}")
+            if await self._start_server(server_name, command, capabilities_info["capabilities"]):
+                self._server_path = server_path
                 return True
 
-        logger.error("No LSP server available. Install one with: pip install pyright")
+        logger.error(f"Failed to start LSP server {server_name}")
         return False
 
+    async def _is_command_available_async(self, command: str) -> Optional[str]:
+        """
+        Check if a command is available using intelligent resolution.
+
+        v2.0: Uses IntelligentCommandResolver to search all possible locations.
+
+        Returns:
+            Full path to executable if found, None otherwise
+        """
+        return await self._command_resolver.find_executable(command)
+
     def _is_command_available(self, command: str) -> bool:
-        """Check if a command is available in PATH."""
-        return shutil.which(command) is not None
+        """
+        Synchronous check if a command is available.
+
+        v2.0: Uses IntelligentCommandResolver for comprehensive search.
+        """
+        return self._command_resolver._find_executable_sync(command) is not None
 
     async def _start_server(
         self,
@@ -1724,15 +1767,26 @@ class SynapticLSPClient:
         return Path(uri)
 
     def get_status(self) -> Dict[str, Any]:
-        """Get Watcher status."""
-        return {
+        """Get Watcher status with v2.0 resolver information."""
+        status = {
             "initialized": self._initialized,
             "server": self._server_name,
+            "server_path": self._server_path,
             "capabilities": list(self._capabilities),
             "workspaces": [str(w) for w in self._workspace_folders],
             "open_documents": len(self._open_documents),
             "connected": self._rpc_client.is_connected,
+            "version": "2.0.0",
         }
+
+        # Add resolver information for debugging
+        if self._command_resolver:
+            status["resolver"] = {
+                "discovered_paths": len(self._command_resolver.get_discovered_paths()),
+                "cached_commands": len(self._command_resolver._cache),
+            }
+
+        return status
 
 
 # =============================================================================

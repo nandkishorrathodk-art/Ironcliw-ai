@@ -13680,6 +13680,49 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             print(f"  {TerminalUI.CYAN}    ├─ AST Analysis: Code context understanding{TerminalUI.RESET}")
             print(f"  {TerminalUI.CYAN}    └─ Rollback Protection: Git-based safety{TerminalUI.RESET}")
 
+            # v108.0: Display "God Mode" Status (Oracle + Watcher + Simulator)
+            god_mode = status.get("god_mode", {})
+            if god_mode:
+                print(f"\n  {TerminalUI.BOLD}{TerminalUI.MAGENTA}=== GOD MODE STATUS ==={TerminalUI.RESET}")
+
+                # The Oracle - GraphRAG
+                if god_mode.get("oracle_enabled"):
+                    oracle_info = god_mode.get("oracle", {})
+                    print(f"  {TerminalUI.GREEN}✅ The Oracle (GraphRAG):{TerminalUI.RESET}")
+                    print(f"     ├─ Nodes: {oracle_info.get('total_nodes', 0)}")
+                    print(f"     ├─ Edges: {oracle_info.get('total_edges', 0)}")
+                    print(f"     └─ Files indexed: {oracle_info.get('files_indexed', 0)}")
+                    self.logger.info(f"[v108.0] ✅ Oracle: {oracle_info.get('total_nodes', 0)} nodes, {oracle_info.get('total_edges', 0)} edges")
+                else:
+                    print(f"  {TerminalUI.YELLOW}⚠️ The Oracle: Disabled{TerminalUI.RESET}")
+
+                # The Watcher - LSP
+                if god_mode.get("watcher_enabled"):
+                    watcher_info = god_mode.get("watcher", {})
+                    print(f"  {TerminalUI.GREEN}✅ The Watcher (LSP v{watcher_info.get('version', '2.0')}):{TerminalUI.RESET}")
+                    print(f"     ├─ Server: {watcher_info.get('server', 'unknown')}")
+                    print(f"     ├─ Path: {watcher_info.get('server_path', 'N/A')}")
+                    print(f"     ├─ Connected: {watcher_info.get('connected', False)}")
+                    caps = watcher_info.get('capabilities', [])
+                    print(f"     └─ Capabilities: {', '.join(caps[:4])}{'...' if len(caps) > 4 else ''}")
+                    self.logger.info(f"[v108.0] ✅ Watcher: {watcher_info.get('server', 'unknown')} @ {watcher_info.get('server_path', 'N/A')}")
+                else:
+                    print(f"  {TerminalUI.YELLOW}⚠️ The Watcher: Disabled{TerminalUI.RESET}")
+
+                # The Simulator - Runtime Introspection
+                if god_mode.get("simulator_enabled"):
+                    simulator_info = god_mode.get("simulator", {})
+                    sim_config = simulator_info.get("config", {})
+                    print(f"  {TerminalUI.GREEN}✅ The Simulator (Runtime Introspection):{TerminalUI.RESET}")
+                    print(f"     ├─ Max execution time: {sim_config.get('max_time', 30)}s")
+                    print(f"     ├─ Max memory: {sim_config.get('max_memory_mb', 512)}MB")
+                    print(f"     └─ Cache size: {simulator_info.get('cache_size', 0)}")
+                    self.logger.info(f"[v108.0] ✅ Simulator: Ready (sandbox execution enabled)")
+                else:
+                    print(f"  {TerminalUI.YELLOW}⚠️ The Simulator: Disabled{TerminalUI.RESET}")
+
+                print(f"  {TerminalUI.BOLD}{TerminalUI.MAGENTA}========================{TerminalUI.RESET}\n")
+
             # v105.0: Initialize Advanced Orchestrator
             try:
                 from backend.core.ouroboros.advanced_orchestrator import get_advanced_orchestrator

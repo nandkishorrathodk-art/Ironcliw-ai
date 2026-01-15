@@ -789,6 +789,7 @@ class OuroborosEngine:
         use_enhanced_integration: bool = True,
         use_oracle: bool = True,
         use_watcher: bool = True,
+        use_simulator: bool = True,
     ):
         self.logger = logging.getLogger("Ouroboros.Engine")
 
@@ -805,6 +806,11 @@ class OuroborosEngine:
         self._use_watcher = use_watcher
         self._watcher = None
         self._watcher_integration = None
+
+        # The Simulator - Runtime introspection (lazy loaded)
+        self._use_simulator = use_simulator
+        self._simulator = None
+        self._simulator_integration = None
 
         # Legacy components (fallback if integration unavailable)
         self._llm_client = JarvisPrimeClient()
@@ -829,6 +835,8 @@ class OuroborosEngine:
             "blast_radius_warnings": 0,
             "watcher_validations": 0,
             "watcher_errors_prevented": 0,
+            "simulator_validations": 0,
+            "simulator_predictions": 0,
         }
 
     async def initialize(self) -> bool:
@@ -876,6 +884,24 @@ class OuroborosEngine:
                 self.logger.warning(f"Watcher not available: {e}, proceeding without LSP verification")
                 self._watcher = None
                 self._watcher_integration = None
+
+        # Initialize The Simulator if enabled
+        if self._use_simulator:
+            try:
+                from backend.core.ouroboros.simulator import get_simulator, OuroborosSimulatorIntegration
+                self._simulator = get_simulator()
+                simulator_ok = await self._simulator.initialize()
+                if simulator_ok:
+                    self._simulator_integration = OuroborosSimulatorIntegration(self._simulator)
+                    self.logger.info("The Simulator initialized - runtime introspection enabled")
+                else:
+                    self.logger.warning("Simulator initialization failed")
+                    self._simulator = None
+                    self._simulator_integration = None
+            except Exception as e:
+                self.logger.warning(f"Simulator not available: {e}, proceeding without runtime introspection")
+                self._simulator = None
+                self._simulator_integration = None
 
         # Initialize enhanced integration layer if enabled
         if self._use_enhanced_integration:
@@ -933,6 +959,16 @@ class OuroborosEngine:
                 self.logger.warning(f"Watcher shutdown error: {e}")
             self._watcher = None
             self._watcher_integration = None
+
+        # Shutdown The Simulator if active
+        if self._simulator:
+            try:
+                from backend.core.ouroboros.simulator import shutdown_simulator
+                await shutdown_simulator()
+            except Exception as e:
+                self.logger.warning(f"Simulator shutdown error: {e}")
+            self._simulator = None
+            self._simulator_integration = None
 
         # Shutdown enhanced integration if active
         if self._integration:
@@ -1691,12 +1727,31 @@ class OuroborosEngine:
                 watcher_status = self._watcher.get_status()
                 status["god_mode"]["watcher"] = {
                     "server": watcher_status.get("server"),
+                    "server_path": watcher_status.get("server_path"),
                     "capabilities": watcher_status.get("capabilities", []),
                     "connected": watcher_status.get("connected", False),
                     "open_documents": watcher_status.get("open_documents", 0),
+                    "version": watcher_status.get("version", "1.0.0"),
                 }
             except Exception:
                 pass
+
+        # Add Simulator-specific status if available
+        if self._simulator:
+            try:
+                simulator_status = self._simulator.get_status()
+                status["god_mode"]["simulator_enabled"] = True
+                status["god_mode"]["simulator_validations"] = self._metrics.get("simulator_validations", 0)
+                status["god_mode"]["simulator_predictions"] = self._metrics.get("simulator_predictions", 0)
+                status["god_mode"]["simulator"] = {
+                    "metrics": simulator_status.get("metrics", {}),
+                    "cache_size": simulator_status.get("cache_size", 0),
+                    "config": simulator_status.get("config", {}),
+                }
+            except Exception:
+                pass
+        else:
+            status["god_mode"]["simulator_enabled"] = False
 
         return status
 
