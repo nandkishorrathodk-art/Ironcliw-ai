@@ -133,6 +133,21 @@ from backend.core.ouroboros.cross_repo import (
     shutdown_cross_repo,
 )
 
+from backend.core.ouroboros.brain_orchestrator import (
+    BrainOrchestrator,
+    BrainConfig,
+    ProviderManager,
+    LoadBalancer,
+    ProviderType,
+    ProviderState,
+    LoadBalancerStrategy,
+    ProviderInfo,
+    HealthCheckResult,
+    get_brain_orchestrator,
+    ignite_brains,
+    shutdown_brains,
+)
+
 __all__ = [
     # Core Engine
     "OuroborosEngine",
@@ -194,4 +209,17 @@ __all__ = [
     "EventType",
     "get_cross_repo_orchestrator",
     "shutdown_cross_repo",
+    # Brain Orchestrator
+    "BrainOrchestrator",
+    "BrainConfig",
+    "ProviderManager",
+    "LoadBalancer",
+    "ProviderType",
+    "ProviderState",
+    "LoadBalancerStrategy",
+    "ProviderInfo",
+    "HealthCheckResult",
+    "get_brain_orchestrator",
+    "ignite_brains",
+    "shutdown_brains",
 ]

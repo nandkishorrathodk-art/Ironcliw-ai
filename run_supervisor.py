@@ -3894,6 +3894,21 @@ class SupervisorBootstrapper:
         self._trinity_state_manager = None
         self._trinity_state_manager_enabled = os.getenv("TRINITY_STATE_MANAGER_ENABLED", "true").lower() == "true"
 
+        # v106.0: Trinity Observability System (Distributed Monitoring)
+        # Enterprise-grade observability with ALL 10 gaps addressed:
+        # - Gap 1: Distributed Tracing (W3C Trace Context)
+        # - Gap 2: Cross-Repo Metrics (Prometheus-compatible)
+        # - Gap 3: Centralized Logging (structured JSON)
+        # - Gap 4: Performance Profiling (flame graphs)
+        # - Gap 5: Error Aggregation (Sentry-style)
+        # - Gap 6: Health Dashboard (unified view)
+        # - Gap 7: Alert System (deduplication)
+        # - Gap 8: Dependency Graph (Mermaid/GraphViz)
+        # - Gap 9: Request Flow (bottleneck detection)
+        # - Gap 10: Resource Monitoring (CPU/Memory/Disk/Network)
+        self._trinity_observability = None
+        self._trinity_observability_enabled = os.getenv("TRINITY_OBSERVABILITY_ENABLED", "true").lower() == "true"
+
         # v102.0: Reactor Core Bridge (Training Pipeline Integration)
         # - MODEL_READY event publishing from Reactor Core
         # - Experience batch receiving and validation
@@ -3923,6 +3938,7 @@ class SupervisorBootstrapper:
         self._ouroboros_auto_improve = os.getenv("OUROBOROS_AUTO_IMPROVE", "false").lower() == "true"
         self._ouroboros_advanced = None  # v105.0: Advanced Orchestrator
         self._ouroboros_cross_repo = None  # v105.0: Cross-Repo Integration
+        self._brain_orchestrator = None  # v106.0: LLM Infrastructure Manager
 
         # v85.0: Unified State Coordination - Atomic locks with process cookies
         # - Prevents race conditions between run_supervisor.py and start_system.py
@@ -8006,6 +8022,21 @@ class SupervisorBootstrapper:
                 self.logger.warning("⚠️ Cross-Repo Integration shutdown timed out")
             except Exception as e:
                 self.logger.warning(f"⚠️ Cross-Repo Integration cleanup error: {e}")
+
+        # v106.0: Shutdown Brain Orchestrator (LLM Infrastructure)
+        if self._brain_orchestrator is not None:
+            try:
+                from backend.core.ouroboros.brain_orchestrator import shutdown_brains
+                await asyncio.wait_for(
+                    shutdown_brains(),
+                    timeout=10.0
+                )
+                self._brain_orchestrator = None
+                self.logger.info("✅ Brain Orchestrator shutdown complete")
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ Brain Orchestrator shutdown timed out")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Brain Orchestrator cleanup error: {e}")
 
         # v77.0: Shutdown Coding Council
         try:
@@ -12443,6 +12474,15 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             await self._initialize_trinity_state_manager()
 
         # =====================================================================
+        # PHASE 12.7: Initialize Trinity Observability v4.0 (v106.0) - CRITICAL
+        # Enterprise-grade observability with ALL 10 gaps addressed:
+        # Distributed Tracing, Metrics, Logging, Profiling, Errors,
+        # Health Dashboard, Alerts, Dependency Graph, Request Flow, Resources
+        # =====================================================================
+        if self._trinity_observability_enabled:
+            await self._initialize_trinity_observability()
+
+        # =====================================================================
         # PHASE 13: Initialize Cross-Repo Neural Mesh Bridge (v101.0)
         # Registers JARVIS Prime and Reactor Core as Neural Mesh agents
         # =====================================================================
@@ -12808,6 +12848,93 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             import traceback
             self.logger.debug(f"[v105.0] Traceback: {traceback.format_exc()}")
 
+    async def _initialize_trinity_observability(self) -> None:
+        """
+        v106.0: Initialize Trinity Observability System v4.0.
+
+        Provides enterprise-grade observability with ALL 10 gaps addressed:
+        1. Distributed Tracing (W3C Trace Context propagation)
+        2. Cross-Repo Metrics (Prometheus-compatible)
+        3. Centralized Logging (structured JSON)
+        4. Performance Profiling (flame graphs)
+        5. Error Aggregation (Sentry-style)
+        6. Health Dashboard (unified view)
+        7. Alert System (deduplication)
+        8. Dependency Graph (Mermaid/GraphViz)
+        9. Request Flow (bottleneck detection)
+        10. Resource Monitoring (CPU/Memory/Disk/Network)
+
+        Architecture:
+            ┌──────────────────────────────────────────────────────────────────┐
+            │                  Trinity Observability v4.0                       │
+            ├──────────────────────────────────────────────────────────────────┤
+            │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
+            │  │  Tracer     │ │  Metrics    │ │  Logger     │ │  Profiler   │ │
+            │  │  (W3C)      │ │  (Prom)     │ │  (JSON)     │ │  (Flame)    │ │
+            │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
+            │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
+            │  │  Errors     │ │  Health     │ │  Alerts     │ │  Deps       │ │
+            │  │  (Sentry)   │ │  (Dash)     │ │  (Dedup)    │ │  (Graph)    │ │
+            │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
+            │  ┌─────────────┐ ┌─────────────┐                                 │
+            │  │  Flows      │ │  Resources  │                                 │
+            │  │  (Track)    │ │  (Monitor)  │                                 │
+            │  └─────────────┘ └─────────────┘                                 │
+            └──────────────────────────────────────────────────────────────────┘
+        """
+        try:
+            self.logger.info("[v106.0] Initializing Trinity Observability v4.0...")
+            print(f"  {TerminalUI.CYAN}🔭 Initializing Trinity Observability v4.0...{TerminalUI.RESET}")
+
+            from backend.core.trinity_observability import (
+                TrinityObservability,
+                ObservabilityConfig
+            )
+
+            # Create configuration
+            config = ObservabilityConfig(
+                node_id=f"jarvis-{os.getpid()}",
+                service_name="jarvis"
+            )
+
+            # Create and start observability system
+            self._trinity_observability = await TrinityObservability.create(
+                config=config,
+                auto_start=True
+            )
+
+            # Log initial metrics
+            metrics = self._trinity_observability.get_metrics()
+            self.logger.info(f"[v106.0] ✅ Trinity Observability initialized: {metrics}")
+
+            print(f"  {TerminalUI.GREEN}✓ Trinity Observability v4.0: 10 components active{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Distributed Tracing: W3C Trace Context{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Metrics: Prometheus-compatible{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Logging: Centralized JSON{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Profiling: Flame graphs{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Errors: Sentry-style aggregation{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Health: Unified dashboard{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Alerts: Deduplication{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Dependencies: Graph visualization{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}├─ Flows: Request tracking{TerminalUI.RESET}")
+            print(f"    {TerminalUI.CYAN}└─ Resources: CPU/Memory/Disk{TerminalUI.RESET}")
+
+            # Log startup event
+            await self._trinity_observability.log_info(
+                "Trinity Observability v4.0 started",
+                component="supervisor",
+                version="106.0"
+            )
+
+        except ImportError as e:
+            self.logger.warning(f"[v106.0] ⚠️ Trinity Observability import failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Trinity Observability: Not available (import error){TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v106.0] ❌ Trinity Observability initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Trinity Observability: Failed - {e}{TerminalUI.RESET}")
+            import traceback
+            self.logger.debug(f"[v106.0] Traceback: {traceback.format_exc()}")
+
     async def _initialize_cross_repo_neural_mesh(self) -> None:
         """
         v101.0: Initialize Cross-Repo Neural Mesh Bridge.
@@ -13051,6 +13178,36 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         self.logger.info("=" * 60)
 
         print(f"  {TerminalUI.CYAN}🐍 Ouroboros: Initializing autonomous evolution...{TerminalUI.RESET}")
+
+        # v106.0: Start Brain Orchestrator first (LLM Infrastructure)
+        try:
+            from backend.core.ouroboros.brain_orchestrator import (
+                get_brain_orchestrator,
+                ignite_brains,
+            )
+
+            self._brain_orchestrator = get_brain_orchestrator()
+            brains_ready = await ignite_brains()
+
+            if brains_ready:
+                print(f"  {TerminalUI.GREEN}    ├─ Brain Orchestrator: LLM infrastructure ready{TerminalUI.RESET}")
+                self.logger.info("[v106.0] ✅ Brain Orchestrator initialized - LLM infrastructure ready")
+
+                # Log provider status
+                brain_status = self._brain_orchestrator.get_status()
+                for provider_name, provider_info in brain_status.get("providers", {}).items():
+                    state = provider_info.get("state", "unknown")
+                    endpoint = provider_info.get("endpoint", "N/A")
+                    icon = "✅" if state == "healthy" else ("⚠️" if state == "degraded" else "❌")
+                    self.logger.info(f"[v106.0]   {icon} {provider_name}: {state} @ {endpoint}")
+            else:
+                print(f"  {TerminalUI.YELLOW}    ├─ Brain Orchestrator: No LLM providers available{TerminalUI.RESET}")
+                self.logger.warning("[v106.0] ⚠️ No LLM providers available - Ouroboros may be limited")
+
+        except Exception as e:
+            self._brain_orchestrator = None
+            self.logger.warning(f"[v106.0] ⚠️ Brain Orchestrator failed: {e}")
+            print(f"  {TerminalUI.YELLOW}    ├─ Brain Orchestrator: {e}{TerminalUI.RESET}")
 
         try:
             from backend.core.ouroboros.engine import (
@@ -15875,6 +16032,17 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self.logger.debug(f"   Trinity State Manager shutdown error: {e}")
             finally:
                 self._trinity_state_manager = None
+
+        # v106.0: Shutdown Trinity Observability (saves graphs and flushes data)
+        if hasattr(self, '_trinity_observability') and self._trinity_observability is not None:
+            try:
+                self.logger.info("   [v106.0] Stopping Trinity Observability...")
+                await self._trinity_observability.stop()
+                self.logger.info("   ✅ [v106.0] Trinity Observability stopped (data flushed)")
+            except Exception as e:
+                self.logger.debug(f"   Trinity Observability shutdown error: {e}")
+            finally:
+                self._trinity_observability = None
 
         # v100.0: Shutdown AGI Orchestrator first
         if hasattr(self, '_agi_orchestrator') and self._agi_orchestrator is not None:

@@ -821,6 +821,289 @@ class TestTrinityStateManager:
 
 
 # =============================================================================
+# Trinity Observability Tests (v106.0) - 10 Gaps
+# =============================================================================
+
+class TestTrinityObservability:
+    """Tests for Trinity Observability System v4.0."""
+
+    @pytest.mark.asyncio
+    async def test_observability_initialization(self):
+        """Test observability system initialization."""
+        from backend.core.trinity_observability import (
+            TrinityObservability,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(
+            node_id="test-node",
+            service_name="test-service"
+        )
+
+        observability = await TrinityObservability.create(config, auto_start=True)
+        assert observability._running is True
+
+        metrics = observability.get_metrics()
+        assert metrics["running"] is True
+        assert metrics["node_id"] == "test-node"
+        assert metrics["service_name"] == "test-service"
+
+        await observability.stop()
+        assert observability._running is False
+
+    @pytest.mark.asyncio
+    async def test_distributed_tracing(self):
+        """Test W3C Trace Context tracing."""
+        from backend.core.trinity_observability import (
+            DistributedTracer,
+            ObservabilityConfig,
+            SpanContext,
+            SpanKind
+        )
+
+        config = ObservabilityConfig(node_id="test-tracer")
+        tracer = DistributedTracer(config)
+        await tracer.start()
+
+        # Test span creation
+        async with tracer.start_span("test-operation", kind=SpanKind.SERVER) as span:
+            assert span is not None
+            assert span.name == "test-operation"
+            span.set_attribute("test-key", "test-value")
+            span.add_event("test-event")
+
+        # Test context propagation
+        headers = tracer.inject_context({})
+        assert "traceparent" in headers
+
+        await tracer.stop()
+
+    @pytest.mark.asyncio
+    async def test_metrics_collection(self):
+        """Test Prometheus-compatible metrics."""
+        from backend.core.trinity_observability import (
+            MetricsCollector,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(node_id="test-metrics")
+        collector = MetricsCollector(config)
+        await collector.start()
+
+        # Test counter
+        counter = collector.counter("test_counter", "Test counter", ["label"])
+        counter.inc(5.0, label="test")
+
+        # Test gauge
+        gauge = collector.gauge("test_gauge", "Test gauge", ["label"])
+        gauge.set(42.0, label="test")
+
+        # Test histogram
+        histogram = collector.histogram("test_histogram", "Test histogram", ["label"])
+        histogram.observe(0.5, label="test")
+
+        # Get samples
+        samples = collector.get_all_samples()
+        assert len(samples) > 0
+
+        # Test Prometheus format
+        prom_output = collector.to_prometheus_format()
+        assert "test_counter" in prom_output
+
+        await collector.stop()
+
+    @pytest.mark.asyncio
+    async def test_centralized_logging(self):
+        """Test centralized structured logging."""
+        from backend.core.trinity_observability import (
+            CentralizedLogger,
+            ObservabilityConfig,
+            LogLevel
+        )
+
+        config = ObservabilityConfig(node_id="test-logger")
+        logger = CentralizedLogger(config)
+        await logger.start()
+
+        # Log messages
+        await logger.info("Test info message", key="value")
+        await logger.warning("Test warning message")
+        await logger.error("Test error message")
+
+        # Check buffer
+        assert logger._buffer
+
+        await logger.stop()
+
+    @pytest.mark.asyncio
+    async def test_error_aggregation(self):
+        """Test Sentry-style error aggregation."""
+        from backend.core.trinity_observability import (
+            ErrorAggregator,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(node_id="test-errors")
+        aggregator = ErrorAggregator(config)
+        await aggregator.start()
+
+        # Capture an exception
+        try:
+            raise ValueError("Test error")
+        except ValueError as e:
+            fingerprint_id = await aggregator.capture_exception(e)
+            assert fingerprint_id is not None
+
+        # Check error groups
+        groups = await aggregator.get_error_groups()
+        assert len(groups) > 0
+        assert groups[0]["exception_type"] == "ValueError"
+
+        await aggregator.stop()
+
+    @pytest.mark.asyncio
+    async def test_health_dashboard(self):
+        """Test unified health dashboard."""
+        from backend.core.trinity_observability import (
+            HealthDashboard,
+            ObservabilityConfig,
+            HealthStatus
+        )
+
+        config = ObservabilityConfig(node_id="test-health")
+        dashboard = HealthDashboard(config)
+        await dashboard.start()
+
+        # Run health checks
+        health = await dashboard.run_checks()
+        assert health is not None
+        assert health.service == "jarvis"
+        assert health.overall_status in [HealthStatus.HEALTHY, HealthStatus.DEGRADED, HealthStatus.UNHEALTHY]
+
+        # Check default checks are present
+        check_names = [c.name for c in health.checks]
+        assert "memory" in check_names
+        assert "disk" in check_names
+        assert "cpu" in check_names
+
+        await dashboard.stop()
+
+    @pytest.mark.asyncio
+    async def test_alert_system(self):
+        """Test alert system with deduplication."""
+        from backend.core.trinity_observability import (
+            AlertManager,
+            ObservabilityConfig,
+            AlertSeverity,
+            AlertState
+        )
+
+        config = ObservabilityConfig(node_id="test-alerts")
+        manager = AlertManager(config)
+        await manager.start()
+
+        # Fire an alert
+        alert = await manager.fire_alert(
+            name="test-alert",
+            severity=AlertSeverity.WARNING,
+            message="Test alert message"
+        )
+        assert alert is not None
+        assert alert.state == AlertState.FIRING
+
+        # Check active alerts
+        active = await manager.get_active_alerts()
+        assert len(active) == 1
+
+        # Resolve alert
+        resolved = await manager.resolve_alert(alert.alert_id)
+        assert resolved is True
+
+        await manager.stop()
+
+    @pytest.mark.asyncio
+    async def test_dependency_graph(self):
+        """Test dependency graph visualization."""
+        from backend.core.trinity_observability import (
+            DependencyGraph,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(node_id="test-deps")
+        graph = DependencyGraph(config)
+
+        # Add dependencies
+        await graph.record_service_dependency("service-a", "service-b")
+        await graph.record_service_dependency("service-a", "service-c")
+
+        # Check nodes and edges
+        metrics = graph.get_metrics()
+        assert metrics["nodes"] == 3
+        assert metrics["edges"] == 2
+
+        # Test Mermaid export
+        mermaid = await graph.to_mermaid()
+        assert "graph TD" in mermaid
+        assert "service_a" in mermaid
+
+    @pytest.mark.asyncio
+    async def test_request_flow_tracking(self):
+        """Test request flow visualization."""
+        from backend.core.trinity_observability import (
+            RequestFlowTracker,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(node_id="test-flows")
+        tracker = RequestFlowTracker(config)
+
+        # Start a flow
+        flow_id = await tracker.start_flow("test-request")
+        assert flow_id is not None
+
+        # Add steps
+        await tracker.add_step(flow_id, "step-1", service="service-a")
+        await tracker.end_step(flow_id)
+
+        await tracker.add_step(flow_id, "step-2", service="service-b")
+        await tracker.end_step(flow_id)
+
+        # End flow
+        flow = await tracker.end_flow(flow_id)
+        assert flow is not None
+        assert flow.status == "success"
+
+        # Check completed flows
+        completed = await tracker.get_completed_flows()
+        assert len(completed) == 1
+
+    @pytest.mark.asyncio
+    async def test_resource_monitoring(self):
+        """Test resource usage monitoring."""
+        from backend.core.trinity_observability import (
+            ResourceMonitor,
+            ObservabilityConfig
+        )
+
+        config = ObservabilityConfig(node_id="test-resources")
+        monitor = ResourceMonitor(config)
+        await monitor.start()
+
+        # Collect a snapshot
+        snapshot = await monitor.collect_snapshot()
+        assert snapshot is not None
+        assert snapshot.cpu_percent >= 0
+        assert snapshot.memory_percent >= 0
+        assert snapshot.disk_percent >= 0
+
+        # Check history
+        history = await monitor.get_history()
+        assert len(history) > 0
+
+        await monitor.stop()
+
+
+# =============================================================================
 # Run Tests
 # =============================================================================
 
