@@ -148,6 +148,49 @@ from backend.core.ouroboros.brain_orchestrator import (
     shutdown_brains,
 )
 
+from backend.core.ouroboros.native_integration import (
+    NativeSelfImprovement,
+    NativeConfig,
+    SecurityValidator,
+    SecurityError,
+    ThreadSafeMetrics,
+    AtomicCounter,
+    ImprovedCircuitBreaker,
+    ProgressBroadcaster,
+    ImprovementProgress,
+    ImprovementPhase,
+    ImprovementRequest as NativeImprovementRequest,
+    ImprovementResult as NativeImprovementResult,
+    get_native_self_improvement,
+    initialize_native_self_improvement,
+    shutdown_native_self_improvement,
+    execute_self_improvement,
+)
+
+from backend.core.ouroboros.ui_integration import (
+    OuroborosUIController,
+    OuroborosMenuSection,
+    UIActivityState,
+    get_ouroboros_ui_controller,
+    connect_ouroboros_ui,
+    disconnect_ouroboros_ui,
+)
+
+from backend.core.ouroboros.neural_mesh import (
+    NeuralMesh,
+    MeshConfig,
+    MeshMessage,
+    MeshConnection,
+    NodeType,
+    NodeStatus,
+    ConnectionType,
+    MessageType,
+    MessagePriority,
+    get_neural_mesh,
+    initialize_neural_mesh,
+    shutdown_neural_mesh,
+)
+
 __all__ = [
     # Core Engine
     "OuroborosEngine",
@@ -222,4 +265,41 @@ __all__ = [
     "get_brain_orchestrator",
     "ignite_brains",
     "shutdown_brains",
+    # Native Self-Improvement (Motor Function)
+    "NativeSelfImprovement",
+    "NativeConfig",
+    "SecurityValidator",
+    "SecurityError",
+    "ThreadSafeMetrics",
+    "AtomicCounter",
+    "ImprovedCircuitBreaker",
+    "ProgressBroadcaster",
+    "ImprovementProgress",
+    "ImprovementPhase",
+    "NativeImprovementRequest",
+    "NativeImprovementResult",
+    "get_native_self_improvement",
+    "initialize_native_self_improvement",
+    "shutdown_native_self_improvement",
+    "execute_self_improvement",
+    # UI Integration
+    "OuroborosUIController",
+    "OuroborosMenuSection",
+    "UIActivityState",
+    "get_ouroboros_ui_controller",
+    "connect_ouroboros_ui",
+    "disconnect_ouroboros_ui",
+    # Neural Mesh (Cross-Repo Connection)
+    "NeuralMesh",
+    "MeshConfig",
+    "MeshMessage",
+    "MeshConnection",
+    "NodeType",
+    "NodeStatus",
+    "ConnectionType",
+    "MessageType",
+    "MessagePriority",
+    "get_neural_mesh",
+    "initialize_neural_mesh",
+    "shutdown_neural_mesh",
 ]

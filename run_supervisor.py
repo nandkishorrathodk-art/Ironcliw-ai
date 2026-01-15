@@ -3939,6 +3939,9 @@ class SupervisorBootstrapper:
         self._ouroboros_advanced = None  # v105.0: Advanced Orchestrator
         self._ouroboros_cross_repo = None  # v105.0: Cross-Repo Integration
         self._brain_orchestrator = None  # v106.0: LLM Infrastructure Manager
+        self._native_self_improvement = None  # v107.0: Native Self-Improvement (Motor Function)
+        self._neural_mesh = None  # v107.0: Cross-Repo Neural Mesh
+        self._ouroboros_ui_controller = None  # v107.0: UI Integration
 
         # v85.0: Unified State Coordination - Atomic locks with process cookies
         # - Prevents race conditions between run_supervisor.py and start_system.py
@@ -8037,6 +8040,51 @@ class SupervisorBootstrapper:
                 self.logger.warning("⚠️ Brain Orchestrator shutdown timed out")
             except Exception as e:
                 self.logger.warning(f"⚠️ Brain Orchestrator cleanup error: {e}")
+
+        # v107.0: Shutdown UI Integration
+        if self._ouroboros_ui_controller is not None:
+            try:
+                from backend.core.ouroboros.ui_integration import disconnect_ouroboros_ui
+                await asyncio.wait_for(
+                    disconnect_ouroboros_ui(),
+                    timeout=5.0
+                )
+                self._ouroboros_ui_controller = None
+                self.logger.info("✅ Ouroboros UI Integration shutdown complete")
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ UI Integration shutdown timed out")
+            except Exception as e:
+                self.logger.warning(f"⚠️ UI Integration cleanup error: {e}")
+
+        # v107.0: Shutdown Neural Mesh
+        if self._neural_mesh is not None:
+            try:
+                from backend.core.ouroboros.neural_mesh import shutdown_neural_mesh
+                await asyncio.wait_for(
+                    shutdown_neural_mesh(),
+                    timeout=10.0
+                )
+                self._neural_mesh = None
+                self.logger.info("✅ Neural Mesh shutdown complete")
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ Neural Mesh shutdown timed out")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Neural Mesh cleanup error: {e}")
+
+        # v107.0: Shutdown Native Self-Improvement
+        if self._native_self_improvement is not None:
+            try:
+                from backend.core.ouroboros.native_integration import shutdown_native_self_improvement
+                await asyncio.wait_for(
+                    shutdown_native_self_improvement(),
+                    timeout=10.0
+                )
+                self._native_self_improvement = None
+                self.logger.info("✅ Native Self-Improvement shutdown complete")
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ Native Self-Improvement shutdown timed out")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Native Self-Improvement cleanup error: {e}")
 
         # v77.0: Shutdown Coding Council
         try:
@@ -13275,6 +13323,64 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             except Exception as e:
                 self._ouroboros_cross_repo = None
                 self.logger.warning(f"[v105.0] ⚠️ Cross-repo integration unavailable: {e}")
+
+            # v107.0: Initialize Native Self-Improvement (Motor Function)
+            try:
+                from backend.core.ouroboros.native_integration import (
+                    get_native_self_improvement,
+                    initialize_native_self_improvement,
+                )
+                self._native_self_improvement = get_native_self_improvement()
+                await initialize_native_self_improvement()
+                print(f"  {TerminalUI.GREEN}    ├─ Native Self-Improvement: Ready (Motor Function){TerminalUI.RESET}")
+                self.logger.info("[v107.0] ✅ Native Self-Improvement Engine initialized")
+
+                # Log native features
+                native_status = self._native_self_improvement.get_status()
+                self.logger.info(f"[v107.0] Native features:")
+                self.logger.info(f"  - Security validation: Enabled")
+                self.logger.info(f"  - Thread-safe metrics: Active")
+                self.logger.info(f"  - Progress broadcasting: Ready")
+            except Exception as e:
+                self._native_self_improvement = None
+                self.logger.warning(f"[v107.0] ⚠️ Native self-improvement unavailable: {e}")
+
+            # v107.0: Initialize Neural Mesh (Cross-Repo Connection)
+            try:
+                from backend.core.ouroboros.neural_mesh import (
+                    get_neural_mesh,
+                    initialize_neural_mesh,
+                )
+                self._neural_mesh = get_neural_mesh()
+                mesh_connected = await initialize_neural_mesh()
+                if mesh_connected:
+                    print(f"  {TerminalUI.GREEN}    ├─ Neural Mesh: Connected (JARVIS ↔ Prime ↔ Reactor){TerminalUI.RESET}")
+                    self.logger.info("[v107.0] ✅ Neural Mesh connected")
+                else:
+                    print(f"  {TerminalUI.YELLOW}    ├─ Neural Mesh: Standalone mode{TerminalUI.RESET}")
+                    self.logger.warning("[v107.0] ⚠️ Neural Mesh running in standalone mode")
+
+                # Log mesh status
+                mesh_status = self._neural_mesh.get_status()
+                for node, info in mesh_status.get("connections", {}).items():
+                    status_icon = "✅" if info.get("connected") else "❌"
+                    self.logger.info(f"[v107.0]   {status_icon} {node}: {info.get('connection_type', 'N/A')}")
+            except Exception as e:
+                self._neural_mesh = None
+                self.logger.warning(f"[v107.0] ⚠️ Neural mesh unavailable: {e}")
+
+            # v107.0: Initialize UI Integration
+            try:
+                from backend.core.ouroboros.ui_integration import (
+                    get_ouroboros_ui_controller,
+                    connect_ouroboros_ui,
+                )
+                self._ouroboros_ui_controller = await connect_ouroboros_ui()
+                print(f"  {TerminalUI.GREEN}    └─ UI Integration: Ready (Progress Broadcasting){TerminalUI.RESET}")
+                self.logger.info("[v107.0] ✅ Ouroboros UI Integration connected")
+            except Exception as e:
+                self._ouroboros_ui_controller = None
+                self.logger.warning(f"[v107.0] ⚠️ UI integration unavailable: {e}")
 
             # Note about auto-improvement
             if self._ouroboros_auto_improve:
