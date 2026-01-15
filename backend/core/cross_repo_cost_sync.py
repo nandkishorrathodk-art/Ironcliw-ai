@@ -748,6 +748,23 @@ class CrossRepoCostSync:
         """Register callback for cost updates from other repos."""
         self._cost_update_callbacks.add(callback)
 
+    # v2.1: Alias methods for compatibility
+    def on_budget_alert(self, callback: Callable) -> None:
+        """
+        Alias for register_budget_alert_callback.
+
+        v2.1: Added for backward compatibility with supervisor code.
+        """
+        self.register_budget_alert_callback(callback)
+
+    def on_cost_update(self, callback: Callable) -> None:
+        """
+        Alias for register_cost_update_callback.
+
+        v2.1: Added for backward compatibility with supervisor code.
+        """
+        self.register_cost_update_callback(callback)
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get sync metrics."""
         return {

@@ -651,6 +651,35 @@ class TrinityBridge:
             }
         }
 
+    async def get_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive status of the Trinity Bridge.
+
+        v4.1: Added for compatibility with supervisor status checks.
+
+        Returns:
+            Status dictionary with state, uptime, services, and component status.
+        """
+        health = await self.get_health()
+
+        # Calculate healthy service count
+        services = self._service_health
+        healthy_count = sum(1 for h in services.values() if h.healthy)
+        total_count = len(services)
+
+        return {
+            "status": "healthy" if self._state == TrinityState.RUNNING else self._state.value,
+            "state": self._state.value,
+            "uptime_seconds": self.uptime,
+            "healthy_services": healthy_count,
+            "total_services": total_count,
+            "services": health.get("services", {}),
+            "ipc_hub_active": self._ipc_hub is not None,
+            "training_coordinator_active": self._training_coordinator is not None,
+            "process_orchestrator_active": self._process_orchestrator is not None,
+            "health": health,
+        }
+
     # =========================================================================
     # Convenience Methods for Cross-Repo Communication
     # =========================================================================

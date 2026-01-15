@@ -1324,15 +1324,18 @@ class TrinityOrchestrationEngine:
 
         # Component registry
         self._components: Dict[ComponentType, ComponentInfo] = {}
-        self._initialize_components()
 
         # Distributed coordination
         self._consensus = ConsensusProtocol(self.instance_id)
         self._global_vector_clock = VectorClock()
 
-        # Fault tolerance
+        # Fault tolerance - v2.1: Initialize BEFORE _initialize_components()
+        # This fixes AttributeError when _initialize_components tries to create circuit breakers
         self._circuit_breakers: Dict[str, CircuitBreakerState] = {}
         self._backpressure = BackpressureController()
+
+        # Now initialize components (which populates circuit breakers)
+        self._initialize_components()
 
         # Experience pipeline
         self._experience_pipeline = ExperiencePipeline(TrinityConfig.TRINITY_EVENTS_DIR)
