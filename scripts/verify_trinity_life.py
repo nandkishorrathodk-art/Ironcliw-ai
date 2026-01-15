@@ -257,6 +257,12 @@ async def shutdown_all_components() -> None:
         pass
 
     try:
+        from backend.core.trinity_event_bus import shutdown_trinity_event_bus
+        await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=5.0)
+    except Exception:
+        pass
+
+    try:
         from backend.core.ouroboros.brain_orchestrator import shutdown_brains
         await asyncio.wait_for(shutdown_brains(), timeout=5.0)
     except Exception:
@@ -351,8 +357,8 @@ async def probe_nerves() -> ComponentResult:
             from backend.core.trinity_event_bus import get_trinity_event_bus
             bus = await get_trinity_event_bus()
             if bus:
-                bus_status = bus.get_status()
-                event_bus_ok = bus_status.get("running", False)
+                # Check _running attribute directly (bus doesn't have get_status method)
+                event_bus_ok = getattr(bus, '_running', False)
         except Exception as e:
             logger.debug(f"Event bus check failed: {e}")
 

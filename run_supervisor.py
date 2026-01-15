@@ -5344,7 +5344,16 @@ class SupervisorBootstrapper:
             
             self._print_config_summary(supervisor)
             self.perf.end("supervisor_init")
-            
+
+            # ═══════════════════════════════════════════════════════════════════
+            # Phase 3.1: Initialize Enterprise Systems (Resilience + Data Management)
+            # ═══════════════════════════════════════════════════════════════════
+            # Initialize the enterprise-grade resilience and data management systems
+            # that provide fault tolerance, data lifecycle management, and cross-repo
+            # synchronization across the JARVIS Trinity ecosystem.
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_enterprise_systems()
+
             # Phase 3.5: Start Loading Page (BEFORE JARVIS spawns)
             TerminalUI.print_divider()
             print(f"  {TerminalUI.CYAN}🌐 Starting Loading Page Server...{TerminalUI.RESET}")
@@ -5472,6 +5481,9 @@ class SupervisorBootstrapper:
             if self._loading_server_process:
                 await self._graceful_shutdown_loading_server()
 
+            # Shutdown Enterprise Systems (Resilience + Data Management)
+            await self._shutdown_enterprise_systems()
+
             # v10.6: Stop log monitor
             if self._log_monitor:
                 try:
@@ -5493,7 +5505,163 @@ class SupervisorBootstrapper:
             # Log performance summary
             summary = self.perf.get_summary()
             self.logger.info(f"Bootstrap performance: {summary}")
-    
+
+    async def _initialize_enterprise_systems(self) -> None:
+        """
+        Phase 3.1: Initialize enterprise-grade resilience and data management systems.
+
+        This initializes:
+        1. Unified Resilience Engine - Circuit breakers, bulkheads, rate limiting, chaos engineering
+        2. Neural Mesh Resilience - Cross-repo fault tolerance
+        3. Unified Data Management - Training data, versioning, validation, privacy, lineage
+        4. Cross-Repo Data Bridge - Data synchronization across JARVIS Trinity
+
+        All systems are optional and gracefully degrade if initialization fails.
+        """
+        print(f"  {TerminalUI.CYAN}🔧 Initializing Enterprise Systems...{TerminalUI.RESET}")
+        self.perf.start("enterprise_systems")
+
+        enterprise_enabled = os.environ.get(
+            "JARVIS_ENTERPRISE_SYSTEMS", "true"
+        ).lower() in ("1", "true", "yes")
+
+        if not enterprise_enabled:
+            self.logger.info("[Phase 3.1] Enterprise systems disabled via JARVIS_ENTERPRISE_SYSTEMS=false")
+            print(f"  {TerminalUI.YELLOW}⚠️ Enterprise Systems: Disabled{TerminalUI.RESET}")
+            return
+
+        errors: List[str] = []
+
+        # ═══════════════════════════════════════════════════════════════════
+        # 1. Initialize Resilience System
+        # ═══════════════════════════════════════════════════════════════════
+        resilience_enabled = os.environ.get(
+            "JARVIS_RESILIENCE_ENABLED", "true"
+        ).lower() in ("1", "true", "yes")
+
+        if resilience_enabled:
+            try:
+                from backend.core.resilience import (
+                    initialize_supervisor_resilience,
+                    get_supervisor_resilience_status,
+                )
+
+                result = await initialize_supervisor_resilience()
+
+                if result.success:
+                    components = []
+                    if result.engine_initialized:
+                        components.append("engine")
+                    if result.mesh_bridge_initialized:
+                        components.append("mesh_bridge")
+                    self.logger.info(
+                        f"[Phase 3.1] ✅ Resilience System initialized: "
+                        f"{len(components)} components in {result.initialization_time_ms:.0f}ms"
+                    )
+                    print(f"  {TerminalUI.GREEN}✓ Resilience System: {', '.join(components) or 'core'}{TerminalUI.RESET}")
+                else:
+                    self.logger.warning(
+                        f"[Phase 3.1] ⚠️ Resilience System degraded: {result.errors}"
+                    )
+                    print(f"  {TerminalUI.YELLOW}⚠️ Resilience System: Degraded ({len(result.errors)} errors){TerminalUI.RESET}")
+                    errors.extend(result.errors)
+
+            except ImportError as e:
+                self.logger.debug(f"[Phase 3.1] Resilience System not available: {e}")
+                print(f"  {TerminalUI.DIM}○ Resilience System: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                error_msg = f"Resilience System init failed: {e}"
+                self.logger.warning(f"[Phase 3.1] {error_msg}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Resilience System: {e}{TerminalUI.RESET}")
+                errors.append(error_msg)
+        else:
+            self.logger.info("[Phase 3.1] Resilience System disabled")
+            print(f"  {TerminalUI.DIM}○ Resilience System: Disabled{TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # 2. Initialize Data Management System
+        # ═══════════════════════════════════════════════════════════════════
+        data_mgmt_enabled = os.environ.get(
+            "JARVIS_DATA_MANAGEMENT_ENABLED", "true"
+        ).lower() in ("1", "true", "yes")
+
+        if data_mgmt_enabled:
+            try:
+                from backend.core.data_management import (
+                    initialize_data_management_supervisor,
+                    get_data_management_status,
+                )
+
+                result = await initialize_data_management_supervisor()
+
+                if result.success:
+                    self.logger.info(
+                        f"[Phase 3.1] ✅ Data Management initialized: "
+                        f"{len(result.components)} components in {result.duration_seconds:.2f}s"
+                    )
+                    print(f"  {TerminalUI.GREEN}✓ Data Management: {len(result.components)} components{TerminalUI.RESET}")
+                else:
+                    self.logger.warning(
+                        f"[Phase 3.1] ⚠️ Data Management degraded: {result.errors}"
+                    )
+                    print(f"  {TerminalUI.YELLOW}⚠️ Data Management: Degraded ({len(result.errors)} errors){TerminalUI.RESET}")
+                    errors.extend(result.errors)
+
+            except ImportError as e:
+                self.logger.debug(f"[Phase 3.1] Data Management not available: {e}")
+                print(f"  {TerminalUI.DIM}○ Data Management: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                error_msg = f"Data Management init failed: {e}"
+                self.logger.warning(f"[Phase 3.1] {error_msg}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Data Management: {e}{TerminalUI.RESET}")
+                errors.append(error_msg)
+        else:
+            self.logger.info("[Phase 3.1] Data Management disabled")
+            print(f"  {TerminalUI.DIM}○ Data Management: Disabled{TerminalUI.RESET}")
+
+        self.perf.end("enterprise_systems")
+
+        # Report summary
+        if errors:
+            self.logger.warning(f"[Phase 3.1] Enterprise Systems initialized with {len(errors)} error(s)")
+        else:
+            self.logger.info("[Phase 3.1] ✅ All Enterprise Systems initialized successfully")
+            print(f"  {TerminalUI.GREEN}✓ Enterprise Systems: Ready{TerminalUI.RESET}")
+
+    async def _shutdown_enterprise_systems(self) -> None:
+        """
+        Gracefully shutdown enterprise systems (Resilience + Data Management).
+
+        This is called during the finally block to ensure proper cleanup
+        of all enterprise components including:
+        - Resilience engine (circuit breakers, bulkheads, chaos controllers)
+        - Data management (training collectors, data bridge, lineage trackers)
+        - Cross-repo bridges and synchronization
+        """
+        self.logger.info("[Shutdown] Shutting down Enterprise Systems...")
+
+        # Shutdown Resilience System
+        try:
+            from backend.core.resilience import shutdown_supervisor_resilience
+            await shutdown_supervisor_resilience()
+            self.logger.info("[Shutdown] ✅ Resilience System shutdown complete")
+        except ImportError:
+            pass  # Not available
+        except Exception as e:
+            self.logger.debug(f"[Shutdown] Resilience shutdown error (non-fatal): {e}")
+
+        # Shutdown Data Management System
+        try:
+            from backend.core.data_management import shutdown_data_management_supervisor
+            await shutdown_data_management_supervisor()
+            self.logger.info("[Shutdown] ✅ Data Management shutdown complete")
+        except ImportError:
+            pass  # Not available
+        except Exception as e:
+            self.logger.debug(f"[Shutdown] Data Management shutdown error (non-fatal): {e}")
+
+        self.logger.info("[Shutdown] Enterprise Systems shutdown complete")
+
     async def _start_loading_page_ecosystem(self) -> None:
         """
         Start the loading page ecosystem BEFORE JARVIS spawns.
