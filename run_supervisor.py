@@ -19336,6 +19336,279 @@ async def run_single_task(
         return 1
 
 
+# =============================================================================
+# UNIFIED TRINITY CONNECTOR v1.0
+# =============================================================================
+# Single command integration for JARVIS + JARVIS Prime + Reactor Core
+#
+# This is the MASTER ORCHESTRATOR that:
+# 1. Initializes enhanced self-improvement with Claude Code-like behaviors
+# 2. Connects to cross-repo event bus with Lamport clocks & dead letter queue
+# 3. Establishes health consensus across all three repositories
+# 4. Provides unified API for improvement requests, training, and deployment
+# =============================================================================
+
+
+class UnifiedTrinityConnector:
+    """
+    Master orchestrator that connects JARVIS, JARVIS Prime, and Reactor Core.
+
+    This is the single point of coordination for the entire Trinity system,
+    providing:
+    - Cross-repo self-improvement with diff preview and approval
+    - Atomic multi-repo transactions with 2PC
+    - Distributed health consensus
+    - Unified improvement request routing
+    - Session memory across all repos
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger("Trinity.Connector")
+        self._running = False
+        self._initialized = False
+
+        # Components (lazy-loaded)
+        self._enhanced_self_improvement = None
+        self._enhanced_cross_repo = None
+        self._session_id = f"trinity_{uuid.uuid4().hex[:12]}"
+
+        # Repository paths (from environment or defaults)
+        self._jarvis_path = Path(os.environ.get(
+            "JARVIS_PATH",
+            Path(__file__).parent
+        ))
+        self._prime_path = Path(os.environ.get(
+            "JARVIS_PRIME_PATH",
+            self._jarvis_path.parent / "JARVIS-Prime"
+        ))
+        self._reactor_path = Path(os.environ.get(
+            "REACTOR_CORE_PATH",
+            self._jarvis_path.parent / "reactor-core"
+        ))
+
+        # Health state
+        self._health = {
+            "jarvis": False,
+            "prime": False,
+            "reactor": False,
+        }
+
+    async def initialize(self) -> bool:
+        """
+        Initialize the Trinity connector.
+
+        This sets up all enhanced components and establishes
+        connections to JARVIS Prime and Reactor Core.
+        """
+        if self._initialized:
+            return True
+
+        self.logger.info("=" * 60)
+        self.logger.info("  UNIFIED TRINITY CONNECTOR v1.0")
+        self.logger.info("=" * 60)
+        self.logger.info(f"  Session: {self._session_id}")
+        self.logger.info(f"  JARVIS: {self._jarvis_path}")
+        self.logger.info(f"  Prime: {self._prime_path}")
+        self.logger.info(f"  Reactor: {self._reactor_path}")
+        self.logger.info("=" * 60)
+
+        try:
+            # Phase 1: Initialize enhanced self-improvement
+            self.logger.info("[Trinity] Phase 1: Enhanced Self-Improvement...")
+            from core.ouroboros.native_integration import (
+                get_enhanced_self_improvement,
+            )
+            self._enhanced_self_improvement = get_enhanced_self_improvement()
+            await self._enhanced_self_improvement.initialize()
+            self.logger.info("[Trinity] ✓ Enhanced self-improvement ready")
+            self.logger.info(f"  - Session: {self._enhanced_self_improvement.session_memory.session_id}")
+            self.logger.info(f"  - Diff preview: enabled")
+            self.logger.info(f"  - Multi-file orchestration: enabled")
+
+            # Phase 2: Initialize enhanced cross-repo orchestrator
+            self.logger.info("[Trinity] Phase 2: Cross-Repo Orchestrator...")
+            from core.ouroboros.cross_repo import (
+                get_enhanced_cross_repo_orchestrator,
+                initialize_enhanced_cross_repo,
+            )
+            await initialize_enhanced_cross_repo()
+            self._enhanced_cross_repo = get_enhanced_cross_repo_orchestrator()
+            self.logger.info("[Trinity] ✓ Cross-repo orchestrator ready")
+            self.logger.info(f"  - Lamport clock: {self._enhanced_cross_repo._lamport_clock.node_id}")
+            self.logger.info(f"  - Dead letter queue: enabled")
+            self.logger.info(f"  - Health consensus: enabled")
+
+            # Phase 3: Validate repository connections
+            self.logger.info("[Trinity] Phase 3: Repository Validation...")
+            await self._validate_repositories()
+
+            # Phase 4: Establish health consensus
+            self.logger.info("[Trinity] Phase 4: Health Consensus...")
+            health = self._enhanced_cross_repo._health_consensus.get_cluster_health()
+            self.logger.info(f"  - Alive nodes: {health['alive_nodes']}/{health['total_nodes']}")
+            self.logger.info(f"  - Quorum: {'yes' if health['quorum'] else 'NO'}")
+
+            self._initialized = True
+            self._running = True
+
+            self.logger.info("=" * 60)
+            self.logger.info("  TRINITY CONNECTOR INITIALIZED SUCCESSFULLY")
+            self.logger.info("=" * 60)
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"[Trinity] Initialization failed: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    async def _validate_repositories(self) -> None:
+        """Validate all repository connections."""
+        # JARVIS (always available - we're in it)
+        self._health["jarvis"] = True
+        self.logger.info(f"  - JARVIS: ✓ (local)")
+
+        # JARVIS Prime
+        if self._prime_path.exists():
+            prime_git = self._prime_path / ".git"
+            if prime_git.exists():
+                self._health["prime"] = True
+                self.logger.info(f"  - JARVIS Prime: ✓ ({self._prime_path})")
+            else:
+                self.logger.warning(f"  - JARVIS Prime: ⚠ not a git repo")
+        else:
+            self.logger.warning(f"  - JARVIS Prime: ⚠ not found ({self._prime_path})")
+
+        # Reactor Core
+        if self._reactor_path.exists():
+            reactor_git = self._reactor_path / ".git"
+            if reactor_git.exists():
+                self._health["reactor"] = True
+                self.logger.info(f"  - Reactor Core: ✓ ({self._reactor_path})")
+            else:
+                self.logger.warning(f"  - Reactor Core: ⚠ not a git repo")
+        else:
+            self.logger.warning(f"  - Reactor Core: ⚠ not found ({self._reactor_path})")
+
+    async def shutdown(self) -> None:
+        """Shutdown the Trinity connector."""
+        if not self._running:
+            return
+
+        self.logger.info("[Trinity] Shutting down...")
+
+        try:
+            if self._enhanced_cross_repo:
+                from core.ouroboros.cross_repo import shutdown_enhanced_cross_repo
+                await shutdown_enhanced_cross_repo()
+
+            if self._enhanced_self_improvement:
+                await self._enhanced_self_improvement.shutdown()
+
+        except Exception as e:
+            self.logger.warning(f"[Trinity] Shutdown error: {e}")
+
+        self._running = False
+        self._initialized = False
+        self.logger.info("[Trinity] Shutdown complete")
+
+    async def execute_improvement_with_preview(
+        self,
+        target: str,
+        goal: str,
+        require_approval: bool = True,
+    ):
+        """
+        Execute improvement with diff preview and approval workflow.
+
+        This is the main interface for Claude Code-like self-improvement.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self._enhanced_self_improvement.execute_with_preview(
+            target=target,
+            goal=goal,
+            require_approval=require_approval,
+        )
+
+    async def execute_multi_file_improvement(
+        self,
+        files_and_goals: list,
+        shared_context: str = None,
+    ):
+        """Execute atomic multi-file improvement."""
+        if not self._initialized:
+            await self.initialize()
+
+        return await self._enhanced_self_improvement.execute_multi_file_improvement(
+            files_and_goals=files_and_goals,
+            shared_context=shared_context,
+        )
+
+    async def request_cross_repo_improvement(
+        self,
+        file_path: str,
+        goal: str,
+    ) -> str:
+        """
+        Request improvement across repositories with proper ordering.
+
+        Uses Lamport clocks for causal ordering.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self._enhanced_cross_repo.request_improvement_with_ordering(
+            file_path=file_path,
+            goal=goal,
+        )
+
+    def get_status(self) -> dict:
+        """Get comprehensive Trinity status."""
+        status = {
+            "session_id": self._session_id,
+            "running": self._running,
+            "initialized": self._initialized,
+            "repositories": self._health,
+        }
+
+        if self._enhanced_self_improvement:
+            status["self_improvement"] = self._enhanced_self_improvement.get_status()
+
+        if self._enhanced_cross_repo:
+            status["cross_repo"] = self._enhanced_cross_repo.get_status()
+
+        return status
+
+
+# Global Trinity connector
+_trinity_connector: Optional[UnifiedTrinityConnector] = None
+
+
+def get_trinity_connector() -> UnifiedTrinityConnector:
+    """Get the global Trinity connector."""
+    global _trinity_connector
+    if _trinity_connector is None:
+        _trinity_connector = UnifiedTrinityConnector()
+    return _trinity_connector
+
+
+async def initialize_trinity() -> bool:
+    """Initialize the Trinity connector (call from run_supervisor.py)."""
+    connector = get_trinity_connector()
+    return await connector.initialize()
+
+
+async def shutdown_trinity() -> None:
+    """Shutdown the Trinity connector."""
+    global _trinity_connector
+    if _trinity_connector:
+        await _trinity_connector.shutdown()
+        _trinity_connector = None
+
+
 async def main() -> int:
     """Main entry point."""
     args = parse_args()

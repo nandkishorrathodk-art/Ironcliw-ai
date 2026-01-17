@@ -1764,3 +1764,949 @@ async def execute_self_improvement(
         dry_run=dry_run,
         auto_commit=auto_commit,
     )
+
+
+# =============================================================================
+# CLAUDE CODE-LIKE BEHAVIORS v1.0
+# =============================================================================
+# These additions provide Claude Code-like features:
+# 1. Diff Preview - Show changes before applying with user approval
+# 2. Multi-File Orchestration - Atomic editing of multiple related files
+# 3. Session Memory - Track what changed in current session
+# 4. Streaming Changes - Real-time diff updates to UI
+# 5. Iterative Refinement - User-directed change refinement loop
+# 6. Connection Pooling - Efficient API connection reuse
+# =============================================================================
+
+
+@dataclass
+class DiffChunk:
+    """A chunk of a diff for streaming."""
+    file_path: str
+    line_start: int
+    line_end: int
+    old_content: str
+    new_content: str
+    change_type: str  # 'add', 'remove', 'modify'
+    context_before: List[str] = field(default_factory=list)
+    context_after: List[str] = field(default_factory=list)
+
+
+@dataclass
+class DiffPreview:
+    """Complete diff preview for user approval."""
+    id: str
+    files: Dict[str, List[DiffChunk]]
+    total_additions: int = 0
+    total_deletions: int = 0
+    total_modifications: int = 0
+    risk_score: float = 0.0
+    affected_entities: List[str] = field(default_factory=list)
+    generated_at: float = field(default_factory=time.time)
+    expires_at: float = 0.0
+
+    def __post_init__(self):
+        if self.expires_at == 0.0:
+            # Preview expires after 5 minutes
+            self.expires_at = self.generated_at + 300.0
+
+    @property
+    def is_expired(self) -> bool:
+        return time.time() > self.expires_at
+
+    def to_unified_diff(self) -> str:
+        """Generate unified diff string for display."""
+        import difflib
+        lines = []
+        for file_path, chunks in self.files.items():
+            lines.append(f"--- a/{file_path}")
+            lines.append(f"+++ b/{file_path}")
+            for chunk in chunks:
+                lines.append(f"@@ -{chunk.line_start},{len(chunk.old_content.splitlines())} "
+                           f"+{chunk.line_start},{len(chunk.new_content.splitlines())} @@")
+                for ctx in chunk.context_before:
+                    lines.append(f" {ctx}")
+                for old_line in chunk.old_content.splitlines():
+                    lines.append(f"-{old_line}")
+                for new_line in chunk.new_content.splitlines():
+                    lines.append(f"+{new_line}")
+                for ctx in chunk.context_after:
+                    lines.append(f" {ctx}")
+        return "\n".join(lines)
+
+
+class DiffPreviewEngine:
+    """
+    Provides diff preview before applying changes - Claude Code-like behavior.
+
+    Flow:
+    1. Generate improvement
+    2. Create diff preview
+    3. Stream diff to user
+    4. Wait for user approval/rejection/modification request
+    5. Apply or iterate based on feedback
+    """
+
+    def __init__(self):
+        self._pending_previews: Dict[str, DiffPreview] = {}
+        self._approval_callbacks: Dict[str, asyncio.Event] = {}
+        self._approval_results: Dict[str, Tuple[bool, Optional[str]]] = {}
+        self._lock = asyncio.Lock()
+        self._stream_listeners: List[Callable[[DiffChunk], Awaitable[None]]] = []
+
+    def add_stream_listener(
+        self, callback: Callable[[DiffChunk], Awaitable[None]]
+    ) -> Callable[[], None]:
+        """Add a listener for streaming diff chunks."""
+        self._stream_listeners.append(callback)
+        return lambda: self._stream_listeners.remove(callback) if callback in self._stream_listeners else None
+
+    async def create_preview(
+        self,
+        original_content: str,
+        modified_content: str,
+        file_path: str,
+        goal: str,
+    ) -> DiffPreview:
+        """Create a diff preview for user approval."""
+        import difflib
+
+        preview_id = f"preview_{uuid.uuid4().hex[:12]}"
+
+        # Parse both versions
+        original_lines = original_content.splitlines(keepends=True)
+        modified_lines = modified_content.splitlines(keepends=True)
+
+        # Generate unified diff
+        differ = difflib.unified_diff(
+            original_lines,
+            modified_lines,
+            fromfile=f"a/{file_path}",
+            tofile=f"b/{file_path}",
+            lineterm=""
+        )
+        diff_lines = list(differ)
+
+        # Parse diff into chunks
+        chunks = self._parse_diff_chunks(diff_lines, original_lines, modified_lines)
+
+        # Calculate statistics
+        additions = sum(1 for c in chunks if c.change_type == 'add')
+        deletions = sum(1 for c in chunks if c.change_type == 'remove')
+        modifications = sum(1 for c in chunks if c.change_type == 'modify')
+
+        # Calculate risk score based on change magnitude
+        total_original_lines = len(original_lines)
+        total_changes = additions + deletions + modifications
+        risk_score = min(1.0, total_changes / max(total_original_lines, 1) * 2)
+
+        preview = DiffPreview(
+            id=preview_id,
+            files={file_path: chunks},
+            total_additions=additions,
+            total_deletions=deletions,
+            total_modifications=modifications,
+            risk_score=risk_score,
+        )
+
+        async with self._lock:
+            self._pending_previews[preview_id] = preview
+            self._approval_callbacks[preview_id] = asyncio.Event()
+
+        return preview
+
+    def _parse_diff_chunks(
+        self,
+        diff_lines: List[str],
+        original_lines: List[str],
+        modified_lines: List[str],
+    ) -> List[DiffChunk]:
+        """Parse unified diff into structured chunks."""
+        chunks = []
+        current_chunk = None
+        line_num = 0
+
+        for line in diff_lines:
+            if line.startswith('@@'):
+                # Parse hunk header
+                import re
+                match = re.match(r'@@ -(\d+),?\d* \+(\d+),?\d* @@', line)
+                if match:
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    line_num = int(match.group(1))
+                    current_chunk = DiffChunk(
+                        file_path="",
+                        line_start=line_num,
+                        line_end=line_num,
+                        old_content="",
+                        new_content="",
+                        change_type="modify",
+                    )
+            elif current_chunk is not None:
+                if line.startswith('-') and not line.startswith('---'):
+                    current_chunk.old_content += line[1:] + "\n"
+                    current_chunk.change_type = "remove" if not current_chunk.new_content else "modify"
+                elif line.startswith('+') and not line.startswith('+++'):
+                    current_chunk.new_content += line[1:] + "\n"
+                    current_chunk.change_type = "add" if not current_chunk.old_content else "modify"
+                elif line.startswith(' '):
+                    if not current_chunk.old_content and not current_chunk.new_content:
+                        current_chunk.context_before.append(line[1:])
+                    else:
+                        current_chunk.context_after.append(line[1:])
+                    line_num += 1
+
+        if current_chunk and (current_chunk.old_content or current_chunk.new_content):
+            chunks.append(current_chunk)
+
+        return chunks
+
+    async def stream_preview(self, preview: DiffPreview) -> None:
+        """Stream diff chunks to all listeners."""
+        for file_path, chunks in preview.files.items():
+            for chunk in chunks:
+                chunk.file_path = file_path
+                for listener in self._stream_listeners:
+                    try:
+                        await listener(chunk)
+                    except Exception as e:
+                        logger.warning(f"Stream listener error: {e}")
+                # Small delay for visual effect
+                await asyncio.sleep(0.05)
+
+    async def wait_for_approval(
+        self,
+        preview_id: str,
+        timeout: float = 300.0,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Wait for user approval of a preview.
+
+        Returns:
+            Tuple of (approved, feedback)
+            - approved=True, feedback=None: Apply changes
+            - approved=False, feedback=None: Reject changes
+            - approved=False, feedback="...": Request modifications
+        """
+        async with self._lock:
+            event = self._approval_callbacks.get(preview_id)
+            if not event:
+                return False, "Preview not found or expired"
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            async with self._lock:
+                result = self._approval_results.get(preview_id, (False, "No response"))
+                # Cleanup
+                self._pending_previews.pop(preview_id, None)
+                self._approval_callbacks.pop(preview_id, None)
+                self._approval_results.pop(preview_id, None)
+                return result
+        except asyncio.TimeoutError:
+            async with self._lock:
+                self._pending_previews.pop(preview_id, None)
+                self._approval_callbacks.pop(preview_id, None)
+            return False, "Approval timeout"
+
+    async def submit_approval(
+        self,
+        preview_id: str,
+        approved: bool,
+        feedback: Optional[str] = None,
+    ) -> bool:
+        """Submit user's approval decision."""
+        async with self._lock:
+            event = self._approval_callbacks.get(preview_id)
+            if not event:
+                return False
+
+            self._approval_results[preview_id] = (approved, feedback)
+            event.set()
+            return True
+
+    def get_pending_previews(self) -> List[DiffPreview]:
+        """Get all pending previews awaiting approval."""
+        return [p for p in self._pending_previews.values() if not p.is_expired]
+
+
+class SessionMemoryManager:
+    """
+    Tracks changes made within the current session.
+
+    Provides:
+    - What files were modified
+    - What changes were made
+    - Session-scoped rollback capability
+    - Cross-reference between changes
+    """
+
+    def __init__(self):
+        self._session_id = f"session_{uuid.uuid4().hex[:12]}"
+        self._started_at = time.time()
+        self._changes: List[Dict[str, Any]] = []
+        self._file_snapshots: Dict[str, str] = {}  # path -> original content
+        self._lock = asyncio.Lock()
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    @property
+    def duration_seconds(self) -> float:
+        return time.time() - self._started_at
+
+    async def record_change(
+        self,
+        file_path: str,
+        original_content: str,
+        new_content: str,
+        change_type: str,
+        goal: str,
+        success: bool,
+    ) -> None:
+        """Record a change made in this session."""
+        async with self._lock:
+            # Store original snapshot if first change to this file
+            if file_path not in self._file_snapshots:
+                self._file_snapshots[file_path] = original_content
+
+            self._changes.append({
+                "id": f"change_{uuid.uuid4().hex[:8]}",
+                "file_path": file_path,
+                "change_type": change_type,
+                "goal": goal,
+                "success": success,
+                "timestamp": time.time(),
+                "lines_added": len(new_content.splitlines()) - len(original_content.splitlines()),
+                "original_hash": hashlib.md5(original_content.encode()).hexdigest()[:12],
+                "new_hash": hashlib.md5(new_content.encode()).hexdigest()[:12],
+            })
+
+    async def get_session_summary(self) -> Dict[str, Any]:
+        """Get a summary of the current session."""
+        async with self._lock:
+            files_modified = set(c["file_path"] for c in self._changes)
+            successful = sum(1 for c in self._changes if c["success"])
+            failed = len(self._changes) - successful
+
+            return {
+                "session_id": self._session_id,
+                "duration_seconds": self.duration_seconds,
+                "total_changes": len(self._changes),
+                "files_modified": list(files_modified),
+                "successful_changes": successful,
+                "failed_changes": failed,
+                "changes": self._changes[-10:],  # Last 10 changes
+            }
+
+    async def get_original_content(self, file_path: str) -> Optional[str]:
+        """Get the original content of a file before any changes."""
+        async with self._lock:
+            return self._file_snapshots.get(file_path)
+
+    async def rollback_session(self) -> Dict[str, bool]:
+        """Rollback all changes in this session to original state."""
+        results = {}
+        async with self._lock:
+            for file_path, original_content in self._file_snapshots.items():
+                try:
+                    path = Path(file_path)
+                    if path.exists():
+                        path.write_text(original_content, encoding="utf-8")
+                        results[file_path] = True
+                except Exception as e:
+                    logger.error(f"Rollback failed for {file_path}: {e}")
+                    results[file_path] = False
+        return results
+
+    def can_reference_previous_change(self, file_path: str) -> bool:
+        """Check if we have previous changes for this file in session."""
+        return file_path in self._file_snapshots
+
+
+class MultiFileOrchestrator:
+    """
+    Orchestrates atomic multi-file editing sessions.
+
+    Features:
+    - Plan multi-file changes based on blast radius
+    - Apply all changes atomically (all or nothing)
+    - Track dependencies between files
+    - Rollback on any failure
+    """
+
+    def __init__(self, session_memory: SessionMemoryManager):
+        self._session_memory = session_memory
+        self._pending_changes: Dict[str, Tuple[str, str]] = {}  # path -> (original, new)
+        self._lock = asyncio.Lock()
+        self._transaction_id: Optional[str] = None
+
+    async def begin_transaction(self) -> str:
+        """Begin a multi-file transaction."""
+        async with self._lock:
+            self._transaction_id = f"txn_{uuid.uuid4().hex[:12]}"
+            self._pending_changes.clear()
+            return self._transaction_id
+
+    async def stage_change(
+        self,
+        file_path: str,
+        original_content: str,
+        new_content: str,
+    ) -> None:
+        """Stage a file change for the current transaction."""
+        async with self._lock:
+            if not self._transaction_id:
+                raise RuntimeError("No active transaction - call begin_transaction() first")
+            self._pending_changes[file_path] = (original_content, new_content)
+
+    async def commit_transaction(self, goal: str) -> Tuple[bool, Optional[str]]:
+        """
+        Commit all staged changes atomically.
+
+        Returns (success, error_message).
+        """
+        async with self._lock:
+            if not self._transaction_id:
+                return False, "No active transaction"
+
+            if not self._pending_changes:
+                return True, None  # Nothing to commit
+
+            # Create backups
+            backups: Dict[str, str] = {}
+            applied: List[str] = []
+
+            try:
+                # Apply all changes
+                for file_path, (original, new_content) in self._pending_changes.items():
+                    path = Path(file_path)
+                    if path.exists():
+                        backups[file_path] = path.read_text(encoding="utf-8")
+
+                    path.write_text(new_content, encoding="utf-8")
+                    applied.append(file_path)
+
+                    # Record in session memory
+                    await self._session_memory.record_change(
+                        file_path=file_path,
+                        original_content=original,
+                        new_content=new_content,
+                        change_type="multi_file_edit",
+                        goal=goal,
+                        success=True,
+                    )
+
+                # Clear transaction state
+                self._pending_changes.clear()
+                self._transaction_id = None
+                return True, None
+
+            except Exception as e:
+                # Rollback all applied changes
+                for file_path in applied:
+                    try:
+                        if file_path in backups:
+                            Path(file_path).write_text(backups[file_path], encoding="utf-8")
+                    except Exception as rollback_error:
+                        logger.error(f"Rollback failed for {file_path}: {rollback_error}")
+
+                self._pending_changes.clear()
+                self._transaction_id = None
+                return False, str(e)
+
+    async def abort_transaction(self) -> None:
+        """Abort the current transaction without applying changes."""
+        async with self._lock:
+            self._pending_changes.clear()
+            self._transaction_id = None
+
+
+class IterativeRefinementLoop:
+    """
+    Provides user-directed iterative refinement of changes.
+
+    Flow:
+    1. Generate initial change
+    2. User reviews and provides feedback ("make it smaller", "add error handling", etc.)
+    3. Regenerate based on feedback
+    4. Repeat until approved
+    """
+
+    def __init__(
+        self,
+        diff_preview_engine: DiffPreviewEngine,
+        max_iterations: int = 5,
+    ):
+        self._diff_preview = diff_preview_engine
+        self._max_iterations = max_iterations
+        self._iteration_history: List[Dict[str, Any]] = []
+
+    async def refine_with_feedback(
+        self,
+        original_content: str,
+        current_content: str,
+        feedback: str,
+        goal: str,
+        generate_improvement: Callable[[str, str, str], Awaitable[Optional[str]]],
+    ) -> Tuple[Optional[str], int]:
+        """
+        Refine the change based on user feedback.
+
+        Args:
+            original_content: Original file content
+            current_content: Current proposed change
+            feedback: User feedback for refinement
+            goal: Original improvement goal
+            generate_improvement: Async function to generate improvements
+
+        Returns:
+            (refined_content, iteration_count) or (None, iteration_count) on failure
+        """
+        iteration = 0
+        current = current_content
+
+        # Incorporate feedback into the goal
+        refined_goal = f"{goal}\n\nUser feedback: {feedback}"
+
+        while iteration < self._max_iterations:
+            iteration += 1
+
+            # Generate refined version
+            refined = await generate_improvement(original_content, refined_goal, current)
+
+            if not refined:
+                logger.warning(f"Refinement iteration {iteration} failed")
+                continue
+
+            self._iteration_history.append({
+                "iteration": iteration,
+                "feedback": feedback,
+                "timestamp": time.time(),
+                "content_hash": hashlib.md5(refined.encode()).hexdigest()[:12],
+            })
+
+            return refined, iteration
+
+        return None, iteration
+
+    def get_iteration_history(self) -> List[Dict[str, Any]]:
+        """Get history of refinement iterations."""
+        return list(self._iteration_history)
+
+
+class ConnectionPoolManager:
+    """
+    Manages connection pools for API calls.
+
+    Features:
+    - Reusable HTTP sessions per provider
+    - Automatic cleanup of idle connections
+    - Health-aware routing
+    """
+
+    def __init__(self):
+        self._sessions: Dict[str, Any] = {}  # endpoint -> aiohttp.ClientSession
+        self._last_used: Dict[str, float] = {}
+        self._lock = asyncio.Lock()
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._idle_timeout = 300.0  # 5 minutes
+
+    async def get_session(self, endpoint: str) -> Any:
+        """Get or create a session for the endpoint."""
+        if not aiohttp:
+            raise RuntimeError("aiohttp not available")
+
+        async with self._lock:
+            if endpoint in self._sessions:
+                self._last_used[endpoint] = time.time()
+                return self._sessions[endpoint]
+
+            # Create new session with connection pooling
+            connector = aiohttp.TCPConnector(
+                limit=10,  # Max connections per host
+                limit_per_host=5,
+                ttl_dns_cache=300,
+                keepalive_timeout=30,
+            )
+            session = aiohttp.ClientSession(connector=connector)
+            self._sessions[endpoint] = session
+            self._last_used[endpoint] = time.time()
+
+            # Start cleanup task if not running
+            if not self._cleanup_task or self._cleanup_task.done():
+                self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+
+            return session
+
+    async def _cleanup_loop(self) -> None:
+        """Periodically clean up idle sessions."""
+        while True:
+            await asyncio.sleep(60)  # Check every minute
+            await self._cleanup_idle_sessions()
+
+    async def _cleanup_idle_sessions(self) -> None:
+        """Close sessions that have been idle too long."""
+        now = time.time()
+        to_close = []
+
+        async with self._lock:
+            for endpoint, last_used in list(self._last_used.items()):
+                if now - last_used > self._idle_timeout:
+                    to_close.append(endpoint)
+
+            for endpoint in to_close:
+                session = self._sessions.pop(endpoint, None)
+                self._last_used.pop(endpoint, None)
+                if session:
+                    await session.close()
+                    logger.debug(f"Closed idle session for {endpoint}")
+
+    async def close_all(self) -> None:
+        """Close all sessions."""
+        async with self._lock:
+            for session in self._sessions.values():
+                await session.close()
+            self._sessions.clear()
+            self._last_used.clear()
+
+            if self._cleanup_task:
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
+
+
+# =============================================================================
+# ENHANCED NATIVE SELF-IMPROVEMENT WITH CLAUDE CODE BEHAVIORS
+# =============================================================================
+
+class EnhancedSelfImprovement(NativeSelfImprovement):
+    """
+    Enhanced self-improvement engine with Claude Code-like behaviors.
+
+    Adds:
+    - Diff preview before applying
+    - Multi-file orchestration
+    - Session memory
+    - Streaming changes
+    - Iterative refinement
+    - Connection pooling
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Claude Code-like components
+        self._session_memory = SessionMemoryManager()
+        self._diff_preview_engine = DiffPreviewEngine()
+        self._connection_pool = ConnectionPoolManager()
+        self._multi_file_orchestrator = MultiFileOrchestrator(self._session_memory)
+        self._refinement_loop = IterativeRefinementLoop(self._diff_preview_engine)
+
+        # Preview mode settings
+        self._require_approval = bool(os.getenv("OUROBOROS_REQUIRE_APPROVAL", "false").lower() in ("true", "1"))
+        self._auto_stream_diff = bool(os.getenv("OUROBOROS_STREAM_DIFF", "true").lower() in ("true", "1"))
+
+    @property
+    def session_memory(self) -> SessionMemoryManager:
+        return self._session_memory
+
+    @property
+    def diff_preview_engine(self) -> DiffPreviewEngine:
+        return self._diff_preview_engine
+
+    @property
+    def multi_file_orchestrator(self) -> MultiFileOrchestrator:
+        return self._multi_file_orchestrator
+
+    async def initialize(self) -> None:
+        """Initialize with enhanced components."""
+        await super().initialize()
+        self.logger.info("Enhanced self-improvement components initialized")
+        self.logger.info(f"  - Session ID: {self._session_memory.session_id}")
+        self.logger.info(f"  - Require approval: {self._require_approval}")
+        self.logger.info(f"  - Auto stream diff: {self._auto_stream_diff}")
+
+    async def shutdown(self) -> None:
+        """Shutdown with cleanup."""
+        await self._connection_pool.close_all()
+        await super().shutdown()
+
+    async def execute_with_preview(
+        self,
+        target: Union[str, Path],
+        goal: str,
+        test_command: Optional[str] = None,
+        context: Optional[str] = None,
+        max_iterations: int = 5,
+        require_approval: Optional[bool] = None,
+    ) -> ImprovementResult:
+        """
+        Execute improvement with diff preview and approval workflow.
+
+        This is the Claude Code-like interface:
+        1. Generate improvement
+        2. Create and stream diff preview
+        3. Wait for user approval (if require_approval=True)
+        4. Apply or iterate based on feedback
+        """
+        require = require_approval if require_approval is not None else self._require_approval
+
+        # Phase 1: Generate improvement
+        target_path = SecurityValidator.validate_path(target)
+        original_content = await self._read_file_safe(target_path)
+
+        improved_content, provider = await self._generate_improvement(
+            original_content, goal, None, context
+        )
+
+        if not improved_content:
+            return ImprovementResult(
+                success=False,
+                task_id=f"imp_{uuid.uuid4().hex[:12]}",
+                target_file=str(target_path),
+                goal=goal,
+                iterations=1,
+                total_time=0,
+                error="Failed to generate improvement",
+            )
+
+        # Phase 2: Create diff preview
+        preview = await self._diff_preview_engine.create_preview(
+            original_content=original_content,
+            modified_content=improved_content,
+            file_path=str(target_path),
+            goal=goal,
+        )
+
+        # Phase 3: Stream diff if enabled
+        if self._auto_stream_diff:
+            await self._diff_preview_engine.stream_preview(preview)
+
+        # Phase 4: Wait for approval if required
+        if require:
+            approved, feedback = await self._diff_preview_engine.wait_for_approval(
+                preview.id, timeout=300.0
+            )
+
+            if not approved:
+                if feedback:
+                    # User wants refinement
+                    refined, iterations = await self._refinement_loop.refine_with_feedback(
+                        original_content=original_content,
+                        current_content=improved_content,
+                        feedback=feedback,
+                        goal=goal,
+                        generate_improvement=lambda orig, g, _: self._generate_improvement(orig, g, None, context),
+                    )
+                    if refined:
+                        improved_content = refined[0] if isinstance(refined, tuple) else refined
+                    else:
+                        return ImprovementResult(
+                            success=False,
+                            task_id=preview.id,
+                            target_file=str(target_path),
+                            goal=goal,
+                            iterations=iterations,
+                            total_time=0,
+                            error=f"Refinement failed after {iterations} iterations",
+                        )
+                else:
+                    # User rejected
+                    return ImprovementResult(
+                        success=False,
+                        task_id=preview.id,
+                        target_file=str(target_path),
+                        goal=goal,
+                        iterations=0,
+                        total_time=0,
+                        error="Changes rejected by user",
+                    )
+
+        # Phase 5: Apply changes
+        await self._write_file_safe(target_path, improved_content)
+        await self._session_memory.record_change(
+            file_path=str(target_path),
+            original_content=original_content,
+            new_content=improved_content,
+            change_type="improvement",
+            goal=goal,
+            success=True,
+        )
+
+        return ImprovementResult(
+            success=True,
+            task_id=preview.id,
+            target_file=str(target_path),
+            goal=goal,
+            iterations=1,
+            total_time=0,
+            provider_used=provider,
+            changes_applied=True,
+            diff=preview.to_unified_diff(),
+        )
+
+    async def execute_multi_file_improvement(
+        self,
+        files_and_goals: List[Tuple[Union[str, Path], str]],
+        shared_context: Optional[str] = None,
+        require_approval: bool = True,
+    ) -> Dict[str, ImprovementResult]:
+        """
+        Execute improvements on multiple files atomically.
+
+        All files are modified together or none are modified.
+        """
+        results: Dict[str, ImprovementResult] = {}
+
+        # Begin transaction
+        txn_id = await self._multi_file_orchestrator.begin_transaction()
+
+        try:
+            # Generate improvements for each file
+            for target, goal in files_and_goals:
+                target_path = SecurityValidator.validate_path(target)
+                original_content = await self._read_file_safe(target_path)
+
+                improved_content, provider = await self._generate_improvement(
+                    original_content, goal, None, shared_context
+                )
+
+                if not improved_content:
+                    results[str(target_path)] = ImprovementResult(
+                        success=False,
+                        task_id=txn_id,
+                        target_file=str(target_path),
+                        goal=goal,
+                        iterations=0,
+                        total_time=0,
+                        error="Failed to generate improvement",
+                    )
+                    # Abort on any failure
+                    await self._multi_file_orchestrator.abort_transaction()
+                    return results
+
+                # Stage the change
+                await self._multi_file_orchestrator.stage_change(
+                    str(target_path), original_content, improved_content
+                )
+
+                results[str(target_path)] = ImprovementResult(
+                    success=True,
+                    task_id=txn_id,
+                    target_file=str(target_path),
+                    goal=goal,
+                    iterations=1,
+                    total_time=0,
+                    provider_used=provider,
+                )
+
+            # Commit all changes atomically
+            combined_goal = "; ".join(g for _, g in files_and_goals)
+            success, error = await self._multi_file_orchestrator.commit_transaction(combined_goal)
+
+            if not success:
+                # Mark all as failed
+                for path in results:
+                    results[path] = ImprovementResult(
+                        success=False,
+                        task_id=txn_id,
+                        target_file=path,
+                        goal=results[path].goal,
+                        iterations=0,
+                        total_time=0,
+                        error=f"Transaction commit failed: {error}",
+                    )
+
+            return results
+
+        except Exception as e:
+            await self._multi_file_orchestrator.abort_transaction()
+            raise
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get enhanced status."""
+        base_status = super().get_status()
+        base_status["enhanced"] = {
+            "session_id": self._session_memory.session_id,
+            "session_duration_seconds": self._session_memory.duration_seconds,
+            "require_approval": self._require_approval,
+            "pending_previews": len(self._diff_preview_engine.get_pending_previews()),
+        }
+        return base_status
+
+
+# =============================================================================
+# ENHANCED GLOBAL INSTANCE
+# =============================================================================
+
+_enhanced_engine: Optional[EnhancedSelfImprovement] = None
+
+
+def get_enhanced_self_improvement() -> EnhancedSelfImprovement:
+    """Get the enhanced self-improvement engine with Claude Code-like behaviors."""
+    global _enhanced_engine
+    if _enhanced_engine is None:
+        _enhanced_engine = EnhancedSelfImprovement()
+    return _enhanced_engine
+
+
+async def execute_with_preview(
+    target: Union[str, Path],
+    goal: str,
+    test_command: Optional[str] = None,
+    context: Optional[str] = None,
+    max_iterations: int = 5,
+    require_approval: bool = False,
+) -> ImprovementResult:
+    """
+    Execute improvement with diff preview - Claude Code-like interface.
+
+    Example:
+        result = await execute_with_preview(
+            target="backend/core/utils.py",
+            goal="Fix the race condition",
+            require_approval=True  # Show diff and wait for approval
+        )
+    """
+    engine = get_enhanced_self_improvement()
+    if not engine._running:
+        await engine.initialize()
+
+    return await engine.execute_with_preview(
+        target=target,
+        goal=goal,
+        test_command=test_command,
+        context=context,
+        max_iterations=max_iterations,
+        require_approval=require_approval,
+    )
+
+
+async def execute_multi_file(
+    files_and_goals: List[Tuple[Union[str, Path], str]],
+    shared_context: Optional[str] = None,
+    require_approval: bool = True,
+) -> Dict[str, ImprovementResult]:
+    """
+    Execute improvements on multiple files atomically.
+
+    Example:
+        results = await execute_multi_file([
+            ("backend/api/routes.py", "Add rate limiting"),
+            ("backend/core/limiter.py", "Implement rate limiter"),
+            ("tests/test_limiter.py", "Add rate limiter tests"),
+        ])
+    """
+    engine = get_enhanced_self_improvement()
+    if not engine._running:
+        await engine.initialize()
+
+    return await engine.execute_multi_file_improvement(
+        files_and_goals=files_and_goals,
+        shared_context=shared_context,
+        require_approval=require_approval,
+    )

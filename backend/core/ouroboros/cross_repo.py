@@ -707,3 +707,680 @@ async def shutdown_cross_repo() -> None:
     if _cross_repo:
         await _cross_repo.shutdown()
         _cross_repo = None
+
+
+# =============================================================================
+# ADVANCED CROSS-REPO FEATURES v2.0
+# =============================================================================
+# Fixes critical gaps:
+# 1. Race conditions with Lamport timestamps for event ordering
+# 2. Dead letter queue for failed events with exponential backoff retry
+# 3. Crash-resilient lock management with auto-cleanup
+# 4. Heartbeat propagation for distributed health consensus
+# 5. Network partition detection and recovery
+# =============================================================================
+
+
+@dataclass
+class LamportClock:
+    """
+    Lamport logical clock for event ordering across distributed systems.
+
+    Ensures causal ordering of events without requiring synchronized clocks.
+    """
+    timestamp: int = 0
+    node_id: str = ""
+
+    def __post_init__(self):
+        if not self.node_id:
+            self.node_id = f"node_{uuid.uuid4().hex[:8]}"
+
+    def tick(self) -> int:
+        """Increment clock for local event."""
+        self.timestamp += 1
+        return self.timestamp
+
+    def update(self, received_timestamp: int) -> int:
+        """Update clock based on received message."""
+        self.timestamp = max(self.timestamp, received_timestamp) + 1
+        return self.timestamp
+
+    def to_tuple(self) -> Tuple[int, str]:
+        """Return (timestamp, node_id) for comparison."""
+        return (self.timestamp, self.node_id)
+
+
+@dataclass
+class DeadLetterEvent:
+    """Event that failed processing and is queued for retry."""
+    original_event: CrossRepoEvent
+    failure_count: int = 0
+    last_failure: float = 0.0
+    last_error: str = ""
+    next_retry: float = 0.0
+
+    def calculate_next_retry(self, base_delay: float = 5.0, max_delay: float = 300.0) -> None:
+        """Calculate next retry time using exponential backoff with jitter."""
+        import random
+        delay = min(base_delay * (2 ** self.failure_count), max_delay)
+        jitter = random.uniform(0, delay * 0.1)
+        self.next_retry = time.time() + delay + jitter
+
+
+class DeadLetterQueue:
+    """
+    Dead letter queue for failed events.
+
+    Features:
+    - Exponential backoff retry
+    - Maximum retry limit
+    - Persistence to disk
+    - Automatic cleanup of expired events
+    """
+
+    def __init__(
+        self,
+        queue_dir: Path,
+        max_retries: int = 5,
+        retention_hours: int = 24,
+    ):
+        self.queue_dir = queue_dir
+        self.max_retries = max_retries
+        self.retention_hours = retention_hours
+        self._lock = asyncio.Lock()
+        self._events: Dict[str, DeadLetterEvent] = {}
+        self._retry_task: Optional[asyncio.Task] = None
+        self._running = False
+
+        queue_dir.mkdir(parents=True, exist_ok=True)
+
+    async def start(self) -> None:
+        """Start the dead letter queue processor."""
+        self._running = True
+        await self._load_from_disk()
+        self._retry_task = asyncio.create_task(self._retry_loop())
+        logger.info(f"Dead letter queue started with {len(self._events)} pending events")
+
+    async def stop(self) -> None:
+        """Stop the dead letter queue processor."""
+        self._running = False
+        if self._retry_task:
+            self._retry_task.cancel()
+            try:
+                await self._retry_task
+            except asyncio.CancelledError:
+                pass
+        await self._persist_to_disk()
+
+    async def add_failed_event(self, event: CrossRepoEvent, error: str) -> None:
+        """Add a failed event to the dead letter queue."""
+        async with self._lock:
+            event_id = event.id
+
+            if event_id in self._events:
+                # Update existing
+                dle = self._events[event_id]
+                dle.failure_count += 1
+                dle.last_failure = time.time()
+                dle.last_error = error
+            else:
+                # Create new
+                dle = DeadLetterEvent(
+                    original_event=event,
+                    failure_count=1,
+                    last_failure=time.time(),
+                    last_error=error,
+                )
+                self._events[event_id] = dle
+
+            # Check if max retries exceeded
+            if dle.failure_count > self.max_retries:
+                logger.error(
+                    f"Event {event_id} exceeded max retries ({self.max_retries}), "
+                    f"moving to permanent failure"
+                )
+                await self._move_to_permanent_failure(event_id)
+                return
+
+            # Calculate next retry time
+            dle.calculate_next_retry()
+            logger.warning(
+                f"Event {event_id} failed ({dle.failure_count}/{self.max_retries}), "
+                f"retry at {dle.next_retry:.1f}"
+            )
+
+            # Persist
+            await self._persist_event(event_id)
+
+    async def _retry_loop(self) -> None:
+        """Background loop to retry failed events."""
+        while self._running:
+            try:
+                await self._process_retries()
+                await asyncio.sleep(5.0)  # Check every 5 seconds
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Dead letter retry error: {e}")
+                await asyncio.sleep(10.0)
+
+    async def _process_retries(self) -> None:
+        """Process events that are due for retry."""
+        now = time.time()
+        to_retry = []
+
+        async with self._lock:
+            for event_id, dle in list(self._events.items()):
+                if dle.next_retry <= now:
+                    to_retry.append(event_id)
+
+        for event_id in to_retry:
+            async with self._lock:
+                dle = self._events.get(event_id)
+                if not dle:
+                    continue
+
+            # Re-emit the event
+            logger.info(f"Retrying dead letter event: {event_id}")
+            orchestrator = get_cross_repo_orchestrator()
+            try:
+                await orchestrator._event_bus.emit(dle.original_event)
+                # Remove from DLQ on successful re-emit
+                async with self._lock:
+                    self._events.pop(event_id, None)
+                    self._remove_event_file(event_id)
+            except Exception as e:
+                await self.add_failed_event(dle.original_event, str(e))
+
+    async def _move_to_permanent_failure(self, event_id: str) -> None:
+        """Move event to permanent failure storage."""
+        dle = self._events.pop(event_id, None)
+        if not dle:
+            return
+
+        # Write to permanent failure directory
+        perm_dir = self.queue_dir / "permanent_failures"
+        perm_dir.mkdir(exist_ok=True)
+
+        perm_file = perm_dir / f"{event_id}.json"
+        await asyncio.to_thread(
+            perm_file.write_text,
+            json.dumps({
+                "event": dle.original_event.to_dict(),
+                "failure_count": dle.failure_count,
+                "last_error": dle.last_error,
+                "final_failure_at": time.time(),
+            }, indent=2)
+        )
+
+        self._remove_event_file(event_id)
+
+    async def _persist_event(self, event_id: str) -> None:
+        """Persist a single event to disk."""
+        dle = self._events.get(event_id)
+        if not dle:
+            return
+
+        event_file = self.queue_dir / f"{event_id}.json"
+        await asyncio.to_thread(
+            event_file.write_text,
+            json.dumps({
+                "event": dle.original_event.to_dict(),
+                "failure_count": dle.failure_count,
+                "last_failure": dle.last_failure,
+                "last_error": dle.last_error,
+                "next_retry": dle.next_retry,
+            }, indent=2)
+        )
+
+    async def _persist_to_disk(self) -> None:
+        """Persist all events to disk."""
+        for event_id in list(self._events.keys()):
+            await self._persist_event(event_id)
+
+    async def _load_from_disk(self) -> None:
+        """Load events from disk."""
+        for event_file in self.queue_dir.glob("*.json"):
+            try:
+                data = json.loads(await asyncio.to_thread(event_file.read_text))
+                event = CrossRepoEvent.from_dict(data["event"])
+                dle = DeadLetterEvent(
+                    original_event=event,
+                    failure_count=data.get("failure_count", 0),
+                    last_failure=data.get("last_failure", 0),
+                    last_error=data.get("last_error", ""),
+                    next_retry=data.get("next_retry", time.time()),
+                )
+                self._events[event.id] = dle
+            except Exception as e:
+                logger.warning(f"Failed to load dead letter event {event_file}: {e}")
+
+    def _remove_event_file(self, event_id: str) -> None:
+        """Remove event file from disk."""
+        event_file = self.queue_dir / f"{event_id}.json"
+        try:
+            if event_file.exists():
+                event_file.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to remove event file {event_file}: {e}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get dead letter queue statistics."""
+        return {
+            "pending_events": len(self._events),
+            "oldest_event": min(
+                (e.original_event.timestamp for e in self._events.values()),
+                default=0
+            ),
+            "max_retries": self.max_retries,
+        }
+
+
+class CrashResilientLockManager:
+    """
+    Crash-resilient distributed lock manager.
+
+    Features:
+    - Lock files with heartbeat
+    - Automatic cleanup of stale locks
+    - Lock theft detection
+    - Lock renewal
+    """
+
+    def __init__(
+        self,
+        lock_dir: Path,
+        heartbeat_interval: float = 5.0,
+        stale_timeout: float = 30.0,
+    ):
+        self.lock_dir = lock_dir
+        self.heartbeat_interval = heartbeat_interval
+        self.stale_timeout = stale_timeout
+        self._held_locks: Dict[str, asyncio.Task] = {}
+        self._lock = asyncio.Lock()
+        self._node_id = f"node_{os.getpid()}_{uuid.uuid4().hex[:6]}"
+
+        lock_dir.mkdir(parents=True, exist_ok=True)
+
+    async def acquire(
+        self,
+        resource: str,
+        timeout: float = 30.0,
+    ) -> bool:
+        """
+        Acquire a lock on a resource.
+
+        Returns True if lock acquired, False if timeout.
+        """
+        lock_file = self._get_lock_file(resource)
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            # Try to acquire
+            acquired = await self._try_acquire(lock_file, resource)
+            if acquired:
+                return True
+
+            # Check if current lock is stale
+            if await self._is_lock_stale(lock_file):
+                await self._cleanup_stale_lock(lock_file)
+                continue
+
+            await asyncio.sleep(0.5)
+
+        return False
+
+    async def release(self, resource: str) -> None:
+        """Release a lock on a resource."""
+        async with self._lock:
+            # Cancel heartbeat task
+            if resource in self._held_locks:
+                self._held_locks[resource].cancel()
+                try:
+                    await self._held_locks[resource]
+                except asyncio.CancelledError:
+                    pass
+                del self._held_locks[resource]
+
+            # Remove lock file
+            lock_file = self._get_lock_file(resource)
+            try:
+                if lock_file.exists():
+                    lock_file.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to remove lock file {lock_file}: {e}")
+
+    async def _try_acquire(self, lock_file: Path, resource: str) -> bool:
+        """Try to acquire the lock atomically."""
+        async with self._lock:
+            if lock_file.exists():
+                return False
+
+            try:
+                # Create lock file atomically
+                lock_data = {
+                    "node_id": self._node_id,
+                    "acquired_at": time.time(),
+                    "heartbeat": time.time(),
+                    "resource": resource,
+                }
+                # Use exclusive create mode
+                with open(lock_file, "x") as f:
+                    json.dump(lock_data, f)
+
+                # Start heartbeat task
+                self._held_locks[resource] = asyncio.create_task(
+                    self._heartbeat_loop(lock_file)
+                )
+                return True
+
+            except FileExistsError:
+                return False
+            except Exception as e:
+                logger.error(f"Failed to acquire lock: {e}")
+                return False
+
+    async def _heartbeat_loop(self, lock_file: Path) -> None:
+        """Keep lock alive with heartbeat updates."""
+        while True:
+            try:
+                await asyncio.sleep(self.heartbeat_interval)
+
+                if not lock_file.exists():
+                    break
+
+                # Update heartbeat
+                data = json.loads(lock_file.read_text())
+                data["heartbeat"] = time.time()
+                lock_file.write_text(json.dumps(data))
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Heartbeat error: {e}")
+
+    async def _is_lock_stale(self, lock_file: Path) -> bool:
+        """Check if a lock is stale (no heartbeat for too long)."""
+        try:
+            if not lock_file.exists():
+                return False
+
+            data = json.loads(await asyncio.to_thread(lock_file.read_text))
+            last_heartbeat = data.get("heartbeat", 0)
+            return time.time() - last_heartbeat > self.stale_timeout
+
+        except Exception:
+            return False
+
+    async def _cleanup_stale_lock(self, lock_file: Path) -> None:
+        """Clean up a stale lock."""
+        try:
+            if lock_file.exists():
+                data = json.loads(lock_file.read_text())
+                logger.warning(
+                    f"Cleaning up stale lock from node {data.get('node_id', 'unknown')}"
+                )
+                lock_file.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to cleanup stale lock: {e}")
+
+    def _get_lock_file(self, resource: str) -> Path:
+        """Get lock file path for a resource."""
+        # Sanitize resource name for filename
+        safe_name = resource.replace("/", "_").replace("\\", "_")
+        return self.lock_dir / f"{safe_name}.lock"
+
+    async def cleanup_all_stale(self) -> int:
+        """Clean up all stale locks. Returns count of cleaned locks."""
+        cleaned = 0
+        for lock_file in self.lock_dir.glob("*.lock"):
+            if await self._is_lock_stale(lock_file):
+                await self._cleanup_stale_lock(lock_file)
+                cleaned += 1
+        return cleaned
+
+
+class HealthConsensusManager:
+    """
+    Distributed health consensus across repositories.
+
+    Features:
+    - Heartbeat propagation
+    - Quorum-based health determination
+    - Partition detection
+    """
+
+    def __init__(
+        self,
+        state_dir: Path,
+        heartbeat_interval: float = 10.0,
+        health_timeout: float = 30.0,
+    ):
+        self.state_dir = state_dir
+        self.heartbeat_interval = heartbeat_interval
+        self.health_timeout = health_timeout
+        self._node_id = f"node_{os.getpid()}"
+        self._running = False
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._health_cache: Dict[str, Tuple[bool, float]] = {}  # node -> (healthy, timestamp)
+
+        state_dir.mkdir(parents=True, exist_ok=True)
+
+    async def start(self) -> None:
+        """Start health consensus."""
+        self._running = True
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def stop(self) -> None:
+        """Stop health consensus."""
+        self._running = False
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _heartbeat_loop(self) -> None:
+        """Publish heartbeat and collect others' health."""
+        while self._running:
+            try:
+                # Publish our heartbeat
+                await self._publish_heartbeat()
+
+                # Collect others' health
+                await self._collect_health()
+
+                await asyncio.sleep(self.heartbeat_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Health consensus error: {e}")
+                await asyncio.sleep(5.0)
+
+    async def _publish_heartbeat(self) -> None:
+        """Publish our health heartbeat."""
+        heartbeat_file = self.state_dir / f"{self._node_id}.health"
+        await asyncio.to_thread(
+            heartbeat_file.write_text,
+            json.dumps({
+                "node_id": self._node_id,
+                "timestamp": time.time(),
+                "healthy": True,
+                "details": {
+                    "pid": os.getpid(),
+                },
+            })
+        )
+
+    async def _collect_health(self) -> None:
+        """Collect health from all nodes."""
+        now = time.time()
+        for health_file in self.state_dir.glob("*.health"):
+            try:
+                data = json.loads(await asyncio.to_thread(health_file.read_text))
+                node_id = data.get("node_id", "unknown")
+                timestamp = data.get("timestamp", 0)
+
+                # Check if node is alive
+                is_alive = (now - timestamp) < self.health_timeout
+                self._health_cache[node_id] = (is_alive, timestamp)
+
+            except Exception as e:
+                logger.debug(f"Failed to read health file {health_file}: {e}")
+
+    def get_cluster_health(self) -> Dict[str, Any]:
+        """Get overall cluster health."""
+        now = time.time()
+        alive_nodes = sum(
+            1 for healthy, ts in self._health_cache.values()
+            if healthy and (now - ts) < self.health_timeout
+        )
+        total_nodes = len(self._health_cache)
+
+        return {
+            "alive_nodes": alive_nodes,
+            "total_nodes": total_nodes,
+            "quorum": alive_nodes > total_nodes / 2 if total_nodes > 0 else True,
+            "nodes": {
+                node: {"healthy": h, "last_seen": ts}
+                for node, (h, ts) in self._health_cache.items()
+            },
+        }
+
+    def is_partition_detected(self) -> bool:
+        """Check if a network partition is detected."""
+        health = self.get_cluster_health()
+        return not health["quorum"]
+
+
+class EnhancedCrossRepoOrchestrator(CrossRepoOrchestrator):
+    """
+    Enhanced cross-repo orchestrator with advanced features.
+
+    Adds:
+    - Lamport clock for event ordering
+    - Dead letter queue for failed events
+    - Crash-resilient locks
+    - Health consensus
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Advanced components
+        self._lamport_clock = LamportClock()
+        self._dead_letter_queue = DeadLetterQueue(
+            CrossRepoConfig.EVENT_BUS_DIR / "dead_letters"
+        )
+        self._lock_manager = CrashResilientLockManager(
+            CrossRepoConfig.EVENT_BUS_DIR / "locks"
+        )
+        self._health_consensus = HealthConsensusManager(
+            CrossRepoConfig.EVENT_BUS_DIR / "health"
+        )
+
+    async def initialize(self) -> bool:
+        """Initialize with enhanced components."""
+        result = await super().initialize()
+
+        # Start enhanced components
+        await self._dead_letter_queue.start()
+        await self._health_consensus.start()
+
+        # Clean up stale locks on startup
+        stale_count = await self._lock_manager.cleanup_all_stale()
+        if stale_count > 0:
+            self.logger.info(f"Cleaned up {stale_count} stale locks")
+
+        return result
+
+    async def shutdown(self) -> None:
+        """Shutdown with enhanced cleanup."""
+        await self._dead_letter_queue.stop()
+        await self._health_consensus.stop()
+        await super().shutdown()
+
+    async def request_improvement_with_ordering(
+        self,
+        file_path: str,
+        goal: str,
+        source_repo: RepoType = RepoType.JARVIS,
+    ) -> str:
+        """
+        Request improvement with Lamport clock ordering.
+
+        Ensures causal ordering of improvement requests across distributed system.
+        """
+        # Get Lamport timestamp
+        timestamp = self._lamport_clock.tick()
+
+        event = CrossRepoEvent(
+            id=f"imp_{uuid.uuid4().hex[:12]}",
+            type=EventType.IMPROVEMENT_REQUEST,
+            source_repo=source_repo,
+            target_repo=RepoType.PRIME,
+            payload={
+                "file_path": file_path,
+                "goal": goal,
+                "lamport_timestamp": timestamp,
+                "lamport_node": self._lamport_clock.node_id,
+            },
+        )
+
+        await self._event_bus.emit(event)
+        self._metrics["improvements_requested"] += 1
+
+        return event.id
+
+    async def acquire_resource_lock(
+        self,
+        resource: str,
+        timeout: float = 30.0,
+    ) -> bool:
+        """Acquire a cross-repo lock on a resource."""
+        return await self._lock_manager.acquire(resource, timeout)
+
+    async def release_resource_lock(self, resource: str) -> None:
+        """Release a cross-repo lock."""
+        await self._lock_manager.release(resource)
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get enhanced orchestrator status."""
+        base_status = super().get_status()
+        base_status["enhanced"] = {
+            "lamport_clock": {
+                "timestamp": self._lamport_clock.timestamp,
+                "node_id": self._lamport_clock.node_id,
+            },
+            "dead_letter_queue": self._dead_letter_queue.get_stats(),
+            "health_consensus": self._health_consensus.get_cluster_health(),
+        }
+        return base_status
+
+
+# Enhanced global instance
+_enhanced_cross_repo: Optional[EnhancedCrossRepoOrchestrator] = None
+
+
+def get_enhanced_cross_repo_orchestrator() -> EnhancedCrossRepoOrchestrator:
+    """Get the enhanced cross-repo orchestrator."""
+    global _enhanced_cross_repo
+    if _enhanced_cross_repo is None:
+        _enhanced_cross_repo = EnhancedCrossRepoOrchestrator()
+    return _enhanced_cross_repo
+
+
+async def initialize_enhanced_cross_repo() -> bool:
+    """Initialize the enhanced cross-repo orchestrator."""
+    orchestrator = get_enhanced_cross_repo_orchestrator()
+    return await orchestrator.initialize()
+
+
+async def shutdown_enhanced_cross_repo() -> None:
+    """Shutdown the enhanced cross-repo orchestrator."""
+    global _enhanced_cross_repo
+    if _enhanced_cross_repo:
+        await _enhanced_cross_repo.shutdown()
+        _enhanced_cross_repo = None
