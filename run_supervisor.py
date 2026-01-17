@@ -14065,8 +14065,24 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             self.logger.info(f"[v10.0] ✅ Real-Time Code Intelligence: {v10_active}/6 components active")
                             print(f"  {TerminalUI.CYAN}        🧠 Features: Completions, Errors, Suggestions, Explanations{TerminalUI.RESET}")
 
-                        total_all_versions = total_active + v8_active + v9_active + v10_active
-                        self.logger.info(f"[v10.0] ✅ Total Autonomous System: {total_all_versions}/33 components active")
+                        # v11.0: Resilient Service Mesh
+                        v11_components = ["resilient_mesh", "handshake_protocol", "heartbeat_watchdog",
+                                        "recovery_manager", "cascade_preventor", "degradation_router"]
+                        v11_active = sum(1 for c in v11_components if components.get(c) is not None)
+
+                        if v11_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v11.0 Resilient Service Mesh: {v11_active}/6 components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ StartupHandshakeProtocol: Race condition prevention{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ IntelligentCircuitBreaker: Fast recovery{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ AdaptiveHealthMonitor: Smart health checks{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ SelfHealingServiceManager: Auto-recovery{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CascadeFailurePreventor: Failure isolation{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ HeartbeatWatchdog: Stale detection{TerminalUI.RESET}")
+                            self.logger.info(f"[v11.0] ✅ Resilient Service Mesh: {v11_active}/6 components active")
+                            print(f"  {TerminalUI.CYAN}        🛡️ Fixes: Race conditions, Cascades, Stale services{TerminalUI.RESET}")
+
+                        total_all_versions = total_active + v8_active + v9_active + v10_active + v11_active
+                        self.logger.info(f"[v11.0] ✅ Total Autonomous System: {total_all_versions}/39 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()

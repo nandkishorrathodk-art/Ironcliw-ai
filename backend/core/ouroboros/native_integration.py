@@ -21197,3 +21197,1742 @@ async def apply_reviewed_changes(
     """
     reviewer = get_interactive_reviewer()
     return await reviewer.apply_changes(session_id, include_comments)
+
+
+# =============================================================================
+# v11.0: RESILIENT SERVICE MESH - Self-Healing Cross-Repo Infrastructure
+# =============================================================================
+# Fixes:
+# - Race conditions between service startup and health checks
+# - Missing startup handshake protocol
+# - No retry logic in health checks
+# - No auto-recovery from stale services
+# - Cascading failures across services
+# - Circuit breaker timeout too long
+# =============================================================================
+
+
+class ServiceState(Enum):
+    """Service lifecycle states."""
+    UNKNOWN = "unknown"
+    STARTING = "starting"
+    REGISTERING = "registering"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+    RECOVERING = "recovering"
+    STALE = "stale"
+    DEAD = "dead"
+    CIRCUIT_OPEN = "circuit_open"
+
+
+class HealthCheckResult(Enum):
+    """Result of a health check."""
+    SUCCESS = "success"
+    TIMEOUT = "timeout"
+    CONNECTION_REFUSED = "connection_refused"
+    CONNECTION_ERROR = "connection_error"
+    HTTP_ERROR = "http_error"
+    INVALID_RESPONSE = "invalid_response"
+    NOT_REGISTERED = "not_registered"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class CircuitBreakerConfig:
+    """Configuration for intelligent circuit breaker."""
+    failure_threshold: int = 3  # Failures before opening
+    success_threshold: int = 2  # Successes in half-open to close
+    timeout_seconds: float = 30.0  # Time before trying half-open
+    half_open_max_requests: int = 3  # Max requests in half-open
+    sliding_window_size: int = 10  # Window for failure rate calculation
+    failure_rate_threshold: float = 0.5  # Rate that triggers open
+
+
+@dataclass
+class HealthCheckConfig:
+    """Configuration for adaptive health monitoring."""
+    initial_delay_seconds: float = 5.0  # Grace period before first check
+    interval_seconds: float = 5.0  # Normal check interval
+    timeout_seconds: float = 3.0  # Timeout per check
+    retry_count: int = 3  # Retries before marking failed
+    retry_delay_seconds: float = 0.5  # Delay between retries
+    backoff_multiplier: float = 1.5  # Exponential backoff multiplier
+    max_backoff_seconds: float = 30.0  # Max backoff delay
+    jitter_factor: float = 0.2  # Random jitter (0-20%)
+    stale_threshold_seconds: float = 60.0  # Seconds until stale
+    dead_threshold_seconds: float = 180.0  # Seconds until dead
+
+
+@dataclass
+class ServiceEndpoint:
+    """Service endpoint information."""
+    service_name: str
+    host: str = "localhost"
+    port: Optional[int] = None
+    health_path: str = "/health"
+    pid: Optional[int] = None
+    registered_at: Optional[float] = None
+    last_heartbeat: Optional[float] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class HealthCheckSnapshot:
+    """Snapshot of a health check result."""
+    timestamp: float
+    result: HealthCheckResult
+    latency_ms: float
+    status_code: Optional[int] = None
+    error_message: Optional[str] = None
+
+
+@dataclass
+class ServiceHealthState:
+    """Complete health state for a service."""
+    service_name: str
+    state: ServiceState
+    endpoint: Optional[ServiceEndpoint] = None
+    circuit_state: str = "closed"  # closed, open, half_open
+    consecutive_failures: int = 0
+    consecutive_successes: int = 0
+    total_checks: int = 0
+    total_failures: int = 0
+    recent_checks: List[HealthCheckSnapshot] = field(default_factory=list)
+    last_state_change: float = field(default_factory=time.time)
+    recovery_attempts: int = 0
+    last_recovery_attempt: Optional[float] = None
+
+
+class StartupHandshakeProtocol:
+    """
+    Ensures services are properly registered before health checks begin.
+
+    Fixes the race condition where health checks start before service
+    has registered its port with the service registry.
+    """
+
+    def __init__(
+        self,
+        handshake_timeout: float = 60.0,
+        poll_interval: float = 0.5,
+        registry_path: Optional[Path] = None,
+    ):
+        self.handshake_timeout = handshake_timeout
+        self.poll_interval = poll_interval
+        self.registry_path = registry_path or Path.home() / ".jarvis" / "registry"
+        self._pending_handshakes: Dict[str, asyncio.Future] = {}
+        self._registered_services: Dict[str, ServiceEndpoint] = {}
+        self._lock = asyncio.Lock()
+        self._watcher_task: Optional[asyncio.Task] = None
+        self._running = False
+
+    async def start(self) -> None:
+        """Start the handshake protocol watcher."""
+        if self._running:
+            return
+        self._running = True
+        self._watcher_task = asyncio.create_task(self._watch_registrations())
+        logger.info("StartupHandshakeProtocol started")
+
+    async def stop(self) -> None:
+        """Stop the handshake protocol watcher."""
+        self._running = False
+        if self._watcher_task:
+            self._watcher_task.cancel()
+            try:
+                await self._watcher_task
+            except asyncio.CancelledError:
+                pass
+        # Cancel pending handshakes
+        for future in self._pending_handshakes.values():
+            if not future.done():
+                future.cancel()
+        self._pending_handshakes.clear()
+        logger.info("StartupHandshakeProtocol stopped")
+
+    async def await_registration(
+        self,
+        service_name: str,
+        timeout: Optional[float] = None,
+    ) -> Optional[ServiceEndpoint]:
+        """
+        Wait for a service to register itself.
+
+        Returns the endpoint once registered, or None on timeout.
+        """
+        timeout = timeout or self.handshake_timeout
+
+        async with self._lock:
+            # Already registered?
+            if service_name in self._registered_services:
+                return self._registered_services[service_name]
+
+            # Create future if not exists
+            if service_name not in self._pending_handshakes:
+                self._pending_handshakes[service_name] = asyncio.get_event_loop().create_future()
+
+        try:
+            endpoint = await asyncio.wait_for(
+                self._pending_handshakes[service_name],
+                timeout=timeout,
+            )
+            return endpoint
+        except asyncio.TimeoutError:
+            logger.warning(f"Handshake timeout waiting for {service_name} registration")
+            return None
+        except asyncio.CancelledError:
+            return None
+
+    async def notify_registration(
+        self,
+        service_name: str,
+        endpoint: ServiceEndpoint,
+    ) -> None:
+        """Notify that a service has registered."""
+        async with self._lock:
+            self._registered_services[service_name] = endpoint
+
+            # Complete pending handshake
+            if service_name in self._pending_handshakes:
+                future = self._pending_handshakes[service_name]
+                if not future.done():
+                    future.set_result(endpoint)
+
+        logger.info(f"Service {service_name} registered: {endpoint.host}:{endpoint.port}")
+
+    async def _watch_registrations(self) -> None:
+        """Watch registry file for new registrations."""
+        registry_file = self.registry_path / "services.json"
+        last_mtime = 0.0
+
+        while self._running:
+            try:
+                if registry_file.exists():
+                    mtime = registry_file.stat().st_mtime
+                    if mtime > last_mtime:
+                        last_mtime = mtime
+                        await self._process_registry_update(registry_file)
+
+                await asyncio.sleep(self.poll_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Registry watch error: {e}")
+                await asyncio.sleep(self.poll_interval)
+
+    async def _process_registry_update(self, registry_file: Path) -> None:
+        """Process registry file update."""
+        try:
+            content = registry_file.read_text()
+            data = json.loads(content)
+
+            for service_name, info in data.get("services", {}).items():
+                if service_name not in self._registered_services:
+                    endpoint = ServiceEndpoint(
+                        service_name=service_name,
+                        host=info.get("host", "localhost"),
+                        port=info.get("port"),
+                        health_path=info.get("health_endpoint", "/health"),
+                        pid=info.get("pid"),
+                        registered_at=info.get("registered_at", time.time()),
+                        last_heartbeat=info.get("last_heartbeat"),
+                    )
+                    await self.notify_registration(service_name, endpoint)
+        except Exception as e:
+            logger.debug(f"Registry parse error: {e}")
+
+
+class IntelligentCircuitBreaker:
+    """
+    Advanced circuit breaker with:
+    - Sliding window failure rate calculation
+    - Half-open state with limited requests
+    - Adaptive timeout based on failure patterns
+    - Fast recovery for transient failures
+    """
+
+    def __init__(
+        self,
+        service_name: str,
+        config: Optional[CircuitBreakerConfig] = None,
+    ):
+        self.service_name = service_name
+        self.config = config or CircuitBreakerConfig()
+        self._state = "closed"  # closed, open, half_open
+        self._failure_count = 0
+        self._success_count = 0
+        self._half_open_requests = 0
+        self._last_failure_time: Optional[float] = None
+        self._opened_at: Optional[float] = None
+        self._window: deque = deque(maxlen=self.config.sliding_window_size)
+        self._lock = asyncio.Lock()
+        self._state_change_callbacks: List[Callable] = []
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+    @property
+    def is_open(self) -> bool:
+        return self._state == "open"
+
+    @property
+    def is_half_open(self) -> bool:
+        return self._state == "half_open"
+
+    @property
+    def is_closed(self) -> bool:
+        return self._state == "closed"
+
+    def on_state_change(self, callback: Callable[[str, str], None]) -> None:
+        """Register callback for state changes."""
+        self._state_change_callbacks.append(callback)
+
+    async def can_execute(self) -> bool:
+        """Check if request can be executed."""
+        async with self._lock:
+            if self._state == "closed":
+                return True
+
+            if self._state == "open":
+                # Check if timeout expired
+                if self._opened_at:
+                    elapsed = time.time() - self._opened_at
+                    if elapsed >= self.config.timeout_seconds:
+                        await self._transition_to("half_open")
+                        return True
+                return False
+
+            if self._state == "half_open":
+                # Allow limited requests
+                if self._half_open_requests < self.config.half_open_max_requests:
+                    self._half_open_requests += 1
+                    return True
+                return False
+
+            return False
+
+    async def record_success(self) -> None:
+        """Record a successful execution."""
+        async with self._lock:
+            self._window.append(True)
+            self._failure_count = 0
+            self._success_count += 1
+
+            if self._state == "half_open":
+                if self._success_count >= self.config.success_threshold:
+                    await self._transition_to("closed")
+
+    async def record_failure(self) -> None:
+        """Record a failed execution."""
+        async with self._lock:
+            self._window.append(False)
+            self._failure_count += 1
+            self._success_count = 0
+            self._last_failure_time = time.time()
+
+            if self._state == "half_open":
+                # Immediately open on failure in half_open
+                await self._transition_to("open")
+            elif self._state == "closed":
+                # Check if should open
+                failure_rate = self._calculate_failure_rate()
+                if (self._failure_count >= self.config.failure_threshold or
+                    failure_rate >= self.config.failure_rate_threshold):
+                    await self._transition_to("open")
+
+    def _calculate_failure_rate(self) -> float:
+        """Calculate failure rate from sliding window."""
+        if not self._window:
+            return 0.0
+        failures = sum(1 for x in self._window if not x)
+        return failures / len(self._window)
+
+    async def _transition_to(self, new_state: str) -> None:
+        """Transition to a new state."""
+        old_state = self._state
+        self._state = new_state
+
+        if new_state == "open":
+            self._opened_at = time.time()
+            self._half_open_requests = 0
+            logger.warning(f"Circuit breaker OPEN for {self.service_name}")
+        elif new_state == "half_open":
+            self._half_open_requests = 0
+            self._success_count = 0
+            logger.info(f"Circuit breaker HALF-OPEN for {self.service_name}")
+        elif new_state == "closed":
+            self._opened_at = None
+            self._failure_count = 0
+            self._half_open_requests = 0
+            logger.info(f"Circuit breaker CLOSED for {self.service_name}")
+
+        # Notify callbacks
+        for callback in self._state_change_callbacks:
+            try:
+                callback(old_state, new_state)
+            except Exception:
+                pass
+
+    async def force_open(self) -> None:
+        """Force circuit to open state."""
+        async with self._lock:
+            await self._transition_to("open")
+
+    async def force_close(self) -> None:
+        """Force circuit to closed state."""
+        async with self._lock:
+            await self._transition_to("closed")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get circuit breaker status."""
+        return {
+            "service": self.service_name,
+            "state": self._state,
+            "failure_count": self._failure_count,
+            "success_count": self._success_count,
+            "failure_rate": self._calculate_failure_rate(),
+            "window_size": len(self._window),
+            "opened_at": self._opened_at,
+            "last_failure": self._last_failure_time,
+        }
+
+
+class AdaptiveHealthMonitor:
+    """
+    Smart health monitoring with:
+    - Retry logic with exponential backoff
+    - Jitter to prevent thundering herd
+    - Sliding window for failure rate
+    - Startup grace period
+    - Adaptive check intervals
+    """
+
+    def __init__(
+        self,
+        service_name: str,
+        endpoint: ServiceEndpoint,
+        config: Optional[HealthCheckConfig] = None,
+        circuit_breaker: Optional[IntelligentCircuitBreaker] = None,
+    ):
+        self.service_name = service_name
+        self.endpoint = endpoint
+        self.config = config or HealthCheckConfig()
+        self.circuit_breaker = circuit_breaker or IntelligentCircuitBreaker(service_name)
+
+        self._state = ServiceState.STARTING
+        self._health_history: deque = deque(maxlen=20)
+        self._consecutive_failures = 0
+        self._consecutive_successes = 0
+        self._current_backoff = self.config.interval_seconds
+        self._last_check: Optional[float] = None
+        self._started_at = time.time()
+        self._lock = asyncio.Lock()
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._callbacks: List[Callable] = []
+
+    def on_state_change(self, callback: Callable[[ServiceState, ServiceState], None]) -> None:
+        """Register callback for state changes."""
+        self._callbacks.append(callback)
+
+    async def check_health(self) -> HealthCheckSnapshot:
+        """
+        Perform health check with retries and backoff.
+        """
+        # Respect startup grace period
+        if time.time() - self._started_at < self.config.initial_delay_seconds:
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=HealthCheckResult.SKIPPED,
+                latency_ms=0,
+                error_message="In startup grace period",
+            )
+
+        # Check circuit breaker
+        if not await self.circuit_breaker.can_execute():
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=HealthCheckResult.SKIPPED,
+                latency_ms=0,
+                error_message="Circuit breaker open",
+            )
+
+        # Check if port is known
+        if not self.endpoint.port:
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=HealthCheckResult.NOT_REGISTERED,
+                latency_ms=0,
+                error_message="Port not registered",
+            )
+
+        # Perform check with retries
+        last_snapshot = None
+        retry_delay = self.config.retry_delay_seconds
+
+        for attempt in range(self.config.retry_count):
+            snapshot = await self._do_health_check()
+            last_snapshot = snapshot
+
+            if snapshot.result == HealthCheckResult.SUCCESS:
+                await self._handle_success(snapshot)
+                return snapshot
+
+            # Add jitter to retry delay
+            if attempt < self.config.retry_count - 1:
+                jitter = random.uniform(0, self.config.jitter_factor * retry_delay)
+                await asyncio.sleep(retry_delay + jitter)
+                retry_delay *= self.config.backoff_multiplier
+
+        # All retries failed
+        await self._handle_failure(last_snapshot)
+        return last_snapshot
+
+    async def _do_health_check(self) -> HealthCheckSnapshot:
+        """Perform a single health check."""
+        url = f"http://{self.endpoint.host}:{self.endpoint.port}{self.endpoint.health_path}"
+        start_time = time.time()
+
+        try:
+            if not self._session:
+                self._session = aiohttp.ClientSession()
+
+            async with self._session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds),
+            ) as response:
+                latency_ms = (time.time() - start_time) * 1000
+
+                if response.status == 200:
+                    return HealthCheckSnapshot(
+                        timestamp=time.time(),
+                        result=HealthCheckResult.SUCCESS,
+                        latency_ms=latency_ms,
+                        status_code=response.status,
+                    )
+                else:
+                    return HealthCheckSnapshot(
+                        timestamp=time.time(),
+                        result=HealthCheckResult.HTTP_ERROR,
+                        latency_ms=latency_ms,
+                        status_code=response.status,
+                        error_message=f"HTTP {response.status}",
+                    )
+
+        except asyncio.TimeoutError:
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=HealthCheckResult.TIMEOUT,
+                latency_ms=(time.time() - start_time) * 1000,
+                error_message="Request timed out",
+            )
+
+        except aiohttp.ClientConnectorError as e:
+            error_msg = str(e)
+            if "Connection refused" in error_msg or "Errno 61" in error_msg:
+                result = HealthCheckResult.CONNECTION_REFUSED
+            else:
+                result = HealthCheckResult.CONNECTION_ERROR
+
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=result,
+                latency_ms=(time.time() - start_time) * 1000,
+                error_message=error_msg[:200],
+            )
+
+        except Exception as e:
+            return HealthCheckSnapshot(
+                timestamp=time.time(),
+                result=HealthCheckResult.CONNECTION_ERROR,
+                latency_ms=(time.time() - start_time) * 1000,
+                error_message=str(e)[:200],
+            )
+
+    async def _handle_success(self, snapshot: HealthCheckSnapshot) -> None:
+        """Handle successful health check."""
+        async with self._lock:
+            self._health_history.append(snapshot)
+            self._consecutive_failures = 0
+            self._consecutive_successes += 1
+            self._current_backoff = self.config.interval_seconds
+            self._last_check = time.time()
+
+            await self.circuit_breaker.record_success()
+
+            old_state = self._state
+            if self._state != ServiceState.HEALTHY:
+                self._state = ServiceState.HEALTHY
+                await self._notify_state_change(old_state, self._state)
+
+    async def _handle_failure(self, snapshot: HealthCheckSnapshot) -> None:
+        """Handle failed health check."""
+        async with self._lock:
+            self._health_history.append(snapshot)
+            self._consecutive_failures += 1
+            self._consecutive_successes = 0
+            self._last_check = time.time()
+
+            await self.circuit_breaker.record_failure()
+
+            # Increase backoff
+            self._current_backoff = min(
+                self._current_backoff * self.config.backoff_multiplier,
+                self.config.max_backoff_seconds,
+            )
+
+            old_state = self._state
+
+            # Determine new state based on failure pattern
+            if self._consecutive_failures >= 3:
+                elapsed_since_heartbeat = time.time() - (self.endpoint.last_heartbeat or self._started_at)
+
+                if elapsed_since_heartbeat > self.config.dead_threshold_seconds:
+                    self._state = ServiceState.DEAD
+                elif elapsed_since_heartbeat > self.config.stale_threshold_seconds:
+                    self._state = ServiceState.STALE
+                else:
+                    self._state = ServiceState.UNHEALTHY
+            else:
+                self._state = ServiceState.DEGRADED
+
+            if old_state != self._state:
+                await self._notify_state_change(old_state, self._state)
+
+    async def _notify_state_change(
+        self,
+        old_state: ServiceState,
+        new_state: ServiceState,
+    ) -> None:
+        """Notify callbacks of state change."""
+        logger.info(f"Service {self.service_name}: {old_state.value} -> {new_state.value}")
+        for callback in self._callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(old_state, new_state)
+                else:
+                    callback(old_state, new_state)
+            except Exception as e:
+                logger.debug(f"State change callback error: {e}")
+
+    def get_next_check_delay(self) -> float:
+        """Get delay until next health check with jitter."""
+        jitter = random.uniform(0, self.config.jitter_factor * self._current_backoff)
+        return self._current_backoff + jitter
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get health monitor status."""
+        recent_success_rate = 0.0
+        if self._health_history:
+            successes = sum(
+                1 for h in self._health_history
+                if h.result == HealthCheckResult.SUCCESS
+            )
+            recent_success_rate = successes / len(self._health_history)
+
+        return {
+            "service": self.service_name,
+            "state": self._state.value,
+            "consecutive_failures": self._consecutive_failures,
+            "consecutive_successes": self._consecutive_successes,
+            "current_backoff": self._current_backoff,
+            "recent_success_rate": recent_success_rate,
+            "history_size": len(self._health_history),
+            "circuit_breaker": self.circuit_breaker.get_status(),
+        }
+
+    async def close(self) -> None:
+        """Close resources."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+
+class SelfHealingServiceManager:
+    """
+    Manages service recovery with:
+    - Automatic restart of stale/dead services
+    - Exponential backoff for restart attempts
+    - Process monitoring and cleanup
+    - Graceful degradation during recovery
+    """
+
+    def __init__(
+        self,
+        max_restart_attempts: int = 5,
+        restart_backoff_base: float = 2.0,
+        restart_backoff_max: float = 120.0,
+        cleanup_orphans: bool = True,
+    ):
+        self.max_restart_attempts = max_restart_attempts
+        self.restart_backoff_base = restart_backoff_base
+        self.restart_backoff_max = restart_backoff_max
+        self.cleanup_orphans = cleanup_orphans
+
+        self._restart_attempts: Dict[str, int] = defaultdict(int)
+        self._last_restart: Dict[str, float] = {}
+        self._recovery_in_progress: Set[str] = set()
+        self._restart_commands: Dict[str, Callable] = {}
+        self._lock = asyncio.Lock()
+        self._callbacks: List[Callable] = []
+
+    def register_restart_command(
+        self,
+        service_name: str,
+        restart_fn: Callable[[], Coroutine],
+    ) -> None:
+        """Register restart function for a service."""
+        self._restart_commands[service_name] = restart_fn
+
+    def on_recovery(self, callback: Callable[[str, bool, str], None]) -> None:
+        """Register callback for recovery events."""
+        self._callbacks.append(callback)
+
+    async def attempt_recovery(
+        self,
+        service_name: str,
+        current_state: ServiceState,
+        endpoint: Optional[ServiceEndpoint] = None,
+    ) -> bool:
+        """
+        Attempt to recover a failed service.
+
+        Returns True if recovery initiated successfully.
+        """
+        async with self._lock:
+            # Already recovering?
+            if service_name in self._recovery_in_progress:
+                logger.debug(f"Recovery already in progress for {service_name}")
+                return False
+
+            # Max attempts exceeded?
+            if self._restart_attempts[service_name] >= self.max_restart_attempts:
+                logger.error(f"Max restart attempts exceeded for {service_name}")
+                await self._notify_recovery(service_name, False, "Max attempts exceeded")
+                return False
+
+            # Calculate backoff
+            attempts = self._restart_attempts[service_name]
+            backoff = min(
+                self.restart_backoff_base ** attempts,
+                self.restart_backoff_max,
+            )
+
+            # Check if enough time passed since last restart
+            last = self._last_restart.get(service_name, 0)
+            if time.time() - last < backoff:
+                remaining = backoff - (time.time() - last)
+                logger.debug(f"Backoff for {service_name}: {remaining:.1f}s remaining")
+                return False
+
+            self._recovery_in_progress.add(service_name)
+
+        try:
+            logger.info(f"Attempting recovery for {service_name} (attempt {attempts + 1})")
+
+            # Cleanup orphan processes if enabled
+            if self.cleanup_orphans and endpoint and endpoint.pid:
+                await self._cleanup_orphan(endpoint.pid)
+
+            # Execute restart command
+            if service_name in self._restart_commands:
+                restart_fn = self._restart_commands[service_name]
+                await restart_fn()
+
+                async with self._lock:
+                    self._restart_attempts[service_name] += 1
+                    self._last_restart[service_name] = time.time()
+
+                await self._notify_recovery(service_name, True, "Restart initiated")
+                return True
+            else:
+                logger.warning(f"No restart command registered for {service_name}")
+                await self._notify_recovery(service_name, False, "No restart command")
+                return False
+
+        except Exception as e:
+            logger.error(f"Recovery failed for {service_name}: {e}")
+            async with self._lock:
+                self._restart_attempts[service_name] += 1
+                self._last_restart[service_name] = time.time()
+            await self._notify_recovery(service_name, False, str(e))
+            return False
+
+        finally:
+            async with self._lock:
+                self._recovery_in_progress.discard(service_name)
+
+    async def _cleanup_orphan(self, pid: int) -> None:
+        """Kill orphan process if still running."""
+        try:
+            import psutil
+            if psutil.pid_exists(pid):
+                proc = psutil.Process(pid)
+                proc.terminate()
+                await asyncio.sleep(1)
+                if proc.is_running():
+                    proc.kill()
+                logger.info(f"Cleaned up orphan process {pid}")
+        except Exception as e:
+            logger.debug(f"Orphan cleanup error: {e}")
+
+    async def _notify_recovery(
+        self,
+        service_name: str,
+        success: bool,
+        message: str,
+    ) -> None:
+        """Notify callbacks of recovery event."""
+        for callback in self._callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(service_name, success, message)
+                else:
+                    callback(service_name, success, message)
+            except Exception:
+                pass
+
+    def reset_attempts(self, service_name: str) -> None:
+        """Reset restart attempts for a service (call on successful recovery)."""
+        self._restart_attempts[service_name] = 0
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get recovery manager status."""
+        return {
+            "restart_attempts": dict(self._restart_attempts),
+            "last_restart": {k: time.time() - v for k, v in self._last_restart.items()},
+            "recovery_in_progress": list(self._recovery_in_progress),
+            "registered_services": list(self._restart_commands.keys()),
+        }
+
+
+class CascadeFailurePreventor:
+    """
+    Prevents cascading failures across services with:
+    - Dependency tracking
+    - Bulkhead pattern (resource isolation)
+    - Load shedding during pressure
+    - Graceful degradation routing
+    """
+
+    def __init__(
+        self,
+        max_concurrent_failures: int = 2,
+        failure_cascade_window: float = 10.0,
+        load_shedding_threshold: float = 0.8,
+    ):
+        self.max_concurrent_failures = max_concurrent_failures
+        self.failure_cascade_window = failure_cascade_window
+        self.load_shedding_threshold = load_shedding_threshold
+
+        self._dependencies: Dict[str, Set[str]] = defaultdict(set)
+        self._failure_times: Dict[str, List[float]] = defaultdict(list)
+        self._in_cascade_mode = False
+        self._shedding_services: Set[str] = set()
+        self._lock = asyncio.Lock()
+
+    def register_dependency(self, service: str, depends_on: str) -> None:
+        """Register that service depends on another."""
+        self._dependencies[service].add(depends_on)
+
+    async def record_failure(self, service_name: str) -> None:
+        """Record a service failure."""
+        async with self._lock:
+            now = time.time()
+            self._failure_times[service_name].append(now)
+
+            # Clean old failures
+            cutoff = now - self.failure_cascade_window
+            self._failure_times[service_name] = [
+                t for t in self._failure_times[service_name] if t > cutoff
+            ]
+
+            # Check for cascade
+            concurrent_failures = sum(
+                1 for times in self._failure_times.values()
+                if any(t > cutoff for t in times)
+            )
+
+            if concurrent_failures >= self.max_concurrent_failures:
+                if not self._in_cascade_mode:
+                    self._in_cascade_mode = True
+                    logger.warning("CASCADE FAILURE DETECTED - Entering protection mode")
+                    await self._enter_cascade_protection()
+
+    async def _enter_cascade_protection(self) -> None:
+        """Enter cascade protection mode."""
+        # Identify services to shed load from
+        for service, deps in self._dependencies.items():
+            failed_deps = [
+                d for d in deps
+                if self._failure_times.get(d) and len(self._failure_times[d]) > 0
+            ]
+            if len(failed_deps) > 0:
+                self._shedding_services.add(service)
+                logger.info(f"Load shedding enabled for {service}")
+
+    async def exit_cascade_protection(self) -> None:
+        """Exit cascade protection mode."""
+        async with self._lock:
+            self._in_cascade_mode = False
+            self._shedding_services.clear()
+            logger.info("Exiting cascade protection mode")
+
+    def should_shed_load(self, service_name: str) -> bool:
+        """Check if load should be shed for service."""
+        return service_name in self._shedding_services
+
+    def is_cascade_mode(self) -> bool:
+        """Check if in cascade protection mode."""
+        return self._in_cascade_mode
+
+    def get_healthy_alternatives(self, failed_service: str) -> List[str]:
+        """Get healthy alternatives for a failed service."""
+        alternatives = []
+        for service, deps in self._dependencies.items():
+            if failed_service not in deps:
+                # This service doesn't depend on failed one
+                if service not in self._shedding_services:
+                    alternatives.append(service)
+        return alternatives
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get cascade prevention status."""
+        return {
+            "cascade_mode": self._in_cascade_mode,
+            "shedding_services": list(self._shedding_services),
+            "dependencies": {k: list(v) for k, v in self._dependencies.items()},
+            "recent_failures": {
+                k: len(v) for k, v in self._failure_times.items() if v
+            },
+        }
+
+
+class HeartbeatWatchdog:
+    """
+    Monitors service heartbeats and triggers recovery for stale services.
+
+    Features:
+    - Adaptive stale detection
+    - Automatic recovery triggering
+    - Heartbeat pattern analysis
+    - Proactive failure prediction
+    """
+
+    def __init__(
+        self,
+        stale_threshold: float = 60.0,
+        dead_threshold: float = 180.0,
+        check_interval: float = 10.0,
+        recovery_manager: Optional[SelfHealingServiceManager] = None,
+    ):
+        self.stale_threshold = stale_threshold
+        self.dead_threshold = dead_threshold
+        self.check_interval = check_interval
+        self.recovery_manager = recovery_manager
+
+        self._services: Dict[str, ServiceEndpoint] = {}
+        self._heartbeat_history: Dict[str, List[float]] = defaultdict(list)
+        self._expected_intervals: Dict[str, float] = {}
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+        self._callbacks: List[Callable] = []
+
+    async def start(self) -> None:
+        """Start the heartbeat watchdog."""
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._monitor_loop())
+        logger.info("HeartbeatWatchdog started")
+
+    async def stop(self) -> None:
+        """Stop the heartbeat watchdog."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("HeartbeatWatchdog stopped")
+
+    def on_stale(self, callback: Callable[[str, float], None]) -> None:
+        """Register callback for stale detection."""
+        self._callbacks.append(callback)
+
+    async def register_service(
+        self,
+        service_name: str,
+        endpoint: ServiceEndpoint,
+        expected_interval: float = 30.0,
+    ) -> None:
+        """Register a service for heartbeat monitoring."""
+        async with self._lock:
+            self._services[service_name] = endpoint
+            self._expected_intervals[service_name] = expected_interval
+            self._heartbeat_history[service_name].append(time.time())
+
+    async def record_heartbeat(self, service_name: str) -> None:
+        """Record a heartbeat from a service."""
+        async with self._lock:
+            now = time.time()
+            if service_name in self._services:
+                self._services[service_name].last_heartbeat = now
+                self._heartbeat_history[service_name].append(now)
+
+                # Keep only recent history
+                cutoff = now - 300  # 5 minutes
+                self._heartbeat_history[service_name] = [
+                    t for t in self._heartbeat_history[service_name] if t > cutoff
+                ]
+
+    async def _monitor_loop(self) -> None:
+        """Main monitoring loop."""
+        while self._running:
+            try:
+                await self._check_heartbeats()
+                await asyncio.sleep(self.check_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Heartbeat monitor error: {e}")
+                await asyncio.sleep(self.check_interval)
+
+    async def _check_heartbeats(self) -> None:
+        """Check all registered services for stale heartbeats."""
+        now = time.time()
+
+        async with self._lock:
+            services = list(self._services.items())
+
+        for service_name, endpoint in services:
+            last_heartbeat = endpoint.last_heartbeat or endpoint.registered_at or 0
+            age = now - last_heartbeat
+
+            if age > self.dead_threshold:
+                logger.error(f"Service {service_name} is DEAD (no heartbeat for {age:.0f}s)")
+                await self._trigger_recovery(service_name, endpoint, ServiceState.DEAD)
+            elif age > self.stale_threshold:
+                logger.warning(f"Service {service_name} is STALE (last heartbeat {age:.0f}s ago)")
+                await self._trigger_recovery(service_name, endpoint, ServiceState.STALE)
+                await self._notify_stale(service_name, age)
+
+    async def _trigger_recovery(
+        self,
+        service_name: str,
+        endpoint: ServiceEndpoint,
+        state: ServiceState,
+    ) -> None:
+        """Trigger recovery for a stale/dead service."""
+        if self.recovery_manager:
+            await self.recovery_manager.attempt_recovery(
+                service_name,
+                state,
+                endpoint,
+            )
+
+    async def _notify_stale(self, service_name: str, age: float) -> None:
+        """Notify callbacks of stale service."""
+        for callback in self._callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(service_name, age)
+                else:
+                    callback(service_name, age)
+            except Exception:
+                pass
+
+    def predict_next_stale(self) -> Dict[str, float]:
+        """Predict when services might go stale based on patterns."""
+        predictions = {}
+        now = time.time()
+
+        for service_name, history in self._heartbeat_history.items():
+            if len(history) < 2:
+                continue
+
+            # Calculate average interval
+            intervals = [
+                history[i] - history[i-1]
+                for i in range(1, len(history))
+            ]
+            avg_interval = sum(intervals) / len(intervals)
+
+            # Predict next heartbeat
+            last = history[-1]
+            next_expected = last + avg_interval
+            time_until_stale = (last + self.stale_threshold) - now
+
+            predictions[service_name] = {
+                "avg_interval": avg_interval,
+                "last_heartbeat_age": now - last,
+                "next_expected_in": max(0, next_expected - now),
+                "stale_in": max(0, time_until_stale),
+            }
+
+        return predictions
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get watchdog status."""
+        now = time.time()
+        return {
+            "running": self._running,
+            "services": {
+                name: {
+                    "last_heartbeat_age": now - (ep.last_heartbeat or 0),
+                    "expected_interval": self._expected_intervals.get(name, 30),
+                    "heartbeat_count": len(self._heartbeat_history.get(name, [])),
+                }
+                for name, ep in self._services.items()
+            },
+            "predictions": self.predict_next_stale(),
+        }
+
+
+class GracefulDegradationRouter:
+    """
+    Routes requests around failed services with:
+    - Fallback chain support
+    - Health-aware routing
+    - Load balancing across healthy instances
+    - Timeout-based failover
+    """
+
+    def __init__(
+        self,
+        default_timeout: float = 5.0,
+        fallback_timeout: float = 10.0,
+    ):
+        self.default_timeout = default_timeout
+        self.fallback_timeout = fallback_timeout
+
+        self._routes: Dict[str, List[ServiceEndpoint]] = defaultdict(list)
+        self._health_states: Dict[str, ServiceState] = {}
+        self._fallback_chains: Dict[str, List[str]] = {}
+        self._lock = asyncio.Lock()
+
+    def register_route(
+        self,
+        route_name: str,
+        endpoints: List[ServiceEndpoint],
+        fallback_chain: Optional[List[str]] = None,
+    ) -> None:
+        """Register a route with multiple endpoints."""
+        self._routes[route_name] = endpoints
+        if fallback_chain:
+            self._fallback_chains[route_name] = fallback_chain
+
+    async def update_health(self, service_name: str, state: ServiceState) -> None:
+        """Update health state for a service."""
+        async with self._lock:
+            self._health_states[service_name] = state
+
+    async def get_healthy_endpoint(
+        self,
+        route_name: str,
+    ) -> Optional[ServiceEndpoint]:
+        """Get a healthy endpoint for a route."""
+        async with self._lock:
+            endpoints = self._routes.get(route_name, [])
+
+            # Try primary endpoints
+            for endpoint in endpoints:
+                state = self._health_states.get(endpoint.service_name, ServiceState.UNKNOWN)
+                if state in (ServiceState.HEALTHY, ServiceState.UNKNOWN):
+                    return endpoint
+
+            # Try degraded endpoints
+            for endpoint in endpoints:
+                state = self._health_states.get(endpoint.service_name, ServiceState.UNKNOWN)
+                if state == ServiceState.DEGRADED:
+                    logger.warning(f"Using degraded endpoint for {route_name}")
+                    return endpoint
+
+            # Try fallback chain
+            fallback_chain = self._fallback_chains.get(route_name, [])
+            for fallback_route in fallback_chain:
+                fallback_endpoints = self._routes.get(fallback_route, [])
+                for endpoint in fallback_endpoints:
+                    state = self._health_states.get(endpoint.service_name, ServiceState.UNKNOWN)
+                    if state in (ServiceState.HEALTHY, ServiceState.DEGRADED, ServiceState.UNKNOWN):
+                        logger.info(f"Using fallback {fallback_route} for {route_name}")
+                        return endpoint
+
+            return None
+
+    async def execute_with_fallback(
+        self,
+        route_name: str,
+        request_fn: Callable[[ServiceEndpoint], Coroutine],
+        timeout: Optional[float] = None,
+    ) -> Any:
+        """Execute request with automatic fallback."""
+        timeout = timeout or self.default_timeout
+
+        # Try primary
+        endpoint = await self.get_healthy_endpoint(route_name)
+        if endpoint:
+            try:
+                return await asyncio.wait_for(
+                    request_fn(endpoint),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout on {route_name} primary, trying fallback")
+                await self.update_health(endpoint.service_name, ServiceState.DEGRADED)
+            except Exception as e:
+                logger.warning(f"Error on {route_name} primary: {e}")
+                await self.update_health(endpoint.service_name, ServiceState.UNHEALTHY)
+
+        # Try fallbacks
+        fallback_chain = self._fallback_chains.get(route_name, [])
+        for fallback_route in fallback_chain:
+            endpoint = await self.get_healthy_endpoint(fallback_route)
+            if endpoint:
+                try:
+                    return await asyncio.wait_for(
+                        request_fn(endpoint),
+                        timeout=self.fallback_timeout,
+                    )
+                except Exception:
+                    continue
+
+        raise RuntimeError(f"All endpoints exhausted for {route_name}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get router status."""
+        return {
+            "routes": {
+                name: [
+                    {
+                        "service": ep.service_name,
+                        "port": ep.port,
+                        "health": self._health_states.get(ep.service_name, ServiceState.UNKNOWN).value,
+                    }
+                    for ep in endpoints
+                ]
+                for name, endpoints in self._routes.items()
+            },
+            "fallback_chains": self._fallback_chains,
+        }
+
+
+class ResilientServiceMesh:
+    """
+    Master orchestrator for resilient service mesh.
+
+    Combines all v11.0 components:
+    - StartupHandshakeProtocol
+    - IntelligentCircuitBreaker
+    - AdaptiveHealthMonitor
+    - SelfHealingServiceManager
+    - CascadeFailurePreventor
+    - HeartbeatWatchdog
+    - GracefulDegradationRouter
+    """
+
+    def __init__(
+        self,
+        health_config: Optional[HealthCheckConfig] = None,
+        circuit_config: Optional[CircuitBreakerConfig] = None,
+    ):
+        self.health_config = health_config or HealthCheckConfig()
+        self.circuit_config = circuit_config or CircuitBreakerConfig()
+
+        # Core components
+        self.handshake = StartupHandshakeProtocol()
+        self.recovery_manager = SelfHealingServiceManager()
+        self.cascade_preventor = CascadeFailurePreventor()
+        self.heartbeat_watchdog = HeartbeatWatchdog(
+            recovery_manager=self.recovery_manager,
+        )
+        self.router = GracefulDegradationRouter()
+
+        # Per-service components
+        self._circuit_breakers: Dict[str, IntelligentCircuitBreaker] = {}
+        self._health_monitors: Dict[str, AdaptiveHealthMonitor] = {}
+        self._service_states: Dict[str, ServiceHealthState] = {}
+
+        self._running = False
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+
+    async def start(self) -> None:
+        """Start the resilient service mesh."""
+        if self._running:
+            return
+
+        self._running = True
+
+        # Start sub-components
+        await self.handshake.start()
+        await self.heartbeat_watchdog.start()
+
+        # Start main monitoring loop
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+
+        logger.info("🛡️ ResilientServiceMesh v11.0 started")
+
+    async def stop(self) -> None:
+        """Stop the resilient service mesh."""
+        self._running = False
+
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop sub-components
+        await self.handshake.stop()
+        await self.heartbeat_watchdog.stop()
+
+        # Close health monitors
+        for monitor in self._health_monitors.values():
+            await monitor.close()
+
+        logger.info("ResilientServiceMesh stopped")
+
+    async def register_service(
+        self,
+        service_name: str,
+        endpoint: ServiceEndpoint,
+        dependencies: Optional[List[str]] = None,
+        restart_fn: Optional[Callable[[], Coroutine]] = None,
+    ) -> None:
+        """Register a service with the mesh."""
+        async with self._lock:
+            # Create circuit breaker
+            circuit_breaker = IntelligentCircuitBreaker(
+                service_name,
+                self.circuit_config,
+            )
+            self._circuit_breakers[service_name] = circuit_breaker
+
+            # Create health monitor
+            monitor = AdaptiveHealthMonitor(
+                service_name,
+                endpoint,
+                self.health_config,
+                circuit_breaker,
+            )
+            self._health_monitors[service_name] = monitor
+
+            # Register with watchdog
+            await self.heartbeat_watchdog.register_service(
+                service_name,
+                endpoint,
+            )
+
+            # Register dependencies
+            if dependencies:
+                for dep in dependencies:
+                    self.cascade_preventor.register_dependency(service_name, dep)
+
+            # Register restart function
+            if restart_fn:
+                self.recovery_manager.register_restart_command(service_name, restart_fn)
+
+            # Create health state
+            self._service_states[service_name] = ServiceHealthState(
+                service_name=service_name,
+                state=ServiceState.STARTING,
+                endpoint=endpoint,
+            )
+
+            # Set up state change callbacks
+            def on_state_change(old: ServiceState, new: ServiceState) -> None:
+                self._handle_state_change(service_name, old, new)
+
+            monitor.on_state_change(on_state_change)
+
+            logger.info(f"Registered service: {service_name}")
+
+    async def await_service_ready(
+        self,
+        service_name: str,
+        timeout: float = 60.0,
+    ) -> bool:
+        """Wait for a service to be ready."""
+        endpoint = await self.handshake.await_registration(service_name, timeout)
+        if not endpoint:
+            return False
+
+        # Update endpoint
+        async with self._lock:
+            if service_name in self._health_monitors:
+                self._health_monitors[service_name].endpoint = endpoint
+            if service_name in self._service_states:
+                self._service_states[service_name].endpoint = endpoint
+
+        return True
+
+    async def record_heartbeat(self, service_name: str) -> None:
+        """Record a heartbeat from a service."""
+        await self.heartbeat_watchdog.record_heartbeat(service_name)
+
+        # Reset recovery attempts on successful heartbeat
+        self.recovery_manager.reset_attempts(service_name)
+
+    async def get_service_health(self, service_name: str) -> Optional[ServiceHealthState]:
+        """Get health state for a service."""
+        async with self._lock:
+            return self._service_states.get(service_name)
+
+    async def get_healthy_endpoint(
+        self,
+        service_name: str,
+    ) -> Optional[ServiceEndpoint]:
+        """Get a healthy endpoint for a service."""
+        state = await self.get_service_health(service_name)
+        if state and state.state in (ServiceState.HEALTHY, ServiceState.DEGRADED):
+            return state.endpoint
+        return None
+
+    def _handle_state_change(
+        self,
+        service_name: str,
+        old_state: ServiceState,
+        new_state: ServiceState,
+    ) -> None:
+        """Handle service state change."""
+        if service_name in self._service_states:
+            self._service_states[service_name].state = new_state
+            self._service_states[service_name].last_state_change = time.time()
+
+        # Update router
+        asyncio.create_task(self.router.update_health(service_name, new_state))
+
+        # Record failure for cascade prevention
+        if new_state in (ServiceState.UNHEALTHY, ServiceState.DEAD, ServiceState.STALE):
+            asyncio.create_task(self.cascade_preventor.record_failure(service_name))
+
+    async def _monitor_loop(self) -> None:
+        """Main health monitoring loop."""
+        while self._running:
+            try:
+                async with self._lock:
+                    monitors = list(self._health_monitors.items())
+
+                # Run health checks in parallel
+                tasks = []
+                for service_name, monitor in monitors:
+                    tasks.append(self._check_service_health(service_name, monitor))
+
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Get minimum delay for next check
+                min_delay = min(
+                    (m.get_next_check_delay() for m in self._health_monitors.values()),
+                    default=5.0,
+                )
+
+                await asyncio.sleep(min_delay)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Monitor loop error: {e}")
+                await asyncio.sleep(5.0)
+
+    async def _check_service_health(
+        self,
+        service_name: str,
+        monitor: AdaptiveHealthMonitor,
+    ) -> None:
+        """Check health of a single service."""
+        try:
+            snapshot = await monitor.check_health()
+
+            # Update health state
+            async with self._lock:
+                if service_name in self._service_states:
+                    state = self._service_states[service_name]
+                    state.total_checks += 1
+                    if snapshot.result != HealthCheckResult.SUCCESS:
+                        state.total_failures += 1
+                    state.recent_checks.append(snapshot)
+                    if len(state.recent_checks) > 20:
+                        state.recent_checks.pop(0)
+
+            # Trigger recovery if needed
+            current_state = monitor._state
+            if current_state in (ServiceState.STALE, ServiceState.DEAD, ServiceState.UNHEALTHY):
+                await self.recovery_manager.attempt_recovery(
+                    service_name,
+                    current_state,
+                    monitor.endpoint,
+                )
+
+        except Exception as e:
+            logger.debug(f"Health check error for {service_name}: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive mesh status."""
+        return {
+            "running": self._running,
+            "services": {
+                name: {
+                    "state": state.state.value,
+                    "circuit": self._circuit_breakers.get(name, {}).get_status() if name in self._circuit_breakers else None,
+                    "health": self._health_monitors.get(name, {}).get_status() if name in self._health_monitors else None,
+                    "total_checks": state.total_checks,
+                    "total_failures": state.total_failures,
+                    "recovery_attempts": state.recovery_attempts,
+                }
+                for name, state in self._service_states.items()
+            },
+            "recovery_manager": self.recovery_manager.get_status(),
+            "cascade_preventor": self.cascade_preventor.get_status(),
+            "heartbeat_watchdog": self.heartbeat_watchdog.get_status(),
+            "router": self.router.get_status(),
+        }
+
+
+# =============================================================================
+# v11.0: SINGLETON INSTANCES AND FACTORY FUNCTIONS
+# =============================================================================
+
+_resilient_mesh: Optional[ResilientServiceMesh] = None
+_handshake_protocol: Optional[StartupHandshakeProtocol] = None
+_heartbeat_watchdog: Optional[HeartbeatWatchdog] = None
+_recovery_manager: Optional[SelfHealingServiceManager] = None
+_cascade_preventor: Optional[CascadeFailurePreventor] = None
+_degradation_router: Optional[GracefulDegradationRouter] = None
+
+
+def get_resilient_mesh() -> ResilientServiceMesh:
+    """Get or create the resilient service mesh singleton."""
+    global _resilient_mesh
+    if _resilient_mesh is None:
+        _resilient_mesh = ResilientServiceMesh()
+    return _resilient_mesh
+
+
+def get_handshake_protocol() -> StartupHandshakeProtocol:
+    """Get or create the startup handshake protocol singleton."""
+    global _handshake_protocol
+    if _handshake_protocol is None:
+        _handshake_protocol = StartupHandshakeProtocol()
+    return _handshake_protocol
+
+
+def get_heartbeat_watchdog() -> HeartbeatWatchdog:
+    """Get or create the heartbeat watchdog singleton."""
+    global _heartbeat_watchdog
+    if _heartbeat_watchdog is None:
+        _heartbeat_watchdog = HeartbeatWatchdog()
+    return _heartbeat_watchdog
+
+
+def get_recovery_manager() -> SelfHealingServiceManager:
+    """Get or create the self-healing service manager singleton."""
+    global _recovery_manager
+    if _recovery_manager is None:
+        _recovery_manager = SelfHealingServiceManager()
+    return _recovery_manager
+
+
+def get_cascade_preventor() -> CascadeFailurePreventor:
+    """Get or create the cascade failure preventor singleton."""
+    global _cascade_preventor
+    if _cascade_preventor is None:
+        _cascade_preventor = CascadeFailurePreventor()
+    return _cascade_preventor
+
+
+def get_degradation_router() -> GracefulDegradationRouter:
+    """Get or create the graceful degradation router singleton."""
+    global _degradation_router
+    if _degradation_router is None:
+        _degradation_router = GracefulDegradationRouter()
+    return _degradation_router
+
+
+# =============================================================================
+# v11.0: INITIALIZATION AND SHUTDOWN
+# =============================================================================
+
+async def initialize_resilient_mesh(
+    services: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Initialize the resilient service mesh.
+
+    Args:
+        services: Optional list of service configurations
+
+    Returns:
+        Dictionary with initialized components
+    """
+    logger.info("🛡️ Initializing Resilient Service Mesh v11.0...")
+    start_time = time.monotonic()
+
+    components = {}
+
+    try:
+        mesh = get_resilient_mesh()
+        await mesh.start()
+        components["resilient_mesh"] = mesh
+
+        # Register services if provided
+        if services:
+            for svc in services:
+                endpoint = ServiceEndpoint(
+                    service_name=svc["name"],
+                    host=svc.get("host", "localhost"),
+                    port=svc.get("port"),
+                    health_path=svc.get("health_path", "/health"),
+                )
+                await mesh.register_service(
+                    svc["name"],
+                    endpoint,
+                    dependencies=svc.get("dependencies"),
+                )
+
+        # Also expose individual components
+        components["handshake_protocol"] = mesh.handshake
+        components["heartbeat_watchdog"] = mesh.heartbeat_watchdog
+        components["recovery_manager"] = mesh.recovery_manager
+        components["cascade_preventor"] = mesh.cascade_preventor
+        components["degradation_router"] = mesh.router
+
+        elapsed = time.monotonic() - start_time
+        logger.info(f"✅ Resilient Service Mesh initialized in {elapsed:.2f}s")
+        logger.info(f"   Components: {len(components)}")
+
+        return components
+
+    except Exception as e:
+        logger.error(f"❌ Resilient Service Mesh initialization failed: {e}")
+        raise
+
+
+async def shutdown_resilient_mesh() -> None:
+    """Shutdown the resilient service mesh."""
+    logger.info("Shutting down Resilient Service Mesh...")
+
+    global _resilient_mesh, _handshake_protocol, _heartbeat_watchdog
+    global _recovery_manager, _cascade_preventor, _degradation_router
+
+    if _resilient_mesh:
+        await _resilient_mesh.stop()
+        _resilient_mesh = None
+
+    if _handshake_protocol:
+        await _handshake_protocol.stop()
+        _handshake_protocol = None
+
+    if _heartbeat_watchdog:
+        await _heartbeat_watchdog.stop()
+        _heartbeat_watchdog = None
+
+    _recovery_manager = None
+    _cascade_preventor = None
+    _degradation_router = None
+
+    logger.info("✅ Resilient Service Mesh shutdown complete")
+
+
+# =============================================================================
+# v11.0: CONVENIENCE FUNCTIONS
+# =============================================================================
+
+async def register_service_with_mesh(
+    service_name: str,
+    host: str = "localhost",
+    port: Optional[int] = None,
+    health_path: str = "/health",
+    dependencies: Optional[List[str]] = None,
+    restart_fn: Optional[Callable[[], Coroutine]] = None,
+) -> None:
+    """
+    Register a service with the resilient mesh.
+
+    Usage:
+        await register_service_with_mesh(
+            "jarvis-prime",
+            port=8001,
+            dependencies=["jarvis-core"],
+            restart_fn=restart_prime,
+        )
+    """
+    mesh = get_resilient_mesh()
+    endpoint = ServiceEndpoint(
+        service_name=service_name,
+        host=host,
+        port=port,
+        health_path=health_path,
+    )
+    await mesh.register_service(
+        service_name,
+        endpoint,
+        dependencies=dependencies,
+        restart_fn=restart_fn,
+    )
+
+
+async def await_service_registration(
+    service_name: str,
+    timeout: float = 60.0,
+) -> bool:
+    """
+    Wait for a service to register before checking health.
+
+    Usage:
+        if await await_service_registration("reactor-core"):
+            print("Reactor Core is registered!")
+    """
+    mesh = get_resilient_mesh()
+    return await mesh.await_service_ready(service_name, timeout)
+
+
+async def send_heartbeat(service_name: str) -> None:
+    """
+    Send a heartbeat from a service.
+
+    Usage:
+        await send_heartbeat("jarvis-core")
+    """
+    mesh = get_resilient_mesh()
+    await mesh.record_heartbeat(service_name)
+
+
+async def get_healthy_service(
+    service_name: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Get a healthy endpoint for a service.
+
+    Usage:
+        endpoint = await get_healthy_service("jarvis-prime")
+        if endpoint:
+            url = f"http://{endpoint['host']}:{endpoint['port']}"
+    """
+    mesh = get_resilient_mesh()
+    endpoint = await mesh.get_healthy_endpoint(service_name)
+    if endpoint:
+        return {
+            "service_name": endpoint.service_name,
+            "host": endpoint.host,
+            "port": endpoint.port,
+            "health_path": endpoint.health_path,
+        }
+    return None
+
+
+async def get_mesh_status() -> Dict[str, Any]:
+    """
+    Get comprehensive mesh status.
+
+    Usage:
+        status = await get_mesh_status()
+        print(f"Services: {list(status['services'].keys())}")
+    """
+    mesh = get_resilient_mesh()
+    return mesh.get_status()

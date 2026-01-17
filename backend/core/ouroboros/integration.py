@@ -4107,6 +4107,22 @@ class CrossRepoAutonomousIntegration:
                     create_interactive_review,
                     review_change,
                     apply_reviewed_changes,
+                    # v11.0: Resilient service mesh
+                    initialize_resilient_mesh,
+                    shutdown_resilient_mesh,
+                    get_resilient_mesh,
+                    get_handshake_protocol,
+                    get_heartbeat_watchdog,
+                    get_recovery_manager,
+                    get_cascade_preventor,
+                    get_degradation_router,
+                    register_service_with_mesh,
+                    await_service_registration,
+                    send_heartbeat,
+                    get_healthy_service,
+                    get_mesh_status,
+                    ServiceState,
+                    ServiceEndpoint,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4367,6 +4383,40 @@ class CrossRepoAutonomousIntegration:
                     logger.warning(f"  ⚠️ v10.0 Real-Time Code Intelligence system initialization failed: {e}")
                     logger.debug(f"  v10.0 error details: {e}", exc_info=True)
 
+                # Phase 10: Initialize v11.0 Resilient Service Mesh
+                logger.info("Phase 10: Initializing v11.0 Resilient Service Mesh...")
+                try:
+                    # Configure services for mesh
+                    mesh_services = [
+                        {"name": "jarvis-core", "port": 8000, "health_path": "/health"},
+                        {"name": "jarvis-prime", "port": 8001, "health_path": "/health", "dependencies": ["jarvis-core"]},
+                        {"name": "reactor-core", "port": 8003, "health_path": "/health", "dependencies": ["jarvis-core"]},
+                    ]
+
+                    v11_components = await initialize_resilient_mesh(services=mesh_services)
+
+                    # Wire v11.0 components into our component registry
+                    v11_component_names = [
+                        "resilient_mesh",
+                        "handshake_protocol",
+                        "heartbeat_watchdog",
+                        "recovery_manager",
+                        "cascade_preventor",
+                        "degradation_router",
+                    ]
+
+                    for name in v11_component_names:
+                        comp = v11_components.get(name)
+                        if comp:
+                            self._components[name] = comp
+                            logger.info(f"  ✅ {name} initialized (v11.0)")
+
+                    logger.info(f"  ✅ v11.0 Resilient Service Mesh initialized with {len(v11_components)} components")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v11.0 Resilient Service Mesh initialization failed: {e}")
+                    logger.debug(f"  v11.0 error details: {e}", exc_info=True)
+
                 # Update global state
                 global _autonomous_state
                 _autonomous_state.goal_decomposer = self._components.get("goal_decomposer")
@@ -4392,6 +4442,13 @@ class CrossRepoAutonomousIntegration:
                 _autonomous_state.explanation_engine = self._components.get("explanation_engine")
                 _autonomous_state.comment_generator = self._components.get("comment_generator")
                 _autonomous_state.interactive_reviewer = self._components.get("interactive_reviewer")
+                # v11.0: Resilient service mesh components
+                _autonomous_state.resilient_mesh = self._components.get("resilient_mesh")
+                _autonomous_state.handshake_protocol = self._components.get("handshake_protocol")
+                _autonomous_state.heartbeat_watchdog = self._components.get("heartbeat_watchdog")
+                _autonomous_state.recovery_manager = self._components.get("recovery_manager")
+                _autonomous_state.cascade_preventor = self._components.get("cascade_preventor")
+                _autonomous_state.degradation_router = self._components.get("degradation_router")
                 _autonomous_state.orchestrator = orchestrator
                 _autonomous_state.oracle = oracle
                 _autonomous_state.llm_client = llm_client
@@ -4809,7 +4866,15 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v10.0: Shutdown Real-Time Code Intelligence system first (newest)
+        # v11.0: Shutdown Resilient Service Mesh first (newest)
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_resilient_mesh
+            await shutdown_resilient_mesh()
+            logger.info("  ✅ v11.0 Resilient Service Mesh shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v11.0 Resilient Service Mesh shutdown error: {e}")
+
+        # v10.0: Shutdown Real-Time Code Intelligence system
         try:
             from backend.core.ouroboros.native_integration import shutdown_realtime_intelligence_system
             await shutdown_realtime_intelligence_system()
@@ -4841,9 +4906,16 @@ class CrossRepoAutonomousIntegration:
         except Exception as e:
             logger.warning(f"  ⚠️ v7.0 autonomous system shutdown error: {e}")
 
-        # v6.0 + v7.0 + v8.0 + v9.0: Shutdown individual components
+        # v6.0 + v7.0 + v8.0 + v9.0 + v10.0 + v11.0: Shutdown individual components
         all_components = [
-            # v10.0 components (shutdown first - newest)
+            # v11.0 components (shutdown first - newest)
+            "degradation_router",
+            "cascade_preventor",
+            "recovery_manager",
+            "heartbeat_watchdog",
+            "handshake_protocol",
+            "resilient_mesh",
+            # v10.0 components
             "interactive_reviewer",
             "comment_generator",
             "explanation_engine",
