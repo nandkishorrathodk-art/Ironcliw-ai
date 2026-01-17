@@ -14049,8 +14049,24 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             langs = ["Python", "JavaScript", "TypeScript", "Go", "Rust", "Java", "C", "C++", "Ruby", "PHP", "Swift", "Kotlin"]
                             print(f"  {TerminalUI.CYAN}        🌐 Languages: {', '.join(langs[:6])}...{TerminalUI.RESET}")
 
-                        total_all_versions = total_active + v8_active + v9_active
-                        self.logger.info(f"[v9.0] ✅ Total Autonomous System: {total_all_versions}/27 components active")
+                        # v10.0: Real-Time Code Intelligence System
+                        v10_components = ["completion_engine", "error_detector", "suggestion_provider",
+                                        "explanation_engine", "comment_generator", "interactive_reviewer"]
+                        v10_active = sum(1 for c in v10_components if components.get(c) is not None)
+
+                        if v10_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v10.0 Real-Time Code Intelligence: {v10_active}/6 components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        ├─ LiveCodeCompletionEngine: Real-time autocomplete{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        ├─ RealTimeErrorDetector: Live error detection{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        ├─ InlineSuggestionProvider: Contextual suggestions{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        ├─ ChangeExplanationEngine: Code change reasoning{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        ├─ InlineCommentGenerator: Auto-generate comments{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.MAGENTA}        └─ InteractiveCodeReviewer: Cherry-pick changes{TerminalUI.RESET}")
+                            self.logger.info(f"[v10.0] ✅ Real-Time Code Intelligence: {v10_active}/6 components active")
+                            print(f"  {TerminalUI.CYAN}        🧠 Features: Completions, Errors, Suggestions, Explanations{TerminalUI.RESET}")
+
+                        total_all_versions = total_active + v8_active + v9_active + v10_active
+                        self.logger.info(f"[v10.0] ✅ Total Autonomous System: {total_all_versions}/33 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()

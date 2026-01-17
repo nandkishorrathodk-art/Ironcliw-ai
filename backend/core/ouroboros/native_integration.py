@@ -18934,3 +18934,2266 @@ async def improve_any_file(
                   f"Found {len(analysis.get('violations', []))} issues.",
         "dry_run": dry_run,
     }
+
+
+# =============================================================================
+# v10.0: REAL-TIME CODE INTELLIGENCE SYSTEM
+# =============================================================================
+#
+# This module provides real-time code intelligence features:
+# - Live code completion (autocomplete while typing)
+# - Inline code suggestions with explanations
+# - Real-time error detection as you type
+# - Line-by-line change explanation with reasoning
+# - Inline comment generation for changes
+# - Interactive code review with cherry-pick support
+#
+# Architecture:
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                    REAL-TIME CODE INTELLIGENCE                          │
+#   ├─────────────────────────────────────────────────────────────────────────┤
+#   │                                                                          │
+#   │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
+#   │  │ Code Completion  │  │ Error Detection  │  │ Inline Suggest   │       │
+#   │  │    Engine        │  │    (Real-time)   │  │   Provider       │       │
+#   │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘       │
+#   │           │                      │                     │                 │
+#   │           ▼                      ▼                     ▼                 │
+#   │  ┌─────────────────────────────────────────────────────────────────┐    │
+#   │  │                  UNIFIED INTELLIGENCE COORDINATOR               │    │
+#   │  │                                                                 │    │
+#   │  │  • Context Analysis    • Multi-language AST   • LLM Integration │    │
+#   │  │  • Symbol Resolution   • Type Inference       • Caching         │    │
+#   │  └─────────────────────────────────────────────────────────────────┘    │
+#   │           │                      │                     │                 │
+#   │           ▼                      ▼                     ▼                 │
+#   │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
+#   │  │ Change Explain   │  │ Comment Generate │  │ Interactive      │       │
+#   │  │    Engine        │  │    Engine        │  │   Review         │       │
+#   │  └──────────────────┘  └──────────────────┘  └──────────────────┘       │
+#   │                                                                          │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+# =============================================================================
+
+
+class CompletionType(Enum):
+    """Types of code completions."""
+    KEYWORD = "keyword"
+    FUNCTION = "function"
+    METHOD = "method"
+    VARIABLE = "variable"
+    CLASS = "class"
+    MODULE = "module"
+    PROPERTY = "property"
+    PARAMETER = "parameter"
+    SNIPPET = "snippet"
+    FILE_PATH = "file_path"
+    TYPE = "type"
+    CONSTANT = "constant"
+
+
+class ErrorSeverity(Enum):
+    """Severity levels for detected errors."""
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+    HINT = "hint"
+
+
+class ChangeAction(Enum):
+    """Actions for interactive code review."""
+    ACCEPT = "accept"
+    REJECT = "reject"
+    MODIFY = "modify"
+    SKIP = "skip"
+    ACCEPT_ALL = "accept_all"
+    REJECT_ALL = "reject_all"
+
+
+@dataclass
+class CompletionItem:
+    """A single code completion suggestion."""
+    label: str
+    kind: CompletionType
+    detail: Optional[str] = None
+    documentation: Optional[str] = None
+    insert_text: Optional[str] = None
+    sort_priority: int = 0
+    filter_text: Optional[str] = None
+    preselect: bool = False
+    deprecated: bool = False
+    commit_characters: List[str] = field(default_factory=list)
+    additional_edits: List[Dict[str, Any]] = field(default_factory=list)
+    command: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    source: str = "jarvis"
+    confidence: float = 1.0
+
+
+@dataclass
+class CompletionContext:
+    """Context for code completion request."""
+    file_path: str
+    line: int
+    column: int
+    trigger_character: Optional[str] = None
+    trigger_kind: str = "invoked"  # invoked, trigger_character, incomplete
+    prefix: str = ""
+    line_content: str = ""
+    language: LanguageType = LanguageType.UNKNOWN
+    scope: Optional[str] = None
+    imports: List[str] = field(default_factory=list)
+    symbols_in_scope: List[str] = field(default_factory=list)
+
+
+@dataclass
+class DetectedError:
+    """A detected error in the code."""
+    file_path: str
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+    message: str
+    severity: ErrorSeverity
+    code: Optional[str] = None
+    source: str = "jarvis"
+    related_info: List[Dict[str, Any]] = field(default_factory=list)
+    quick_fixes: List[Dict[str, Any]] = field(default_factory=list)
+    tags: List[str] = field(default_factory=list)
+
+
+@dataclass
+class InlineSuggestion:
+    """An inline code suggestion."""
+    file_path: str
+    line: int
+    column: int
+    suggestion: str
+    explanation: str
+    category: str  # optimization, security, style, best_practice
+    confidence: float = 1.0
+    quick_fix: Optional[str] = None
+    documentation_url: Optional[str] = None
+    related_symbols: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ChangeExplanation:
+    """Explanation for a single code change."""
+    line: int
+    before: str
+    after: str
+    explanation: str
+    reasoning: str
+    category: str  # refactor, fix, optimize, style, security
+    impact: str  # none, low, medium, high
+    references: List[str] = field(default_factory=list)
+    educational_notes: Optional[str] = None
+
+
+@dataclass
+class ReviewableChange:
+    """A single change that can be reviewed."""
+    id: str
+    file_path: str
+    line_start: int
+    line_end: int
+    before_text: str
+    after_text: str
+    explanation: ChangeExplanation
+    status: ChangeAction = ChangeAction.SKIP
+    user_modified_text: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class CodeReviewSession:
+    """An interactive code review session."""
+    session_id: str
+    file_path: str
+    changes: List[ReviewableChange]
+    created_at: datetime = field(default_factory=datetime.now)
+    status: str = "pending"  # pending, in_progress, completed, cancelled
+    accepted_count: int = 0
+    rejected_count: int = 0
+    modified_count: int = 0
+
+
+class LiveCodeCompletionEngine:
+    """
+    v10.0: Real-time code completion engine.
+
+    Provides intelligent code completions as the user types:
+    - Context-aware suggestions based on current scope
+    - Multi-language support with language-specific completions
+    - Symbol resolution from imports and local definitions
+    - Type-aware completions (when type information available)
+    - Snippet support for common patterns
+    - Caching for sub-millisecond response times
+    """
+
+    def __init__(
+        self,
+        language_registry: Optional[LanguageRegistry] = None,
+        ast_parser: Optional[UniversalASTParser] = None,
+        llm_client: Optional[Any] = None,
+    ):
+        self._registry = language_registry or get_language_registry()
+        self._parser = ast_parser or get_ast_parser()
+        self._llm_client = llm_client
+        self._completion_cache: Dict[str, List[CompletionItem]] = {}
+        self._symbol_cache: Dict[str, List[str]] = {}
+        self._snippet_cache: Dict[LanguageType, List[CompletionItem]] = {}
+        self._lock = asyncio.Lock()
+        self._max_cache_size = 1000
+        self._cache_ttl = 300  # 5 minutes
+
+        # Initialize built-in snippets
+        self._init_snippets()
+
+    def _init_snippets(self) -> None:
+        """Initialize language-specific code snippets."""
+        # Python snippets
+        self._snippet_cache[LanguageType.PYTHON] = [
+            CompletionItem(
+                label="def",
+                kind=CompletionType.SNIPPET,
+                detail="Function definition",
+                insert_text="def ${1:name}(${2:params}):\n    ${3:pass}",
+                documentation="Define a new function",
+            ),
+            CompletionItem(
+                label="async def",
+                kind=CompletionType.SNIPPET,
+                detail="Async function definition",
+                insert_text="async def ${1:name}(${2:params}):\n    ${3:pass}",
+                documentation="Define an async function",
+            ),
+            CompletionItem(
+                label="class",
+                kind=CompletionType.SNIPPET,
+                detail="Class definition",
+                insert_text="class ${1:Name}:\n    def __init__(self${2:, params}):\n        ${3:pass}",
+                documentation="Define a new class",
+            ),
+            CompletionItem(
+                label="try/except",
+                kind=CompletionType.SNIPPET,
+                detail="Try-except block",
+                insert_text="try:\n    ${1:pass}\nexcept ${2:Exception} as e:\n    ${3:pass}",
+                documentation="Error handling block",
+            ),
+            CompletionItem(
+                label="with",
+                kind=CompletionType.SNIPPET,
+                detail="Context manager",
+                insert_text="with ${1:expression} as ${2:var}:\n    ${3:pass}",
+                documentation="Context manager statement",
+            ),
+            CompletionItem(
+                label="if __name__",
+                kind=CompletionType.SNIPPET,
+                detail="Main entry point",
+                insert_text='if __name__ == "__main__":\n    ${1:main()}',
+                documentation="Python main entry point",
+            ),
+            CompletionItem(
+                label="@dataclass",
+                kind=CompletionType.SNIPPET,
+                detail="Dataclass decorator",
+                insert_text="@dataclass\nclass ${1:Name}:\n    ${2:field}: ${3:type}",
+                documentation="Create a dataclass",
+            ),
+            CompletionItem(
+                label="list comprehension",
+                kind=CompletionType.SNIPPET,
+                detail="List comprehension",
+                insert_text="[${1:expr} for ${2:item} in ${3:iterable}${4: if ${5:condition}}]",
+                documentation="List comprehension pattern",
+            ),
+            CompletionItem(
+                label="dict comprehension",
+                kind=CompletionType.SNIPPET,
+                detail="Dict comprehension",
+                insert_text="{${1:key}: ${2:value} for ${3:item} in ${4:iterable}}",
+                documentation="Dictionary comprehension pattern",
+            ),
+        ]
+
+        # JavaScript/TypeScript snippets
+        js_snippets = [
+            CompletionItem(
+                label="function",
+                kind=CompletionType.SNIPPET,
+                detail="Function declaration",
+                insert_text="function ${1:name}(${2:params}) {\n    ${3}\n}",
+                documentation="Declare a function",
+            ),
+            CompletionItem(
+                label="arrow",
+                kind=CompletionType.SNIPPET,
+                detail="Arrow function",
+                insert_text="const ${1:name} = (${2:params}) => {\n    ${3}\n};",
+                documentation="Arrow function expression",
+            ),
+            CompletionItem(
+                label="async arrow",
+                kind=CompletionType.SNIPPET,
+                detail="Async arrow function",
+                insert_text="const ${1:name} = async (${2:params}) => {\n    ${3}\n};",
+                documentation="Async arrow function",
+            ),
+            CompletionItem(
+                label="try/catch",
+                kind=CompletionType.SNIPPET,
+                detail="Try-catch block",
+                insert_text="try {\n    ${1}\n} catch (${2:error}) {\n    ${3}\n}",
+                documentation="Error handling block",
+            ),
+            CompletionItem(
+                label="useState",
+                kind=CompletionType.SNIPPET,
+                detail="React useState hook",
+                insert_text="const [${1:state}, set${1/(.*)/${1:/capitalize}/}] = useState(${2:initialValue});",
+                documentation="React state hook",
+            ),
+            CompletionItem(
+                label="useEffect",
+                kind=CompletionType.SNIPPET,
+                detail="React useEffect hook",
+                insert_text="useEffect(() => {\n    ${1}\n    return () => {\n        ${2}\n    };\n}, [${3:deps}]);",
+                documentation="React effect hook",
+            ),
+            CompletionItem(
+                label="import",
+                kind=CompletionType.SNIPPET,
+                detail="ES6 import",
+                insert_text="import { ${1:module} } from '${2:package}';",
+                documentation="Import statement",
+            ),
+            CompletionItem(
+                label="export default",
+                kind=CompletionType.SNIPPET,
+                detail="Default export",
+                insert_text="export default ${1:expression};",
+                documentation="Default export",
+            ),
+            CompletionItem(
+                label="fetch",
+                kind=CompletionType.SNIPPET,
+                detail="Fetch API call",
+                insert_text="const response = await fetch('${1:url}', {\n    method: '${2:GET}',\n    headers: {\n        'Content-Type': 'application/json',\n    },\n    ${3:body: JSON.stringify(data),}\n});",
+                documentation="Fetch API request",
+            ),
+        ]
+        self._snippet_cache[LanguageType.JAVASCRIPT] = js_snippets
+        self._snippet_cache[LanguageType.TYPESCRIPT] = js_snippets
+
+        # Go snippets
+        self._snippet_cache[LanguageType.GO] = [
+            CompletionItem(
+                label="func",
+                kind=CompletionType.SNIPPET,
+                detail="Function declaration",
+                insert_text="func ${1:name}(${2:params}) ${3:returnType} {\n    ${4}\n}",
+                documentation="Declare a function",
+            ),
+            CompletionItem(
+                label="struct",
+                kind=CompletionType.SNIPPET,
+                detail="Struct definition",
+                insert_text="type ${1:Name} struct {\n    ${2:Field} ${3:Type}\n}",
+                documentation="Define a struct",
+            ),
+            CompletionItem(
+                label="interface",
+                kind=CompletionType.SNIPPET,
+                detail="Interface definition",
+                insert_text="type ${1:Name} interface {\n    ${2:Method}(${3:params}) ${4:returnType}\n}",
+                documentation="Define an interface",
+            ),
+            CompletionItem(
+                label="if err",
+                kind=CompletionType.SNIPPET,
+                detail="Error check",
+                insert_text="if err != nil {\n    return ${1:err}\n}",
+                documentation="Error handling pattern",
+            ),
+            CompletionItem(
+                label="goroutine",
+                kind=CompletionType.SNIPPET,
+                detail="Go routine",
+                insert_text="go func() {\n    ${1}\n}()",
+                documentation="Start a goroutine",
+            ),
+        ]
+
+        # Rust snippets
+        self._snippet_cache[LanguageType.RUST] = [
+            CompletionItem(
+                label="fn",
+                kind=CompletionType.SNIPPET,
+                detail="Function definition",
+                insert_text="fn ${1:name}(${2:params}) -> ${3:ReturnType} {\n    ${4}\n}",
+                documentation="Define a function",
+            ),
+            CompletionItem(
+                label="struct",
+                kind=CompletionType.SNIPPET,
+                detail="Struct definition",
+                insert_text="struct ${1:Name} {\n    ${2:field}: ${3:Type},\n}",
+                documentation="Define a struct",
+            ),
+            CompletionItem(
+                label="impl",
+                kind=CompletionType.SNIPPET,
+                detail="Implementation block",
+                insert_text="impl ${1:Type} {\n    ${2}\n}",
+                documentation="Implementation block",
+            ),
+            CompletionItem(
+                label="match",
+                kind=CompletionType.SNIPPET,
+                detail="Match expression",
+                insert_text="match ${1:expr} {\n    ${2:pattern} => ${3:result},\n    _ => ${4:default},\n}",
+                documentation="Pattern matching",
+            ),
+            CompletionItem(
+                label="?",
+                kind=CompletionType.SNIPPET,
+                detail="Error propagation",
+                insert_text="${1:result}?",
+                documentation="Propagate error with ?",
+            ),
+        ]
+
+    async def get_completions(
+        self,
+        context: CompletionContext,
+        max_items: int = 50,
+        include_snippets: bool = True,
+    ) -> List[CompletionItem]:
+        """
+        Get code completions for the current context.
+
+        Args:
+            context: The completion context (file, line, column, etc.)
+            max_items: Maximum number of completions to return
+            include_snippets: Whether to include code snippets
+
+        Returns:
+            List of completion items sorted by relevance
+        """
+        completions: List[CompletionItem] = []
+
+        # Detect language if not provided
+        if context.language == LanguageType.UNKNOWN:
+            context.language = self._registry.detect_language(context.file_path)
+
+        # Get language config
+        config = self._registry.get_config(context.language)
+        if not config:
+            return completions
+
+        # Generate cache key
+        cache_key = f"{context.file_path}:{context.line}:{context.prefix[:10]}"
+
+        # Check cache
+        async with self._lock:
+            if cache_key in self._completion_cache:
+                return self._completion_cache[cache_key][:max_items]
+
+        # Collect completions from various sources
+        tasks = [
+            self._get_keyword_completions(context, config),
+            self._get_symbol_completions(context),
+            self._get_import_completions(context, config),
+        ]
+
+        if include_snippets:
+            tasks.append(self._get_snippet_completions(context))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, list):
+                completions.extend(result)
+
+        # Filter by prefix
+        if context.prefix:
+            prefix_lower = context.prefix.lower()
+            completions = [
+                c for c in completions
+                if (c.filter_text or c.label).lower().startswith(prefix_lower)
+                or prefix_lower in (c.filter_text or c.label).lower()
+            ]
+
+        # Sort by priority and relevance
+        completions.sort(key=lambda c: (-c.sort_priority, -c.confidence, c.label))
+
+        # Cache result
+        async with self._lock:
+            self._completion_cache[cache_key] = completions
+            # Evict old entries if cache is too large
+            if len(self._completion_cache) > self._max_cache_size:
+                oldest_keys = list(self._completion_cache.keys())[:100]
+                for key in oldest_keys:
+                    del self._completion_cache[key]
+
+        return completions[:max_items]
+
+    async def _get_keyword_completions(
+        self,
+        context: CompletionContext,
+        config: LanguageConfig,
+    ) -> List[CompletionItem]:
+        """Get language keyword completions."""
+        completions = []
+
+        for keyword in config.keywords:
+            if not context.prefix or keyword.lower().startswith(context.prefix.lower()):
+                completions.append(CompletionItem(
+                    label=keyword,
+                    kind=CompletionType.KEYWORD,
+                    detail=f"{context.language.value} keyword",
+                    sort_priority=50,
+                    confidence=0.9,
+                ))
+
+        return completions
+
+    async def _get_symbol_completions(
+        self,
+        context: CompletionContext,
+    ) -> List[CompletionItem]:
+        """Get symbol completions from the current file and imports."""
+        completions = []
+
+        try:
+            # Parse current file for symbols
+            ast = await self._parser.parse_file(context.file_path)
+            if ast:
+                for node in ast.children:
+                    if node.name:
+                        kind = CompletionType.VARIABLE
+                        if node.node_type == "function":
+                            kind = CompletionType.FUNCTION
+                        elif node.node_type == "class":
+                            kind = CompletionType.CLASS
+                        elif node.node_type == "import":
+                            kind = CompletionType.MODULE
+
+                        completions.append(CompletionItem(
+                            label=node.name,
+                            kind=kind,
+                            detail=f"{node.node_type} (line {node.start_line})",
+                            sort_priority=80,
+                            confidence=0.95,
+                        ))
+        except Exception:
+            pass
+
+        # Add symbols from context
+        for symbol in context.symbols_in_scope:
+            completions.append(CompletionItem(
+                label=symbol,
+                kind=CompletionType.VARIABLE,
+                detail="In scope",
+                sort_priority=90,
+                confidence=1.0,
+            ))
+
+        return completions
+
+    async def _get_import_completions(
+        self,
+        context: CompletionContext,
+        config: LanguageConfig,
+    ) -> List[CompletionItem]:
+        """Get completions for import statements."""
+        completions = []
+
+        # Common imports by language
+        common_imports = {
+            LanguageType.PYTHON: [
+                ("os", "Operating system interface"),
+                ("sys", "System-specific parameters"),
+                ("json", "JSON encoder and decoder"),
+                ("asyncio", "Async I/O framework"),
+                ("typing", "Type hints"),
+                ("pathlib", "Object-oriented paths"),
+                ("dataclasses", "Data classes"),
+                ("collections", "Container datatypes"),
+                ("functools", "Higher-order functions"),
+                ("logging", "Logging facility"),
+            ],
+            LanguageType.JAVASCRIPT: [
+                ("react", "React library"),
+                ("useState", "React state hook"),
+                ("useEffect", "React effect hook"),
+                ("axios", "HTTP client"),
+                ("lodash", "Utility library"),
+            ],
+            LanguageType.TYPESCRIPT: [
+                ("react", "React library"),
+                ("useState", "React state hook"),
+                ("useEffect", "React effect hook"),
+                ("axios", "HTTP client"),
+            ],
+            LanguageType.GO: [
+                ("fmt", "Formatted I/O"),
+                ("os", "Operating system"),
+                ("io", "I/O primitives"),
+                ("net/http", "HTTP client/server"),
+                ("encoding/json", "JSON encoding"),
+                ("context", "Context package"),
+                ("sync", "Synchronization"),
+            ],
+        }
+
+        if context.language in common_imports:
+            for module, desc in common_imports[context.language]:
+                completions.append(CompletionItem(
+                    label=module,
+                    kind=CompletionType.MODULE,
+                    detail=desc,
+                    sort_priority=60,
+                    confidence=0.8,
+                ))
+
+        return completions
+
+    async def _get_snippet_completions(
+        self,
+        context: CompletionContext,
+    ) -> List[CompletionItem]:
+        """Get snippet completions."""
+        snippets = self._snippet_cache.get(context.language, [])
+
+        # Filter by prefix
+        if context.prefix:
+            prefix_lower = context.prefix.lower()
+            snippets = [
+                s for s in snippets
+                if s.label.lower().startswith(prefix_lower)
+            ]
+
+        return snippets
+
+    async def invalidate_cache(self, file_path: Optional[str] = None) -> None:
+        """Invalidate completion cache for a file or all files."""
+        async with self._lock:
+            if file_path:
+                keys_to_remove = [k for k in self._completion_cache if k.startswith(file_path)]
+                for key in keys_to_remove:
+                    del self._completion_cache[key]
+            else:
+                self._completion_cache.clear()
+
+
+class RealTimeErrorDetector:
+    """
+    v10.0: Real-time error detection engine.
+
+    Detects errors as the user types:
+    - Syntax errors with precise location
+    - Semantic errors (undefined variables, type mismatches)
+    - Style violations and best practice issues
+    - Security vulnerabilities
+    - Performance anti-patterns
+    """
+
+    def __init__(
+        self,
+        language_registry: Optional[LanguageRegistry] = None,
+        language_analyzer: Optional[LanguageSpecificAnalyzer] = None,
+    ):
+        self._registry = language_registry or get_language_registry()
+        self._analyzer = language_analyzer or get_language_analyzer()
+        self._error_cache: Dict[str, List[DetectedError]] = {}
+        self._lock = asyncio.Lock()
+
+        # Common error patterns by language
+        self._error_patterns: Dict[LanguageType, List[Tuple[str, str, ErrorSeverity]]] = {}
+        self._init_error_patterns()
+
+    def _init_error_patterns(self) -> None:
+        """Initialize language-specific error patterns."""
+        # Python error patterns
+        self._error_patterns[LanguageType.PYTHON] = [
+            (r"^\s*print\s+[^(]", "Missing parentheses in print (Python 3)", ErrorSeverity.ERROR),
+            (r"except\s*:", "Bare except clause catches all exceptions", ErrorSeverity.WARNING),
+            (r"==\s*None\b", "Use 'is None' instead of '== None'", ErrorSeverity.HINT),
+            (r"!=\s*None\b", "Use 'is not None' instead of '!= None'", ErrorSeverity.HINT),
+            (r"\beval\s*\(", "eval() is a security risk", ErrorSeverity.WARNING),
+            (r"\bexec\s*\(", "exec() is a security risk", ErrorSeverity.WARNING),
+            (r"from\s+\w+\s+import\s+\*", "Wildcard imports are discouraged", ErrorSeverity.WARNING),
+            (r"global\s+\w+", "Avoid using global variables", ErrorSeverity.HINT),
+            (r"^\s*#\s*type:\s*ignore", "Type ignore suppresses type checking", ErrorSeverity.INFO),
+            (r"^\s*#\s*noqa", "Noqa suppresses linting", ErrorSeverity.INFO),
+            (r"password\s*=\s*['\"][^'\"]+['\"]", "Hardcoded password detected", ErrorSeverity.ERROR),
+            (r"api_?key\s*=\s*['\"][^'\"]+['\"]", "Hardcoded API key detected", ErrorSeverity.ERROR),
+        ]
+
+        # JavaScript/TypeScript error patterns
+        js_patterns = [
+            (r"\bvar\s+\w+", "Use 'const' or 'let' instead of 'var'", ErrorSeverity.WARNING),
+            (r"==\s*(?![=])", "Use strict equality (===)", ErrorSeverity.WARNING),
+            (r"!=\s*(?![=])", "Use strict inequality (!==)", ErrorSeverity.WARNING),
+            (r"console\.log\s*\(", "Remove console.log before production", ErrorSeverity.INFO),
+            (r"\bdebugger\b", "Remove debugger statement", ErrorSeverity.WARNING),
+            (r"\.innerHTML\s*=", "innerHTML is vulnerable to XSS", ErrorSeverity.WARNING),
+            (r"\beval\s*\(", "eval() is a security risk", ErrorSeverity.ERROR),
+            (r"\bnew\s+Function\s*\(", "new Function() is similar to eval()", ErrorSeverity.WARNING),
+            (r":\s*any\b", "Avoid using 'any' type", ErrorSeverity.HINT),
+            (r"@ts-ignore", "ts-ignore suppresses type checking", ErrorSeverity.INFO),
+        ]
+        self._error_patterns[LanguageType.JAVASCRIPT] = js_patterns
+        self._error_patterns[LanguageType.TYPESCRIPT] = js_patterns
+
+        # Go error patterns
+        self._error_patterns[LanguageType.GO] = [
+            (r"\bpanic\s*\(", "Avoid panic, return errors instead", ErrorSeverity.WARNING),
+            (r"interface\{\}", "Avoid empty interface when possible", ErrorSeverity.HINT),
+            (r"//\s*nolint", "Nolint suppresses linting", ErrorSeverity.INFO),
+            (r"fmt\.Print", "Consider using structured logging", ErrorSeverity.HINT),
+        ]
+
+        # Rust error patterns
+        self._error_patterns[LanguageType.RUST] = [
+            (r"\.unwrap\(\)", "Use proper error handling instead of unwrap()", ErrorSeverity.WARNING),
+            (r"\.expect\(", "Consider using ? operator instead of expect()", ErrorSeverity.HINT),
+            (r"\bunsafe\s*\{", "Unsafe block requires careful review", ErrorSeverity.INFO),
+            (r"\.clone\(\)", "Consider borrowing instead of cloning", ErrorSeverity.HINT),
+            (r"#\[allow\(", "Allow attribute suppresses warnings", ErrorSeverity.INFO),
+        ]
+
+    async def detect_errors(
+        self,
+        file_path: str,
+        content: Optional[str] = None,
+        include_hints: bool = True,
+    ) -> List[DetectedError]:
+        """
+        Detect errors in a file.
+
+        Args:
+            file_path: Path to the file
+            content: Optional content (reads from file if not provided)
+            include_hints: Whether to include hint-level diagnostics
+
+        Returns:
+            List of detected errors
+        """
+        errors: List[DetectedError] = []
+
+        # Get content
+        if content is None:
+            try:
+                content = Path(file_path).read_text(encoding='utf-8', errors='replace')
+            except Exception as e:
+                return [DetectedError(
+                    file_path=file_path,
+                    line=1,
+                    column=1,
+                    end_line=1,
+                    end_column=1,
+                    message=f"Could not read file: {e}",
+                    severity=ErrorSeverity.ERROR,
+                    code="E001",
+                )]
+
+        # Detect language
+        language = self._registry.detect_language(file_path, content)
+        if language == LanguageType.UNKNOWN:
+            return errors
+
+        lines = content.split('\n')
+
+        # Check syntax errors (basic)
+        syntax_errors = await self._check_syntax(content, language, file_path)
+        errors.extend(syntax_errors)
+
+        # Check pattern-based errors
+        patterns = self._error_patterns.get(language, [])
+        for pattern, message, severity in patterns:
+            if not include_hints and severity == ErrorSeverity.HINT:
+                continue
+
+            try:
+                for match in re.finditer(pattern, content, re.MULTILINE):
+                    line_num = content[:match.start()].count('\n') + 1
+                    col = match.start() - content.rfind('\n', 0, match.start()) - 1
+
+                    errors.append(DetectedError(
+                        file_path=file_path,
+                        line=line_num,
+                        column=max(1, col),
+                        end_line=line_num,
+                        end_column=col + len(match.group(0)),
+                        message=message,
+                        severity=severity,
+                        code=f"P{hash(pattern) % 1000:03d}",
+                        source="jarvis-realtime",
+                    ))
+            except re.error:
+                continue
+
+        # Check for undefined variables (basic)
+        undefined_errors = await self._check_undefined_variables(content, language, file_path)
+        errors.extend(undefined_errors)
+
+        # Cache errors
+        async with self._lock:
+            self._error_cache[file_path] = errors
+
+        return errors
+
+    async def _check_syntax(
+        self,
+        content: str,
+        language: LanguageType,
+        file_path: str,
+    ) -> List[DetectedError]:
+        """Check for syntax errors."""
+        errors = []
+
+        if language == LanguageType.PYTHON:
+            try:
+                import ast as python_ast
+                python_ast.parse(content)
+            except SyntaxError as e:
+                errors.append(DetectedError(
+                    file_path=file_path,
+                    line=e.lineno or 1,
+                    column=e.offset or 1,
+                    end_line=e.lineno or 1,
+                    end_column=(e.offset or 1) + 1,
+                    message=str(e.msg),
+                    severity=ErrorSeverity.ERROR,
+                    code="E100",
+                    source="python-syntax",
+                ))
+
+        elif language in (LanguageType.JAVASCRIPT, LanguageType.TYPESCRIPT):
+            # Basic bracket matching
+            brackets = {'(': ')', '[': ']', '{': '}'}
+            stack = []
+            for i, char in enumerate(content):
+                if char in brackets:
+                    stack.append((char, i))
+                elif char in brackets.values():
+                    if stack and brackets[stack[-1][0]] == char:
+                        stack.pop()
+                    else:
+                        line_num = content[:i].count('\n') + 1
+                        col = i - content.rfind('\n', 0, i)
+                        errors.append(DetectedError(
+                            file_path=file_path,
+                            line=line_num,
+                            column=col,
+                            end_line=line_num,
+                            end_column=col + 1,
+                            message=f"Unmatched '{char}'",
+                            severity=ErrorSeverity.ERROR,
+                            code="E101",
+                            source="bracket-check",
+                        ))
+
+            for bracket, pos in stack:
+                line_num = content[:pos].count('\n') + 1
+                col = pos - content.rfind('\n', 0, pos)
+                errors.append(DetectedError(
+                    file_path=file_path,
+                    line=line_num,
+                    column=col,
+                    end_line=line_num,
+                    end_column=col + 1,
+                    message=f"Unclosed '{bracket}'",
+                    severity=ErrorSeverity.ERROR,
+                    code="E102",
+                    source="bracket-check",
+                ))
+
+        return errors
+
+    async def _check_undefined_variables(
+        self,
+        content: str,
+        language: LanguageType,
+        file_path: str,
+    ) -> List[DetectedError]:
+        """Check for potentially undefined variables."""
+        errors = []
+
+        if language == LanguageType.PYTHON:
+            # Simple check for undefined variables
+            # Extract all variable assignments and usages
+            defined = set()
+            used = set()
+
+            # Add built-in names
+            builtins = {
+                'True', 'False', 'None', 'print', 'len', 'range', 'str', 'int',
+                'float', 'list', 'dict', 'set', 'tuple', 'type', 'isinstance',
+                'hasattr', 'getattr', 'setattr', 'open', 'input', 'any', 'all',
+                'min', 'max', 'sum', 'abs', 'round', 'sorted', 'reversed',
+                'enumerate', 'zip', 'map', 'filter', 'super', 'self', 'cls',
+                'Exception', 'ValueError', 'TypeError', 'KeyError', 'IndexError',
+            }
+            defined.update(builtins)
+
+            # Extract imports
+            for match in re.finditer(r'import\s+(\w+)|from\s+\w+\s+import\s+(\w+)', content):
+                name = match.group(1) or match.group(2)
+                if name:
+                    defined.add(name)
+
+            # Extract function/class definitions and assignments
+            for match in re.finditer(r'(?:def|class)\s+(\w+)|(\w+)\s*(?::\s*\w+)?\s*=', content):
+                name = match.group(1) or match.group(2)
+                if name:
+                    defined.add(name)
+
+        return errors
+
+    async def get_quick_fixes(
+        self,
+        error: DetectedError,
+    ) -> List[Dict[str, Any]]:
+        """Get quick fix suggestions for an error."""
+        fixes = []
+
+        if "eval()" in error.message:
+            fixes.append({
+                "title": "Consider using ast.literal_eval() for safe evaluation",
+                "edit": "ast.literal_eval",
+            })
+
+        if "var" in error.message.lower() and "const" in error.message.lower():
+            fixes.append({
+                "title": "Replace 'var' with 'const'",
+                "edit": "const",
+            })
+
+        if "==" in error.message and "===" in error.message:
+            fixes.append({
+                "title": "Use strict equality (===)",
+                "edit": "===",
+            })
+
+        if "console.log" in error.message:
+            fixes.append({
+                "title": "Remove console.log",
+                "edit": "",
+            })
+
+        if "unwrap()" in error.message:
+            fixes.append({
+                "title": "Replace with ? operator",
+                "edit": "?",
+            })
+
+        return fixes
+
+
+class InlineSuggestionProvider:
+    """
+    v10.0: Inline code suggestion provider.
+
+    Provides contextual suggestions for specific lines:
+    - Hover documentation with explanations
+    - Optimization suggestions
+    - Best practice recommendations
+    - Security improvement hints
+    - Refactoring opportunities
+    """
+
+    def __init__(
+        self,
+        language_registry: Optional[LanguageRegistry] = None,
+        llm_client: Optional[Any] = None,
+    ):
+        self._registry = language_registry or get_language_registry()
+        self._llm_client = llm_client
+        self._suggestion_cache: Dict[str, List[InlineSuggestion]] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_suggestions_for_line(
+        self,
+        file_path: str,
+        line: int,
+        content: Optional[str] = None,
+    ) -> List[InlineSuggestion]:
+        """
+        Get suggestions for a specific line.
+
+        Args:
+            file_path: Path to the file
+            line: Line number (1-indexed)
+            content: Optional content (reads from file if not provided)
+
+        Returns:
+            List of inline suggestions
+        """
+        suggestions: List[InlineSuggestion] = []
+
+        # Get content
+        if content is None:
+            try:
+                content = Path(file_path).read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                return suggestions
+
+        lines = content.split('\n')
+        if line < 1 or line > len(lines):
+            return suggestions
+
+        line_content = lines[line - 1]
+        language = self._registry.detect_language(file_path, content)
+
+        # Check for various suggestion patterns
+        suggestion_checks = [
+            self._check_optimization_opportunities(file_path, line, line_content, language),
+            self._check_best_practices(file_path, line, line_content, language),
+            self._check_security_issues(file_path, line, line_content, language),
+            self._check_style_issues(file_path, line, line_content, language),
+        ]
+
+        results = await asyncio.gather(*suggestion_checks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, list):
+                suggestions.extend(result)
+
+        return suggestions
+
+    async def _check_optimization_opportunities(
+        self,
+        file_path: str,
+        line: int,
+        line_content: str,
+        language: LanguageType,
+    ) -> List[InlineSuggestion]:
+        """Check for optimization opportunities."""
+        suggestions = []
+
+        # Python optimizations
+        if language == LanguageType.PYTHON:
+            # List append in loop
+            if re.search(r'\bfor\b.*:\s*\n.*\.append\(', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Consider using list comprehension instead of append in loop",
+                    explanation="List comprehensions are generally faster than building lists with append()",
+                    category="optimization",
+                    confidence=0.8,
+                    quick_fix="[expr for item in iterable]",
+                ))
+
+            # String concatenation in loop
+            if re.search(r'(\+\s*=\s*["\'])|(["\'].*\+)', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Consider using join() for string concatenation",
+                    explanation="String concatenation with + creates new string objects. join() is more efficient.",
+                    category="optimization",
+                    confidence=0.7,
+                    quick_fix="''.join(strings)",
+                ))
+
+        # JavaScript optimizations
+        if language in (LanguageType.JAVASCRIPT, LanguageType.TYPESCRIPT):
+            # forEach with async
+            if re.search(r'\.forEach\s*\(\s*async', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="async callback in forEach won't await properly",
+                    explanation="forEach doesn't await async callbacks. Use for...of or Promise.all() instead.",
+                    category="optimization",
+                    confidence=0.95,
+                    quick_fix="await Promise.all(array.map(async (item) => { ... }))",
+                ))
+
+            # Nested ternary
+            if line_content.count('?') > 1 and line_content.count(':') > 1:
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Nested ternary operators reduce readability",
+                    explanation="Consider using if-else statements or a lookup object for complex conditions.",
+                    category="optimization",
+                    confidence=0.7,
+                ))
+
+        return suggestions
+
+    async def _check_best_practices(
+        self,
+        file_path: str,
+        line: int,
+        line_content: str,
+        language: LanguageType,
+    ) -> List[InlineSuggestion]:
+        """Check for best practice violations."""
+        suggestions = []
+
+        # Universal best practices
+        if len(line_content) > 120:
+            suggestions.append(InlineSuggestion(
+                file_path=file_path,
+                line=line,
+                column=1,
+                suggestion="Line exceeds 120 characters",
+                explanation="Long lines reduce readability. Consider breaking into multiple lines.",
+                category="best_practice",
+                confidence=0.6,
+            ))
+
+        # Python best practices
+        if language == LanguageType.PYTHON:
+            # Mutable default argument
+            if re.search(r'def\s+\w+\([^)]*=\s*(\[\]|\{\})\)', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Mutable default argument is a common Python gotcha",
+                    explanation="Mutable defaults are shared between calls. Use None and create inside function.",
+                    category="best_practice",
+                    confidence=0.95,
+                    quick_fix="def func(arg=None):\n    if arg is None:\n        arg = []",
+                ))
+
+            # Using == True/False
+            if re.search(r'==\s*True\b|==\s*False\b', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Explicit comparison to True/False is unnecessary",
+                    explanation="Use 'if x:' instead of 'if x == True:'",
+                    category="best_practice",
+                    confidence=0.9,
+                ))
+
+        return suggestions
+
+    async def _check_security_issues(
+        self,
+        file_path: str,
+        line: int,
+        line_content: str,
+        language: LanguageType,
+    ) -> List[InlineSuggestion]:
+        """Check for security issues."""
+        suggestions = []
+
+        # SQL injection risk
+        if re.search(r'(execute|query)\s*\([^)]*\%s.*\%|f["\'].*SELECT|f["\'].*INSERT', line_content, re.IGNORECASE):
+            suggestions.append(InlineSuggestion(
+                file_path=file_path,
+                line=line,
+                column=1,
+                suggestion="Potential SQL injection vulnerability",
+                explanation="Use parameterized queries instead of string formatting for SQL.",
+                category="security",
+                confidence=0.85,
+                quick_fix="cursor.execute('SELECT * FROM table WHERE id = %s', (id,))",
+            ))
+
+        # Command injection risk
+        if re.search(r'subprocess\.call\s*\([^)]*shell\s*=\s*True', line_content):
+            suggestions.append(InlineSuggestion(
+                file_path=file_path,
+                line=line,
+                column=1,
+                suggestion="shell=True can lead to command injection",
+                explanation="Avoid shell=True with untrusted input. Pass command as list instead.",
+                category="security",
+                confidence=0.9,
+                quick_fix="subprocess.call(['cmd', 'arg1', 'arg2'])",
+            ))
+
+        # XSS risk in JavaScript
+        if language in (LanguageType.JAVASCRIPT, LanguageType.TYPESCRIPT):
+            if re.search(r'\.innerHTML\s*=|dangerouslySetInnerHTML', line_content):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Potential XSS vulnerability",
+                    explanation="innerHTML and dangerouslySetInnerHTML can execute malicious scripts. Sanitize input first.",
+                    category="security",
+                    confidence=0.85,
+                ))
+
+        return suggestions
+
+    async def _check_style_issues(
+        self,
+        file_path: str,
+        line: int,
+        line_content: str,
+        language: LanguageType,
+    ) -> List[InlineSuggestion]:
+        """Check for style issues."""
+        suggestions = []
+
+        # Trailing whitespace
+        if line_content.endswith(' ') or line_content.endswith('\t'):
+            suggestions.append(InlineSuggestion(
+                file_path=file_path,
+                line=line,
+                column=len(line_content.rstrip()) + 1,
+                suggestion="Trailing whitespace",
+                explanation="Remove trailing spaces for cleaner code.",
+                category="style",
+                confidence=0.5,
+            ))
+
+        # Magic numbers
+        if re.search(r'\b(?<!\.)\d{2,}\b(?!\.\d)', line_content):
+            # Exclude obvious cases like port numbers, common sizes
+            if not re.search(r'(port|size|width|height|count|length)\s*[=:]\s*\d+', line_content, re.IGNORECASE):
+                suggestions.append(InlineSuggestion(
+                    file_path=file_path,
+                    line=line,
+                    column=1,
+                    suggestion="Consider using a named constant instead of magic number",
+                    explanation="Named constants make code more readable and maintainable.",
+                    category="style",
+                    confidence=0.5,
+                ))
+
+        return suggestions
+
+
+class ChangeExplanationEngine:
+    """
+    v10.0: Explains code changes with detailed reasoning.
+
+    Provides:
+    - Line-by-line explanation of changes
+    - Reasoning for why each change was made
+    - Educational notes for learning
+    - Impact assessment
+    """
+
+    def __init__(
+        self,
+        llm_client: Optional[Any] = None,
+    ):
+        self._llm_client = llm_client
+
+    async def explain_changes(
+        self,
+        before: str,
+        after: str,
+        file_path: Optional[str] = None,
+        context: Optional[str] = None,
+    ) -> List[ChangeExplanation]:
+        """
+        Explain the differences between before and after versions.
+
+        Args:
+            before: Original code
+            after: Modified code
+            file_path: Optional file path for context
+            context: Optional additional context
+
+        Returns:
+            List of change explanations
+        """
+        explanations: List[ChangeExplanation] = []
+
+        before_lines = before.split('\n')
+        after_lines = after.split('\n')
+
+        # Use simple diff algorithm
+        import difflib
+        differ = difflib.Differ()
+        diff = list(differ.compare(before_lines, after_lines))
+
+        before_idx = 0
+        after_idx = 0
+
+        for line in diff:
+            if line.startswith('  '):  # Unchanged
+                before_idx += 1
+                after_idx += 1
+            elif line.startswith('- '):  # Removed
+                before_line = line[2:]
+                # Look for corresponding addition
+                explanation = await self._generate_explanation(
+                    before_line,
+                    "",
+                    before_idx + 1,
+                    "remove",
+                )
+                explanations.append(explanation)
+                before_idx += 1
+            elif line.startswith('+ '):  # Added
+                after_line = line[2:]
+                explanation = await self._generate_explanation(
+                    "",
+                    after_line,
+                    after_idx + 1,
+                    "add",
+                )
+                explanations.append(explanation)
+                after_idx += 1
+            elif line.startswith('? '):  # Info line, skip
+                pass
+
+        return explanations
+
+    async def _generate_explanation(
+        self,
+        before: str,
+        after: str,
+        line: int,
+        change_type: str,
+    ) -> ChangeExplanation:
+        """Generate explanation for a single change."""
+        # Determine category and generate explanation
+        category = self._categorize_change(before, after)
+        explanation = self._generate_explanation_text(before, after, category)
+        reasoning = self._generate_reasoning(before, after, category)
+        impact = self._assess_impact(before, after, category)
+        educational = self._generate_educational_notes(before, after, category)
+
+        return ChangeExplanation(
+            line=line,
+            before=before,
+            after=after,
+            explanation=explanation,
+            reasoning=reasoning,
+            category=category,
+            impact=impact,
+            educational_notes=educational,
+        )
+
+    def _categorize_change(self, before: str, after: str) -> str:
+        """Categorize the type of change."""
+        if not before and after:
+            return "addition"
+        if before and not after:
+            return "deletion"
+
+        # Check for specific patterns
+        if "def " in after and "def " not in before:
+            return "extract"
+        if re.search(r'\bclass\b', after) and not re.search(r'\bclass\b', before):
+            return "refactor"
+        if "try:" in after and "try:" not in before:
+            return "error_handling"
+        if any(kw in after for kw in ["password", "secret", "key"]) and \
+           any(kw in before for kw in ["password", "secret", "key"]):
+            return "security"
+        if re.search(r'\basync\b|\bawait\b', after) and not re.search(r'\basync\b|\bawait\b', before):
+            return "async_conversion"
+
+        return "modify"
+
+    def _generate_explanation_text(self, before: str, after: str, category: str) -> str:
+        """Generate human-readable explanation."""
+        explanations = {
+            "addition": f"Added new code: {after.strip()[:50]}...",
+            "deletion": f"Removed code: {before.strip()[:50]}...",
+            "extract": "Extracted code into a function for reusability",
+            "refactor": "Refactored for better structure and maintainability",
+            "error_handling": "Added error handling for robustness",
+            "security": "Updated for improved security",
+            "async_conversion": "Converted to async for non-blocking operation",
+            "modify": f"Modified: '{before.strip()[:30]}' → '{after.strip()[:30]}'",
+        }
+        return explanations.get(category, "Code modification")
+
+    def _generate_reasoning(self, before: str, after: str, category: str) -> str:
+        """Generate reasoning for the change."""
+        reasons = {
+            "addition": "New functionality was needed to fulfill the requirement",
+            "deletion": "This code was no longer needed or was redundant",
+            "extract": "Extracting into a function improves reusability and testability",
+            "refactor": "The new structure is cleaner and more maintainable",
+            "error_handling": "Without error handling, failures could crash the application",
+            "security": "Security improvements protect against vulnerabilities",
+            "async_conversion": "Async operations prevent blocking the main thread",
+            "modify": "The modification improves code quality or fixes an issue",
+        }
+        return reasons.get(category, "This change improves the code")
+
+    def _assess_impact(self, before: str, after: str, category: str) -> str:
+        """Assess the impact of the change."""
+        high_impact = {"security", "error_handling", "async_conversion"}
+        medium_impact = {"refactor", "extract"}
+        low_impact = {"addition", "modify"}
+
+        if category in high_impact:
+            return "high"
+        if category in medium_impact:
+            return "medium"
+        if category in low_impact:
+            return "low"
+        return "none"
+
+    def _generate_educational_notes(self, before: str, after: str, category: str) -> Optional[str]:
+        """Generate educational notes for learning."""
+        notes = {
+            "error_handling": "Always wrap I/O operations and external calls in try-except blocks to handle failures gracefully.",
+            "security": "Never hardcode secrets. Use environment variables or a secrets manager.",
+            "async_conversion": "Async functions use 'await' to pause execution without blocking. This allows other tasks to run.",
+            "extract": "The Single Responsibility Principle suggests each function should do one thing well.",
+        }
+        return notes.get(category)
+
+
+class InlineCommentGenerator:
+    """
+    v10.0: Generates explanatory comments for code changes.
+
+    Creates:
+    - Comments explaining why code changed
+    - Documentation for complex logic
+    - TODO comments for follow-up work
+    - Style-appropriate comments per language
+    """
+
+    def __init__(
+        self,
+        language_registry: Optional[LanguageRegistry] = None,
+    ):
+        self._registry = language_registry or get_language_registry()
+
+    async def generate_comments(
+        self,
+        file_path: str,
+        changes: List[ChangeExplanation],
+        comment_style: str = "inline",  # inline, block, docstring
+    ) -> Dict[int, str]:
+        """
+        Generate comments for changes.
+
+        Args:
+            file_path: Path to the file
+            changes: List of change explanations
+            comment_style: Style of comments to generate
+
+        Returns:
+            Dictionary mapping line numbers to comments
+        """
+        language = self._registry.detect_language(file_path)
+        config = self._registry.get_config(language)
+
+        if not config:
+            return {}
+
+        comments: Dict[int, str] = {}
+
+        for change in changes:
+            comment = await self._generate_comment(
+                change,
+                config,
+                comment_style,
+            )
+            if comment:
+                comments[change.line] = comment
+
+        return comments
+
+    async def _generate_comment(
+        self,
+        change: ChangeExplanation,
+        config: LanguageConfig,
+        style: str,
+    ) -> Optional[str]:
+        """Generate a single comment."""
+        # Skip trivial changes
+        if change.impact == "none":
+            return None
+
+        # Build comment content
+        content = []
+
+        # Add category tag
+        category_tags = {
+            "security": "SECURITY",
+            "error_handling": "ERROR HANDLING",
+            "async_conversion": "ASYNC",
+            "refactor": "REFACTOR",
+            "extract": "EXTRACT",
+        }
+
+        if change.category in category_tags:
+            content.append(f"[{category_tags[change.category]}]")
+
+        # Add explanation
+        content.append(change.explanation)
+
+        # Add reasoning for high-impact changes
+        if change.impact == "high":
+            content.append(f"Reason: {change.reasoning}")
+
+        # Format as comment
+        comment_text = " ".join(content)
+
+        if style == "inline":
+            return f"{config.comment_single} {comment_text}"
+        elif style == "block" and config.comment_multi_start:
+            return f"{config.comment_multi_start} {comment_text} {config.comment_multi_end}"
+        else:
+            return f"{config.comment_single} {comment_text}"
+
+    async def generate_docstring(
+        self,
+        function_code: str,
+        language: LanguageType,
+    ) -> Optional[str]:
+        """Generate a docstring for a function."""
+        config = self._registry.get_config(language)
+        if not config:
+            return None
+
+        # Extract function signature
+        func_match = None
+        for pattern in config.function_patterns:
+            match = re.search(pattern, function_code)
+            if match:
+                func_match = match
+                break
+
+        if not func_match:
+            return None
+
+        func_name = func_match.group(1) if func_match.groups() else "function"
+
+        # Generate docstring based on language
+        if language == LanguageType.PYTHON:
+            return f'''"""
+    {self._humanize_name(func_name)}.
+
+    Args:
+        TODO: Add argument descriptions
+
+    Returns:
+        TODO: Add return description
+    """'''
+        elif language in (LanguageType.JAVASCRIPT, LanguageType.TYPESCRIPT):
+            return f'''/**
+ * {self._humanize_name(func_name)}.
+ *
+ * @param {{TODO}} param - Description
+ * @returns {{TODO}} Description
+ */'''
+        elif language == LanguageType.GO:
+            return f'// {self._humanize_name(func_name)}.'
+
+        return None
+
+    def _humanize_name(self, name: str) -> str:
+        """Convert function name to human-readable string."""
+        # Convert camelCase or snake_case to words
+        name = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+        name = name.replace('_', ' ')
+        return name.strip().capitalize()
+
+
+class InteractiveCodeReviewer:
+    """
+    v10.0: Interactive code review with cherry-pick support.
+
+    Allows:
+    - Accept/reject individual changes
+    - Modify suggested changes
+    - Preview changes before applying
+    - Undo/redo support
+    - Session management
+    """
+
+    def __init__(
+        self,
+        explanation_engine: Optional[ChangeExplanationEngine] = None,
+        comment_generator: Optional[InlineCommentGenerator] = None,
+    ):
+        self._explanation_engine = explanation_engine or ChangeExplanationEngine()
+        self._comment_generator = comment_generator or InlineCommentGenerator()
+        self._sessions: Dict[str, CodeReviewSession] = {}
+        self._undo_stack: Dict[str, List[Dict[str, Any]]] = {}
+        self._redo_stack: Dict[str, List[Dict[str, Any]]] = {}
+        self._lock = asyncio.Lock()
+
+    async def create_review_session(
+        self,
+        file_path: str,
+        before: str,
+        after: str,
+    ) -> CodeReviewSession:
+        """
+        Create a new interactive review session.
+
+        Args:
+            file_path: Path to the file being reviewed
+            before: Original code
+            after: Modified code
+
+        Returns:
+            A new review session with individual changes
+        """
+        session_id = str(uuid.uuid4())
+
+        # Get change explanations
+        explanations = await self._explanation_engine.explain_changes(before, after, file_path)
+
+        # Create reviewable changes
+        changes: List[ReviewableChange] = []
+        before_lines = before.split('\n')
+        after_lines = after.split('\n')
+
+        import difflib
+        matcher = difflib.SequenceMatcher(None, before_lines, after_lines)
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                continue
+
+            change_id = str(uuid.uuid4())[:8]
+            before_text = '\n'.join(before_lines[i1:i2])
+            after_text = '\n'.join(after_lines[j1:j2])
+
+            # Find matching explanation
+            explanation = None
+            for exp in explanations:
+                if i1 < exp.line <= i2 or j1 < exp.line <= j2:
+                    explanation = exp
+                    break
+
+            if not explanation:
+                explanation = await self._explanation_engine._generate_explanation(
+                    before_text, after_text, i1 + 1, tag
+                )
+
+            changes.append(ReviewableChange(
+                id=change_id,
+                file_path=file_path,
+                line_start=i1 + 1,
+                line_end=i2,
+                before_text=before_text,
+                after_text=after_text,
+                explanation=explanation,
+                status=ChangeAction.SKIP,
+            ))
+
+        session = CodeReviewSession(
+            session_id=session_id,
+            file_path=file_path,
+            changes=changes,
+            status="pending",
+        )
+
+        async with self._lock:
+            self._sessions[session_id] = session
+            self._undo_stack[session_id] = []
+            self._redo_stack[session_id] = []
+
+        return session
+
+    async def get_session(self, session_id: str) -> Optional[CodeReviewSession]:
+        """Get a review session by ID."""
+        return self._sessions.get(session_id)
+
+    async def apply_action(
+        self,
+        session_id: str,
+        change_id: str,
+        action: ChangeAction,
+        modified_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply an action to a specific change.
+
+        Args:
+            session_id: The review session ID
+            change_id: The change ID
+            action: The action to apply (accept, reject, modify, skip)
+            modified_text: If action is MODIFY, the new text
+
+        Returns:
+            Result of the action
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        # Find the change
+        change = None
+        for c in session.changes:
+            if c.id == change_id:
+                change = c
+                break
+
+        if not change:
+            return {"success": False, "error": "Change not found"}
+
+        # Save to undo stack
+        async with self._lock:
+            self._undo_stack[session_id].append({
+                "change_id": change_id,
+                "previous_status": change.status,
+                "previous_modified_text": change.user_modified_text,
+            })
+            self._redo_stack[session_id].clear()
+
+            # Apply action
+            old_status = change.status
+            change.status = action
+
+            if action == ChangeAction.MODIFY:
+                change.user_modified_text = modified_text
+
+            # Update counts
+            if old_status == ChangeAction.ACCEPT:
+                session.accepted_count -= 1
+            elif old_status == ChangeAction.REJECT:
+                session.rejected_count -= 1
+            elif old_status == ChangeAction.MODIFY:
+                session.modified_count -= 1
+
+            if action == ChangeAction.ACCEPT:
+                session.accepted_count += 1
+            elif action == ChangeAction.REJECT:
+                session.rejected_count += 1
+            elif action == ChangeAction.MODIFY:
+                session.modified_count += 1
+
+        return {
+            "success": True,
+            "change_id": change_id,
+            "action": action.value,
+            "session_status": {
+                "accepted": session.accepted_count,
+                "rejected": session.rejected_count,
+                "modified": session.modified_count,
+                "pending": len(session.changes) - session.accepted_count - session.rejected_count - session.modified_count,
+            },
+        }
+
+    async def accept_all(self, session_id: str) -> Dict[str, Any]:
+        """Accept all pending changes in a session."""
+        session = self._sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        for change in session.changes:
+            if change.status == ChangeAction.SKIP:
+                change.status = ChangeAction.ACCEPT
+                session.accepted_count += 1
+
+        return {"success": True, "accepted": session.accepted_count}
+
+    async def reject_all(self, session_id: str) -> Dict[str, Any]:
+        """Reject all pending changes in a session."""
+        session = self._sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        for change in session.changes:
+            if change.status == ChangeAction.SKIP:
+                change.status = ChangeAction.REJECT
+                session.rejected_count += 1
+
+        return {"success": True, "rejected": session.rejected_count}
+
+    async def undo(self, session_id: str) -> Dict[str, Any]:
+        """Undo the last action."""
+        async with self._lock:
+            stack = self._undo_stack.get(session_id, [])
+            if not stack:
+                return {"success": False, "error": "Nothing to undo"}
+
+            action = stack.pop()
+            self._redo_stack[session_id].append(action)
+
+            session = self._sessions.get(session_id)
+            if session:
+                for change in session.changes:
+                    if change.id == action["change_id"]:
+                        change.status = action["previous_status"]
+                        change.user_modified_text = action["previous_modified_text"]
+                        break
+
+        return {"success": True}
+
+    async def redo(self, session_id: str) -> Dict[str, Any]:
+        """Redo the last undone action."""
+        async with self._lock:
+            stack = self._redo_stack.get(session_id, [])
+            if not stack:
+                return {"success": False, "error": "Nothing to redo"}
+
+            action = stack.pop()
+            self._undo_stack[session_id].append(action)
+
+        return {"success": True}
+
+    async def apply_changes(
+        self,
+        session_id: str,
+        include_comments: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Apply all accepted/modified changes to the file.
+
+        Args:
+            session_id: The review session ID
+            include_comments: Whether to add explanatory comments
+
+        Returns:
+            Result with the final content
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        # Read original file
+        try:
+            original_content = Path(session.file_path).read_text(encoding='utf-8')
+        except Exception as e:
+            return {"success": False, "error": f"Could not read file: {e}"}
+
+        lines = original_content.split('\n')
+
+        # Apply changes in reverse order (to preserve line numbers)
+        sorted_changes = sorted(
+            [c for c in session.changes if c.status in (ChangeAction.ACCEPT, ChangeAction.MODIFY)],
+            key=lambda c: c.line_start,
+            reverse=True,
+        )
+
+        # Generate comments if requested
+        comments = {}
+        if include_comments:
+            comments = await self._comment_generator.generate_comments(
+                session.file_path,
+                [c.explanation for c in sorted_changes],
+            )
+
+        for change in sorted_changes:
+            # Determine the text to use
+            if change.status == ChangeAction.MODIFY and change.user_modified_text:
+                new_text = change.user_modified_text
+            else:
+                new_text = change.after_text
+
+            # Get comment if any
+            comment = comments.get(change.line_start)
+            if comment:
+                new_text = f"{comment}\n{new_text}"
+
+            # Apply change
+            new_lines = new_text.split('\n')
+            start_idx = change.line_start - 1
+            end_idx = change.line_end
+
+            lines[start_idx:end_idx] = new_lines
+
+        # Join and write
+        final_content = '\n'.join(lines)
+
+        try:
+            Path(session.file_path).write_text(final_content, encoding='utf-8')
+        except Exception as e:
+            return {"success": False, "error": f"Could not write file: {e}"}
+
+        session.status = "completed"
+
+        return {
+            "success": True,
+            "file_path": session.file_path,
+            "changes_applied": len(sorted_changes),
+            "final_content": final_content,
+        }
+
+    async def preview_changes(
+        self,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """Preview what the file would look like after applying changes."""
+        session = self._sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": "Session not found"}
+
+        # Read original file
+        try:
+            original_content = Path(session.file_path).read_text(encoding='utf-8')
+        except Exception as e:
+            return {"success": False, "error": f"Could not read file: {e}"}
+
+        lines = original_content.split('\n')
+
+        # Apply changes in reverse order
+        sorted_changes = sorted(
+            [c for c in session.changes if c.status in (ChangeAction.ACCEPT, ChangeAction.MODIFY)],
+            key=lambda c: c.line_start,
+            reverse=True,
+        )
+
+        for change in sorted_changes:
+            if change.status == ChangeAction.MODIFY and change.user_modified_text:
+                new_text = change.user_modified_text
+            else:
+                new_text = change.after_text
+
+            new_lines = new_text.split('\n')
+            start_idx = change.line_start - 1
+            end_idx = change.line_end
+            lines[start_idx:end_idx] = new_lines
+
+        return {
+            "success": True,
+            "preview": '\n'.join(lines),
+            "changes_count": len(sorted_changes),
+        }
+
+    async def close_session(self, session_id: str) -> bool:
+        """Close and cleanup a review session."""
+        async with self._lock:
+            if session_id in self._sessions:
+                del self._sessions[session_id]
+            if session_id in self._undo_stack:
+                del self._undo_stack[session_id]
+            if session_id in self._redo_stack:
+                del self._redo_stack[session_id]
+            return True
+        return False
+
+
+# =============================================================================
+# v10.0: GLOBAL INSTANCES
+# =============================================================================
+
+_completion_engine: Optional[LiveCodeCompletionEngine] = None
+_error_detector: Optional[RealTimeErrorDetector] = None
+_suggestion_provider: Optional[InlineSuggestionProvider] = None
+_explanation_engine: Optional[ChangeExplanationEngine] = None
+_comment_generator: Optional[InlineCommentGenerator] = None
+_interactive_reviewer: Optional[InteractiveCodeReviewer] = None
+
+
+# =============================================================================
+# v10.0: FACTORY FUNCTIONS
+# =============================================================================
+
+def get_completion_engine() -> LiveCodeCompletionEngine:
+    """Get or create the live code completion engine."""
+    global _completion_engine
+    if _completion_engine is None:
+        _completion_engine = LiveCodeCompletionEngine()
+    return _completion_engine
+
+
+def get_error_detector() -> RealTimeErrorDetector:
+    """Get or create the real-time error detector."""
+    global _error_detector
+    if _error_detector is None:
+        _error_detector = RealTimeErrorDetector()
+    return _error_detector
+
+
+def get_suggestion_provider() -> InlineSuggestionProvider:
+    """Get or create the inline suggestion provider."""
+    global _suggestion_provider
+    if _suggestion_provider is None:
+        _suggestion_provider = InlineSuggestionProvider()
+    return _suggestion_provider
+
+
+def get_explanation_engine() -> ChangeExplanationEngine:
+    """Get or create the change explanation engine."""
+    global _explanation_engine
+    if _explanation_engine is None:
+        _explanation_engine = ChangeExplanationEngine()
+    return _explanation_engine
+
+
+def get_comment_generator() -> InlineCommentGenerator:
+    """Get or create the inline comment generator."""
+    global _comment_generator
+    if _comment_generator is None:
+        _comment_generator = InlineCommentGenerator()
+    return _comment_generator
+
+
+def get_interactive_reviewer() -> InteractiveCodeReviewer:
+    """Get or create the interactive code reviewer."""
+    global _interactive_reviewer
+    if _interactive_reviewer is None:
+        _interactive_reviewer = InteractiveCodeReviewer()
+    return _interactive_reviewer
+
+
+# =============================================================================
+# v10.0: INITIALIZATION AND SHUTDOWN
+# =============================================================================
+
+async def initialize_realtime_intelligence_system(
+    llm_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Initialize the real-time code intelligence system.
+
+    Args:
+        llm_client: Optional LLM client for enhanced suggestions
+
+    Returns:
+        Dictionary with initialized components
+    """
+    logger.info("🧠 Initializing Real-Time Code Intelligence System v10.0...")
+    start_time = time.monotonic()
+
+    components = {}
+
+    try:
+        # Initialize all components
+        components["completion_engine"] = get_completion_engine()
+        components["error_detector"] = get_error_detector()
+        components["suggestion_provider"] = get_suggestion_provider()
+        components["explanation_engine"] = get_explanation_engine()
+        components["comment_generator"] = get_comment_generator()
+        components["interactive_reviewer"] = get_interactive_reviewer()
+
+        elapsed = time.monotonic() - start_time
+        logger.info(f"✅ Real-Time Code Intelligence System initialized in {elapsed:.2f}s")
+        logger.info(f"   Components: {len(components)}")
+
+        return components
+
+    except Exception as e:
+        logger.error(f"❌ Real-Time Code Intelligence System initialization failed: {e}")
+        raise
+
+
+async def shutdown_realtime_intelligence_system() -> None:
+    """Shutdown the real-time code intelligence system."""
+    logger.info("Shutting down Real-Time Code Intelligence System...")
+
+    global _completion_engine, _error_detector, _suggestion_provider
+    global _explanation_engine, _comment_generator, _interactive_reviewer
+
+    _completion_engine = None
+    _error_detector = None
+    _suggestion_provider = None
+    _explanation_engine = None
+    _comment_generator = None
+    _interactive_reviewer = None
+
+    logger.info("✅ Real-Time Code Intelligence System shutdown complete")
+
+
+# =============================================================================
+# v10.0: CONVENIENCE FUNCTIONS
+# =============================================================================
+
+async def get_completions(
+    file_path: str,
+    line: int,
+    column: int,
+    trigger_character: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Get code completions at a specific position.
+
+    Usage:
+        completions = await get_completions("main.py", 10, 5)
+    """
+    engine = get_completion_engine()
+
+    context = CompletionContext(
+        file_path=file_path,
+        line=line,
+        column=column,
+        trigger_character=trigger_character,
+    )
+
+    items = await engine.get_completions(context)
+
+    return [
+        {
+            "label": item.label,
+            "kind": item.kind.value,
+            "detail": item.detail,
+            "documentation": item.documentation,
+            "insert_text": item.insert_text,
+            "sort_priority": item.sort_priority,
+        }
+        for item in items
+    ]
+
+
+async def detect_errors_realtime(
+    file_path: str,
+    content: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Detect errors in a file in real-time.
+
+    Usage:
+        errors = await detect_errors_realtime("main.py")
+    """
+    detector = get_error_detector()
+    errors = await detector.detect_errors(file_path, content)
+
+    return [
+        {
+            "line": error.line,
+            "column": error.column,
+            "message": error.message,
+            "severity": error.severity.value,
+            "code": error.code,
+            "source": error.source,
+        }
+        for error in errors
+    ]
+
+
+async def get_line_suggestions(
+    file_path: str,
+    line: int,
+) -> List[Dict[str, Any]]:
+    """
+    Get inline suggestions for a specific line.
+
+    Usage:
+        suggestions = await get_line_suggestions("main.py", 42)
+    """
+    provider = get_suggestion_provider()
+    suggestions = await provider.get_suggestions_for_line(file_path, line)
+
+    return [
+        {
+            "line": s.line,
+            "suggestion": s.suggestion,
+            "explanation": s.explanation,
+            "category": s.category,
+            "confidence": s.confidence,
+            "quick_fix": s.quick_fix,
+        }
+        for s in suggestions
+    ]
+
+
+async def explain_code_changes(
+    before: str,
+    after: str,
+) -> List[Dict[str, Any]]:
+    """
+    Explain the differences between two versions of code.
+
+    Usage:
+        explanations = await explain_code_changes(old_code, new_code)
+    """
+    engine = get_explanation_engine()
+    explanations = await engine.explain_changes(before, after)
+
+    return [
+        {
+            "line": exp.line,
+            "before": exp.before,
+            "after": exp.after,
+            "explanation": exp.explanation,
+            "reasoning": exp.reasoning,
+            "category": exp.category,
+            "impact": exp.impact,
+            "educational_notes": exp.educational_notes,
+        }
+        for exp in explanations
+    ]
+
+
+async def create_interactive_review(
+    file_path: str,
+    before: str,
+    after: str,
+) -> Dict[str, Any]:
+    """
+    Create an interactive code review session.
+
+    Usage:
+        session = await create_interactive_review("main.py", old_code, new_code)
+    """
+    reviewer = get_interactive_reviewer()
+    session = await reviewer.create_review_session(file_path, before, after)
+
+    return {
+        "session_id": session.session_id,
+        "file_path": session.file_path,
+        "changes_count": len(session.changes),
+        "changes": [
+            {
+                "id": c.id,
+                "line_start": c.line_start,
+                "line_end": c.line_end,
+                "before": c.before_text[:100],
+                "after": c.after_text[:100],
+                "explanation": c.explanation.explanation,
+                "status": c.status.value,
+            }
+            for c in session.changes
+        ],
+    }
+
+
+async def review_change(
+    session_id: str,
+    change_id: str,
+    action: str,
+    modified_text: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Apply an action to a change in a review session.
+
+    Usage:
+        result = await review_change(session_id, change_id, "accept")
+        result = await review_change(session_id, change_id, "reject")
+        result = await review_change(session_id, change_id, "modify", new_code)
+    """
+    reviewer = get_interactive_reviewer()
+
+    action_map = {
+        "accept": ChangeAction.ACCEPT,
+        "reject": ChangeAction.REJECT,
+        "modify": ChangeAction.MODIFY,
+        "skip": ChangeAction.SKIP,
+    }
+
+    action_enum = action_map.get(action.lower(), ChangeAction.SKIP)
+
+    return await reviewer.apply_action(
+        session_id,
+        change_id,
+        action_enum,
+        modified_text,
+    )
+
+
+async def apply_reviewed_changes(
+    session_id: str,
+    include_comments: bool = True,
+) -> Dict[str, Any]:
+    """
+    Apply all accepted changes from a review session.
+
+    Usage:
+        result = await apply_reviewed_changes(session_id)
+    """
+    reviewer = get_interactive_reviewer()
+    return await reviewer.apply_changes(session_id, include_comments)

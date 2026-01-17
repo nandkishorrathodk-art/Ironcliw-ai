@@ -4091,6 +4091,22 @@ class CrossRepoAutonomousIntegration:
                     rename_symbol_across_languages,
                     improve_any_file,
                     LanguageType,
+                    # v10.0: Real-time code intelligence system
+                    initialize_realtime_intelligence_system,
+                    shutdown_realtime_intelligence_system,
+                    get_completion_engine,
+                    get_error_detector,
+                    get_suggestion_provider,
+                    get_explanation_engine,
+                    get_comment_generator,
+                    get_interactive_reviewer,
+                    get_completions,
+                    detect_errors_realtime,
+                    get_line_suggestions,
+                    explain_code_changes,
+                    create_interactive_review,
+                    review_change,
+                    apply_reviewed_changes,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4322,6 +4338,35 @@ class CrossRepoAutonomousIntegration:
                     logger.warning(f"  ⚠️ v9.0 Multi-Language Support system initialization failed: {e}")
                     logger.debug(f"  v9.0 error details: {e}", exc_info=True)
 
+                # Phase 9: Initialize v10.0 Real-Time Code Intelligence system
+                logger.info("Phase 9: Initializing v10.0 Real-Time Code Intelligence system...")
+                try:
+                    v10_components = await initialize_realtime_intelligence_system(
+                        llm_client=llm_client,
+                    )
+
+                    # Wire v10.0 components into our component registry
+                    v10_component_names = [
+                        "completion_engine",
+                        "error_detector",
+                        "suggestion_provider",
+                        "explanation_engine",
+                        "comment_generator",
+                        "interactive_reviewer",
+                    ]
+
+                    for name in v10_component_names:
+                        comp = v10_components.get(name)
+                        if comp:
+                            self._components[name] = comp
+                            logger.info(f"  ✅ {name} initialized (v10.0)")
+
+                    logger.info(f"  ✅ v10.0 Real-Time Code Intelligence system initialized with {len(v10_components)} components")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v10.0 Real-Time Code Intelligence system initialization failed: {e}")
+                    logger.debug(f"  v10.0 error details: {e}", exc_info=True)
+
                 # Update global state
                 global _autonomous_state
                 _autonomous_state.goal_decomposer = self._components.get("goal_decomposer")
@@ -4340,6 +4385,13 @@ class CrossRepoAutonomousIntegration:
                 _autonomous_state.language_registry = self._components.get("language_registry")
                 _autonomous_state.symbol_tracker = self._components.get("symbol_tracker")
                 _autonomous_state.cross_language_refactorer = self._components.get("cross_language_refactorer")
+                # v10.0: Real-time code intelligence components
+                _autonomous_state.completion_engine = self._components.get("completion_engine")
+                _autonomous_state.error_detector = self._components.get("error_detector")
+                _autonomous_state.suggestion_provider = self._components.get("suggestion_provider")
+                _autonomous_state.explanation_engine = self._components.get("explanation_engine")
+                _autonomous_state.comment_generator = self._components.get("comment_generator")
+                _autonomous_state.interactive_reviewer = self._components.get("interactive_reviewer")
                 _autonomous_state.orchestrator = orchestrator
                 _autonomous_state.oracle = oracle
                 _autonomous_state.llm_client = llm_client
@@ -4757,7 +4809,15 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v9.0: Shutdown Multi-Language Support system first
+        # v10.0: Shutdown Real-Time Code Intelligence system first (newest)
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_realtime_intelligence_system
+            await shutdown_realtime_intelligence_system()
+            logger.info("  ✅ v10.0 Real-Time Code Intelligence system shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v10.0 Real-Time Code Intelligence system shutdown error: {e}")
+
+        # v9.0: Shutdown Multi-Language Support system
         try:
             from backend.core.ouroboros.native_integration import shutdown_multi_language_system
             await shutdown_multi_language_system()
@@ -4783,7 +4843,14 @@ class CrossRepoAutonomousIntegration:
 
         # v6.0 + v7.0 + v8.0 + v9.0: Shutdown individual components
         all_components = [
-            # v9.0 components (shutdown first)
+            # v10.0 components (shutdown first - newest)
+            "interactive_reviewer",
+            "comment_generator",
+            "explanation_engine",
+            "suggestion_provider",
+            "error_detector",
+            "completion_engine",
+            # v9.0 components
             "language_analyzer",
             "multi_language_selector",
             "cross_language_refactorer",
