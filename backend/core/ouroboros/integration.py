@@ -4076,6 +4076,21 @@ class CrossRepoAutonomousIntegration:
                     jarvis_improve_yourself,
                     jarvis_improve_file,
                     handle_jarvis_voice_command,
+                    # v9.0: Multi-language support system
+                    initialize_multi_language_system,
+                    shutdown_multi_language_system,
+                    get_language_registry,
+                    get_ast_parser,
+                    get_symbol_tracker,
+                    get_cross_language_refactorer,
+                    get_multi_language_selector,
+                    get_language_analyzer,
+                    detect_file_language,
+                    analyze_file_cross_language,
+                    find_symbol_across_languages,
+                    rename_symbol_across_languages,
+                    improve_any_file,
+                    LanguageType,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4271,6 +4286,42 @@ class CrossRepoAutonomousIntegration:
                     logger.warning(f"  ⚠️ v8.0 'Improve Yourself' system initialization failed: {e}")
                     logger.debug(f"  v8.0 error details: {e}", exc_info=True)
 
+                # Phase 8: Initialize v9.0 Multi-Language Support system
+                logger.info("Phase 8: Initializing v9.0 Multi-Language Support system...")
+                try:
+                    v9_components = await initialize_multi_language_system(
+                        project_root=self._repos.get("jarvis"),
+                        index_project=start_loops,  # Only index if starting loops
+                    )
+
+                    # Wire v9.0 components into our component registry
+                    v9_component_names = [
+                        "language_registry",
+                        "ast_parser",
+                        "symbol_tracker",
+                        "cross_language_refactorer",
+                        "multi_language_selector",
+                        "language_analyzer",
+                    ]
+
+                    for name in v9_component_names:
+                        comp = v9_components.get(name)
+                        if comp:
+                            self._components[name] = comp
+                            logger.info(f"  ✅ {name} initialized (v9.0)")
+
+                    # Log supported languages
+                    registry = v9_components.get("language_registry")
+                    if registry:
+                        supported = len(registry.get_supported_languages())
+                        logger.info(f"  ✅ v9.0 Multi-Language Support: {supported} languages supported")
+
+                    logger.info(f"  ✅ v9.0 Multi-Language Support system initialized with {len(v9_components)} components")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v9.0 Multi-Language Support system initialization failed: {e}")
+                    logger.debug(f"  v9.0 error details: {e}", exc_info=True)
+
                 # Update global state
                 global _autonomous_state
                 _autonomous_state.goal_decomposer = self._components.get("goal_decomposer")
@@ -4285,6 +4336,10 @@ class CrossRepoAutonomousIntegration:
                 _autonomous_state.file_selector = self._components.get("file_selector")
                 _autonomous_state.improvement_engine = self._components.get("improvement_engine")
                 _autonomous_state.voice_handler = self._components.get("voice_handler")
+                # v9.0: Multi-language support components
+                _autonomous_state.language_registry = self._components.get("language_registry")
+                _autonomous_state.symbol_tracker = self._components.get("symbol_tracker")
+                _autonomous_state.cross_language_refactorer = self._components.get("cross_language_refactorer")
                 _autonomous_state.orchestrator = orchestrator
                 _autonomous_state.oracle = oracle
                 _autonomous_state.llm_client = llm_client
@@ -4702,7 +4757,15 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v8.0: Shutdown "Improve Yourself" system first
+        # v9.0: Shutdown Multi-Language Support system first
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_multi_language_system
+            await shutdown_multi_language_system()
+            logger.info("  ✅ v9.0 Multi-Language Support system shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v9.0 Multi-Language Support system shutdown error: {e}")
+
+        # v8.0: Shutdown "Improve Yourself" system
         try:
             from backend.core.ouroboros.native_integration import shutdown_improve_yourself_system
             await shutdown_improve_yourself_system()
@@ -4718,9 +4781,16 @@ class CrossRepoAutonomousIntegration:
         except Exception as e:
             logger.warning(f"  ⚠️ v7.0 autonomous system shutdown error: {e}")
 
-        # v6.0 + v7.0 + v8.0: Shutdown individual components
+        # v6.0 + v7.0 + v8.0 + v9.0: Shutdown individual components
         all_components = [
-            # v8.0 components (shutdown first)
+            # v9.0 components (shutdown first)
+            "language_analyzer",
+            "multi_language_selector",
+            "cross_language_refactorer",
+            "symbol_tracker",
+            "ast_parser",
+            "language_registry",
+            # v8.0 components
             "voice_handler",
             "improvement_engine",
             "file_selector",

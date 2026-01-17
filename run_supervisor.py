@@ -14031,8 +14031,26 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             self.logger.info(f"[v8.0] ✅ 'Improve Yourself' System: {v8_active}/3 components active")
                             print(f"  {TerminalUI.CYAN}        📢 Say 'JARVIS, improve yourself' to trigger{TerminalUI.RESET}")
 
-                        total_all_versions = total_active + v8_active
-                        self.logger.info(f"[v8.0] ✅ Total Autonomous System: {total_all_versions}/21 components active")
+                        # v9.0: Multi-Language Support System
+                        v9_components = ["language_registry", "ast_parser", "symbol_tracker",
+                                        "cross_language_refactorer", "multi_language_selector", "language_analyzer"]
+                        v9_active = sum(1 for c in v9_components if components.get(c) is not None)
+
+                        if v9_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v9.0 Multi-Language Support: {v9_active}/6 components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ LanguageRegistry: 22 languages supported{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ UniversalASTParser: Cross-language AST parsing{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CrossLanguageSymbolTracker: Symbol indexing{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CrossLanguageRefactorer: Multi-language refactoring{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ MultiLanguageFileSelector: Language-aware selection{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ LanguageSpecificAnalyzer: Best practices analysis{TerminalUI.RESET}")
+                            self.logger.info(f"[v9.0] ✅ Multi-Language Support: {v9_active}/6 components active")
+                            # List supported languages
+                            langs = ["Python", "JavaScript", "TypeScript", "Go", "Rust", "Java", "C", "C++", "Ruby", "PHP", "Swift", "Kotlin"]
+                            print(f"  {TerminalUI.CYAN}        🌐 Languages: {', '.join(langs[:6])}...{TerminalUI.RESET}")
+
+                        total_all_versions = total_active + v8_active + v9_active
+                        self.logger.info(f"[v9.0] ✅ Total Autonomous System: {total_all_versions}/27 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()
