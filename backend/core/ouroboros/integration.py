@@ -4054,6 +4054,19 @@ class CrossRepoAutonomousIntegration:
                     get_model_update_notifier,
                     get_autonomous_loop_controller,
                     get_cross_repo_sync_manager,
+                    # v7.0: Enterprise-grade enhancements
+                    initialize_autonomous_system_v7,
+                    shutdown_autonomous_system_v7,
+                    get_adaptive_lock_manager,
+                    get_sanitization_whitelist,
+                    get_conflict_resolver,
+                    get_multi_format_handler,
+                    get_hot_swap_manager,
+                    get_retry_manager,
+                    get_health_monitor,
+                    get_import_updater,
+                    get_file_chunker,
+                    get_dashboard,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4156,19 +4169,26 @@ class CrossRepoAutonomousIntegration:
                     logger.info("Phase 5: Starting background loops...")
                     await self._start_background_loops()
 
-                # Phase 6: Initialize v6.0 advanced autonomous system
-                logger.info("Phase 6: Initializing v6.0 advanced autonomous system...")
+                # Phase 6: Initialize v7.0 advanced autonomous system (includes v6.0)
+                logger.info("Phase 6: Initializing v7.0 advanced autonomous system...")
                 try:
-                    v6_components = await initialize_autonomous_system_v6(
+                    v7_components = await initialize_autonomous_system_v7(
                         start_loops=start_loops,
-                        enable_web_search=True,
-                        enable_reactor_feedback=True,
-                        enable_prime_training=True,
-                        enable_file_locking=True,
+                        enable_adaptive_locking=True,
+                        enable_sanitization_whitelist=True,
+                        enable_conflict_resolution=True,
+                        enable_multi_format_events=True,
+                        enable_hot_swap=True,
+                        enable_retry_manager=True,
+                        enable_health_monitor=True,
+                        enable_import_updater=True,
+                        enable_file_chunker=True,
+                        enable_dashboard=True,
                     )
 
-                    # Wire v6.0 components into our component registry
-                    v6_component_names = [
+                    # Wire v6.0 + v7.0 components into our component registry
+                    all_component_names = [
+                        # v6.0 components
                         "code_sanitizer",
                         "dependency_installer",
                         "file_lock_manager",
@@ -4177,22 +4197,39 @@ class CrossRepoAutonomousIntegration:
                         "model_update_notifier",
                         "autonomous_loop_controller",
                         "cross_repo_sync_manager",
+                        # v7.0 components
+                        "adaptive_lock_manager",
+                        "sanitization_whitelist",
+                        "conflict_resolver",
+                        "multi_format_handler",
+                        "hot_swap_manager",
+                        "retry_manager",
+                        "health_monitor",
+                        "import_updater",
+                        "file_chunker",
+                        "dashboard",
                     ]
 
-                    for name in v6_component_names:
-                        comp = v6_components.get(name)
+                    for name in all_component_names:
+                        comp = v7_components.get(name)
                         if comp:
                             self._components[name] = comp
-                            logger.info(f"  ✅ {name} initialized (v6.0)")
+                            version = "v7.0" if name in [
+                                "adaptive_lock_manager", "sanitization_whitelist",
+                                "conflict_resolver", "multi_format_handler",
+                                "hot_swap_manager", "retry_manager", "health_monitor",
+                                "import_updater", "file_chunker", "dashboard"
+                            ] else "v6.0"
+                            logger.info(f"  ✅ {name} initialized ({version})")
 
                     # Wire v6.0 cross-component communication
-                    await self._wire_v6_components(orchestrator, v6_components)
+                    await self._wire_v6_components(orchestrator, v7_components)
 
-                    logger.info(f"  ✅ v6.0 autonomous system initialized with {len(v6_components)} components")
+                    logger.info(f"  ✅ v7.0 autonomous system initialized with {len(v7_components)} components")
 
                 except Exception as e:
-                    logger.warning(f"  ⚠️ v6.0 autonomous system initialization failed: {e}")
-                    logger.debug(f"  v6.0 error details: {e}", exc_info=True)
+                    logger.warning(f"  ⚠️ v7.0 autonomous system initialization failed: {e}")
+                    logger.debug(f"  v7.0 error details: {e}", exc_info=True)
 
                 # Update global state
                 global _autonomous_state
@@ -4621,16 +4658,28 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v6.0: Shutdown advanced autonomous system first
+        # v7.0: Shutdown advanced autonomous system first (includes v6.0)
         try:
-            from backend.core.ouroboros.native_integration import shutdown_autonomous_system_v6
-            await shutdown_autonomous_system_v6()
-            logger.info("  ✅ v6.0 autonomous system shutdown")
+            from backend.core.ouroboros.native_integration import shutdown_autonomous_system_v7
+            await shutdown_autonomous_system_v7()
+            logger.info("  ✅ v7.0 autonomous system shutdown")
         except Exception as e:
-            logger.warning(f"  ⚠️ v6.0 autonomous system shutdown error: {e}")
+            logger.warning(f"  ⚠️ v7.0 autonomous system shutdown error: {e}")
 
-        # v6.0: Shutdown individual v6.0 components
-        v6_components = [
+        # v6.0 + v7.0: Shutdown individual components
+        all_components = [
+            # v7.0 components (shutdown first)
+            "dashboard",
+            "file_chunker",
+            "import_updater",
+            "health_monitor",
+            "retry_manager",
+            "hot_swap_manager",
+            "multi_format_handler",
+            "conflict_resolver",
+            "sanitization_whitelist",
+            "adaptive_lock_manager",
+            # v6.0 components
             "cross_repo_sync_manager",
             "autonomous_loop_controller",
             "model_update_notifier",
@@ -4641,7 +4690,7 @@ class CrossRepoAutonomousIntegration:
             "code_sanitizer",
         ]
 
-        for comp_name in v6_components:
+        for comp_name in all_components:
             comp = self._components.get(comp_name)
             if comp and hasattr(comp, 'stop'):
                 try:

@@ -13955,7 +13955,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             print(f"  {TerminalUI.CYAN}        ├─ AutonomousSelfRefinementLoop: Ready (not started){TerminalUI.RESET}")
                             print(f"  {TerminalUI.CYAN}        ├─ SystemFeedbackLoop: Ready (not started){TerminalUI.RESET}")
 
-                        # v6.0: Display advanced autonomous system components
+                        # v6.0 + v7.0: Display advanced autonomous system components
                         v6_components = [
                             ("code_sanitizer", "Web code validation & security"),
                             ("dependency_installer", "Auto-install missing packages"),
@@ -13967,23 +13967,57 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             ("cross_repo_sync_manager", "Cross-repo state synchronization"),
                         ]
 
+                        v7_components = [
+                            ("adaptive_lock_manager", "ML-based file lock sensitivity"),
+                            ("sanitization_whitelist", "Safe pattern whitelist"),
+                            ("conflict_resolver", "Dependency conflict resolution"),
+                            ("multi_format_handler", "Multi-format Reactor events"),
+                            ("hot_swap_manager", "Zero-downtime model switching"),
+                            ("retry_manager", "Exponential backoff retry"),
+                            ("health_monitor", "Event-based health monitoring"),
+                            ("import_updater", "Auto import path updates"),
+                            ("file_chunker", "Intelligent large file chunking"),
+                            ("dashboard", "Real-time status dashboard"),
+                        ]
+
                         v6_active = 0
+                        v7_active = 0
                         for comp_name, desc in v6_components:
                             if comp_name in self._autonomous_components:
                                 v6_active += 1
                                 self.logger.info(f"[v6.0]   ✅ {comp_name}: {desc}")
 
+                        for comp_name, desc in v7_components:
+                            if comp_name in self._autonomous_components:
+                                v7_active += 1
+                                self.logger.info(f"[v7.0]   ✅ {comp_name}: {desc}")
+
                         if v6_active > 0:
-                            print(f"  {TerminalUI.GREEN}    ├─ v6.0 Advanced Autonomous System: {v6_active} components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.GREEN}    ├─ v6.0 Autonomous System: {v6_active}/8 components{TerminalUI.RESET}")
                             print(f"  {TerminalUI.CYAN}        ├─ CodeSanitizer: Web code security validation{TerminalUI.RESET}")
                             print(f"  {TerminalUI.CYAN}        ├─ DependencyAutoInstaller: Missing package detection{TerminalUI.RESET}")
                             print(f"  {TerminalUI.CYAN}        ├─ FileLockManager: User edit conflict prevention{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        ├─ ReactorCoreFeedbackReceiver: Bidirectional training sync{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        ├─ PrimeTrainingIntegration: Model improvement feedback{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        ├─ ModelUpdateNotifier: Real-time model notifications{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        ├─ AutonomousLoopController: Unified loop management{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        └─ CrossRepoSyncManager: JARVIS/Prime/Reactor sync{TerminalUI.RESET}")
-                            self.logger.info(f"[v6.0] ✅ Advanced Autonomous System: {v6_active}/8 components active")
+                            print(f"  {TerminalUI.CYAN}        ├─ ReactorCoreFeedbackReceiver: Bidirectional sync{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ PrimeTrainingIntegration: Model feedback{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ ModelUpdateNotifier: Model notifications{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ AutonomousLoopController: Loop management{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ CrossRepoSyncManager: Cross-repo sync{TerminalUI.RESET}")
+
+                        if v7_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v7.0 Enterprise System: {v7_active}/10 components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ AdaptiveFileLockManager: ML-tuned sensitivity{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CodeSanitizationWhitelist: Safe pattern allow-list{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ DependencyConflictResolver: Version conflict fix{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ MultiFormatReactorEventHandler: Event normalization{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ ModelHotSwapManager: Zero-downtime updates{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CrossRepoSyncRetryManager: Exponential backoff{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ EventBasedHealthMonitor: Circuit breakers{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ ImportPathAutoUpdater: Auto import fixes{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ IntelligentFileChunker: Large file handling{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ AutonomousSystemDashboard: Real-time status{TerminalUI.RESET}")
+
+                        total_active = v6_active + v7_active
+                        self.logger.info(f"[v7.0] ✅ Enterprise Autonomous System: {total_active}/18 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()
