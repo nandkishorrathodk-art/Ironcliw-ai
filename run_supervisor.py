@@ -8485,6 +8485,21 @@ class SupervisorBootstrapper:
             except Exception as e:
                 self.logger.warning(f"⚠️ Native Self-Improvement cleanup error: {e}")
 
+        # v4.0: Shutdown Autonomous Self-Programming System
+        if hasattr(self, '_autonomous_components') and self._autonomous_components is not None:
+            try:
+                from backend.core.ouroboros.integration import shutdown_autonomous_self_programming_full
+                await asyncio.wait_for(
+                    shutdown_autonomous_self_programming_full(),
+                    timeout=15.0
+                )
+                self._autonomous_components = None
+                self.logger.info("✅ Autonomous Self-Programming shutdown complete")
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ Autonomous Self-Programming shutdown timed out")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Autonomous Self-Programming cleanup error: {e}")
+
         # v77.0: Shutdown Coding Council
         try:
             from core.coding_council.startup import coding_council_shutdown_hook
@@ -13894,6 +13909,71 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self._model_selector = None
                 self._multi_model_orchestrator = None
                 self.logger.warning(f"[v3.0] ⚠️ Multi-LLM Integration unavailable: {e}")
+
+            # v4.0: Initialize Autonomous Self-Programming System
+            # This is the "missing 20%" - autonomous decision-making layer
+            autonomous_enabled = os.getenv("AUTONOMOUS_SELF_PROGRAMMING", "true").lower() == "true"
+            autonomous_loops = os.getenv("AUTONOMOUS_START_LOOPS", "false").lower() == "true"
+
+            if autonomous_enabled:
+                try:
+                    from backend.core.ouroboros.integration import (
+                        initialize_autonomous_self_programming_full,
+                        get_cross_repo_autonomous_integration,
+                    )
+
+                    # Initialize all autonomous components
+                    self._autonomous_components = await initialize_autonomous_self_programming_full(
+                        start_loops=autonomous_loops,
+                    )
+
+                    if self._autonomous_components:
+                        print(f"  {TerminalUI.GREEN}    ├─ v4.0 Autonomous Self-Programming: Active{TerminalUI.RESET}")
+                        self.logger.info("[v4.0] ✅ Autonomous Self-Programming System initialized")
+
+                        # Log component status
+                        for comp_name, comp in self._autonomous_components.items():
+                            if hasattr(comp, 'get_status'):
+                                comp_status = comp.get_status()
+                                status_str = "ready" if comp_status else "unknown"
+                                self.logger.info(f"[v4.0]   ✅ {comp_name}: {status_str}")
+                            else:
+                                self.logger.info(f"[v4.0]   ✅ {comp_name}: initialized")
+
+                        # Print features
+                        print(f"  {TerminalUI.CYAN}        ├─ GoalDecompositionEngine: LLM-powered task breakdown{TerminalUI.RESET}")
+                        print(f"  {TerminalUI.CYAN}        ├─ TechnicalDebtDetector: Autonomous issue detection{TerminalUI.RESET}")
+                        print(f"  {TerminalUI.CYAN}        ├─ DualAgentSystem: Architect/Reviewer pattern{TerminalUI.RESET}")
+                        print(f"  {TerminalUI.CYAN}        ├─ CodeMemoryRAG: Oracle + ChromaDB fusion{TerminalUI.RESET}")
+                        print(f"  {TerminalUI.CYAN}        ├─ AutoTestGenerator: Test generation for untested code{TerminalUI.RESET}")
+
+                        if autonomous_loops:
+                            print(f"  {TerminalUI.YELLOW}        ├─ AutonomousSelfRefinementLoop: RUNNING{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        └─ SystemFeedbackLoop: RUNNING{TerminalUI.RESET}")
+                            self.logger.warning("[v4.0] ⚠️ Autonomous improvement loops ENABLED")
+                        else:
+                            print(f"  {TerminalUI.CYAN}        ├─ AutonomousSelfRefinementLoop: Ready (not started){TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ SystemFeedbackLoop: Ready (not started){TerminalUI.RESET}")
+
+                        # Get cross-repo integration status
+                        cross_repo = get_cross_repo_autonomous_integration()
+                        cross_status = cross_repo.get_status()
+                        for repo, path in cross_status.get("repos", {}).items():
+                            self.logger.info(f"[v4.0]   📁 {repo}: {path}")
+                    else:
+                        print(f"  {TerminalUI.YELLOW}    ├─ v4.0 Autonomous Self-Programming: No components{TerminalUI.RESET}")
+                        self.logger.warning("[v4.0] ⚠️ Autonomous Self-Programming - no components initialized")
+
+                except ImportError as e:
+                    self._autonomous_components = None
+                    self.logger.warning(f"[v4.0] ⚠️ Autonomous Self-Programming import failed: {e}")
+                    print(f"  {TerminalUI.YELLOW}    ├─ v4.0 Autonomous Self-Programming: Import error{TerminalUI.RESET}")
+                except Exception as e:
+                    self._autonomous_components = None
+                    self.logger.warning(f"[v4.0] ⚠️ Autonomous Self-Programming unavailable: {e}")
+                    print(f"  {TerminalUI.YELLOW}    ├─ v4.0 Autonomous Self-Programming: {e}{TerminalUI.RESET}")
+            else:
+                self.logger.info("[v4.0] Autonomous Self-Programming disabled via AUTONOMOUS_SELF_PROGRAMMING=false")
 
             # Note about auto-improvement
             if self._ouroboros_auto_improve:
