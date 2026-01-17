@@ -3694,6 +3694,9 @@ class SupervisorBootstrapper:
         self._trinity_initialized = False
         self._trinity_instance_id: Optional[str] = None
         self._trinity_enabled = os.getenv("TRINITY_ENABLED", "true").lower() == "true"
+
+        # v101.0: UnifiedTrinityConnector (Claude Code-like behaviors)
+        self._unified_trinity_connector = None
         self._reactor_core_enabled = os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
         self._reactor_core_port = int(os.getenv("REACTOR_CORE_PORT", "8003"))
 
@@ -12362,6 +12365,11 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     reactor_online=reactor_online
                 )
 
+            # v101.0: Initialize UnifiedTrinityConnector with Claude Code-like behaviors
+            # This connects enhanced self-improvement, cross-repo orchestration,
+            # and real-time communication (voice + websocket)
+            await self._initialize_unified_trinity_connector()
+
         except Exception as e:
             self.logger.warning(f"   ⚠️ PROJECT TRINITY initialization failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ PROJECT TRINITY: Running in standalone mode ({e}){TerminalUI.RESET}")
@@ -14820,6 +14828,111 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         except Exception as e:
             self.logger.warning(f"[v100.0] Failed to connect forwarder to learning: {e}")
+
+    async def _initialize_unified_trinity_connector(self) -> None:
+        """
+        v101.0: Initialize the UnifiedTrinityConnector with Claude Code-like behaviors.
+
+        This is the MASTER ORCHESTRATOR that connects:
+        - Enhanced self-improvement with diff preview and approval
+        - Cross-repo orchestration with Lamport clocks and dead letter queue
+        - Real-time communication (voice + websocket + menu bar)
+        - Session memory and atomic multi-file editing
+
+        The connector bridges JARVIS Body, JARVIS Prime, and Reactor Core
+        into a unified self-improving system with real-time user feedback.
+        """
+        enable_unified_connector = os.environ.get(
+            "TRINITY_UNIFIED_CONNECTOR", "true"
+        ).lower() in ("1", "true", "yes")
+
+        if not enable_unified_connector:
+            self.logger.info("[v101.0] UnifiedTrinityConnector disabled via TRINITY_UNIFIED_CONNECTOR=false")
+            return
+
+        try:
+            self.logger.info("[v101.0] Initializing UnifiedTrinityConnector...")
+            print(f"  {TerminalUI.CYAN}🔗 Initializing Unified Trinity Connector...{TerminalUI.RESET}")
+
+            # Get the Trinity connector
+            connector = get_trinity_connector()
+
+            # Get available communication channels
+            websocket_manager = None
+            voice_system = None
+            menu_bar = None
+            event_bus = None
+
+            # Try to get WebSocket manager
+            try:
+                from backend.api.unified_websocket import get_websocket_manager
+                websocket_manager = get_websocket_manager()
+                self.logger.debug("[v101.0] WebSocket manager available")
+            except Exception as e:
+                self.logger.debug(f"[v101.0] WebSocket manager not available: {e}")
+
+            # Try to get voice system from the narrator
+            if hasattr(self, 'narrator') and self.narrator:
+                voice_system = self.narrator
+                self.logger.debug("[v101.0] Voice system available (narrator)")
+
+            # Try to get menu bar indicator
+            try:
+                if hasattr(self, '_status_indicator') and self._status_indicator:
+                    menu_bar = self._status_indicator
+                    self.logger.debug("[v101.0] Menu bar indicator available")
+            except Exception:
+                pass
+
+            # Try to get event bus
+            try:
+                if hasattr(self, '_event_bus') and self._event_bus:
+                    event_bus = self._event_bus
+                    self.logger.debug("[v101.0] Event bus available")
+            except Exception:
+                pass
+
+            # Initialize the connector with all available channels
+            success = await connector.initialize(
+                websocket_manager=websocket_manager,
+                voice_system=voice_system,
+                menu_bar=menu_bar,
+                event_bus=event_bus,
+            )
+
+            if success:
+                self._unified_trinity_connector = connector
+                status = connector.get_status()
+
+                self.logger.info("[v101.0] ✅ UnifiedTrinityConnector initialized successfully")
+                self.logger.info(f"[v101.0]    Session: {status.get('session_id', 'unknown')}")
+                self.logger.info(f"[v101.0]    Repositories: JARVIS={status['repositories'].get('jarvis', False)}, "
+                               f"Prime={status['repositories'].get('prime', False)}, "
+                               f"Reactor={status['repositories'].get('reactor', False)}")
+
+                # Log real-time communication status
+                if 'cross_repo' in status:
+                    enhanced = status['cross_repo'].get('enhanced', {})
+                    if enhanced:
+                        self.logger.info(f"[v101.0]    Lamport clock: {enhanced.get('lamport_clock', {}).get('node_id', 'unknown')}")
+                        dlq = enhanced.get('dead_letter_queue', {})
+                        self.logger.info(f"[v101.0]    Dead letter queue: {dlq.get('pending_events', 0)} pending")
+
+                print(f"  {TerminalUI.GREEN}✓ UnifiedTrinityConnector: Claude Code-like behaviors enabled{TerminalUI.RESET}")
+                print(f"  {TerminalUI.GREEN}  - Diff preview: enabled{TerminalUI.RESET}")
+                print(f"  {TerminalUI.GREEN}  - Multi-file orchestration: enabled{TerminalUI.RESET}")
+                print(f"  {TerminalUI.GREEN}  - Real-time voice: {'yes' if voice_system else 'no'}{TerminalUI.RESET}")
+                print(f"  {TerminalUI.GREEN}  - WebSocket streaming: {'yes' if websocket_manager else 'no'}{TerminalUI.RESET}")
+
+            else:
+                self.logger.warning("[v101.0] UnifiedTrinityConnector initialization returned False")
+                print(f"  {TerminalUI.YELLOW}⚠️ UnifiedTrinityConnector: Partial initialization{TerminalUI.RESET}")
+
+        except Exception as e:
+            self.logger.warning(f"[v101.0] UnifiedTrinityConnector initialization failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ UnifiedTrinityConnector: {e}{TerminalUI.RESET}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
 
     async def _initialize_v80_cross_repo_system(
         self,

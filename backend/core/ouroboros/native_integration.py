@@ -1794,7 +1794,7 @@ class DiffChunk:
 
 @dataclass
 class DiffPreview:
-    """Complete diff preview for user approval."""
+    """Complete diff preview for user approval with git integration."""
     id: str
     files: Dict[str, List[DiffChunk]]
     total_additions: int = 0
@@ -1804,6 +1804,12 @@ class DiffPreview:
     affected_entities: List[str] = field(default_factory=list)
     generated_at: float = field(default_factory=time.time)
     expires_at: float = 0.0
+    # v3.1: Git integration fields
+    git_tracked: bool = False
+    git_root: Optional[str] = None
+    relative_path: Optional[str] = None
+    commit_message: Optional[str] = None
+    branch_name: Optional[str] = None
 
     def __post_init__(self):
         if self.expires_at == 0.0:
@@ -1814,9 +1820,18 @@ class DiffPreview:
     def is_expired(self) -> bool:
         return time.time() > self.expires_at
 
+    @property
+    def file_count(self) -> int:
+        """Number of files in this preview."""
+        return len(self.files)
+
+    @property
+    def total_changes(self) -> int:
+        """Total number of changes across all files."""
+        return self.total_additions + self.total_deletions + self.total_modifications
+
     def to_unified_diff(self) -> str:
         """Generate unified diff string for display."""
-        import difflib
         lines = []
         for file_path, chunks in self.files.items():
             lines.append(f"--- a/{file_path}")
@@ -1833,6 +1848,56 @@ class DiffPreview:
                 for ctx in chunk.context_after:
                     lines.append(f" {ctx}")
         return "\n".join(lines)
+
+    def to_git_diff_format(self) -> str:
+        """Generate git-style diff format with headers."""
+        lines = []
+
+        for file_path, chunks in self.files.items():
+            # Git diff header
+            rel_path = self.relative_path if self.relative_path else file_path
+            lines.append(f"diff --git a/{rel_path} b/{rel_path}")
+            lines.append(f"--- a/{rel_path}")
+            lines.append(f"+++ b/{rel_path}")
+
+            for chunk in chunks:
+                # Hunk header
+                old_count = len(chunk.old_content.splitlines()) if chunk.old_content else 0
+                new_count = len(chunk.new_content.splitlines()) if chunk.new_content else 0
+                lines.append(f"@@ -{chunk.line_start},{old_count} +{chunk.line_start},{new_count} @@")
+
+                # Context before
+                for ctx in chunk.context_before:
+                    lines.append(f" {ctx}")
+
+                # Changes
+                for old_line in chunk.old_content.splitlines():
+                    lines.append(f"-{old_line}")
+                for new_line in chunk.new_content.splitlines():
+                    lines.append(f"+{new_line}")
+
+                # Context after
+                for ctx in chunk.context_after:
+                    lines.append(f" {ctx}")
+
+        return "\n".join(lines)
+
+    def to_summary(self) -> Dict[str, Any]:
+        """Generate a summary dict for UI display."""
+        return {
+            "id": self.id,
+            "file_count": self.file_count,
+            "total_additions": self.total_additions,
+            "total_deletions": self.total_deletions,
+            "total_modifications": self.total_modifications,
+            "total_changes": self.total_changes,
+            "risk_score": self.risk_score,
+            "risk_level": "high" if self.risk_score > 0.7 else "medium" if self.risk_score > 0.3 else "low",
+            "git_tracked": self.git_tracked,
+            "commit_message": self.commit_message,
+            "is_expired": self.is_expired,
+            "files": list(self.files.keys()),
+        }
 
 
 class DiffPreviewEngine:
@@ -1961,6 +2026,340 @@ class DiffPreviewEngine:
             chunks.append(current_chunk)
 
         return chunks
+
+    # =========================================================================
+    # v3.1: Git Integration for Proper Diff Format
+    # =========================================================================
+
+    async def is_git_tracked(self, file_path: str) -> bool:
+        """Check if a file is tracked in a git repository."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "ls-files", "--error-unmatch", file_path,
+                cwd=os.path.dirname(file_path) or ".",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            return proc.returncode == 0
+        except Exception:
+            return False
+
+    async def get_git_root(self, file_path: str) -> Optional[str]:
+        """Get the git repository root for a file."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "rev-parse", "--show-toplevel",
+                cwd=os.path.dirname(file_path) or ".",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                return stdout.decode().strip()
+        except Exception:
+            pass
+        return None
+
+    async def create_git_preview(
+        self,
+        original_content: str,
+        modified_content: str,
+        file_path: str,
+        goal: str,
+    ) -> DiffPreview:
+        """
+        Create a diff preview using git for proper formatting.
+
+        Falls back to difflib if file is not git-tracked.
+        """
+        # Check if file is in a git repo
+        git_root = await self.get_git_root(file_path)
+        if git_root is None:
+            # Fall back to standard diff
+            return await self.create_preview(original_content, modified_content, file_path, goal)
+
+        preview_id = f"git_preview_{uuid.uuid4().hex[:12]}"
+
+        # Get relative path for git
+        abs_path = os.path.abspath(file_path)
+        rel_path = os.path.relpath(abs_path, git_root)
+
+        # Create temp file with modified content for git diff
+        import tempfile
+        diff_output = ""
+
+        try:
+            # Write original to temp file to compare
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp_orig:
+                tmp_orig.write(original_content)
+                tmp_orig_path = tmp_orig.name
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp_mod:
+                tmp_mod.write(modified_content)
+                tmp_mod_path = tmp_mod.name
+
+            # Use git diff with no-index for comparing arbitrary files
+            proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "--no-index", "--no-color",
+                f"--src-prefix=a/", f"--dst-prefix=b/",
+                tmp_orig_path, tmp_mod_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            diff_output = stdout.decode()
+
+            # Replace temp paths with actual file path in output
+            diff_output = diff_output.replace(tmp_orig_path, rel_path)
+            diff_output = diff_output.replace(tmp_mod_path, rel_path)
+
+        except Exception as e:
+            logger.warning(f"Git diff failed, falling back to difflib: {e}")
+            return await self.create_preview(original_content, modified_content, file_path, goal)
+        finally:
+            # Cleanup temp files
+            for tmp in [tmp_orig_path, tmp_mod_path]:
+                try:
+                    os.unlink(tmp)
+                except Exception:
+                    pass
+
+        # Parse git diff output into chunks
+        chunks = self._parse_git_diff(diff_output, file_path)
+
+        # Calculate statistics
+        additions = sum(1 for c in chunks if c.change_type == 'add')
+        deletions = sum(1 for c in chunks if c.change_type == 'remove')
+        modifications = sum(1 for c in chunks if c.change_type == 'modify')
+
+        # Calculate risk score
+        original_lines = len(original_content.splitlines())
+        total_changes = additions + deletions + modifications
+        risk_score = min(1.0, total_changes / max(original_lines, 1) * 2)
+
+        preview = DiffPreview(
+            id=preview_id,
+            files={file_path: chunks},
+            total_additions=additions,
+            total_deletions=deletions,
+            total_modifications=modifications,
+            risk_score=risk_score,
+            git_tracked=True,
+            git_root=git_root,
+            relative_path=rel_path,
+        )
+
+        async with self._lock:
+            self._pending_previews[preview_id] = preview
+            self._approval_callbacks[preview_id] = asyncio.Event()
+
+        return preview
+
+    def _parse_git_diff(self, diff_output: str, file_path: str) -> List[DiffChunk]:
+        """Parse git diff output into DiffChunk objects."""
+        chunks = []
+        current_chunk = None
+        in_hunk = False
+
+        for line in diff_output.splitlines():
+            if line.startswith('@@'):
+                # New hunk - save previous chunk
+                if current_chunk and (current_chunk.old_content or current_chunk.new_content):
+                    chunks.append(current_chunk)
+
+                # Parse hunk header: @@ -start,count +start,count @@
+                import re
+                match = re.match(r'@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@', line)
+                if match:
+                    old_start = int(match.group(1))
+                    new_start = int(match.group(2))
+                    current_chunk = DiffChunk(
+                        file_path=file_path,
+                        line_start=old_start,
+                        line_end=old_start,
+                        old_content="",
+                        new_content="",
+                        change_type="modify",
+                    )
+                    in_hunk = True
+            elif in_hunk and current_chunk is not None:
+                if line.startswith('-') and not line.startswith('---'):
+                    # Removed line
+                    current_chunk.old_content += line[1:] + "\n"
+                    current_chunk.line_end += 1
+                    if not current_chunk.new_content:
+                        current_chunk.change_type = "remove"
+                elif line.startswith('+') and not line.startswith('+++'):
+                    # Added line
+                    current_chunk.new_content += line[1:] + "\n"
+                    if not current_chunk.old_content:
+                        current_chunk.change_type = "add"
+                    else:
+                        current_chunk.change_type = "modify"
+                elif line.startswith(' '):
+                    # Context line
+                    if not current_chunk.old_content and not current_chunk.new_content:
+                        current_chunk.context_before.append(line[1:])
+                    else:
+                        current_chunk.context_after.append(line[1:])
+            elif line.startswith('diff --git'):
+                # Start of new file diff - reset state
+                if current_chunk and (current_chunk.old_content or current_chunk.new_content):
+                    chunks.append(current_chunk)
+                current_chunk = None
+                in_hunk = False
+
+        # Don't forget the last chunk
+        if current_chunk and (current_chunk.old_content or current_chunk.new_content):
+            chunks.append(current_chunk)
+
+        return chunks
+
+    async def get_git_status(self, file_path: str) -> Dict[str, Any]:
+        """Get detailed git status for a file."""
+        result = {
+            "tracked": False,
+            "staged": False,
+            "modified": False,
+            "untracked": False,
+            "git_root": None,
+            "relative_path": None,
+        }
+
+        git_root = await self.get_git_root(file_path)
+        if git_root is None:
+            return result
+
+        result["git_root"] = git_root
+        abs_path = os.path.abspath(file_path)
+        result["relative_path"] = os.path.relpath(abs_path, git_root)
+
+        try:
+            # Get porcelain status
+            proc = await asyncio.create_subprocess_exec(
+                "git", "status", "--porcelain", result["relative_path"],
+                cwd=git_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+
+            if proc.returncode == 0:
+                status_line = stdout.decode().strip()
+                if status_line:
+                    xy = status_line[:2]
+                    index_status = xy[0]
+                    worktree_status = xy[1]
+
+                    result["tracked"] = index_status != '?' and worktree_status != '?'
+                    result["staged"] = index_status in 'MADRCU'
+                    result["modified"] = worktree_status in 'M'
+                    result["untracked"] = xy == '??'
+                else:
+                    # Empty output means clean and tracked
+                    result["tracked"] = await self.is_git_tracked(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to get git status: {e}")
+
+        return result
+
+    async def stage_changes(self, file_path: str) -> bool:
+        """Stage changes to git (git add)."""
+        git_root = await self.get_git_root(file_path)
+        if git_root is None:
+            return False
+
+        try:
+            abs_path = os.path.abspath(file_path)
+            rel_path = os.path.relpath(abs_path, git_root)
+
+            proc = await asyncio.create_subprocess_exec(
+                "git", "add", rel_path,
+                cwd=git_root,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            return proc.returncode == 0
+        except Exception as e:
+            logger.error(f"Failed to stage changes: {e}")
+            return False
+
+    async def get_head_version(self, file_path: str) -> Optional[str]:
+        """Get the HEAD version of a file from git."""
+        git_root = await self.get_git_root(file_path)
+        if git_root is None:
+            return None
+
+        try:
+            abs_path = os.path.abspath(file_path)
+            rel_path = os.path.relpath(abs_path, git_root)
+
+            proc = await asyncio.create_subprocess_exec(
+                "git", "show", f"HEAD:{rel_path}",
+                cwd=git_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+
+            if proc.returncode == 0:
+                return stdout.decode()
+        except Exception as e:
+            logger.warning(f"Failed to get HEAD version: {e}")
+
+        return None
+
+    async def create_commit_preview(
+        self,
+        files: Dict[str, Tuple[str, str]],  # path -> (original, modified)
+        commit_message: str,
+    ) -> DiffPreview:
+        """
+        Create a preview for a multi-file commit.
+
+        Args:
+            files: Dict mapping file paths to (original_content, modified_content) tuples
+            commit_message: Proposed commit message
+
+        Returns:
+            DiffPreview with all file changes consolidated
+        """
+        preview_id = f"commit_preview_{uuid.uuid4().hex[:12]}"
+        all_chunks: Dict[str, List[DiffChunk]] = {}
+        total_additions = 0
+        total_deletions = 0
+        total_modifications = 0
+
+        for file_path, (original, modified) in files.items():
+            # Use git diff for each file
+            sub_preview = await self.create_git_preview(original, modified, file_path, commit_message)
+            if sub_preview.files:
+                all_chunks.update(sub_preview.files)
+                total_additions += sub_preview.total_additions
+                total_deletions += sub_preview.total_deletions
+                total_modifications += sub_preview.total_modifications
+
+        # Calculate overall risk score
+        total_changes = total_additions + total_deletions + total_modifications
+        risk_score = min(1.0, total_changes / 100)  # Scale by 100 lines
+
+        preview = DiffPreview(
+            id=preview_id,
+            files=all_chunks,
+            total_additions=total_additions,
+            total_deletions=total_deletions,
+            total_modifications=total_modifications,
+            risk_score=risk_score,
+            commit_message=commit_message,
+        )
+
+        async with self._lock:
+            self._pending_previews[preview_id] = preview
+            self._approval_callbacks[preview_id] = asyncio.Event()
+
+        return preview
 
     async def stream_preview(self, preview: DiffPreview) -> None:
         """Stream diff chunks to all listeners."""
@@ -2123,6 +2522,997 @@ class SessionMemoryManager:
     def can_reference_previous_change(self, file_path: str) -> bool:
         """Check if we have previous changes for this file in session."""
         return file_path in self._file_snapshots
+
+
+# =============================================================================
+# v3.1: Checkpoint-Based Mid-Edit Error Recovery
+# =============================================================================
+
+@dataclass
+class Checkpoint:
+    """Represents a saved state checkpoint for error recovery."""
+    id: str
+    name: str
+    created_at: float
+    file_states: Dict[str, str]  # path -> content at checkpoint time
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    parent_checkpoint: Optional[str] = None  # For nested checkpoints
+
+    def __post_init__(self):
+        if not self.metadata:
+            self.metadata = {}
+
+
+class CheckpointManager:
+    """
+    v3.1: Robust checkpoint-based error recovery for multi-file editing.
+
+    Provides:
+    - Named checkpoints with timestamps
+    - Automatic pre-edit checkpointing
+    - Nested checkpoints for complex operations
+    - Atomic rollback to any checkpoint
+    - Checkpoint persistence to disk for crash recovery
+    - Cleanup of stale checkpoints
+
+    Usage:
+        manager = CheckpointManager()
+
+        # Create checkpoint before risky operation
+        cp_id = await manager.create_checkpoint("before_refactor", [file1, file2])
+
+        try:
+            # Perform edits...
+            await edit_files()
+        except Exception:
+            # Rollback on error
+            await manager.rollback_to_checkpoint(cp_id)
+        finally:
+            # Clean up checkpoint
+            await manager.delete_checkpoint(cp_id)
+    """
+
+    DEFAULT_CHECKPOINT_DIR = ".jarvis_checkpoints"
+    MAX_CHECKPOINTS = 50
+    CHECKPOINT_TTL_HOURS = 24
+
+    def __init__(
+        self,
+        checkpoint_dir: Optional[Path] = None,
+        persist_to_disk: bool = True,
+    ):
+        """
+        Initialize checkpoint manager.
+
+        Args:
+            checkpoint_dir: Directory to store checkpoint data. Defaults to .jarvis_checkpoints
+            persist_to_disk: Whether to persist checkpoints to disk for crash recovery
+        """
+        self._checkpoint_dir = checkpoint_dir or Path(self.DEFAULT_CHECKPOINT_DIR)
+        self._persist_to_disk = persist_to_disk
+        self._checkpoints: Dict[str, Checkpoint] = {}
+        self._checkpoint_stack: List[str] = []  # For nested checkpoints
+        self._lock = asyncio.Lock()
+
+        if self._persist_to_disk:
+            self._checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            # Load existing checkpoints from disk
+            asyncio.create_task(self._load_persisted_checkpoints())
+
+    async def _load_persisted_checkpoints(self) -> None:
+        """Load checkpoints from disk on startup."""
+        if not self._persist_to_disk:
+            return
+
+        try:
+            index_path = self._checkpoint_dir / "checkpoint_index.json"
+            if index_path.exists():
+                with open(index_path, 'r') as f:
+                    index = json.load(f)
+
+                for cp_id, cp_data in index.items():
+                    # Load file states
+                    file_states = {}
+                    for file_path in cp_data.get("files", []):
+                        state_file = self._checkpoint_dir / f"{cp_id}_{hashlib.md5(file_path.encode()).hexdigest()[:12]}.state"
+                        if state_file.exists():
+                            file_states[file_path] = state_file.read_text(encoding="utf-8")
+
+                    self._checkpoints[cp_id] = Checkpoint(
+                        id=cp_id,
+                        name=cp_data.get("name", ""),
+                        created_at=cp_data.get("created_at", 0),
+                        file_states=file_states,
+                        metadata=cp_data.get("metadata", {}),
+                        parent_checkpoint=cp_data.get("parent_checkpoint"),
+                    )
+
+                logger.info(f"✅ Loaded {len(self._checkpoints)} checkpoints from disk")
+        except Exception as e:
+            logger.warning(f"Failed to load persisted checkpoints: {e}")
+
+    async def _persist_checkpoint(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint to disk."""
+        if not self._persist_to_disk:
+            return
+
+        try:
+            # Save file states
+            for file_path, content in checkpoint.file_states.items():
+                state_file = self._checkpoint_dir / f"{checkpoint.id}_{hashlib.md5(file_path.encode()).hexdigest()[:12]}.state"
+                state_file.write_text(content, encoding="utf-8")
+
+            # Update index
+            index_path = self._checkpoint_dir / "checkpoint_index.json"
+            index = {}
+            if index_path.exists():
+                with open(index_path, 'r') as f:
+                    index = json.load(f)
+
+            index[checkpoint.id] = {
+                "name": checkpoint.name,
+                "created_at": checkpoint.created_at,
+                "files": list(checkpoint.file_states.keys()),
+                "metadata": checkpoint.metadata,
+                "parent_checkpoint": checkpoint.parent_checkpoint,
+            }
+
+            with open(index_path, 'w') as f:
+                json.dump(index, f, indent=2)
+
+        except Exception as e:
+            logger.error(f"Failed to persist checkpoint {checkpoint.id}: {e}")
+
+    async def create_checkpoint(
+        self,
+        name: str,
+        file_paths: List[str],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Create a checkpoint saving the current state of specified files.
+
+        Args:
+            name: Human-readable name for the checkpoint
+            file_paths: List of file paths to include in checkpoint
+            metadata: Optional metadata to attach to checkpoint
+
+        Returns:
+            Checkpoint ID for later reference
+        """
+        async with self._lock:
+            checkpoint_id = f"cp_{uuid.uuid4().hex[:12]}"
+
+            # Read current content of all files
+            file_states = {}
+            for file_path in file_paths:
+                try:
+                    path = Path(file_path)
+                    if path.exists():
+                        file_states[file_path] = path.read_text(encoding="utf-8")
+                    else:
+                        # File doesn't exist yet - store empty string as marker
+                        file_states[file_path] = ""
+                except Exception as e:
+                    logger.warning(f"Failed to read {file_path} for checkpoint: {e}")
+
+            # Get parent checkpoint if we're in a nested operation
+            parent_id = self._checkpoint_stack[-1] if self._checkpoint_stack else None
+
+            checkpoint = Checkpoint(
+                id=checkpoint_id,
+                name=name,
+                created_at=time.time(),
+                file_states=file_states,
+                metadata=metadata or {},
+                parent_checkpoint=parent_id,
+            )
+
+            self._checkpoints[checkpoint_id] = checkpoint
+            self._checkpoint_stack.append(checkpoint_id)
+
+            # Persist to disk
+            await self._persist_checkpoint(checkpoint)
+
+            # Cleanup old checkpoints if needed
+            await self._cleanup_old_checkpoints()
+
+            logger.info(f"✅ Created checkpoint '{name}' ({checkpoint_id}) with {len(file_states)} files")
+            return checkpoint_id
+
+    async def rollback_to_checkpoint(
+        self,
+        checkpoint_id: str,
+        delete_after_rollback: bool = True,
+    ) -> Dict[str, bool]:
+        """
+        Rollback all files to their state at the given checkpoint.
+
+        Args:
+            checkpoint_id: ID of checkpoint to rollback to
+            delete_after_rollback: Whether to delete the checkpoint after successful rollback
+
+        Returns:
+            Dict mapping file paths to success status
+        """
+        async with self._lock:
+            checkpoint = self._checkpoints.get(checkpoint_id)
+            if not checkpoint:
+                logger.error(f"Checkpoint {checkpoint_id} not found")
+                return {}
+
+            results = {}
+            for file_path, original_content in checkpoint.file_states.items():
+                try:
+                    path = Path(file_path)
+                    if original_content == "":
+                        # File didn't exist at checkpoint time - delete if it exists now
+                        if path.exists():
+                            path.unlink()
+                            logger.info(f"Deleted {file_path} (didn't exist at checkpoint)")
+                        results[file_path] = True
+                    else:
+                        # Restore original content
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text(original_content, encoding="utf-8")
+                        results[file_path] = True
+                        logger.info(f"Restored {file_path} to checkpoint state")
+                except Exception as e:
+                    logger.error(f"Failed to rollback {file_path}: {e}")
+                    results[file_path] = False
+
+            if delete_after_rollback:
+                await self._delete_checkpoint_internal(checkpoint_id)
+
+            # Pop from stack if this was the most recent checkpoint
+            if self._checkpoint_stack and self._checkpoint_stack[-1] == checkpoint_id:
+                self._checkpoint_stack.pop()
+
+            return results
+
+    async def get_checkpoint(self, checkpoint_id: str) -> Optional[Checkpoint]:
+        """Get checkpoint by ID."""
+        async with self._lock:
+            return self._checkpoints.get(checkpoint_id)
+
+    async def list_checkpoints(self) -> List[Dict[str, Any]]:
+        """List all checkpoints with summary info."""
+        async with self._lock:
+            return [
+                {
+                    "id": cp.id,
+                    "name": cp.name,
+                    "created_at": cp.created_at,
+                    "file_count": len(cp.file_states),
+                    "files": list(cp.file_states.keys()),
+                    "metadata": cp.metadata,
+                    "parent": cp.parent_checkpoint,
+                    "age_seconds": time.time() - cp.created_at,
+                }
+                for cp in sorted(
+                    self._checkpoints.values(),
+                    key=lambda c: c.created_at,
+                    reverse=True
+                )
+            ]
+
+    async def delete_checkpoint(self, checkpoint_id: str) -> bool:
+        """Delete a checkpoint."""
+        async with self._lock:
+            return await self._delete_checkpoint_internal(checkpoint_id)
+
+    async def _delete_checkpoint_internal(self, checkpoint_id: str) -> bool:
+        """Internal method to delete checkpoint without acquiring lock."""
+        checkpoint = self._checkpoints.pop(checkpoint_id, None)
+        if not checkpoint:
+            return False
+
+        # Remove from stack
+        if checkpoint_id in self._checkpoint_stack:
+            self._checkpoint_stack.remove(checkpoint_id)
+
+        # Delete persisted files
+        if self._persist_to_disk:
+            try:
+                for file_path in checkpoint.file_states:
+                    state_file = self._checkpoint_dir / f"{checkpoint_id}_{hashlib.md5(file_path.encode()).hexdigest()[:12]}.state"
+                    if state_file.exists():
+                        state_file.unlink()
+
+                # Update index
+                index_path = self._checkpoint_dir / "checkpoint_index.json"
+                if index_path.exists():
+                    with open(index_path, 'r') as f:
+                        index = json.load(f)
+                    index.pop(checkpoint_id, None)
+                    with open(index_path, 'w') as f:
+                        json.dump(index, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to delete persisted checkpoint files: {e}")
+
+        return True
+
+    async def _cleanup_old_checkpoints(self) -> int:
+        """Remove checkpoints older than TTL or exceeding max count."""
+        cleaned = 0
+        cutoff = time.time() - (self.CHECKPOINT_TTL_HOURS * 3600)
+
+        # Sort by creation time (oldest first)
+        sorted_checkpoints = sorted(
+            self._checkpoints.values(),
+            key=lambda c: c.created_at
+        )
+
+        # Remove old checkpoints
+        for cp in sorted_checkpoints:
+            if cp.created_at < cutoff:
+                await self._delete_checkpoint_internal(cp.id)
+                cleaned += 1
+
+        # Remove excess checkpoints
+        while len(self._checkpoints) > self.MAX_CHECKPOINTS:
+            oldest = min(self._checkpoints.values(), key=lambda c: c.created_at)
+            await self._delete_checkpoint_internal(oldest.id)
+            cleaned += 1
+
+        if cleaned:
+            logger.info(f"Cleaned up {cleaned} old checkpoints")
+
+        return cleaned
+
+    async def get_current_checkpoint_id(self) -> Optional[str]:
+        """Get the ID of the current (most recent) checkpoint in the stack."""
+        async with self._lock:
+            return self._checkpoint_stack[-1] if self._checkpoint_stack else None
+
+    async def pop_checkpoint(self) -> Optional[str]:
+        """Pop and return the most recent checkpoint from the stack."""
+        async with self._lock:
+            if self._checkpoint_stack:
+                return self._checkpoint_stack.pop()
+            return None
+
+    async def commit_checkpoint(self, checkpoint_id: str) -> bool:
+        """
+        Commit a checkpoint (mark edits as successful, delete checkpoint).
+
+        Use this when edits complete successfully and you no longer need the
+        rollback capability.
+        """
+        return await self.delete_checkpoint(checkpoint_id)
+
+    @asynccontextmanager
+    async def checkpoint_context(
+        self,
+        name: str,
+        file_paths: List[str],
+        metadata: Optional[Dict[str, Any]] = None,
+        auto_rollback_on_error: bool = True,
+    ):
+        """
+        Context manager for automatic checkpoint management.
+
+        Usage:
+            async with checkpoint_manager.checkpoint_context(
+                "refactoring_foo",
+                ["file1.py", "file2.py"]
+            ) as cp_id:
+                # Perform edits...
+                # If an exception is raised, files are automatically rolled back
+
+        Args:
+            name: Checkpoint name
+            file_paths: Files to checkpoint
+            metadata: Optional metadata
+            auto_rollback_on_error: Whether to automatically rollback on exception
+        """
+        checkpoint_id = await self.create_checkpoint(name, file_paths, metadata)
+        try:
+            yield checkpoint_id
+            # Success - commit the checkpoint
+            await self.commit_checkpoint(checkpoint_id)
+        except Exception as e:
+            if auto_rollback_on_error:
+                logger.warning(f"Error during checkpoint '{name}', rolling back: {e}")
+                await self.rollback_to_checkpoint(checkpoint_id)
+            else:
+                # Just delete checkpoint without rollback
+                await self.delete_checkpoint(checkpoint_id)
+            raise
+
+    async def get_file_diff_from_checkpoint(
+        self,
+        checkpoint_id: str,
+        file_path: str,
+    ) -> Optional[str]:
+        """
+        Get diff between checkpoint state and current file state.
+
+        Returns:
+            Unified diff string, or None if file not in checkpoint
+        """
+        async with self._lock:
+            checkpoint = self._checkpoints.get(checkpoint_id)
+            if not checkpoint or file_path not in checkpoint.file_states:
+                return None
+
+            original = checkpoint.file_states[file_path]
+
+            try:
+                current = Path(file_path).read_text(encoding="utf-8")
+            except Exception:
+                current = ""
+
+            import difflib
+            diff = difflib.unified_diff(
+                original.splitlines(keepends=True),
+                current.splitlines(keepends=True),
+                fromfile=f"checkpoint/{file_path}",
+                tofile=f"current/{file_path}",
+            )
+            return "".join(diff)
+
+
+# Global checkpoint manager instance
+_checkpoint_manager: Optional[CheckpointManager] = None
+
+
+def get_checkpoint_manager() -> CheckpointManager:
+    """Get or create the global checkpoint manager."""
+    global _checkpoint_manager
+    if _checkpoint_manager is None:
+        _checkpoint_manager = CheckpointManager()
+    return _checkpoint_manager
+
+
+# =============================================================================
+# v3.1: Smart File Chunking for Large Files
+# =============================================================================
+
+class ChunkBoundaryType(Enum):
+    """Types of logical boundaries for chunking."""
+    CLASS = "class"
+    FUNCTION = "function"
+    METHOD = "method"
+    MODULE_SECTION = "module_section"
+    IMPORT_BLOCK = "import_block"
+    DOCSTRING = "docstring"
+    COMMENT_BLOCK = "comment_block"
+    ARBITRARY = "arbitrary"  # Fallback when no logical boundary found
+
+
+@dataclass
+class FileChunk:
+    """Represents a chunk of a large file."""
+    id: str
+    file_path: str
+    start_line: int
+    end_line: int
+    content: str
+    boundary_type: ChunkBoundaryType
+    entity_name: Optional[str] = None  # e.g., class name, function name
+    dependencies: List[str] = field(default_factory=list)  # IDs of dependent chunks
+    context_before: str = ""  # Lines needed for context
+    context_after: str = ""
+
+    @property
+    def line_count(self) -> int:
+        return self.end_line - self.start_line + 1
+
+    @property
+    def token_estimate(self) -> int:
+        """Rough estimate of tokens (4 chars per token)."""
+        return len(self.content) // 4
+
+
+@dataclass
+class ChunkedFile:
+    """A file that has been split into chunks."""
+    file_path: str
+    total_lines: int
+    total_chunks: int
+    chunks: List[FileChunk]
+    chunk_order: List[str]  # IDs in order
+    dependency_graph: Dict[str, List[str]]  # chunk_id -> list of dependent chunk_ids
+    created_at: float = field(default_factory=time.time)
+
+    def get_chunk_by_id(self, chunk_id: str) -> Optional[FileChunk]:
+        """Get a chunk by ID."""
+        for chunk in self.chunks:
+            if chunk.id == chunk_id:
+                return chunk
+        return None
+
+    def get_chunks_for_entity(self, entity_name: str) -> List[FileChunk]:
+        """Get all chunks that belong to a named entity."""
+        return [c for c in self.chunks if c.entity_name == entity_name]
+
+
+class SmartFileChunker:
+    """
+    v3.1: Intelligent file chunking for large files that exceed context limits.
+
+    Features:
+    - AST-based parsing for Python files to find logical boundaries
+    - Fallback to line-based chunking with overlap for other languages
+    - Dependency tracking between chunks (e.g., methods need class context)
+    - Configurable chunk sizes with soft/hard limits
+    - Context preservation across chunk boundaries
+    - Efficient reassembly after processing
+
+    Usage:
+        chunker = SmartFileChunker(max_chunk_tokens=4000)
+        chunked = await chunker.chunk_file("large_file.py")
+
+        for chunk in chunked.chunks:
+            # Process each chunk...
+            improved = await improve_chunk(chunk)
+
+        # Reassemble
+        final_content = await chunker.reassemble_chunks(chunked, modified_chunks)
+    """
+
+    DEFAULT_MAX_CHUNK_TOKENS = 4000  # ~16K characters
+    DEFAULT_OVERLAP_LINES = 10  # Context overlap between chunks
+    DEFAULT_CONTEXT_LINES = 5  # Lines of context before/after
+
+    def __init__(
+        self,
+        max_chunk_tokens: int = DEFAULT_MAX_CHUNK_TOKENS,
+        overlap_lines: int = DEFAULT_OVERLAP_LINES,
+        context_lines: int = DEFAULT_CONTEXT_LINES,
+    ):
+        """
+        Initialize chunker.
+
+        Args:
+            max_chunk_tokens: Maximum tokens per chunk (soft limit)
+            overlap_lines: Lines of overlap between consecutive chunks
+            context_lines: Lines of context to include before/after chunks
+        """
+        self._max_tokens = max_chunk_tokens
+        self._overlap_lines = overlap_lines
+        self._context_lines = context_lines
+
+    def should_chunk(self, content: str) -> bool:
+        """Check if a file needs to be chunked."""
+        estimated_tokens = len(content) // 4
+        return estimated_tokens > self._max_tokens
+
+    async def chunk_file(
+        self,
+        file_path: str,
+        content: Optional[str] = None,
+    ) -> ChunkedFile:
+        """
+        Chunk a file into logical segments.
+
+        Args:
+            file_path: Path to the file
+            content: Optional file content (reads from disk if not provided)
+
+        Returns:
+            ChunkedFile with chunks and metadata
+        """
+        if content is None:
+            content = Path(file_path).read_text(encoding="utf-8")
+
+        lines = content.splitlines(keepends=True)
+        total_lines = len(lines)
+
+        # Detect file type and use appropriate chunking strategy
+        if file_path.endswith('.py'):
+            chunks = await self._chunk_python_file(file_path, content, lines)
+        else:
+            # Fallback to line-based chunking
+            chunks = await self._chunk_by_lines(file_path, content, lines)
+
+        # Build dependency graph
+        dependency_graph = self._build_dependency_graph(chunks)
+
+        return ChunkedFile(
+            file_path=file_path,
+            total_lines=total_lines,
+            total_chunks=len(chunks),
+            chunks=chunks,
+            chunk_order=[c.id for c in chunks],
+            dependency_graph=dependency_graph,
+        )
+
+    async def _chunk_python_file(
+        self,
+        file_path: str,
+        content: str,
+        lines: List[str],
+    ) -> List[FileChunk]:
+        """Chunk a Python file using AST for logical boundaries."""
+        chunks = []
+
+        try:
+            import ast
+            tree = ast.parse(content)
+        except SyntaxError:
+            # Fallback to line-based if parsing fails
+            return await self._chunk_by_lines(file_path, content, lines)
+
+        # Extract top-level entities
+        entities = []
+
+        # First, handle imports (usually at the top)
+        import_end = 0
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                import_end = max(import_end, node.end_lineno or 0)
+            else:
+                break
+
+        if import_end > 0:
+            entities.append({
+                "type": ChunkBoundaryType.IMPORT_BLOCK,
+                "name": "__imports__",
+                "start": 1,
+                "end": import_end,
+            })
+
+        # Extract classes and functions
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ClassDef):
+                entities.append({
+                    "type": ChunkBoundaryType.CLASS,
+                    "name": node.name,
+                    "start": node.lineno,
+                    "end": node.end_lineno or node.lineno,
+                })
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                entities.append({
+                    "type": ChunkBoundaryType.FUNCTION,
+                    "name": node.name,
+                    "start": node.lineno,
+                    "end": node.end_lineno or node.lineno,
+                })
+
+        # Sort by start line
+        entities.sort(key=lambda e: e["start"])
+
+        # Create chunks from entities
+        current_line = 1
+        chunk_idx = 0
+
+        for entity in entities:
+            # Handle gap before this entity
+            if entity["start"] > current_line:
+                gap_start = current_line
+                gap_end = entity["start"] - 1
+                gap_content = "".join(lines[gap_start - 1:gap_end])
+
+                if gap_content.strip():  # Only create chunk if non-empty
+                    chunks.append(FileChunk(
+                        id=f"chunk_{chunk_idx}_{hashlib.md5(gap_content.encode()).hexdigest()[:8]}",
+                        file_path=file_path,
+                        start_line=gap_start,
+                        end_line=gap_end,
+                        content=gap_content,
+                        boundary_type=ChunkBoundaryType.MODULE_SECTION,
+                        entity_name=None,
+                    ))
+                    chunk_idx += 1
+
+            # Create chunk for this entity
+            entity_content = "".join(lines[entity["start"] - 1:entity["end"]])
+
+            # Check if entity is too large and needs sub-chunking
+            if len(entity_content) // 4 > self._max_tokens:
+                sub_chunks = await self._chunk_large_entity(
+                    file_path, entity, lines, chunk_idx
+                )
+                chunks.extend(sub_chunks)
+                chunk_idx += len(sub_chunks)
+            else:
+                chunks.append(FileChunk(
+                    id=f"chunk_{chunk_idx}_{entity['name']}",
+                    file_path=file_path,
+                    start_line=entity["start"],
+                    end_line=entity["end"],
+                    content=entity_content,
+                    boundary_type=entity["type"],
+                    entity_name=entity["name"],
+                ))
+                chunk_idx += 1
+
+            current_line = entity["end"] + 1
+
+        # Handle remaining content after last entity
+        if current_line <= len(lines):
+            remaining = "".join(lines[current_line - 1:])
+            if remaining.strip():
+                chunks.append(FileChunk(
+                    id=f"chunk_{chunk_idx}_tail",
+                    file_path=file_path,
+                    start_line=current_line,
+                    end_line=len(lines),
+                    content=remaining,
+                    boundary_type=ChunkBoundaryType.MODULE_SECTION,
+                ))
+
+        # Add context to chunks
+        self._add_context_to_chunks(chunks, lines)
+
+        return chunks
+
+    async def _chunk_large_entity(
+        self,
+        file_path: str,
+        entity: Dict[str, Any],
+        lines: List[str],
+        base_idx: int,
+    ) -> List[FileChunk]:
+        """Sub-chunk a large entity (class or function) by methods."""
+        chunks = []
+        entity_lines = lines[entity["start"] - 1:entity["end"]]
+        entity_content = "".join(entity_lines)
+
+        if entity["type"] == ChunkBoundaryType.CLASS:
+            # Parse class to extract methods
+            try:
+                import ast
+                # Add minimal context for parsing
+                tree = ast.parse(entity_content)
+                class_node = tree.body[0]
+
+                # Get class header (decorators + class def line + docstring)
+                header_end = class_node.lineno
+                if class_node.body:
+                    first_body = class_node.body[0]
+                    if isinstance(first_body, ast.Expr) and isinstance(first_body.value, ast.Constant):
+                        # Has docstring
+                        header_end = first_body.end_lineno or first_body.lineno
+
+                # Create header chunk
+                header_content = "".join(entity_lines[:header_end])
+                chunks.append(FileChunk(
+                    id=f"chunk_{base_idx}_{entity['name']}_header",
+                    file_path=file_path,
+                    start_line=entity["start"],
+                    end_line=entity["start"] + header_end - 1,
+                    content=header_content,
+                    boundary_type=ChunkBoundaryType.CLASS,
+                    entity_name=f"{entity['name']}.__header__",
+                ))
+
+                # Create chunks for each method
+                method_idx = 0
+                for node in class_node.body:
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        method_start = node.lineno - 1  # Adjust for 0-indexed
+                        method_end = (node.end_lineno or node.lineno) - 1
+                        method_content = "".join(entity_lines[method_start:method_end + 1])
+
+                        chunks.append(FileChunk(
+                            id=f"chunk_{base_idx + method_idx + 1}_{entity['name']}.{node.name}",
+                            file_path=file_path,
+                            start_line=entity["start"] + method_start,
+                            end_line=entity["start"] + method_end,
+                            content=method_content,
+                            boundary_type=ChunkBoundaryType.METHOD,
+                            entity_name=f"{entity['name']}.{node.name}",
+                            dependencies=[chunks[0].id],  # Depends on class header
+                        ))
+                        method_idx += 1
+
+                return chunks
+            except Exception:
+                pass  # Fall through to line-based
+
+        # Fallback: split by lines
+        return await self._chunk_entity_by_lines(file_path, entity, lines, base_idx)
+
+    async def _chunk_entity_by_lines(
+        self,
+        file_path: str,
+        entity: Dict[str, Any],
+        lines: List[str],
+        base_idx: int,
+    ) -> List[FileChunk]:
+        """Split a large entity by lines with overlap."""
+        chunks = []
+        entity_lines = lines[entity["start"] - 1:entity["end"]]
+        total_lines = len(entity_lines)
+
+        # Calculate lines per chunk
+        max_lines = self._max_tokens // 20  # Rough estimate: 20 chars per line
+
+        current_start = 0
+        chunk_idx = 0
+
+        while current_start < total_lines:
+            chunk_end = min(current_start + max_lines, total_lines)
+            chunk_content = "".join(entity_lines[current_start:chunk_end])
+
+            chunks.append(FileChunk(
+                id=f"chunk_{base_idx + chunk_idx}_{entity['name']}_part{chunk_idx}",
+                file_path=file_path,
+                start_line=entity["start"] + current_start,
+                end_line=entity["start"] + chunk_end - 1,
+                content=chunk_content,
+                boundary_type=ChunkBoundaryType.ARBITRARY,
+                entity_name=f"{entity['name']}_part{chunk_idx}",
+                dependencies=[chunks[-1].id] if chunks else [],
+            ))
+
+            current_start = chunk_end - self._overlap_lines
+            chunk_idx += 1
+
+        return chunks
+
+    async def _chunk_by_lines(
+        self,
+        file_path: str,
+        content: str,
+        lines: List[str],
+    ) -> List[FileChunk]:
+        """Fallback line-based chunking with overlap."""
+        chunks = []
+        total_lines = len(lines)
+        max_lines = self._max_tokens // 20  # Rough estimate
+
+        current_start = 0
+        chunk_idx = 0
+
+        while current_start < total_lines:
+            chunk_end = min(current_start + max_lines, total_lines)
+            chunk_content = "".join(lines[current_start:chunk_end])
+
+            chunks.append(FileChunk(
+                id=f"chunk_{chunk_idx}",
+                file_path=file_path,
+                start_line=current_start + 1,
+                end_line=chunk_end,
+                content=chunk_content,
+                boundary_type=ChunkBoundaryType.ARBITRARY,
+            ))
+
+            current_start = chunk_end - self._overlap_lines
+            chunk_idx += 1
+
+        self._add_context_to_chunks(chunks, lines)
+        return chunks
+
+    def _add_context_to_chunks(
+        self,
+        chunks: List[FileChunk],
+        lines: List[str],
+    ) -> None:
+        """Add context lines before/after each chunk."""
+        for i, chunk in enumerate(chunks):
+            # Context before
+            ctx_start = max(0, chunk.start_line - 1 - self._context_lines)
+            ctx_end = chunk.start_line - 1
+            if ctx_end > ctx_start:
+                chunk.context_before = "".join(lines[ctx_start:ctx_end])
+
+            # Context after
+            ctx_start = chunk.end_line
+            ctx_end = min(len(lines), chunk.end_line + self._context_lines)
+            if ctx_end > ctx_start:
+                chunk.context_after = "".join(lines[ctx_start:ctx_end])
+
+    def _build_dependency_graph(
+        self,
+        chunks: List[FileChunk],
+    ) -> Dict[str, List[str]]:
+        """Build dependency graph between chunks."""
+        graph: Dict[str, List[str]] = {}
+
+        for chunk in chunks:
+            graph[chunk.id] = chunk.dependencies.copy()
+
+            # Classes depend on imports
+            if chunk.boundary_type == ChunkBoundaryType.CLASS:
+                for other in chunks:
+                    if other.boundary_type == ChunkBoundaryType.IMPORT_BLOCK:
+                        if other.id not in graph[chunk.id]:
+                            graph[chunk.id].append(other.id)
+
+            # Functions might depend on other functions (basic heuristic)
+            if chunk.boundary_type == ChunkBoundaryType.FUNCTION:
+                for other in chunks:
+                    if other.boundary_type == ChunkBoundaryType.IMPORT_BLOCK:
+                        if other.id not in graph[chunk.id]:
+                            graph[chunk.id].append(other.id)
+
+        return graph
+
+    async def reassemble_chunks(
+        self,
+        chunked_file: ChunkedFile,
+        modified_chunks: Dict[str, str],  # chunk_id -> new content
+    ) -> str:
+        """
+        Reassemble a chunked file with modifications.
+
+        Args:
+            chunked_file: The original chunked file
+            modified_chunks: Dict mapping chunk IDs to their new content
+
+        Returns:
+            Reassembled file content
+        """
+        # Build final content by going through chunks in order
+        result_lines: List[str] = []
+        last_end_line = 0
+
+        for chunk_id in chunked_file.chunk_order:
+            chunk = chunked_file.get_chunk_by_id(chunk_id)
+            if not chunk:
+                continue
+
+            # Use modified content if available, otherwise original
+            content = modified_chunks.get(chunk_id, chunk.content)
+
+            # Handle gaps (shouldn't happen if chunking was correct)
+            if chunk.start_line > last_end_line + 1:
+                # There's a gap - this shouldn't happen normally
+                pass
+
+            # Add the chunk content
+            result_lines.append(content)
+            last_end_line = chunk.end_line
+
+        return "".join(result_lines)
+
+    async def get_chunk_for_line(
+        self,
+        chunked_file: ChunkedFile,
+        line_number: int,
+    ) -> Optional[FileChunk]:
+        """Get the chunk containing a specific line number."""
+        for chunk in chunked_file.chunks:
+            if chunk.start_line <= line_number <= chunk.end_line:
+                return chunk
+        return None
+
+    async def get_chunks_with_dependencies(
+        self,
+        chunked_file: ChunkedFile,
+        chunk_id: str,
+    ) -> List[FileChunk]:
+        """Get a chunk and all its dependencies (for providing full context)."""
+        result = []
+        visited = set()
+
+        def collect_deps(cid: str):
+            if cid in visited:
+                return
+            visited.add(cid)
+
+            chunk = chunked_file.get_chunk_by_id(cid)
+            if chunk:
+                # First collect dependencies
+                for dep_id in chunked_file.dependency_graph.get(cid, []):
+                    collect_deps(dep_id)
+                result.append(chunk)
+
+        collect_deps(chunk_id)
+        return result
+
+    def estimate_chunks_needed(self, content: str) -> int:
+        """Estimate how many chunks a file will need."""
+        tokens = len(content) // 4
+        return max(1, tokens // self._max_tokens + 1)
+
+
+# Global chunker instance
+_smart_chunker: Optional[SmartFileChunker] = None
+
+
+def get_smart_chunker(
+    max_tokens: int = SmartFileChunker.DEFAULT_MAX_CHUNK_TOKENS
+) -> SmartFileChunker:
+    """Get or create the global smart chunker."""
+    global _smart_chunker
+    if _smart_chunker is None or _smart_chunker._max_tokens != max_tokens:
+        _smart_chunker = SmartFileChunker(max_chunk_tokens=max_tokens)
+    return _smart_chunker
 
 
 class MultiFileOrchestrator:
