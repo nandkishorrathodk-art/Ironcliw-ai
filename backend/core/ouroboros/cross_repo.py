@@ -86,6 +86,7 @@ class RepoType(Enum):
 
 class EventType(Enum):
     """Types of cross-repo events."""
+    # Core improvement events
     IMPROVEMENT_REQUEST = "improvement_request"
     IMPROVEMENT_COMPLETE = "improvement_complete"
     IMPROVEMENT_FAILED = "improvement_failed"
@@ -95,6 +96,16 @@ class EventType(Enum):
     TRAINING_COMPLETE = "training_complete"
     HEALTH_CHECK = "health_check"
     SYNC_REQUEST = "sync_request"
+
+    # Refactoring events (v10.0 Advanced Refactoring Patterns)
+    REFACTORING_STARTED = "refactoring_started"
+    REFACTORING_COMPLETED = "refactoring_completed"
+    REFACTORING_FAILED = "refactoring_failed"
+    REFACTORING_ROLLBACK = "refactoring_rollback"
+    REFERENCE_SEARCH_REQUEST = "reference_search_request"
+    REFERENCE_SEARCH_RESULT = "reference_search_result"
+    REFACTORING_LOCK_ACQUIRED = "refactoring_lock_acquired"
+    REFACTORING_LOCK_RELEASED = "refactoring_lock_released"
 
 
 # =============================================================================

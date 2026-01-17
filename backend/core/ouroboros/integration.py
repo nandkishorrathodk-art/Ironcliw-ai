@@ -4123,6 +4123,16 @@ class CrossRepoAutonomousIntegration:
                     get_mesh_status,
                     ServiceState,
                     ServiceEndpoint,
+                    # v12.0: Resilient experience mesh (multi-backend storage)
+                    initialize_experience_mesh,
+                    shutdown_experience_mesh,
+                    get_experience_mesh,
+                    get_experience_mesh_status,
+                    BackendType,
+                    BackendHealth,
+                    ExperienceType,
+                    ForwardingStatus,
+                    ResilientExperienceMesh,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4417,6 +4427,75 @@ class CrossRepoAutonomousIntegration:
                     logger.warning(f"  ⚠️ v11.0 Resilient Service Mesh initialization failed: {e}")
                     logger.debug(f"  v11.0 error details: {e}", exc_info=True)
 
+                # Phase 11: Initialize v12.0 Resilient Experience Mesh
+                logger.info("Phase 11: Initializing v12.0 Resilient Experience Mesh...")
+                try:
+                    # Configure multi-backend experience storage as list
+                    redis_host = os.environ.get("REDIS_HOST", "localhost")
+                    redis_port = int(os.environ.get("REDIS_PORT", 6379))
+                    redis_db = int(os.environ.get("REDIS_DB", 0))
+                    sqlite_path = os.environ.get(
+                        "EXPERIENCE_SQLITE_PATH",
+                        str(Path.home() / ".jarvis" / "experiences.db")
+                    )
+                    file_path = os.environ.get(
+                        "EXPERIENCE_FILE_PATH",
+                        str(Path.home() / ".jarvis" / "experiences")
+                    )
+
+                    backends_list = [
+                        {
+                            "type": "redis",
+                            "enabled": os.environ.get("REDIS_ENABLED", "true").lower() == "true",
+                            "priority": 1,
+                            "connection_string": f"redis://{redis_host}:{redis_port}/{redis_db}",
+                        },
+                        {
+                            "type": "sqlite",
+                            "enabled": True,
+                            "priority": 2,
+                            "connection_string": sqlite_path,
+                        },
+                        {
+                            "type": "memory",
+                            "enabled": True,
+                            "priority": 3,
+                            "connection_string": "",
+                        },
+                        {
+                            "type": "file",
+                            "enabled": True,
+                            "priority": 4,
+                            "connection_string": file_path,
+                        },
+                    ]
+
+                    v12_components = await initialize_experience_mesh(backends=backends_list)
+
+                    # Wire v12.0 components into our component registry
+                    # Note: degraded_manager (not degraded_mode_manager) per the actual function
+                    v12_component_names = [
+                        "experience_mesh",
+                        "memory_store",
+                        "sqlite_store",
+                        "file_store",
+                        "backend_selector",
+                        "event_bus_monitor",
+                        "degraded_manager",
+                    ]
+
+                    for name in v12_component_names:
+                        comp = v12_components.get(name)
+                        if comp:
+                            self._components[name] = comp
+                            logger.info(f"  ✅ {name} initialized (v12.0)")
+
+                    logger.info(f"  ✅ v12.0 Resilient Experience Mesh initialized with {len(v12_components)} components")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v12.0 Resilient Experience Mesh initialization failed: {e}")
+                    logger.debug(f"  v12.0 error details: {e}", exc_info=True)
+
                 # Update global state
                 global _autonomous_state
                 _autonomous_state.goal_decomposer = self._components.get("goal_decomposer")
@@ -4449,6 +4528,14 @@ class CrossRepoAutonomousIntegration:
                 _autonomous_state.recovery_manager = self._components.get("recovery_manager")
                 _autonomous_state.cascade_preventor = self._components.get("cascade_preventor")
                 _autonomous_state.degradation_router = self._components.get("degradation_router")
+                # v12.0: Resilient experience mesh components
+                _autonomous_state.experience_mesh = self._components.get("experience_mesh")
+                _autonomous_state.memory_store = self._components.get("memory_store")
+                _autonomous_state.sqlite_store = self._components.get("sqlite_store")
+                _autonomous_state.file_store = self._components.get("file_store")
+                _autonomous_state.backend_selector = self._components.get("backend_selector")
+                _autonomous_state.event_bus_monitor = self._components.get("event_bus_monitor")
+                _autonomous_state.degraded_manager = self._components.get("degraded_manager")
                 _autonomous_state.orchestrator = orchestrator
                 _autonomous_state.oracle = oracle
                 _autonomous_state.llm_client = llm_client
@@ -4866,7 +4953,15 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v11.0: Shutdown Resilient Service Mesh first (newest)
+        # v12.0: Shutdown Resilient Experience Mesh first (newest)
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_experience_mesh
+            await shutdown_experience_mesh()
+            logger.info("  ✅ v12.0 Resilient Experience Mesh shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v12.0 Resilient Experience Mesh shutdown error: {e}")
+
+        # v11.0: Shutdown Resilient Service Mesh
         try:
             from backend.core.ouroboros.native_integration import shutdown_resilient_mesh
             await shutdown_resilient_mesh()
@@ -4906,9 +5001,17 @@ class CrossRepoAutonomousIntegration:
         except Exception as e:
             logger.warning(f"  ⚠️ v7.0 autonomous system shutdown error: {e}")
 
-        # v6.0 + v7.0 + v8.0 + v9.0 + v10.0 + v11.0: Shutdown individual components
+        # v6.0 + v7.0 + v8.0 + v9.0 + v10.0 + v11.0 + v12.0: Shutdown individual components
         all_components = [
-            # v11.0 components (shutdown first - newest)
+            # v12.0 components (shutdown first - newest)
+            "degraded_manager",
+            "event_bus_monitor",
+            "backend_selector",
+            "file_store",
+            "sqlite_store",
+            "memory_store",
+            "experience_mesh",
+            # v11.0 components
             "degradation_router",
             "cascade_preventor",
             "recovery_manager",

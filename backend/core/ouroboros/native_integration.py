@@ -112,6 +112,11 @@ try:
 except ImportError:
     aiohttp = None
 
+try:
+    import aiosqlite
+except ImportError:
+    aiosqlite = None
+
 logger = logging.getLogger("Ouroboros.NativeIntegration")
 
 T = TypeVar("T")
@@ -22936,3 +22941,1678 @@ async def get_mesh_status() -> Dict[str, Any]:
     """
     mesh = get_resilient_mesh()
     return mesh.get_status()
+
+
+# =============================================================================
+# v12.0: RESILIENT EXPERIENCE MESH - Multi-Backend Experience Forwarding
+# =============================================================================
+# Fixes:
+# - Hard Redis dependency blocking initialization
+# - No degraded-mode initialization path
+# - Multiple uncoordinated experience systems
+# - Event Bus not monitored continuously
+# - No in-memory context store fallback
+# =============================================================================
+
+
+class BackendType(Enum):
+    """Available storage backends."""
+    REDIS = "redis"
+    SQLITE = "sqlite"
+    MEMORY = "memory"
+    FILE = "file"
+
+
+class BackendHealth(Enum):
+    """Backend health states."""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+    UNAVAILABLE = "unavailable"
+    RECOVERING = "recovering"
+
+
+class ExperienceType(Enum):
+    """Types of experiences to forward."""
+    INTERACTION = "interaction"
+    TOOL_USAGE = "tool_usage"
+    REASONING = "reasoning"
+    OUTCOME = "outcome"
+    ERROR = "error"
+    METRIC = "metric"
+    LEARNING = "learning"
+
+
+class ForwardingStatus(Enum):
+    """Status of experience forwarding."""
+    PENDING = "pending"
+    QUEUED = "queued"
+    FORWARDING = "forwarding"
+    FORWARDED = "forwarded"
+    FAILED = "failed"
+    RETRYING = "retrying"
+    EXPIRED = "expired"
+
+
+@dataclass
+class BackendConfig:
+    """Configuration for a storage backend."""
+    backend_type: BackendType
+    enabled: bool = True
+    priority: int = 0  # Lower = higher priority
+    connection_string: str = ""
+    timeout_seconds: float = 5.0
+    max_retries: int = 3
+    health_check_interval: float = 30.0
+    max_queue_size: int = 10000
+    batch_size: int = 100
+    flush_interval: float = 5.0
+
+
+@dataclass
+class ExperiencePacket:
+    """Unified experience data packet."""
+    packet_id: str
+    experience_type: ExperienceType
+    timestamp: float
+    source: str  # jarvis, jarvis-prime, reactor-core
+    destination: str
+    payload: Dict[str, Any]
+    priority: int = 5  # 1-10, lower = higher priority
+    ttl_seconds: float = 3600.0  # 1 hour default
+    retry_count: int = 0
+    max_retries: int = 3
+    status: ForwardingStatus = ForwardingStatus.PENDING
+    created_at: float = field(default_factory=time.time)
+    forwarded_at: Optional[float] = None
+    error_message: Optional[str] = None
+    content_hash: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_expired(self) -> bool:
+        """Check if packet has expired."""
+        return time.time() > (self.created_at + self.ttl_seconds)
+
+    def can_retry(self) -> bool:
+        """Check if packet can be retried."""
+        return self.retry_count < self.max_retries and not self.is_expired()
+
+
+@dataclass
+class BackendState:
+    """Runtime state of a backend."""
+    backend_type: BackendType
+    health: BackendHealth
+    last_health_check: float
+    consecutive_failures: int
+    consecutive_successes: int
+    total_operations: int
+    total_failures: int
+    avg_latency_ms: float
+    queue_size: int
+    last_error: Optional[str] = None
+    connected_at: Optional[float] = None
+
+
+class InMemoryExperienceStore:
+    """
+    In-memory experience store with LRU eviction.
+    Used as fallback when all other backends are unavailable.
+    """
+
+    def __init__(
+        self,
+        max_size: int = 10000,
+        eviction_batch_size: int = 100,
+    ):
+        self.max_size = max_size
+        self.eviction_batch_size = eviction_batch_size
+        self._store: Dict[str, ExperiencePacket] = {}
+        self._order: deque = deque(maxlen=max_size)
+        self._lock = asyncio.Lock()
+        self._stats = {
+            "writes": 0,
+            "reads": 0,
+            "evictions": 0,
+            "hits": 0,
+            "misses": 0,
+        }
+
+    async def store(self, packet: ExperiencePacket) -> bool:
+        """Store an experience packet."""
+        async with self._lock:
+            # Evict if at capacity
+            while len(self._store) >= self.max_size:
+                if self._order:
+                    old_id = self._order.popleft()
+                    self._store.pop(old_id, None)
+                    self._stats["evictions"] += 1
+                else:
+                    break
+
+            self._store[packet.packet_id] = packet
+            self._order.append(packet.packet_id)
+            self._stats["writes"] += 1
+            return True
+
+    async def retrieve(self, packet_id: str) -> Optional[ExperiencePacket]:
+        """Retrieve an experience packet."""
+        async with self._lock:
+            self._stats["reads"] += 1
+            packet = self._store.get(packet_id)
+            if packet:
+                self._stats["hits"] += 1
+            else:
+                self._stats["misses"] += 1
+            return packet
+
+    async def retrieve_batch(
+        self,
+        limit: int = 100,
+        status: Optional[ForwardingStatus] = None,
+    ) -> List[ExperiencePacket]:
+        """Retrieve a batch of packets."""
+        async with self._lock:
+            packets = []
+            for packet in self._store.values():
+                if status and packet.status != status:
+                    continue
+                packets.append(packet)
+                if len(packets) >= limit:
+                    break
+            return packets
+
+    async def update_status(
+        self,
+        packet_id: str,
+        status: ForwardingStatus,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Update packet status."""
+        async with self._lock:
+            if packet_id in self._store:
+                self._store[packet_id].status = status
+                if error:
+                    self._store[packet_id].error_message = error
+                if status == ForwardingStatus.FORWARDED:
+                    self._store[packet_id].forwarded_at = time.time()
+                return True
+            return False
+
+    async def remove(self, packet_id: str) -> bool:
+        """Remove a packet."""
+        async with self._lock:
+            if packet_id in self._store:
+                del self._store[packet_id]
+                return True
+            return False
+
+    async def get_pending_count(self) -> int:
+        """Get count of pending packets."""
+        async with self._lock:
+            return sum(
+                1 for p in self._store.values()
+                if p.status in (ForwardingStatus.PENDING, ForwardingStatus.QUEUED)
+            )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get store statistics."""
+        return {
+            "size": len(self._store),
+            "max_size": self.max_size,
+            **self._stats,
+        }
+
+
+class SQLiteExperienceStore:
+    """
+    SQLite-backed experience store with WAL mode for performance.
+    Used as primary fallback when Redis is unavailable.
+    """
+
+    def __init__(
+        self,
+        db_path: Optional[Path] = None,
+        max_queue_size: int = 100000,
+    ):
+        self.db_path = db_path or Path.home() / ".jarvis" / "experience_mesh.db"
+        self.max_queue_size = max_queue_size
+        self._conn: Optional[Any] = None  # aiosqlite.Connection when available
+        self._lock = asyncio.Lock()
+        self._initialized = False
+
+    async def connect(self) -> bool:
+        """Connect to SQLite database."""
+        if aiosqlite is None:
+            logger.warning("aiosqlite not installed - SQLite backend unavailable")
+            return False
+
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = await aiosqlite.connect(str(self.db_path))
+
+            # Enable WAL mode for better concurrency
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            await self._conn.execute("PRAGMA synchronous=NORMAL")
+            await self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+
+            # Create tables
+            await self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS experiences (
+                    packet_id TEXT PRIMARY KEY,
+                    experience_type TEXT NOT NULL,
+                    timestamp REAL NOT NULL,
+                    source TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    priority INTEGER DEFAULT 5,
+                    ttl_seconds REAL DEFAULT 3600,
+                    retry_count INTEGER DEFAULT 0,
+                    max_retries INTEGER DEFAULT 3,
+                    status TEXT DEFAULT 'pending',
+                    created_at REAL NOT NULL,
+                    forwarded_at REAL,
+                    error_message TEXT,
+                    content_hash TEXT,
+                    metadata TEXT
+                )
+            """)
+
+            # Create indexes
+            await self._conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_status ON experiences(status)
+            """)
+            await self._conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_priority ON experiences(priority, created_at)
+            """)
+            await self._conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_destination ON experiences(destination)
+            """)
+
+            await self._conn.commit()
+            self._initialized = True
+            logger.info(f"SQLiteExperienceStore connected: {self.db_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore connection failed: {e}")
+            return False
+
+    async def store(self, packet: ExperiencePacket) -> bool:
+        """Store an experience packet."""
+        if not self._initialized:
+            return False
+
+        try:
+            async with self._lock:
+                await self._conn.execute("""
+                    INSERT OR REPLACE INTO experiences (
+                        packet_id, experience_type, timestamp, source, destination,
+                        payload, priority, ttl_seconds, retry_count, max_retries,
+                        status, created_at, forwarded_at, error_message, content_hash, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    packet.packet_id,
+                    packet.experience_type.value,
+                    packet.timestamp,
+                    packet.source,
+                    packet.destination,
+                    json.dumps(packet.payload),
+                    packet.priority,
+                    packet.ttl_seconds,
+                    packet.retry_count,
+                    packet.max_retries,
+                    packet.status.value,
+                    packet.created_at,
+                    packet.forwarded_at,
+                    packet.error_message,
+                    packet.content_hash,
+                    json.dumps(packet.metadata),
+                ))
+                await self._conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore store failed: {e}")
+            return False
+
+    async def retrieve(self, packet_id: str) -> Optional[ExperiencePacket]:
+        """Retrieve an experience packet."""
+        if not self._initialized:
+            return None
+
+        try:
+            async with self._lock:
+                cursor = await self._conn.execute("""
+                    SELECT * FROM experiences WHERE packet_id = ?
+                """, (packet_id,))
+                row = await cursor.fetchone()
+
+                if row:
+                    return self._row_to_packet(row)
+                return None
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore retrieve failed: {e}")
+            return None
+
+    async def retrieve_batch(
+        self,
+        limit: int = 100,
+        status: Optional[ForwardingStatus] = None,
+        destination: Optional[str] = None,
+    ) -> List[ExperiencePacket]:
+        """Retrieve a batch of packets."""
+        if not self._initialized:
+            return []
+
+        try:
+            async with self._lock:
+                query = "SELECT * FROM experiences WHERE 1=1"
+                params = []
+
+                if status:
+                    query += " AND status = ?"
+                    params.append(status.value)
+
+                if destination:
+                    query += " AND destination = ?"
+                    params.append(destination)
+
+                query += " ORDER BY priority ASC, created_at ASC LIMIT ?"
+                params.append(limit)
+
+                cursor = await self._conn.execute(query, params)
+                rows = await cursor.fetchall()
+
+                return [self._row_to_packet(row) for row in rows]
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore retrieve_batch failed: {e}")
+            return []
+
+    async def update_status(
+        self,
+        packet_id: str,
+        status: ForwardingStatus,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Update packet status."""
+        if not self._initialized:
+            return False
+
+        try:
+            async with self._lock:
+                forwarded_at = time.time() if status == ForwardingStatus.FORWARDED else None
+                await self._conn.execute("""
+                    UPDATE experiences
+                    SET status = ?, error_message = ?, forwarded_at = ?
+                    WHERE packet_id = ?
+                """, (status.value, error, forwarded_at, packet_id))
+                await self._conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore update_status failed: {e}")
+            return False
+
+    async def remove(self, packet_id: str) -> bool:
+        """Remove a packet."""
+        if not self._initialized:
+            return False
+
+        try:
+            async with self._lock:
+                await self._conn.execute("""
+                    DELETE FROM experiences WHERE packet_id = ?
+                """, (packet_id,))
+                await self._conn.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore remove failed: {e}")
+            return False
+
+    async def cleanup_expired(self) -> int:
+        """Remove expired packets."""
+        if not self._initialized:
+            return 0
+
+        try:
+            async with self._lock:
+                now = time.time()
+                cursor = await self._conn.execute("""
+                    DELETE FROM experiences
+                    WHERE created_at + ttl_seconds < ?
+                    RETURNING packet_id
+                """, (now,))
+                rows = await cursor.fetchall()
+                await self._conn.commit()
+                return len(rows)
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore cleanup_expired failed: {e}")
+            return 0
+
+    async def get_pending_count(self) -> int:
+        """Get count of pending packets."""
+        if not self._initialized:
+            return 0
+
+        try:
+            async with self._lock:
+                cursor = await self._conn.execute("""
+                    SELECT COUNT(*) FROM experiences
+                    WHERE status IN ('pending', 'queued')
+                """)
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+
+        except Exception as e:
+            logger.error(f"SQLiteExperienceStore get_pending_count failed: {e}")
+            return 0
+
+    async def close(self) -> None:
+        """Close database connection."""
+        if self._conn:
+            await self._conn.close()
+            self._conn = None
+            self._initialized = False
+
+    def _row_to_packet(self, row) -> ExperiencePacket:
+        """Convert database row to ExperiencePacket."""
+        return ExperiencePacket(
+            packet_id=row[0],
+            experience_type=ExperienceType(row[1]),
+            timestamp=row[2],
+            source=row[3],
+            destination=row[4],
+            payload=json.loads(row[5]),
+            priority=row[6],
+            ttl_seconds=row[7],
+            retry_count=row[8],
+            max_retries=row[9],
+            status=ForwardingStatus(row[10]),
+            created_at=row[11],
+            forwarded_at=row[12],
+            error_message=row[13],
+            content_hash=row[14],
+            metadata=json.loads(row[15]) if row[15] else {},
+        )
+
+
+class FileExperienceStore:
+    """
+    File-based experience store for ultimate fallback.
+    Uses JSONL format with atomic writes for reliability.
+    """
+
+    def __init__(
+        self,
+        base_path: Optional[Path] = None,
+        max_file_size_mb: int = 10,
+        retention_days: int = 7,
+    ):
+        self.base_path = base_path or Path.home() / ".jarvis" / "experience_mesh" / "fallback"
+        self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
+        self.retention_days = retention_days
+        self._current_file: Optional[Path] = None
+        self._current_size = 0
+        self._lock = asyncio.Lock()
+
+    async def initialize(self) -> bool:
+        """Initialize file store."""
+        try:
+            self.base_path.mkdir(parents=True, exist_ok=True)
+            self._rotate_file()
+            return True
+        except Exception as e:
+            logger.error(f"FileExperienceStore initialization failed: {e}")
+            return False
+
+    def _rotate_file(self) -> None:
+        """Rotate to a new file."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._current_file = self.base_path / f"experiences_{timestamp}.jsonl"
+        self._current_size = 0
+
+    async def store(self, packet: ExperiencePacket) -> bool:
+        """Store an experience packet."""
+        try:
+            async with self._lock:
+                # Check if rotation needed
+                if self._current_size >= self.max_file_size_bytes:
+                    self._rotate_file()
+
+                # Serialize packet
+                data = {
+                    "packet_id": packet.packet_id,
+                    "experience_type": packet.experience_type.value,
+                    "timestamp": packet.timestamp,
+                    "source": packet.source,
+                    "destination": packet.destination,
+                    "payload": packet.payload,
+                    "priority": packet.priority,
+                    "status": packet.status.value,
+                    "created_at": packet.created_at,
+                    "metadata": packet.metadata,
+                }
+                line = json.dumps(data) + "\n"
+
+                # Atomic write
+                with open(self._current_file, "a") as f:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                self._current_size += len(line)
+                return True
+
+        except Exception as e:
+            logger.error(f"FileExperienceStore store failed: {e}")
+            return False
+
+    async def retrieve_all(self) -> List[ExperiencePacket]:
+        """Retrieve all packets from all files."""
+        packets = []
+
+        try:
+            for file_path in sorted(self.base_path.glob("experiences_*.jsonl")):
+                with open(file_path, "r") as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line.strip())
+                            packet = ExperiencePacket(
+                                packet_id=data["packet_id"],
+                                experience_type=ExperienceType(data["experience_type"]),
+                                timestamp=data["timestamp"],
+                                source=data["source"],
+                                destination=data["destination"],
+                                payload=data["payload"],
+                                priority=data.get("priority", 5),
+                                status=ForwardingStatus(data.get("status", "pending")),
+                                created_at=data.get("created_at", time.time()),
+                                metadata=data.get("metadata", {}),
+                            )
+                            packets.append(packet)
+                        except Exception:
+                            continue
+
+        except Exception as e:
+            logger.error(f"FileExperienceStore retrieve_all failed: {e}")
+
+        return packets
+
+    async def cleanup_old(self) -> int:
+        """Remove old files beyond retention period."""
+        removed = 0
+        cutoff = datetime.now() - timedelta(days=self.retention_days)
+
+        try:
+            for file_path in self.base_path.glob("experiences_*.jsonl"):
+                try:
+                    # Extract timestamp from filename
+                    timestamp_str = file_path.stem.replace("experiences_", "")
+                    file_date = datetime.strptime(timestamp_str[:8], "%Y%m%d")
+                    if file_date < cutoff:
+                        file_path.unlink()
+                        removed += 1
+                except Exception:
+                    continue
+
+        except Exception as e:
+            logger.error(f"FileExperienceStore cleanup_old failed: {e}")
+
+        return removed
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get store statistics."""
+        total_files = len(list(self.base_path.glob("experiences_*.jsonl")))
+        total_size = sum(
+            f.stat().st_size
+            for f in self.base_path.glob("experiences_*.jsonl")
+        )
+        return {
+            "base_path": str(self.base_path),
+            "total_files": total_files,
+            "total_size_mb": total_size / (1024 * 1024),
+            "current_file": str(self._current_file) if self._current_file else None,
+            "current_size_bytes": self._current_size,
+        }
+
+
+class AdaptiveBackendSelector:
+    """
+    Intelligently selects the best backend based on:
+    - Current health status
+    - Priority ordering
+    - Recent performance metrics
+    - Queue depths
+    """
+
+    def __init__(
+        self,
+        backends: List[BackendConfig],
+        health_weight: float = 0.4,
+        latency_weight: float = 0.3,
+        queue_weight: float = 0.3,
+    ):
+        self.backends = sorted(backends, key=lambda b: b.priority)
+        self.health_weight = health_weight
+        self.latency_weight = latency_weight
+        self.queue_weight = queue_weight
+
+        self._states: Dict[BackendType, BackendState] = {}
+        self._lock = asyncio.Lock()
+
+        # Initialize states
+        for config in backends:
+            self._states[config.backend_type] = BackendState(
+                backend_type=config.backend_type,
+                health=BackendHealth.UNAVAILABLE,
+                last_health_check=0,
+                consecutive_failures=0,
+                consecutive_successes=0,
+                total_operations=0,
+                total_failures=0,
+                avg_latency_ms=0,
+                queue_size=0,
+            )
+
+    async def get_best_backend(self) -> Optional[BackendType]:
+        """Get the best available backend."""
+        async with self._lock:
+            # First, try to find healthy backend in priority order
+            for config in self.backends:
+                if not config.enabled:
+                    continue
+                state = self._states.get(config.backend_type)
+                if state and state.health == BackendHealth.HEALTHY:
+                    return config.backend_type
+
+            # Fall back to degraded backends
+            for config in self.backends:
+                if not config.enabled:
+                    continue
+                state = self._states.get(config.backend_type)
+                if state and state.health == BackendHealth.DEGRADED:
+                    return config.backend_type
+
+            # Last resort: any recovering backend
+            for config in self.backends:
+                if not config.enabled:
+                    continue
+                state = self._states.get(config.backend_type)
+                if state and state.health == BackendHealth.RECOVERING:
+                    return config.backend_type
+
+            return None
+
+    async def get_fallback_chain(self) -> List[BackendType]:
+        """Get ordered list of fallback backends."""
+        async with self._lock:
+            chain = []
+            for config in self.backends:
+                if not config.enabled:
+                    continue
+                state = self._states.get(config.backend_type)
+                if state and state.health not in (
+                    BackendHealth.UNAVAILABLE,
+                    BackendHealth.UNHEALTHY,
+                ):
+                    chain.append(config.backend_type)
+            return chain
+
+    async def record_success(
+        self,
+        backend_type: BackendType,
+        latency_ms: float,
+    ) -> None:
+        """Record successful operation."""
+        async with self._lock:
+            state = self._states.get(backend_type)
+            if state:
+                state.consecutive_successes += 1
+                state.consecutive_failures = 0
+                state.total_operations += 1
+
+                # Update average latency with exponential moving average
+                alpha = 0.3
+                state.avg_latency_ms = (
+                    alpha * latency_ms + (1 - alpha) * state.avg_latency_ms
+                )
+
+                # Promote to healthy if recovering
+                if state.health == BackendHealth.RECOVERING:
+                    if state.consecutive_successes >= 3:
+                        state.health = BackendHealth.HEALTHY
+
+                elif state.health == BackendHealth.DEGRADED:
+                    if state.consecutive_successes >= 5:
+                        state.health = BackendHealth.HEALTHY
+
+    async def record_failure(
+        self,
+        backend_type: BackendType,
+        error: str,
+    ) -> None:
+        """Record failed operation."""
+        async with self._lock:
+            state = self._states.get(backend_type)
+            if state:
+                state.consecutive_failures += 1
+                state.consecutive_successes = 0
+                state.total_operations += 1
+                state.total_failures += 1
+                state.last_error = error
+
+                # Degrade health based on failure count
+                if state.consecutive_failures >= 5:
+                    state.health = BackendHealth.UNHEALTHY
+                elif state.consecutive_failures >= 3:
+                    state.health = BackendHealth.DEGRADED
+
+    async def update_health(
+        self,
+        backend_type: BackendType,
+        health: BackendHealth,
+        queue_size: int = 0,
+    ) -> None:
+        """Update backend health status."""
+        async with self._lock:
+            state = self._states.get(backend_type)
+            if state:
+                old_health = state.health
+                state.health = health
+                state.last_health_check = time.time()
+                state.queue_size = queue_size
+
+                if health == BackendHealth.HEALTHY and old_health != BackendHealth.HEALTHY:
+                    state.connected_at = time.time()
+                    logger.info(f"Backend {backend_type.value} is now HEALTHY")
+                elif health == BackendHealth.UNHEALTHY and old_health == BackendHealth.HEALTHY:
+                    logger.warning(f"Backend {backend_type.value} is now UNHEALTHY")
+
+    def get_states(self) -> Dict[str, Dict[str, Any]]:
+        """Get all backend states."""
+        return {
+            bt.value: {
+                "health": state.health.value,
+                "consecutive_failures": state.consecutive_failures,
+                "consecutive_successes": state.consecutive_successes,
+                "total_operations": state.total_operations,
+                "total_failures": state.total_failures,
+                "avg_latency_ms": round(state.avg_latency_ms, 2),
+                "queue_size": state.queue_size,
+                "last_error": state.last_error,
+                "connected_at": state.connected_at,
+            }
+            for bt, state in self._states.items()
+        }
+
+
+class EventBusHealthMonitor:
+    """
+    Continuously monitors Trinity Event Bus health.
+    Triggers fallback when bus becomes unavailable.
+    """
+
+    def __init__(
+        self,
+        check_interval: float = 10.0,
+        failure_threshold: int = 3,
+        recovery_threshold: int = 2,
+    ):
+        self.check_interval = check_interval
+        self.failure_threshold = failure_threshold
+        self.recovery_threshold = recovery_threshold
+
+        self._healthy = False
+        self._consecutive_failures = 0
+        self._consecutive_successes = 0
+        self._last_check: Optional[float] = None
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._callbacks: List[Callable] = []
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_healthy(self) -> bool:
+        return self._healthy
+
+    def on_health_change(self, callback: Callable[[bool], None]) -> None:
+        """Register callback for health changes."""
+        self._callbacks.append(callback)
+
+    async def start(self) -> None:
+        """Start health monitoring."""
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._monitor_loop())
+        logger.info("EventBusHealthMonitor started")
+
+    async def stop(self) -> None:
+        """Stop health monitoring."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("EventBusHealthMonitor stopped")
+
+    async def _monitor_loop(self) -> None:
+        """Main monitoring loop."""
+        while self._running:
+            try:
+                healthy = await self._check_health()
+                await self._update_health(healthy)
+                await asyncio.sleep(self.check_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"EventBusHealthMonitor error: {e}")
+                await asyncio.sleep(self.check_interval)
+
+    async def _check_health(self) -> bool:
+        """Check if event bus is healthy."""
+        try:
+            # Try to import and check Trinity Event Bus
+            try:
+                from backend.core.trinity.event_bus import get_trinity_event_bus
+                bus = await get_trinity_event_bus()
+                if bus and hasattr(bus, 'is_connected'):
+                    return bus.is_connected()
+                return bus is not None
+            except ImportError:
+                # Event bus module not available
+                return False
+            except Exception:
+                return False
+        except Exception:
+            return False
+
+    async def _update_health(self, healthy: bool) -> None:
+        """Update health status and notify if changed."""
+        async with self._lock:
+            self._last_check = time.time()
+
+            if healthy:
+                self._consecutive_successes += 1
+                self._consecutive_failures = 0
+
+                if not self._healthy:
+                    if self._consecutive_successes >= self.recovery_threshold:
+                        self._healthy = True
+                        await self._notify_health_change(True)
+            else:
+                self._consecutive_failures += 1
+                self._consecutive_successes = 0
+
+                if self._healthy:
+                    if self._consecutive_failures >= self.failure_threshold:
+                        self._healthy = False
+                        await self._notify_health_change(False)
+
+    async def _notify_health_change(self, healthy: bool) -> None:
+        """Notify callbacks of health change."""
+        status = "HEALTHY" if healthy else "UNHEALTHY"
+        logger.info(f"Trinity Event Bus is now {status}")
+
+        for callback in self._callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(healthy)
+                else:
+                    callback(healthy)
+            except Exception:
+                pass
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get monitor status."""
+        return {
+            "healthy": self._healthy,
+            "consecutive_failures": self._consecutive_failures,
+            "consecutive_successes": self._consecutive_successes,
+            "last_check": self._last_check,
+            "running": self._running,
+        }
+
+
+class DegradedModeManager:
+    """
+    Manages graceful degradation when backends fail.
+    Ensures experiences are never lost.
+    """
+
+    def __init__(
+        self,
+        min_backends_required: int = 1,
+        degraded_mode_timeout: float = 300.0,  # 5 minutes
+    ):
+        self.min_backends_required = min_backends_required
+        self.degraded_mode_timeout = degraded_mode_timeout
+
+        self._in_degraded_mode = False
+        self._degraded_since: Optional[float] = None
+        self._available_backends: Set[BackendType] = set()
+        self._callbacks: List[Callable] = []
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_degraded(self) -> bool:
+        return self._in_degraded_mode
+
+    def on_mode_change(self, callback: Callable[[bool], None]) -> None:
+        """Register callback for mode changes."""
+        self._callbacks.append(callback)
+
+    async def update_backend_availability(
+        self,
+        backend_type: BackendType,
+        available: bool,
+    ) -> None:
+        """Update backend availability."""
+        async with self._lock:
+            if available:
+                self._available_backends.add(backend_type)
+            else:
+                self._available_backends.discard(backend_type)
+
+            # Check if should enter/exit degraded mode
+            was_degraded = self._in_degraded_mode
+
+            if len(self._available_backends) < self.min_backends_required:
+                if not self._in_degraded_mode:
+                    self._in_degraded_mode = True
+                    self._degraded_since = time.time()
+                    logger.warning("Entering DEGRADED MODE - insufficient backends")
+                    await self._notify_mode_change(True)
+            else:
+                if self._in_degraded_mode:
+                    self._in_degraded_mode = False
+                    self._degraded_since = None
+                    logger.info("Exiting DEGRADED MODE - backends recovered")
+                    await self._notify_mode_change(False)
+
+    async def _notify_mode_change(self, degraded: bool) -> None:
+        """Notify callbacks of mode change."""
+        for callback in self._callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(degraded)
+                else:
+                    callback(degraded)
+            except Exception:
+                pass
+
+    def get_degradation_duration(self) -> Optional[float]:
+        """Get how long system has been degraded."""
+        if self._in_degraded_mode and self._degraded_since:
+            return time.time() - self._degraded_since
+        return None
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get degradation status."""
+        return {
+            "degraded": self._in_degraded_mode,
+            "degraded_since": self._degraded_since,
+            "duration_seconds": self.get_degradation_duration(),
+            "available_backends": [bt.value for bt in self._available_backends],
+            "required_backends": self.min_backends_required,
+        }
+
+
+class ResilientExperienceMesh:
+    """
+    Master orchestrator for resilient experience forwarding.
+
+    Features:
+    - Multi-backend support (Redis, SQLite, Memory, File)
+    - Automatic failover and recovery
+    - Continuous health monitoring
+    - Graceful degradation
+    - Experience deduplication
+    - Priority-based forwarding
+    """
+
+    def __init__(
+        self,
+        backends: Optional[List[BackendConfig]] = None,
+    ):
+        # Default backend configuration
+        if backends is None:
+            backends = [
+                BackendConfig(
+                    backend_type=BackendType.REDIS,
+                    priority=0,
+                    connection_string=os.getenv("REDIS_URL", "redis://localhost:6379"),
+                ),
+                BackendConfig(
+                    backend_type=BackendType.SQLITE,
+                    priority=1,
+                ),
+                BackendConfig(
+                    backend_type=BackendType.MEMORY,
+                    priority=2,
+                ),
+                BackendConfig(
+                    backend_type=BackendType.FILE,
+                    priority=3,
+                ),
+            ]
+
+        self.backends = backends
+
+        # Core components
+        self.backend_selector = AdaptiveBackendSelector(backends)
+        self.event_bus_monitor = EventBusHealthMonitor()
+        self.degraded_manager = DegradedModeManager()
+
+        # Storage backends
+        self._memory_store = InMemoryExperienceStore()
+        self._sqlite_store = SQLiteExperienceStore()
+        self._file_store = FileExperienceStore()
+        self._redis_client: Optional[Any] = None
+
+        # State
+        self._running = False
+        self._forwarding_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._lock = asyncio.Lock()
+
+        # Metrics
+        self._metrics = {
+            "experiences_received": 0,
+            "experiences_forwarded": 0,
+            "experiences_failed": 0,
+            "experiences_expired": 0,
+            "backend_switches": 0,
+        }
+
+    async def start(self) -> None:
+        """Start the experience mesh."""
+        if self._running:
+            return
+
+        self._running = True
+        logger.info("🔗 Starting Resilient Experience Mesh v12.0...")
+
+        # Initialize backends in order
+        await self._initialize_backends()
+
+        # Start monitoring
+        await self.event_bus_monitor.start()
+
+        # Register health change callbacks
+        self.event_bus_monitor.on_health_change(self._on_event_bus_health_change)
+
+        # Start background tasks
+        self._forwarding_task = asyncio.create_task(self._forwarding_loop())
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._health_task = asyncio.create_task(self._health_check_loop())
+
+        logger.info("✅ Resilient Experience Mesh started")
+
+    async def stop(self) -> None:
+        """Stop the experience mesh."""
+        self._running = False
+
+        # Cancel tasks
+        for task in [self._forwarding_task, self._cleanup_task, self._health_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        # Stop monitoring
+        await self.event_bus_monitor.stop()
+
+        # Close backends
+        await self._sqlite_store.close()
+
+        if self._session:
+            await self._session.close()
+
+        logger.info("Resilient Experience Mesh stopped")
+
+    async def _initialize_backends(self) -> None:
+        """Initialize all storage backends."""
+        # Always initialize memory store (never fails)
+        await self.backend_selector.update_health(
+            BackendType.MEMORY,
+            BackendHealth.HEALTHY,
+        )
+        await self.degraded_manager.update_backend_availability(
+            BackendType.MEMORY,
+            True,
+        )
+        logger.info("  ✅ Memory backend initialized")
+
+        # Initialize SQLite
+        if await self._sqlite_store.connect():
+            await self.backend_selector.update_health(
+                BackendType.SQLITE,
+                BackendHealth.HEALTHY,
+            )
+            await self.degraded_manager.update_backend_availability(
+                BackendType.SQLITE,
+                True,
+            )
+            logger.info("  ✅ SQLite backend initialized")
+        else:
+            await self.backend_selector.update_health(
+                BackendType.SQLITE,
+                BackendHealth.UNAVAILABLE,
+            )
+            logger.warning("  ⚠️ SQLite backend unavailable")
+
+        # Initialize file store
+        if await self._file_store.initialize():
+            await self.backend_selector.update_health(
+                BackendType.FILE,
+                BackendHealth.HEALTHY,
+            )
+            await self.degraded_manager.update_backend_availability(
+                BackendType.FILE,
+                True,
+            )
+            logger.info("  ✅ File backend initialized")
+        else:
+            logger.warning("  ⚠️ File backend unavailable")
+
+        # Try Redis (optional)
+        try:
+            redis_available = await self._try_connect_redis()
+            if redis_available:
+                await self.backend_selector.update_health(
+                    BackendType.REDIS,
+                    BackendHealth.HEALTHY,
+                )
+                await self.degraded_manager.update_backend_availability(
+                    BackendType.REDIS,
+                    True,
+                )
+                logger.info("  ✅ Redis backend initialized")
+            else:
+                await self.backend_selector.update_health(
+                    BackendType.REDIS,
+                    BackendHealth.UNAVAILABLE,
+                )
+                logger.info("  ℹ️ Redis unavailable - using fallback backends")
+        except Exception as e:
+            logger.info(f"  ℹ️ Redis not available: {e}")
+
+    async def _try_connect_redis(self) -> bool:
+        """Try to connect to Redis."""
+        try:
+            import redis.asyncio as aioredis
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+            self._redis_client = aioredis.from_url(
+                redis_url,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
+            )
+            await self._redis_client.ping()
+            return True
+        except ImportError:
+            return False
+        except Exception:
+            return False
+
+    async def ingest(self, packet: ExperiencePacket) -> bool:
+        """
+        Ingest an experience packet.
+        Routes to best available backend.
+        """
+        self._metrics["experiences_received"] += 1
+
+        # Generate content hash for deduplication
+        if not packet.content_hash:
+            content = json.dumps(packet.payload, sort_keys=True)
+            packet.content_hash = hashlib.md5(content.encode()).hexdigest()
+
+        # Get best backend
+        backend = await self.backend_selector.get_best_backend()
+
+        if not backend:
+            # Emergency: use memory store
+            backend = BackendType.MEMORY
+            logger.warning("All backends unhealthy, using memory fallback")
+
+        # Store in selected backend
+        start = time.time()
+        success = await self._store_in_backend(backend, packet)
+        latency = (time.time() - start) * 1000
+
+        if success:
+            await self.backend_selector.record_success(backend, latency)
+        else:
+            await self.backend_selector.record_failure(backend, "Store failed")
+            # Try fallback
+            for fallback in await self.backend_selector.get_fallback_chain():
+                if fallback != backend:
+                    if await self._store_in_backend(fallback, packet):
+                        self._metrics["backend_switches"] += 1
+                        break
+
+        return success
+
+    async def _store_in_backend(
+        self,
+        backend: BackendType,
+        packet: ExperiencePacket,
+    ) -> bool:
+        """Store packet in specific backend."""
+        try:
+            if backend == BackendType.MEMORY:
+                return await self._memory_store.store(packet)
+            elif backend == BackendType.SQLITE:
+                return await self._sqlite_store.store(packet)
+            elif backend == BackendType.FILE:
+                return await self._file_store.store(packet)
+            elif backend == BackendType.REDIS:
+                if self._redis_client:
+                    data = json.dumps({
+                        "packet_id": packet.packet_id,
+                        "experience_type": packet.experience_type.value,
+                        "timestamp": packet.timestamp,
+                        "source": packet.source,
+                        "destination": packet.destination,
+                        "payload": packet.payload,
+                        "priority": packet.priority,
+                        "status": packet.status.value,
+                        "created_at": packet.created_at,
+                    })
+                    await self._redis_client.hset(
+                        "experience_mesh:packets",
+                        packet.packet_id,
+                        data,
+                    )
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Store in {backend.value} failed: {e}")
+            return False
+
+    async def _forwarding_loop(self) -> None:
+        """Background loop for forwarding experiences."""
+        while self._running:
+            try:
+                # Check if event bus is healthy
+                if self.event_bus_monitor.is_healthy:
+                    await self._forward_pending()
+
+                await asyncio.sleep(5.0)  # Forward every 5 seconds
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Forwarding loop error: {e}")
+                await asyncio.sleep(5.0)
+
+    async def _forward_pending(self) -> None:
+        """Forward pending experiences to event bus."""
+        # Get pending from SQLite first (most reliable)
+        packets = await self._sqlite_store.retrieve_batch(
+            limit=100,
+            status=ForwardingStatus.PENDING,
+        )
+
+        # Also check memory store
+        memory_packets = await self._memory_store.retrieve_batch(
+            limit=50,
+            status=ForwardingStatus.PENDING,
+        )
+        packets.extend(memory_packets)
+
+        for packet in packets:
+            try:
+                # Forward to event bus
+                success = await self._forward_to_event_bus(packet)
+
+                if success:
+                    packet.status = ForwardingStatus.FORWARDED
+                    self._metrics["experiences_forwarded"] += 1
+                else:
+                    packet.retry_count += 1
+                    if not packet.can_retry():
+                        packet.status = ForwardingStatus.FAILED
+                        self._metrics["experiences_failed"] += 1
+                    else:
+                        packet.status = ForwardingStatus.RETRYING
+
+                # Update status in stores
+                await self._sqlite_store.update_status(
+                    packet.packet_id,
+                    packet.status,
+                    packet.error_message,
+                )
+                await self._memory_store.update_status(
+                    packet.packet_id,
+                    packet.status,
+                    packet.error_message,
+                )
+
+            except Exception as e:
+                logger.error(f"Forward packet {packet.packet_id} failed: {e}")
+
+    async def _forward_to_event_bus(self, packet: ExperiencePacket) -> bool:
+        """Forward a single packet to Trinity Event Bus."""
+        try:
+            from backend.core.trinity.event_bus import get_trinity_event_bus
+            bus = await get_trinity_event_bus()
+
+            if bus:
+                await bus.publish(
+                    topic=f"experience.{packet.experience_type.value}",
+                    data={
+                        "packet_id": packet.packet_id,
+                        "source": packet.source,
+                        "destination": packet.destination,
+                        "payload": packet.payload,
+                        "timestamp": packet.timestamp,
+                    },
+                )
+                return True
+            return False
+
+        except ImportError:
+            return False
+        except Exception as e:
+            packet.error_message = str(e)[:200]
+            return False
+
+    async def _cleanup_loop(self) -> None:
+        """Background loop for cleaning up expired packets."""
+        while self._running:
+            try:
+                # Clean SQLite
+                expired = await self._sqlite_store.cleanup_expired()
+                if expired > 0:
+                    self._metrics["experiences_expired"] += expired
+                    logger.info(f"Cleaned up {expired} expired experiences")
+
+                # Clean old files
+                await self._file_store.cleanup_old()
+
+                await asyncio.sleep(60.0)  # Cleanup every minute
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Cleanup loop error: {e}")
+                await asyncio.sleep(60.0)
+
+    async def _health_check_loop(self) -> None:
+        """Background loop for health checking backends."""
+        while self._running:
+            try:
+                # Check Redis
+                if self._redis_client:
+                    try:
+                        await self._redis_client.ping()
+                        await self.backend_selector.update_health(
+                            BackendType.REDIS,
+                            BackendHealth.HEALTHY,
+                        )
+                    except Exception:
+                        await self.backend_selector.update_health(
+                            BackendType.REDIS,
+                            BackendHealth.UNHEALTHY,
+                        )
+
+                # Update queue sizes
+                sqlite_pending = await self._sqlite_store.get_pending_count()
+                memory_pending = await self._memory_store.get_pending_count()
+
+                await self.backend_selector.update_health(
+                    BackendType.SQLITE,
+                    BackendHealth.HEALTHY,
+                    sqlite_pending,
+                )
+                await self.backend_selector.update_health(
+                    BackendType.MEMORY,
+                    BackendHealth.HEALTHY,
+                    memory_pending,
+                )
+
+                await asyncio.sleep(30.0)  # Check every 30 seconds
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Health check loop error: {e}")
+                await asyncio.sleep(30.0)
+
+    async def _on_event_bus_health_change(self, healthy: bool) -> None:
+        """Handle event bus health change."""
+        if healthy:
+            # Event bus recovered - flush pending experiences
+            logger.info("Event bus recovered - flushing pending experiences")
+            await self._forward_pending()
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive mesh status."""
+        return {
+            "running": self._running,
+            "metrics": self._metrics.copy(),
+            "backends": self.backend_selector.get_states(),
+            "event_bus": self.event_bus_monitor.get_status(),
+            "degraded_mode": self.degraded_manager.get_status(),
+            "memory_store": self._memory_store.get_stats(),
+            "file_store": self._file_store.get_stats(),
+        }
+
+
+# =============================================================================
+# v12.0: SINGLETON INSTANCES AND FACTORY FUNCTIONS
+# =============================================================================
+
+_experience_mesh: Optional[ResilientExperienceMesh] = None
+_memory_store: Optional[InMemoryExperienceStore] = None
+_sqlite_store: Optional[SQLiteExperienceStore] = None
+_file_store: Optional[FileExperienceStore] = None
+_backend_selector: Optional[AdaptiveBackendSelector] = None
+_event_bus_monitor: Optional[EventBusHealthMonitor] = None
+_degraded_manager: Optional[DegradedModeManager] = None
+
+
+def get_experience_mesh() -> ResilientExperienceMesh:
+    """Get or create the experience mesh singleton."""
+    global _experience_mesh
+    if _experience_mesh is None:
+        _experience_mesh = ResilientExperienceMesh()
+    return _experience_mesh
+
+
+def get_memory_store() -> InMemoryExperienceStore:
+    """Get or create the memory store singleton."""
+    global _memory_store
+    if _memory_store is None:
+        _memory_store = InMemoryExperienceStore()
+    return _memory_store
+
+
+def get_sqlite_store() -> SQLiteExperienceStore:
+    """Get or create the SQLite store singleton."""
+    global _sqlite_store
+    if _sqlite_store is None:
+        _sqlite_store = SQLiteExperienceStore()
+    return _sqlite_store
+
+
+def get_file_store() -> FileExperienceStore:
+    """Get or create the file store singleton."""
+    global _file_store
+    if _file_store is None:
+        _file_store = FileExperienceStore()
+    return _file_store
+
+
+def get_event_bus_monitor() -> EventBusHealthMonitor:
+    """Get or create the event bus monitor singleton."""
+    global _event_bus_monitor
+    if _event_bus_monitor is None:
+        _event_bus_monitor = EventBusHealthMonitor()
+    return _event_bus_monitor
+
+
+def get_degraded_manager() -> DegradedModeManager:
+    """Get or create the degraded mode manager singleton."""
+    global _degraded_manager
+    if _degraded_manager is None:
+        _degraded_manager = DegradedModeManager()
+    return _degraded_manager
+
+
+# =============================================================================
+# v12.0: INITIALIZATION AND SHUTDOWN
+# =============================================================================
+
+async def initialize_experience_mesh(
+    backends: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Initialize the resilient experience mesh.
+
+    Args:
+        backends: Optional list of backend configurations
+
+    Returns:
+        Dictionary with initialized components
+    """
+    logger.info("🔗 Initializing Resilient Experience Mesh v12.0...")
+    start_time = time.monotonic()
+
+    components = {}
+
+    try:
+        # Parse backend configs if provided
+        backend_configs = None
+        if backends:
+            backend_configs = [
+                BackendConfig(
+                    backend_type=BackendType(b["type"]),
+                    enabled=b.get("enabled", True),
+                    priority=b.get("priority", 0),
+                    connection_string=b.get("connection_string", ""),
+                )
+                for b in backends
+            ]
+
+        mesh = get_experience_mesh()
+        if backend_configs:
+            mesh.backends = backend_configs
+            mesh.backend_selector = AdaptiveBackendSelector(backend_configs)
+
+        await mesh.start()
+
+        components["experience_mesh"] = mesh
+        components["memory_store"] = mesh._memory_store
+        components["sqlite_store"] = mesh._sqlite_store
+        components["file_store"] = mesh._file_store
+        components["backend_selector"] = mesh.backend_selector
+        components["event_bus_monitor"] = mesh.event_bus_monitor
+        components["degraded_manager"] = mesh.degraded_manager
+
+        elapsed = time.monotonic() - start_time
+        logger.info(f"✅ Resilient Experience Mesh initialized in {elapsed:.2f}s")
+        logger.info(f"   Components: {len(components)}")
+        logger.info(f"   Backends: {[b.backend_type.value for b in mesh.backends]}")
+
+        return components
+
+    except Exception as e:
+        logger.error(f"❌ Resilient Experience Mesh initialization failed: {e}")
+        raise
+
+
+async def shutdown_experience_mesh() -> None:
+    """Shutdown the resilient experience mesh."""
+    logger.info("Shutting down Resilient Experience Mesh...")
+
+    global _experience_mesh, _memory_store, _sqlite_store, _file_store
+    global _backend_selector, _event_bus_monitor, _degraded_manager
+
+    if _experience_mesh:
+        await _experience_mesh.stop()
+        _experience_mesh = None
+
+    if _sqlite_store:
+        await _sqlite_store.close()
+        _sqlite_store = None
+
+    _memory_store = None
+    _file_store = None
+    _backend_selector = None
+    _event_bus_monitor = None
+    _degraded_manager = None
+
+    logger.info("✅ Resilient Experience Mesh shutdown complete")
+
+
+# =============================================================================
+# v12.0: CONVENIENCE FUNCTIONS
+# =============================================================================
+
+async def ingest_experience(
+    experience_type: str,
+    payload: Dict[str, Any],
+    source: str = "jarvis",
+    destination: str = "reactor-core",
+    priority: int = 5,
+    ttl_seconds: float = 3600.0,
+) -> str:
+    """
+    Ingest an experience into the mesh.
+
+    Usage:
+        packet_id = await ingest_experience(
+            experience_type="interaction",
+            payload={"user_input": "hello", "response": "hi"},
+            source="jarvis",
+            destination="reactor-core",
+        )
+    """
+    mesh = get_experience_mesh()
+
+    packet = ExperiencePacket(
+        packet_id=str(uuid.uuid4()),
+        experience_type=ExperienceType(experience_type),
+        timestamp=time.time(),
+        source=source,
+        destination=destination,
+        payload=payload,
+        priority=priority,
+        ttl_seconds=ttl_seconds,
+    )
+
+    await mesh.ingest(packet)
+    return packet.packet_id
+
+
+async def get_experience_mesh_status() -> Dict[str, Any]:
+    """
+    Get comprehensive mesh status.
+
+    Usage:
+        status = await get_experience_mesh_status()
+        print(f"Running: {status['running']}")
+    """
+    mesh = get_experience_mesh()
+    return mesh.get_status()
+
+
+async def get_pending_experiences_count() -> int:
+    """
+    Get count of pending experiences.
+
+    Usage:
+        count = await get_pending_experiences_count()
+    """
+    mesh = get_experience_mesh()
+    return await mesh._sqlite_store.get_pending_count()

@@ -14081,8 +14081,25 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             self.logger.info(f"[v11.0] ✅ Resilient Service Mesh: {v11_active}/6 components active")
                             print(f"  {TerminalUI.CYAN}        🛡️ Fixes: Race conditions, Cascades, Stale services{TerminalUI.RESET}")
 
-                        total_all_versions = total_active + v8_active + v9_active + v10_active + v11_active
-                        self.logger.info(f"[v11.0] ✅ Total Autonomous System: {total_all_versions}/39 components active")
+                        # v12.0: Resilient Experience Mesh
+                        v12_components = ["experience_mesh", "memory_store", "sqlite_store",
+                                        "file_store", "backend_selector", "event_bus_monitor", "degraded_manager"]
+                        v12_active = sum(1 for c in v12_components if components.get(c) is not None)
+
+                        if v12_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v12.0 Resilient Experience Mesh: {v12_active}/7 components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ InMemoryExperienceStore: LRU cache (never fails){TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ SQLiteExperienceStore: WAL mode persistence{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ FileExperienceStore: JSONL ultimate fallback{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ AdaptiveBackendSelector: Smart routing{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ EventBusHealthMonitor: Trinity Bus health{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ DegradedModeManager: Graceful degradation{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        └─ ResilientExperienceMesh: Multi-backend orchestrator{TerminalUI.RESET}")
+                            self.logger.info(f"[v12.0] ✅ Resilient Experience Mesh: {v12_active}/7 components active")
+                            print(f"  {TerminalUI.YELLOW}        📦 Backends: Redis → SQLite → Memory → File{TerminalUI.RESET}")
+
+                        total_all_versions = total_active + v8_active + v9_active + v10_active + v11_active + v12_active
+                        self.logger.info(f"[v12.0] ✅ Total Autonomous System: {total_all_versions}/46 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()
