@@ -4043,6 +4043,17 @@ class CrossRepoAutonomousIntegration:
                     # v5.0: Web integration
                     get_ouroboros_web_integration,
                     initialize_web_integration,
+                    # v6.0: Advanced autonomous system
+                    initialize_autonomous_system_v6,
+                    shutdown_autonomous_system_v6,
+                    get_code_sanitizer,
+                    get_dependency_installer,
+                    get_file_lock_manager,
+                    get_reactor_feedback_receiver,
+                    get_prime_training_integration,
+                    get_model_update_notifier,
+                    get_autonomous_loop_controller,
+                    get_cross_repo_sync_manager,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4144,6 +4155,44 @@ class CrossRepoAutonomousIntegration:
                 if start_loops:
                     logger.info("Phase 5: Starting background loops...")
                     await self._start_background_loops()
+
+                # Phase 6: Initialize v6.0 advanced autonomous system
+                logger.info("Phase 6: Initializing v6.0 advanced autonomous system...")
+                try:
+                    v6_components = await initialize_autonomous_system_v6(
+                        start_loops=start_loops,
+                        enable_web_search=True,
+                        enable_reactor_feedback=True,
+                        enable_prime_training=True,
+                        enable_file_locking=True,
+                    )
+
+                    # Wire v6.0 components into our component registry
+                    v6_component_names = [
+                        "code_sanitizer",
+                        "dependency_installer",
+                        "file_lock_manager",
+                        "reactor_feedback_receiver",
+                        "prime_training_integration",
+                        "model_update_notifier",
+                        "autonomous_loop_controller",
+                        "cross_repo_sync_manager",
+                    ]
+
+                    for name in v6_component_names:
+                        comp = v6_components.get(name)
+                        if comp:
+                            self._components[name] = comp
+                            logger.info(f"  ✅ {name} initialized (v6.0)")
+
+                    # Wire v6.0 cross-component communication
+                    await self._wire_v6_components(orchestrator, v6_components)
+
+                    logger.info(f"  ✅ v6.0 autonomous system initialized with {len(v6_components)} components")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v6.0 autonomous system initialization failed: {e}")
+                    logger.debug(f"  v6.0 error details: {e}", exc_info=True)
 
                 # Update global state
                 global _autonomous_state
@@ -4285,6 +4334,172 @@ class CrossRepoAutonomousIntegration:
             )
             logger.debug("  Web integration wired for autonomous improvement")
 
+    async def _wire_v6_components(self, orchestrator: Optional[Any], v6_components: Dict[str, Any]) -> None:
+        """
+        v6.0: Wire up advanced autonomous system components.
+
+        This creates bidirectional communication between:
+        - Code sanitizer ↔ Web integration (validates external code)
+        - Reactor feedback receiver ↔ Refinement loop (training feedback)
+        - Prime training ↔ Model update notifier (training triggers updates)
+        - File lock manager ↔ All edit operations (prevents conflicts)
+        - Autonomous loop controller ↔ All background loops (unified control)
+        - Cross-repo sync manager ↔ All repos (state synchronization)
+        """
+        # Get v6.0 components
+        code_sanitizer = v6_components.get("code_sanitizer")
+        dependency_installer = v6_components.get("dependency_installer")
+        file_lock_manager = v6_components.get("file_lock_manager")
+        reactor_feedback = v6_components.get("reactor_feedback_receiver")
+        prime_training = v6_components.get("prime_training_integration")
+        model_notifier = v6_components.get("model_update_notifier")
+        loop_controller = v6_components.get("autonomous_loop_controller")
+        sync_manager = v6_components.get("cross_repo_sync_manager")
+
+        # Get existing components
+        web_integration = self._components.get("web_integration")
+        refinement_loop = self._components.get("refinement_loop")
+        debt_detector = self._components.get("debt_detector")
+        goal_decomposer = self._components.get("goal_decomposer")
+
+        # 1. Wire code sanitizer into web integration
+        if code_sanitizer and web_integration:
+            # When web integration fetches code, sanitize it first
+            if hasattr(web_integration, 'register_code_preprocessor'):
+                async def sanitize_web_code(code: str, source_url: str) -> str:
+                    """Sanitize code fetched from web before use."""
+                    try:
+                        result = await code_sanitizer.validate_and_sanitize(code, source_url)
+                        if result.is_safe or result.risk_level.value in ("safe", "low"):
+                            return result.sanitized_code
+                        else:
+                            logger.warning(f"Web code from {source_url} blocked: {result.risk_level.value} risk")
+                            return ""  # Block unsafe code
+                    except Exception as e:
+                        logger.debug(f"Code sanitization failed: {e}")
+                        return code  # Fallback to original
+
+                web_integration.register_code_preprocessor(sanitize_web_code)
+                logger.debug("  Wired code_sanitizer → web_integration (code validation)")
+
+        # 2. Wire reactor feedback into refinement loop
+        if reactor_feedback and refinement_loop:
+            # When Reactor Core completes training, notify refinement loop
+            async def handle_reactor_feedback(feedback):
+                """Handle feedback from Reactor Core training."""
+                try:
+                    if hasattr(refinement_loop, 'receive_training_feedback'):
+                        await refinement_loop.receive_training_feedback({
+                            "model_id": feedback.model_id,
+                            "metrics": feedback.metrics,
+                            "timestamp": feedback.timestamp.isoformat() if feedback.timestamp else None,
+                        })
+                        logger.info(f"Reactor feedback received: model {feedback.model_id}")
+                except Exception as e:
+                    logger.debug(f"Reactor feedback handling failed: {e}")
+
+            reactor_feedback.register_feedback_handler(handle_reactor_feedback)
+            logger.debug("  Wired reactor_feedback → refinement_loop (training feedback)")
+
+        # 3. Wire prime training into model notifier
+        if prime_training and model_notifier:
+            # When Prime training completes, notify system of new model
+            async def handle_training_complete(training_result):
+                """Handle Prime training completion."""
+                try:
+                    from backend.core.ouroboros.native_integration import ModelUpdateEvent
+                    from datetime import datetime
+
+                    event = ModelUpdateEvent(
+                        model_id=training_result.get("model_id", "unknown"),
+                        old_version=training_result.get("old_version", ""),
+                        new_version=training_result.get("new_version", "1.0"),
+                        update_type="training_complete",
+                        capabilities_changed=training_result.get("capabilities_changed", []),
+                        performance_delta=training_result.get("performance_delta", {}),
+                        timestamp=datetime.now(),
+                    )
+                    await model_notifier.notify_model_update(event)
+                    logger.info(f"Model update notification sent for {event.model_id}")
+                except Exception as e:
+                    logger.debug(f"Model notification failed: {e}")
+
+            if hasattr(prime_training, 'register_training_complete_handler'):
+                prime_training.register_training_complete_handler(handle_training_complete)
+                logger.debug("  Wired prime_training → model_notifier (training completion)")
+
+        # 4. Wire file lock manager into orchestrator
+        if file_lock_manager and orchestrator:
+            # Before any file edit, check for user locks
+            if hasattr(orchestrator, '_on_before_edit'):
+                async def check_file_lock(task):
+                    """Check if file is locked by user before editing."""
+                    try:
+                        if hasattr(task, 'file_path') and task.file_path:
+                            is_locked = await file_lock_manager.is_file_locked_by_user(task.file_path)
+                            if is_locked:
+                                logger.warning(f"File {task.file_path} is locked by user, skipping edit")
+                                return False  # Block edit
+                            # Acquire lock for our edit
+                            await file_lock_manager.acquire_lock(task.file_path, "write")
+                        return True  # Allow edit
+                    except Exception as e:
+                        logger.debug(f"File lock check failed: {e}")
+                        return True  # Fail open
+
+                orchestrator._on_before_edit.append(check_file_lock)
+                logger.debug("  Wired file_lock_manager → orchestrator (edit protection)")
+
+        # 5. Wire autonomous loop controller with existing loops
+        if loop_controller:
+            # Register existing autonomous components
+            if refinement_loop:
+                await loop_controller.register_component(
+                    "refinement_loop", refinement_loop, auto_start=False
+                )
+            if debt_detector and hasattr(debt_detector, 'start_continuous_scan'):
+                await loop_controller.register_component(
+                    "debt_detector", debt_detector, auto_start=False
+                )
+            if goal_decomposer and hasattr(goal_decomposer, 'start'):
+                await loop_controller.register_component(
+                    "goal_decomposer", goal_decomposer, auto_start=False
+                )
+            logger.debug("  Autonomous loop controller wired with existing loops")
+
+        # 6. Wire cross-repo sync manager for state coordination
+        if sync_manager:
+            # Register repos for monitoring
+            for repo_name, repo_path in self._repos.items():
+                if repo_path.exists():
+                    await sync_manager.register_repo(repo_name, str(repo_path))
+                    logger.debug(f"  Registered {repo_name} with cross-repo sync manager")
+
+            # Start heartbeat monitoring
+            if hasattr(sync_manager, 'start_heartbeat'):
+                await sync_manager.start_heartbeat()
+                logger.debug("  Cross-repo sync manager heartbeat started")
+
+        # 7. Wire dependency installer for automatic package management
+        if dependency_installer and refinement_loop:
+            # When code improvements are applied, check for missing deps
+            if hasattr(refinement_loop, 'register_post_improvement_hook'):
+                async def auto_install_deps(improved_code: str, file_path: str):
+                    """Automatically install missing dependencies."""
+                    try:
+                        result = await dependency_installer.analyze_and_install(
+                            improved_code, dry_run=False
+                        )
+                        if result.get("installed"):
+                            logger.info(f"Auto-installed dependencies: {result['installed']}")
+                    except Exception as e:
+                        logger.debug(f"Dependency auto-install failed: {e}")
+
+                refinement_loop.register_post_improvement_hook(auto_install_deps)
+                logger.debug("  Wired dependency_installer → refinement_loop (auto-install)")
+
+        logger.info("  ✅ v6.0 component wiring complete")
+
     async def _connect_cross_repo_services(self) -> None:
         """Connect to cross-repo services (JARVIS Prime, Reactor Core)."""
 
@@ -4405,6 +4620,35 @@ class CrossRepoAutonomousIntegration:
         logger.info("Shutting down CrossRepoAutonomousIntegration...")
 
         await self.stop_background_loops()
+
+        # v6.0: Shutdown advanced autonomous system first
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_autonomous_system_v6
+            await shutdown_autonomous_system_v6()
+            logger.info("  ✅ v6.0 autonomous system shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v6.0 autonomous system shutdown error: {e}")
+
+        # v6.0: Shutdown individual v6.0 components
+        v6_components = [
+            "cross_repo_sync_manager",
+            "autonomous_loop_controller",
+            "model_update_notifier",
+            "prime_training_integration",
+            "reactor_feedback_receiver",
+            "file_lock_manager",
+            "dependency_installer",
+            "code_sanitizer",
+        ]
+
+        for comp_name in v6_components:
+            comp = self._components.get(comp_name)
+            if comp and hasattr(comp, 'stop'):
+                try:
+                    await comp.stop()
+                    logger.info(f"  ✅ {comp_name} stopped")
+                except Exception as e:
+                    logger.debug(f"  ⚠️ {comp_name} stop error: {e}")
 
         # v5.0: Shutdown web integration
         web_integration = self._components.get("web_integration")

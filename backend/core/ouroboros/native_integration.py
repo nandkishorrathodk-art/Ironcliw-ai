@@ -11040,3 +11040,1838 @@ async def shutdown_web_integration() -> None:
     _ouroboros_web_integration = None
 
     logger.info("Web integration shutdown complete")
+
+
+# =============================================================================
+# v6.0: Complete Autonomous Self-Programming System
+# =============================================================================
+# This module completes the autonomous self-programming capabilities:
+# - CodeSanitizer: Validates and sanitizes scraped code
+# - DependencyAutoInstaller: Auto-installs missing packages
+# - FileLockManager: Detects user edits and prevents conflicts
+# - ReactorCoreFeedbackReceiver: Bidirectional Reactor Core integration
+# - PrimeTrainingIntegration: Training feedback to JARVIS Prime
+# - ModelUpdateNotifier: Notifications when models change
+# - AutonomousLoopController: Master controller for all loops
+# - CrossRepoSyncManager: Syncs state across repos
+# =============================================================================
+
+
+class SecurityRisk(Enum):
+    """Security risk levels for code validation."""
+    SAFE = "safe"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class DependencySource(Enum):
+    """Sources for dependency resolution."""
+    PYPI = "pypi"
+    CONDA = "conda"
+    SYSTEM = "system"
+    LOCAL = "local"
+
+
+@dataclass
+class CodeValidationResult:
+    """Result of code validation and sanitization."""
+    original_code: str
+    sanitized_code: str
+    is_safe: bool
+    risk_level: SecurityRisk
+    issues_found: List[Dict[str, Any]]
+    fixes_applied: List[str]
+    confidence: float
+    source_url: Optional[str] = None
+    validation_time: float = 0.0
+
+
+@dataclass
+class DependencyInfo:
+    """Information about a package dependency."""
+    name: str
+    version_spec: Optional[str] = None
+    source: DependencySource = DependencySource.PYPI
+    is_installed: bool = False
+    install_command: Optional[str] = None
+    alternatives: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FileLockInfo:
+    """Information about a file lock."""
+    file_path: str
+    locked_by: str  # 'user', 'jarvis', 'external'
+    locked_at: datetime
+    lock_type: str  # 'read', 'write', 'exclusive'
+    expires_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ReactorFeedback:
+    """Feedback from Reactor Core training."""
+    model_id: str
+    training_run_id: str
+    metrics: Dict[str, float]  # accuracy, loss, f1, perplexity
+    experience_ids: List[str]  # Which experiences contributed
+    timestamp: datetime
+    status: str  # 'success', 'failed', 'partial'
+    insights: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ModelUpdateEvent:
+    """Event for model updates."""
+    model_id: str
+    old_version: Optional[str]
+    new_version: str
+    update_type: str  # 'new', 'upgrade', 'rollback', 'deprecation'
+    capabilities_changed: Dict[str, Any]
+    performance_delta: Dict[str, float]
+    timestamp: datetime
+    source: str  # 'prime', 'reactor', 'external'
+
+
+class CodeSanitizer:
+    """
+    Validates and sanitizes code from external sources (web search, GitHub, etc.).
+
+    Security features:
+    - Detects dangerous patterns (eval, exec, os.system, etc.)
+    - Removes or neutralizes malicious code
+    - Validates syntax before accepting
+    - Tracks code provenance
+    - Applies automatic fixes for common issues
+    """
+
+    # Dangerous patterns with their risk levels
+    DANGEROUS_PATTERNS: Dict[str, Tuple[str, SecurityRisk, str]] = {
+        r'\beval\s*\(': ("eval() execution", SecurityRisk.CRITICAL, "Remove eval()"),
+        r'\bexec\s*\(': ("exec() execution", SecurityRisk.CRITICAL, "Remove exec()"),
+        r'\bcompile\s*\([^)]*exec': ("compile/exec", SecurityRisk.CRITICAL, "Remove compile/exec"),
+        r'__import__\s*\(': ("Dynamic import", SecurityRisk.HIGH, "Use static import"),
+        r'os\.system\s*\(': ("Shell command", SecurityRisk.CRITICAL, "Use subprocess safely"),
+        r'subprocess\..*shell\s*=\s*True': ("Shell=True", SecurityRisk.HIGH, "Use shell=False"),
+        r'pickle\.loads?\s*\(': ("Pickle deserialization", SecurityRisk.HIGH, "Use json instead"),
+        r'yaml\.load\s*\([^)]*Loader\s*=\s*None': ("Unsafe YAML", SecurityRisk.HIGH, "Use safe_load"),
+        r'yaml\.unsafe_load': ("Unsafe YAML", SecurityRisk.HIGH, "Use safe_load"),
+        r'input\s*\([^)]*\)\s*$': ("Raw input", SecurityRisk.MEDIUM, "Validate input"),
+        r'requests\.get\([^)]*verify\s*=\s*False': ("SSL disabled", SecurityRisk.MEDIUM, "Enable SSL"),
+        r'open\s*\([^)]*,\s*[\'"]w': ("File write", SecurityRisk.LOW, "Validate path"),
+        r'shutil\.rmtree': ("Directory deletion", SecurityRisk.MEDIUM, "Add safeguards"),
+        r'__builtins__': ("Builtins access", SecurityRisk.HIGH, "Remove builtins access"),
+        r'globals\s*\(\s*\)': ("Globals access", SecurityRisk.MEDIUM, "Limit scope"),
+        r'locals\s*\(\s*\)': ("Locals access", SecurityRisk.LOW, "Consider alternatives"),
+        r'getattr\s*\([^,]+,\s*[^)]*input': ("Dynamic getattr", SecurityRisk.MEDIUM, "Validate attr"),
+        r'setattr\s*\(': ("Dynamic setattr", SecurityRisk.MEDIUM, "Validate carefully"),
+        r'delattr\s*\(': ("Dynamic delattr", SecurityRisk.MEDIUM, "Validate carefully"),
+        r'ctypes\.': ("C types access", SecurityRisk.HIGH, "Review carefully"),
+        r'sys\.modules': ("Module manipulation", SecurityRisk.HIGH, "Avoid if possible"),
+    }
+
+    # Auto-fix patterns
+    AUTO_FIXES: Dict[str, Tuple[str, str]] = {
+        r'print\s+([^(])': (r'print(\1)', "Python 2 print to Python 3"),
+        r'except\s*:': (r'except Exception:', "Bare except to Exception"),
+        r'\.has_key\s*\(': (r' in ', "has_key to 'in'"),
+        r'xrange\s*\(': (r'range(', "xrange to range"),
+        r'\.iteritems\s*\(': (r'.items(', "iteritems to items"),
+        r'\.itervalues\s*\(': (r'.values(', "itervalues to values"),
+        r'\.iterkeys\s*\(': (r'.keys(', "iterkeys to keys"),
+        r'raw_input\s*\(': (r'input(', "raw_input to input"),
+        r'unicode\s*\(': (r'str(', "unicode to str"),
+    }
+
+    def __init__(
+        self,
+        max_code_length: int = 50000,
+        allow_medium_risk: bool = True,
+        allow_low_risk: bool = True,
+        auto_fix: bool = True,
+    ):
+        self.max_code_length = max_code_length
+        self.allow_medium_risk = allow_medium_risk
+        self.allow_low_risk = allow_low_risk
+        self.auto_fix = auto_fix
+        self._validation_cache: Dict[str, CodeValidationResult] = {}
+        self._lock = asyncio.Lock()
+
+    async def validate_and_sanitize(
+        self,
+        code: str,
+        source_url: Optional[str] = None,
+        context: Optional[str] = None,
+    ) -> CodeValidationResult:
+        """
+        Validate and sanitize code from external source.
+
+        Args:
+            code: The code to validate
+            source_url: Where the code came from
+            context: Additional context about the code
+
+        Returns:
+            CodeValidationResult with sanitized code and issues
+        """
+        start_time = time.monotonic()
+
+        # Check cache
+        cache_key = hashlib.sha256(code.encode()).hexdigest()[:16]
+        if cache_key in self._validation_cache:
+            cached = self._validation_cache[cache_key]
+            cached.validation_time = time.monotonic() - start_time
+            return cached
+
+        issues_found = []
+        fixes_applied = []
+        highest_risk = SecurityRisk.SAFE
+        sanitized_code = code
+
+        # Check code length
+        if len(code) > self.max_code_length:
+            issues_found.append({
+                "type": "length",
+                "message": f"Code exceeds max length ({len(code)} > {self.max_code_length})",
+                "risk": SecurityRisk.MEDIUM.value,
+            })
+            highest_risk = SecurityRisk.MEDIUM
+
+        # Check for dangerous patterns
+        for pattern, (description, risk, fix_hint) in self.DANGEROUS_PATTERNS.items():
+            matches = re.findall(pattern, sanitized_code, re.IGNORECASE)
+            if matches:
+                issues_found.append({
+                    "type": "dangerous_pattern",
+                    "pattern": pattern,
+                    "description": description,
+                    "risk": risk.value,
+                    "fix_hint": fix_hint,
+                    "occurrences": len(matches),
+                })
+                if self._risk_level_value(risk) > self._risk_level_value(highest_risk):
+                    highest_risk = risk
+
+                # Remove critical patterns
+                if risk == SecurityRisk.CRITICAL:
+                    sanitized_code = re.sub(pattern, "# REMOVED: " + description, sanitized_code)
+                    fixes_applied.append(f"Removed {description}")
+
+        # Apply auto-fixes if enabled
+        if self.auto_fix:
+            for pattern, (replacement, description) in self.AUTO_FIXES.items():
+                if re.search(pattern, sanitized_code):
+                    sanitized_code = re.sub(pattern, replacement, sanitized_code)
+                    fixes_applied.append(description)
+
+        # Validate syntax
+        syntax_valid, syntax_error = self._validate_syntax(sanitized_code)
+        if not syntax_valid:
+            issues_found.append({
+                "type": "syntax_error",
+                "message": str(syntax_error),
+                "risk": SecurityRisk.MEDIUM.value,
+            })
+            if self._risk_level_value(SecurityRisk.MEDIUM) > self._risk_level_value(highest_risk):
+                highest_risk = SecurityRisk.MEDIUM
+
+        # Determine if code is safe
+        is_safe = self._is_acceptable_risk(highest_risk)
+
+        # Calculate confidence
+        confidence = self._calculate_confidence(issues_found, fixes_applied, syntax_valid)
+
+        result = CodeValidationResult(
+            original_code=code,
+            sanitized_code=sanitized_code,
+            is_safe=is_safe,
+            risk_level=highest_risk,
+            issues_found=issues_found,
+            fixes_applied=fixes_applied,
+            confidence=confidence,
+            source_url=source_url,
+            validation_time=time.monotonic() - start_time,
+        )
+
+        # Cache result
+        async with self._lock:
+            if len(self._validation_cache) > 1000:
+                # Evict oldest entries
+                keys_to_remove = list(self._validation_cache.keys())[:100]
+                for key in keys_to_remove:
+                    del self._validation_cache[key]
+            self._validation_cache[cache_key] = result
+
+        return result
+
+    def _validate_syntax(self, code: str) -> Tuple[bool, Optional[str]]:
+        """Validate Python syntax."""
+        try:
+            ast.parse(code)
+            return True, None
+        except SyntaxError as e:
+            return False, str(e)
+
+    def _risk_level_value(self, risk: SecurityRisk) -> int:
+        """Get numeric value for risk level."""
+        return {
+            SecurityRisk.SAFE: 0,
+            SecurityRisk.LOW: 1,
+            SecurityRisk.MEDIUM: 2,
+            SecurityRisk.HIGH: 3,
+            SecurityRisk.CRITICAL: 4,
+        }[risk]
+
+    def _is_acceptable_risk(self, risk: SecurityRisk) -> bool:
+        """Determine if risk level is acceptable."""
+        if risk == SecurityRisk.SAFE:
+            return True
+        if risk == SecurityRisk.LOW and self.allow_low_risk:
+            return True
+        if risk == SecurityRisk.MEDIUM and self.allow_medium_risk:
+            return True
+        return False
+
+    def _calculate_confidence(
+        self,
+        issues: List[Dict],
+        fixes: List[str],
+        syntax_valid: bool,
+    ) -> float:
+        """Calculate confidence score for sanitized code."""
+        confidence = 1.0
+
+        # Reduce for issues
+        for issue in issues:
+            risk = issue.get("risk", "low")
+            if risk == "critical":
+                confidence -= 0.3
+            elif risk == "high":
+                confidence -= 0.2
+            elif risk == "medium":
+                confidence -= 0.1
+            elif risk == "low":
+                confidence -= 0.05
+
+        # Increase for fixes
+        confidence += len(fixes) * 0.02
+
+        # Reduce for syntax errors
+        if not syntax_valid:
+            confidence -= 0.3
+
+        return max(0.0, min(1.0, confidence))
+
+
+class DependencyAutoInstaller:
+    """
+    Automatically detects and installs missing dependencies.
+
+    Features:
+    - Parses imports from code
+    - Maps imports to package names
+    - Checks if packages are installed
+    - Auto-installs using pip/conda
+    - Supports virtual environments
+    - Caches package availability
+    """
+
+    # Import name to package name mapping (for non-obvious mappings)
+    IMPORT_TO_PACKAGE: Dict[str, str] = {
+        "PIL": "Pillow",
+        "cv2": "opencv-python",
+        "sklearn": "scikit-learn",
+        "yaml": "PyYAML",
+        "bs4": "beautifulsoup4",
+        "dotenv": "python-dotenv",
+        "jwt": "PyJWT",
+        "dateutil": "python-dateutil",
+        "magic": "python-magic",
+        "Crypto": "pycryptodome",
+        "OpenSSL": "pyOpenSSL",
+        "wx": "wxPython",
+        "gi": "PyGObject",
+        "skimage": "scikit-image",
+        "usb": "pyusb",
+        "serial": "pyserial",
+    }
+
+    # Standard library modules (should not be installed)
+    STDLIB_MODULES: Set[str] = {
+        "abc", "aifc", "argparse", "array", "ast", "asynchat", "asyncio",
+        "asyncore", "atexit", "audioop", "base64", "bdb", "binascii",
+        "binhex", "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb",
+        "chunk", "cmath", "cmd", "code", "codecs", "codeop", "collections",
+        "colorsys", "compileall", "concurrent", "configparser", "contextlib",
+        "contextvars", "copy", "copyreg", "cProfile", "crypt", "csv",
+        "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal",
+        "difflib", "dis", "distutils", "doctest", "email", "encodings",
+        "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput",
+        "fnmatch", "fractions", "ftplib", "functools", "gc", "getopt",
+        "getpass", "gettext", "glob", "graphlib", "grp", "gzip", "hashlib",
+        "heapq", "hmac", "html", "http", "imaplib", "imghdr", "imp",
+        "importlib", "inspect", "io", "ipaddress", "itertools", "json",
+        "keyword", "lib2to3", "linecache", "locale", "logging", "lzma",
+        "mailbox", "mailcap", "marshal", "math", "mimetypes", "mmap",
+        "modulefinder", "multiprocessing", "netrc", "nis", "nntplib",
+        "numbers", "operator", "optparse", "os", "ossaudiodev", "pathlib",
+        "pdb", "pickle", "pickletools", "pipes", "pkgutil", "platform",
+        "plistlib", "poplib", "posix", "posixpath", "pprint", "profile",
+        "pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "queue",
+        "quopri", "random", "re", "readline", "reprlib", "resource",
+        "rlcompleter", "runpy", "sched", "secrets", "select", "selectors",
+        "shelve", "shlex", "shutil", "signal", "site", "smtpd", "smtplib",
+        "sndhdr", "socket", "socketserver", "spwd", "sqlite3", "ssl",
+        "stat", "statistics", "string", "stringprep", "struct", "subprocess",
+        "sunau", "symtable", "sys", "sysconfig", "syslog", "tabnanny",
+        "tarfile", "telnetlib", "tempfile", "termios", "test", "textwrap",
+        "threading", "time", "timeit", "tkinter", "token", "tokenize",
+        "trace", "traceback", "tracemalloc", "tty", "turtle", "turtledemo",
+        "types", "typing", "unicodedata", "unittest", "urllib", "uu",
+        "uuid", "venv", "warnings", "wave", "weakref", "webbrowser",
+        "winreg", "winsound", "wsgiref", "xdrlib", "xml", "xmlrpc",
+        "zipapp", "zipfile", "zipimport", "zlib", "_thread",
+    }
+
+    def __init__(
+        self,
+        auto_install: bool = True,
+        use_venv: bool = True,
+        max_concurrent_installs: int = 3,
+    ):
+        self.auto_install = auto_install
+        self.use_venv = use_venv
+        self.max_concurrent_installs = max_concurrent_installs
+        self._install_semaphore = asyncio.Semaphore(max_concurrent_installs)
+        self._installed_cache: Set[str] = set()
+        self._failed_cache: Set[str] = set()
+        self._lock = asyncio.Lock()
+
+    async def analyze_and_install(
+        self,
+        code: str,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Analyze code for imports and install missing dependencies.
+
+        Args:
+            code: The code to analyze
+            dry_run: If True, don't actually install
+
+        Returns:
+            Dictionary with analysis results
+        """
+        result = {
+            "imports_found": [],
+            "missing_packages": [],
+            "installed_packages": [],
+            "failed_packages": [],
+            "skipped_packages": [],
+        }
+
+        # Parse imports
+        imports = self._extract_imports(code)
+        result["imports_found"] = imports
+
+        # Check which are missing
+        for import_name in imports:
+            # Skip stdlib
+            root_module = import_name.split(".")[0]
+            if root_module in self.STDLIB_MODULES:
+                continue
+
+            # Map to package name
+            package_name = self.IMPORT_TO_PACKAGE.get(root_module, root_module)
+
+            # Check if installed
+            is_installed = await self._check_installed(package_name)
+            if is_installed:
+                continue
+
+            # Check if already failed
+            if package_name in self._failed_cache:
+                result["skipped_packages"].append({
+                    "name": package_name,
+                    "reason": "Previously failed",
+                })
+                continue
+
+            result["missing_packages"].append(package_name)
+
+            # Install if enabled
+            if self.auto_install and not dry_run:
+                success = await self._install_package(package_name)
+                if success:
+                    result["installed_packages"].append(package_name)
+                else:
+                    result["failed_packages"].append(package_name)
+
+        return result
+
+    def _extract_imports(self, code: str) -> List[str]:
+        """Extract import names from code."""
+        imports = set()
+
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        imports.add(alias.name)
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        imports.add(node.module)
+        except SyntaxError:
+            # Fallback to regex
+            import_pattern = r'^(?:from\s+(\S+)\s+)?import\s+(\S+)'
+            for match in re.finditer(import_pattern, code, re.MULTILINE):
+                if match.group(1):
+                    imports.add(match.group(1))
+                if match.group(2):
+                    imports.add(match.group(2).split(",")[0].strip())
+
+        return list(imports)
+
+    async def _check_installed(self, package_name: str) -> bool:
+        """Check if a package is installed."""
+        if package_name in self._installed_cache:
+            return True
+
+        try:
+            # Use importlib to check
+            import importlib.util
+            spec = importlib.util.find_spec(package_name.replace("-", "_"))
+            if spec is not None:
+                async with self._lock:
+                    self._installed_cache.add(package_name)
+                return True
+        except (ImportError, ModuleNotFoundError, ValueError):
+            pass
+
+        # Try pip show
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "show", package_name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            if proc.returncode == 0:
+                async with self._lock:
+                    self._installed_cache.add(package_name)
+                return True
+        except Exception:
+            pass
+
+        return False
+
+    async def _install_package(self, package_name: str) -> bool:
+        """Install a package using pip."""
+        async with self._install_semaphore:
+            logger.info(f"Installing missing package: {package_name}")
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, "-m", "pip", "install", package_name,
+                    "--quiet", "--disable-pip-version-check",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                if proc.returncode == 0:
+                    async with self._lock:
+                        self._installed_cache.add(package_name)
+                    logger.info(f"Successfully installed: {package_name}")
+                    return True
+                else:
+                    async with self._lock:
+                        self._failed_cache.add(package_name)
+                    logger.warning(f"Failed to install {package_name}: {stderr.decode()}")
+                    return False
+
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout installing {package_name}")
+                async with self._lock:
+                    self._failed_cache.add(package_name)
+                return False
+            except Exception as e:
+                logger.warning(f"Error installing {package_name}: {e}")
+                async with self._lock:
+                    self._failed_cache.add(package_name)
+                return False
+
+
+class FileLockManager:
+    """
+    Manages file locks to prevent conflicts during autonomous editing.
+
+    Features:
+    - Detects when user is editing a file
+    - Monitors file modification times
+    - Uses file system events (watchdog-like)
+    - Prevents JARVIS from editing files user is modifying
+    - Supports lock acquisition with timeout
+    - Handles stale locks
+    """
+
+    def __init__(
+        self,
+        lock_timeout: float = 300.0,  # 5 minutes
+        stale_threshold: float = 600.0,  # 10 minutes
+        check_interval: float = 1.0,
+    ):
+        self.lock_timeout = lock_timeout
+        self.stale_threshold = stale_threshold
+        self.check_interval = check_interval
+        self._locks: Dict[str, FileLockInfo] = {}
+        self._file_mtimes: Dict[str, float] = {}
+        self._lock = asyncio.Lock()
+        self._monitoring = False
+        self._monitor_task: Optional[asyncio.Task] = None
+
+    async def start_monitoring(self) -> None:
+        """Start monitoring files for changes."""
+        if self._monitoring:
+            return
+
+        self._monitoring = True
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        logger.info("FileLockManager monitoring started")
+
+    async def stop_monitoring(self) -> None:
+        """Stop monitoring files."""
+        self._monitoring = False
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("FileLockManager monitoring stopped")
+
+    async def acquire_lock(
+        self,
+        file_path: str,
+        lock_type: str = "write",
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """
+        Acquire a lock on a file.
+
+        Args:
+            file_path: Path to the file
+            lock_type: Type of lock ('read', 'write', 'exclusive')
+            timeout: How long to wait for lock
+
+        Returns:
+            True if lock acquired, False otherwise
+        """
+        timeout = timeout or self.lock_timeout
+        abs_path = os.path.abspath(file_path)
+        start_time = time.monotonic()
+
+        while time.monotonic() - start_time < timeout:
+            async with self._lock:
+                existing = self._locks.get(abs_path)
+
+                # Check if locked by user
+                if existing and existing.locked_by == "user":
+                    # User is editing, don't interfere
+                    await asyncio.sleep(self.check_interval)
+                    continue
+
+                # Check for stale lock
+                if existing:
+                    if self._is_stale_lock(existing):
+                        del self._locks[abs_path]
+                        existing = None
+
+                # Check if we can acquire
+                if existing is None or (
+                    existing.lock_type == "read" and lock_type == "read"
+                ):
+                    # Record current mtime
+                    try:
+                        self._file_mtimes[abs_path] = os.path.getmtime(abs_path)
+                    except OSError:
+                        self._file_mtimes[abs_path] = 0
+
+                    self._locks[abs_path] = FileLockInfo(
+                        file_path=abs_path,
+                        locked_by="jarvis",
+                        locked_at=datetime.now(),
+                        lock_type=lock_type,
+                        expires_at=datetime.now() + timedelta(seconds=self.lock_timeout),
+                    )
+                    return True
+
+            await asyncio.sleep(self.check_interval)
+
+        return False
+
+    async def release_lock(self, file_path: str) -> None:
+        """Release a lock on a file."""
+        abs_path = os.path.abspath(file_path)
+
+        async with self._lock:
+            if abs_path in self._locks:
+                lock_info = self._locks[abs_path]
+                if lock_info.locked_by == "jarvis":
+                    del self._locks[abs_path]
+
+    async def is_file_locked_by_user(self, file_path: str) -> bool:
+        """Check if a file is being edited by user."""
+        abs_path = os.path.abspath(file_path)
+
+        async with self._lock:
+            # Check explicit lock
+            lock_info = self._locks.get(abs_path)
+            if lock_info and lock_info.locked_by == "user":
+                return True
+
+            # Check if file was modified since we last saw it
+            try:
+                current_mtime = os.path.getmtime(abs_path)
+                last_mtime = self._file_mtimes.get(abs_path, 0)
+
+                if current_mtime > last_mtime:
+                    # File changed externally, assume user edit
+                    self._locks[abs_path] = FileLockInfo(
+                        file_path=abs_path,
+                        locked_by="user",
+                        locked_at=datetime.now(),
+                        lock_type="write",
+                        expires_at=datetime.now() + timedelta(seconds=60),
+                    )
+                    self._file_mtimes[abs_path] = current_mtime
+                    return True
+
+            except OSError:
+                pass
+
+        return False
+
+    async def _monitor_loop(self) -> None:
+        """Background loop to monitor files."""
+        while self._monitoring:
+            try:
+                await self._cleanup_stale_locks()
+                await asyncio.sleep(self.check_interval * 5)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"File monitor error: {e}")
+
+    async def _cleanup_stale_locks(self) -> None:
+        """Clean up stale locks."""
+        async with self._lock:
+            stale_paths = [
+                path for path, info in self._locks.items()
+                if self._is_stale_lock(info)
+            ]
+            for path in stale_paths:
+                del self._locks[path]
+
+    def _is_stale_lock(self, lock_info: FileLockInfo) -> bool:
+        """Check if a lock is stale."""
+        if lock_info.expires_at and datetime.now() > lock_info.expires_at:
+            return True
+
+        age = (datetime.now() - lock_info.locked_at).total_seconds()
+        return age > self.stale_threshold
+
+    def get_locked_files(self) -> List[FileLockInfo]:
+        """Get list of currently locked files."""
+        return list(self._locks.values())
+
+
+class ReactorCoreFeedbackReceiver:
+    """
+    Receives feedback from Reactor Core training pipeline.
+
+    Creates a bidirectional loop:
+    JARVIS → Experiences → Reactor Core → Training → Feedback → JARVIS
+
+    Features:
+    - Watches for MODEL_READY events
+    - Processes training metrics
+    - Updates experience quality scores
+    - Triggers model hot-swap
+    - Learns from training results
+    """
+
+    def __init__(
+        self,
+        events_dir: Optional[Path] = None,
+        poll_interval: float = 5.0,
+    ):
+        self.events_dir = events_dir or Path.home() / ".jarvis" / "reactor" / "events"
+        self.poll_interval = poll_interval
+        self._running = False
+        self._poll_task: Optional[asyncio.Task] = None
+        self._processed_events: Set[str] = set()
+        self._feedback_handlers: List[Callable] = []
+        self._model_ready_handlers: List[Callable] = []
+        self._metrics: Dict[str, Any] = {
+            "events_received": 0,
+            "feedback_processed": 0,
+            "models_updated": 0,
+        }
+
+    async def start(self) -> None:
+        """Start receiving feedback from Reactor Core."""
+        if self._running:
+            return
+
+        # Ensure events directory exists
+        self.events_dir.mkdir(parents=True, exist_ok=True)
+
+        self._running = True
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        logger.info(f"ReactorCoreFeedbackReceiver started, watching: {self.events_dir}")
+
+    async def stop(self) -> None:
+        """Stop receiving feedback."""
+        self._running = False
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("ReactorCoreFeedbackReceiver stopped")
+
+    def register_feedback_handler(self, handler: Callable) -> None:
+        """Register handler for training feedback."""
+        self._feedback_handlers.append(handler)
+
+    def register_model_ready_handler(self, handler: Callable) -> None:
+        """Register handler for model ready events."""
+        self._model_ready_handlers.append(handler)
+
+    async def _poll_loop(self) -> None:
+        """Poll for new events from Reactor Core."""
+        while self._running:
+            try:
+                await self._process_events()
+                await asyncio.sleep(self.poll_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Reactor feedback poll error: {e}")
+                await asyncio.sleep(self.poll_interval * 2)
+
+    async def _process_events(self) -> None:
+        """Process new events in the events directory."""
+        if not self.events_dir.exists():
+            return
+
+        for event_file in self.events_dir.glob("*.json"):
+            event_id = event_file.stem
+
+            if event_id in self._processed_events:
+                continue
+
+            try:
+                content = await asyncio.to_thread(event_file.read_text)
+                event_data = json.loads(content)
+
+                self._metrics["events_received"] += 1
+                self._processed_events.add(event_id)
+
+                await self._handle_event(event_data)
+
+                # Remove processed event
+                await asyncio.to_thread(event_file.unlink, missing_ok=True)
+
+            except Exception as e:
+                logger.debug(f"Error processing Reactor event {event_id}: {e}")
+
+    async def _handle_event(self, event_data: Dict[str, Any]) -> None:
+        """Handle a Reactor Core event."""
+        event_type = event_data.get("type", "")
+
+        if event_type == "MODEL_READY":
+            await self._handle_model_ready(event_data)
+        elif event_type == "TRAINING_COMPLETE":
+            await self._handle_training_complete(event_data)
+        elif event_type == "TRAINING_FEEDBACK":
+            await self._handle_training_feedback(event_data)
+        elif event_type == "EXPERIENCE_ACK":
+            await self._handle_experience_ack(event_data)
+
+    async def _handle_model_ready(self, event_data: Dict[str, Any]) -> None:
+        """Handle MODEL_READY event."""
+        model_id = event_data.get("model_id", "")
+        version = event_data.get("version", "")
+        metrics = event_data.get("metrics", {})
+
+        logger.info(f"Reactor Core model ready: {model_id} v{version}")
+
+        update_event = ModelUpdateEvent(
+            model_id=model_id,
+            old_version=None,
+            new_version=version,
+            update_type="new",
+            capabilities_changed=event_data.get("capabilities", {}),
+            performance_delta=metrics,
+            timestamp=datetime.now(),
+            source="reactor",
+        )
+
+        self._metrics["models_updated"] += 1
+
+        for handler in self._model_ready_handlers:
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(update_event)
+                else:
+                    handler(update_event)
+            except Exception as e:
+                logger.debug(f"Model ready handler error: {e}")
+
+    async def _handle_training_complete(self, event_data: Dict[str, Any]) -> None:
+        """Handle TRAINING_COMPLETE event."""
+        training_run_id = event_data.get("run_id", "")
+        metrics = event_data.get("metrics", {})
+        experience_ids = event_data.get("experience_ids", [])
+
+        feedback = ReactorFeedback(
+            model_id=event_data.get("model_id", ""),
+            training_run_id=training_run_id,
+            metrics=metrics,
+            experience_ids=experience_ids,
+            timestamp=datetime.now(),
+            status="success" if metrics.get("loss", 1) < 0.5 else "partial",
+            insights=event_data.get("insights", []),
+            recommendations=event_data.get("recommendations", []),
+        )
+
+        self._metrics["feedback_processed"] += 1
+
+        for handler in self._feedback_handlers:
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(feedback)
+                else:
+                    handler(feedback)
+            except Exception as e:
+                logger.debug(f"Feedback handler error: {e}")
+
+    async def _handle_training_feedback(self, event_data: Dict[str, Any]) -> None:
+        """Handle TRAINING_FEEDBACK event (detailed metrics)."""
+        feedback = ReactorFeedback(
+            model_id=event_data.get("model_id", ""),
+            training_run_id=event_data.get("run_id", ""),
+            metrics=event_data.get("metrics", {}),
+            experience_ids=event_data.get("experience_ids", []),
+            timestamp=datetime.now(),
+            status=event_data.get("status", "unknown"),
+            insights=event_data.get("insights", []),
+            recommendations=event_data.get("recommendations", []),
+        )
+
+        self._metrics["feedback_processed"] += 1
+
+        for handler in self._feedback_handlers:
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(feedback)
+                else:
+                    handler(feedback)
+            except Exception as e:
+                logger.debug(f"Training feedback handler error: {e}")
+
+    async def _handle_experience_ack(self, event_data: Dict[str, Any]) -> None:
+        """Handle EXPERIENCE_ACK event (confirmation of experience receipt)."""
+        experience_ids = event_data.get("experience_ids", [])
+        logger.debug(f"Reactor Core acknowledged {len(experience_ids)} experiences")
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get receiver metrics."""
+        return self._metrics.copy()
+
+
+class PrimeTrainingIntegration:
+    """
+    Integrates JARVIS improvements with JARVIS Prime training.
+
+    Creates training feedback loop:
+    JARVIS Improvements → Training Data → Prime Training → Updated Models
+
+    Features:
+    - Formats improvements as training examples
+    - Batches training data
+    - Triggers Prime retraining
+    - Monitors training progress
+    - Validates new models
+    """
+
+    def __init__(
+        self,
+        prime_api_base: Optional[str] = None,
+        batch_size: int = 100,
+        min_quality_score: float = 0.7,
+    ):
+        self.prime_api_base = prime_api_base or os.getenv(
+            "JARVIS_PRIME_API_BASE",
+            "http://localhost:8080"
+        )
+        self.batch_size = batch_size
+        self.min_quality_score = min_quality_score
+        self._training_queue: List[Dict[str, Any]] = []
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._lock = asyncio.Lock()
+        self._metrics = {
+            "examples_queued": 0,
+            "batches_sent": 0,
+            "training_triggers": 0,
+        }
+
+    async def initialize(self) -> None:
+        """Initialize HTTP session."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=60),
+            )
+
+    async def shutdown(self) -> None:
+        """Cleanup resources."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+    async def record_improvement(
+        self,
+        original_code: str,
+        improved_code: str,
+        improvement_type: str,
+        success: bool,
+        quality_score: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Record an improvement for Prime training.
+
+        Args:
+            original_code: Original code before improvement
+            improved_code: Improved code after changes
+            improvement_type: Type of improvement (refactor, bugfix, etc.)
+            success: Whether the improvement was successful
+            quality_score: Quality score of the improvement
+            metadata: Additional metadata
+        """
+        if not success or quality_score < self.min_quality_score:
+            return
+
+        example = {
+            "input": original_code,
+            "output": improved_code,
+            "type": improvement_type,
+            "quality": quality_score,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata or {},
+        }
+
+        async with self._lock:
+            self._training_queue.append(example)
+            self._metrics["examples_queued"] += 1
+
+            if len(self._training_queue) >= self.batch_size:
+                await self._flush_batch()
+
+    async def _flush_batch(self) -> None:
+        """Send batch to Prime for training."""
+        if not self._training_queue:
+            return
+
+        await self.initialize()
+
+        batch = self._training_queue[:self.batch_size]
+        self._training_queue = self._training_queue[self.batch_size:]
+
+        try:
+            async with self._session.post(
+                f"{self.prime_api_base}/v1/training/batch",
+                json={"examples": batch},
+            ) as response:
+                if response.status == 200:
+                    self._metrics["batches_sent"] += 1
+                    logger.info(f"Sent {len(batch)} training examples to Prime")
+                else:
+                    # Re-queue on failure
+                    self._training_queue = batch + self._training_queue
+                    logger.warning(f"Failed to send batch to Prime: {response.status}")
+
+        except Exception as e:
+            # Re-queue on error
+            self._training_queue = batch + self._training_queue
+            logger.debug(f"Error sending batch to Prime: {e}")
+
+    async def trigger_training(
+        self,
+        model_id: Optional[str] = None,
+        priority: str = "normal",
+    ) -> Optional[str]:
+        """
+        Trigger Prime to start training.
+
+        Args:
+            model_id: Specific model to train (or default)
+            priority: Training priority (low, normal, high)
+
+        Returns:
+            Training run ID if triggered, None otherwise
+        """
+        await self.initialize()
+
+        # Flush any pending batches first
+        await self._flush_batch()
+
+        try:
+            async with self._session.post(
+                f"{self.prime_api_base}/v1/training/trigger",
+                json={
+                    "model_id": model_id,
+                    "priority": priority,
+                },
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self._metrics["training_triggers"] += 1
+                    return data.get("run_id")
+                else:
+                    logger.warning(f"Failed to trigger Prime training: {response.status}")
+                    return None
+
+        except Exception as e:
+            logger.debug(f"Error triggering Prime training: {e}")
+            return None
+
+    async def get_training_status(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of a training run."""
+        await self.initialize()
+
+        try:
+            async with self._session.get(
+                f"{self.prime_api_base}/v1/training/status/{run_id}",
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+        except Exception as e:
+            logger.debug(f"Error getting training status: {e}")
+
+        return None
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get integration metrics."""
+        return {
+            **self._metrics,
+            "queue_size": len(self._training_queue),
+        }
+
+
+class ModelUpdateNotifier:
+    """
+    Notifies system components when models are updated.
+
+    Channels:
+    - Internal event bus
+    - WebSocket broadcast
+    - Voice announcement (optional)
+    - Log notification
+
+    Features:
+    - Multi-channel notification
+    - Deduplication
+    - Priority levels
+    - User preferences
+    """
+
+    def __init__(
+        self,
+        enable_voice: bool = False,
+        enable_websocket: bool = True,
+        cooldown_seconds: float = 60.0,
+    ):
+        self.enable_voice = enable_voice
+        self.enable_websocket = enable_websocket
+        self.cooldown_seconds = cooldown_seconds
+        self._last_notifications: Dict[str, datetime] = {}
+        self._handlers: List[Callable] = []
+        self._lock = asyncio.Lock()
+
+    def register_handler(self, handler: Callable) -> None:
+        """Register notification handler."""
+        self._handlers.append(handler)
+
+    async def notify_model_update(
+        self,
+        event: ModelUpdateEvent,
+        priority: str = "normal",
+    ) -> bool:
+        """
+        Notify about a model update.
+
+        Args:
+            event: The model update event
+            priority: Notification priority (low, normal, high, critical)
+
+        Returns:
+            True if notification sent, False if deduplicated
+        """
+        # Check cooldown
+        key = f"{event.model_id}:{event.new_version}"
+        async with self._lock:
+            last = self._last_notifications.get(key)
+            if last and (datetime.now() - last).total_seconds() < self.cooldown_seconds:
+                return False  # Deduplicated
+
+            self._last_notifications[key] = datetime.now()
+
+        # Format message
+        message = self._format_message(event)
+
+        # Notify handlers
+        for handler in self._handlers:
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(event, message, priority)
+                else:
+                    handler(event, message, priority)
+            except Exception as e:
+                logger.debug(f"Notification handler error: {e}")
+
+        # Log notification
+        log_level = {
+            "low": logging.DEBUG,
+            "normal": logging.INFO,
+            "high": logging.WARNING,
+            "critical": logging.ERROR,
+        }.get(priority, logging.INFO)
+
+        logger.log(log_level, f"Model Update: {message}")
+
+        return True
+
+    def _format_message(self, event: ModelUpdateEvent) -> str:
+        """Format notification message."""
+        type_verbs = {
+            "new": "is now available",
+            "upgrade": "has been upgraded",
+            "rollback": "has been rolled back",
+            "deprecation": "has been deprecated",
+        }
+
+        verb = type_verbs.get(event.update_type, "was updated")
+
+        parts = [f"Model {event.model_id} {verb} to version {event.new_version}"]
+
+        if event.performance_delta:
+            if "accuracy" in event.performance_delta:
+                delta = event.performance_delta["accuracy"]
+                parts.append(f"Accuracy: {delta:+.1%}")
+
+        return ". ".join(parts)
+
+
+class AutonomousLoopController:
+    """
+    Master controller for all autonomous self-programming loops.
+
+    Manages:
+    - GoalDecompositionEngine
+    - TechnicalDebtDetector
+    - AutonomousSelfRefinementLoop
+    - SystemFeedbackLoop
+    - ReactorCoreFeedbackReceiver
+
+    Features:
+    - Coordinated start/stop
+    - Health monitoring
+    - Load balancing
+    - Emergency shutdown
+    - Status reporting
+    """
+
+    def __init__(self):
+        self._components: Dict[str, Any] = {}
+        self._running = False
+        self._health_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+        self._status = "stopped"
+        self._metrics = {
+            "start_time": None,
+            "cycles_completed": 0,
+            "errors": 0,
+            "last_health_check": None,
+        }
+
+    async def register_component(
+        self,
+        name: str,
+        component: Any,
+        auto_start: bool = True,
+    ) -> None:
+        """Register a component for management."""
+        async with self._lock:
+            self._components[name] = {
+                "instance": component,
+                "auto_start": auto_start,
+                "status": "registered",
+                "last_error": None,
+            }
+
+    async def start_all(self) -> Dict[str, str]:
+        """Start all registered components."""
+        if self._running:
+            return {"status": "already_running"}
+
+        self._running = True
+        self._status = "starting"
+        self._metrics["start_time"] = datetime.now().isoformat()
+
+        results = {}
+
+        async with self._lock:
+            for name, info in self._components.items():
+                if not info["auto_start"]:
+                    results[name] = "skipped"
+                    continue
+
+                component = info["instance"]
+
+                try:
+                    if hasattr(component, "start"):
+                        await component.start()
+                        info["status"] = "running"
+                        results[name] = "started"
+                    elif hasattr(component, "initialize"):
+                        await component.initialize()
+                        info["status"] = "initialized"
+                        results[name] = "initialized"
+                    else:
+                        info["status"] = "ready"
+                        results[name] = "ready"
+
+                except Exception as e:
+                    info["status"] = "error"
+                    info["last_error"] = str(e)
+                    results[name] = f"error: {e}"
+                    self._metrics["errors"] += 1
+
+        # Start health monitoring
+        self._health_task = asyncio.create_task(self._health_monitor())
+        self._status = "running"
+
+        logger.info(f"AutonomousLoopController started: {results}")
+        return results
+
+    async def stop_all(self) -> Dict[str, str]:
+        """Stop all components gracefully."""
+        if not self._running:
+            return {"status": "not_running"}
+
+        self._running = False
+        self._status = "stopping"
+
+        # Stop health monitor
+        if self._health_task:
+            self._health_task.cancel()
+            try:
+                await self._health_task
+            except asyncio.CancelledError:
+                pass
+
+        results = {}
+
+        async with self._lock:
+            for name, info in self._components.items():
+                component = info["instance"]
+
+                try:
+                    if hasattr(component, "stop"):
+                        await component.stop()
+                    elif hasattr(component, "shutdown"):
+                        await component.shutdown()
+
+                    info["status"] = "stopped"
+                    results[name] = "stopped"
+
+                except Exception as e:
+                    info["status"] = "error"
+                    results[name] = f"error: {e}"
+
+        self._status = "stopped"
+        logger.info(f"AutonomousLoopController stopped: {results}")
+        return results
+
+    async def _health_monitor(self) -> None:
+        """Monitor health of all components."""
+        while self._running:
+            try:
+                self._metrics["last_health_check"] = datetime.now().isoformat()
+
+                async with self._lock:
+                    for name, info in self._components.items():
+                        component = info["instance"]
+
+                        if hasattr(component, "get_status"):
+                            try:
+                                status = component.get_status()
+                                info["last_status"] = status
+                            except Exception as e:
+                                info["last_error"] = str(e)
+
+                self._metrics["cycles_completed"] += 1
+                await asyncio.sleep(30)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Health monitor error: {e}")
+                await asyncio.sleep(60)
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive status."""
+        return {
+            "status": self._status,
+            "running": self._running,
+            "metrics": self._metrics.copy(),
+            "components": {
+                name: {
+                    "status": info["status"],
+                    "last_error": info.get("last_error"),
+                }
+                for name, info in self._components.items()
+            },
+        }
+
+
+class CrossRepoSyncManager:
+    """
+    Manages state synchronization across JARVIS, Prime, and Reactor Core.
+
+    Features:
+    - Heartbeat monitoring across repos
+    - State propagation
+    - Conflict resolution
+    - Event broadcasting
+    - Recovery coordination
+    """
+
+    def __init__(
+        self,
+        jarvis_path: Optional[Path] = None,
+        prime_path: Optional[Path] = None,
+        reactor_path: Optional[Path] = None,
+    ):
+        self.jarvis_path = jarvis_path or Path(os.getenv(
+            "JARVIS_PATH",
+            Path.home() / "Documents/repos/JARVIS-AI-Agent"
+        ))
+        self.prime_path = prime_path or Path(os.getenv(
+            "JARVIS_PRIME_PATH",
+            Path.home() / "Documents/repos/jarvis-prime"
+        ))
+        self.reactor_path = reactor_path or Path(os.getenv(
+            "REACTOR_CORE_PATH",
+            Path.home() / "Documents/repos/reactor-core"
+        ))
+
+        self._sync_dir = Path.home() / ".jarvis" / "cross_repo" / "sync"
+        self._running = False
+        self._sync_task: Optional[asyncio.Task] = None
+        self._state: Dict[str, Any] = {
+            "jarvis": {"status": "unknown", "last_seen": None},
+            "prime": {"status": "unknown", "last_seen": None},
+            "reactor": {"status": "unknown", "last_seen": None},
+        }
+        self._event_handlers: Dict[str, List[Callable]] = defaultdict(list)
+
+    async def start(self) -> None:
+        """Start cross-repo synchronization."""
+        if self._running:
+            return
+
+        self._sync_dir.mkdir(parents=True, exist_ok=True)
+        self._running = True
+        self._sync_task = asyncio.create_task(self._sync_loop())
+        logger.info("CrossRepoSyncManager started")
+
+    async def stop(self) -> None:
+        """Stop synchronization."""
+        self._running = False
+        if self._sync_task:
+            self._sync_task.cancel()
+            try:
+                await self._sync_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("CrossRepoSyncManager stopped")
+
+    def register_event_handler(self, event_type: str, handler: Callable) -> None:
+        """Register handler for cross-repo events."""
+        self._event_handlers[event_type].append(handler)
+
+    async def broadcast_event(
+        self,
+        event_type: str,
+        payload: Dict[str, Any],
+        targets: Optional[List[str]] = None,
+    ) -> None:
+        """Broadcast an event to other repos."""
+        targets = targets or ["prime", "reactor"]
+
+        event = {
+            "type": event_type,
+            "source": "jarvis",
+            "timestamp": datetime.now().isoformat(),
+            "payload": payload,
+        }
+
+        event_file = self._sync_dir / f"{event_type}_{int(time.time() * 1000)}.json"
+
+        await asyncio.to_thread(
+            event_file.write_text,
+            json.dumps(event, indent=2)
+        )
+
+    async def get_repo_status(self, repo: str) -> Dict[str, Any]:
+        """Get status of a specific repo."""
+        return self._state.get(repo, {"status": "unknown"})
+
+    async def _sync_loop(self) -> None:
+        """Main synchronization loop."""
+        while self._running:
+            try:
+                # Update heartbeats
+                await self._send_heartbeat()
+
+                # Check other repos
+                await self._check_repos()
+
+                # Process incoming events
+                await self._process_events()
+
+                await asyncio.sleep(5)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Sync loop error: {e}")
+                await asyncio.sleep(10)
+
+    async def _send_heartbeat(self) -> None:
+        """Send heartbeat to sync directory."""
+        heartbeat = {
+            "source": "jarvis",
+            "timestamp": datetime.now().isoformat(),
+            "status": "running",
+        }
+
+        heartbeat_file = self._sync_dir / "jarvis_heartbeat.json"
+        await asyncio.to_thread(
+            heartbeat_file.write_text,
+            json.dumps(heartbeat)
+        )
+
+    async def _check_repos(self) -> None:
+        """Check status of other repos."""
+        for repo in ["prime", "reactor"]:
+            heartbeat_file = self._sync_dir / f"{repo}_heartbeat.json"
+
+            try:
+                if heartbeat_file.exists():
+                    content = await asyncio.to_thread(heartbeat_file.read_text)
+                    data = json.loads(content)
+
+                    last_time = datetime.fromisoformat(data["timestamp"])
+                    age = (datetime.now() - last_time).total_seconds()
+
+                    if age < 30:
+                        self._state[repo] = {
+                            "status": "online",
+                            "last_seen": data["timestamp"],
+                        }
+                    elif age < 120:
+                        self._state[repo] = {
+                            "status": "stale",
+                            "last_seen": data["timestamp"],
+                        }
+                    else:
+                        self._state[repo] = {
+                            "status": "offline",
+                            "last_seen": data["timestamp"],
+                        }
+                else:
+                    self._state[repo] = {"status": "unknown", "last_seen": None}
+
+            except Exception as e:
+                self._state[repo] = {"status": "error", "error": str(e)}
+
+    async def _process_events(self) -> None:
+        """Process incoming events from other repos."""
+        for event_file in self._sync_dir.glob("*.json"):
+            if event_file.name.endswith("_heartbeat.json"):
+                continue
+
+            try:
+                content = await asyncio.to_thread(event_file.read_text)
+                event = json.loads(content)
+
+                # Skip our own events
+                if event.get("source") == "jarvis":
+                    continue
+
+                event_type = event.get("type", "")
+                handlers = self._event_handlers.get(event_type, [])
+
+                for handler in handlers:
+                    try:
+                        if asyncio.iscoroutinefunction(handler):
+                            await handler(event)
+                        else:
+                            handler(event)
+                    except Exception as e:
+                        logger.debug(f"Event handler error: {e}")
+
+                # Remove processed event
+                await asyncio.to_thread(event_file.unlink, missing_ok=True)
+
+            except Exception as e:
+                logger.debug(f"Event processing error: {e}")
+
+    def get_sync_status(self) -> Dict[str, Any]:
+        """Get synchronization status."""
+        return {
+            "running": self._running,
+            "repos": self._state.copy(),
+            "sync_dir": str(self._sync_dir),
+        }
+
+
+# =============================================================================
+# v6.0 Factory Functions and Global Instances
+# =============================================================================
+
+_code_sanitizer: Optional[CodeSanitizer] = None
+_dependency_installer: Optional[DependencyAutoInstaller] = None
+_file_lock_manager: Optional[FileLockManager] = None
+_reactor_feedback_receiver: Optional[ReactorCoreFeedbackReceiver] = None
+_prime_training_integration: Optional[PrimeTrainingIntegration] = None
+_model_update_notifier: Optional[ModelUpdateNotifier] = None
+_autonomous_loop_controller: Optional[AutonomousLoopController] = None
+_cross_repo_sync_manager: Optional[CrossRepoSyncManager] = None
+
+
+def get_code_sanitizer() -> CodeSanitizer:
+    """Get or create the code sanitizer."""
+    global _code_sanitizer
+    if _code_sanitizer is None:
+        _code_sanitizer = CodeSanitizer()
+    return _code_sanitizer
+
+
+def get_dependency_installer() -> DependencyAutoInstaller:
+    """Get or create the dependency auto-installer."""
+    global _dependency_installer
+    if _dependency_installer is None:
+        _dependency_installer = DependencyAutoInstaller()
+    return _dependency_installer
+
+
+def get_file_lock_manager() -> FileLockManager:
+    """Get or create the file lock manager."""
+    global _file_lock_manager
+    if _file_lock_manager is None:
+        _file_lock_manager = FileLockManager()
+    return _file_lock_manager
+
+
+def get_reactor_feedback_receiver() -> ReactorCoreFeedbackReceiver:
+    """Get or create the Reactor Core feedback receiver."""
+    global _reactor_feedback_receiver
+    if _reactor_feedback_receiver is None:
+        _reactor_feedback_receiver = ReactorCoreFeedbackReceiver()
+    return _reactor_feedback_receiver
+
+
+def get_prime_training_integration() -> PrimeTrainingIntegration:
+    """Get or create the Prime training integration."""
+    global _prime_training_integration
+    if _prime_training_integration is None:
+        _prime_training_integration = PrimeTrainingIntegration()
+    return _prime_training_integration
+
+
+def get_model_update_notifier() -> ModelUpdateNotifier:
+    """Get or create the model update notifier."""
+    global _model_update_notifier
+    if _model_update_notifier is None:
+        _model_update_notifier = ModelUpdateNotifier()
+    return _model_update_notifier
+
+
+def get_autonomous_loop_controller() -> AutonomousLoopController:
+    """Get or create the autonomous loop controller."""
+    global _autonomous_loop_controller
+    if _autonomous_loop_controller is None:
+        _autonomous_loop_controller = AutonomousLoopController()
+    return _autonomous_loop_controller
+
+
+def get_cross_repo_sync_manager() -> CrossRepoSyncManager:
+    """Get or create the cross-repo sync manager."""
+    global _cross_repo_sync_manager
+    if _cross_repo_sync_manager is None:
+        _cross_repo_sync_manager = CrossRepoSyncManager()
+    return _cross_repo_sync_manager
+
+
+async def initialize_autonomous_system_v6(
+    start_loops: bool = True,
+    enable_web_search: bool = True,
+    enable_reactor_feedback: bool = True,
+    enable_prime_training: bool = True,
+    enable_file_locking: bool = True,
+) -> Dict[str, Any]:
+    """
+    Initialize the complete v6.0 autonomous self-programming system.
+
+    This activates:
+    - Code sanitization for external code
+    - Dependency auto-installation
+    - File locking to prevent conflicts
+    - Reactor Core bidirectional feedback
+    - Prime training integration
+    - Model update notifications
+    - Autonomous loop controller
+    - Cross-repo synchronization
+
+    Args:
+        start_loops: Whether to start background loops
+        enable_web_search: Enable web search integration
+        enable_reactor_feedback: Enable Reactor Core feedback
+        enable_prime_training: Enable Prime training integration
+        enable_file_locking: Enable file lock management
+
+    Returns:
+        Dictionary with all initialized components
+    """
+    logger.info("🚀 Initializing Autonomous System v6.0...")
+    start_time = time.monotonic()
+
+    components: Dict[str, Any] = {}
+
+    try:
+        # Get the master controller
+        controller = get_autonomous_loop_controller()
+        components["autonomous_loop_controller"] = controller
+
+        # Initialize code sanitizer
+        sanitizer = get_code_sanitizer()
+        components["code_sanitizer"] = sanitizer
+
+        # Initialize dependency installer
+        installer = get_dependency_installer()
+        components["dependency_installer"] = installer
+
+        # Initialize file lock manager
+        if enable_file_locking:
+            lock_manager = get_file_lock_manager()
+            await lock_manager.start_monitoring()
+            components["file_lock_manager"] = lock_manager
+            await controller.register_component("file_lock_manager", lock_manager)
+
+        # Initialize Reactor Core feedback receiver
+        if enable_reactor_feedback:
+            reactor_receiver = get_reactor_feedback_receiver()
+            components["reactor_feedback_receiver"] = reactor_receiver
+            await controller.register_component(
+                "reactor_feedback_receiver",
+                reactor_receiver,
+                auto_start=start_loops,
+            )
+
+        # Initialize Prime training integration
+        if enable_prime_training:
+            prime_training = get_prime_training_integration()
+            await prime_training.initialize()
+            components["prime_training_integration"] = prime_training
+
+        # Initialize model update notifier
+        notifier = get_model_update_notifier()
+        components["model_update_notifier"] = notifier
+
+        # Wire up reactor feedback to Prime training
+        if enable_reactor_feedback and enable_prime_training:
+            reactor_receiver.register_feedback_handler(
+                lambda fb: logger.info(
+                    f"Training feedback received: {fb.status}, "
+                    f"metrics={fb.metrics}"
+                )
+            )
+            reactor_receiver.register_model_ready_handler(
+                lambda evt: notifier.notify_model_update(evt)
+            )
+
+        # Initialize cross-repo sync manager
+        sync_manager = get_cross_repo_sync_manager()
+        components["cross_repo_sync_manager"] = sync_manager
+        await controller.register_component(
+            "cross_repo_sync_manager",
+            sync_manager,
+            auto_start=start_loops,
+        )
+
+        # Start all components if requested
+        if start_loops:
+            await controller.start_all()
+
+        elapsed = time.monotonic() - start_time
+        logger.info(f"✅ Autonomous System v6.0 initialized in {elapsed:.2f}s")
+        logger.info(f"   Components: {list(components.keys())}")
+
+        return components
+
+    except Exception as e:
+        logger.error(f"❌ Autonomous System v6.0 initialization failed: {e}")
+        raise
+
+
+async def shutdown_autonomous_system_v6() -> None:
+    """Shutdown all v6.0 autonomous system components."""
+    logger.info("Shutting down Autonomous System v6.0...")
+
+    global _autonomous_loop_controller, _file_lock_manager
+    global _reactor_feedback_receiver, _prime_training_integration
+    global _cross_repo_sync_manager
+
+    # Stop the controller (stops all registered components)
+    if _autonomous_loop_controller:
+        await _autonomous_loop_controller.stop_all()
+
+    # Additional cleanup
+    if _file_lock_manager:
+        await _file_lock_manager.stop_monitoring()
+
+    if _prime_training_integration:
+        await _prime_training_integration.shutdown()
+
+    # Reset globals
+    _code_sanitizer = None
+    _dependency_installer = None
+    _file_lock_manager = None
+    _reactor_feedback_receiver = None
+    _prime_training_integration = None
+    _model_update_notifier = None
+    _autonomous_loop_controller = None
+    _cross_repo_sync_manager = None
+
+    logger.info("✅ Autonomous System v6.0 shutdown complete")

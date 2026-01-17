@@ -13949,11 +13949,41 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                         if autonomous_loops:
                             print(f"  {TerminalUI.YELLOW}        ├─ AutonomousSelfRefinementLoop: RUNNING{TerminalUI.RESET}")
-                            print(f"  {TerminalUI.YELLOW}        └─ SystemFeedbackLoop: RUNNING{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.YELLOW}        ├─ SystemFeedbackLoop: RUNNING{TerminalUI.RESET}")
                             self.logger.warning("[v4.0] ⚠️ Autonomous improvement loops ENABLED")
                         else:
                             print(f"  {TerminalUI.CYAN}        ├─ AutonomousSelfRefinementLoop: Ready (not started){TerminalUI.RESET}")
-                            print(f"  {TerminalUI.CYAN}        └─ SystemFeedbackLoop: Ready (not started){TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ SystemFeedbackLoop: Ready (not started){TerminalUI.RESET}")
+
+                        # v6.0: Display advanced autonomous system components
+                        v6_components = [
+                            ("code_sanitizer", "Web code validation & security"),
+                            ("dependency_installer", "Auto-install missing packages"),
+                            ("file_lock_manager", "User edit conflict detection"),
+                            ("reactor_feedback_receiver", "Bidirectional Reactor Core sync"),
+                            ("prime_training_integration", "JARVIS Prime training feedback"),
+                            ("model_update_notifier", "Model update notifications"),
+                            ("autonomous_loop_controller", "Unified loop management"),
+                            ("cross_repo_sync_manager", "Cross-repo state synchronization"),
+                        ]
+
+                        v6_active = 0
+                        for comp_name, desc in v6_components:
+                            if comp_name in self._autonomous_components:
+                                v6_active += 1
+                                self.logger.info(f"[v6.0]   ✅ {comp_name}: {desc}")
+
+                        if v6_active > 0:
+                            print(f"  {TerminalUI.GREEN}    ├─ v6.0 Advanced Autonomous System: {v6_active} components{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ CodeSanitizer: Web code security validation{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ DependencyAutoInstaller: Missing package detection{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ FileLockManager: User edit conflict prevention{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ ReactorCoreFeedbackReceiver: Bidirectional training sync{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ PrimeTrainingIntegration: Model improvement feedback{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ ModelUpdateNotifier: Real-time model notifications{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        ├─ AutonomousLoopController: Unified loop management{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        └─ CrossRepoSyncManager: JARVIS/Prime/Reactor sync{TerminalUI.RESET}")
+                            self.logger.info(f"[v6.0] ✅ Advanced Autonomous System: {v6_active}/8 components active")
 
                         # Get cross-repo integration status
                         cross_repo = get_cross_repo_autonomous_integration()
