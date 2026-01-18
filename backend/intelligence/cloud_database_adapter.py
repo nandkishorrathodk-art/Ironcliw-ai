@@ -502,11 +502,20 @@ class CloudDatabaseAdapter:
                 # v82.0: Connection-level errors - graceful fallback
                 logger.debug(f"[v82.0] Cloud SQL connection failed ({type(e).__name__}), falling back to SQLite")
                 using_fallback = True
+            except asyncio.InvalidStateError as e:
+                # v15.0: TLS protocol state error - connection was corrupted
+                # This happens when asyncpg's TLS upgrade receives data after connection finalized
+                logger.debug(f"[v15.0] TLS protocol state error ({e}), falling back to SQLite")
+                using_fallback = True
             except Exception as e:
                 # v82.0: Any other database error - try fallback
                 error_type = type(e).__name__
-                if any(x in str(e).lower() for x in ["connection", "timeout", "refused", "pool", "cancel"]):
-                    logger.debug(f"[v82.0] Cloud SQL error ({error_type}), falling back to SQLite")
+                error_str = str(e).lower()
+                # v15.0: Added "invalid state", "tls", "protocol" to fallback triggers
+                fallback_triggers = ["connection", "timeout", "refused", "pool", "cancel",
+                                     "invalid state", "tls", "protocol", "transport"]
+                if any(x in error_str for x in fallback_triggers):
+                    logger.debug(f"[v15.0] Cloud SQL error ({error_type}: {e}), falling back to SQLite")
                     using_fallback = True
                 else:
                     raise  # Re-raise non-connection errors

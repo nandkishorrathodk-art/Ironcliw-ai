@@ -1573,6 +1573,23 @@ class CloudSQLConnectionManager:
 
             raise
 
+        except asyncio.InvalidStateError as e:
+            # v15.0: TLS protocol state error - connection was corrupted during handshake
+            # This happens when asyncpg's TLS upgrade receives data after connection finalized
+            # Usually caused by connection being reused while another operation is pending
+            logger.warning(f"⚠️ TLS protocol state error: {e}")
+            self.error_count += 1
+            self.metrics.total_errors += 1
+            self.metrics.last_error = datetime.now()
+            self.last_error = f"TLS InvalidStateError: {e}"
+            self.last_error_time = datetime.now()
+            if self._circuit_breaker:
+                await self._circuit_breaker.record_failure_async()
+
+            # v15.0: Force pool recreation on TLS errors to clear corrupted connections
+            asyncio.create_task(self._recreate_pool_on_tls_error())
+            raise
+
         except Exception as e:
             # Suppress connection errors during startup mode (before proxy is ready)
             if str(e) and str(e) != "0":
@@ -1583,6 +1600,8 @@ class CloudSQLConnectionManager:
             self.error_count += 1
             self.metrics.total_errors += 1
             self.metrics.last_error = datetime.now()
+            self.last_error = str(e)
+            self.last_error_time = datetime.now()
             if self._circuit_breaker:
                 await self._circuit_breaker.record_failure_async()
 
@@ -1665,6 +1684,73 @@ class CloudSQLConnectionManager:
         ]
         for cid in to_remove[:100]:
             del self._checkouts[cid]
+
+    async def _recreate_pool_on_tls_error(self) -> None:
+        """
+        v15.0: Recreate connection pool after TLS protocol error.
+
+        TLS InvalidStateError indicates corrupted connection state, usually due to:
+        - Connection being reused while TLS handshake still pending
+        - Race condition in connection initialization
+        - Network interruption during TLS upgrade
+
+        This method safely closes all existing connections and creates a fresh pool.
+        """
+        if self.is_shutting_down:
+            return
+
+        async with self._pool_lock:
+            try:
+                logger.info("🔄 [v15.0] Recreating connection pool due to TLS error...")
+
+                # Close existing pool if any
+                if self.pool:
+                    old_pool = self.pool
+                    self.pool = None
+
+                    # Give active connections a moment to complete
+                    await asyncio.sleep(0.5)
+
+                    try:
+                        # Terminate all connections forcefully
+                        old_pool.terminate()
+                        await asyncio.wait_for(old_pool.close(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        logger.warning("⚠️ [v15.0] Pool close timeout, connections may be leaked")
+                    except Exception as e:
+                        logger.debug(f"[v15.0] Pool close error (ignored): {e}")
+
+                # Wait for any pending TLS operations to settle
+                await asyncio.sleep(1.0)
+
+                # Create new pool with same config
+                if self.db_config:
+                    self.pool = await asyncpg.create_pool(
+                        host=self.db_config.get('host', '127.0.0.1'),
+                        port=self.db_config.get('port', 5432),
+                        database=self.db_config.get('database', 'jarvis_learning'),
+                        user=self.db_config.get('user', 'jarvis'),
+                        password=self.db_config.get('password'),
+                        min_size=1,
+                        max_size=self._conn_config.max_pool_size,
+                        command_timeout=self._conn_config.command_timeout,
+                        timeout=self._conn_config.connection_timeout,
+                    )
+                    logger.info("✅ [v15.0] Connection pool recreated successfully")
+
+                    # Reset error counters
+                    self.error_count = 0
+                    self.metrics.total_errors = 0
+                    if self._circuit_breaker:
+                        self._circuit_breaker.reset()
+
+            except Exception as e:
+                logger.error(f"❌ [v15.0] Failed to recreate pool: {e}")
+                # Open circuit breaker to prevent further attempts
+                if self._circuit_breaker:
+                    await self._circuit_breaker.record_failure_async()
+                    await self._circuit_breaker.record_failure_async()
+                    await self._circuit_breaker.record_failure_async()
 
     async def execute(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> str:
         """

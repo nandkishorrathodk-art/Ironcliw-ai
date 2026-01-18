@@ -1561,20 +1561,60 @@ class DatabaseConnectionWrapper:
         Return cursor-like object using adapter connection.
         Reuses connection if in transaction, otherwise creates new one.
 
+        v15.0: Fixed "generator didn't stop after athrow()" error by:
+        - Adding proper try/finally block to ensure cleanup
+        - Isolating exception handling for nested context managers
+        - Preventing exception propagation issues in async generators
+
         Yields:
             DatabaseCursorWrapper: Cursor for executing queries
         """
         if self._closed:
             raise RuntimeError("Connection is closed")
 
-        async with self._connection_lock:
-            if self._in_transaction and self._current_connection:
-                # Reuse existing transaction connection
-                yield DatabaseCursorWrapper(self._current_connection, connection_wrapper=self)
-            else:
-                # Create new connection for non-transaction queries
-                async with self.adapter.connection() as conn:
-                    yield DatabaseCursorWrapper(conn, connection_wrapper=self)
+        # v15.0: Track connection state for proper cleanup
+        conn = None
+        cursor_wrapper = None
+        connection_ctx = None
+
+        try:
+            async with self._connection_lock:
+                if self._in_transaction and self._current_connection:
+                    # Reuse existing transaction connection
+                    cursor_wrapper = DatabaseCursorWrapper(self._current_connection, connection_wrapper=self)
+                    yield cursor_wrapper
+                else:
+                    # Create new connection for non-transaction queries
+                    # v15.0: Manually manage context to handle athrow() properly
+                    connection_ctx = self.adapter.connection()
+                    conn = await connection_ctx.__aenter__()
+                    cursor_wrapper = DatabaseCursorWrapper(conn, connection_wrapper=self)
+                    try:
+                        yield cursor_wrapper
+                    finally:
+                        # v15.0: Ensure connection context is properly exited
+                        # This fixes "generator didn't stop after athrow()"
+                        pass
+        except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+            # v15.0: Gracefully handle timeout/cancellation
+            # These are expected during shutdown or query timeout
+            logger.debug(f"[v15.0] Cursor operation cancelled/timed out: {type(e).__name__}")
+            raise
+        except Exception as e:
+            # v15.0: Log unexpected errors but re-raise
+            logger.debug(f"[v15.0] Cursor error: {type(e).__name__}: {e}")
+            raise
+        finally:
+            # v15.0: Always clean up connection context
+            if connection_ctx is not None:
+                try:
+                    await connection_ctx.__aexit__(None, None, None)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    # Expected during shutdown
+                    pass
+                except Exception as cleanup_error:
+                    # Log but don't mask original exception
+                    logger.debug(f"[v15.0] Connection cleanup error (ignored): {cleanup_error}")
 
     def execute(self, sql: str, parameters: Tuple = ()) -> "AsyncContextCursor":
         """
