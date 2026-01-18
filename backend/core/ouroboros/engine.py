@@ -1798,10 +1798,62 @@ Return ONLY the corrected Python code, no explanations.
         - Finds related files through call/import graph
         - Includes blast radius warnings
         - Discovers dependencies mentioned in goal
+
+        v3.0 "Smart Context": Uses SmartContextSelector for surgical extraction:
+        - Extracts ONLY relevant functions/classes (not full files)
+        - Resolves dependencies automatically
+        - Enforces token budgets for efficient LLM usage
         """
         context_parts = []
 
-        # v2.0: Use Oracle for structural context if available
+        # v3.0: Try SmartContextSelector first for surgical context
+        smart_context_success = False
+        try:
+            from backend.core.smart_context import get_smart_context
+
+            smart_selector = await get_smart_context()
+
+            # Build combined query from goal + target file
+            smart_query = f"{request.goal} in {request.target_file.name}"
+
+            # Get surgically extracted context
+            context_package = await smart_selector.get_relevant_context(
+                query=smart_query,
+                max_tokens=4000,  # Surgical budget
+                target_files=request.context_files or None,
+                include_dependencies=True,
+            )
+
+            if context_package.chunk_count > 0:
+                smart_context_success = True
+                self._metrics["smart_context_queries"] = self._metrics.get("smart_context_queries", 0) + 1
+
+                # Add smart context header
+                context_parts.append(
+                    f"## Smart Context ({context_package.chunk_count} chunks, "
+                    f"{context_package.total_tokens} tokens)\n\n"
+                )
+
+                # Add the formatted context
+                context_parts.append(context_package.formatted_context)
+
+                # Note any missing dependencies
+                if context_package.missing_dependencies:
+                    context_parts.append("\n### Note: Some dependencies couldn't fit in context\n")
+                    for dep in context_package.missing_dependencies[:5]:
+                        context_parts.append(f"- {dep}\n")
+
+                self.logger.info(
+                    f"[v3.0] Smart context: {context_package.chunk_count} chunks, "
+                    f"{context_package.total_tokens} tokens in {context_package.selection_time_ms:.1f}ms"
+                )
+
+        except ImportError:
+            self.logger.debug("SmartContextSelector not available, using fallback")
+        except Exception as e:
+            self.logger.debug(f"Smart context failed: {e}, using fallback")
+
+        # v2.0: Use Oracle for structural context (complementary to smart context)
         oracle_context = None
         if self._oracle_integration:
             try:
@@ -1813,34 +1865,26 @@ Return ONLY the corrected Python code, no explanations.
 
                 # Add structural insights
                 if oracle_context.get("found"):
-                    context_parts.append("## Structural Analysis (from The Oracle)\n")
+                    context_parts.append("\n## Structural Analysis (from The Oracle)\n")
 
                     # Blast radius warning
                     risk = oracle_context.get("risk_assessment", {})
                     if risk.get("risk_level") in ("high", "critical"):
                         self._metrics["blast_radius_warnings"] += 1
                         context_parts.append(
-                            f"WARNING: {risk.get('risk_level', 'unknown').upper()} RISK change!\n"
+                            f"⚠️ **{risk.get('risk_level', 'unknown').upper()} RISK**\n"
                             f"This modification affects {risk.get('total_affected', 0)} other components.\n"
                             f"Recommendation: {risk.get('recommendation', 'Proceed with caution.')}\n\n"
                         )
 
-                    # Related files from structural analysis
-                    related_files = oracle_context.get("related_files", [])
-                    if related_files:
-                        context_parts.append(f"### Structurally Related Files\n")
-                        context_parts.append(f"The following files are connected through imports/calls:\n")
-                        for f in related_files[:5]:
-                            context_parts.append(f"- {f}\n")
-                        context_parts.append("\n")
-
-                    # Dependencies
-                    deps = oracle_context.get("dependencies", [])
-                    if deps:
-                        context_parts.append(f"### Dependencies (this file imports/calls)\n")
-                        for dep in deps[:5]:
-                            context_parts.append(f"- {dep.get('name', 'unknown')}\n")
-                        context_parts.append("\n")
+                    # Only show related files if smart context didn't already include them
+                    if not smart_context_success:
+                        related_files = oracle_context.get("related_files", [])
+                        if related_files:
+                            context_parts.append(f"### Structurally Related Files\n")
+                            for f in related_files[:5]:
+                                context_parts.append(f"- {f}\n")
+                            context_parts.append("\n")
 
                     # Dependents (what might break)
                     dependents = oracle_context.get("dependents", [])
@@ -1853,15 +1897,21 @@ Return ONLY the corrected Python code, no explanations.
             except Exception as e:
                 self.logger.debug(f"Oracle context failed: {e}")
 
-        # Include explicitly specified context files
-        for context_file in request.context_files:
-            if context_file.exists():
-                content = await self._read_file(context_file)
-                context_parts.append(f"### {context_file.name}\n```python\n{content}\n```\n")
+        # Fallback: Include explicitly specified context files (only if smart context failed)
+        if not smart_context_success:
+            for context_file in request.context_files:
+                if context_file.exists():
+                    content = await self._read_file(context_file)
+                    # Truncate if too long
+                    if len(content) > 8000:
+                        content = content[:8000] + "\n... [truncated]"
+                    context_parts.append(f"### {context_file.name}\n```python\n{content}\n```\n")
 
         # If test file specified, include it
         if request.test_file and request.test_file.exists():
             content = await self._read_file(request.test_file)
+            if len(content) > 4000:
+                content = content[:4000] + "\n... [truncated]"
             context_parts.append(f"### Test File: {request.test_file.name}\n```python\n{content}\n```\n")
 
         # v2.0: Auto-discover test files using Oracle

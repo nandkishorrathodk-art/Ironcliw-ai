@@ -1455,6 +1455,158 @@ class TheOracle:
             "cache_exists": OracleConfig.GRAPH_CACHE_FILE.exists(),
         }
 
+    # =========================================================================
+    # v1.1: Smart Context Integration
+    # =========================================================================
+
+    async def query_relevant_nodes(
+        self,
+        query: str,
+        limit: int = 20,
+        node_types: Optional[List[NodeType]] = None,
+    ) -> List[NodeID]:
+        """
+        v1.1: Query for nodes relevant to a natural language query.
+
+        This powers the SmartContextSelector for surgical context extraction.
+
+        Algorithm:
+        1. Extract keywords from query
+        2. Find nodes matching keywords (name, file, docstring)
+        3. Include blast radius nodes for matched nodes
+        4. Score and rank by relevance
+
+        Args:
+            query: Natural language query (e.g., "authentication login bug")
+            limit: Maximum nodes to return
+            node_types: Filter to specific types (None = all)
+
+        Returns:
+            List of relevant NodeIDs sorted by relevance
+        """
+        if not self._running:
+            await self.initialize()
+
+        # Extract keywords from query
+        keywords = self._extract_keywords(query)
+        if not keywords:
+            return []
+
+        matched_nodes: Dict[NodeID, float] = {}  # node -> score
+
+        # Phase 1: Direct name matches (highest weight)
+        for keyword in keywords:
+            nodes = self._graph.find_nodes_by_name(keyword, fuzzy=True)
+            for node in nodes:
+                if node_types and node.node_type not in node_types:
+                    continue
+                # Score based on match quality
+                name_lower = node.name.lower()
+                keyword_lower = keyword.lower()
+                if name_lower == keyword_lower:
+                    matched_nodes[node] = matched_nodes.get(node, 0) + 1.0
+                elif keyword_lower in name_lower:
+                    matched_nodes[node] = matched_nodes.get(node, 0) + 0.7
+                else:
+                    matched_nodes[node] = matched_nodes.get(node, 0) + 0.3
+
+        # Phase 2: File path matches
+        for keyword in keywords:
+            for repo, repo_path in self._repos.items():
+                nodes = self._graph.find_nodes_in_file(keyword)
+                for node in nodes:
+                    if node_types and node.node_type not in node_types:
+                        continue
+                    matched_nodes[node] = matched_nodes.get(node, 0) + 0.5
+
+        # Phase 3: Add blast radius for top matches (connected nodes)
+        top_matches = sorted(matched_nodes.items(), key=lambda x: x[1], reverse=True)[:5]
+        for node, score in top_matches:
+            # Get direct dependencies and dependents
+            deps = self._graph.get_dependencies(node)
+            for dep in deps[:3]:  # Limit expansion
+                if dep not in matched_nodes:
+                    matched_nodes[dep] = score * 0.5
+
+            dependents = self._graph.get_dependents(node)
+            for dependent in dependents[:3]:
+                if dependent not in matched_nodes:
+                    matched_nodes[dependent] = score * 0.4
+
+        # Phase 4: Sort and limit
+        sorted_nodes = sorted(
+            matched_nodes.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:limit]
+
+        return [node for node, score in sorted_nodes]
+
+    def _extract_keywords(self, query: str) -> List[str]:
+        """
+        Extract meaningful keywords from a query.
+
+        Filters out common stop words and splits on non-alpha characters.
+        """
+        import re
+
+        # Common stop words
+        stop_words = {
+            "the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or",
+            "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+            "do", "does", "did", "will", "would", "could", "should", "may", "might",
+            "must", "shall", "can", "need", "it", "its", "this", "that", "these",
+            "those", "i", "you", "he", "she", "we", "they", "what", "which", "who",
+            "when", "where", "why", "how", "fix", "bug", "error", "issue", "problem",
+            "add", "update", "change", "modify", "create", "delete", "remove",
+        }
+
+        # Split and clean
+        words = re.split(r'[^a-zA-Z0-9_]+', query.lower())
+
+        # Filter
+        keywords = [
+            w for w in words
+            if len(w) >= 2 and w not in stop_words
+        ]
+
+        # Deduplicate while preserving order
+        seen = set()
+        result = []
+        for kw in keywords:
+            if kw not in seen:
+                seen.add(kw)
+                result.append(kw)
+
+        return result
+
+    async def get_relevant_files_for_query(
+        self,
+        query: str,
+        limit: int = 20,
+    ) -> List[Path]:
+        """
+        v1.1: Get file paths relevant to a query.
+
+        Convenience method for SmartContextSelector.
+        """
+        nodes = await self.query_relevant_nodes(query, limit=limit * 2)
+
+        # Extract unique file paths
+        files = []
+        seen = set()
+        for node in nodes:
+            file_path = node.file_path
+            if file_path and file_path not in seen and file_path != "<external>":
+                seen.add(file_path)
+                # Resolve relative to repo
+                repo_path = self._repos.get(node.repo, Path.cwd())
+                full_path = repo_path / file_path
+                if full_path.exists():
+                    files.append(full_path)
+
+        return files[:limit]
+
 
 # =============================================================================
 # GLOBAL INSTANCE
