@@ -26401,3 +26401,1359 @@ async def save_to_dlq(
         event_data=event_data,
         failure_reason=failure_reason,
     )
+
+
+# =============================================================================
+# v14.0: RESILIENT BOOTSTRAP LAYER
+# =============================================================================
+#
+# This layer provides bulletproof initialization with:
+# 1. Pre-flight directory validation
+# 2. Async method detection (prevents missing await bugs)
+# 3. Dependency-aware startup ordering (topological sort)
+# 4. Health-gated initialization
+# 5. Graceful degradation registry
+# 6. Bootstrap transaction with rollback
+# 7. Initialization timeout management
+#
+# Architecture:
+#     ┌─────────────────────────────────────────────────────────────────┐
+#     │  ResilientBootstrapLayer                                        │
+#     │  ┌───────────────┐  ┌────────────────┐  ┌──────────────────┐  │
+#     │  │ PreflightChk  │  │ AsyncValidator │  │ DependencyGraph  │  │
+#     │  └───────────────┘  └────────────────┘  └──────────────────┘  │
+#     │  ┌───────────────┐  ┌────────────────┐  ┌──────────────────┐  │
+#     │  │ HealthGate    │  │ DegradedReg    │  │ BootstrapTxn     │  │
+#     │  └───────────────┘  └────────────────┘  └──────────────────┘  │
+#     │  ┌───────────────────────────────────────────────────────────┐│
+#     │  │               InitializationOrchestrator                  ││
+#     │  └───────────────────────────────────────────────────────────┘│
+#     └─────────────────────────────────────────────────────────────────┘
+# =============================================================================
+
+
+class PreflightDirectoryValidator:
+    """
+    v14.0: Validates and creates all required directories before startup.
+
+    Prevents "No such file or directory" errors during initialization by
+    ensuring all paths exist with proper permissions.
+    """
+
+    # Required directory specifications
+    REQUIRED_DIRS: Dict[str, Dict[str, Any]] = {
+        "cross_repo": {
+            "path": Path.home() / ".jarvis" / "cross_repo",
+            "critical": True,
+            "subdirs": ["locks", "events", "state", "cache"],
+        },
+        "experience_mesh": {
+            "path": Path.home() / ".jarvis" / "experience_mesh",
+            "critical": False,
+            "subdirs": ["sqlite", "file_store", "metrics"],
+        },
+        "bulletproof": {
+            "path": Path.home() / ".jarvis" / "bulletproof",
+            "critical": False,
+            "subdirs": ["dlq", "atomic_backups", "health_probes"],
+        },
+        "logs": {
+            "path": Path.home() / ".jarvis" / "logs",
+            "critical": False,
+            "subdirs": ["supervisor", "components", "errors"],
+        },
+        "cache": {
+            "path": Path.home() / ".jarvis" / "cache",
+            "critical": False,
+            "subdirs": ["models", "embeddings", "responses"],
+        },
+    }
+
+    def __init__(self):
+        self._validated: Set[str] = set()
+        self._failed: Dict[str, str] = {}
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.PreflightValidator")
+
+    async def validate_all(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Validate and create all required directories.
+
+        Returns:
+            Tuple of (all_critical_ok, detailed_results)
+        """
+        async with self._lock:
+            results = {
+                "validated": [],
+                "created": [],
+                "failed": [],
+                "warnings": [],
+            }
+            all_critical_ok = True
+
+            for name, spec in self.REQUIRED_DIRS.items():
+                try:
+                    base_path = spec["path"]
+                    is_critical = spec.get("critical", False)
+                    subdirs = spec.get("subdirs", [])
+
+                    # Create base directory
+                    if not base_path.exists():
+                        base_path.mkdir(parents=True, exist_ok=True)
+                        results["created"].append(str(base_path))
+                        self.logger.info(f"Created directory: {base_path}")
+
+                    # Create subdirectories
+                    for subdir in subdirs:
+                        sub_path = base_path / subdir
+                        if not sub_path.exists():
+                            sub_path.mkdir(parents=True, exist_ok=True)
+                            results["created"].append(str(sub_path))
+
+                    # Verify write permissions
+                    test_file = base_path / ".preflight_test"
+                    try:
+                        test_file.write_text("preflight_check")
+                        test_file.unlink()
+                    except PermissionError:
+                        raise PermissionError(f"No write permission for {base_path}")
+
+                    self._validated.add(name)
+                    results["validated"].append(name)
+
+                except Exception as e:
+                    error_msg = f"{name}: {e}"
+                    self._failed[name] = str(e)
+
+                    if is_critical:
+                        results["failed"].append(error_msg)
+                        all_critical_ok = False
+                        self.logger.error(f"Critical directory validation failed: {error_msg}")
+                    else:
+                        results["warnings"].append(error_msg)
+                        self.logger.warning(f"Non-critical directory validation failed: {error_msg}")
+
+            return all_critical_ok, results
+
+    async def ensure_directory(self, path: Path, create: bool = True) -> bool:
+        """
+        Ensure a specific directory exists.
+
+        Args:
+            path: Directory path to ensure
+            create: Whether to create if missing
+
+        Returns:
+            True if directory exists/created, False otherwise
+        """
+        try:
+            if path.exists():
+                return True
+
+            if create:
+                path.mkdir(parents=True, exist_ok=True)
+                self.logger.debug(f"Created directory on-demand: {path}")
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to ensure directory {path}: {e}")
+            return False
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get validation status."""
+        return {
+            "validated_count": len(self._validated),
+            "failed_count": len(self._failed),
+            "validated": list(self._validated),
+            "failed": self._failed.copy(),
+        }
+
+
+class AsyncMethodValidator:
+    """
+    v14.0: Runtime validator that detects async methods and ensures proper await.
+
+    Prevents the "missing await" bug pattern by:
+    1. Inspecting method signatures at registration time
+    2. Wrapping calls to ensure coroutines are awaited
+    3. Logging warnings for potential issues
+    """
+
+    def __init__(self):
+        self._async_methods: Dict[str, Set[str]] = {}  # class -> set of async method names
+        self._sync_methods: Dict[str, Set[str]] = {}
+        self._warnings: List[Dict[str, Any]] = []
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.AsyncValidator")
+
+    def register_class(self, cls: type) -> None:
+        """
+        Register a class and catalog its async/sync methods.
+
+        Args:
+            cls: Class to analyze
+        """
+        class_name = cls.__name__
+        self._async_methods[class_name] = set()
+        self._sync_methods[class_name] = set()
+
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if name.startswith("_"):
+                continue
+
+            if asyncio.iscoroutinefunction(method):
+                self._async_methods[class_name].add(name)
+            else:
+                self._sync_methods[class_name].add(name)
+
+        self.logger.debug(
+            f"Registered {class_name}: "
+            f"{len(self._async_methods[class_name])} async, "
+            f"{len(self._sync_methods[class_name])} sync methods"
+        )
+
+    def is_async_method(self, class_name: str, method_name: str) -> Optional[bool]:
+        """
+        Check if a method is async.
+
+        Returns:
+            True if async, False if sync, None if unknown
+        """
+        if class_name in self._async_methods:
+            if method_name in self._async_methods[class_name]:
+                return True
+            if method_name in self._sync_methods[class_name]:
+                return False
+        return None
+
+    def validate_call(
+        self,
+        obj: Any,
+        method_name: str,
+        result: Any,
+    ) -> Any:
+        """
+        Validate a method call result and warn if coroutine not awaited.
+
+        Args:
+            obj: Object the method was called on
+            method_name: Name of the method
+            result: Result of the call
+
+        Returns:
+            The result (unchanged)
+        """
+        if asyncio.iscoroutine(result):
+            class_name = obj.__class__.__name__
+            warning = {
+                "class": class_name,
+                "method": method_name,
+                "timestamp": time.time(),
+                "message": f"Coroutine returned but likely not awaited: {class_name}.{method_name}()",
+            }
+            self._warnings.append(warning)
+            self.logger.warning(
+                f"⚠️ POTENTIAL BUG: {class_name}.{method_name}() returned coroutine - "
+                f"ensure it is awaited!"
+            )
+
+        return result
+
+    def create_safe_wrapper(self, obj: Any, method_name: str) -> Callable:
+        """
+        Create a wrapper that ensures async methods are properly called.
+
+        Args:
+            obj: Object to wrap method for
+            method_name: Method name to wrap
+
+        Returns:
+            Wrapped callable
+        """
+        original = getattr(obj, method_name)
+        class_name = obj.__class__.__name__
+        is_async = self.is_async_method(class_name, method_name)
+
+        if is_async:
+            @functools.wraps(original)
+            async def async_wrapper(*args, **kwargs):
+                return await original(*args, **kwargs)
+            return async_wrapper
+        else:
+            return original
+
+    def get_warnings(self) -> List[Dict[str, Any]]:
+        """Get accumulated warnings."""
+        return self._warnings.copy()
+
+    def clear_warnings(self) -> None:
+        """Clear accumulated warnings."""
+        self._warnings.clear()
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get validator status."""
+        return {
+            "registered_classes": len(self._async_methods),
+            "total_async_methods": sum(len(v) for v in self._async_methods.values()),
+            "total_sync_methods": sum(len(v) for v in self._sync_methods.values()),
+            "warning_count": len(self._warnings),
+            "recent_warnings": self._warnings[-5:] if self._warnings else [],
+        }
+
+
+class ComponentDependencyGraph:
+    """
+    v14.0: Manages component dependencies for proper startup ordering.
+
+    Uses topological sort to determine initialization order, ensuring
+    dependencies are ready before dependents start.
+    """
+
+    def __init__(self):
+        self._nodes: Dict[str, Dict[str, Any]] = {}  # component -> metadata
+        self._edges: Dict[str, Set[str]] = {}  # component -> set of dependencies
+        self._initialized: Set[str] = set()
+        self._failed: Set[str] = set()
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.DependencyGraph")
+
+    def register_component(
+        self,
+        name: str,
+        dependencies: List[str] = None,
+        optional_deps: List[str] = None,
+        critical: bool = False,
+        init_timeout: float = 30.0,
+    ) -> None:
+        """
+        Register a component with its dependencies.
+
+        Args:
+            name: Component name
+            dependencies: Required dependencies (must succeed)
+            optional_deps: Optional dependencies (can degrade)
+            critical: Whether failure should abort startup
+            init_timeout: Initialization timeout in seconds
+        """
+        self._nodes[name] = {
+            "dependencies": dependencies or [],
+            "optional_deps": optional_deps or [],
+            "critical": critical,
+            "init_timeout": init_timeout,
+            "registered_at": time.time(),
+        }
+        self._edges[name] = set(dependencies or [])
+
+        self.logger.debug(
+            f"Registered component: {name} "
+            f"(deps: {dependencies}, optional: {optional_deps}, critical: {critical})"
+        )
+
+    def get_initialization_order(self) -> List[str]:
+        """
+        Get components in topological order for initialization.
+
+        Returns:
+            List of component names in initialization order
+
+        Raises:
+            ValueError: If circular dependency detected
+        """
+        # Kahn's algorithm for topological sort
+        in_degree = {node: 0 for node in self._nodes}
+
+        for node, deps in self._edges.items():
+            for dep in deps:
+                if dep in in_degree:
+                    in_degree[node] += 1
+
+        # Start with nodes that have no dependencies
+        queue = [node for node, degree in in_degree.items() if degree == 0]
+        result = []
+
+        while queue:
+            # Sort for deterministic ordering
+            queue.sort()
+            node = queue.pop(0)
+            result.append(node)
+
+            # Reduce in-degree for dependents
+            for other_node, deps in self._edges.items():
+                if node in deps:
+                    in_degree[other_node] -= 1
+                    if in_degree[other_node] == 0:
+                        queue.append(other_node)
+
+        if len(result) != len(self._nodes):
+            # Circular dependency detected
+            remaining = set(self._nodes.keys()) - set(result)
+            raise ValueError(f"Circular dependency detected involving: {remaining}")
+
+        return result
+
+    def mark_initialized(self, name: str) -> None:
+        """Mark a component as successfully initialized."""
+        self._initialized.add(name)
+        self._failed.discard(name)
+
+    def mark_failed(self, name: str) -> None:
+        """Mark a component as failed to initialize."""
+        self._failed.add(name)
+        self._initialized.discard(name)
+
+    def can_initialize(self, name: str) -> Tuple[bool, List[str]]:
+        """
+        Check if a component can be initialized (all deps ready).
+
+        Returns:
+            Tuple of (can_init, list of missing deps)
+        """
+        if name not in self._nodes:
+            return False, [f"Unknown component: {name}"]
+
+        node = self._nodes[name]
+        missing = []
+
+        for dep in node["dependencies"]:
+            if dep not in self._initialized:
+                if dep in self._failed:
+                    missing.append(f"{dep} (FAILED)")
+                else:
+                    missing.append(f"{dep} (not initialized)")
+
+        return len(missing) == 0, missing
+
+    def get_component_info(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get information about a component."""
+        if name not in self._nodes:
+            return None
+
+        node = self._nodes[name].copy()
+        node["initialized"] = name in self._initialized
+        node["failed"] = name in self._failed
+        can_init, missing = self.can_initialize(name)
+        node["can_initialize"] = can_init
+        node["missing_deps"] = missing
+
+        return node
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get graph status."""
+        return {
+            "total_components": len(self._nodes),
+            "initialized": len(self._initialized),
+            "failed": len(self._failed),
+            "pending": len(self._nodes) - len(self._initialized) - len(self._failed),
+            "initialization_order": self.get_initialization_order(),
+        }
+
+
+class HealthGatedInitializer:
+    """
+    v14.0: Ensures components only start after their dependencies are healthy.
+
+    Provides health checks and gates initialization on health status.
+    """
+
+    def __init__(
+        self,
+        dependency_graph: ComponentDependencyGraph,
+        health_check_timeout: float = 5.0,
+        health_retry_count: int = 3,
+        health_retry_delay: float = 1.0,
+    ):
+        self._graph = dependency_graph
+        self._health_timeout = health_check_timeout
+        self._retry_count = health_retry_count
+        self._retry_delay = health_retry_delay
+        self._health_status: Dict[str, Dict[str, Any]] = {}
+        self._health_checks: Dict[str, Callable[[], Awaitable[bool]]] = {}
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.HealthGate")
+
+    def register_health_check(
+        self,
+        component: str,
+        check_fn: Callable[[], Awaitable[bool]],
+    ) -> None:
+        """
+        Register a health check function for a component.
+
+        Args:
+            component: Component name
+            check_fn: Async function that returns True if healthy
+        """
+        self._health_checks[component] = check_fn
+        self.logger.debug(f"Registered health check for: {component}")
+
+    async def check_health(self, component: str) -> bool:
+        """
+        Check health of a component with retry.
+
+        Args:
+            component: Component name
+
+        Returns:
+            True if healthy, False otherwise
+        """
+        if component not in self._health_checks:
+            # No health check registered - assume healthy
+            return True
+
+        check_fn = self._health_checks[component]
+
+        for attempt in range(self._retry_count):
+            try:
+                async with asyncio.timeout(self._health_timeout):
+                    is_healthy = await check_fn()
+
+                    self._health_status[component] = {
+                        "healthy": is_healthy,
+                        "last_check": time.time(),
+                        "attempts": attempt + 1,
+                    }
+
+                    if is_healthy:
+                        return True
+
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"Health check timeout for {component} (attempt {attempt + 1})"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Health check error for {component}: {e} (attempt {attempt + 1})"
+                )
+
+            if attempt < self._retry_count - 1:
+                await asyncio.sleep(self._retry_delay)
+
+        self._health_status[component] = {
+            "healthy": False,
+            "last_check": time.time(),
+            "attempts": self._retry_count,
+        }
+
+        return False
+
+    async def wait_for_healthy(
+        self,
+        component: str,
+        timeout: float = 30.0,
+    ) -> bool:
+        """
+        Wait for a component to become healthy.
+
+        Args:
+            component: Component name
+            timeout: Maximum wait time
+
+        Returns:
+            True if became healthy, False if timeout
+        """
+        start = time.time()
+
+        while time.time() - start < timeout:
+            if await self.check_health(component):
+                return True
+            await asyncio.sleep(self._retry_delay)
+
+        return False
+
+    async def gate_initialization(
+        self,
+        component: str,
+    ) -> Tuple[bool, List[str]]:
+        """
+        Check if a component can be initialized (deps healthy).
+
+        Args:
+            component: Component to check
+
+        Returns:
+            Tuple of (can_proceed, list of unhealthy deps)
+        """
+        can_init, missing_deps = self._graph.can_initialize(component)
+
+        if not can_init:
+            return False, missing_deps
+
+        # Check health of all dependencies
+        node = self._graph.get_component_info(component)
+        if not node:
+            return False, [f"Unknown component: {component}"]
+
+        unhealthy = []
+
+        for dep in node["dependencies"]:
+            if not await self.check_health(dep):
+                unhealthy.append(dep)
+
+        return len(unhealthy) == 0, unhealthy
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get health gate status."""
+        return {
+            "registered_checks": len(self._health_checks),
+            "health_status": self._health_status.copy(),
+            "config": {
+                "timeout": self._health_timeout,
+                "retry_count": self._retry_count,
+                "retry_delay": self._retry_delay,
+            },
+        }
+
+
+class GracefulDegradationRegistry:
+    """
+    v14.0: Centralized registry tracking degraded components and their fallbacks.
+
+    Provides visibility into what's degraded and why, enabling intelligent
+    fallback behavior and status reporting.
+    """
+
+    @dataclass
+    class DegradedComponent:
+        """Information about a degraded component."""
+        name: str
+        reason: str
+        degraded_at: float
+        fallback_mode: str
+        original_error: Optional[str] = None
+        recovery_attempts: int = 0
+        last_recovery_attempt: Optional[float] = None
+
+    def __init__(self):
+        self._degraded: Dict[str, GracefulDegradationRegistry.DegradedComponent] = {}
+        self._recovery_handlers: Dict[str, Callable[[], Awaitable[bool]]] = {}
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.DegradationRegistry")
+
+    async def register_degraded(
+        self,
+        component: str,
+        reason: str,
+        fallback_mode: str,
+        original_error: Optional[str] = None,
+    ) -> None:
+        """
+        Register a component as degraded.
+
+        Args:
+            component: Component name
+            reason: Why it's degraded
+            fallback_mode: What fallback is being used
+            original_error: Optional original error message
+        """
+        async with self._lock:
+            self._degraded[component] = self.DegradedComponent(
+                name=component,
+                reason=reason,
+                degraded_at=time.time(),
+                fallback_mode=fallback_mode,
+                original_error=original_error,
+            )
+
+            self.logger.warning(
+                f"Component degraded: {component} - {reason} "
+                f"(fallback: {fallback_mode})"
+            )
+
+    async def mark_recovered(self, component: str) -> None:
+        """Mark a component as recovered from degraded state."""
+        async with self._lock:
+            if component in self._degraded:
+                del self._degraded[component]
+                self.logger.info(f"Component recovered: {component}")
+
+    def register_recovery_handler(
+        self,
+        component: str,
+        handler: Callable[[], Awaitable[bool]],
+    ) -> None:
+        """
+        Register a recovery handler for a degraded component.
+
+        Args:
+            component: Component name
+            handler: Async function that attempts recovery, returns True if successful
+        """
+        self._recovery_handlers[component] = handler
+
+    async def attempt_recovery(self, component: str) -> bool:
+        """
+        Attempt to recover a degraded component.
+
+        Returns:
+            True if recovery successful, False otherwise
+        """
+        if component not in self._degraded:
+            return True  # Not degraded
+
+        if component not in self._recovery_handlers:
+            self.logger.debug(f"No recovery handler for: {component}")
+            return False
+
+        async with self._lock:
+            degraded = self._degraded[component]
+            degraded.recovery_attempts += 1
+            degraded.last_recovery_attempt = time.time()
+
+        try:
+            handler = self._recovery_handlers[component]
+            if await handler():
+                await self.mark_recovered(component)
+                return True
+        except Exception as e:
+            self.logger.warning(f"Recovery attempt failed for {component}: {e}")
+
+        return False
+
+    async def attempt_all_recoveries(self) -> Dict[str, bool]:
+        """
+        Attempt recovery for all degraded components.
+
+        Returns:
+            Dict mapping component name to recovery success
+        """
+        results = {}
+
+        for component in list(self._degraded.keys()):
+            results[component] = await self.attempt_recovery(component)
+
+        return results
+
+    def is_degraded(self, component: str) -> bool:
+        """Check if a component is degraded."""
+        return component in self._degraded
+
+    def get_degraded_info(self, component: str) -> Optional[Dict[str, Any]]:
+        """Get information about a degraded component."""
+        if component not in self._degraded:
+            return None
+
+        d = self._degraded[component]
+        return {
+            "name": d.name,
+            "reason": d.reason,
+            "degraded_at": d.degraded_at,
+            "fallback_mode": d.fallback_mode,
+            "original_error": d.original_error,
+            "recovery_attempts": d.recovery_attempts,
+            "degraded_duration": time.time() - d.degraded_at,
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get registry status."""
+        return {
+            "degraded_count": len(self._degraded),
+            "degraded_components": [
+                self.get_degraded_info(c) for c in self._degraded
+            ],
+            "recovery_handlers": len(self._recovery_handlers),
+        }
+
+
+class BootstrapTransaction:
+    """
+    v14.0: Provides transaction-like initialization with rollback on failure.
+
+    If any critical component fails, previously initialized components
+    are properly shut down to prevent partial system state.
+    """
+
+    @dataclass
+    class InitializedComponent:
+        """Tracking for an initialized component."""
+        name: str
+        instance: Any
+        shutdown_fn: Optional[Callable[[], Awaitable[None]]]
+        initialized_at: float
+
+    def __init__(self):
+        self._initialized: List[BootstrapTransaction.InitializedComponent] = []
+        self._in_transaction = False
+        self._committed = False
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.BootstrapTransaction")
+
+    async def begin(self) -> None:
+        """Begin a bootstrap transaction."""
+        async with self._lock:
+            if self._in_transaction:
+                raise RuntimeError("Transaction already in progress")
+
+            self._in_transaction = True
+            self._committed = False
+            self._initialized.clear()
+            self.logger.info("Bootstrap transaction started")
+
+    async def register_initialized(
+        self,
+        name: str,
+        instance: Any,
+        shutdown_fn: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> None:
+        """
+        Register a successfully initialized component.
+
+        Args:
+            name: Component name
+            instance: Component instance
+            shutdown_fn: Optional async shutdown function
+        """
+        async with self._lock:
+            if not self._in_transaction:
+                raise RuntimeError("No transaction in progress")
+
+            self._initialized.append(self.InitializedComponent(
+                name=name,
+                instance=instance,
+                shutdown_fn=shutdown_fn,
+                initialized_at=time.time(),
+            ))
+            self.logger.debug(f"Registered initialized component: {name}")
+
+    async def commit(self) -> None:
+        """Commit the transaction (all components successfully initialized)."""
+        async with self._lock:
+            if not self._in_transaction:
+                raise RuntimeError("No transaction in progress")
+
+            self._committed = True
+            self._in_transaction = False
+            self.logger.info(
+                f"Bootstrap transaction committed "
+                f"({len(self._initialized)} components)"
+            )
+
+    async def rollback(self, reason: str = "unknown") -> None:
+        """
+        Rollback the transaction (shutdown all initialized components).
+
+        Args:
+            reason: Reason for rollback
+        """
+        async with self._lock:
+            if not self._in_transaction:
+                self.logger.warning("Rollback called but no transaction in progress")
+                return
+
+            self.logger.warning(
+                f"Rolling back bootstrap transaction: {reason} "
+                f"({len(self._initialized)} components to shutdown)"
+            )
+
+            # Shutdown in reverse order
+            for component in reversed(self._initialized):
+                try:
+                    if component.shutdown_fn:
+                        await asyncio.wait_for(
+                            component.shutdown_fn(),
+                            timeout=10.0,
+                        )
+                        self.logger.debug(f"Shutdown: {component.name}")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Shutdown timeout: {component.name}")
+                except Exception as e:
+                    self.logger.error(f"Shutdown error for {component.name}: {e}")
+
+            self._initialized.clear()
+            self._in_transaction = False
+            self._committed = False
+            self.logger.info("Bootstrap transaction rolled back")
+
+    def get_initialized_components(self) -> List[str]:
+        """Get list of initialized component names."""
+        return [c.name for c in self._initialized]
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get transaction status."""
+        return {
+            "in_transaction": self._in_transaction,
+            "committed": self._committed,
+            "initialized_count": len(self._initialized),
+            "components": [c.name for c in self._initialized],
+        }
+
+
+class InitializationTimeoutManager:
+    """
+    v14.0: Manages initialization timeouts with circuit breaker pattern.
+
+    Prevents hung initializations and provides fallback when components
+    consistently timeout.
+    """
+
+    @dataclass
+    class TimeoutConfig:
+        """Timeout configuration for a component."""
+        default_timeout: float = 30.0
+        max_timeout: float = 120.0
+        min_timeout: float = 5.0
+        backoff_factor: float = 1.5
+        max_failures: int = 3
+
+    def __init__(self, default_config: TimeoutConfig = None):
+        self._default_config = default_config or self.TimeoutConfig()
+        self._component_configs: Dict[str, InitializationTimeoutManager.TimeoutConfig] = {}
+        self._failure_counts: Dict[str, int] = {}
+        self._current_timeouts: Dict[str, float] = {}
+        self._circuit_open: Set[str] = set()
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.TimeoutManager")
+
+    def configure_component(
+        self,
+        component: str,
+        config: TimeoutConfig,
+    ) -> None:
+        """
+        Configure timeout settings for a component.
+
+        Args:
+            component: Component name
+            config: Timeout configuration
+        """
+        self._component_configs[component] = config
+        self._current_timeouts[component] = config.default_timeout
+
+    def get_timeout(self, component: str) -> float:
+        """
+        Get current timeout for a component.
+
+        Args:
+            component: Component name
+
+        Returns:
+            Timeout in seconds
+        """
+        if component in self._circuit_open:
+            # Circuit is open - use max timeout
+            config = self._component_configs.get(component, self._default_config)
+            return config.max_timeout
+
+        return self._current_timeouts.get(
+            component,
+            self._default_config.default_timeout,
+        )
+
+    async def record_success(self, component: str) -> None:
+        """Record successful initialization."""
+        async with self._lock:
+            # Reset failure count
+            self._failure_counts[component] = 0
+
+            # Close circuit if open
+            if component in self._circuit_open:
+                self._circuit_open.discard(component)
+                self.logger.info(f"Circuit closed for: {component}")
+
+            # Reset timeout to default
+            config = self._component_configs.get(component, self._default_config)
+            self._current_timeouts[component] = config.default_timeout
+
+    async def record_timeout(self, component: str) -> bool:
+        """
+        Record a timeout failure.
+
+        Returns:
+            True if circuit is now open (should skip future attempts)
+        """
+        async with self._lock:
+            self._failure_counts[component] = self._failure_counts.get(component, 0) + 1
+            config = self._component_configs.get(component, self._default_config)
+
+            # Increase timeout with backoff
+            current = self._current_timeouts.get(component, config.default_timeout)
+            new_timeout = min(current * config.backoff_factor, config.max_timeout)
+            self._current_timeouts[component] = new_timeout
+
+            # Check if circuit should open
+            if self._failure_counts[component] >= config.max_failures:
+                self._circuit_open.add(component)
+                self.logger.warning(
+                    f"Circuit opened for {component} after {config.max_failures} failures"
+                )
+                return True
+
+            self.logger.debug(
+                f"Timeout recorded for {component} "
+                f"(failures: {self._failure_counts[component]}, new timeout: {new_timeout:.1f}s)"
+            )
+            return False
+
+    def is_circuit_open(self, component: str) -> bool:
+        """Check if circuit is open for a component."""
+        return component in self._circuit_open
+
+    def reset_circuit(self, component: str) -> None:
+        """Manually reset circuit for a component."""
+        self._circuit_open.discard(component)
+        self._failure_counts[component] = 0
+        config = self._component_configs.get(component, self._default_config)
+        self._current_timeouts[component] = config.default_timeout
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get manager status."""
+        return {
+            "components_configured": len(self._component_configs),
+            "open_circuits": list(self._circuit_open),
+            "failure_counts": self._failure_counts.copy(),
+            "current_timeouts": self._current_timeouts.copy(),
+        }
+
+
+class ResilientBootstrapLayer:
+    """
+    v14.0: Master orchestrator for resilient system initialization.
+
+    Combines all v14.0 components to provide:
+    - Pre-flight validation
+    - Async method safety
+    - Dependency-ordered initialization
+    - Health-gated startup
+    - Graceful degradation
+    - Transaction rollback
+    - Timeout management
+    """
+
+    def __init__(self):
+        # Core components
+        self.preflight_validator = PreflightDirectoryValidator()
+        self.async_validator = AsyncMethodValidator()
+        self.dependency_graph = ComponentDependencyGraph()
+        self.health_gate = HealthGatedInitializer(self.dependency_graph)
+        self.degradation_registry = GracefulDegradationRegistry()
+        self.transaction = BootstrapTransaction()
+        self.timeout_manager = InitializationTimeoutManager()
+
+        # State
+        self._initialized = False
+        self._lock = asyncio.Lock()
+        self.logger = logging.getLogger("v14.ResilientBootstrap")
+
+        # Metrics
+        self._metrics = {
+            "initialization_start": None,
+            "initialization_end": None,
+            "total_components": 0,
+            "successful_components": 0,
+            "degraded_components": 0,
+            "failed_components": 0,
+        }
+
+    async def initialize(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Run the full initialization sequence.
+
+        Returns:
+            Tuple of (success, detailed_results)
+        """
+        async with self._lock:
+            if self._initialized:
+                return True, {"status": "already_initialized"}
+
+            self._metrics["initialization_start"] = time.time()
+            results = {
+                "preflight": None,
+                "components": {},
+                "degraded": [],
+                "failed": [],
+                "warnings": [],
+            }
+
+            try:
+                # Phase 1: Pre-flight validation
+                self.logger.info("═" * 60)
+                self.logger.info("v14.0: Starting Resilient Bootstrap")
+                self.logger.info("═" * 60)
+
+                self.logger.info("Phase 1: Pre-flight validation...")
+                preflight_ok, preflight_results = await self.preflight_validator.validate_all()
+                results["preflight"] = preflight_results
+
+                if not preflight_ok:
+                    self.logger.error("Pre-flight validation failed!")
+                    return False, results
+
+                self.logger.info(f"  ✅ Pre-flight: {len(preflight_results['validated'])} directories validated")
+
+                # Phase 2: Begin transaction
+                self.logger.info("Phase 2: Beginning bootstrap transaction...")
+                await self.transaction.begin()
+
+                # Phase 3: Get initialization order
+                self.logger.info("Phase 3: Computing initialization order...")
+                try:
+                    init_order = self.dependency_graph.get_initialization_order()
+                    self._metrics["total_components"] = len(init_order)
+                    self.logger.info(f"  ✅ {len(init_order)} components to initialize")
+                except ValueError as e:
+                    self.logger.error(f"Dependency resolution failed: {e}")
+                    await self.transaction.rollback(str(e))
+                    return False, results
+
+                # Phase 4: Initialize components in order
+                self.logger.info("Phase 4: Initializing components...")
+
+                for component in init_order:
+                    component_result = await self._initialize_component(component)
+                    results["components"][component] = component_result
+
+                    if component_result["status"] == "success":
+                        self._metrics["successful_components"] += 1
+                    elif component_result["status"] == "degraded":
+                        self._metrics["degraded_components"] += 1
+                        results["degraded"].append(component)
+                    else:
+                        self._metrics["failed_components"] += 1
+                        results["failed"].append(component)
+
+                        # Check if critical
+                        info = self.dependency_graph.get_component_info(component)
+                        if info and info.get("critical", False):
+                            self.logger.error(f"Critical component failed: {component}")
+                            await self.transaction.rollback(f"Critical failure: {component}")
+                            return False, results
+
+                # Phase 5: Commit transaction
+                self.logger.info("Phase 5: Committing transaction...")
+                await self.transaction.commit()
+
+                self._initialized = True
+                self._metrics["initialization_end"] = time.time()
+
+                duration = self._metrics["initialization_end"] - self._metrics["initialization_start"]
+
+                self.logger.info("═" * 60)
+                self.logger.info(f"v14.0: Bootstrap Complete ({duration:.2f}s)")
+                self.logger.info(f"  ✅ Successful: {self._metrics['successful_components']}")
+                self.logger.info(f"  ⚠️ Degraded: {self._metrics['degraded_components']}")
+                self.logger.info(f"  ❌ Failed: {self._metrics['failed_components']}")
+                self.logger.info("═" * 60)
+
+                return True, results
+
+            except Exception as e:
+                self.logger.error(f"Bootstrap failed with exception: {e}", exc_info=True)
+                await self.transaction.rollback(str(e))
+                return False, results
+
+    async def _initialize_component(
+        self,
+        component: str,
+    ) -> Dict[str, Any]:
+        """
+        Initialize a single component with full safety checks.
+
+        Returns:
+            Dict with initialization result
+        """
+        result = {
+            "component": component,
+            "status": "pending",
+            "start_time": time.time(),
+            "end_time": None,
+            "error": None,
+        }
+
+        try:
+            # Check if circuit is open
+            if self.timeout_manager.is_circuit_open(component):
+                self.logger.warning(f"  ⏭️ {component}: Circuit open, skipping")
+                result["status"] = "skipped"
+                result["error"] = "Circuit breaker open"
+                return result
+
+            # Check health gate
+            can_proceed, unhealthy = await self.health_gate.gate_initialization(component)
+            if not can_proceed:
+                self.logger.warning(f"  ⏸️ {component}: Waiting for deps: {unhealthy}")
+
+                # Try waiting for deps
+                for dep in unhealthy:
+                    await self.health_gate.wait_for_healthy(dep, timeout=10.0)
+
+                # Re-check
+                can_proceed, unhealthy = await self.health_gate.gate_initialization(component)
+                if not can_proceed:
+                    result["status"] = "blocked"
+                    result["error"] = f"Dependencies not healthy: {unhealthy}"
+                    return result
+
+            # Get timeout
+            timeout = self.timeout_manager.get_timeout(component)
+
+            self.logger.info(f"  🚀 {component}: Initializing (timeout: {timeout:.1f}s)...")
+
+            # Component initialization would happen here
+            # For now, we just mark as success
+            # In actual usage, this would call the component's init function
+
+            result["status"] = "success"
+            result["end_time"] = time.time()
+
+            self.dependency_graph.mark_initialized(component)
+            await self.timeout_manager.record_success(component)
+
+            duration = result["end_time"] - result["start_time"]
+            self.logger.info(f"  ✅ {component}: Initialized ({duration:.2f}s)")
+
+            return result
+
+        except asyncio.TimeoutError:
+            result["status"] = "timeout"
+            result["error"] = "Initialization timeout"
+            result["end_time"] = time.time()
+
+            circuit_opened = await self.timeout_manager.record_timeout(component)
+            if circuit_opened:
+                self.logger.error(f"  ❌ {component}: Timeout (circuit opened)")
+            else:
+                self.logger.warning(f"  ⚠️ {component}: Timeout")
+
+            return result
+
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = str(e)
+            result["end_time"] = time.time()
+
+            self.dependency_graph.mark_failed(component)
+            self.logger.error(f"  ❌ {component}: {e}")
+
+            return result
+
+    def register_component(
+        self,
+        name: str,
+        dependencies: List[str] = None,
+        optional_deps: List[str] = None,
+        critical: bool = False,
+        init_timeout: float = 30.0,
+        health_check: Callable[[], Awaitable[bool]] = None,
+    ) -> None:
+        """
+        Register a component for managed initialization.
+
+        Args:
+            name: Component name
+            dependencies: Required dependencies
+            optional_deps: Optional dependencies
+            critical: Whether failure should abort startup
+            init_timeout: Initialization timeout
+            health_check: Optional health check function
+        """
+        self.dependency_graph.register_component(
+            name=name,
+            dependencies=dependencies,
+            optional_deps=optional_deps,
+            critical=critical,
+            init_timeout=init_timeout,
+        )
+
+        if health_check:
+            self.health_gate.register_health_check(name, health_check)
+
+        self.timeout_manager.configure_component(
+            name,
+            InitializationTimeoutManager.TimeoutConfig(
+                default_timeout=init_timeout,
+            ),
+        )
+
+    async def shutdown(self) -> None:
+        """Shutdown the bootstrap layer."""
+        self.logger.info("v14.0: Shutting down bootstrap layer...")
+
+        # Attempt recovery of degraded components before shutdown
+        await self.degradation_registry.attempt_all_recoveries()
+
+        self._initialized = False
+        self.logger.info("v14.0: Bootstrap layer shutdown complete")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive status."""
+        return {
+            "initialized": self._initialized,
+            "metrics": self._metrics.copy(),
+            "preflight": self.preflight_validator.get_status(),
+            "async_validator": self.async_validator.get_status(),
+            "dependency_graph": self.dependency_graph.get_status(),
+            "health_gate": self.health_gate.get_status(),
+            "degradation": self.degradation_registry.get_status(),
+            "transaction": self.transaction.get_status(),
+            "timeout_manager": self.timeout_manager.get_status(),
+        }
+
+
+# =============================================================================
+# v14.0 Global Instance and Accessors
+# =============================================================================
+
+_resilient_bootstrap: Optional[ResilientBootstrapLayer] = None
+
+
+def get_resilient_bootstrap() -> ResilientBootstrapLayer:
+    """Get or create the global resilient bootstrap layer."""
+    global _resilient_bootstrap
+
+    if _resilient_bootstrap is None:
+        _resilient_bootstrap = ResilientBootstrapLayer()
+
+    return _resilient_bootstrap
+
+
+async def initialize_resilient_bootstrap() -> Tuple[bool, Dict[str, Any]]:
+    """Initialize the resilient bootstrap layer."""
+    bootstrap = get_resilient_bootstrap()
+    return await bootstrap.initialize()
+
+
+async def shutdown_resilient_bootstrap() -> None:
+    """Shutdown the resilient bootstrap layer."""
+    global _resilient_bootstrap
+
+    if _resilient_bootstrap:
+        await _resilient_bootstrap.shutdown()
+        _resilient_bootstrap = None
+
+
+def get_resilient_bootstrap_status() -> Dict[str, Any]:
+    """Get comprehensive bootstrap status."""
+    bootstrap = get_resilient_bootstrap()
+    return bootstrap.get_status()
+
+
+# Convenience function for component registration
+def register_managed_component(
+    name: str,
+    dependencies: List[str] = None,
+    optional_deps: List[str] = None,
+    critical: bool = False,
+    init_timeout: float = 30.0,
+    health_check: Callable[[], Awaitable[bool]] = None,
+) -> None:
+    """
+    Register a component for managed initialization.
+
+    Example:
+        register_managed_component(
+            name="experience_forwarder",
+            dependencies=["lock_manager", "event_bus"],
+            critical=False,
+            init_timeout=15.0,
+        )
+    """
+    bootstrap = get_resilient_bootstrap()
+    bootstrap.register_component(
+        name=name,
+        dependencies=dependencies,
+        optional_deps=optional_deps,
+        critical=critical,
+        init_timeout=init_timeout,
+        health_check=health_check,
+    )

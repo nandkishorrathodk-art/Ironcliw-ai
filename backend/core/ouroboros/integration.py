@@ -4153,6 +4153,20 @@ class CrossRepoAutonomousIntegration:
                     ShutdownPhase,
                     TaskHealth,
                     LockPriority,
+                    # v14.0: Resilient Bootstrap Layer
+                    initialize_resilient_bootstrap,
+                    shutdown_resilient_bootstrap,
+                    get_resilient_bootstrap,
+                    get_resilient_bootstrap_status,
+                    register_managed_component,
+                    PreflightDirectoryValidator,
+                    AsyncMethodValidator,
+                    ComponentDependencyGraph,
+                    HealthGatedInitializer,
+                    GracefulDegradationRegistry,
+                    BootstrapTransaction,
+                    InitializationTimeoutManager,
+                    ResilientBootstrapLayer,
                 )
 
                 # Phase 1: Initialize independent components in parallel
@@ -4551,6 +4565,63 @@ class CrossRepoAutonomousIntegration:
                     logger.warning(f"  ⚠️ v13.0 Bulletproof Orchestration Mesh initialization failed: {e}")
                     logger.debug(f"  v13.0 error details: {e}", exc_info=True)
 
+                # =============================================================
+                # Phase 13: v14.0 Resilient Bootstrap Layer
+                # =============================================================
+                logger.info("Phase 13: Initializing v14.0 Resilient Bootstrap Layer...")
+
+                try:
+                    # Initialize the resilient bootstrap layer
+                    # This provides pre-flight validation, async method safety,
+                    # dependency-ordered initialization, and graceful degradation
+                    bootstrap_success, bootstrap_results = await initialize_resilient_bootstrap()
+
+                    if bootstrap_success:
+                        bootstrap = get_resilient_bootstrap()
+
+                        # Wire v14.0 components into our component registry
+                        v14_component_names = [
+                            "resilient_bootstrap",
+                            "preflight_validator",
+                            "async_validator",
+                            "dependency_graph",
+                            "health_gate",
+                            "degradation_registry",
+                            "bootstrap_transaction",
+                            "timeout_manager",
+                        ]
+
+                        v14_components = {
+                            "resilient_bootstrap": bootstrap,
+                            "preflight_validator": bootstrap.preflight_validator,
+                            "async_validator": bootstrap.async_validator,
+                            "dependency_graph": bootstrap.dependency_graph,
+                            "health_gate": bootstrap.health_gate,
+                            "degradation_registry": bootstrap.degradation_registry,
+                            "bootstrap_transaction": bootstrap.transaction,
+                            "timeout_manager": bootstrap.timeout_manager,
+                        }
+
+                        for name in v14_component_names:
+                            comp = v14_components.get(name)
+                            if comp:
+                                self._components[name] = comp
+                                logger.info(f"  ✅ {name} initialized (v14.0)")
+
+                        # Log pre-flight results
+                        if bootstrap_results.get("preflight"):
+                            pf = bootstrap_results["preflight"]
+                            logger.info(f"  ✅ Pre-flight: {len(pf.get('validated', []))} dirs validated, {len(pf.get('created', []))} created")
+
+                        logger.info(f"  ✅ v14.0 Resilient Bootstrap Layer initialized with {len(v14_components)} components")
+                    else:
+                        logger.warning(f"  ⚠️ v14.0 Resilient Bootstrap Layer initialization returned failure")
+                        logger.debug(f"  v14.0 results: {bootstrap_results}")
+
+                except Exception as e:
+                    logger.warning(f"  ⚠️ v14.0 Resilient Bootstrap Layer initialization failed: {e}")
+                    logger.debug(f"  v14.0 error details: {e}", exc_info=True)
+
                 # Update global state
                 global _autonomous_state
                 _autonomous_state.goal_decomposer = self._components.get("goal_decomposer")
@@ -4600,6 +4671,15 @@ class CrossRepoAutonomousIntegration:
                 _autonomous_state.health_coordinator = self._components.get("health_coordinator")
                 _autonomous_state.event_loss_preventor = self._components.get("event_loss_preventor")
                 _autonomous_state.startup_sequencer = self._components.get("startup_sequencer")
+                # v14.0: Resilient bootstrap layer components
+                _autonomous_state.resilient_bootstrap = self._components.get("resilient_bootstrap")
+                _autonomous_state.preflight_validator = self._components.get("preflight_validator")
+                _autonomous_state.async_validator = self._components.get("async_validator")
+                _autonomous_state.dependency_graph = self._components.get("dependency_graph")
+                _autonomous_state.health_gate = self._components.get("health_gate")
+                _autonomous_state.degradation_registry = self._components.get("degradation_registry")
+                _autonomous_state.bootstrap_transaction = self._components.get("bootstrap_transaction")
+                _autonomous_state.timeout_manager = self._components.get("timeout_manager")
                 _autonomous_state.orchestrator = orchestrator
                 _autonomous_state.oracle = oracle
                 _autonomous_state.llm_client = llm_client
@@ -5017,7 +5097,15 @@ class CrossRepoAutonomousIntegration:
 
         await self.stop_background_loops()
 
-        # v13.0: Shutdown Bulletproof Orchestration Mesh first (newest)
+        # v14.0: Shutdown Resilient Bootstrap Layer first (newest)
+        try:
+            from backend.core.ouroboros.native_integration import shutdown_resilient_bootstrap
+            await shutdown_resilient_bootstrap()
+            logger.info("  ✅ v14.0 Resilient Bootstrap Layer shutdown")
+        except Exception as e:
+            logger.warning(f"  ⚠️ v14.0 Resilient Bootstrap Layer shutdown error: {e}")
+
+        # v13.0: Shutdown Bulletproof Orchestration Mesh
         try:
             from backend.core.ouroboros.native_integration import shutdown_bulletproof_mesh
             await shutdown_bulletproof_mesh()

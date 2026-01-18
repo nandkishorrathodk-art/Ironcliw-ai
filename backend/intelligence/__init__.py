@@ -189,6 +189,110 @@ _LAZY_MODULES = {
             'get_intelligence_hub', 'enrich_task_context', 'execute_sop',
         ]
     ),
+    # =========================================================================
+    # v13.0: Collaboration & IDE Integration System
+    # =========================================================================
+    'collaboration_engine': (
+        '.collaboration_engine',
+        [
+            # Configuration
+            'CollaborationConfig',
+            # Enums
+            'OperationType', 'ConflictResolutionStrategy', 'SessionState',
+            # Data Classes
+            'VectorClock', 'Operation', 'Conflict', 'ConflictResolution',
+            'CollaborationSession', 'UserPresence', 'EditEvent',
+            # Core Classes
+            'CRDTDocument', 'ConflictResolver', 'SessionManager', 'CollaborationEngine',
+            # Cross-Repo Coordination
+            'CrossRepoCollaborationCoordinator',
+            # Convenience Functions
+            'get_collaboration_engine', 'start_collaboration_session',
+            'join_collaboration_session', 'resolve_conflict',
+        ]
+    ),
+    'code_ownership': (
+        '.code_ownership',
+        [
+            # Configuration
+            'OwnershipConfig',
+            # Enums
+            'PermissionLevel', 'OwnershipSource', 'ApprovalRequirement',
+            # Data Classes
+            'OwnershipRule', 'FileOwnership', 'OwnershipAnalysis',
+            'PermissionCheck', 'ApprovalStatus',
+            # Core Classes
+            'CodeownersParser', 'GitBlameAnalyzer', 'TeamManager',
+            'PermissionEngine', 'CodeOwnershipEngine',
+            # Cross-Repo Coordination
+            'CrossRepoOwnershipCoordinator',
+            # Convenience Functions
+            'get_ownership_engine', 'get_file_owners',
+            'check_permission', 'get_required_approvers',
+        ]
+    ),
+    'review_workflow': (
+        '.review_workflow',
+        [
+            # Configuration
+            'ReviewWorkflowConfig',
+            # Enums
+            'ReviewState', 'ReviewAction', 'CheckStatus', 'MergeBlockReason',
+            'ReviewPlatform', 'CommentType',
+            # Data Classes
+            'PullRequest', 'Review', 'ReviewComment', 'CheckRun',
+            'MergeRequirements', 'ReviewSummary',
+            # Core Classes
+            'GitHubClient', 'GitLabClient', 'ReviewEngine', 'ReviewWorkflowEngine',
+            # Cross-Repo Coordination
+            'CrossRepoReviewCoordinator',
+            # Convenience Functions
+            'get_review_workflow_engine', 'create_pull_request',
+            'submit_review', 'check_merge_requirements',
+        ]
+    ),
+    'lsp_server': (
+        '.lsp_server',
+        [
+            # Configuration
+            'LSPServerConfig',
+            # Enums
+            'LSPMethod', 'DiagnosticSeverity', 'CompletionItemKind',
+            'TextDocumentSyncKind', 'CodeActionKind',
+            # Data Classes
+            'Position', 'Range', 'Location', 'TextEdit',
+            'Diagnostic', 'CompletionItem', 'Hover', 'CodeAction',
+            'DocumentSymbol', 'WorkspaceEdit',
+            # Core Classes
+            'DocumentManager', 'CompletionHandler', 'DiagnosticHandler',
+            'HoverHandler', 'CodeActionHandler', 'DefinitionHandler',
+            'LSPMessageHandler', 'JARVISLSPServer',
+            # Convenience Functions
+            'get_lsp_server', 'start_lsp_server', 'register_lsp_handler',
+        ]
+    ),
+    'ide_integration': (
+        '.ide_integration',
+        [
+            # Configuration
+            'IDEIntegrationConfig',
+            # Enums
+            'IDEType', 'CommandCategory', 'KeyModifier', 'MenuLocation',
+            'StatusBarAlignment', 'WebviewMessageType',
+            # Data Classes
+            'Command', 'KeyBinding', 'MenuItem', 'StatusBarItem',
+            'WebviewPanel', 'CodeLens', 'InlineCompletion',
+            # Core Classes
+            'CommandRegistry', 'ContextMenuManager', 'StatusBarManager',
+            'WebviewManager', 'CodeLensProvider', 'InlineCompletionProvider',
+            'IDEIntegrationEngine',
+            # Cross-Repo Coordination
+            'CrossRepoIDECoordinator',
+            # Convenience Functions
+            'get_ide_integration_engine', 'register_command',
+            'show_status', 'create_webview', 'provide_completions',
+        ]
+    ),
 }
 
 # Build reverse lookup: export name -> module info
@@ -512,6 +616,135 @@ __all__ = [
     'get_intelligence_hub',
     'enrich_task_context',
     'execute_sop',
+
+    # =========================================================================
+    # v13.0: Collaboration & IDE Integration System
+    # =========================================================================
+
+    # Collaboration Engine (CRDT-based Multi-User Editing)
+    'CollaborationConfig',
+    'OperationType',
+    'ConflictResolutionStrategy',
+    'SessionState',
+    'VectorClock',
+    'Operation',
+    'Conflict',
+    'ConflictResolution',
+    'CollaborationSession',
+    'UserPresence',
+    'EditEvent',
+    'CRDTDocument',
+    'ConflictResolver',
+    'SessionManager',
+    'CollaborationEngine',
+    'CrossRepoCollaborationCoordinator',
+    'get_collaboration_engine',
+    'start_collaboration_session',
+    'join_collaboration_session',
+    'resolve_conflict',
+
+    # Code Ownership (CODEOWNERS & Git Blame Analysis)
+    'OwnershipConfig',
+    'PermissionLevel',
+    'OwnershipSource',
+    'ApprovalRequirement',
+    'OwnershipRule',
+    'FileOwnership',
+    'OwnershipAnalysis',
+    'PermissionCheck',
+    'ApprovalStatus',
+    'CodeownersParser',
+    'GitBlameAnalyzer',
+    'TeamManager',
+    'PermissionEngine',
+    'CodeOwnershipEngine',
+    'CrossRepoOwnershipCoordinator',
+    'get_ownership_engine',
+    'get_file_owners',
+    'check_permission',
+    'get_required_approvers',
+
+    # Review Workflow (GitHub/GitLab PR Integration)
+    'ReviewWorkflowConfig',
+    'ReviewState',
+    'ReviewAction',
+    'CheckStatus',
+    'MergeBlockReason',
+    'ReviewPlatform',
+    'CommentType',
+    'PullRequest',
+    'Review',
+    'ReviewComment',
+    'CheckRun',
+    'MergeRequirements',
+    'ReviewSummary',
+    'GitHubClient',
+    'GitLabClient',
+    'ReviewEngine',
+    'ReviewWorkflowEngine',
+    'CrossRepoReviewCoordinator',
+    'get_review_workflow_engine',
+    'create_pull_request',
+    'submit_review',
+    'check_merge_requirements',
+
+    # LSP Server (Language Server Protocol Provider)
+    'LSPServerConfig',
+    'LSPMethod',
+    'DiagnosticSeverity',
+    'CompletionItemKind',
+    'TextDocumentSyncKind',
+    'CodeActionKind',
+    'Position',
+    'Range',
+    'Location',
+    'TextEdit',
+    'Diagnostic',
+    'CompletionItem',
+    'Hover',
+    'CodeAction',
+    'DocumentSymbol',
+    'WorkspaceEdit',
+    'DocumentManager',
+    'CompletionHandler',
+    'DiagnosticHandler',
+    'HoverHandler',
+    'CodeActionHandler',
+    'DefinitionHandler',
+    'LSPMessageHandler',
+    'JARVISLSPServer',
+    'get_lsp_server',
+    'start_lsp_server',
+    'register_lsp_handler',
+
+    # IDE Integration (VS Code/Cursor Extension Support)
+    'IDEIntegrationConfig',
+    'IDEType',
+    'CommandCategory',
+    'KeyModifier',
+    'MenuLocation',
+    'StatusBarAlignment',
+    'WebviewMessageType',
+    'Command',
+    'KeyBinding',
+    'MenuItem',
+    'StatusBarItem',
+    'WebviewPanel',
+    'CodeLens',
+    'InlineCompletion',
+    'CommandRegistry',
+    'ContextMenuManager',
+    'StatusBarManager',
+    'WebviewManager',
+    'CodeLensProvider',
+    'InlineCompletionProvider',
+    'IDEIntegrationEngine',
+    'CrossRepoIDECoordinator',
+    'get_ide_integration_engine',
+    'register_command',
+    'show_status',
+    'create_webview',
+    'provide_completions',
 ]
 
 

@@ -5262,6 +5262,19 @@ class SupervisorBootstrapper:
                     print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Failed ({e}){TerminalUI.RESET}")
 
             # ═══════════════════════════════════════════════════════════════════
+            # v13.0: Initialize Collaboration & IDE Integration System
+            # ═══════════════════════════════════════════════════════════════════
+            # This enables advanced collaboration and IDE features:
+            # - CRDT-based multi-user conflict resolution
+            # - Code ownership awareness (CODEOWNERS, git blame)
+            # - Review workflow integration (GitHub/GitLab PR/MR)
+            # - LSP server for completions, diagnostics, code actions
+            # - VS Code/Cursor extension support with commands & keybindings
+            # ═══════════════════════════════════════════════════════════════════
+            if os.getenv("JARVIS_COLLABORATION_ENABLED", "true").lower() == "true":
+                await self._initialize_collaboration_and_ide_systems()
+
+            # ═══════════════════════════════════════════════════════════════════
             # v78.0: Verify Trinity Connections (Advanced Orchestrator)
             # ═══════════════════════════════════════════════════════════════════
             # Uses the advanced orchestrator to verify all Trinity components
@@ -11605,6 +11618,261 @@ class SupervisorBootstrapper:
                 "status": "ready" if initialized_systems["cai"] else "unavailable",
             },
         )
+
+    async def _initialize_collaboration_and_ide_systems(self) -> None:
+        """
+        v13.0: Initialize Collaboration & IDE Integration System.
+
+        This enables advanced collaboration features and IDE integration:
+        - CRDT-based multi-user conflict resolution (concurrent editing)
+        - Code ownership awareness (CODEOWNERS, git blame analysis)
+        - Review workflow integration (GitHub/GitLab PR/MR workflows)
+        - LSP server for completions, diagnostics, code actions
+        - VS Code/Cursor extension support with commands & keybindings
+
+        Architecture:
+        ┌─────────────────────────────────────────────────────────────────────┐
+        │             Collaboration & IDE Integration (v13.0)                 │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │  ┌──────────────────┐    ┌──────────────────┐    ┌───────────────┐  │
+        │  │  Collaboration   │    │  Code Ownership  │    │    Review     │  │
+        │  │     Engine       │◄──►│     Engine       │◄──►│   Workflow    │  │
+        │  │   (CRDT/Sync)    │    │(CODEOWNERS/Blame)│    │ (GitHub/Lab)  │  │
+        │  └────────┬─────────┘    └────────┬─────────┘    └───────┬───────┘  │
+        │           │                       │                       │         │
+        │           └───────────────────────┼───────────────────────┘         │
+        │                                   ▼                                 │
+        │  ┌──────────────────────────────────────────────────────────────┐   │
+        │  │                     LSP Server (JARVIS)                      │   │
+        │  │  Completions | Diagnostics | Hover | CodeActions | Definition│   │
+        │  └──────────────────────────────────────────────────────────────┘   │
+        │                                   ▼                                 │
+        │  ┌──────────────────────────────────────────────────────────────┐   │
+        │  │              IDE Integration (VS Code/Cursor)                |   │
+        │  │  Commands | KeyBindings | StatusBar | CodeLens | Completions │   │  
+        │  └──────────────────────────────────────────────────────────────┘   │
+        └─────────────────────────────────────────────────────────────────────┘
+        """
+        self.logger.info("═" * 60)
+        self.logger.info("🤝 v13.0: Initializing Collaboration & IDE Integration System...")
+        self.logger.info("═" * 60)
+
+        # Track initialization status
+        initialized_systems: Dict[str, bool] = {
+            "collaboration_engine": False,
+            "code_ownership": False,
+            "review_workflow": False,
+            "lsp_server": False,
+            "ide_integration": False,
+        }
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 1: Initialize Collaboration Engine (CRDT-based)
+        # ═══════════════════════════════════════════════════════════════════
+        if os.getenv("JARVIS_COLLAB_ENGINE_ENABLED", "true").lower() == "true":
+            try:
+                self.logger.info("🔄 Step 1/5: Initializing Collaboration Engine...")
+
+                from backend.intelligence.collaboration_engine import (
+                    CollaborationEngine,
+                    CollaborationConfig,
+                    get_collaboration_engine,
+                    CrossRepoCollaborationCoordinator,
+                )
+
+                # Create collaboration engine with environment-driven config
+                config = CollaborationConfig()
+                self._collaboration_engine = await get_collaboration_engine(config)
+
+                # Initialize cross-repo collaboration if enabled
+                if os.getenv("JARVIS_CROSS_REPO_COLLAB", "true").lower() == "true":
+                    self._collab_coordinator = CrossRepoCollaborationCoordinator(
+                        collaboration_engine=self._collaboration_engine
+                    )
+                    await self._collab_coordinator.start()
+                    self.logger.info("   • Cross-repo collaboration: Enabled")
+                else:
+                    self._collab_coordinator = None
+
+                initialized_systems["collaboration_engine"] = True
+                self.logger.info("✅ Collaboration Engine initialized (CRDT-based)")
+                print(f"  {TerminalUI.GREEN}✓ Collaboration Engine: CRDT sync active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.info(f"⚠️ Collaboration Engine not available: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Collaboration Engine: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"❌ Collaboration Engine initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Collaboration Engine: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 2: Initialize Code Ownership Engine
+        # ═══════════════════════════════════════════════════════════════════
+        if os.getenv("JARVIS_CODE_OWNERSHIP_ENABLED", "true").lower() == "true":
+            try:
+                self.logger.info("👥 Step 2/5: Initializing Code Ownership Engine...")
+
+                from backend.intelligence.code_ownership import (
+                    CodeOwnershipEngine,
+                    OwnershipConfig,
+                    get_ownership_engine,
+                    CrossRepoOwnershipCoordinator,
+                )
+
+                # Create ownership engine with environment-driven config
+                config = OwnershipConfig()
+                self._code_ownership_engine = await get_ownership_engine(config)
+
+                # Initialize cross-repo ownership coordination
+                if os.getenv("JARVIS_CROSS_REPO_OWNERSHIP", "true").lower() == "true":
+                    self._ownership_coordinator = CrossRepoOwnershipCoordinator(
+                        ownership_engine=self._code_ownership_engine
+                    )
+                    await self._ownership_coordinator.start()
+                    self.logger.info("   • Cross-repo ownership: Enabled")
+                else:
+                    self._ownership_coordinator = None
+
+                initialized_systems["code_ownership"] = True
+                self.logger.info("✅ Code Ownership Engine initialized (CODEOWNERS/Git Blame)")
+                print(f"  {TerminalUI.GREEN}✓ Code Ownership: CODEOWNERS + Git blame active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.info(f"⚠️ Code Ownership Engine not available: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Code Ownership: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"❌ Code Ownership Engine initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Code Ownership: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 3: Initialize Review Workflow Engine
+        # ═══════════════════════════════════════════════════════════════════
+        if os.getenv("JARVIS_REVIEW_WORKFLOW_ENABLED", "true").lower() == "true":
+            try:
+                self.logger.info("📝 Step 3/5: Initializing Review Workflow Engine...")
+
+                from backend.intelligence.review_workflow import (
+                    ReviewWorkflowEngine,
+                    ReviewWorkflowConfig,
+                    get_review_workflow_engine,
+                    CrossRepoReviewCoordinator,
+                )
+
+                # Create review workflow engine with environment-driven config
+                config = ReviewWorkflowConfig()
+                self._review_workflow_engine = await get_review_workflow_engine(config)
+
+                # Initialize cross-repo review coordination
+                if os.getenv("JARVIS_CROSS_REPO_REVIEW", "true").lower() == "true":
+                    self._review_coordinator = CrossRepoReviewCoordinator(
+                        review_engine=self._review_workflow_engine
+                    )
+                    await self._review_coordinator.start()
+                    self.logger.info("   • Cross-repo review: Enabled")
+                else:
+                    self._review_coordinator = None
+
+                initialized_systems["review_workflow"] = True
+                self.logger.info("✅ Review Workflow Engine initialized (GitHub/GitLab)")
+                print(f"  {TerminalUI.GREEN}✓ Review Workflow: GitHub/GitLab PR integration active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.info(f"⚠️ Review Workflow Engine not available: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Review Workflow: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"❌ Review Workflow Engine initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ Review Workflow: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 4: Initialize LSP Server
+        # ═══════════════════════════════════════════════════════════════════
+        if os.getenv("JARVIS_LSP_SERVER_ENABLED", "true").lower() == "true":
+            try:
+                self.logger.info("🔧 Step 4/5: Initializing LSP Server...")
+
+                from backend.intelligence.lsp_server import (
+                    JARVISLSPServer,
+                    LSPServerConfig,
+                    get_lsp_server,
+                    start_lsp_server,
+                )
+
+                # Create LSP server with environment-driven config
+                config = LSPServerConfig()
+                self._lsp_server = await get_lsp_server(config)
+
+                # Start LSP server if auto-start is enabled
+                if os.getenv("JARVIS_LSP_AUTO_START", "false").lower() == "true":
+                    await start_lsp_server(self._lsp_server)
+                    self.logger.info("   • LSP server auto-started")
+                else:
+                    self.logger.info("   • LSP server ready (waiting for connection)")
+
+                initialized_systems["lsp_server"] = True
+                lsp_port = config.tcp_port
+                self.logger.info(f"✅ LSP Server initialized (port: {lsp_port})")
+                print(f"  {TerminalUI.GREEN}✓ LSP Server: Ready on port {lsp_port}{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.info(f"⚠️ LSP Server not available: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ LSP Server: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"❌ LSP Server initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ LSP Server: Failed ({e}){TerminalUI.RESET}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Step 5: Initialize IDE Integration Engine
+        # ═══════════════════════════════════════════════════════════════════
+        if os.getenv("JARVIS_IDE_INTEGRATION_ENABLED", "true").lower() == "true":
+            try:
+                self.logger.info("💻 Step 5/5: Initializing IDE Integration Engine...")
+
+                from backend.intelligence.ide_integration import (
+                    IDEIntegrationEngine,
+                    IDEIntegrationConfig,
+                    get_ide_integration_engine,
+                    CrossRepoIDECoordinator,
+                )
+
+                # Create IDE integration engine with environment-driven config
+                config = IDEIntegrationConfig()
+                self._ide_integration_engine = await get_ide_integration_engine(config)
+
+                # Initialize cross-repo IDE coordination
+                if os.getenv("JARVIS_CROSS_REPO_IDE", "true").lower() == "true":
+                    self._ide_coordinator = CrossRepoIDECoordinator(
+                        ide_engine=self._ide_integration_engine
+                    )
+                    await self._ide_coordinator.start()
+                    self.logger.info("   • Cross-repo IDE: Enabled")
+                else:
+                    self._ide_coordinator = None
+
+                # Register built-in commands
+                commands_registered = await self._ide_integration_engine.register_builtin_commands()
+                self.logger.info(f"   • Built-in commands: {commands_registered} registered")
+
+                initialized_systems["ide_integration"] = True
+                self.logger.info("✅ IDE Integration Engine initialized (VS Code/Cursor)")
+                print(f"  {TerminalUI.GREEN}✓ IDE Integration: VS Code/Cursor support active{TerminalUI.RESET}")
+
+            except ImportError as e:
+                self.logger.info(f"⚠️ IDE Integration Engine not available: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ IDE Integration: Not available{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"❌ IDE Integration Engine initialization failed: {e}")
+                print(f"  {TerminalUI.YELLOW}⚠️ IDE Integration: Failed ({e}){TerminalUI.RESET}")
+
+        # Summary
+        active_systems = [name for name, status in initialized_systems.items() if status]
+
+        self.logger.info("═" * 60)
+        self.logger.info(f"✅ Collaboration & IDE Stack: {len(active_systems)}/5 systems active")
+        self.logger.info("═" * 60)
+
+        # Set environment variables for other systems
+        os.environ["JARVIS_COLLAB_ACTIVE"] = str(len(active_systems) > 0).lower()
+        os.environ["JARVIS_COLLAB_SYSTEMS"] = ",".join(active_systems)
 
     async def _initialize_infrastructure_orchestrator(self) -> None:
         """
