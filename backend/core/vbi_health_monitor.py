@@ -1613,11 +1613,11 @@ class VBIHealthMonitor:
         """Check VM Spot instance health."""
         try:
             try:
-                from core.gcp_vm_manager import get_vm_manager
+                from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
             except ImportError:
-                from backend.core.gcp_vm_manager import get_vm_manager
+                from core.gcp_vm_manager import get_gcp_vm_manager_safe
 
-            manager = await get_vm_manager()
+            manager = await get_gcp_vm_manager_safe()
             if manager:
                 status = await manager.get_status()
                 if status.get("healthy", False):

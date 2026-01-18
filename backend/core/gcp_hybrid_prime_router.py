@@ -1414,7 +1414,7 @@ class GCPHybridPrimeRouter:
                 if health:
                     cb_status[tier.value] = {
                         "state": health.state.value,
-                        "failure_count": health.failure_count,
+                        "failure_count": health.consecutive_failures,
                         "success_rate": health.success_rate,
                     }
         else:

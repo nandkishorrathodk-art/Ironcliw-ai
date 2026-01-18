@@ -588,9 +588,12 @@ class SupervisorAwareGCPController:
         
         try:
             # Import the actual VM manager
-            from core.gcp_vm_manager import get_vm_manager
-            
-            vm_manager = get_vm_manager()
+            try:
+                from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+            except ImportError:
+                from core.gcp_vm_manager import get_gcp_vm_manager_safe
+
+            vm_manager = await get_gcp_vm_manager_safe()
             if not vm_manager:
                 logger.error("GCP VM Manager not available")
                 return None
@@ -674,9 +677,12 @@ class SupervisorAwareGCPController:
         
         try:
             # Import the actual VM manager
-            from core.gcp_vm_manager import get_vm_manager
-            
-            vm_manager = get_vm_manager()
+            try:
+                from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+            except ImportError:
+                from core.gcp_vm_manager import get_gcp_vm_manager_safe
+
+            vm_manager = await get_gcp_vm_manager_safe()
             if vm_manager:
                 await vm_manager.terminate_vm(vm.instance_id)
             
