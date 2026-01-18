@@ -150,6 +150,51 @@ class EventType(Enum):
     API_ENDPOINT_REMOVED = "api_endpoint_removed"
     API_SCHEMA_VALIDATION = "api_schema_validation"
 
+    # Collaboration events (v13.0 Collaboration & IDE Integration)
+    # Multi-user collaboration events
+    COLLAB_SESSION_STARTED = "collab_session_started"
+    COLLAB_SESSION_ENDED = "collab_session_ended"
+    COLLAB_USER_JOINED = "collab_user_joined"
+    COLLAB_USER_LEFT = "collab_user_left"
+    COLLAB_OPERATION_APPLIED = "collab_operation_applied"
+    COLLAB_CONFLICT_DETECTED = "collab_conflict_detected"
+    COLLAB_CONFLICT_RESOLVED = "collab_conflict_resolved"
+    COLLAB_CURSOR_UPDATED = "collab_cursor_updated"
+
+    # Code ownership events
+    OWNERSHIP_LOOKUP = "ownership_lookup"
+    OWNERSHIP_CHANGED = "ownership_changed"
+    OWNERSHIP_VIOLATION = "ownership_violation"
+    PERMISSION_CHECK = "permission_check"
+    PERMISSION_DENIED = "permission_denied"
+
+    # Review workflow events
+    PR_CREATED = "pr_created"
+    PR_UPDATED = "pr_updated"
+    PR_REVIEW_REQUESTED = "pr_review_requested"
+    PR_APPROVED = "pr_approved"
+    PR_CHANGES_REQUESTED = "pr_changes_requested"
+    PR_MERGED = "pr_merged"
+    PR_CLOSED = "pr_closed"
+    CI_STATUS_CHANGED = "ci_status_changed"
+
+    # IDE integration events
+    IDE_CONNECTED = "ide_connected"
+    IDE_DISCONNECTED = "ide_disconnected"
+    IDE_COMMAND_EXECUTED = "ide_command_executed"
+    IDE_COMPLETION_REQUESTED = "ide_completion_requested"
+    IDE_DIAGNOSTIC_PUBLISHED = "ide_diagnostic_published"
+    IDE_CODE_ACTION_REQUESTED = "ide_code_action_requested"
+    IDE_HOVER_REQUESTED = "ide_hover_requested"
+    IDE_DEFINITION_REQUESTED = "ide_definition_requested"
+
+    # LSP events
+    LSP_SERVER_STARTED = "lsp_server_started"
+    LSP_SERVER_STOPPED = "lsp_server_stopped"
+    LSP_DOCUMENT_OPENED = "lsp_document_opened"
+    LSP_DOCUMENT_CHANGED = "lsp_document_changed"
+    LSP_DOCUMENT_CLOSED = "lsp_document_closed"
+
 
 # =============================================================================
 # DATA STRUCTURES
