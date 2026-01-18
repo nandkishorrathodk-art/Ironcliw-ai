@@ -4959,6 +4959,26 @@ class SupervisorBootstrapper:
             self.perf.end("cleanup")
 
             # ═══════════════════════════════════════════════════════════════════
+            # v10.1: Cross-Repo Startup Orchestration (MUST RUN BEFORE TrinityIntegrator)
+            # ═══════════════════════════════════════════════════════════════════
+            # Automatically probe and launch J-Prime and Reactor-Core if not running.
+            # This MUST happen before TrinityIntegrator starts so that the services
+            # are already running when TrinityIntegrator checks for them.
+            # ═══════════════════════════════════════════════════════════════════
+            try:
+                from backend.supervisor.cross_repo_startup_orchestrator import initialize_cross_repo_orchestration
+
+                self.logger.info("🚀 [v10.1] Pre-launching external services...")
+                await initialize_cross_repo_orchestration()
+                self.logger.info("✅ [v10.1] External services launched")
+
+            except ImportError as e:
+                self.logger.warning(f"⚠️ [v10.1] Cross-Repo Orchestrator not available: {e}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [v10.1] Cross-Repo Orchestration failed: {e}")
+                self.logger.debug(f"[v10.1] Error details: {e}", exc_info=True)
+
+            # ═══════════════════════════════════════════════════════════════════
             # v81.0: TrinityIntegrator - Unified Cross-Repo Integration
             # Provides: orphan cleanup, resilient IPC, port allocation, shutdown
             # ═══════════════════════════════════════════════════════════════════
@@ -5281,24 +5301,9 @@ class SupervisorBootstrapper:
 
             await self._initialize_jarvis_prime()
 
-            # ═══════════════════════════════════════════════════════════════════
-            # v10.1: Cross-Repo Startup Orchestration
-            # ═══════════════════════════════════════════════════════════════════
-            # Automatically probe and launch J-Prime and Reactor-Core if not running.
-            # This enables single-command startup of all 3 repos via run_supervisor.py
-            # ═══════════════════════════════════════════════════════════════════
-            try:
-                from backend.supervisor.cross_repo_startup_orchestrator import initialize_cross_repo_orchestration
-
-                self.logger.info("🚀 [v10.1] Initializing Cross-Repo Orchestration...")
-                await initialize_cross_repo_orchestration()
-                self.logger.info("✅ [v10.1] Cross-Repo Orchestration complete")
-
-            except ImportError as e:
-                self.logger.warning(f"⚠️ [v10.1] Cross-Repo Orchestrator not available: {e}")
-            except Exception as e:
-                self.logger.warning(f"⚠️ [v10.1] Cross-Repo Orchestration failed: {e}")
-                self.logger.debug(f"[v10.1] Error details: {e}", exc_info=True)
+            # NOTE: Cross-Repo Orchestration (v10.1) has been moved earlier in the startup
+            # sequence (before TrinityIntegrator) to ensure services are running when
+            # TrinityIntegrator checks for them. See line ~4961.
 
             # ═══════════════════════════════════════════════════════════════════
             # v9.0: Initialize Intelligence Systems (UAE/SAI/Neural Mesh/MAS)

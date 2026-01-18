@@ -474,10 +474,22 @@ class CrossRepoTransactionCoordinator:
             if scope in self._repo_paths:
                 continue  # Already set via environment
 
+            # v78.2: Track resolved paths to avoid case-sensitivity duplicates
+            # (macOS APFS is case-insensitive but case-preserving)
+            seen_resolved = set()
+
             for base in unique_base_paths:
                 for name in names:
                     path = base / name
                     if self._validate_repo(path):
+                        # Use resolved real path for deduplication
+                        resolved = path.resolve()
+                        resolved_lower = str(resolved).lower()
+
+                        if resolved_lower in seen_resolved:
+                            continue  # Skip case-variant duplicate
+                        seen_resolved.add(resolved_lower)
+
                         if scope not in discovered_paths:
                             discovered_paths[scope] = []
                         discovered_paths[scope].append(path)
