@@ -9839,8 +9839,8 @@ class TrinityUnifiedOrchestrator:
                 str(Path.home() / "Documents" / "repos" / "jarvis-prime")
             ))
             launch_scripts = [
+                "run_server.py",  # Primary entry point
                 "jarvis_prime/server.py",
-                "run_server.py",
                 "jarvis_prime/core/trinity_bridge.py",
             ]
             default_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
@@ -9850,10 +9850,11 @@ class TrinityUnifiedOrchestrator:
                 str(Path.home() / "Documents" / "repos" / "reactor-core")
             ))
             launch_scripts = [
+                "run_reactor.py",  # Primary entry point
                 "reactor_core/orchestration/trinity_orchestrator.py",
                 "run_orchestrator.py",
             ]
-            default_port = int(os.getenv("REACTOR_CORE_PORT", "8001"))
+            default_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
         else:
             diagnosis["recommended_action"] = f"Unknown component: {component}"
             return diagnosis

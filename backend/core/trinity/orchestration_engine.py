@@ -1381,14 +1381,14 @@ class TrinityOrchestrationEngine:
                 component_type=ComponentType.MIND,
                 name="JARVIS-Prime (Mind)",
                 path=TrinityConfig.PRIME_PATH,
-                entry_point="python3 server.py",
+                entry_point="python3 run_server.py --port 8000 --host 0.0.0.0",
                 port=TrinityConfig.PRIME_PORT,
             ),
             ComponentType.NERVES: ComponentInfo(
                 component_type=ComponentType.NERVES,
                 name="Reactor-Core (Nerves)",
                 path=TrinityConfig.REACTOR_PATH,
-                entry_point="python3 run_reactor.py",
+                entry_point="python3 run_reactor.py --port 8090",
                 port=TrinityConfig.REACTOR_PORT,
             ),
             ComponentType.BODY: ComponentInfo(

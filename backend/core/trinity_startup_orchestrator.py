@@ -216,7 +216,7 @@ class TrinityStartupOrchestrator:
                 component_type=ComponentType.REACTOR_CORE,
                 name="Reactor-Core (Nerves)",
                 repo_path=reactor_path,
-                startup_script="reactor_core/orchestration/trinity_orchestrator.py",
+                startup_script="run_reactor.py",  # Primary entry point (not trinity_orchestrator.py)
                 port=reactor_port,
                 health_endpoint="/health",
                 required=False,  # Optional component

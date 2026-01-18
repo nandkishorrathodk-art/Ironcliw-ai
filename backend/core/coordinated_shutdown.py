@@ -1116,12 +1116,15 @@ class OrphanProcessDetector:
         self,
         trinity_dir: Optional[Path] = None,
         max_orphan_age_hours: float = 24.0,
+        startup_grace_period_seconds: float = 120.0,  # Grace period for new processes
     ):
         self.trinity_dir = trinity_dir or Path(
             os.environ.get("TRINITY_DIR", str(Path.home() / ".jarvis" / "trinity"))
         )
         self.max_orphan_age_hours = max_orphan_age_hours
+        self.startup_grace_period_seconds = startup_grace_period_seconds
         self._detected_orphans: List[OrphanProcess] = []
+        self._startup_time = time.time()  # Track when this detector was created
 
     async def detect_orphans(self) -> List[OrphanProcess]:
         """
@@ -1231,18 +1234,29 @@ class OrphanProcessDetector:
                         break
 
                 if component_type:
+                    # Check if this process is within startup grace period
+                    # (newly started processes haven't had time to establish heartbeats)
+                    if self._is_within_startup_grace_period(pid):
+                        logger.debug(
+                            f"[OrphanDetector] Skipping PID {pid} ({component_type}) - "
+                            f"within startup grace period"
+                        )
+                        continue
+
                     # Check if this process has a valid heartbeat
                     has_valid_heartbeat = await self._has_valid_heartbeat(
                         component_type, pid
                     )
 
                     if not has_valid_heartbeat:
+                        # Get actual process start time for the orphan record
+                        start_time = self._get_process_start_time(pid) or 0.0
                         # This is an orphan
                         orphan = OrphanProcess(
                             pid=pid,
                             name=component_type,
                             cmdline=cmdline[:200],  # Truncate
-                            started_at=0.0,  # Would need /proc access for this
+                            started_at=start_time,
                             component_type=component_type,
                             reason="no_valid_heartbeat",
                         )
@@ -1370,6 +1384,78 @@ class OrphanProcessDetector:
             if any(p in cmdline_lower for p in patterns):
                 return True
         return False
+
+    def _get_process_start_time(self, pid: int) -> Optional[float]:
+        """
+        Get the start time of a process as Unix timestamp.
+
+        Returns None if unable to determine start time.
+        """
+        try:
+            import subprocess
+            # Use ps to get process start time (works on macOS and Linux)
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "lstart="],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Parse the lstart format (e.g., "Sun Jan 18 14:46:52 2026")
+                from datetime import datetime
+                try:
+                    start_str = result.stdout.strip()
+                    start_dt = datetime.strptime(start_str, "%a %b %d %H:%M:%S %Y")
+                    return start_dt.timestamp()
+                except ValueError:
+                    pass
+
+            # Alternative: use etime (elapsed time)
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "etime="],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                etime = result.stdout.strip()
+                # Parse elapsed time format: [[DD-]hh:]mm:ss
+                try:
+                    parts = etime.replace("-", ":").split(":")
+                    seconds = 0
+                    if len(parts) == 2:  # mm:ss
+                        seconds = int(parts[0]) * 60 + int(parts[1])
+                    elif len(parts) == 3:  # hh:mm:ss
+                        seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                    elif len(parts) == 4:  # DD:hh:mm:ss
+                        seconds = int(parts[0]) * 86400 + int(parts[1]) * 3600 + int(parts[2]) * 60 + int(parts[3])
+                    return time.time() - seconds
+                except (ValueError, IndexError):
+                    pass
+        except Exception:
+            pass
+        return None
+
+    def _is_within_startup_grace_period(self, pid: int) -> bool:
+        """
+        Check if a process is within the startup grace period.
+
+        Returns True if the process started recently and should be
+        given time to establish heartbeats.
+        """
+        # If we just started, give all processes grace period
+        time_since_detector_start = time.time() - self._startup_time
+        if time_since_detector_start < self.startup_grace_period_seconds:
+            return True
+
+        # Check process start time
+        start_time = self._get_process_start_time(pid)
+        if start_time is None:
+            # Can't determine start time - give benefit of doubt
+            return True
+
+        process_age = time.time() - start_time
+        return process_age < self.startup_grace_period_seconds
 
     async def cleanup_orphans(
         self,

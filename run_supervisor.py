@@ -16651,9 +16651,10 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Register J-Prime launch config if repo exists
             if hasattr(self, '_jprime_repo_path') and self._jprime_repo_path.exists():
-                # Find the launch script
+                # Find the launch script - run_server.py is the primary entry point
                 launch_scripts = [
-                    "jarvis_prime/orchestration/trinity_orchestrator.py",
+                    "run_server.py",  # Primary entry point with proper FastAPI server
+                    "jarvis_prime/orchestration/trinity_orchestrator.py",  # Legacy fallback
                     "run_orchestrator.py",
                     "main.py",
                 ]
@@ -16667,13 +16668,21 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         if venv_path.exists():
                             venv_python = str(venv_path)
 
+                        # Build command with port argument for run_server.py
+                        command = ["python3", str(script_path)]
+                        if "run_server.py" in str(script_path):
+                            # run_server.py accepts --port and --host CLI args
+                            jprime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+                            command.extend(["--port", str(jprime_port), "--host", "0.0.0.0"])
+
                         config = ServiceLaunchConfig(
                             service_name="jarvis-prime",
-                            command=["python3", str(script_path)],
+                            command=command,
                             working_dir=str(self._jprime_repo_path),
                             env_vars={
                                 "TRINITY_ENABLED": "true",
                                 "PYTHONPATH": str(self._jprime_repo_path),
+                                "JARVIS_PRIME_PORT": os.getenv("JARVIS_PRIME_PORT", "8000"),
                             },
                             python_venv=venv_python,
                             restart_policy="always",
@@ -16687,9 +16696,10 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Register Reactor-Core launch config if repo exists
             if hasattr(self, '_reactor_core_repo_path') and self._reactor_core_repo_path.exists():
-                # Find the launch script
+                # Find the launch script - run_reactor.py is the primary entry point
                 launch_scripts = [
-                    "reactor_core/orchestration/trinity_orchestrator.py",
+                    "run_reactor.py",  # Primary entry point with proper FastAPI server
+                    "reactor_core/orchestration/trinity_orchestrator.py",  # Legacy fallback
                     "run_orchestrator.py",
                     "main.py",
                 ]
@@ -16703,13 +16713,21 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         if venv_path.exists():
                             venv_python = str(venv_path)
 
+                        # Build command with port argument for run_reactor.py
+                        command = ["python3", str(script_path)]
+                        if "run_reactor.py" in str(script_path):
+                            # run_reactor.py accepts --port CLI arg
+                            reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
+                            command.extend(["--port", str(reactor_port)])
+
                         config = ServiceLaunchConfig(
                             service_name="reactor-core",
-                            command=["python3", str(script_path)],
+                            command=command,
                             working_dir=str(self._reactor_core_repo_path),
                             env_vars={
                                 "TRINITY_ENABLED": "true",
                                 "PYTHONPATH": str(self._reactor_core_repo_path),
+                                "REACTOR_CORE_PORT": os.getenv("REACTOR_CORE_PORT", "8090"),
                             },
                             python_venv=venv_python,
                             restart_policy="always",
