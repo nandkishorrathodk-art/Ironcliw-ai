@@ -183,6 +183,10 @@ class SpaceLock:
     3. Once on target Space, agents work in parallel (different apps)
     4. Timeout protection prevents deadlocks
 
+    v6.0: Uses lazy asyncio primitive initialization to prevent
+    "There is no current event loop in thread" errors when instantiated
+    from thread pool executors.
+
     Usage:
         async with space_lock.acquire("Calendar"):
             # Only I control the display now
@@ -204,7 +208,6 @@ class SpaceLock:
     """
 
     _instance: Optional["SpaceLock"] = None
-    _lock: asyncio.Lock = None
 
     def __new__(cls):
         """Singleton pattern - one global lock for all agents."""
@@ -217,8 +220,9 @@ class SpaceLock:
         if self._initialized:
             return
 
-        self._switch_lock = asyncio.Lock()  # The actual lock
-        self._queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        # v6.0: Lazy asyncio primitive initialization
+        self._switch_lock: Optional[asyncio.Lock] = None
+        self._queue: Optional[asyncio.Queue] = None
         self._current_holder: Optional[str] = None
         self._current_app: Optional[str] = None
         self._lock_acquired_time: float = 0.0
@@ -232,6 +236,18 @@ class SpaceLock:
 
         self._initialized = True
         logger.info("SpaceLock initialized (singleton)")
+
+    def _get_switch_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter - creates lock on first async access."""
+        if self._switch_lock is None:
+            self._switch_lock = asyncio.Lock()
+        return self._switch_lock
+
+    def _get_queue(self) -> asyncio.Queue:
+        """v6.0: Lazy queue getter - creates queue on first async access."""
+        if self._queue is None:
+            self._queue = asyncio.Queue(maxsize=10)
+        return self._queue
 
     @classmethod
     def get_instance(cls) -> "SpaceLock":
@@ -275,23 +291,24 @@ class SpaceLock:
         timeout: float,
     ) -> bool:
         """Internal lock acquisition with timeout."""
-        start_time = asyncio.get_event_loop().time()
+        import time as time_module
+        start_time = time_module.time()  # v6.0: Use time.time() instead of deprecated asyncio.get_event_loop().time()
 
         try:
             # Try to acquire lock with timeout
             acquired = await asyncio.wait_for(
-                self._switch_lock.acquire(),
+                self._get_switch_lock().acquire(),  # v6.0: Use lazy getter
                 timeout=timeout,
             )
 
             if acquired:
-                wait_time = asyncio.get_event_loop().time() - start_time
+                wait_time = time_module.time() - start_time
                 self._total_acquisitions += 1
                 self._total_waits += 1 if wait_time > 0.1 else 0
                 self._max_wait_time = max(self._max_wait_time, wait_time)
                 self._current_holder = holder_id
                 self._current_app = app_name
-                self._lock_acquired_time = asyncio.get_event_loop().time()
+                self._lock_acquired_time = time_module.time()
 
                 logger.debug(
                     f"SpaceLock acquired by {holder_id} for {app_name} "
@@ -311,8 +328,9 @@ class SpaceLock:
 
     def _release_internal(self, holder_id: str) -> None:
         """Internal lock release."""
+        import time as time_module
         if self._current_holder == holder_id:
-            hold_time = asyncio.get_event_loop().time() - self._lock_acquired_time
+            hold_time = time_module.time() - self._lock_acquired_time
             logger.debug(
                 f"SpaceLock released by {holder_id} (held for {hold_time:.2f}s)"
             )
@@ -320,8 +338,10 @@ class SpaceLock:
             self._current_app = None
             self._lock_acquired_time = 0.0
 
-            if self._switch_lock.locked():
-                self._switch_lock.release()
+            # v6.0: Use lazy getter and check if lock exists
+            switch_lock = self._get_switch_lock()
+            if switch_lock.locked():
+                switch_lock.release()
         else:
             logger.warning(
                 f"SpaceLock release mismatch: {holder_id} tried to release "
@@ -330,12 +350,17 @@ class SpaceLock:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get SpaceLock statistics."""
+        # v6.0: Safe check for lock status
+        is_locked = False
+        if self._switch_lock is not None:
+            is_locked = self._switch_lock.locked()
+
         return {
             "total_acquisitions": self._total_acquisitions,
             "total_waits": self._total_waits,
             "max_wait_time_seconds": self._max_wait_time,
             "timeouts": self._timeouts,
-            "is_locked": self._switch_lock.locked() if self._switch_lock else False,
+            "is_locked": is_locked,
             "current_holder": self._current_holder,
             "current_app": self._current_app,
         }

@@ -147,10 +147,10 @@ class BaseNeuralMeshAgent(ABC):
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._message_handler_task: Optional[asyncio.Task[None]] = None
 
-        # Message queue for incoming messages
-        self._message_queue: asyncio.Queue[AgentMessage] = asyncio.Queue(
-            maxsize=self.config.message_queue_size
-        )
+        # v6.0: Lazy message queue initialization to prevent
+        # "There is no current event loop in thread" errors when instantiated
+        # from thread pool executors
+        self._message_queue: Optional[asyncio.Queue[AgentMessage]] = None
 
         # Metrics
         self._metrics = AgentMetrics()
@@ -166,6 +166,19 @@ class BaseNeuralMeshAgent(ABC):
             ", ".join(capabilities),
             self.description[:80] if self.description else "N/A",
         )
+
+    def _get_message_queue(self) -> asyncio.Queue[AgentMessage]:
+        """
+        v6.0: Lazy message queue getter - creates queue on first async access.
+
+        This prevents "There is no current event loop in thread" errors when
+        the agent is instantiated from a thread pool executor.
+        """
+        if self._message_queue is None:
+            self._message_queue = asyncio.Queue(
+                maxsize=self.config.message_queue_size
+            )
+        return self._message_queue
 
     async def initialize(
         self,
@@ -748,7 +761,7 @@ class BaseNeuralMeshAgent(ABC):
         while self._running:
             try:
                 message = await asyncio.wait_for(
-                    self._message_queue.get(),
+                    self._get_message_queue().get(),  # v6.0: Use lazy getter
                     timeout=queue_timeout,  # v2.7: 10ms instead of 1000ms
                 )
                 await self._process_message(message)

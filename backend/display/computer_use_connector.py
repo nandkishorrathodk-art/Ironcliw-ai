@@ -138,6 +138,10 @@ async def run_blocking(func: Callable, *args, timeout: float = 30.0, **kwargs) -
     """
     Run a blocking function in a thread pool with timeout protection.
 
+    v6.0: Use asyncio.get_running_loop() instead of deprecated get_event_loop().
+    This fixes "There is no current event loop in thread" errors when called
+    from ThreadPoolExecutor threads.
+
     Args:
         func: The blocking function to run
         *args: Positional arguments for the function
@@ -150,7 +154,8 @@ async def run_blocking(func: Callable, *args, timeout: float = 30.0, **kwargs) -
     Raises:
         asyncio.TimeoutError: If operation times out
     """
-    loop = asyncio.get_event_loop()
+    # v6.0: get_running_loop() is the correct approach for async functions
+    loop = asyncio.get_running_loop()
     executor = _get_executor()
 
     # Create partial function with kwargs
@@ -171,6 +176,9 @@ class CircuitBreaker:
     """
     Circuit breaker pattern for API calls.
     Prevents cascading failures by failing fast when service is unhealthy.
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
     """
 
     def __init__(
@@ -187,7 +195,14 @@ class CircuitBreaker:
         self._last_failure_time: Optional[float] = None
         self._state = "closed"  # closed, open, half-open
         self._half_open_calls = 0
-        self._lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization - created on first async access
+        self._lock: Optional[asyncio.Lock] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter - creates lock on first use in async context."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def is_open(self) -> bool:
@@ -195,7 +210,7 @@ class CircuitBreaker:
 
     async def can_execute(self) -> bool:
         """Check if execution is allowed."""
-        async with self._lock:
+        async with self._get_lock():
             if self._state == "closed":
                 return True
 
@@ -219,7 +234,7 @@ class CircuitBreaker:
 
     async def record_success(self) -> None:
         """Record a successful call."""
-        async with self._lock:
+        async with self._get_lock():
             if self._state == "half-open":
                 self._state = "closed"
                 self._failure_count = 0
@@ -229,7 +244,7 @@ class CircuitBreaker:
 
     async def record_failure(self) -> None:
         """Record a failed call."""
-        async with self._lock:
+        async with self._get_lock():
             self._failure_count += 1
             self._last_failure_time = time.time()
 
@@ -266,6 +281,9 @@ class TokenBucketRateLimiter:
     - Burst allowance for spiky traffic
     - Async-safe with proper locking
     - Automatic token replenishment
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
     """
 
     def __init__(
@@ -277,8 +295,15 @@ class TokenBucketRateLimiter:
         self._burst = burst
         self._tokens = float(burst)
         self._last_refill = time.monotonic()
-        self._lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._lock: Optional[asyncio.Lock] = None
         self._refill_rate = rpm / 60.0  # Tokens per second
+
+    def _get_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter - creates lock on first use in async context."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def acquire(self, timeout: float = 30.0) -> bool:
         """
@@ -293,7 +318,7 @@ class TokenBucketRateLimiter:
         start = time.monotonic()
 
         while True:
-            async with self._lock:
+            async with self._get_lock():
                 self._refill_tokens()
 
                 if self._tokens >= 1.0:
@@ -535,6 +560,10 @@ class AnthropicConnectionPool:
     - Rate limiting per pool (not per connection)
     - Adaptive retry with error classification
     - Graceful degradation when connections fail
+
+    v6.0: Uses lazy initialization for asyncio primitives to prevent
+    "There is no current event loop in thread" errors when instantiated
+    from thread pool executors.
     """
 
     def __init__(
@@ -552,9 +581,9 @@ class AnthropicConnectionPool:
         self._health: Dict[int, ConnectionHealth] = {}
         self._load: Dict[int, int] = {}  # Connection index -> active requests
 
-        # Synchronization
-        self._pool_lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(pool_size * 2)  # Allow 2x concurrency
+        # v6.0: Lazy initialization for asyncio primitives
+        self._pool_lock: Optional[asyncio.Lock] = None
+        self._semaphore: Optional[asyncio.Semaphore] = None
 
         # Rate limiting
         self._rate_limiter = TokenBucketRateLimiter()
@@ -569,9 +598,21 @@ class AnthropicConnectionPool:
         # Logger
         self._logger = logging.getLogger("jarvis.cu.pool")
 
+    def _get_pool_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+        return self._pool_lock
+
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        """v6.0: Lazy semaphore getter."""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._pool_size * 2)
+        return self._semaphore
+
     async def initialize(self) -> None:
         """Initialize the connection pool."""
-        async with self._pool_lock:
+        async with self._get_pool_lock():
             if self._connections:
                 return  # Already initialized
 
@@ -615,11 +656,11 @@ class AnthropicConnectionPool:
         Yields:
             AsyncAnthropic client
         """
-        await self._semaphore.acquire()
+        await self._get_semaphore().acquire()
         conn_idx = -1
 
         try:
-            async with self._pool_lock:
+            async with self._get_pool_lock():
                 # Select least-loaded healthy connection
                 healthy = [
                     (i, self._load.get(i, 0))
@@ -644,9 +685,9 @@ class AnthropicConnectionPool:
             yield self._connections[conn_idx]
 
         finally:
-            self._semaphore.release()
+            self._get_semaphore().release()
             if conn_idx >= 0:
-                async with self._pool_lock:
+                async with self._get_pool_lock():
                     self._load[conn_idx] = max(0, self._load.get(conn_idx, 1) - 1)
 
     async def execute_with_retry(
@@ -740,7 +781,7 @@ class AnthropicConnectionPool:
             try:
                 await asyncio.sleep(self._health_check_interval)
 
-                async with self._pool_lock:
+                async with self._get_pool_lock():
                     for idx, health in self._health.items():
                         # Mark idle connections as healthy
                         if time.time() - health.last_used > 60:
@@ -817,6 +858,9 @@ class MemoryEfficientScreenshotManager:
     - Weak references to allow GC
     - Hash-based deduplication
     - Automatic resource cleanup
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
     """
 
     def __init__(
@@ -828,9 +872,16 @@ class MemoryEfficientScreenshotManager:
         self._max_memory_bytes = max_memory_mb * 1024 * 1024
         self._cache: Dict[str, CachedScreenshot] = {}
         self._access_order: Deque[str] = deque()
-        self._lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._lock: Optional[asyncio.Lock] = None
         self._total_bytes = 0
         self._logger = logging.getLogger("jarvis.cu.screenshots")
+
+    def _get_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def capture_and_cache(
         self,
@@ -849,10 +900,11 @@ class MemoryEfficientScreenshotManager:
         Returns:
             Tuple of (PIL Image or None, base64 string)
         """
-        async with self._lock:
+        async with self._get_lock():
             # Capture screenshot
             try:
-                screenshot = await asyncio.get_event_loop().run_in_executor(
+                # v6.0: Use get_running_loop() instead of deprecated get_event_loop()
+                screenshot = await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: pyautogui.screenshot(region=region) if region else pyautogui.screenshot()
                 )
@@ -977,6 +1029,9 @@ class ParallelActionExecutor:
     - Conflict detection (keyboard is single resource)
     - Adaptive batching (groups compatible actions)
     - Real-time progress tracking
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
     """
 
     # Action conflict groups - actions in same group can't run in parallel
@@ -994,7 +1049,14 @@ class ParallelActionExecutor:
         self._max_parallel = max_parallel
         self._conflict_delay = conflict_delay
         self._logger = logging.getLogger("jarvis.cu.parallel")
-        self._execution_lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._execution_lock: Optional[asyncio.Lock] = None
+
+    def _get_execution_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._execution_lock is None:
+            self._execution_lock = asyncio.Lock()
+        return self._execution_lock
 
     def _get_action_groups(self, action_type: str) -> Set[str]:
         """Get conflict groups for an action type."""
@@ -1466,14 +1528,26 @@ class VoiceNarrationHandler:
 # ============================================================================
 
 class ScreenCaptureHandler:
-    """Handles screen capture for Claude Computer Use with async support."""
+    """
+    Handles screen capture for Claude Computer Use with async support.
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
+    """
 
     def __init__(self, scale_factor: float = 1.0, capture_timeout: float = 10.0):
         self.scale_factor = scale_factor
         self.capture_timeout = capture_timeout
         self._last_screenshot: Optional[Image.Image] = None
         self._screenshot_cache: Dict[str, str] = {}
-        self._capture_lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._capture_lock: Optional[asyncio.Lock] = None
+
+    def _get_capture_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._capture_lock is None:
+            self._capture_lock = asyncio.Lock()
+        return self._capture_lock
 
     def _capture_sync(
         self,
@@ -1522,7 +1596,7 @@ class ScreenCaptureHandler:
         Raises:
             asyncio.TimeoutError: If capture times out
         """
-        async with self._capture_lock:  # Prevent concurrent captures
+        async with self._get_capture_lock():  # Prevent concurrent captures
             try:
                 # Capture screenshot in thread pool with timeout
                 screenshot = await run_blocking(
@@ -1562,7 +1636,12 @@ class ScreenCaptureHandler:
 # ============================================================================
 
 class ActionExecutor:
-    """Executes computer actions using PyAutoGUI with full async support."""
+    """
+    Executes computer actions using PyAutoGUI with full async support.
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
+    """
 
     def __init__(
         self,
@@ -1575,11 +1654,18 @@ class ActionExecutor:
         self.safety_pause = safety_pause
         self.movement_duration = movement_duration
         self.action_timeout = action_timeout
-        self._action_lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._action_lock: Optional[asyncio.Lock] = None
 
         # Configure PyAutoGUI
         pyautogui.PAUSE = safety_pause
         pyautogui.FAILSAFE = True
+
+    def _get_action_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._action_lock is None:
+            self._action_lock = asyncio.Lock()
+        return self._action_lock
 
     # ========================================================================
     # Synchronous action methods (run in thread pool)
@@ -1631,7 +1717,7 @@ class ActionExecutor:
         """Execute a computer action asynchronously with timeout protection."""
         start_time = time.time()
 
-        async with self._action_lock:  # Prevent concurrent actions
+        async with self._get_action_lock():  # Prevent concurrent actions
             try:
                 if action.action_type == ActionType.CLICK:
                     await self._execute_click(action)

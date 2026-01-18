@@ -1184,6 +1184,9 @@ class RealTimeEventStream:
     - Conflict detection (checksums)
     - Automatic event cleanup (retention policy)
     - Subscriber notification
+
+    v6.0: Uses lazy lock initialization to prevent "There is no current event
+    loop in thread" errors when instantiated from thread pool executors.
     """
 
     def __init__(
@@ -1198,7 +1201,8 @@ class RealTimeEventStream:
 
         # Event buffer
         self._buffer: Deque[StreamEvent] = deque(maxlen=buffer_size)
-        self._buffer_lock = asyncio.Lock()
+        # v6.0: Lazy lock initialization
+        self._buffer_lock: Optional[asyncio.Lock] = None
 
         # Sequence tracking
         self._sequence_number = 0
@@ -1215,6 +1219,12 @@ class RealTimeEventStream:
         self._transaction = AtomicFileTransaction(COMPUTER_USE_EVENTS_FILE)
 
         self._logger = logging.getLogger("jarvis.cu.stream")
+
+    def _get_buffer_lock(self) -> asyncio.Lock:
+        """v6.0: Lazy lock getter."""
+        if self._buffer_lock is None:
+            self._buffer_lock = asyncio.Lock()
+        return self._buffer_lock
 
     async def start(self) -> None:
         """Start the event stream with background flushing."""
@@ -1260,7 +1270,7 @@ class RealTimeEventStream:
         Returns:
             Event ID
         """
-        async with self._buffer_lock:
+        async with self._get_buffer_lock():
             self._sequence_number += 1
 
             event = StreamEvent(
@@ -1294,7 +1304,7 @@ class RealTimeEventStream:
         Returns:
             Number of events flushed
         """
-        async with self._buffer_lock:
+        async with self._get_buffer_lock():
             if not self._buffer:
                 return 0
 
@@ -1338,7 +1348,7 @@ class RealTimeEventStream:
         except Exception as e:
             self._logger.error(f"[STREAM] Flush error: {e}")
             # Re-add events to buffer
-            async with self._buffer_lock:
+            async with self._get_buffer_lock():
                 for event in events_to_flush:
                     self._buffer.appendleft(event)
             return 0
