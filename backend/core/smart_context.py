@@ -1061,10 +1061,12 @@ class SmartContextSelector:
         # Initialize budget manager
         self._budget_manager = TokenBudgetManager(self._token_counter)
 
-        # Try to get Oracle
+        # Try to get Oracle (synchronous factory)
         try:
             from backend.core.ouroboros.oracle import get_oracle
-            self._oracle = await get_oracle()
+            self._oracle = get_oracle()  # Synchronous - returns TheOracle instance
+            if not self._oracle._running:
+                await self._oracle.initialize()
             logger.info("[SmartContext] Connected to Oracle graph")
         except Exception as e:
             logger.warning(f"[SmartContext] Oracle not available: {e}")
