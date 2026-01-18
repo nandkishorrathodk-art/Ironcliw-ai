@@ -2884,6 +2884,22 @@ class UnifiedStateCoordinator:
 
     _instance: Optional["UnifiedStateCoordinator"] = None
     _instance_lock: asyncio.Lock = None
+    _instance_sync_lock: RLock = RLock()  # v92.0: Sync lock for __new__
+    _initialized: bool = False  # v92.0: Track initialization state
+
+    def __new__(cls) -> "UnifiedStateCoordinator":
+        """
+        v92.0: Enforce singleton pattern at construction time.
+
+        This prevents multiple instances with different cookies which
+        causes false "dead/stale" detection when one instance checks
+        another's ownership.
+        """
+        with cls._instance_sync_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
 
     # ═══════════════════════════════════════════════════════════════════════════
     # v86.0: Priority-based ownership resolution
@@ -2914,6 +2930,12 @@ class UnifiedStateCoordinator:
         OWNERSHIP_TRANSFERRED = "ownership_transferred"
 
     def __init__(self):
+        # v92.0: Only initialize once (singleton pattern enforcement)
+        # __new__ ensures only one instance exists, but __init__ may be
+        # called multiple times. Only initialize state on first call.
+        if getattr(self, '_initialized', False):
+            return
+
         # State directories (env-driven)
         config = get_config()
         state_dir = Path(os.path.expanduser(
@@ -2926,6 +2948,7 @@ class UnifiedStateCoordinator:
         self.lock_dir.mkdir(parents=True, exist_ok=True)
 
         # Process identity (prevents PID reuse issues)
+        # v92.0: Cookie is generated once per process lifetime
         self._process_cookie = str(uuid.uuid4())
         self._pid = os.getpid()
         self._hostname = socket.gethostname()
@@ -3005,8 +3028,11 @@ class UnifiedStateCoordinator:
             "JARVIS_ENABLE_ULTRA_COORD", "true"
         ).lower() == "true"
 
+        # v92.0: Mark as initialized (singleton pattern)
+        self._initialized = True
+
         logger.debug(
-            f"[StateCoord] v88.0 Initialized (PID={self._pid}, "
+            f"[StateCoord] v92.0 Initialized (PID={self._pid}, "
             f"PGID={self._pgid}, Cookie={self._process_cookie[:8]}...)"
         )
 
@@ -3845,12 +3871,38 @@ class UnifiedStateCoordinator:
         2. Stale processes (heartbeat check)
         3. Zombie processes (status check)
         4. Cross-host issues (hostname check)
+
+        v92.0: Fixed self-detection and stale threshold consistency.
         """
         try:
             pid = owner.pid
             cookie = owner.cookie
             hostname = owner.hostname
             last_heartbeat = owner.last_heartbeat
+
+            # ═══════════════════════════════════════════════════════════════════
+            # CRITICAL FIX v92.0: Self-detection - if this is our own process,
+            # always return True. This prevents false "dead/stale" detection
+            # when we're checking our own ownership.
+            # ═══════════════════════════════════════════════════════════════════
+            if pid == self._pid:
+                # Additional validation: cookie must match if we have one
+                if cookie and self._process_cookie:
+                    if cookie == self._process_cookie:
+                        logger.debug(
+                            f"[StateCoord] Owner PID {pid} is self (cookie match) - alive"
+                        )
+                        return True
+                    else:
+                        # Different cookie means PID was reused (shouldn't happen for self)
+                        logger.warning(
+                            f"[StateCoord] Self PID {pid} has mismatched cookie - "
+                            f"state corruption or PID reuse?"
+                        )
+                else:
+                    # No cookie to validate, trust PID match for self
+                    logger.debug(f"[StateCoord] Owner PID {pid} is self - alive")
+                    return True
 
             # Check hostname matches (for distributed systems)
             if hostname and hostname != self._hostname:
@@ -3890,30 +3942,62 @@ class UnifiedStateCoordinator:
                 )
                 return False
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v92.0: If PID is running and heartbeat is fresh, that's strong
+            # evidence the owner is alive. The cookie/lock file check is extra
+            # validation but shouldn't be required.
+            # ═══════════════════════════════════════════════════════════════════
+
             # Validate cookie: check if process has lock file open
-            # This is the strongest validation (prevents PID reuse)
+            # This is extra validation (prevents PID reuse scenarios)
+            lock_file_validated = False
             try:
                 proc = psutil.Process(pid)
                 open_files = proc.open_files()
 
-                lock_file_str = str(self.lock_dir / "jarvis.lock")
+                # Check for any lock file in our lock directory
+                lock_dir_str = str(self.lock_dir)
                 for f in open_files:
-                    if lock_file_str in f.path or "lock" in f.path.lower():
-                        # Process has lock file open
+                    if lock_dir_str in f.path and ".lock" in f.path:
+                        lock_file_validated = True
                         # Verify cookie from state matches
                         state = await self._read_state()
                         if state:
-                            current_owner = state.get("owners", {}).get("jarvis", {})
-                            if current_owner.get("cookie") == cookie:
-                                return True
+                            # Check all owners for matching cookie
+                            for comp, owner_data in state.get("owners", {}).items():
+                                if (owner_data.get("pid") == pid and
+                                    owner_data.get("cookie") == cookie):
+                                    logger.debug(
+                                        f"[StateCoord] Owner {pid} validated via lock file + cookie"
+                                    )
+                                    return True
 
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
-            # Fallback: if PID matches, heartbeat is fresh, and cookie exists
-            if cookie and age < 30.0:  # Very fresh heartbeat
+            # ═══════════════════════════════════════════════════════════════════
+            # v92.0 FIX: Use _stale_threshold instead of hardcoded 30 seconds.
+            # If PID is running and heartbeat is within threshold, owner is alive.
+            # ═══════════════════════════════════════════════════════════════════
+            if cookie and age < self._stale_threshold:
+                logger.debug(
+                    f"[StateCoord] Owner {pid} validated via fresh heartbeat "
+                    f"({age:.1f}s < {self._stale_threshold}s)"
+                )
                 return True
 
+            # Final fallback: if process is running with very fresh heartbeat
+            if age < 60.0:  # Within 1 minute - give benefit of doubt
+                logger.debug(
+                    f"[StateCoord] Owner {pid} validated via very fresh heartbeat "
+                    f"({age:.1f}s < 60s fallback)"
+                )
+                return True
+
+            logger.debug(
+                f"[StateCoord] Owner {pid} validation failed: "
+                f"age={age:.1f}s, cookie={bool(cookie)}, lock_validated={lock_file_validated}"
+            )
             return False
 
         except Exception as e:
