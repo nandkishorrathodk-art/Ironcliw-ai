@@ -3485,6 +3485,12 @@ class UnifiedStateCoordinator:
                             f"[StateCoord] Owner PID {previous_owner.pid} is dead/stale, "
                             f"force acquiring..."
                         )
+
+                        # v5.2: Delete stale lock file to force cleanup
+                        # This is necessary because the OS may not have released
+                        # the flock if the process died abnormally
+                        await self._cleanup_stale_lock(component, previous_owner.pid)
+
                         acquired, _ = await self._try_acquire_lock(
                             entry_point, component, force=True
                         )
@@ -3664,6 +3670,101 @@ class UnifiedStateCoordinator:
                 with suppress(Exception):
                     os.close(fd)
                 return False, None
+
+    async def _cleanup_stale_lock(self, component: str, stale_pid: int) -> bool:
+        """
+        v5.2: Clean up stale lock file when owner process is dead.
+
+        This is necessary because:
+        1. flock() may not be released if process died abnormally (SIGKILL, crash)
+        2. macOS/BSD can have stale lock file descriptors
+        3. The lock file may be corrupted
+
+        Safety measures:
+        - Only cleans up if PID is confirmed dead
+        - Uses lsof to verify no process has the file open
+        - Removes and recreates the lock file
+
+        Args:
+            component: Component name (e.g., "jarvis")
+            stale_pid: PID that was holding the lock
+
+        Returns:
+            True if cleanup was successful
+        """
+        lock_file = self.lock_dir / f"{component}.lock"
+
+        try:
+            # Double-check the PID is really dead
+            try:
+                os.kill(stale_pid, 0)
+                # Process exists - don't cleanup
+                logger.debug(f"[StateCoord] PID {stale_pid} still exists, not cleaning lock")
+                return False
+            except ProcessLookupError:
+                # Process is dead - proceed with cleanup
+                pass
+            except PermissionError:
+                # Can't check - assume alive for safety
+                logger.debug(f"[StateCoord] Can't verify PID {stale_pid}, skipping cleanup")
+                return False
+
+            # Check if any process has the lock file open using lsof
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "lsof", "-t", str(lock_file),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                if stdout and stdout.strip():
+                    # Some process still has the file open
+                    holding_pids = stdout.decode().strip().split('\n')
+                    logger.warning(
+                        f"[StateCoord] Lock file still held by PIDs: {holding_pids}, "
+                        f"waiting for release..."
+                    )
+                    # Don't delete - let it be released naturally
+                    return False
+            except asyncio.TimeoutError:
+                logger.debug("[StateCoord] lsof check timed out, proceeding with caution")
+            except FileNotFoundError:
+                # lsof not available - proceed with caution
+                pass
+
+            # Safe to delete the lock file
+            async with self._file_lock:
+                if lock_file.exists():
+                    lock_file.unlink()
+                    logger.info(
+                        f"[StateCoord] Cleaned up stale lock for {component} "
+                        f"(was held by dead PID {stale_pid})"
+                    )
+
+                # Also clean up the component from state file
+                state = await self._read_state()
+                if state and component in state.get("owners", {}):
+                    owner_data = state["owners"][component]
+                    if owner_data.get("pid") == stale_pid:
+                        del state["owners"][component]
+                        state["last_update"] = time.time()
+                        state["version"] = state.get("version", 0) + 1
+                        state = self._add_state_checksum(state)
+
+                        temp_file = self.state_file.with_suffix(".tmp")
+                        temp_file.write_text(json.dumps(state, indent=2))
+                        temp_file.replace(self.state_file)
+
+                        self._state_cache = state
+                        self._last_cache_time = time.time()
+                        logger.info(f"[StateCoord] Removed stale owner from state file")
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"[StateCoord] Lock cleanup error: {e}")
+            return False
 
     async def _validate_owner_alive(self, owner: ProcessOwnership) -> bool:
         """

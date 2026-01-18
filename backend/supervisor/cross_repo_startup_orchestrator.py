@@ -52,9 +52,10 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.1.0
+Version: 5.2.0
 
 Changelog:
+- v5.2: Fixed loop.stop() antipattern, proper task cancellation on shutdown
 - v5.1: Fixed sys.exit() antipattern in async shutdown handler
 - v5.0: Added pre-flight cleanup, circuit breaker, trinity_config integration
 """
@@ -1073,15 +1074,16 @@ class ProcessOrchestrator:
         """
         Handle shutdown signal gracefully.
 
-        v5.1: Fixed critical antipattern - NEVER call sys.exit() from async task.
-        Instead, we set the shutdown event and let the main loop handle cleanup.
-        The caller of start_all_services() is responsible for exiting.
+        v5.2: Proper async shutdown - don't call loop.stop() or sys.exit().
+        Instead, set shutdown event and let pending tasks complete naturally.
+        The main loop will exit when all tasks are done.
         """
         sig_name = signal.Signals(signum).name
         logger.info(f"\n🛑 Received {sig_name}, initiating graceful shutdown...")
 
         # Set shutdown event FIRST (signals other tasks to stop)
         self._shutdown_event.set()
+        self._running = False
 
         # Perform graceful service shutdown
         try:
@@ -1093,14 +1095,23 @@ class ProcessOrchestrator:
         except Exception as e:
             logger.error(f"⚠️ Error during shutdown: {e}")
 
-        # Stop the event loop gracefully (don't use sys.exit in async!)
-        # This allows the main program to handle exit properly
+        # v5.2: Cancel all remaining tasks gracefully instead of stopping loop
+        # This allows pending futures to complete/cancel properly
         try:
             loop = asyncio.get_running_loop()
-            loop.stop()
-        except RuntimeError:
-            # Loop already stopped
-            pass
+            tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task()]
+
+            if tasks:
+                logger.debug(f"[Shutdown] Cancelling {len(tasks)} remaining tasks...")
+                for task in tasks:
+                    task.cancel()
+
+                # Wait for tasks to acknowledge cancellation
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            logger.info("✅ All tasks terminated")
+        except Exception as e:
+            logger.debug(f"[Shutdown] Task cleanup note: {e}")
 
     # =========================================================================
     # Main Orchestration
