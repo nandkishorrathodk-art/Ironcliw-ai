@@ -1009,13 +1009,17 @@ async def create_voice_unlock_adapter(
     """
     if integration is None:
         try:
-            from ...voice_unlock.voice_unlock_integration import (
-                VoiceUnlockIntegration,
-            )
+            # Try the correct path first (backend/voice/voice_unlock_integration.py)
+            from ...voice.voice_unlock_integration import VoiceUnlockIntegration
             integration = VoiceUnlockIntegration()
         except ImportError:
-            logger.warning("Could not import VoiceUnlockIntegration")
-            raise
+            try:
+                # Fallback to alternative path
+                from ...voice_unlock.voice_unlock_integration import VoiceUnlockIntegration
+                integration = VoiceUnlockIntegration()
+            except ImportError:
+                logger.warning("Could not import VoiceUnlockIntegration from any path")
+                raise
 
     return VoiceSystemAdapter(
         voice_component=integration,
