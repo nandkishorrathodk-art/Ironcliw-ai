@@ -631,20 +631,45 @@ class ServiceRegistry:
                     f"(PID: {service.pid}, Port: {service.port})"
                 )
             else:
-                stats["valid_entries"] += 1
-
-                # Also check for stale services (valid process but no heartbeat)
+                # v4.1: Check for stale services with tiered cleanup
+                # Services without recent heartbeat should be cleaned up aggressively
                 if service.is_stale(self.heartbeat_timeout):
                     stale_age = time.time() - service.last_heartbeat
-                    logger.warning(
-                        f"  ⚠️  {service_name} is stale "
-                        f"(last heartbeat {stale_age:.0f}s ago) - keeping for now"
-                    )
-                    stats["removed_stale"].append({
-                        "name": service_name,
-                        "pid": service.pid,
-                        "stale_seconds": stale_age
-                    })
+
+                    # v4.1: Very stale threshold - 5 minutes (300s)
+                    # If a service hasn't heartbeated in 5+ minutes, it's zombie
+                    very_stale_threshold = float(os.environ.get(
+                        "JARVIS_VERY_STALE_THRESHOLD", "300.0"
+                    ))
+
+                    if stale_age > very_stale_threshold:
+                        # Very stale - treat as dead and clean up
+                        logger.warning(
+                            f"  🧹 {service_name} is very stale "
+                            f"(last heartbeat {stale_age:.0f}s ago > {very_stale_threshold}s threshold) - removing"
+                        )
+                        to_remove.append(service_name)
+                        stats["removed_stale"].append({
+                            "name": service_name,
+                            "pid": service.pid,
+                            "stale_seconds": stale_age,
+                            "action": "removed"
+                        })
+                    else:
+                        # Mildly stale - warn but keep for now (might be starting up)
+                        logger.warning(
+                            f"  ⚠️  {service_name} is stale "
+                            f"(last heartbeat {stale_age:.0f}s ago) - keeping for now"
+                        )
+                        stats["valid_entries"] += 1
+                        stats["removed_stale"].append({
+                            "name": service_name,
+                            "pid": service.pid,
+                            "stale_seconds": stale_age,
+                            "action": "kept"
+                        })
+                else:
+                    stats["valid_entries"] += 1
 
         # Remove invalid entries
         if to_remove:

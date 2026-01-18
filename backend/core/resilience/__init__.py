@@ -52,8 +52,12 @@ from backend.core.resilience.redis_reconnector import (
 from backend.core.resilience.correlation_context import (
     CorrelationContext,
     get_current_correlation_id,
+    get_current_context,
     with_correlation,
 )
+
+# v2.1: Alias for backwards compatibility with GCP Hybrid Router
+get_correlation_context = get_current_context
 from backend.core.resilience.file_watch_guard import (
     FileWatchGuard,
     FileWatchConfig,
@@ -63,6 +67,7 @@ from backend.core.resilience.file_watch_guard import (
 )
 from backend.core.resilience.cross_repo_circuit_breaker import (
     CrossRepoCircuitBreaker,
+    CircuitBreakerConfig,  # v2.1: Export for GCP Hybrid Router
     FailureType,
     TierHealth,
 )
@@ -260,6 +265,8 @@ __all__ = [
     # Correlation Context
     "CorrelationContext",
     "get_current_correlation_id",
+    "get_current_context",
+    "get_correlation_context",  # v2.1: Alias for backwards compatibility
     "with_correlation",
     # File Watch Guard
     "FileWatchGuard",
@@ -269,6 +276,7 @@ __all__ = [
     "get_global_watch_registry",
     # Cross-Repo Circuit Breaker
     "CrossRepoCircuitBreaker",
+    "CircuitBreakerConfig",  # v2.1: Export for GCP Hybrid Router
     "FailureType",
     "TierHealth",
     # Vector Clocks

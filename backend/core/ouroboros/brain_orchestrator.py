@@ -315,23 +315,45 @@ class ProviderManager:
         if self.info.is_healthy:
             return True
 
+        # v2.1: Check if marked as not installed (graceful skip)
+        if self.info.metadata.get("not_installed"):
+            return None  # Graceful skip
+
         self._update_state(ProviderState.STARTING)
 
         if self.info.type == ProviderType.OLLAMA:
-            return await self._start_ollama()
+            result = await self._start_ollama()
+            # v2.1: Tri-state result - None means "not installed"
+            return result
         elif self.info.type == ProviderType.JARVIS_PRIME:
             return await self._start_prime()
 
         return False
 
-    async def _start_ollama(self) -> bool:
-        """Start Ollama service."""
+    async def _start_ollama(self) -> Optional[bool]:
+        """
+        Start Ollama service.
+
+        v2.1: Returns tri-state result:
+        - True: Ollama started successfully
+        - False: Ollama is installed but failed to start
+        - None: Ollama is not installed (graceful skip)
+        """
         try:
             # Check if ollama is installed
             ollama_path = shutil.which("ollama")
             if not ollama_path:
-                logger.warning("Ollama not installed")
-                return False
+                # v2.1: Return None to indicate "not installed" (not a failure)
+                logger.info("Ollama not installed - skipping (this is OK)")
+                self._update_state(ProviderState.STOPPED)
+                self.info.metadata["not_installed"] = True
+                return None  # Graceful skip, not a failure
+
+            # Check if already running
+            result = await self.check_health()
+            if result.healthy:
+                logger.info("Ollama already running")
+                return True
 
             # Start ollama serve
             process = subprocess.Popen(
@@ -344,9 +366,9 @@ class ProviderManager:
             self.info.process = process
             self.info.pid = process.pid
 
-            # Wait for startup
-            for _ in range(30):
-                await asyncio.sleep(1)
+            # Wait for startup with progressive backoff
+            for i in range(30):
+                await asyncio.sleep(min(1 + i * 0.1, 2))  # 1s -> 2s progressive
                 result = await self.check_health()
                 if result.healthy:
                     logger.info(f"Ollama started (PID: {process.pid})")
@@ -354,6 +376,12 @@ class ProviderManager:
 
             logger.warning("Ollama startup timeout")
             return False
+
+        except FileNotFoundError:
+            # v2.1: Handle case where 'ollama' command not found
+            logger.info("Ollama command not found - skipping (this is OK)")
+            self.info.metadata["not_installed"] = True
+            return None
 
         except Exception as e:
             logger.error(f"Failed to start Ollama: {e}")
@@ -723,22 +751,39 @@ class BrainOrchestrator:
                 self.logger.info(f"  ✅ Found running: {result.provider.value}")
 
     async def _start_local_providers(self) -> None:
-        """Start local LLM providers."""
-        # Try Ollama first (simpler)
+        """
+        Start local LLM providers.
+
+        v2.1: Handles tri-state startup results:
+        - True: Started successfully
+        - False: Failed to start (warn)
+        - None: Not installed (skip gracefully)
+        """
+        # Try Ollama first (simpler, but optional)
         ollama = self._managers.get(ProviderType.OLLAMA)
         if ollama and not ollama.info.is_healthy:
-            self.logger.info("  Starting Ollama...")
-            if await ollama.start():
-                self.logger.info("  ✅ Ollama started")
-            else:
-                self.logger.warning("  ⚠️ Ollama startup failed")
+            # v2.1: Skip if already marked as not installed
+            if not ollama.info.metadata.get("not_installed"):
+                self.logger.info("  Starting Ollama...")
+                result = await ollama.start()
+                if result is True:
+                    self.logger.info("  ✅ Ollama started")
+                elif result is None:
+                    # Not installed - this is OK, graceful degradation
+                    self.logger.info("  ℹ️  Ollama not available (optional dependency)")
+                else:
+                    # False - actually failed to start
+                    self.logger.warning("  ⚠️ Ollama startup failed")
 
-        # Then try JARVIS Prime
+        # Then try JARVIS Prime (primary intelligence)
         prime = self._managers.get(ProviderType.JARVIS_PRIME)
         if prime and not prime.info.is_healthy:
             self.logger.info("  Starting JARVIS Prime...")
-            if await prime.start():
+            result = await prime.start()
+            if result is True:
                 self.logger.info("  ✅ JARVIS Prime started")
+            elif result is None:
+                self.logger.info("  ℹ️  JARVIS Prime not available")
             else:
                 self.logger.warning("  ⚠️ JARVIS Prime startup failed")
 
