@@ -82,6 +82,12 @@ MODEL_SERVING_DATA_DIR = Path(os.getenv(
 
 # Prime configuration
 PRIME_ENABLED = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+# v17.0: J-Prime API configuration (connects to jarvis-prime repo server)
+PRIME_API_ENABLED = os.getenv("JARVIS_PRIME_API_ENABLED", "true").lower() == "true"
+PRIME_API_URL = os.getenv("JARVIS_PRIME_API_URL", "http://localhost:8000")
+PRIME_API_TIMEOUT = float(os.getenv("JARVIS_PRIME_API_TIMEOUT", "30.0"))
+PRIME_API_WAIT_TIMEOUT = float(os.getenv("JARVIS_PRIME_API_WAIT_TIMEOUT", "15.0"))
+# Local GGUF model configuration (fallback if J-Prime API unavailable)
 PRIME_LOCAL_ENABLED = os.getenv("JARVIS_PRIME_LOCAL_ENABLED", "true").lower() == "true"
 PRIME_CLOUD_RUN_ENABLED = os.getenv("JARVIS_PRIME_CLOUD_RUN_ENABLED", "false").lower() == "true"
 PRIME_CLOUD_RUN_URL = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", "")
@@ -117,8 +123,9 @@ class TaskType(Enum):
 
 class ModelProvider(Enum):
     """Model providers."""
-    PRIME_LOCAL = "prime_local"
-    PRIME_CLOUD_RUN = "prime_cloud_run"
+    PRIME_API = "prime_api"  # v17.0: J-Prime API (jarvis-prime repo server)
+    PRIME_LOCAL = "prime_local"  # Local GGUF model
+    PRIME_CLOUD_RUN = "prime_cloud_run"  # Cloud Run deployment
     CLAUDE = "claude"
     FALLBACK = "fallback"
 
@@ -564,6 +571,247 @@ class PrimeLocalClient(ModelClient):
     def get_supported_tasks(self) -> List[TaskType]:
         """Get supported task types."""
         return [TaskType.CHAT, TaskType.REASONING, TaskType.CODE]
+
+
+# =============================================================================
+# v17.0: PRIME API CLIENT - Connect to J-Prime Server
+# =============================================================================
+
+class PrimeAPIClient(ModelClient):
+    """
+    v17.0: Client for JARVIS Prime API server (jarvis-prime repo).
+
+    Connects to the J-Prime server running on localhost:8000 (configurable).
+    This is the primary model serving pathway - uses the J-Prime server
+    which manages local models, model hot-swap, and intelligent routing.
+
+    Features:
+    - Automatic service readiness detection with retry
+    - OpenAI-compatible API format
+    - Model discovery from J-Prime server
+    - Circuit breaker integration
+    - Graceful degradation when unavailable
+    """
+
+    def __init__(
+        self,
+        base_url: str = PRIME_API_URL,
+        timeout: float = PRIME_API_TIMEOUT,
+        wait_timeout: float = PRIME_API_WAIT_TIMEOUT,
+    ):
+        self.logger = logging.getLogger("PrimeAPIClient")
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.wait_timeout = wait_timeout
+        self._session = None
+        self._available_models: List[str] = []
+        self._ready = False
+        self._last_health_check = 0.0
+        self._health_check_cache_ttl = 10.0
+
+    async def _get_session(self):
+        """Get or create aiohttp session."""
+        if self._session is None:
+            import aiohttp
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.timeout)
+            )
+        return self._session
+
+    async def _close_session(self):
+        """Close aiohttp session."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+    async def wait_for_ready(self) -> bool:
+        """
+        Wait for J-Prime server to be ready.
+
+        Uses ServiceReadinessChecker for intelligent waiting with
+        exponential backoff.
+
+        Returns:
+            True if server is ready, False if timeout
+        """
+        try:
+            from backend.core.ouroboros.integration import (
+                ServiceReadinessChecker,
+                ServiceReadinessLevel,
+            )
+
+            checker = ServiceReadinessChecker(
+                service_name="jarvis_prime_api",
+                base_url=self.base_url,
+                health_check_timeout=3.0,
+            )
+
+            is_ready = await checker.wait_for_ready(
+                timeout=self.wait_timeout,
+                min_level=ServiceReadinessLevel.DEGRADED,
+            )
+
+            if is_ready:
+                self._ready = True
+                snapshot = checker.last_health_snapshot
+                if snapshot and snapshot.available_models:
+                    self._available_models = snapshot.available_models
+                    self.logger.info(
+                        f"[v17.0] J-Prime API ready with {len(self._available_models)} models"
+                    )
+                else:
+                    self.logger.info("[v17.0] J-Prime API ready")
+                return True
+            else:
+                self.logger.warning(
+                    f"[v17.0] J-Prime API not ready after {self.wait_timeout}s"
+                )
+                return False
+
+        except ImportError:
+            # Fallback to simple health check
+            return await self.health_check()
+
+    async def discover_models(self) -> List[str]:
+        """Discover available models from J-Prime server."""
+        try:
+            session = await self._get_session()
+            async with session.get(f"{self.base_url}/v1/models") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    models = data.get("data", [])
+                    self._available_models = [m.get("id", "unknown") for m in models]
+                    return self._available_models
+        except Exception as e:
+            self.logger.debug(f"[v17.0] Model discovery failed: {e}")
+        return []
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        """Generate a response using J-Prime API."""
+        start_time = time.time()
+        response = ModelResponse(
+            provider=ModelProvider.PRIME_API,
+            model_name=self._available_models[0] if self._available_models else "prime-api",
+        )
+
+        if not self._ready:
+            # Try to become ready
+            if not await self.wait_for_ready():
+                response.success = False
+                response.error = "J-Prime API not available"
+                return response
+
+        try:
+            import aiohttp
+            session = await self._get_session()
+
+            # Use first available model or request override
+            model_name = (
+                request.model_override
+                or (self._available_models[0] if self._available_models else "default")
+            )
+
+            # Build OpenAI-compatible request
+            messages = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+
+            for msg in request.messages:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                })
+
+            payload = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "stream": False,
+            }
+
+            async with session.post(
+                f"{self.base_url}/v1/chat/completions",
+                json=payload,
+            ) as resp:
+                latency = (time.time() - start_time) * 1000
+                response.latency_ms = latency
+
+                if resp.status == 200:
+                    data = await resp.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        response.text = choices[0].get("message", {}).get("content", "")
+                        response.success = True
+                        response.model_name = data.get("model", model_name)
+                        usage = data.get("usage", {})
+                        response.tokens_used = usage.get("total_tokens", 0)
+                else:
+                    error_text = await resp.text()
+                    response.success = False
+                    response.error = f"J-Prime API error {resp.status}: {error_text[:200]}"
+
+        except aiohttp.ClientConnectorError as e:
+            response.success = False
+            response.error = f"J-Prime API connection refused: {e}"
+            self._ready = False  # Mark as not ready for next attempt
+
+        except asyncio.TimeoutError:
+            response.success = False
+            response.error = "J-Prime API timeout"
+
+        except Exception as e:
+            response.success = False
+            response.error = f"J-Prime API error: {type(e).__name__}: {e}"
+
+        return response
+
+    async def health_check(self) -> bool:
+        """Check if J-Prime server is healthy."""
+        # Use cached result if recent
+        now = time.time()
+        if self._ready and (now - self._last_health_check) < self._health_check_cache_ttl:
+            return True
+
+        try:
+            import aiohttp
+            session = await self._get_session()
+
+            async with session.get(
+                f"{self.base_url}/health",
+                timeout=aiohttp.ClientTimeout(total=5.0)
+            ) as resp:
+                self._last_health_check = now
+                if resp.status == 200:
+                    self._ready = True
+                    return True
+
+            # Try /v1/models as alternative health check
+            async with session.get(
+                f"{self.base_url}/v1/models",
+                timeout=aiohttp.ClientTimeout(total=5.0)
+            ) as resp:
+                self._last_health_check = now
+                if resp.status == 200:
+                    self._ready = True
+                    data = await resp.json()
+                    models = data.get("data", [])
+                    self._available_models = [m.get("id", "unknown") for m in models]
+                    return True
+
+        except aiohttp.ClientConnectorError:
+            self.logger.debug("[v17.0] J-Prime API connection refused")
+            self._ready = False
+
+        except Exception as e:
+            self.logger.debug(f"[v17.0] J-Prime API health check failed: {e}")
+            self._ready = False
+
+        return False
+
+    def get_supported_tasks(self) -> List[TaskType]:
+        """Get supported task types."""
+        return [TaskType.CHAT, TaskType.REASONING, TaskType.CODE, TaskType.VISION]
 
 
 class PrimeCloudRunClient(ModelClient):
@@ -1106,12 +1354,37 @@ class UnifiedModelServing:
         await self._load_registry()
         await self._load_routing_config()
 
-        # Initialize clients based on configuration
-        if PRIME_LOCAL_ENABLED:
+        # v17.0: Initialize clients in priority order
+        # 1. J-Prime API (primary - connects to jarvis-prime repo server)
+        # 2. Prime Local (fallback - direct GGUF loading if J-Prime unavailable)
+        # 3. Cloud Run (serverless fallback)
+        # 4. Claude (API fallback)
+
+        prime_available = False
+
+        # v17.0: Try J-Prime API first (primary model serving pathway)
+        if PRIME_API_ENABLED:
+            self.logger.info("  🔄 Checking J-Prime API availability...")
+            client = PrimeAPIClient()
+            if await client.wait_for_ready():
+                self._clients[ModelProvider.PRIME_API] = client
+                self.logger.info(f"  ✓ J-Prime API ready ({len(client._available_models)} models)")
+                prime_available = True
+            else:
+                self.logger.info("  ⚠️ J-Prime API not available")
+                self.logger.info(
+                    "     → J-Prime server not running. Start jarvis-prime repo or "
+                    "set JARVIS_PRIME_API_ENABLED=false to skip"
+                )
+
+        # Prime Local as fallback when J-Prime API unavailable
+        if PRIME_LOCAL_ENABLED and not prime_available:
+            self.logger.info("  🔄 Trying Prime Local fallback...")
             client = PrimeLocalClient()
             if await client.health_check() or await client.load_model():
                 self._clients[ModelProvider.PRIME_LOCAL] = client
-                self.logger.info("  ✓ Prime Local client ready")
+                self.logger.info("  ✓ Prime Local client ready (direct GGUF)")
+                prime_available = True
             else:
                 # v100.5: Provide helpful guidance instead of just warning
                 self.logger.info("  ⚠️ Prime Local client not available")
@@ -1135,6 +1408,11 @@ class UnifiedModelServing:
 
         if not self._clients:
             self.logger.warning("No model clients available!")
+        elif not prime_available:
+            self.logger.warning(
+                "⚠️ No Prime model available - using Claude-only mode. "
+                "Start J-Prime server for local model inference."
+            )
 
         self.logger.info(f"UnifiedModelServing ready ({len(self._clients)} providers)")
 

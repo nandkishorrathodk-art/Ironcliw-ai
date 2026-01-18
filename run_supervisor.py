@@ -16018,6 +16018,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # v75.0: Start Trinity Health Monitor
             await self._start_trinity_health_monitor()
 
+            # v17.0: Start Service Supervisor for auto-restart of dead services
+            await self._initialize_service_supervisor()
+
             # v100.0: Initialize Unified AGI Orchestrator
             await self._initialize_agi_orchestrator()
 
@@ -16456,6 +16459,155 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             self.logger.info("✅ Trinity Health Monitor stopped")
         except Exception as e:
             self.logger.debug(f"Health Monitor stop error: {e}")
+
+    async def _initialize_service_supervisor(self) -> None:
+        """
+        v17.0: Initialize Service Supervisor for auto-restart of dead services.
+
+        Features:
+        - Monitors Trinity components (J-Prime, Reactor-Core)
+        - Auto-restarts dead services with exponential backoff
+        - Parallel launch support for fast startup
+        - Cross-repo service management
+
+        Architecture:
+            ┌─────────────────────────────────────────────────────────────────┐
+            │                    Service Supervisor v17.0                      │
+            │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+            │  │   J-Prime       │  │  Reactor-Core   │  │  Other Services │  │
+            │  │   (PID watch)   │  │  (PID watch)    │  │  (extensible)   │  │
+            │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘  │
+            │           │                    │                    │           │
+            │           ▼                    ▼                    ▼           │
+            │      Auto-restart        Auto-restart          Auto-restart     │
+            │      on dead PID         on dead PID           on dead PID      │
+            └─────────────────────────────────────────────────────────────────┘
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("[v17.0] Initializing Service Supervisor")
+        self.logger.info("=" * 60)
+
+        print(f"  {TerminalUI.CYAN}🔧 Service Supervisor: Initializing auto-restart...{TerminalUI.RESET}")
+
+        try:
+            from backend.core.service_registry import (
+                ServiceSupervisor,
+                ServiceLaunchConfig,
+                get_service_supervisor,
+            )
+
+            # Get the global supervisor instance
+            self._service_supervisor = get_service_supervisor()
+
+            # Register J-Prime launch config if repo exists
+            if hasattr(self, '_jprime_repo_path') and self._jprime_repo_path.exists():
+                # Find the launch script
+                launch_scripts = [
+                    "jarvis_prime/orchestration/trinity_orchestrator.py",
+                    "run_orchestrator.py",
+                    "main.py",
+                ]
+
+                for script in launch_scripts:
+                    script_path = self._jprime_repo_path / script
+                    if script_path.exists():
+                        # Find venv python
+                        venv_python = None
+                        venv_path = self._jprime_repo_path / "venv" / "bin" / "python"
+                        if venv_path.exists():
+                            venv_python = str(venv_path)
+
+                        config = ServiceLaunchConfig(
+                            service_name="jarvis-prime",
+                            command=["python3", str(script_path)],
+                            working_dir=str(self._jprime_repo_path),
+                            env_vars={
+                                "TRINITY_ENABLED": "true",
+                                "PYTHONPATH": str(self._jprime_repo_path),
+                            },
+                            python_venv=venv_python,
+                            restart_policy="always",
+                            max_restarts=5,
+                            restart_delay_sec=5.0,
+                            health_check_timeout_sec=30.0,
+                        )
+                        self._service_supervisor.register_service_launch(config)
+                        self.logger.info(f"[v17.0] Registered J-Prime auto-restart: {script_path.name}")
+                        break
+
+            # Register Reactor-Core launch config if repo exists
+            if hasattr(self, '_reactor_core_repo_path') and self._reactor_core_repo_path.exists():
+                # Find the launch script
+                launch_scripts = [
+                    "reactor_core/orchestration/trinity_orchestrator.py",
+                    "run_orchestrator.py",
+                    "main.py",
+                ]
+
+                for script in launch_scripts:
+                    script_path = self._reactor_core_repo_path / script
+                    if script_path.exists():
+                        # Find venv python
+                        venv_python = None
+                        venv_path = self._reactor_core_repo_path / "venv" / "bin" / "python"
+                        if venv_path.exists():
+                            venv_python = str(venv_path)
+
+                        config = ServiceLaunchConfig(
+                            service_name="reactor-core",
+                            command=["python3", str(script_path)],
+                            working_dir=str(self._reactor_core_repo_path),
+                            env_vars={
+                                "TRINITY_ENABLED": "true",
+                                "PYTHONPATH": str(self._reactor_core_repo_path),
+                            },
+                            python_venv=venv_python,
+                            restart_policy="always",
+                            max_restarts=5,
+                            restart_delay_sec=5.0,
+                            health_check_timeout_sec=30.0,
+                        )
+                        self._service_supervisor.register_service_launch(config)
+                        self.logger.info(f"[v17.0] Registered Reactor-Core auto-restart: {script_path.name}")
+                        break
+
+            # Register callback for restart notifications
+            async def on_restart(service_name: str, success: bool, reason: str = None):
+                if success:
+                    self.logger.info(f"[v17.0] ✅ {service_name} auto-restarted successfully")
+                    if hasattr(self, 'narrator') and self.narrator:
+                        await self.narrator.speak(
+                            f"{service_name} has been auto-restarted.",
+                            wait=False
+                        )
+                else:
+                    self.logger.warning(f"[v17.0] ⚠️ {service_name} restart failed: {reason}")
+
+            self._service_supervisor.on_restart(on_restart)
+
+            # Start the supervisor monitoring loop
+            await self._service_supervisor.start()
+
+            stats = self._service_supervisor.get_stats()
+            registered = stats.get("services_registered", 0)
+            print(f"  {TerminalUI.GREEN}✅ Service Supervisor: Active ({registered} services monitored){TerminalUI.RESET}")
+            self.logger.info(f"[v17.0] ✅ Service Supervisor started - monitoring {registered} services")
+
+        except ImportError as e:
+            self.logger.warning(f"[v17.0] ⚠️ Service Supervisor not available: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ Service Supervisor: Not available{TerminalUI.RESET}")
+        except Exception as e:
+            self.logger.error(f"[v17.0] ❌ Service Supervisor failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Service Supervisor: Failed - {e}{TerminalUI.RESET}")
+
+    async def _stop_service_supervisor(self) -> None:
+        """v17.0: Stop Service Supervisor."""
+        if hasattr(self, '_service_supervisor') and self._service_supervisor:
+            try:
+                await self._service_supervisor.stop()
+                self.logger.info("[v17.0] ✅ Service Supervisor stopped")
+            except Exception as e:
+                self.logger.debug(f"[v17.0] Service Supervisor stop error: {e}")
 
     async def _shutdown_v80_cross_repo_system(self) -> None:
         """
