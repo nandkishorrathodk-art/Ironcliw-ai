@@ -899,7 +899,7 @@ class DatabaseCursorWrapper:
 
     async def execute(self, sql: str, parameters: Tuple = ()) -> "DatabaseCursorWrapper":
         """
-        Execute SQL with parameters. Handles both SELECT and DML operations.
+        v18.0: Execute SQL with parameters and timeout protection.
 
         Advanced features:
         - Automatic query type detection (SELECT, INSERT, UPDATE, DELETE, etc.)
@@ -907,6 +907,8 @@ class DatabaseCursorWrapper:
         - Rowcount tracking for affected rows
         - Lastrowid extraction from RETURNING results
         - Dynamic column description generation
+        - v18.0: Query timeout protection (default 30s)
+        - v18.0: Circuit breaker integration for cascading failure prevention
 
         Args:
             sql: SQL query string (with %s or $1 style placeholders)
@@ -916,8 +918,17 @@ class DatabaseCursorWrapper:
             Self for chaining
 
         Raises:
+            asyncio.TimeoutError: Query exceeded timeout
             Exception: Database errors with detailed logging
         """
+        # v18.0: Get circuit breaker
+        circuit_breaker = get_db_circuit_breaker()
+
+        # v18.0: Check circuit breaker before executing
+        if not await circuit_breaker.allow_request():
+            logger.warning(f"[v18.0] Circuit breaker OPEN - fast-failing query: {sql[:50]}...")
+            raise RuntimeError("Database circuit breaker is open - too many recent failures")
+
         try:
             # Convert %s placeholders to $1, $2, etc. for PostgreSQL/asyncpg
             if "%s" in sql:
@@ -946,9 +957,21 @@ class DatabaseCursorWrapper:
             query_upper = sql.strip().upper()
             query_type = self._detect_query_type(query_upper)
 
+            # v18.0: Use configurable timeout for all queries
+            query_timeout = DB_QUERY_TIMEOUT
+
             if query_type in ("SELECT", "RETURNING"):
-                # Query that returns rows
-                results = await self.adapter_conn.fetch(sql, *parameters)
+                # Query that returns rows - with timeout protection
+                try:
+                    results = await asyncio.wait_for(
+                        self.adapter_conn.fetch(sql, *parameters),
+                        timeout=query_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"[v18.0] Query timeout ({query_timeout}s): {sql[:80]}...")
+                    await circuit_breaker.record_failure()
+                    raise
+
                 self._last_results = results if results else []
                 self._row_count = len(self._last_results)
 
@@ -963,10 +986,13 @@ class DatabaseCursorWrapper:
                     self._extract_lastrowid()
 
             elif query_type in ("INSERT", "UPDATE", "DELETE"):
-                # DML operation - try to get affected rows count
+                # DML operation - with timeout protection
                 try:
                     # For PostgreSQL with asyncpg, we can use execute and get status
-                    result = await self.adapter_conn.execute(sql, *parameters)
+                    result = await asyncio.wait_for(
+                        self.adapter_conn.execute(sql, *parameters),
+                        timeout=query_timeout
+                    )
 
                     # Try to extract row count from result status
                     # PostgreSQL returns status like "INSERT 0 1" or "UPDATE 5"
@@ -978,23 +1004,48 @@ class DatabaseCursorWrapper:
                     else:
                         self._row_count = -1  # Not available
 
+                except asyncio.TimeoutError:
+                    logger.warning(f"[v18.0] Query timeout ({query_timeout}s): {sql[:80]}...")
+                    await circuit_breaker.record_failure()
+                    raise
                 except Exception as e:
                     logger.debug(f"Could not determine rowcount: {e}")
-                    await self.adapter_conn.execute(sql, *parameters)
+                    try:
+                        await asyncio.wait_for(
+                            self.adapter_conn.execute(sql, *parameters),
+                            timeout=query_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        await circuit_breaker.record_failure()
+                        raise
                     self._row_count = -1  # Not available
 
                 self._last_results = []
                 self._description = None
 
             else:
-                # Other operations (CREATE, DROP, ALTER, etc.)
-                await self.adapter_conn.execute(sql, *parameters)
+                # Other operations (CREATE, DROP, ALTER, etc.) - with timeout
+                try:
+                    await asyncio.wait_for(
+                        self.adapter_conn.execute(sql, *parameters),
+                        timeout=query_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"[v18.0] Query timeout ({query_timeout}s): {sql[:80]}...")
+                    await circuit_breaker.record_failure()
+                    raise
+
                 self._last_results = []
                 self._row_count = -1  # Not applicable
                 self._description = None
 
+            # v18.0: Record success
+            await circuit_breaker.record_success()
             return self
 
+        except asyncio.TimeoutError:
+            # Re-raise timeout errors (already logged above)
+            raise
         except Exception as e:
             logger.error(f"Error executing query: {sql[:100]}... with params {parameters}: {e}")
             # Reset state on error
@@ -6618,7 +6669,12 @@ class JARVISLearningDatabase:
 
     async def get_behavioral_insights(self) -> Dict[str, Any]:
         """
-        Get comprehensive behavioral insights
+        v18.0: Get comprehensive behavioral insights with timeout protection.
+
+        Features:
+        - Returns partial results on timeout instead of failing completely
+        - Each query section has independent error handling
+        - Graceful degradation when database is slow
 
         Returns:
             Dictionary of behavioral insights and statistics
@@ -6630,11 +6686,32 @@ class JARVISLearningDatabase:
             "temporal_habits": [],
             "space_transitions": [],
             "prediction_accuracy": 0.0,
+            "_partial_result": False,  # v18.0: Flag if some queries failed
         }
 
+        # v18.0: Helper to run query with timeout and graceful fallback
+        async def safe_query(query: str, params: tuple = (), section: str = "unknown") -> List:
+            try:
+                async with self.db.execute(query, params) as cursor:
+                    return await cursor.fetchall()
+            except asyncio.TimeoutError:
+                logger.warning(f"[v18.0] Behavioral insights query timeout ({section})")
+                insights["_partial_result"] = True
+                return []
+            except RuntimeError as e:
+                if "circuit breaker" in str(e).lower():
+                    logger.warning(f"[v18.0] Circuit breaker blocked query ({section})")
+                    insights["_partial_result"] = True
+                    return []
+                raise
+            except Exception as e:
+                logger.debug(f"[v18.0] Behavioral insights query error ({section}): {e}")
+                insights["_partial_result"] = True
+                return []
+
         try:
-            # Most used apps
-            async with self.db.execute(
+            # Most used apps - with safe query wrapper
+            rows = await safe_query(
                 """
                 SELECT app_name, space_id, SUM(usage_frequency) as total_use,
                        AVG(confidence) as avg_conf
@@ -6642,45 +6719,48 @@ class JARVISLearningDatabase:
                 GROUP BY app_name, space_id
                 ORDER BY total_use DESC
                 LIMIT 10
-            """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                insights["most_used_apps"] = [
-                    {"app": r[0], "space": r[1], "usage": r[2], "confidence": r[3]} for r in rows
-                ]
+                """,
+                (),
+                "most_used_apps"
+            )
+            insights["most_used_apps"] = [
+                {"app": r[0], "space": r[1], "usage": r[2], "confidence": r[3]} for r in rows
+            ]
 
             # Most used spaces
-            async with self.db.execute(
+            rows = await safe_query(
                 """
                 SELECT space_id, COUNT(*) as usage_count
                 FROM workspace_usage
                 GROUP BY space_id
                 ORDER BY usage_count DESC
                 LIMIT 5
-            """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                insights["most_used_spaces"] = [
-                    {"space_id": r[0], "usage_count": r[1]} for r in rows
-                ]
+                """,
+                (),
+                "most_used_spaces"
+            )
+            insights["most_used_spaces"] = [
+                {"space_id": r[0], "usage_count": r[1]} for r in rows
+            ]
 
             # Common workflows
-            async with self.db.execute(
+            rows = await safe_query(
                 """
                 SELECT workflow_name, frequency, success_rate, confidence
                 FROM user_workflows
                 ORDER BY frequency DESC
                 LIMIT 10
-            """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                insights["common_workflows"] = [
-                    {"name": r[0], "frequency": r[1], "success_rate": r[2], "confidence": r[3]}
+                """,
+                (),
+                "common_workflows"
+            )
+            insights["common_workflows"] = [
+                {"name": r[0], "frequency": r[1], "success_rate": r[2], "confidence": r[3]}
                     for r in rows
                 ]
 
             # Temporal habits
-            async with self.db.execute(
+            rows = await safe_query(
                 """
                 SELECT time_of_day, day_of_week, action_type,
                        COUNT(*) as occurrences, AVG(confidence) as avg_conf
@@ -6689,22 +6769,23 @@ class JARVISLearningDatabase:
                 HAVING COUNT(*) > 2
                 ORDER BY COUNT(*) DESC
                 LIMIT 20
-            """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                insights["temporal_habits"] = [
-                    {
-                        "hour": r[0],
-                        "day": r[1],
-                        "action": r[2],
-                        "occurrences": r[3],
-                        "confidence": r[4],
-                    }
-                    for r in rows
-                ]
+                """,
+                (),
+                "temporal_habits"
+            )
+            insights["temporal_habits"] = [
+                {
+                    "hour": r[0],
+                    "day": r[1],
+                    "action": r[2],
+                    "occurrences": r[3],
+                    "confidence": r[4],
+                }
+                for r in rows
+            ]
 
             # Space transitions
-            async with self.db.execute(
+            rows = await safe_query(
                 """
                 SELECT from_space_id, to_space_id, trigger_app,
                        SUM(frequency) as total_transitions
@@ -6712,24 +6793,30 @@ class JARVISLearningDatabase:
                 GROUP BY from_space_id, to_space_id, trigger_app
                 ORDER BY total_transitions DESC
                 LIMIT 15
-            """
-            ) as cursor:
-                rows = await cursor.fetchall()
-                insights["space_transitions"] = [
-                    {"from": r[0], "to": r[1], "trigger": r[2], "frequency": r[3]} for r in rows
-                ]
+                """,
+                (),
+                "space_transitions"
+            )
+            insights["space_transitions"] = [
+                {"from": r[0], "to": r[1], "trigger": r[2], "frequency": r[3]} for r in rows
+            ]
 
             # Overall prediction accuracy
-            async with self.db.execute(
+            rows = await safe_query(
                 """
                 SELECT AVG(acceptance_rate) as avg_acceptance
                 FROM proactive_suggestions
                 WHERE times_suggested > 0
-            """
-            ) as cursor:
-                row = await cursor.fetchone()
-                if row and row[0]:
-                    insights["prediction_accuracy"] = row[0]
+                """,
+                (),
+                "prediction_accuracy"
+            )
+            if rows and rows[0] and rows[0][0]:
+                insights["prediction_accuracy"] = rows[0][0]
+
+            # v18.0: Log if partial result
+            if insights["_partial_result"]:
+                logger.warning("[v18.0] Behavioral insights returned partial results due to timeouts")
 
             return insights
 
