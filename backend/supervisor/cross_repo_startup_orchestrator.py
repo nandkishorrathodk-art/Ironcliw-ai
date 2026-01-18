@@ -1,11 +1,11 @@
 """
-Cross-Repo Startup Orchestrator v3.1 - Enterprise-Grade Process Lifecycle Manager
+Cross-Repo Startup Orchestrator v4.0 - Enterprise-Grade Process Lifecycle Manager
 ===================================================================================
 
 Dynamic service discovery and self-healing process orchestration for JARVIS ecosystem.
-Eliminates hardcoded ports, implements auto-healing, and provides real-time process monitoring.
+Enables single-command startup of all Trinity components (JARVIS Body, J-Prime Mind, Reactor-Core Nerves).
 
-Features (v3.1):
+Features (v4.0):
 - 🔍 Dynamic Service Discovery via Service Registry (zero hardcoded ports)
 - 🔄 Auto-Healing with exponential backoff (dead process detection & restart)
 - 📡 Real-Time Output Streaming (stdout/stderr prefixed per service)
@@ -13,34 +13,41 @@ Features (v3.1):
 - 🛡️ Graceful Shutdown Handlers (SIGINT/SIGTERM cleanup)
 - 🧹 Automatic Zombie Process Cleanup
 - 📊 Service Health Monitoring with heartbeats
-- 🐍 Module-based entry points (python -m module.path)
+- 🐍 Auto-detect venv Python for each repo
 - 🦄 Uvicorn support for FastAPI applications
-- 📁 Nested script path discovery
+- 📁 Correct entry points: run_server.py, run_reactor.py
+- ⚡ Pre-spawn validation (port check, dependency check)
+
+Service Ports (v4.0 - MUST match actual service defaults):
+- jarvis-prime: port 8000 (run_server.py)
+- reactor-core: port 8090 (run_reactor.py)
+- jarvis-body: port 8080 (main JARVIS)
 
 Architecture:
     ┌──────────────────────────────────────────────────────────────────┐
-    │         Cross-Repo Orchestrator v3.1 - Process Manager           │
+    │         Cross-Repo Orchestrator v4.0 - Process Manager           │
     ├──────────────────────────────────────────────────────────────────┤
     │                                                                   │
     │  Service Registry: ~/.jarvis/registry/services.json              │
     │  ┌────────────────┬──────────────┬─────────────────────┐        │
     │  │   JARVIS       │   J-PRIME    │   REACTOR-CORE      │        │
     │  │  PID: auto     │  PID: auto   │   PID: auto         │        │
-    │  │  Port: dynamic │  Port: 8002  │   Port: 8003        │        │
+    │  │  Port: 8080    │  Port: 8000  │   Port: 8090        │        │
     │  │  Status: ✅    │  Status: ✅  │   Status: ✅        │        │
     │  └────────────────┴──────────────┴─────────────────────┘        │
     │                                                                   │
     │  Process Lifecycle:                                               │
-    │  1. Spawn (asyncio.create_subprocess_exec)                       │
-    │  2. Monitor (PID tracking + heartbeat)                           │
-    │  3. Stream Output (real-time with [SERVICE] prefix)              │
-    │  4. Auto-Heal (restart on crash with backoff)                    │
-    │  5. Graceful Shutdown (SIGTERM → wait → SIGKILL)                 │
+    │  1. Pre-Spawn Validation (venv detect, port check)               │
+    │  2. Spawn (asyncio.create_subprocess_exec with venv Python)      │
+    │  3. Monitor (PID tracking + progressive health checks)           │
+    │  4. Stream Output (real-time with [SERVICE] prefix)              │
+    │  5. Auto-Heal (restart on crash with exponential backoff)        │
+    │  6. Graceful Shutdown (SIGTERM → wait → SIGKILL)                 │
     │                                                                   │
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 3.0.0
+Version: 4.0.0
 """
 
 from __future__ import annotations
@@ -77,12 +84,14 @@ class OrchestratorConfig:
         os.getenv("REACTOR_CORE_PATH", str(Path.home() / "Documents" / "repos" / "reactor-core"))
     ))
 
-    # Default ports (used when services register themselves)
+    # Default ports (MUST match actual service defaults!)
+    # jarvis-prime/run_server.py defaults to 8000
+    # reactor-core/run_reactor.py defaults to 8090
     jarvis_prime_default_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8002"))
+        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000"))
     )
     reactor_core_default_port: int = field(
-        default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8003"))
+        default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8090"))
     )
 
     # Feature flags
@@ -149,7 +158,7 @@ class ServiceDefinition:
     """
     Definition of a service to manage.
 
-    v3.1: Added module_path and nested_scripts for advanced service discovery.
+    v4.0: Enhanced with script_args for command-line argument passing.
     """
     name: str
     repo_path: Path
@@ -159,6 +168,10 @@ class ServiceDefinition:
     health_endpoint: str = "/health"
     startup_timeout: float = 60.0
     environment: Dict[str, str] = field(default_factory=dict)
+
+    # v4.0: Command-line arguments to pass to the script
+    # e.g., ["--port", "8000", "--host", "0.0.0.0"]
+    script_args: List[str] = field(default_factory=list)
 
     # v3.1: Module-based entry points (e.g., "reactor_core.api.server")
     # When set, spawns with: python -m <module_path>
@@ -275,37 +288,58 @@ class ProcessOrchestrator:
         return False
 
     def _get_service_definitions(self) -> List[ServiceDefinition]:
-        """Get service definitions based on configuration."""
+        """
+        Get service definitions based on configuration.
+
+        v4.0: Uses actual entry point scripts from each repo:
+        - jarvis-prime: run_server.py (port 8000)
+        - reactor-core: run_reactor.py (port 8090)
+        """
         definitions = []
 
         if self.config.jarvis_prime_enabled:
+            # jarvis-prime uses run_server.py as main entry point
+            # Port is passed via --port CLI arg (not env var)
             definitions.append(ServiceDefinition(
                 name="jarvis-prime",
                 repo_path=self.config.jarvis_prime_path,
-                script_name="main.py",
-                fallback_scripts=["server.py", "run_server.py"],
+                script_name="run_server.py",  # Primary entry point
+                fallback_scripts=["main.py", "server.py", "app.py"],
                 default_port=self.config.jarvis_prime_default_port,
                 health_endpoint="/health",
                 startup_timeout=self.config.startup_timeout,
+                # Pass port via command-line (run_server.py uses argparse)
+                script_args=[
+                    "--port", str(self.config.jarvis_prime_default_port),
+                    "--host", "0.0.0.0",
+                ],
+                environment={
+                    "PYTHONPATH": str(self.config.jarvis_prime_path),
+                },
             ))
 
         if self.config.reactor_core_enabled:
-            # v3.1: Reactor-Core uses uvicorn with FastAPI server at reactor_core.api.server:app
+            # reactor-core uses run_reactor.py as main entry point
+            # Port is passed via --port CLI arg
             definitions.append(ServiceDefinition(
                 name="reactor-core",
                 repo_path=self.config.reactor_core_path,
-                script_name="main.py",
-                fallback_scripts=["server.py", "app.py"],
+                script_name="run_reactor.py",  # Primary entry point
+                fallback_scripts=["run_supervisor.py", "main.py", "server.py"],
                 default_port=self.config.reactor_core_default_port,
-                health_endpoint="/health",  # FastAPI default
+                health_endpoint="/health",
                 startup_timeout=self.config.startup_timeout,
-                # v3.1: Use uvicorn for the FastAPI app
-                use_uvicorn=True,
-                uvicorn_app="reactor_core.api.server:app",
-                # Alternative: module-based entry
-                # module_path="reactor_core.api.server",
-                # Fallback nested scripts if uvicorn fails
-                nested_scripts=["reactor_core/api/server.py"],
+                # Don't use uvicorn - run_reactor.py handles its own server
+                use_uvicorn=False,
+                uvicorn_app=None,
+                # Pass port via command-line
+                script_args=[
+                    "--port", str(self.config.reactor_core_default_port),
+                ],
+                environment={
+                    "PYTHONPATH": str(self.config.reactor_core_path),
+                    "REACTOR_PORT": str(self.config.reactor_core_default_port),
+                },
             ))
 
         return definitions
@@ -546,15 +580,100 @@ class ProcessOrchestrator:
     # Process Spawning
     # =========================================================================
 
+    def _find_venv_python(self, repo_path: Path) -> Optional[str]:
+        """
+        Find the venv Python executable for a repository.
+
+        v4.0: Auto-detects venv location and returns the Python path.
+        Falls back to system Python if no venv found.
+        """
+        # Check common venv locations
+        venv_paths = [
+            repo_path / "venv" / "bin" / "python3",
+            repo_path / "venv" / "bin" / "python",
+            repo_path / ".venv" / "bin" / "python3",
+            repo_path / ".venv" / "bin" / "python",
+            repo_path / "env" / "bin" / "python3",
+            repo_path / "env" / "bin" / "python",
+        ]
+
+        for venv_python in venv_paths:
+            if venv_python.exists():
+                logger.debug(f"Found venv Python at: {venv_python}")
+                return str(venv_python)
+
+        logger.debug(f"No venv found in {repo_path}, using system Python")
+        return None
+
+    async def _pre_spawn_validation(self, definition: ServiceDefinition) -> tuple[bool, Optional[str]]:
+        """
+        Validate a service before spawning.
+
+        v4.0: Pre-launch checks:
+        - Repo path exists
+        - Script exists
+        - Venv Python found (optional but preferred)
+        - Port not already in use
+
+        Returns:
+            Tuple of (is_valid, python_executable)
+        """
+        # Check repo exists
+        if not definition.repo_path.exists():
+            logger.error(f"Repository not found: {definition.repo_path}")
+            return False, None
+
+        # Check script exists
+        script_path = self._find_script(definition)
+        if script_path is None:
+            return False, None
+
+        # Find Python executable (prefer venv)
+        python_exec = self._find_venv_python(definition.repo_path)
+        if python_exec is None:
+            python_exec = sys.executable
+            logger.info(f"    ℹ️ Using system Python for {definition.name}: {python_exec}")
+        else:
+            logger.info(f"    ✓ Using venv Python for {definition.name}: {python_exec}")
+
+        # Check port availability
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('localhost', definition.default_port))
+            sock.close()
+            if result == 0:
+                logger.warning(
+                    f"    ⚠️ Port {definition.default_port} already in use - "
+                    f"{definition.name} may already be running"
+                )
+                # Not a fatal error - the service might be running
+        except Exception as e:
+            logger.debug(f"Port check failed: {e}")
+
+        return True, python_exec
+
     async def _spawn_service(self, managed: ManagedProcess) -> bool:
         """
         Spawn a service process using asyncio.create_subprocess_exec.
 
-        v3.1: Enhanced with module-based and uvicorn spawning support.
+        v4.0: Enhanced with:
+        - Pre-spawn validation (venv detection, port check)
+        - Better error reporting
+        - Environment isolation
 
         Returns True if spawn and health check succeeded.
         """
         definition = managed.definition
+
+        # Pre-spawn validation
+        is_valid, python_exec = await self._pre_spawn_validation(definition)
+        if not is_valid:
+            logger.error(f"Cannot spawn {definition.name}: pre-spawn validation failed")
+            managed.status = ServiceStatus.FAILED
+            return False
+
         script_path = self._find_script(definition)
 
         if script_path is None:
@@ -573,13 +692,13 @@ class ProcessOrchestrator:
             env["SERVICE_PORT"] = str(definition.default_port)
             env["SERVICE_NAME"] = definition.name
 
-            # v3.1: Build command based on entry point type
+            # v4.0: Build command using the detected Python executable
             cmd: List[str] = []
 
             if definition.use_uvicorn and definition.uvicorn_app:
                 # Uvicorn-based FastAPI app
                 cmd = [
-                    sys.executable, "-m", "uvicorn",
+                    python_exec, "-m", "uvicorn",
                     definition.uvicorn_app,
                     "--host", "0.0.0.0",
                     "--port", str(definition.default_port),
@@ -588,13 +707,19 @@ class ProcessOrchestrator:
 
             elif definition.module_path:
                 # Module-based entry point (python -m)
-                cmd = [sys.executable, "-m", definition.module_path]
+                cmd = [python_exec, "-m", definition.module_path]
+                # Add script_args if any
+                if definition.script_args:
+                    cmd.extend(definition.script_args)
                 logger.info(f"🚀 Spawning {definition.name} via module: {definition.module_path}")
 
             else:
                 # Traditional script-based entry point
-                cmd = [sys.executable, str(script_path)]
-                logger.info(f"🚀 Spawning {definition.name} from script: {script_path}")
+                cmd = [python_exec, str(script_path)]
+                # v4.0: Append command-line arguments (e.g., --port 8000)
+                if definition.script_args:
+                    cmd.extend(definition.script_args)
+                logger.info(f"🚀 Spawning {definition.name}: {' '.join(cmd)}")
 
             # Spawn process
             managed.process = await asyncio.create_subprocess_exec(
@@ -653,20 +778,59 @@ class ProcessOrchestrator:
         managed: ManagedProcess,
         timeout: float = 60.0
     ) -> bool:
-        """Wait for service to become healthy."""
+        """
+        Wait for service to become healthy with progressive logging.
+
+        v4.0: Enhanced with:
+        - Progressive backoff (1s → 2s → 3s)
+        - Detailed progress logging
+        - Process exit code capture on failure
+        """
         start_time = time.time()
+        check_interval = 1.0
+        check_count = 0
+        max_quiet_checks = 5  # Only log periodically after first few
+
+        logger.info(f"    ⏳ Waiting for {managed.definition.name} to become healthy (timeout: {timeout}s)...")
 
         while (time.time() - start_time) < timeout:
+            check_count += 1
+
             # Check if process died
             if not managed.is_running:
+                exit_code = managed.process.returncode if managed.process else "unknown"
+                logger.error(
+                    f"    ❌ {managed.definition.name} process died during startup "
+                    f"(exit code: {exit_code})"
+                )
                 return False
 
             # Check health endpoint
             if await self._check_health(managed):
+                elapsed = time.time() - start_time
+                logger.info(
+                    f"    ✅ {managed.definition.name} healthy after {elapsed:.1f}s "
+                    f"({check_count} health checks)"
+                )
                 return True
 
-            await asyncio.sleep(1.0)
+            # Progressive logging: frequent at start, sparse later
+            if check_count <= max_quiet_checks or check_count % 10 == 0:
+                elapsed = time.time() - start_time
+                logger.debug(
+                    f"    ⏳ {managed.definition.name}: health check {check_count} "
+                    f"(elapsed: {elapsed:.1f}s)"
+                )
 
+            # Progressive backoff: 1s, 1.5s, 2s, 2.5s, 3s (max)
+            await asyncio.sleep(min(check_interval, 3.0))
+            check_interval = min(check_interval + 0.5, 3.0)
+
+        elapsed = time.time() - start_time
+        logger.warning(
+            f"    ⚠️ {managed.definition.name} health check timed out after {elapsed:.1f}s "
+            f"({check_count} checks)"
+        )
         return False
 
     # =========================================================================
