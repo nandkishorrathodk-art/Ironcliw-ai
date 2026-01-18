@@ -52,7 +52,11 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.0.0
+Version: 5.1.0
+
+Changelog:
+- v5.1: Fixed sys.exit() antipattern in async shutdown handler
+- v5.0: Added pre-flight cleanup, circuit breaker, trinity_config integration
 """
 
 from __future__ import annotations
@@ -1066,15 +1070,37 @@ class ProcessOrchestrator:
         logger.info("🛡️ Signal handlers registered (SIGINT, SIGTERM)")
 
     async def _handle_shutdown(self, signum: int) -> None:
-        """Handle shutdown signal."""
+        """
+        Handle shutdown signal gracefully.
+
+        v5.1: Fixed critical antipattern - NEVER call sys.exit() from async task.
+        Instead, we set the shutdown event and let the main loop handle cleanup.
+        The caller of start_all_services() is responsible for exiting.
+        """
         sig_name = signal.Signals(signum).name
         logger.info(f"\n🛑 Received {sig_name}, initiating graceful shutdown...")
 
+        # Set shutdown event FIRST (signals other tasks to stop)
         self._shutdown_event.set()
-        await self.shutdown_all_services()
 
-        # Exit after cleanup
-        sys.exit(0)
+        # Perform graceful service shutdown
+        try:
+            await self.shutdown_all_services()
+            logger.info("✅ Graceful shutdown complete")
+        except asyncio.CancelledError:
+            # Expected during shutdown - don't log as error
+            logger.info("✅ Shutdown tasks cancelled (expected)")
+        except Exception as e:
+            logger.error(f"⚠️ Error during shutdown: {e}")
+
+        # Stop the event loop gracefully (don't use sys.exit in async!)
+        # This allows the main program to handle exit properly
+        try:
+            loop = asyncio.get_running_loop()
+            loop.stop()
+        except RuntimeError:
+            # Loop already stopped
+            pass
 
     # =========================================================================
     # Main Orchestration
