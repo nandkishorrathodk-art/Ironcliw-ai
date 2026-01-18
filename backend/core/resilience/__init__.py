@@ -58,6 +58,8 @@ from backend.core.resilience.file_watch_guard import (
     FileWatchGuard,
     FileWatchConfig,
     FileEvent,
+    GlobalWatchRegistry,
+    get_global_watch_registry,
 )
 from backend.core.resilience.cross_repo_circuit_breaker import (
     CrossRepoCircuitBreaker,
@@ -263,6 +265,8 @@ __all__ = [
     "FileWatchGuard",
     "FileWatchConfig",
     "FileEvent",
+    "GlobalWatchRegistry",
+    "get_global_watch_registry",
     # Cross-Repo Circuit Breaker
     "CrossRepoCircuitBreaker",
     "FailureType",

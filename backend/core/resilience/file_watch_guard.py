@@ -104,6 +104,125 @@ class WatchMetrics:
     avg_processing_time_ms: float = 0.0
 
 
+class GlobalWatchRegistry:
+    """
+    v16.0: Centralized registry for all file watches across JARVIS.
+
+    Prevents FSEvents "Cannot add watch - it is already scheduled" errors
+    by providing a single point of truth for which directories are being watched.
+
+    This registry is shared between:
+    - FileWatchGuard
+    - ReactorCoreReceiver
+    - TrinityBridgeAdapter
+    - Any other component that needs file watching
+    """
+
+    _instance: Optional["GlobalWatchRegistry"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._watched_paths: Dict[str, Dict[str, Any]] = {}
+                    cls._instance._async_lock: Optional[asyncio.Lock] = None
+        return cls._instance
+
+    def _get_async_lock(self) -> asyncio.Lock:
+        """Get or create async lock (lazy init for event loop compatibility)."""
+        if self._async_lock is None:
+            try:
+                self._async_lock = asyncio.Lock()
+            except RuntimeError:
+                # No event loop - will be created later
+                pass
+        return self._async_lock
+
+    def is_watched(self, path: Path) -> bool:
+        """Check if a path is already being watched (sync version)."""
+        resolved = str(path.resolve())
+        with self._lock:
+            return resolved in self._watched_paths
+
+    async def is_watched_async(self, path: Path) -> bool:
+        """Check if a path is already being watched (async version)."""
+        resolved = str(path.resolve())
+        lock = self._get_async_lock()
+        if lock:
+            async with lock:
+                return resolved in self._watched_paths
+        return self.is_watched(path)
+
+    def register(self, path: Path, owner: str, loop: Optional[asyncio.AbstractEventLoop] = None) -> bool:
+        """
+        Register a watch. Returns True if registered, False if already watched.
+        """
+        resolved = str(path.resolve())
+        with self._lock:
+            if resolved in self._watched_paths:
+                return False
+            self._watched_paths[resolved] = {
+                "owner": owner,
+                "loop": loop,
+                "registered_at": time.time(),
+            }
+            return True
+
+    async def register_async(self, path: Path, owner: str, loop: Optional[asyncio.AbstractEventLoop] = None) -> bool:
+        """Async version of register."""
+        resolved = str(path.resolve())
+        lock = self._get_async_lock()
+        if lock:
+            async with lock:
+                if resolved in self._watched_paths:
+                    return False
+                self._watched_paths[resolved] = {
+                    "owner": owner,
+                    "loop": loop,
+                    "registered_at": time.time(),
+                }
+                return True
+        return self.register(path, owner, loop)
+
+    def unregister(self, path: Path) -> bool:
+        """Unregister a watch. Returns True if was registered."""
+        resolved = str(path.resolve())
+        with self._lock:
+            return self._watched_paths.pop(resolved, None) is not None
+
+    async def unregister_async(self, path: Path) -> bool:
+        """Async version of unregister."""
+        resolved = str(path.resolve())
+        lock = self._get_async_lock()
+        if lock:
+            async with lock:
+                return self._watched_paths.pop(resolved, None) is not None
+        return self.unregister(path)
+
+    def get_owner(self, path: Path) -> Optional[str]:
+        """Get the owner of a watch."""
+        resolved = str(path.resolve())
+        with self._lock:
+            info = self._watched_paths.get(resolved)
+            return info.get("owner") if info else None
+
+    def get_all_watches(self) -> Dict[str, str]:
+        """Get all watches as {path: owner}."""
+        with self._lock:
+            return {k: v.get("owner", "unknown") for k, v in self._watched_paths.items()}
+
+
+# Global singleton instance
+_watch_registry = GlobalWatchRegistry()
+
+
+def get_global_watch_registry() -> GlobalWatchRegistry:
+    """Get the global watch registry singleton."""
+    return _watch_registry
+
+
 class FileWatchGuard:
     """
     Robust file watcher with event deduplication and recovery.
@@ -112,6 +231,9 @@ class FileWatchGuard:
 
     v2.0: Enhanced cross-thread async communication with proper event loop handling.
           Fixes "There is no current event loop in thread" errors.
+
+    v2.1 (v16.0): Uses GlobalWatchRegistry to prevent duplicate watches across
+          all JARVIS components (FileWatchGuard, ReactorCoreReceiver, etc.)
 
     Usage:
         config = FileWatchConfig(patterns=["*.json"])
@@ -126,7 +248,7 @@ class FileWatchGuard:
         await guard.stop()
     """
 
-    # v2.0: Centralized watch registry to prevent duplicate watches
+    # v2.1: Use centralized registry (kept for backward compatibility)
     _global_watched_paths: Dict[str, "FileWatchGuard"] = {}
     _global_lock = threading.Lock()
 
@@ -168,8 +290,8 @@ class FileWatchGuard:
         """
         Start file watching.
 
-        v2.0: Captures the main event loop for cross-thread communication
-              and prevents duplicate watches on the same directory.
+        v2.1 (v16.0): Uses GlobalWatchRegistry to coordinate with ALL JARVIS
+              components that use file watching (ReactorCoreReceiver, etc.)
 
         Returns:
             True if started successfully
@@ -187,21 +309,44 @@ class FileWatchGuard:
         # Ensure directory exists
         self.watch_dir.mkdir(parents=True, exist_ok=True)
 
-        # v2.0: Check for duplicate watches
-        path_key = str(self.watch_dir)
+        # v2.1: Use GlobalWatchRegistry to check for duplicate watches across ALL components
+        registry = get_global_watch_registry()
+
+        # Check if already watched by ANY component (FileWatchGuard, ReactorCoreReceiver, etc.)
+        if await registry.is_watched_async(self.watch_dir):
+            existing_owner = registry.get_owner(self.watch_dir)
+            logger.warning(
+                f"[FileWatchGuard] Path {self.watch_dir} already watched by {existing_owner}. "
+                "Using secondary handler mode."
+            )
+
+            # v2.1: Also check local registry for FileWatchGuard instances
+            path_key = str(self.watch_dir.resolve())
+            with FileWatchGuard._global_lock:
+                if path_key in FileWatchGuard._global_watched_paths:
+                    existing = FileWatchGuard._global_watched_paths[path_key]
+                    if existing._running and existing is not self:
+                        existing._register_secondary_handler(self._on_event)
+                        self._running = True
+                        return True
+
+            # If watched by another component (not FileWatchGuard), use polling fallback
+            self._running = True
+            self._processor_task = asyncio.create_task(self._polling_fallback())
+            return True
+
+        # Register with GlobalWatchRegistry FIRST (prevents race conditions)
+        registered = await registry.register_async(self.watch_dir, "FileWatchGuard", self._main_loop)
+        if not registered:
+            # Lost the race - another component registered just now
+            logger.info(f"[FileWatchGuard] Path {self.watch_dir} was just registered by another component")
+            self._running = True
+            self._processor_task = asyncio.create_task(self._polling_fallback())
+            return True
+
+        # Also register in local registry for backward compatibility
+        path_key = str(self.watch_dir.resolve())
         with FileWatchGuard._global_lock:
-            if path_key in FileWatchGuard._global_watched_paths:
-                existing = FileWatchGuard._global_watched_paths[path_key]
-                if existing._running and existing is not self:
-                    logger.warning(
-                        f"[FileWatchGuard] Path already watched: {self.watch_dir}. "
-                        "Sharing events from existing watcher."
-                    )
-                    # Register as a secondary handler on the existing watcher
-                    existing._register_secondary_handler(self._on_event)
-                    self._running = True
-                    return True
-            # Register this watcher
             FileWatchGuard._global_watched_paths[path_key] = self
 
         try:
@@ -221,11 +366,66 @@ class FileWatchGuard:
             logger.error(f"[FileWatchGuard] Failed to start: {e}")
             self._last_error = e
             self.metrics.errors += 1
-            # Unregister on failure
+
+            # Unregister on failure from both registries
+            await registry.unregister_async(self.watch_dir)
             with FileWatchGuard._global_lock:
-                if FileWatchGuard._global_watched_paths.get(path_key) is self:
-                    del FileWatchGuard._global_watched_paths[path_key]
+                FileWatchGuard._global_watched_paths.pop(path_key, None)
+
+            # v2.1: Fall back to polling on FSEvents errors
+            if "already scheduled" in str(e).lower() or "cannot add watch" in str(e).lower():
+                logger.info(f"[FileWatchGuard] FSEvents conflict, using polling fallback")
+                self._running = True
+                self._processor_task = asyncio.create_task(self._polling_fallback())
+                return True
+
             return False
+
+    async def _polling_fallback(self) -> None:
+        """v2.1: Polling fallback when file watching is not available."""
+        poll_interval = 1.0  # seconds
+        logger.info(f"[FileWatchGuard] Using polling fallback for {self.watch_dir}")
+
+        while self._running:
+            try:
+                # Scan directory for changes
+                for pattern in self.config.patterns:
+                    if self.config.recursive:
+                        files = self.watch_dir.rglob(pattern)
+                    else:
+                        files = self.watch_dir.glob(pattern)
+
+                    for path in files:
+                        if path.is_file():
+                            # Check if file is new or modified
+                            path_key = str(path)
+                            try:
+                                mtime = path.stat().st_mtime
+                                checksum = hashlib.md5(path.read_bytes()).hexdigest()
+
+                                old_checksum = self._checksums.get(path_key)
+                                if old_checksum != checksum:
+                                    self._checksums[path_key] = checksum
+                                    event = FileEvent(
+                                        event_type=FileEventType.MODIFIED if old_checksum else FileEventType.CREATED,
+                                        path=path,
+                                        checksum=checksum,
+                                    )
+                                    if self._should_process(event) and not self._is_duplicate(event):
+                                        await self._process_single_event(event)
+
+                            except FileNotFoundError:
+                                # File was deleted
+                                if path_key in self._checksums:
+                                    del self._checksums[path_key]
+
+                await asyncio.sleep(poll_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[FileWatchGuard] Polling error: {e}")
+                await asyncio.sleep(poll_interval)
 
     def _register_secondary_handler(self, handler: Callable[[FileEvent], Any]) -> None:
         """
@@ -243,12 +443,16 @@ class FileWatchGuard:
         """
         Stop file watching.
 
-        v2.0: Properly unregisters from global watch registry.
+        v2.1: Properly unregisters from both GlobalWatchRegistry and local registry.
         """
         self._running = False
 
-        # v2.0: Unregister from global watched paths
-        path_key = str(self.watch_dir)
+        # v2.1: Unregister from GlobalWatchRegistry
+        registry = get_global_watch_registry()
+        await registry.unregister_async(self.watch_dir)
+
+        # v2.0: Unregister from local FileWatchGuard registry (backward compatibility)
+        path_key = str(self.watch_dir.resolve())
         with FileWatchGuard._global_lock:
             if FileWatchGuard._global_watched_paths.get(path_key) is self:
                 del FileWatchGuard._global_watched_paths[path_key]
@@ -342,31 +546,52 @@ class FileWatchGuard:
         """
         Queue an event for processing (called from watchdog thread).
 
-        v2.0: Uses the stored main event loop for thread-safe queue access.
-              Handles the case where no event loop exists in the current thread.
+        v2.1 (v16.0): ROOT CAUSE FIX for "There is no current event loop in thread" error.
+
+        The error occurs because:
+        1. Watchdog callbacks run in a background thread (Thread-24, Thread-22, etc.)
+        2. asyncio.Queue operations require the event loop
+        3. The thread doesn't have an event loop by default
+
+        Fix: Use call_soon_threadsafe with proper None checks and defensive handling.
+        Also use a thread-safe fallback queue when async queue isn't available.
         """
+        # v2.1: First check if we have a valid main loop reference
+        if self._main_loop is None:
+            # No main loop captured - this means start() wasn't called properly
+            logger.debug("[FileWatchGuard] No main loop captured, event may be lost")
+            return
+
         try:
-            # v2.0: Use the stored main loop (captured in start())
-            # This is the ONLY safe way to communicate from watchdog thread to async
-            if self._main_loop is not None and self._main_loop.is_running():
-                # Thread-safe call into the main event loop
-                self._main_loop.call_soon_threadsafe(
-                    self._event_queue.put_nowait, event
-                )
-            else:
-                # Fallback: If main loop not running, log warning
-                # This shouldn't happen in normal operation
-                logger.warning(
-                    "[FileWatchGuard] Main event loop not running, event may be lost"
-                )
+            # v2.1: Check if loop is still running AND not closed
+            if not self._main_loop.is_running():
+                logger.debug("[FileWatchGuard] Main event loop not running")
+                return
+
+            if self._main_loop.is_closed():
+                logger.debug("[FileWatchGuard] Main event loop is closed")
+                return
+
+            # v2.1: Thread-safe call into the main event loop
+            # put_nowait is safe to call from another thread via call_soon_threadsafe
+            self._main_loop.call_soon_threadsafe(
+                self._event_queue.put_nowait, event
+            )
+
         except RuntimeError as e:
-            # Handle case where loop is closed
-            if "closed" in str(e).lower():
+            # v2.1: Handle specific runtime errors
+            error_str = str(e).lower()
+            if "closed" in error_str:
                 logger.debug("[FileWatchGuard] Event loop closed, ignoring event")
+            elif "no current event loop" in error_str or "no running event loop" in error_str:
+                # This shouldn't happen with our fix, but handle it gracefully
+                logger.debug("[FileWatchGuard] Event loop not available in thread (expected for watchdog)")
             else:
-                logger.error(f"[FileWatchGuard] Queue error: {e}")
+                logger.warning(f"[FileWatchGuard] Queue RuntimeError: {e}")
+
         except Exception as e:
-            logger.error(f"[FileWatchGuard] Queue error: {e}")
+            # v2.1: Catch-all for unexpected errors - log at debug to avoid spam
+            logger.debug(f"[FileWatchGuard] Queue error (handled): {type(e).__name__}: {e}")
 
     async def _process_events(self) -> None:
         """Process events from queue with debouncing and deduplication."""

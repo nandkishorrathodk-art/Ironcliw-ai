@@ -67,6 +67,7 @@ from backend.core.resilience import (
     get_distributed_dedup,
     VectorClock,
 )
+from backend.core.resilience.file_watch_guard import get_global_watch_registry
 
 logger = logging.getLogger("ReactorCoreBridge")
 
@@ -447,18 +448,20 @@ class ReactorCoreReceiver:
         """
         Start watching for events.
 
-        v2.1: Added guard against duplicate fsevents watches and graceful error handling.
-        Multiple components may try to watch the same directory, which causes
-        "Cannot add watch - it is already scheduled" errors on macOS fsevents.
+        v2.3 (v16.0): COMPLETE ROOT CAUSE FIX for FSEvents duplicate watch error.
 
-        v2.2: Properly captures event loop for cross-thread communication and uses
-        centralized watch prevention to avoid fsevents conflicts.
+        The error "Cannot add watch - it is already scheduled" occurs because:
+        1. Multiple components try to watch the same directory
+        2. FSEvents (macOS) doesn't allow duplicate watches on the same path
+        3. The check was happening AFTER Observer.schedule() was called
+
+        Fix: Check BEFORE creating Observer, use global lock, and share watches.
         """
         if self._running:
             logger.debug("ReactorCoreReceiver already running, skipping start")
             return
 
-        # v2.2: Capture the main event loop for cross-thread callback scheduling
+        # v2.3: Capture the main event loop for cross-thread callback scheduling
         try:
             main_loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -467,56 +470,74 @@ class ReactorCoreReceiver:
 
         self._running = True
 
-        # Process existing files
+        # Process existing files first (before setting up watch)
         await self._process_existing_files()
 
-        # Stop any existing observer before creating a new one
+        # v2.4 (v16.0): Use GlobalWatchRegistry for coordination with ALL watchers
+        # This includes FileWatchGuard, TrinityBridgeAdapter, and other components
+        registry = get_global_watch_registry()
+
+        # Check if already watched by ANY component
+        if await registry.is_watched_async(self._watch_dir):
+            existing_owner = registry.get_owner(self._watch_dir)
+            logger.info(
+                f"ReactorCoreReceiver: Directory already watched by {existing_owner}. "
+                "Using shared polling mode (no duplicate watch created)."
+            )
+            # Don't create new Observer - use polling instead
+            asyncio.create_task(self._fallback_poll_loop())
+            return
+
+        # v2.4: Stop any existing observer before creating a new one
         if self._observer is not None:
             try:
                 self._observer.stop()
                 self._observer.join(timeout=2)
-            except Exception:
-                pass
+            except Exception as stop_err:
+                logger.debug(f"Observer stop error (ignored): {stop_err}")
             self._observer = None
 
-        # v2.2: Check if this directory is already being watched globally
-        # This prevents the "Cannot add watch - it is already scheduled" error
-        watch_key = str(self._watch_dir)
-        if hasattr(_FileWatchHandler, "_global_watches"):
-            if watch_key in _FileWatchHandler._global_watches:
-                logger.info(
-                    f"ReactorCoreReceiver: Directory {self._watch_dir} already watched. "
-                    "Using fallback polling mode."
-                )
-                asyncio.create_task(self._fallback_poll_loop())
-                return
-        else:
-            _FileWatchHandler._global_watches = set()
+        # v2.4: Register with GlobalWatchRegistry BEFORE creating Observer
+        registered = await registry.register_async(self._watch_dir, "ReactorCoreReceiver", main_loop)
+        if not registered:
+            # Lost the race - another component registered just now
+            logger.info(f"ReactorCoreReceiver: Path was just registered by another component")
+            asyncio.create_task(self._fallback_poll_loop())
+            return
 
         # Start file watcher with graceful error handling
         try:
-            # v2.2: Pass the event loop to the handler
+            # v2.3: Pass the event loop to the handler for thread-safe callbacks
             event_handler = _FileWatchHandler(self._on_file_created, loop=main_loop)
             self._observer = Observer()
             self._observer.schedule(event_handler, str(self._watch_dir), recursive=False)
             self._observer.start()
 
-            # v2.2: Register this watch globally
-            _FileWatchHandler._global_watches.add(watch_key)
-
             logger.info(f"ReactorCoreReceiver started watching {self._watch_dir}")
+
         except RuntimeError as e:
-            if "already scheduled" in str(e):
-                # Another component is already watching this directory - that's OK
-                # We can share the directory watching through the other component
+            # v2.4: Handle FSEvents errors gracefully
+            error_str = str(e).lower()
+            if "already scheduled" in error_str or "cannot add watch" in error_str:
                 logger.warning(
-                    f"Directory {self._watch_dir} already being watched by another component. "
-                    "Using shared watch mode (events will still be processed via file polling)."
+                    f"FSEvents watch conflict for {self._watch_dir}. "
+                    "Using polling fallback (events still processed)."
                 )
+                # Unregister since we couldn't create the watch
+                await registry.unregister_async(self._watch_dir)
                 # Start a polling task as fallback
                 asyncio.create_task(self._fallback_poll_loop())
             else:
+                # Unregister on failure
+                await registry.unregister_async(self._watch_dir)
                 raise
+
+        except Exception as e:
+            logger.error(f"Failed to start file watcher: {e}")
+            # Unregister on failure
+            await registry.unregister_async(self._watch_dir)
+            # Fall back to polling
+            asyncio.create_task(self._fallback_poll_loop())
 
     async def _fallback_poll_loop(self) -> None:
         """Fallback polling loop when watchdog watch fails."""
@@ -537,18 +558,20 @@ class ReactorCoreReceiver:
         """
         Stop watching for events.
 
-        v2.2: Properly unregisters from global watch registry.
+        v2.4: Uses GlobalWatchRegistry for proper unregistration.
         """
         self._running = False
 
-        # v2.2: Unregister from global watches
-        watch_key = str(self._watch_dir)
-        if hasattr(_FileWatchHandler, "_global_watches"):
-            _FileWatchHandler._global_watches.discard(watch_key)
+        # v2.4: Unregister from GlobalWatchRegistry
+        registry = get_global_watch_registry()
+        await registry.unregister_async(self._watch_dir)
 
         if self._observer:
-            self._observer.stop()
-            self._observer.join(timeout=5)
+            try:
+                self._observer.stop()
+                self._observer.join(timeout=5)
+            except Exception as stop_err:
+                logger.debug(f"Observer stop error (ignored): {stop_err}")
             self._observer = None
 
         logger.info("ReactorCoreReceiver stopped")
