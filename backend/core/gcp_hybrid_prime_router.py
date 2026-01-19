@@ -280,9 +280,13 @@ class GCPHybridPrimeRouter:
             self._circuit_breaker = CrossRepoCircuitBreaker(
                 name="gcp_hybrid_prime_router",
                 config=CircuitBreakerConfig(
-                    failure_threshold=3,
+                    failure_threshold=5,  # v93.0: Increased from 3 for better resilience
                     timeout_seconds=60.0,  # v2.1: Fixed - was 'recovery_timeout' which doesn't exist
                     half_open_max_calls=2,
+                    # v93.0: Startup-aware configuration for ML model loading
+                    startup_grace_period_seconds=180.0,  # 3 minutes for ML models
+                    startup_failure_threshold=30,
+                    startup_network_failure_threshold=20,
                 )
             )
         else:

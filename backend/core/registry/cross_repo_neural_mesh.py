@@ -301,6 +301,10 @@ class CrossRepoNeuralMeshBridge:
                 failure_threshold=5,
                 timeout_seconds=30.0,  # v2.1: Fixed - was 'recovery_timeout' which doesn't exist
                 half_open_max_calls=2,
+                # v93.0: Startup-aware configuration for ML model loading
+                startup_grace_period_seconds=180.0,  # 3 minutes for ML models
+                startup_failure_threshold=30,
+                startup_network_failure_threshold=20,
             )
         )
 

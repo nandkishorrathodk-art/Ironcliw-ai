@@ -152,6 +152,11 @@ class CircuitBreakerConfig:
     recovery_factor: float = 1.5  # Increase timeout on repeated opens
     max_timeout_seconds: float = 300.0  # Max timeout after repeated failures
 
+    # v93.0: Startup grace period - more lenient during service initialization
+    startup_grace_period_seconds: float = 180.0  # 3 minutes for ML model loading
+    startup_failure_threshold: int = 30  # Much higher threshold during startup
+    startup_network_failure_threshold: int = 20  # Network errors common during startup
+
 
 class FailureClassifier:
     """Classifies exceptions into failure types."""
@@ -284,14 +289,42 @@ class CrossRepoCircuitBreaker:
         self._lock = asyncio.Lock()
         self._open_count: Dict[str, int] = {}  # Track repeated opens for adaptive timeout
 
+        # v93.0: Startup grace period tracking
+        self._creation_time = time.time()
+        self._startup_logged = False
+
     def _get_tier(self, tier_name: str) -> TierHealth:
         """Get or create tier health tracker."""
         if tier_name not in self._tiers:
             self._tiers[tier_name] = TierHealth(tier_name=tier_name)
         return self._tiers[tier_name]
 
+    def _is_in_startup_grace_period(self) -> bool:
+        """v93.0: Check if we're still within the startup grace period."""
+        elapsed = time.time() - self._creation_time
+        return elapsed < self.config.startup_grace_period_seconds
+
     def _get_failure_threshold(self, failure_type: FailureType) -> int:
-        """Get failure threshold based on failure type."""
+        """Get failure threshold based on failure type and startup state."""
+        # v93.0: Use much higher thresholds during startup
+        in_startup = self._is_in_startup_grace_period()
+
+        if in_startup:
+            # Log startup state once
+            if not self._startup_logged:
+                elapsed = time.time() - self._creation_time
+                logger.info(
+                    f"[{self.name}] Circuit breaker in startup grace period "
+                    f"({elapsed:.0f}s / {self.config.startup_grace_period_seconds}s), "
+                    f"using higher thresholds"
+                )
+                self._startup_logged = True
+
+            # Higher thresholds during startup
+            if failure_type == FailureType.NETWORK:
+                return self.config.startup_network_failure_threshold
+            return self.config.startup_failure_threshold
+
         if not self.config.adaptive_thresholds:
             return self.config.failure_threshold
 
@@ -343,7 +376,15 @@ class CrossRepoCircuitBreaker:
                 timeout = self._get_timeout(tier)
                 reason = health.dominant_failure_type.value if health.dominant_failure_type else None
 
-                if fallback:
+                # v93.0: During startup grace period, allow request to proceed (service may be starting)
+                if self._is_in_startup_grace_period():
+                    elapsed = time.time() - self._creation_time
+                    logger.debug(
+                        f"[CircuitBreaker:{self.name}] {tier} is OPEN but in startup grace period "
+                        f"({elapsed:.0f}s / {self.config.startup_grace_period_seconds}s), allowing request"
+                    )
+                    # Don't block - let the request try (fall through to execute)
+                elif fallback:
                     logger.debug(
                         f"[CircuitBreaker:{self.name}] {tier} is OPEN, using fallback"
                     )
@@ -351,8 +392,8 @@ class CrossRepoCircuitBreaker:
                     if asyncio.iscoroutine(result):
                         return await result
                     return result
-
-                raise CircuitOpenError(tier, health.state, timeout, reason)
+                else:
+                    raise CircuitOpenError(tier, health.state, timeout, reason)
 
             if health.state == CircuitState.HALF_OPEN:
                 if health.half_open_calls >= self.config.half_open_max_calls:
@@ -511,6 +552,8 @@ class CrossRepoCircuitBreaker:
         any_open = any(
             h.state == CircuitState.OPEN for h in self._tiers.values()
         )
+        in_startup = self._is_in_startup_grace_period()
+        elapsed = time.time() - self._creation_time
 
         return {
             "name": self.name,
@@ -519,6 +562,10 @@ class CrossRepoCircuitBreaker:
             "total_tiers": len(self._tiers),
             "healthy_tiers": len(self.get_healthy_tiers()),
             "available_tiers": len(self.get_available_tiers()),
+            # v93.0: Include startup status
+            "in_startup_grace_period": in_startup,
+            "startup_elapsed_seconds": round(elapsed, 1),
+            "startup_grace_period_seconds": self.config.startup_grace_period_seconds,
             "tiers": {
                 name: health.to_dict()
                 for name, health in self._tiers.items()
@@ -528,6 +575,9 @@ class CrossRepoCircuitBreaker:
                 "success_threshold": self.config.success_threshold,
                 "timeout_seconds": self.config.timeout_seconds,
                 "adaptive_thresholds": self.config.adaptive_thresholds,
+                # v93.0: Include startup config
+                "startup_failure_threshold": self.config.startup_failure_threshold,
+                "startup_network_failure_threshold": self.config.startup_network_failure_threshold,
             },
         }
 

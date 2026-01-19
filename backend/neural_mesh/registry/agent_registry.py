@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -125,8 +126,13 @@ class AgentRegistry:
 
         # v93.0: Startup grace period tracking
         self._startup_time = time.time()
-        self._startup_grace_period_seconds = 120.0  # 2 minutes for slow-starting services
+        # v93.0: Increased to 180s to match JARVIS_PRIME_STARTUP_TIMEOUT for ML model loading
+        self._startup_grace_period_seconds = float(
+            os.environ.get("AGENT_REGISTRY_STARTUP_GRACE", "180.0")
+        )
         self._agent_registration_times: Dict[str, float] = {}  # Track when each agent registered
+        # v93.0: Track which agents have transitioned out of grace period
+        self._agents_transitioned_from_grace: Set[str] = set()
 
         logger.info("AgentRegistry initialized")
 
@@ -676,17 +682,33 @@ class AgentRegistry:
 
                 # v93.0: Check startup grace period for this agent
                 agent_registration_time = self._agent_registration_times.get(agent_name, 0)
+                agent_in_grace = False
                 if agent_registration_time > 0:
                     agent_age = current_time - agent_registration_time
                     if agent_age < self._startup_grace_period_seconds:
                         # Agent is within startup grace period - skip timeout checks
                         skipped_startup_agents.append(agent_name)
+                        agent_in_grace = True
                         continue
 
                 # v93.0: Skip if in system startup grace period
                 if in_system_startup:
                     skipped_startup_agents.append(agent_name)
+                    agent_in_grace = True
                     continue
+
+                # v93.0: Handle transition out of grace period
+                # When agent exits grace period, reset heartbeat to prevent immediate offline
+                if not agent_in_grace and agent_name not in self._agents_transitioned_from_grace:
+                    self._agents_transitioned_from_grace.add(agent_name)
+                    # Reset heartbeat to give agent fresh start after grace period
+                    agent_info.last_heartbeat = datetime.now()
+                    age = 0.0  # Reset age for this check
+                    logger.debug(
+                        "[AgentRegistry] Agent %s transitioned out of startup grace period, "
+                        "reset heartbeat timer",
+                        agent_name
+                    )
 
                 if age > timeout + grace_period:
                     # Definitely offline - past timeout + grace period

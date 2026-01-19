@@ -2746,8 +2746,13 @@ class IntegrationConfig:
     ]
 
     # Circuit Breaker
-    CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("OUROBOROS_CIRCUIT_THRESHOLD", "5"))
+    # v93.0: Increased default threshold and added startup grace period
+    CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("OUROBOROS_CIRCUIT_THRESHOLD", "10"))  # Was 5, too aggressive
     CIRCUIT_BREAKER_TIMEOUT = float(os.getenv("OUROBOROS_CIRCUIT_TIMEOUT", "300.0"))
+    # v93.0: Startup grace period - circuit breaker won't open during this time
+    CIRCUIT_BREAKER_STARTUP_GRACE = float(os.getenv("OUROBOROS_CIRCUIT_STARTUP_GRACE", "180.0"))  # 3 minutes
+    # v93.0: Higher threshold during startup (services are still initializing)
+    CIRCUIT_BREAKER_STARTUP_THRESHOLD = int(os.getenv("OUROBOROS_CIRCUIT_STARTUP_THRESHOLD", "30"))
 
     # Retry
     MAX_RETRIES = int(os.getenv("OUROBOROS_MAX_RETRIES", "3"))
@@ -2790,6 +2795,11 @@ class CircuitBreaker:
     """
     Circuit breaker for protecting against cascading failures.
 
+    v93.0: Startup-aware circuit breaker that:
+    - Uses higher threshold during startup grace period
+    - Logs startup status for debugging
+    - Resets failure count when transitioning out of startup
+
     State machine:
     - CLOSED: Normal operation, tracking failures
     - OPEN: Too many failures, rejecting all requests
@@ -2798,12 +2808,34 @@ class CircuitBreaker:
     name: str
     threshold: int = IntegrationConfig.CIRCUIT_BREAKER_THRESHOLD
     timeout: float = IntegrationConfig.CIRCUIT_BREAKER_TIMEOUT
+    # v93.0: Startup-aware configuration
+    startup_grace_period: float = IntegrationConfig.CIRCUIT_BREAKER_STARTUP_GRACE
+    startup_threshold: int = IntegrationConfig.CIRCUIT_BREAKER_STARTUP_THRESHOLD
 
     state: CircuitState = CircuitState.CLOSED
     failures: int = 0
     successes: int = 0
     last_failure_time: float = 0.0
     last_success_time: float = 0.0
+    # v93.0: Track creation time for startup grace period
+    _creation_time: float = field(default_factory=time.time)
+    _startup_logged: bool = field(default=False, repr=False)
+
+    def __post_init__(self):
+        """Initialize creation time if not set."""
+        if self._creation_time == 0.0:
+            self._creation_time = time.time()
+
+    def _is_in_startup_grace_period(self) -> bool:
+        """v93.0: Check if we're still within the startup grace period."""
+        elapsed = time.time() - self._creation_time
+        return elapsed < self.startup_grace_period
+
+    def _get_effective_threshold(self) -> int:
+        """v93.0: Get the effective threshold based on startup state."""
+        if self._is_in_startup_grace_period():
+            return self.startup_threshold
+        return self.threshold
 
     def can_execute(self) -> bool:
         """Check if request can proceed."""
@@ -2811,6 +2843,17 @@ class CircuitBreaker:
             return True
 
         if self.state == CircuitState.OPEN:
+            # v93.0: During startup, be more lenient
+            if self._is_in_startup_grace_period():
+                elapsed = time.time() - self._creation_time
+                if not self._startup_logged:
+                    logger.info(
+                        f"Circuit breaker {self.name} in startup grace period "
+                        f"({elapsed:.1f}s / {self.startup_grace_period}s), allowing request"
+                    )
+                    self._startup_logged = True
+                return True
+
             # Check if timeout has elapsed
             if time.time() - self.last_failure_time >= self.timeout:
                 self.state = CircuitState.HALF_OPEN
@@ -2831,27 +2874,74 @@ class CircuitBreaker:
             self.state = CircuitState.CLOSED
             self.failures = 0
             logger.info(f"Circuit breaker {self.name} CLOSED (recovered)")
+        elif self.state == CircuitState.OPEN:
+            # v93.0: Success while open (during startup grace) - close it
+            if self._is_in_startup_grace_period():
+                self.state = CircuitState.CLOSED
+                old_failures = self.failures
+                self.failures = 0
+                logger.info(
+                    f"Circuit breaker {self.name} CLOSED during startup grace period "
+                    f"(success after {old_failures} failures)"
+                )
 
     def record_failure(self) -> None:
         """Record a failed request."""
         self.failures += 1
         self.last_failure_time = time.time()
 
+        # v93.0: Use effective threshold based on startup state
+        effective_threshold = self._get_effective_threshold()
+        in_startup = self._is_in_startup_grace_period()
+
         if self.state == CircuitState.HALF_OPEN:
             # Still failing, reopen
             self.state = CircuitState.OPEN
             logger.warning(f"Circuit breaker {self.name} re-OPENED (still failing)")
-        elif self.failures >= self.threshold:
+        elif self.failures >= effective_threshold:
             self.state = CircuitState.OPEN
-            logger.warning(f"Circuit breaker {self.name} OPENED after {self.failures} failures")
+            if in_startup:
+                elapsed = time.time() - self._creation_time
+                logger.warning(
+                    f"Circuit breaker {self.name} OPENED after {self.failures} failures "
+                    f"(startup threshold: {effective_threshold}, elapsed: {elapsed:.1f}s)"
+                )
+            else:
+                logger.warning(f"Circuit breaker {self.name} OPENED after {self.failures} failures")
+        elif in_startup and self.failures % 10 == 0:
+            # v93.0: Log progress during startup (every 10 failures)
+            elapsed = time.time() - self._creation_time
+            logger.debug(
+                f"Circuit breaker {self.name}: {self.failures}/{effective_threshold} failures "
+                f"during startup ({elapsed:.1f}s / {self.startup_grace_period}s)"
+            )
+
+    def reset(self) -> None:
+        """v93.0: Reset circuit breaker state (useful when service becomes ready)."""
+        old_state = self.state
+        old_failures = self.failures
+        self.state = CircuitState.CLOSED
+        self.failures = 0
+        self.successes = 0
+        if old_state != CircuitState.CLOSED or old_failures > 0:
+            logger.info(
+                f"Circuit breaker {self.name} RESET (was {old_state.value} with {old_failures} failures)"
+            )
 
     def get_status(self) -> Dict[str, Any]:
+        in_startup = self._is_in_startup_grace_period()
+        elapsed = time.time() - self._creation_time
         return {
             "name": self.name,
             "state": self.state.value,
             "failures": self.failures,
             "successes": self.successes,
             "can_execute": self.can_execute(),
+            # v93.0: Include startup status
+            "in_startup_grace_period": in_startup,
+            "startup_elapsed_seconds": round(elapsed, 1),
+            "startup_grace_period_seconds": self.startup_grace_period,
+            "effective_threshold": self._get_effective_threshold(),
         }
 
 
