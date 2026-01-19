@@ -3821,22 +3821,28 @@ class UnifiedStateCoordinator:
                     if component in owners:
                         existing = owners[component]
 
-                        if not force:
-                            # Validate owner is alive
-                            owner_obj = ProcessOwnership(
-                                entry_point=existing.get("entry_point", "unknown"),
-                                pid=existing.get("pid", 0),
-                                cookie=existing.get("cookie", ""),
-                                hostname=existing.get("hostname", ""),
-                                acquired_at=existing.get("acquired_at", 0),
-                                last_heartbeat=existing.get("last_heartbeat", 0),
-                                metadata=existing.get("metadata", {}),
+                        # ═══════════════════════════════════════════════════════════════
+                        # v93.0 CRITICAL FIX: If we successfully acquired the fcntl lock,
+                        # the previous owner CANNOT be alive (lock is OS-level, released
+                        # on process death). The state file may be stale, but WE HAVE
+                        # THE LOCK, which is the ultimate source of truth.
+                        #
+                        # Previous bug: Even after acquiring fcntl lock, we'd check
+                        # _validate_owner_alive() which could return True based on
+                        # fresh heartbeat, causing us to give up a lock we already have!
+                        #
+                        # Fix: Skip _validate_owner_alive check entirely when we already
+                        # hold the fcntl lock. Just log that we're taking over from a
+                        # stale state entry.
+                        # ═══════════════════════════════════════════════════════════════
+                        existing_pid = existing.get("pid", 0)
+                        if existing_pid != self._pid:
+                            logger.info(
+                                f"[StateCoord] v93.0 fcntl lock acquired - taking over from "
+                                f"stale state entry (previous PID: {existing_pid})"
                             )
-                            is_alive = await self._validate_owner_alive(owner_obj)
-                            if is_alive:
-                                # Still owned by live process
-                                os.close(fd)
-                                return False, owner_obj
+                            # Mark this PID as reported to avoid spam in retry loops
+                            self._mark_stale_pid_reported(existing_pid)
 
                         previous_owner = ProcessOwnership(
                             entry_point=existing.get("entry_point", "unknown"),
