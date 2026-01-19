@@ -12500,6 +12500,110 @@ class CrossRepoSyncManager:
             "reactor": {"status": "unknown", "last_seen": None},
         }
         self._event_handlers: Dict[str, List[Callable]] = defaultdict(list)
+        self._registered_repos: Dict[str, Path] = {}
+        self._heartbeat_running = False
+        self._heartbeat_task: Optional[asyncio.Task] = None
+
+    async def register_repo(self, repo_name: str, repo_path: str) -> bool:
+        """
+        v93.0: Register a repository for cross-repo synchronization.
+
+        This enables the sync manager to monitor and coordinate with
+        the specified repository.
+
+        Args:
+            repo_name: Name identifier for the repo (e.g., 'jarvis', 'prime', 'reactor')
+            repo_path: Filesystem path to the repository
+
+        Returns:
+            True if registration successful
+        """
+        path = Path(repo_path)
+
+        if not path.exists():
+            logger.warning(f"[CrossRepoSyncManager] Repo path does not exist: {repo_path}")
+            return False
+
+        self._registered_repos[repo_name] = path
+
+        # Initialize state for this repo
+        if repo_name not in self._state:
+            self._state[repo_name] = {
+                "status": "registered",
+                "last_seen": time.time(),
+                "path": str(path),
+            }
+        else:
+            self._state[repo_name]["status"] = "registered"
+            self._state[repo_name]["path"] = str(path)
+            self._state[repo_name]["last_seen"] = time.time()
+
+        logger.info(f"[CrossRepoSyncManager] Registered repo: {repo_name} at {repo_path}")
+        return True
+
+    async def start_heartbeat(self) -> None:
+        """
+        v93.0: Start heartbeat monitoring for registered repositories.
+
+        This initiates periodic health checks across all registered repos,
+        enabling automatic detection of disconnected or unhealthy services.
+        """
+        if self._heartbeat_running:
+            logger.debug("[CrossRepoSyncManager] Heartbeat already running")
+            return
+
+        self._heartbeat_running = True
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        logger.info("[CrossRepoSyncManager] Heartbeat monitoring started")
+
+    async def stop_heartbeat(self) -> None:
+        """v93.0: Stop heartbeat monitoring."""
+        self._heartbeat_running = False
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+        logger.info("[CrossRepoSyncManager] Heartbeat monitoring stopped")
+
+    async def _heartbeat_loop(self) -> None:
+        """v93.0: Internal heartbeat monitoring loop."""
+        while self._heartbeat_running:
+            try:
+                now = time.time()
+
+                for repo_name, repo_path in self._registered_repos.items():
+                    # Check if repo is accessible
+                    if repo_path.exists():
+                        self._state[repo_name]["status"] = "healthy"
+                        self._state[repo_name]["last_seen"] = now
+                    else:
+                        self._state[repo_name]["status"] = "unreachable"
+
+                    # Check for heartbeat file (if repos write their own)
+                    heartbeat_file = repo_path / ".jarvis" / "heartbeat.json"
+                    if heartbeat_file.exists():
+                        try:
+                            data = json.loads(heartbeat_file.read_text())
+                            last_beat = data.get("timestamp", 0)
+                            if now - last_beat < 60:  # Within 1 minute
+                                self._state[repo_name]["status"] = "active"
+                        except Exception:
+                            pass
+
+                await asyncio.sleep(10)  # Check every 10 seconds
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[CrossRepoSyncManager] Heartbeat error: {e}")
+                await asyncio.sleep(10)
+
+    def get_registered_repos(self) -> Dict[str, str]:
+        """v93.0: Get all registered repositories."""
+        return {name: str(path) for name, path in self._registered_repos.items()}
 
     async def start(self) -> None:
         """Start cross-repo synchronization."""
@@ -15386,10 +15490,64 @@ class GoalDecomposer:
     ]
     """
 
-    def __init__(self, llm_client: Optional[Any] = None):
+    def __init__(self, llm_client: Optional[Any] = None, oracle: Optional[Any] = None):
         self._llm_client = llm_client
+        self._oracle = oracle
         self._lock = asyncio.Lock()
         self._goal_templates = self._load_goal_templates()
+        self._initialized = False
+
+    async def set_oracle(self, oracle: Any) -> None:
+        """
+        v93.0: Set the oracle for enhanced goal decomposition.
+
+        The oracle provides code analysis capabilities for more intelligent
+        goal decomposition based on actual codebase state.
+
+        Args:
+            oracle: Oracle instance for code analysis
+        """
+        async with self._lock:
+            self._oracle = oracle
+            logger.debug("[GoalDecomposer] Oracle configured")
+
+    async def set_llm_client(self, llm_client: Any) -> None:
+        """
+        v93.0: Set the LLM client for AI-powered goal decomposition.
+
+        The LLM client enables natural language understanding and
+        sophisticated goal analysis beyond template matching.
+
+        Args:
+            llm_client: LLM client instance (Claude, etc.)
+        """
+        async with self._lock:
+            self._llm_client = llm_client
+            logger.debug("[GoalDecomposer] LLM client configured")
+
+    async def initialize(self) -> bool:
+        """
+        v93.0: Initialize the goal decomposer with async resources.
+
+        Returns:
+            True if initialization successful
+        """
+        if self._initialized:
+            return True
+
+        async with self._lock:
+            # Validate oracle connection if present
+            if self._oracle:
+                try:
+                    # Attempt a simple query to validate oracle
+                    if hasattr(self._oracle, 'is_ready'):
+                        await self._oracle.is_ready()
+                except Exception as e:
+                    logger.warning(f"[GoalDecomposer] Oracle validation failed: {e}")
+
+            self._initialized = True
+            logger.info("[GoalDecomposer] Initialized successfully")
+            return True
 
     def _load_goal_templates(self) -> Dict[str, List[str]]:
         """Load goal decomposition templates."""

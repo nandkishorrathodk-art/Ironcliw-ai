@@ -214,6 +214,35 @@ class HeartbeatValidator:
         """Register callback for status changes."""
         self._callbacks.append(callback)
 
+    def on_staleness(self, callback: Callable[[str], Coroutine]) -> None:
+        """
+        v93.0: Register callback for when a component becomes stale or dead.
+
+        This is a convenience method that wraps on_status_change to specifically
+        handle staleness events. The callback receives just the component_id.
+
+        Args:
+            callback: Async function that takes component_id as argument
+        """
+        async def staleness_wrapper(
+            component_id: str,
+            old_status: HeartbeatStatus,
+            new_status: HeartbeatStatus
+        ) -> None:
+            # Only trigger if transitioning TO stale or dead
+            if new_status in (HeartbeatStatus.STALE, HeartbeatStatus.DEAD, HeartbeatStatus.ZOMBIE):
+                if old_status == HeartbeatStatus.HEALTHY:
+                    try:
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(component_id)
+                        else:
+                            callback(component_id)
+                    except Exception as e:
+                        logger.error(f"[HeartbeatValidator] Staleness callback error: {e}")
+
+        self._callbacks.append(staleness_wrapper)
+        logger.debug("[HeartbeatValidator] Staleness callback registered")
+
     async def get_healthy_components(self, component_type: Optional[str] = None) -> List[ComponentHealth]:
         """Get list of healthy components."""
         healthy = []

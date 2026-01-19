@@ -521,6 +521,34 @@ class MultiTransport:
         self._dedup_cache: deque = deque(maxlen=1000)
         self._health_check_task: Optional[asyncio.Task] = None
         self._connected = False
+        self._started = False
+
+    async def start(self) -> bool:
+        """
+        v93.0: Start the multi-transport system.
+
+        This is an alias for connect() that provides a consistent API
+        with other transport/service classes.
+
+        Returns:
+            True if at least one transport connected successfully
+        """
+        if self._started:
+            logger.debug("[MultiTransport] Already started")
+            return self._connected
+
+        result = await self.connect()
+        self._started = result
+        return result
+
+    async def stop(self) -> None:
+        """
+        v93.0: Stop the multi-transport system.
+
+        This is an alias for disconnect() that provides a consistent API.
+        """
+        self._started = False
+        await self.disconnect()
 
     async def connect(self) -> bool:
         """
