@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +122,25 @@ class HeartbeatValidator:
     def __init__(self, heartbeat_dir: Optional[Path] = None):
         self.heartbeat_dir = heartbeat_dir or Path.home() / ".jarvis" / "trinity" / "heartbeats"
         self.heartbeat_dir.mkdir(parents=True, exist_ok=True)
+
+        # v93.0: Cross-repo heartbeat directories for Trinity synchronization
+        self._cross_repo_dirs: List[Path] = [
+            self.heartbeat_dir,                                    # Primary: local heartbeats
+            Path.home() / ".jarvis" / "cross_repo",               # Cross-repo shared directory
+            Path.home() / ".jarvis" / "trinity" / "components",   # Legacy compatibility
+        ]
+
+        # Ensure cross-repo directory exists
+        cross_repo_dir = Path.home() / ".jarvis" / "cross_repo"
+        cross_repo_dir.mkdir(parents=True, exist_ok=True)
+
         self._components: Dict[str, ComponentHealth] = {}
         self._callbacks: List[Callable[[str, HeartbeatStatus, HeartbeatStatus], Coroutine]] = []
         self._monitor_task: Optional[asyncio.Task] = None
         self._running = False
+
+        # v93.0: Enable cross-repo synchronization by default
+        self._cross_repo_sync_enabled = True
 
     async def start(self) -> None:
         """Start the heartbeat monitor."""
@@ -342,14 +357,34 @@ class HeartbeatValidator:
         return round(score, 3)
 
     async def _write_heartbeat(self, heartbeat: Heartbeat) -> None:
-        """Write heartbeat to file for cross-process visibility."""
+        """
+        v93.0: Write heartbeat to file for cross-process visibility.
+
+        Enhanced to write to both local and cross-repo directories for
+        Trinity-wide synchronization.
+        """
+        heartbeat_data = json.dumps(heartbeat.to_dict(), indent=2)
+
+        # Write to primary heartbeat directory
         try:
             filepath = self.heartbeat_dir / f"{heartbeat.component_id}.json"
             tmp_path = filepath.with_suffix(".tmp")
-            tmp_path.write_text(json.dumps(heartbeat.to_dict(), indent=2))
+            tmp_path.write_text(heartbeat_data)
             tmp_path.rename(filepath)
         except Exception as e:
-            logger.warning(f"[HeartbeatValidator] Failed to write heartbeat: {e}")
+            logger.warning(f"[HeartbeatValidator] Failed to write heartbeat to primary: {e}")
+
+        # v93.0: Also write to cross-repo directory for Trinity synchronization
+        if self._cross_repo_sync_enabled:
+            try:
+                cross_repo_dir = Path.home() / ".jarvis" / "cross_repo"
+                cross_repo_dir.mkdir(parents=True, exist_ok=True)
+                filepath = cross_repo_dir / f"{heartbeat.component_id}.json"
+                tmp_path = filepath.with_suffix(".tmp")
+                tmp_path.write_text(heartbeat_data)
+                tmp_path.rename(filepath)
+            except Exception as e:
+                logger.debug(f"[HeartbeatValidator] Failed to write heartbeat to cross-repo: {e}")
 
     async def _load_heartbeat(self, component_id: str) -> None:
         """Load heartbeat from file."""
@@ -374,14 +409,64 @@ class HeartbeatValidator:
             logger.debug(f"[HeartbeatValidator] Failed to load heartbeat: {e}")
 
     async def _load_all_heartbeats(self) -> None:
-        """Load all heartbeats from directory."""
+        """
+        v93.0: Load all heartbeats from multiple directories.
+
+        Loads from all cross-repo directories for Trinity-wide visibility:
+        - Primary heartbeat directory
+        - Cross-repo shared directory
+        - Legacy components directory
+        """
+        loaded_components: Set[str] = set()
+
+        for heartbeat_dir in self._cross_repo_dirs:
+            if not heartbeat_dir.exists():
+                continue
+
+            try:
+                for filepath in heartbeat_dir.glob("*.json"):
+                    component_id = filepath.stem
+
+                    # Skip if already loaded from higher-priority directory
+                    if component_id in loaded_components:
+                        continue
+
+                    if component_id not in self._components:
+                        await self._load_heartbeat_from_path(filepath)
+                        if component_id in self._components:
+                            loaded_components.add(component_id)
+
+            except Exception as e:
+                logger.debug(f"[HeartbeatValidator] Failed to load heartbeats from {heartbeat_dir}: {e}")
+
+    async def _load_heartbeat_from_path(self, filepath: Path) -> None:
+        """
+        v93.0: Load heartbeat from a specific file path.
+
+        Enhanced version of _load_heartbeat that accepts a full path.
+        """
         try:
-            for filepath in self.heartbeat_dir.glob("*.json"):
-                component_id = filepath.stem
-                if component_id not in self._components:
-                    await self._load_heartbeat(component_id)
+            if filepath.exists():
+                data = json.loads(filepath.read_text())
+                heartbeat = Heartbeat.from_dict(data)
+
+                health = ComponentHealth(
+                    component_id=heartbeat.component_id,
+                    component_type=heartbeat.component_type,
+                    status=HeartbeatStatus.UNKNOWN,
+                    last_heartbeat=heartbeat.timestamp,
+                    pid=heartbeat.pid,
+                    host=heartbeat.host,
+                    metrics=heartbeat.metrics,
+                )
+
+                self._components[heartbeat.component_id] = health
+                logger.debug(
+                    f"[HeartbeatValidator] Loaded heartbeat for {heartbeat.component_id} "
+                    f"from {filepath.parent.name}"
+                )
         except Exception as e:
-            logger.warning(f"[HeartbeatValidator] Failed to load heartbeats: {e}")
+            logger.debug(f"[HeartbeatValidator] Failed to load heartbeat from {filepath}: {e}")
 
     async def _notify_status_change(
         self,

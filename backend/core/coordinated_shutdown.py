@@ -462,8 +462,97 @@ class CoordinatedShutdownManager:
         self._on_phase_complete: List[Callable[[ShutdownPhase, PhaseResult], None]] = []
         self._on_shutdown_complete: List[Callable[[ShutdownResult], None]] = []
 
+        # v93.0: Register default IPC cleanup hook to prevent semaphore leaks
+        self._register_default_cleanup_hooks()
+
         logger.info(
             f"[ShutdownManager] Initialized with state_dir={self.state_dir}"
+        )
+
+    def _register_default_cleanup_hooks(self) -> None:
+        """
+        v93.0: Register default cleanup hooks.
+
+        These hooks ensure proper cleanup of system resources like IPC semaphores
+        and shared memory that can leak if not explicitly cleaned up.
+        """
+        # IPC Semaphore/Shared Memory Cleanup Hook
+        async def ipc_cleanup_hook() -> None:
+            """Clean up IPC resources (semaphores, shared memory) to prevent leaks."""
+            import subprocess
+
+            cleaned_semaphores = 0
+            cleaned_shm = 0
+            current_user = os.getenv("USER", "")
+
+            if not current_user:
+                logger.debug("[ShutdownManager] Cannot determine USER for IPC cleanup")
+                return
+
+            try:
+                # Clean up semaphores
+                result = subprocess.run(
+                    ["ipcs", "-s"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5.0
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split("\n"):
+                        if current_user in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                sem_id = parts[1]
+                                try:
+                                    subprocess.run(
+                                        ["ipcrm", "-s", sem_id],
+                                        timeout=2.0,
+                                        capture_output=True
+                                    )
+                                    cleaned_semaphores += 1
+                                except Exception:
+                                    pass
+
+                # Clean up shared memory
+                result = subprocess.run(
+                    ["ipcs", "-m"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5.0
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split("\n"):
+                        if current_user in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                shm_id = parts[1]
+                                try:
+                                    subprocess.run(
+                                        ["ipcrm", "-m", shm_id],
+                                        timeout=2.0,
+                                        capture_output=True
+                                    )
+                                    cleaned_shm += 1
+                                except Exception:
+                                    pass
+
+                if cleaned_semaphores > 0 or cleaned_shm > 0:
+                    logger.info(
+                        f"[ShutdownManager] IPC cleanup: {cleaned_semaphores} semaphores, "
+                        f"{cleaned_shm} shared memory segments"
+                    )
+
+            except Exception as e:
+                logger.debug(f"[ShutdownManager] IPC cleanup error: {e}")
+
+        # Register the IPC cleanup hook with high priority (runs early in CLEANUP phase)
+        self.register_hook(
+            name="ipc_cleanup",
+            phase=ShutdownPhase.CLEANUP,
+            callback=ipc_cleanup_hook,
+            priority=10,  # Low number = high priority = runs early
+            timeout=10.0,
+            critical=False,  # Don't fail shutdown if this fails
         )
 
     # =========================================================================
@@ -1266,82 +1355,165 @@ class OrphanProcessDetector:
             logger.debug(f"[OrphanDetector] Process check failed: {e}")
 
     async def _check_stale_heartbeats(self) -> None:
-        """Check for heartbeat files with dead processes."""
-        heartbeat_dir = self.trinity_dir / "components"
-        if not heartbeat_dir.exists():
-            return
+        """
+        v93.0: Enhanced heartbeat staleness detection with multi-directory support.
 
-        for hb_file in heartbeat_dir.glob("*.json"):
-            try:
-                import json
+        Checks multiple heartbeat directories for backwards compatibility and
+        cross-repo coordination.
+        """
+        # v93.0: Multiple heartbeat directories to check
+        heartbeat_dirs = [
+            self.trinity_dir / "heartbeats",      # PRIMARY: correct location
+            self.trinity_dir / "components",      # LEGACY: old location
+            Path.home() / ".jarvis" / "cross_repo",  # Cross-repo heartbeats
+        ]
 
-                with open(hb_file) as f:
-                    data = json.load(f)
+        processed_files: set = set()  # Avoid processing same file twice
 
-                pid = data.get("pid")
-                if not pid:
-                    continue
-
-                # Check if process exists
-                if not self._process_exists(pid):
-                    # Heartbeat for dead process - file is stale
-                    hb_file.unlink()
-                    logger.debug(
-                        f"[OrphanDetector] Removed stale heartbeat: {hb_file}"
-                    )
-                else:
-                    # Process exists but heartbeat may be old
-                    timestamp = data.get("timestamp", 0)
-                    age_hours = (time.time() - timestamp) / 3600
-
-                    if age_hours > self.max_orphan_age_hours:
-                        # Very old heartbeat - process may be zombie
-                        component = hb_file.stem
-                        cmdline = self._get_process_cmdline(pid)
-
-                        orphan = OrphanProcess(
-                            pid=pid,
-                            name=component,
-                            cmdline=cmdline,
-                            started_at=timestamp,
-                            component_type=component.replace("_", "-"),
-                            reason=f"stale_heartbeat_{age_hours:.1f}h",
-                        )
-                        self._detected_orphans.append(orphan)
-
-            except (json.JSONDecodeError, KeyError, PermissionError):
+        for heartbeat_dir in heartbeat_dirs:
+            if not heartbeat_dir.exists():
                 continue
+
+            for hb_file in heartbeat_dir.glob("*.json"):
+                # Skip if already processed (same component in different dir)
+                if hb_file.stem in processed_files:
+                    continue
+                processed_files.add(hb_file.stem)
+
+                try:
+                    import json
+
+                    with open(hb_file) as f:
+                        data = json.load(f)
+
+                    pid = data.get("pid")
+                    if not pid:
+                        continue
+
+                    # Check if process exists
+                    if not self._process_exists(pid):
+                        # Heartbeat for dead process - file is stale
+                        try:
+                            hb_file.unlink()
+                            logger.debug(
+                                f"[OrphanDetector] Removed stale heartbeat: {hb_file}"
+                            )
+                        except OSError:
+                            pass  # File may have been removed by another process
+                    else:
+                        # Process exists but heartbeat may be old
+                        timestamp = data.get("timestamp", 0)
+                        age_hours = (time.time() - timestamp) / 3600
+
+                        if age_hours > self.max_orphan_age_hours:
+                            # v93.0: Before marking as orphan, verify via HTTP health check
+                            component = hb_file.stem
+
+                            # Try HTTP health check first - process may be healthy
+                            if await self._http_health_check(component, pid):
+                                logger.debug(
+                                    f"[OrphanDetector] {component} has stale heartbeat file "
+                                    f"but responds to HTTP health check - not an orphan"
+                                )
+                                continue
+
+                            # Very old heartbeat and no HTTP response - process may be zombie
+                            cmdline = self._get_process_cmdline(pid)
+
+                            orphan = OrphanProcess(
+                                pid=pid,
+                                name=component,
+                                cmdline=cmdline,
+                                started_at=timestamp,
+                                component_type=component.replace("_", "-"),
+                                reason=f"stale_heartbeat_{age_hours:.1f}h",
+                            )
+                            self._detected_orphans.append(orphan)
+
+                except (json.JSONDecodeError, KeyError, PermissionError):
+                    continue
 
     async def _has_valid_heartbeat(
         self,
         component_type: str,
         pid: int,
     ) -> bool:
-        """Check if a process has a valid recent heartbeat."""
-        heartbeat_file = self.trinity_dir / "components" / f"{component_type}.json"
+        """
+        v93.0: Enhanced heartbeat validation with multi-source verification.
 
-        if not heartbeat_file.exists():
-            return False
+        Verification Strategy (Priority Order):
+        1. HTTP health check (most reliable - proves service is responsive)
+        2. Heartbeat file from multiple directories
+        3. Process liveness as final fallback
 
-        try:
-            import json
+        This prevents false positives where valid processes are incorrectly
+        marked as orphans due to heartbeat directory mismatches.
+        """
+        # PHASE 1: HTTP Health Check (HIGHEST PRIORITY)
+        # If the service responds to HTTP, it's definitely alive and healthy
+        if await self._http_health_check(component_type, pid):
+            logger.debug(
+                f"[OrphanDetector] {component_type} (PID={pid}) validated via HTTP health check"
+            )
+            return True
 
-            with open(heartbeat_file) as f:
-                data = json.load(f)
+        # PHASE 2: Multi-Directory Heartbeat File Check
+        # v93.0: Multiple heartbeat directories for backwards compatibility
+        heartbeat_dirs = [
+            self.trinity_dir / "heartbeats",      # PRIMARY: correct location
+            self.trinity_dir / "components",      # LEGACY: old location
+            Path.home() / ".jarvis" / "cross_repo",  # Cross-repo heartbeats
+        ]
 
-            # Check PID matches
-            if data.get("pid") != pid:
-                return False
+        for heartbeat_dir in heartbeat_dirs:
+            heartbeat_file = heartbeat_dir / f"{component_type}.json"
 
-            # Check timestamp is recent
-            timestamp = data.get("timestamp", 0)
-            age_seconds = time.time() - timestamp
+            if not heartbeat_file.exists():
+                continue
 
-            # Valid if heartbeat is less than 5 minutes old
-            return age_seconds < 300
+            try:
+                import json
 
-        except Exception:
-            return False
+                with open(heartbeat_file) as f:
+                    data = json.load(f)
+
+                # Check PID matches
+                file_pid = data.get("pid")
+                if file_pid != pid:
+                    logger.debug(
+                        f"[OrphanDetector] {component_type} heartbeat PID mismatch: "
+                        f"file={file_pid}, process={pid} in {heartbeat_dir}"
+                    )
+                    continue  # Try next directory
+
+                # Check timestamp is recent
+                timestamp = data.get("timestamp", 0)
+                age_seconds = time.time() - timestamp
+
+                # Valid if heartbeat is less than 5 minutes old
+                if age_seconds < 300:
+                    logger.debug(
+                        f"[OrphanDetector] {component_type} (PID={pid}) has valid heartbeat "
+                        f"({age_seconds:.1f}s old) in {heartbeat_dir}"
+                    )
+                    return True
+                else:
+                    logger.debug(
+                        f"[OrphanDetector] {component_type} heartbeat is stale "
+                        f"({age_seconds:.1f}s old) in {heartbeat_dir}"
+                    )
+
+            except Exception as e:
+                logger.debug(
+                    f"[OrphanDetector] Error reading heartbeat {heartbeat_file}: {e}"
+                )
+                continue
+
+        # PHASE 3: No valid heartbeat found in any directory
+        logger.debug(
+            f"[OrphanDetector] {component_type} (PID={pid}) has no valid heartbeat in any directory"
+        )
+        return False
 
     def _process_exists(self, pid: int) -> bool:
         """Check if a process exists."""
@@ -1383,6 +1555,93 @@ class OrphanProcessDetector:
         for patterns in self.COMPONENT_PATTERNS.values():
             if any(p in cmdline_lower for p in patterns):
                 return True
+        return False
+
+    # v93.0: HTTP port configuration for each component
+    COMPONENT_HTTP_PORTS = {
+        "jarvis_body": [8080, 8000, 5000],
+        "jarvis_prime": [8091, 8001, 5001],
+        "reactor_core": [8090, 8002, 5002],
+    }
+
+    async def _http_health_check(self, component_type: str, pid: int) -> bool:
+        """
+        v93.0: Verify component health via HTTP health endpoint.
+
+        This is the most reliable verification method because:
+        - If HTTP responds, the service is definitely running AND responsive
+        - Heartbeat files can be stale, but HTTP is real-time
+        - Works across process boundaries and even network boundaries
+
+        Args:
+            component_type: Type of component (jarvis_body, jarvis_prime, reactor_core)
+            pid: Process ID (used for logging/verification)
+
+        Returns:
+            True if HTTP health check passes, False otherwise
+        """
+        ports = self.COMPONENT_HTTP_PORTS.get(component_type, [])
+        if not ports:
+            # Unknown component type - can't do HTTP check
+            return False
+
+        try:
+            import aiohttp
+        except ImportError:
+            # aiohttp not available - skip HTTP check
+            logger.debug(
+                f"[OrphanDetector] aiohttp not available for HTTP health check of {component_type}"
+            )
+            return False
+
+        for port in ports:
+            try:
+                timeout = aiohttp.ClientTimeout(total=2.0)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    url = f"http://localhost:{port}/health"
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            try:
+                                data = await resp.json()
+                                # Optional: verify PID matches if returned in health response
+                                if "pid" in data and data["pid"] != pid:
+                                    logger.debug(
+                                        f"[OrphanDetector] HTTP health check PID mismatch: "
+                                        f"response_pid={data.get('pid')}, process_pid={pid}"
+                                    )
+                                    continue
+
+                                logger.debug(
+                                    f"[OrphanDetector] {component_type} HTTP health check "
+                                    f"passed at port {port}"
+                                )
+                                return True
+                            except Exception:
+                                # JSON parse failed but status was 200 - still consider valid
+                                logger.debug(
+                                    f"[OrphanDetector] {component_type} HTTP health check "
+                                    f"passed at port {port} (non-JSON response)"
+                                )
+                                return True
+            except asyncio.TimeoutError:
+                logger.debug(
+                    f"[OrphanDetector] HTTP health check timeout for {component_type} "
+                    f"at port {port}"
+                )
+                continue
+            except aiohttp.ClientError as e:
+                logger.debug(
+                    f"[OrphanDetector] HTTP health check failed for {component_type} "
+                    f"at port {port}: {e}"
+                )
+                continue
+            except Exception as e:
+                logger.debug(
+                    f"[OrphanDetector] HTTP health check error for {component_type} "
+                    f"at port {port}: {e}"
+                )
+                continue
+
         return False
 
     def _get_process_start_time(self, pid: int) -> Optional[float]:

@@ -123,6 +123,11 @@ class AgentRegistry:
         # Locks
         self._lock = asyncio.Lock()
 
+        # v93.0: Startup grace period tracking
+        self._startup_time = time.time()
+        self._startup_grace_period_seconds = 120.0  # 2 minutes for slow-starting services
+        self._agent_registration_times: Dict[str, float] = {}  # Track when each agent registered
+
         logger.info("AgentRegistry initialized")
 
     async def start(self) -> None:
@@ -221,6 +226,9 @@ class AgentRegistry:
 
             # Add to registry
             self._agents[agent_name] = agent_info
+
+            # v93.0: Track registration time for startup grace period
+            self._agent_registration_times[agent_name] = time.time()
 
             # Update indexes
             for capability in capabilities:
@@ -640,20 +648,45 @@ class AgentRegistry:
         - BATCHED LOGGING to prevent log spam when many agents go offline
         - Rate-limited logging to prevent log spam
         - Self-healing attempt notification
+
+        v93.0 Enhancements:
+        - Startup grace period for newly registered agents
+        - System-wide startup grace period
+        - Better logging with reason codes
         """
         self._metrics.health_checks += 1
         now = datetime.now()
+        current_time = time.time()
         timeout = self.config.heartbeat_timeout_seconds
         grace_period = timeout * 0.5  # 50% grace period before going fully offline
+
+        # v93.0: Check if we're still in system startup grace period
+        system_startup_age = current_time - self._startup_time
+        in_system_startup = system_startup_age < self._startup_grace_period_seconds
 
         # Track agents that need status changes (to avoid modifying dict during iteration)
         status_changes: List[Tuple[str, AgentInfo, AgentStatus]] = []
         degraded_agents: List[str] = []
         recovering_agents: List[str] = []
+        skipped_startup_agents: List[str] = []
 
         for agent_name, agent_info in list(self._agents.items()):
             try:
                 age = agent_info.heartbeat_age_seconds()
+
+                # v93.0: Check startup grace period for this agent
+                agent_registration_time = self._agent_registration_times.get(agent_name, 0)
+                if agent_registration_time > 0:
+                    agent_age = current_time - agent_registration_time
+                    if agent_age < self._startup_grace_period_seconds:
+                        # Agent is within startup grace period - skip timeout checks
+                        skipped_startup_agents.append(agent_name)
+                        continue
+
+                # v93.0: Skip if in system startup grace period
+                if in_system_startup:
+                    skipped_startup_agents.append(agent_name)
+                    continue
 
                 if age > timeout + grace_period:
                     # Definitely offline - past timeout + grace period
@@ -689,6 +722,14 @@ class AgentRegistry:
             except Exception as agent_err:
                 # Don't let one agent's error break the entire health check
                 logger.debug("Error checking health for agent %s: %s", agent_name, agent_err)
+
+        # v93.0: Log skipped agents at debug level
+        if skipped_startup_agents:
+            logger.debug(
+                "[AgentRegistry] Skipped %d agents in startup grace period: %s",
+                len(skipped_startup_agents),
+                ", ".join(skipped_startup_agents[:5]) + ("..." if len(skipped_startup_agents) > 5 else "")
+            )
 
         # v16.0: BATCH LOG degraded agents to prevent spam
         if degraded_agents:
@@ -777,7 +818,14 @@ class AgentRegistry:
             logger.exception("Failed to save registry: %s", e)
 
     async def _load_registry(self) -> None:
-        """Load registry from disk."""
+        """
+        Load registry from disk.
+
+        v93.0 Enhancements:
+        - Reset last_heartbeat to current time to prevent false offline detection
+        - Track registration times for startup grace period
+        - Graceful handling of stale entries
+        """
         if not self.config.registry_path:
             return
 
@@ -789,22 +837,47 @@ class AgentRegistry:
             with open(filepath, "r") as f:
                 data = json.load(f)
 
+            current_time = time.time()
+            loaded_count = 0
+            skipped_count = 0
+
             for name, info_dict in data.items():
-                agent_info = AgentInfo.from_dict(info_dict)
-                # Mark as offline initially (need fresh heartbeat)
-                agent_info.status = AgentStatus.OFFLINE
-                agent_info.health = HealthStatus.UNKNOWN
+                try:
+                    agent_info = AgentInfo.from_dict(info_dict)
 
-                self._agents[name] = agent_info
+                    # v93.0: Reset heartbeat to now to give agents a fresh start
+                    # This prevents old heartbeat timestamps from causing immediate offline detection
+                    agent_info.last_heartbeat = datetime.now()
 
-                for capability in agent_info.capabilities:
-                    self._capability_index[capability.lower()].add(name)
-                self._type_index[agent_info.agent_type.lower()].add(name)
+                    # Mark as offline initially (need fresh heartbeat to come online)
+                    agent_info.status = AgentStatus.OFFLINE
+                    agent_info.health = HealthStatus.UNKNOWN
+
+                    self._agents[name] = agent_info
+
+                    # v93.0: Track registration time for startup grace period
+                    self._agent_registration_times[name] = current_time
+
+                    for capability in agent_info.capabilities:
+                        self._capability_index[capability.lower()].add(name)
+                    self._type_index[agent_info.agent_type.lower()].add(name)
+
+                    loaded_count += 1
+
+                except Exception as agent_err:
+                    logger.warning(
+                        "[AgentRegistry] Failed to load agent %s from registry: %s",
+                        name, agent_err
+                    )
+                    skipped_count += 1
 
             self._metrics.total_registered = len(self._agents)
             self._metrics.currently_offline = len(self._agents)
 
-            logger.info("Loaded registry with %d agents", len(self._agents))
+            logger.info(
+                "[AgentRegistry] Loaded registry: %d agents loaded, %d skipped",
+                loaded_count, skipped_count
+            )
 
         except Exception as e:
             logger.exception("Failed to load registry: %s", e)
