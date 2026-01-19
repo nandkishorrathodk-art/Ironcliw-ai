@@ -72,6 +72,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import shlex
 import shutil
@@ -81,7 +82,7 @@ import tempfile
 import time
 import uuid
 import weakref
-from datetime import datetime
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -22216,15 +22217,58 @@ class HeartbeatWatchdog:
                 await asyncio.sleep(self.check_interval)
 
     async def _check_heartbeats(self) -> None:
-        """Check all registered services for stale heartbeats."""
+        """
+        v93.0: Check all registered services for stale heartbeats.
+
+        Fixed timestamp validation to prevent "56 year" bugs when timestamps
+        are None or 0 (which would be interpreted as Unix epoch 1970).
+        """
         now = time.time()
 
         async with self._lock:
             services = list(self._services.items())
 
         for service_name, endpoint in services:
-            last_heartbeat = endpoint.last_heartbeat or endpoint.registered_at or 0
-            age = now - last_heartbeat
+            # v93.0: Robust timestamp handling - prevent epoch fallback bug
+            last_heartbeat = endpoint.last_heartbeat
+            registered_at = endpoint.registered_at
+
+            # Determine the reference timestamp
+            if last_heartbeat and last_heartbeat > 0:
+                # Use actual heartbeat if available
+                reference_time = last_heartbeat
+            elif registered_at and registered_at > 0:
+                # Fall back to registration time for new services
+                reference_time = registered_at
+            else:
+                # v93.0: Skip services with no valid timestamp
+                # This prevents the "56 year" bug (now - 0 = epoch age)
+                logger.debug(
+                    f"[v93.0] Skipping {service_name}: no valid timestamp "
+                    f"(heartbeat={last_heartbeat}, registered={registered_at})"
+                )
+                continue
+
+            # v93.0: Sanity check - timestamp should be within reasonable bounds
+            # Reject timestamps more than 24 hours in the future or more than 1 year old
+            if reference_time > now + 86400:  # More than 1 day in future
+                logger.warning(
+                    f"[v93.0] Skipping {service_name}: timestamp in future "
+                    f"(reference={reference_time:.0f}, now={now:.0f})"
+                )
+                continue
+            if reference_time < now - 31536000:  # More than 1 year old
+                logger.warning(
+                    f"[v93.0] Skipping {service_name}: timestamp too old "
+                    f"(reference={reference_time:.0f}, now={now:.0f}, age={(now - reference_time):.0f}s)"
+                )
+                # Remove invalid entry
+                async with self._lock:
+                    if service_name in self._services:
+                        del self._services[service_name]
+                continue
+
+            age = now - reference_time
 
             if age > self.dead_threshold:
                 logger.error(f"Service {service_name} is DEAD (no heartbeat for {age:.0f}s)")

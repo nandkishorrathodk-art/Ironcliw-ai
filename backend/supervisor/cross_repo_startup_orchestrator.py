@@ -72,7 +72,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 import aiohttp
 
@@ -788,6 +788,27 @@ class ProcessOrchestrator:
             logger.error(f"❌ {managed.definition.name} restart failed")
             return False
 
+    async def restart_service(self, service_name: str) -> bool:
+        """
+        v93.0: Public API to restart a specific service by name.
+
+        This is intended to be called by external components like the
+        SelfHealingServiceManager when they detect stale/dead services.
+
+        Args:
+            service_name: Name of the service to restart
+
+        Returns:
+            True if restart succeeded, False otherwise
+        """
+        if service_name not in self.processes:
+            logger.error(f"[v93.0] Cannot restart {service_name}: not managed by this orchestrator")
+            return False
+
+        managed = self.processes[service_name]
+        logger.info(f"[v93.0] Restart requested for {service_name} by external component")
+        return await self._auto_heal(managed)
+
     # =========================================================================
     # Process Spawning
     # =========================================================================
@@ -1299,6 +1320,28 @@ class ProcessOrchestrator:
                 f"⚠️ Running in DEGRADED MODE: {healthy_count}/{total_count} services operational"
             )
 
+        # Phase 4: v93.0 - Register restart commands with resilient mesh
+        logger.info("\n📍 PHASE 4: Registering auto-restart commands")
+        try:
+            # Get service names that were started (excluding jarvis which is always running)
+            started_services = [
+                name for name, success in results.items()
+                if success and name != "jarvis"
+            ]
+            started_services.append("jarvis-core")  # Ensure jarvis-core is included
+
+            restart_results = await register_restart_commands_with_mesh(started_services)
+            registered_count = sum(1 for v in restart_results.values() if v)
+
+            if registered_count > 0:
+                logger.info(f"  ✅ Registered {registered_count} restart commands for auto-healing")
+            else:
+                logger.warning(
+                    "  ⚠️ No restart commands registered (mesh may not be initialized yet)"
+                )
+        except Exception as e:
+            logger.warning(f"  ⚠️ Restart command registration failed (non-fatal): {e}")
+
         # Print summary
         logger.info("\n" + "=" * 70)
         logger.info("🎯 Startup Summary:")
@@ -1344,6 +1387,108 @@ def get_orchestrator() -> ProcessOrchestrator:
     if _orchestrator is None:
         _orchestrator = ProcessOrchestrator()
     return _orchestrator
+
+
+def create_restart_function(service_name: str) -> Callable[[], Coroutine]:
+    """
+    v93.0: Factory function to create restart closures for services.
+
+    This creates a restart function that can be registered with the
+    SelfHealingServiceManager. When called, it will use the global
+    orchestrator to restart the specified service.
+
+    Args:
+        service_name: Name of the service this restart function will handle
+
+    Returns:
+        An async function that restarts the service when called
+
+    Example:
+        restart_fn = create_restart_function("jarvis-core")
+        recovery_manager.register_restart_command("jarvis-core", restart_fn)
+    """
+    async def restart_service() -> bool:
+        """Restart the captured service via the global orchestrator."""
+        orchestrator = get_orchestrator()
+        return await orchestrator.restart_service(service_name)
+
+    return restart_service
+
+
+async def register_restart_commands_with_mesh(
+    service_names: Optional[List[str]] = None
+) -> Dict[str, bool]:
+    """
+    v93.0: Register restart commands for services with the resilient mesh.
+
+    This bridges the ProcessOrchestrator's restart capability with the
+    SelfHealingServiceManager in native_integration.py.
+
+    Args:
+        service_names: Optional list of service names to register.
+                      If None, registers for all known services.
+
+    Returns:
+        Dict mapping service names to registration success status
+    """
+    results: Dict[str, bool] = {}
+
+    # Default service names if not provided
+    if service_names is None:
+        service_names = ["jarvis-core", "jarvis-prime", "reactor-core"]
+
+    try:
+        # Lazy import to avoid circular dependencies
+        from backend.core.ouroboros.native_integration import (
+            get_resilient_mesh,
+            get_recovery_manager,
+        )
+
+        # Get the recovery manager - prefer mesh's manager, fallback to singleton
+        recovery_manager = None
+
+        try:
+            mesh = get_resilient_mesh()
+            if mesh and hasattr(mesh, 'recovery_manager'):
+                recovery_manager = mesh.recovery_manager
+                logger.debug("[v93.0] Using recovery manager from resilient mesh")
+        except Exception as mesh_err:
+            logger.debug(f"[v93.0] Resilient mesh not available: {mesh_err}")
+
+        # Fallback to global singleton if mesh unavailable
+        if recovery_manager is None:
+            try:
+                recovery_manager = get_recovery_manager()
+                logger.debug("[v93.0] Using global singleton recovery manager")
+            except Exception as mgr_err:
+                logger.debug(f"[v93.0] Recovery manager singleton failed: {mgr_err}")
+
+        if recovery_manager is None:
+            logger.warning(
+                "[v93.0] Cannot register restart commands: "
+                "no recovery manager available"
+            )
+            return {name: False for name in service_names}
+
+        # Register restart functions for each service
+        for service_name in service_names:
+            try:
+                restart_fn = create_restart_function(service_name)
+                recovery_manager.register_restart_command(service_name, restart_fn)
+                results[service_name] = True
+                logger.info(f"[v93.0] Registered restart command for {service_name}")
+            except Exception as e:
+                logger.error(f"[v93.0] Failed to register restart for {service_name}: {e}")
+                results[service_name] = False
+
+        return results
+
+    except ImportError as e:
+        logger.warning(f"[v93.0] Could not import resilient mesh components: {e}")
+        return {name: False for name in service_names}
+    except Exception as e:
+        logger.error(f"[v93.0] Error registering restart commands: {e}")
+        return {name: False for name in service_names}
 
 
 async def probe_jarvis_prime() -> bool:
@@ -1413,6 +1558,8 @@ __all__ = [
     "ServiceStatus",
     "OrchestratorConfig",
     "get_orchestrator",
+    "create_restart_function",
+    "register_restart_commands_with_mesh",
     "start_all_repos",
     "initialize_cross_repo_orchestration",
     "probe_jarvis_prime",
