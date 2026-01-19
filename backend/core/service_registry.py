@@ -48,7 +48,15 @@ Usage:
     await registry.deregister_service("jarvis-prime")
 
 Author: JARVIS AI System
-Version: 3.0.0
+Version: 93.0.0
+
+v93.0 Changes:
+- Added DirectoryManager for robust directory handling
+- Retry logic for all file operations (read/write)
+- Handles race conditions where directory is deleted
+- Atomic temp file creation using tempfile module
+- Pre-write directory validation
+- Detailed error logging for debugging
 """
 
 import asyncio
@@ -56,14 +64,137 @@ import fcntl
 import json
 import logging
 import os
+import tempfile
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 import psutil
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# v93.0: Robust Directory Management
+# =============================================================================
+
+class DirectoryManager:
+    """
+    v93.0: Thread-safe directory management with atomic operations.
+
+    Handles race conditions, missing directories, and provides retry logic
+    for all file system operations.
+    """
+
+    def __init__(self, base_dir: Path, max_retries: int = 3, retry_delay: float = 0.1):
+        self.base_dir = base_dir
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self._initialized = False
+        self._init_lock = asyncio.Lock() if asyncio.get_event_loop().is_running() else None
+
+    def ensure_directory_sync(self) -> bool:
+        """
+        v93.0: Synchronously ensure directory exists with retry logic.
+
+        Returns:
+            True if directory exists/was created successfully
+        """
+        for attempt in range(self.max_retries):
+            try:
+                # Create directory with all parents
+                self.base_dir.mkdir(parents=True, exist_ok=True)
+
+                # Verify it actually exists (handles race with deletion)
+                if self.base_dir.exists() and self.base_dir.is_dir():
+                    self._initialized = True
+                    return True
+
+                # If doesn't exist after creation, wait and retry
+                time.sleep(self.retry_delay * (attempt + 1))
+
+            except PermissionError as e:
+                logger.error(f"[v93.0] Permission denied creating {self.base_dir}: {e}")
+                return False
+            except OSError as e:
+                if attempt == self.max_retries - 1:
+                    logger.error(f"[v93.0] Failed to create directory {self.base_dir}: {e}")
+                    return False
+                time.sleep(self.retry_delay * (attempt + 1))
+
+        return False
+
+    async def ensure_directory_async(self) -> bool:
+        """v93.0: Async version of ensure_directory_sync."""
+        return await asyncio.to_thread(self.ensure_directory_sync)
+
+    @contextmanager
+    def atomic_write_context(self, target_file: Path):
+        """
+        v93.0: Context manager for atomic file writes.
+
+        Creates a temp file, yields it for writing, then atomically
+        renames to target. Handles cleanup on failure.
+
+        Usage:
+            with dir_manager.atomic_write_context(file_path) as temp_path:
+                temp_path.write_text(data)
+            # File is atomically renamed on context exit
+        """
+        # Ensure directory exists BEFORE attempting write
+        self.ensure_directory_sync()
+
+        # Create temp file in same directory for atomic rename
+        temp_fd, temp_path_str = tempfile.mkstemp(
+            dir=str(self.base_dir),
+            prefix=target_file.stem + "_",
+            suffix=".tmp"
+        )
+        temp_path = Path(temp_path_str)
+
+        try:
+            # Close the fd since we'll write via path
+            os.close(temp_fd)
+
+            yield temp_path
+
+            # Ensure directory still exists before rename
+            self.ensure_directory_sync()
+
+            # Atomic rename (POSIX guarantees atomicity on same filesystem)
+            temp_path.replace(target_file)
+
+        except Exception as e:
+            # Clean up temp file on failure
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except OSError:
+                pass
+            raise
+
+    def safe_read(self, file_path: Path) -> Optional[str]:
+        """
+        v93.0: Safely read a file with retry logic.
+
+        Returns None if file doesn't exist or can't be read.
+        """
+        for attempt in range(self.max_retries):
+            try:
+                if not file_path.exists():
+                    return None
+
+                return file_path.read_text()
+
+            except (FileNotFoundError, OSError) as e:
+                if attempt == self.max_retries - 1:
+                    logger.warning(f"[v93.0] Failed to read {file_path}: {e}")
+                    return None
+                time.sleep(self.retry_delay * (attempt + 1))
+
+        return None
 
 
 # =============================================================================
@@ -191,6 +322,12 @@ class ServiceRegistry:
     """
     Enterprise-grade service registry with atomic operations.
 
+    v93.0 Enhancement:
+    - Uses DirectoryManager for robust directory handling
+    - Retry logic for all file operations
+    - Handles race conditions and directory deletion
+    - Pre-flight validation before writes
+
     Features:
     - File-based persistence with fcntl locking
     - Automatic stale service cleanup
@@ -218,8 +355,13 @@ class ServiceRegistry:
         self.cleanup_interval = cleanup_interval
         self._cleanup_task: Optional[asyncio.Task] = None
 
-        # Ensure directory exists
-        self.registry_dir.mkdir(parents=True, exist_ok=True)
+        # v93.0: Use DirectoryManager for robust directory handling
+        self._dir_manager = DirectoryManager(self.registry_dir)
+
+        # v93.0: Ensure directory exists with retry logic
+        if not self._dir_manager.ensure_directory_sync():
+            logger.error(f"[v93.0] CRITICAL: Failed to create registry directory: {self.registry_dir}")
+            raise RuntimeError(f"Cannot create registry directory: {self.registry_dir}")
 
         # Initialize registry file if doesn't exist
         if not self.registry_file.exists():
@@ -235,28 +377,64 @@ class ServiceRegistry:
 
     def _read_registry(self) -> Dict[str, ServiceInfo]:
         """
-        Read registry with file locking (thread/process safe).
+        v93.0: Read registry with file locking and robust error handling.
 
         Returns:
             Dict mapping service names to ServiceInfo
         """
-        try:
-            with open(self.registry_file, 'r+') as f:
-                self._acquire_lock(f)
-                try:
-                    data = json.load(f)
-                    return {
-                        name: ServiceInfo.from_dict(info)
-                        for name, info in data.items()
-                    }
-                finally:
-                    self._release_lock(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        # v93.0: Ensure directory exists before read
+        self._dir_manager.ensure_directory_sync()
+
+        for attempt in range(3):
+            try:
+                if not self.registry_file.exists():
+                    return {}
+
+                with open(self.registry_file, 'r+') as f:
+                    self._acquire_lock(f)
+                    try:
+                        content = f.read()
+                        if not content.strip():
+                            return {}
+                        data = json.loads(content)
+                        return {
+                            name: ServiceInfo.from_dict(info)
+                            for name, info in data.items()
+                        }
+                    finally:
+                        self._release_lock(f)
+
+            except FileNotFoundError:
+                # File was deleted between check and open - retry
+                if attempt < 2:
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+                return {}
+            except json.JSONDecodeError as e:
+                logger.warning(f"[v93.0] Corrupted registry JSON (attempt {attempt + 1}): {e}")
+                if attempt < 2:
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+                # Return empty on corruption - will be overwritten on next write
+                return {}
+            except OSError as e:
+                logger.warning(f"[v93.0] Registry read error (attempt {attempt + 1}): {e}")
+                if attempt < 2:
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+                return {}
+
+        return {}
 
     def _write_registry(self, services: Dict[str, ServiceInfo]) -> None:
         """
-        Write registry with atomic file operations.
+        v93.0: Write registry with atomic file operations and robust directory handling.
+
+        Uses DirectoryManager for:
+        - Pre-write directory validation
+        - Atomic temp file creation in correct directory
+        - Retry logic on failure
+        - Proper cleanup on error
 
         Args:
             services: Dict mapping service names to ServiceInfo
@@ -267,26 +445,43 @@ class ServiceRegistry:
             for name, service in services.items()
         }
 
-        # Atomic write with file locking
-        temp_file = self.registry_file.with_suffix('.tmp')
-        try:
-            with open(temp_file, 'w') as f:
-                self._acquire_lock(f)
-                try:
-                    json.dump(data, f, indent=2)
-                    f.flush()
-                    os.fsync(f.fileno())  # Force write to disk
-                finally:
-                    self._release_lock(f)
+        # v93.0: Retry loop for robust writes
+        last_error = None
+        for attempt in range(3):
+            try:
+                # v93.0: Use DirectoryManager's atomic write context
+                with self._dir_manager.atomic_write_context(self.registry_file) as temp_path:
+                    with open(temp_path, 'w') as f:
+                        self._acquire_lock(f)
+                        try:
+                            json.dump(data, f, indent=2)
+                            f.flush()
+                            os.fsync(f.fileno())  # Force write to disk
+                        finally:
+                            self._release_lock(f)
 
-            # Atomic rename
-            temp_file.replace(self.registry_file)
+                # Success!
+                return
 
-        except Exception as e:
-            logger.error(f"Failed to write registry: {e}")
-            if temp_file.exists():
-                temp_file.unlink()
-            raise
+            except OSError as e:
+                last_error = e
+                logger.warning(
+                    f"[v93.0] Registry write failed (attempt {attempt + 1}/3): {e}"
+                )
+                # Ensure directory exists for next attempt
+                self._dir_manager.ensure_directory_sync()
+                if attempt < 2:
+                    time.sleep(0.1 * (attempt + 1))
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"[v93.0] Unexpected registry write error: {e}")
+                if attempt < 2:
+                    time.sleep(0.1 * (attempt + 1))
+
+        # All attempts failed
+        logger.error(f"[v93.0] Failed to write registry after 3 attempts: {last_error}")
+        raise RuntimeError(f"Failed to write registry: {last_error}")
 
     async def register_service(
         self,
@@ -1291,6 +1486,99 @@ def get_service_supervisor() -> ServiceSupervisor:
 
 
 # =============================================================================
+# v93.0: Startup Directory Initialization
+# =============================================================================
+
+# All required .jarvis directories for JARVIS ecosystem
+REQUIRED_JARVIS_DIRECTORIES = [
+    Path.home() / ".jarvis",
+    Path.home() / ".jarvis" / "registry",
+    Path.home() / ".jarvis" / "state",
+    Path.home() / ".jarvis" / "state" / "locks",
+    Path.home() / ".jarvis" / "locks",
+    Path.home() / ".jarvis" / "logs",
+    Path.home() / ".jarvis" / "logs" / "services",
+    Path.home() / ".jarvis" / "cross_repo",
+    Path.home() / ".jarvis" / "cross_repo" / "events",
+    Path.home() / ".jarvis" / "cross_repo" / "sync",
+    Path.home() / ".jarvis" / "trinity",
+    Path.home() / ".jarvis" / "trinity" / "ipc",
+    Path.home() / ".jarvis" / "trinity" / "commands",
+    Path.home() / ".jarvis" / "bridge",
+    Path.home() / ".jarvis" / "bridge" / "training_staging",
+    Path.home() / ".jarvis" / "dlq",
+    Path.home() / ".jarvis" / "cache",
+    Path.home() / ".jarvis" / "ouroboros",
+    Path.home() / ".jarvis" / "ouroboros" / "events",
+    Path.home() / ".jarvis" / "ouroboros" / "memory",
+    Path.home() / ".jarvis" / "ouroboros" / "snapshots",
+    Path.home() / ".jarvis" / "ouroboros" / "cache",
+    Path.home() / ".jarvis" / "ouroboros" / "sandbox",
+    Path.home() / ".jarvis" / "ouroboros" / "rollback",
+    Path.home() / ".jarvis" / "ouroboros" / "learning_cache",
+    Path.home() / ".jarvis" / "ouroboros" / "manual_review",
+    Path.home() / ".jarvis" / "reactor",
+    Path.home() / ".jarvis" / "reactor" / "events",
+    Path.home() / ".jarvis" / "oracle",
+    Path.home() / ".jarvis" / "experience_mesh",
+    Path.home() / ".jarvis" / "experience_mesh" / "fallback",
+    Path.home() / ".jarvis" / "experience_queue",
+    Path.home() / ".jarvis" / "experience_queue" / "ouroboros",
+    Path.home() / ".jarvis" / "atomic_backups",
+    Path.home() / ".jarvis" / "bulletproof",
+    Path.home() / ".jarvis" / "performance",
+]
+
+
+def ensure_all_jarvis_directories() -> Dict[str, Any]:
+    """
+    v93.0: Ensure all required JARVIS directories exist.
+
+    Should be called ONCE at startup before any services initialize.
+    This prevents race conditions and "No such file or directory" errors
+    throughout the JARVIS ecosystem.
+
+    Returns:
+        Dict with creation stats: created, existed, failed
+    """
+    stats = {
+        "created": [],
+        "existed": [],
+        "failed": [],
+        "total": len(REQUIRED_JARVIS_DIRECTORIES),
+    }
+
+    logger.info("[v93.0] Pre-flight directory initialization...")
+
+    for dir_path in REQUIRED_JARVIS_DIRECTORIES:
+        try:
+            if dir_path.exists():
+                stats["existed"].append(str(dir_path))
+            else:
+                dir_path.mkdir(parents=True, exist_ok=True)
+                stats["created"].append(str(dir_path))
+                logger.debug(f"[v93.0] Created directory: {dir_path}")
+        except Exception as e:
+            stats["failed"].append({"path": str(dir_path), "error": str(e)})
+            logger.error(f"[v93.0] Failed to create directory {dir_path}: {e}")
+
+    # Summary
+    if stats["failed"]:
+        logger.error(
+            f"[v93.0] Directory initialization INCOMPLETE: "
+            f"{len(stats['created'])} created, {len(stats['existed'])} existed, "
+            f"{len(stats['failed'])} FAILED"
+        )
+    else:
+        logger.info(
+            f"[v93.0] Directory initialization complete: "
+            f"{len(stats['created'])} created, {len(stats['existed'])} existed"
+        )
+
+    return stats
+
+
+# =============================================================================
 # Convenience Functions
 # =============================================================================
 
@@ -1345,6 +1633,10 @@ __all__ = [
     "ServiceSupervisor",
     "ServiceLaunchConfig",
     "ServiceRestartHistory",
+    # v93.0: Directory Management
+    "DirectoryManager",
+    "ensure_all_jarvis_directories",
+    "REQUIRED_JARVIS_DIRECTORIES",
     # Convenience functions
     "get_service_registry",
     "get_service_supervisor",

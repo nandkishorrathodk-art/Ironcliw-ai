@@ -430,13 +430,25 @@ class ProcessOrchestrator:
 
     @property
     def registry(self):
-        """Lazy-load service registry."""
+        """
+        v93.0: Lazy-load service registry with robust error handling.
+
+        Handles:
+        - ImportError: Module not available
+        - RuntimeError: Directory creation failed
+        - Any other initialization errors
+        """
         if self._registry is None:
             try:
                 from backend.core.service_registry import get_service_registry
                 self._registry = get_service_registry()
+                logger.debug("[v93.0] Service registry loaded successfully")
             except ImportError:
-                logger.warning("Service registry not available")
+                logger.warning("[v93.0] Service registry module not available")
+            except RuntimeError as e:
+                logger.error(f"[v93.0] Service registry initialization failed: {e}")
+            except Exception as e:
+                logger.error(f"[v93.0] Unexpected error loading service registry: {e}")
         return self._registry
 
     def add_service(self, definition: ServiceDefinition) -> None:
@@ -697,10 +709,18 @@ class ProcessOrchestrator:
                     # Now: We send heartbeat on every successful check to keep alive.
                     # ═══════════════════════════════════════════════════════════════════
                     if self.registry:
-                        await self.registry.heartbeat(
-                            managed.definition.name,
-                            status="healthy"
-                        )
+                        # v93.0: Wrap heartbeat in try-except for resilience
+                        # If registry write fails (e.g., disk full), don't crash monitor
+                        try:
+                            await self.registry.heartbeat(
+                                managed.definition.name,
+                                status="healthy"
+                            )
+                        except Exception as hb_error:
+                            logger.warning(
+                                f"[v93.0] Heartbeat failed for {managed.definition.name} "
+                                f"(non-fatal): {hb_error}"
+                            )
                 else:
                     managed.consecutive_failures += 1
                     logger.warning(
@@ -1147,6 +1167,10 @@ class ProcessOrchestrator:
         """
         Start all configured services with coordinated orchestration.
 
+        v93.0: Enhanced with:
+        - Pre-flight directory initialization
+        - Robust directory handling throughout
+
         v5.0: Enhanced with:
         - Pre-flight cleanup of legacy ports
         - Wrong-binding detection (127.0.0.1 vs 0.0.0.0)
@@ -1155,6 +1179,18 @@ class ProcessOrchestrator:
         Returns dict mapping service names to success status.
         """
         self._running = True
+
+        # v93.0: CRITICAL - Ensure all required directories exist FIRST
+        # This prevents "No such file or directory" errors throughout startup
+        try:
+            from backend.core.service_registry import ensure_all_jarvis_directories
+            dir_stats = ensure_all_jarvis_directories()
+            if dir_stats["failed"]:
+                logger.warning(
+                    f"[v93.0] Some directories could not be created: {dir_stats['failed']}"
+                )
+        except Exception as e:
+            logger.warning(f"[v93.0] Directory pre-flight check failed: {e}")
 
         # Setup signal handlers
         try:
@@ -1169,7 +1205,7 @@ class ProcessOrchestrator:
         results = {"jarvis": True}  # JARVIS is already running
 
         logger.info("=" * 70)
-        logger.info("Cross-Repo Startup Orchestrator v5.0 - Enterprise Grade")
+        logger.info("Cross-Repo Startup Orchestrator v93.0 - Enterprise Grade")
         logger.info("=" * 70)
         logger.info(f"  Ports: jarvis-prime={self.config.jarvis_prime_default_port}, "
                     f"reactor-core={self.config.reactor_core_default_port}")
