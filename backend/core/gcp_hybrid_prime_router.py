@@ -1,9 +1,15 @@
 """
-GCP Hybrid Prime Router v2.0
-============================
+GCP Hybrid Prime Router v93.0 (Predictive Memory Defense)
+==========================================================
 
 Intelligent routing between local JARVIS Prime, GCP VMs, and cloud APIs
 with unified cost management across all repos.
+
+v93.0 MAJOR FEATURE: Predictive Memory Defense
+- Adaptive polling: 1s checks when RAM > 60% (vs 5s normal)
+- Rate-of-change (derivative) trigger: 100MB/sec growth triggers GCP instantly
+- Emergency offload: SIGSTOP/SIGCONT for local LLM processes at 80% RAM
+- Lowered thresholds: 70% trigger (was 85%) for M1 Mac memory compression
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -16,13 +22,22 @@ Architecture:
     │   ┌──────────────┐   ┌─────┴────┐   ┌────────────┐              │
     │   │ Local Prime  │   │ GCP VM   │   │Cloud Claude│              │
     │   │ (Free, Fast) │   │(Spot,$$) │   │ (API, $$$) │              │
-    │   │ RAM > 8GB    │   │ RAM > 85%│   │ Fallback   │              │
+    │   │ RAM > 8GB    │   │ RAM > 70%│   │ Fallback   │              │
     │   └──────────────┘   └──────────┘   └────────────┘              │
+    │                                                                  │
+    │   v93.0 Predictive Memory Defense:                              │
+    │   ┌─────────────────────────────────────────────────────────┐   │
+    │   │  60% RAM → Fast polling (1s)                            │   │
+    │   │  70% RAM → Trigger GCP provisioning                     │   │
+    │   │  80% RAM → EMERGENCY: SIGSTOP local LLMs                │   │
+    │   │  100MB/s → SPIKE: Instant GCP trigger (any RAM level)   │   │
+    │   └─────────────────────────────────────────────────────────┘   │
     │                                                                  │
     │   Integration Points:                                            │
     │   - CrossRepoCostSync: Unified budget tracking                  │
     │   - CrossRepoNeuralMesh: Prime/Reactor coordination             │
     │   - TrinityBridgeAdapter: Model update notifications            │
+    │   - ProcessIsolatedMLLoader: LLM subprocess tracking            │
     └─────────────────────────────────────────────────────────────────┘
 
 Routing Logic:
@@ -30,6 +45,15 @@ Routing Logic:
 2. Check local RAM - if sufficient, use local Prime (free)
 3. Check GCP VM availability - if available and budget allows, use GCP
 4. Fallback to Cloud Claude API if all else fails
+
+v93.0 Changes (Predictive Memory Defense):
+- Lowered GCP_TRIGGER_RAM_PERCENT from 85% to 70% for M1 Mac
+- Lowered VM_PROVISIONING_THRESHOLD from 80% to 70%
+- Added adaptive polling: 1s at >60% RAM, 5s otherwise
+- Added rate-of-change (derivative) trigger for memory spikes
+- Added emergency offload with SIGSTOP/SIGCONT for local LLM processes
+- Added memory history tracking for spike detection
+- Enhanced metrics with predictive defense state
 
 v2.0 Changes:
 - Replaced inline circuit breaker with CrossRepoCircuitBreaker
@@ -39,18 +63,21 @@ v2.0 Changes:
 - Improved error handling with categorized failures
 
 Author: Trinity System
-Version: 2.0.0
+Version: 93.0.0
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import signal
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("GCPHybridPrimeRouter")
 
@@ -81,9 +108,31 @@ except ImportError:
 
 # RAM thresholds (in GB)
 LOCAL_PRIME_MIN_RAM_GB = float(os.getenv("LOCAL_PRIME_MIN_RAM_GB", "8.0"))
-GCP_TRIGGER_RAM_PERCENT = float(os.getenv("GCP_TRIGGER_RAM_PERCENT", "85.0"))
-CRITICAL_RAM_PERCENT = float(os.getenv("CRITICAL_RAM_PERCENT", "95.0"))
-VM_PROVISIONING_THRESHOLD = float(os.getenv("VM_PROVISIONING_THRESHOLD", "80.0"))
+# v93.0: Lowered from 85.0 to 70.0 for M1 Mac memory compression awareness
+GCP_TRIGGER_RAM_PERCENT = float(os.getenv("GCP_TRIGGER_RAM_PERCENT", "70.0"))
+# v93.0: Lowered from 95.0 to 85.0 - 95% is OOM territory on M1
+CRITICAL_RAM_PERCENT = float(os.getenv("CRITICAL_RAM_PERCENT", "85.0"))
+# v93.0: Lowered from 80.0 to 70.0 for proactive VM provisioning
+VM_PROVISIONING_THRESHOLD = float(os.getenv("VM_PROVISIONING_THRESHOLD", "70.0"))
+
+# v93.0: Predictive Memory Defense Configuration
+# Adaptive polling - faster checks when memory pressure detected
+MEMORY_ADAPTIVE_POLL_THRESHOLD = float(os.getenv("MEMORY_ADAPTIVE_POLL_THRESHOLD", "60.0"))  # Start fast polling at 60%
+MEMORY_FAST_POLL_INTERVAL = float(os.getenv("MEMORY_FAST_POLL_INTERVAL", "1.0"))  # 1s when RAM > 60%
+MEMORY_NORMAL_POLL_INTERVAL = float(os.getenv("MEMORY_NORMAL_POLL_INTERVAL", "5.0"))  # 5s otherwise
+
+# Rate-of-change (derivative) trigger - detect memory spikes
+MEMORY_SPIKE_RATE_THRESHOLD_MB = float(os.getenv("MEMORY_SPIKE_RATE_THRESHOLD_MB", "100.0"))  # 100MB/sec = immediate trigger
+MEMORY_DERIVATIVE_WINDOW_SEC = float(os.getenv("MEMORY_DERIVATIVE_WINDOW_SEC", "3.0"))  # Calculate rate over 3s window
+
+# Emergency offload configuration
+EMERGENCY_OFFLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_OFFLOAD_RAM_PERCENT", "80.0"))  # SIGSTOP at 80%
+EMERGENCY_OFFLOAD_TIMEOUT_SEC = float(os.getenv("EMERGENCY_OFFLOAD_TIMEOUT_SEC", "60.0"))  # Max time processes paused
+
+# Cross-repo signaling for memory pressure
+from pathlib import Path
+CROSS_REPO_DIR = Path.home() / ".jarvis" / "cross_repo"
+MEMORY_PRESSURE_SIGNAL_FILE = CROSS_REPO_DIR / "memory_pressure.json"
 
 # Cost thresholds
 MAX_SINGLE_REQUEST_COST = float(os.getenv("MAX_SINGLE_REQUEST_COST", "0.50"))
@@ -303,6 +352,26 @@ class GCPHybridPrimeRouter:
         self._pressure_max_backoff: float = float(os.getenv("MEMORY_PRESSURE_MAX_BACKOFF", "600.0"))  # 10 min max
         self._gcp_permanently_unavailable: bool = False  # True if GCP is disabled/unconfigured
 
+        # v93.0: Predictive Memory Defense - Adaptive monitoring and rate-of-change detection
+        # Memory history for derivative (rate-of-change) calculation
+        self._memory_history: Deque[Tuple[float, float]] = deque(maxlen=10)  # (timestamp, used_mb)
+        self._last_memory_rate_check: float = 0.0
+        self._current_memory_rate_mb_sec: float = 0.0  # Current rate of memory growth (MB/sec)
+
+        # Emergency offload state
+        self._emergency_offload_active: bool = False
+        self._emergency_offload_started_at: float = 0.0
+        self._paused_processes: Dict[int, str] = {}  # pid -> process_name
+        self._offload_lock: Optional[asyncio.Lock] = None  # Lazy init
+
+        # Process tracking for emergency offload
+        self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
+        self._local_llm_pids: Set[int] = set()  # PIDs of local LLM processes to pause
+
+        # Adaptive polling state
+        self._current_poll_interval: float = MEMORY_NORMAL_POLL_INTERVAL
+        self._in_fast_polling_mode: bool = False
+
         # Initialize VM provisioning lock if available
         if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
             try:
@@ -375,20 +444,24 @@ class GCPHybridPrimeRouter:
 
     async def _memory_pressure_monitor(self) -> None:
         """
-        v92.0: Monitor memory pressure and trigger VM provisioning with intelligent cooldown.
+        v93.0: Predictive Memory Defense - Enhanced monitoring with:
+        - Adaptive polling (1s when RAM > 60%, 5s otherwise)
+        - Rate-of-change (derivative) trigger for memory spikes
+        - Emergency offload with SIGSTOP/SIGCONT
+        - Intelligent cooldown with exponential backoff
 
-        When RAM usage exceeds VM_PROVISIONING_THRESHOLD, attempts to provision
-        a GCP VM using distributed locking to prevent race conditions.
+        When RAM usage exceeds VM_PROVISIONING_THRESHOLD OR memory growth rate
+        exceeds MEMORY_SPIKE_RATE_THRESHOLD_MB (100MB/sec), triggers GCP provisioning.
 
-        Features:
-        - Cooldown period after failed attempts (prevents spam)
-        - Exponential backoff on consecutive failures
-        - Early exit if GCP is permanently unavailable
-        - Graceful degradation when GCP not configured
+        At EMERGENCY_OFFLOAD_RAM_PERCENT (80%), initiates emergency offload:
+        1. SIGSTOP all local LLM processes
+        2. Provision GCP VM
+        3. SIGCONT processes (or terminate if cloud ready)
         """
         while self._running:
             try:
-                await asyncio.sleep(5.0)  # Check every 5 seconds
+                # v93.0: Adaptive polling - faster checks when memory pressure detected
+                await asyncio.sleep(self._current_poll_interval)
 
                 # v92.0: Early exit if GCP is permanently unavailable
                 if self._gcp_permanently_unavailable:
@@ -400,53 +473,552 @@ class GCPHybridPrimeRouter:
                         self._last_pressure_event = time.time()
                     continue
 
-                ram_info = await self._get_ram_info()
+                # Get RAM info with MB calculation for rate tracking
+                ram_info = await self._get_ram_info_with_mb()
                 if not ram_info:
                     continue
 
                 used_percent = ram_info.get("used_percent", 0)
+                used_mb = ram_info.get("used_mb", 0)
+                timestamp = time.time()
 
-                # Check if we should trigger VM provisioning
-                if used_percent >= VM_PROVISIONING_THRESHOLD:
-                    if not self._vm_provisioning_in_progress:
-                        # v92.0: Check cooldown with exponential backoff
-                        current_cooldown = min(
-                            self._pressure_cooldown_base * (2 ** self._pressure_consecutive_failures),
-                            self._pressure_max_backoff
+                # v93.0: Update memory history for rate-of-change calculation
+                self._memory_history.append((timestamp, used_mb))
+
+                # v93.0: Calculate memory growth rate (derivative)
+                memory_rate_mb_sec = self._calculate_memory_rate()
+                self._current_memory_rate_mb_sec = memory_rate_mb_sec
+
+                # v93.0: Adaptive polling adjustment
+                if used_percent >= MEMORY_ADAPTIVE_POLL_THRESHOLD:
+                    if not self._in_fast_polling_mode:
+                        self._in_fast_polling_mode = True
+                        self._current_poll_interval = MEMORY_FAST_POLL_INTERVAL
+                        self.logger.info(
+                            f"[v93.0] Entering fast polling mode (RAM: {used_percent:.1f}%, "
+                            f"rate: {memory_rate_mb_sec:.1f} MB/s)"
                         )
-                        time_since_last = time.time() - self._last_pressure_event
+                        # Signal elevated status to other repos
+                        await self._signal_memory_pressure_to_repos(
+                            status="elevated",
+                            action="reduce_load",
+                            used_percent=used_percent,
+                            rate_mb_sec=memory_rate_mb_sec,
+                        )
+                else:
+                    if self._in_fast_polling_mode:
+                        self._in_fast_polling_mode = False
+                        self._current_poll_interval = MEMORY_NORMAL_POLL_INTERVAL
+                        self.logger.info(
+                            f"[v93.0] Exiting fast polling mode (RAM: {used_percent:.1f}%)"
+                        )
+                        # Signal normal status to other repos
+                        await self._signal_memory_pressure_to_repos(
+                            status="normal",
+                            action=None,
+                            used_percent=used_percent,
+                            rate_mb_sec=memory_rate_mb_sec,
+                        )
 
-                        if time_since_last < current_cooldown:
-                            # Still in cooldown - don't spam logs, just skip
-                            continue
+                # v93.0: Emergency offload check - highest priority
+                if used_percent >= EMERGENCY_OFFLOAD_RAM_PERCENT and not self._emergency_offload_active:
+                    self.logger.critical(
+                        f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload"
+                    )
+                    await self._emergency_offload(
+                        reason=f"critical_ram_{used_percent:.0f}pct",
+                        used_percent=used_percent,
+                        rate_mb_sec=memory_rate_mb_sec,
+                    )
+                    continue
 
+                # v93.0: Rate-of-change trigger - detect memory spikes BEFORE hitting threshold
+                spike_detected = memory_rate_mb_sec >= MEMORY_SPIKE_RATE_THRESHOLD_MB
+                if spike_detected and not self._vm_provisioning_in_progress:
+                    self.logger.warning(
+                        f"[v93.0] Memory SPIKE detected: {memory_rate_mb_sec:.1f} MB/s "
+                        f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
+                        f"current RAM: {used_percent:.1f}%"
+                    )
+                    # Check cooldown
+                    if not self._is_in_cooldown():
+                        self._last_pressure_event = time.time()
+                        success = await self._trigger_vm_provisioning(
+                            reason=f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec"
+                        )
+                        self._handle_provisioning_result(success)
+                    continue
+
+                # v93.0: Standard threshold trigger (lowered to 70%)
+                if used_percent >= VM_PROVISIONING_THRESHOLD:
+                    if not self._vm_provisioning_in_progress and not self._is_in_cooldown():
                         self.logger.warning(
-                            f"Memory pressure detected: {used_percent:.1f}% "
-                            f"(threshold: {VM_PROVISIONING_THRESHOLD}%)"
+                            f"[v93.0] Memory pressure detected: {used_percent:.1f}% "
+                            f"(threshold: {VM_PROVISIONING_THRESHOLD}%), "
+                            f"rate: {memory_rate_mb_sec:.1f} MB/s"
                         )
                         self._last_pressure_event = time.time()
-
                         success = await self._trigger_vm_provisioning(reason="memory_pressure")
-
-                        if success:
-                            self._pressure_consecutive_failures = 0
-                        else:
-                            self._pressure_consecutive_failures += 1
-                            if self._pressure_consecutive_failures >= 3:
-                                self.logger.info(
-                                    f"VM provisioning failed {self._pressure_consecutive_failures} times, "
-                                    f"backing off for {current_cooldown:.0f}s"
-                                )
+                        self._handle_provisioning_result(success)
 
                 # Check if we should terminate VM (low usage)
                 elif used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
                     await self._check_vm_termination()
 
+                # v93.0: Check if emergency offload should be released
+                if self._emergency_offload_active:
+                    await self._check_emergency_offload_release(used_percent)
+
             except asyncio.CancelledError:
+                # Ensure processes are resumed on shutdown
+                if self._emergency_offload_active:
+                    await self._release_emergency_offload(reason="shutdown")
                 break
             except Exception as e:
                 self.logger.error(f"Memory pressure monitor error: {e}")
                 await asyncio.sleep(10.0)
+
+    def _is_in_cooldown(self) -> bool:
+        """v93.0: Check if we're in cooldown period."""
+        current_cooldown = min(
+            self._pressure_cooldown_base * (2 ** self._pressure_consecutive_failures),
+            self._pressure_max_backoff
+        )
+        time_since_last = time.time() - self._last_pressure_event
+        return time_since_last < current_cooldown
+
+    def _handle_provisioning_result(self, success: bool) -> None:
+        """v93.0: Handle VM provisioning result."""
+        if success:
+            self._pressure_consecutive_failures = 0
+        else:
+            self._pressure_consecutive_failures += 1
+            if self._pressure_consecutive_failures >= 3:
+                current_cooldown = min(
+                    self._pressure_cooldown_base * (2 ** self._pressure_consecutive_failures),
+                    self._pressure_max_backoff
+                )
+                self.logger.info(
+                    f"VM provisioning failed {self._pressure_consecutive_failures} times, "
+                    f"backing off for {current_cooldown:.0f}s"
+                )
+
+    async def _get_ram_info_with_mb(self) -> Optional[dict]:
+        """v93.0: Get RAM info including used MB for rate calculation."""
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            now = time.time()
+
+            info = {
+                "total_gb": mem.total / (1024**3),
+                "available_gb": mem.available / (1024**3),
+                "used_percent": mem.percent,
+                "used_mb": (mem.total - mem.available) / (1024**2),  # Used in MB
+                "total_mb": mem.total / (1024**2),
+                "timestamp": now,
+            }
+
+            # Update cache
+            self._last_ram_check = now
+            self._cached_ram_info = info
+            return info
+
+        except Exception as e:
+            self.logger.warning(f"RAM check failed: {e}")
+            return None
+
+    def _calculate_memory_rate(self) -> float:
+        """
+        v93.0: Calculate memory growth rate (MB/sec) using derivative.
+
+        Uses linear regression over the memory history window for stability.
+        Returns positive values for growth, negative for decline.
+        """
+        if len(self._memory_history) < 2:
+            return 0.0
+
+        # Get readings within the derivative window
+        now = time.time()
+        window_start = now - MEMORY_DERIVATIVE_WINDOW_SEC
+
+        recent_readings = [
+            (ts, mb) for ts, mb in self._memory_history
+            if ts >= window_start
+        ]
+
+        if len(recent_readings) < 2:
+            return 0.0
+
+        # Simple linear regression for rate calculation
+        # Using least squares: slope = (n*sum(xy) - sum(x)*sum(y)) / (n*sum(x^2) - sum(x)^2)
+        n = len(recent_readings)
+        sum_t = sum(ts for ts, _ in recent_readings)
+        sum_mb = sum(mb for _, mb in recent_readings)
+        sum_t_mb = sum(ts * mb for ts, mb in recent_readings)
+        sum_t_sq = sum(ts * ts for ts, _ in recent_readings)
+
+        denominator = n * sum_t_sq - sum_t * sum_t
+        if abs(denominator) < 1e-10:
+            return 0.0
+
+        slope = (n * sum_t_mb - sum_t * sum_mb) / denominator
+        return slope  # MB per second
+
+    async def _emergency_offload(
+        self,
+        reason: str,
+        used_percent: float,
+        rate_mb_sec: float,
+    ) -> bool:
+        """
+        v93.0: Emergency Offload - SIGSTOP local LLM processes, provision GCP.
+
+        This is the "panic button" for when memory is critically high.
+        Immediately pauses all local LLM subprocesses to prevent OOM,
+        provisions GCP VM, then either:
+        - SIGCONT processes (if GCP failed and RAM recovered)
+        - Terminates local processes (if GCP ready to take over)
+
+        Args:
+            reason: Reason for emergency offload
+            used_percent: Current RAM usage percent
+            rate_mb_sec: Current memory growth rate
+
+        Returns:
+            True if offload completed successfully
+        """
+        # Lazy init lock
+        if self._offload_lock is None:
+            self._offload_lock = asyncio.Lock()
+
+        async with self._offload_lock:
+            if self._emergency_offload_active:
+                return False  # Already in emergency mode
+
+            self._emergency_offload_active = True
+            self._emergency_offload_started_at = time.time()
+
+            self.logger.critical(
+                f"[v93.0] EMERGENCY OFFLOAD INITIATED\n"
+                f"  Reason: {reason}\n"
+                f"  RAM: {used_percent:.1f}%\n"
+                f"  Rate: {rate_mb_sec:.1f} MB/s\n"
+                f"  Action: SIGSTOP local LLM processes"
+            )
+
+            # v93.0: Signal to other repos that emergency offload is starting
+            await self._signal_memory_pressure_to_repos(
+                status="offload_active",
+                action="pause",
+                used_percent=used_percent,
+                rate_mb_sec=rate_mb_sec,
+            )
+
+            # Step 1: Identify and pause local LLM processes
+            paused_count = await self._pause_local_llm_processes()
+
+            if paused_count > 0:
+                self.logger.info(
+                    f"[v93.0] Paused {paused_count} local LLM processes via SIGSTOP"
+                )
+
+            # Step 2: Trigger GCP VM provisioning
+            if not self._gcp_permanently_unavailable:
+                self.logger.info("[v93.0] Provisioning GCP VM for workload transfer...")
+                success = await self._trigger_vm_provisioning(
+                    reason=f"emergency_offload_{reason}"
+                )
+
+                if success:
+                    self.logger.info(
+                        "[v93.0] GCP VM provisioned successfully - workload can transfer"
+                    )
+                    # Don't terminate local processes yet - let the system decide
+                    # based on actual GCP readiness
+                else:
+                    self.logger.warning(
+                        "[v93.0] GCP VM provisioning failed - keeping processes paused "
+                        f"until RAM recovers or timeout ({EMERGENCY_OFFLOAD_TIMEOUT_SEC}s)"
+                    )
+            else:
+                self.logger.warning(
+                    "[v93.0] GCP unavailable - processes paused until RAM recovers"
+                )
+
+            return True
+
+    async def _pause_local_llm_processes(self) -> int:
+        """
+        v93.0: Pause local LLM processes via SIGSTOP.
+
+        Discovers and pauses:
+        1. Processes from ProcessIsolatedMLLoader
+        2. Known LLM subprocess patterns (ollama, llama.cpp, etc.)
+
+        Returns:
+            Number of processes paused
+        """
+        paused_count = 0
+
+        try:
+            import psutil
+
+            # Try to get processes from ML loader
+            if self._ml_loader_ref is None:
+                try:
+                    from backend.core.process_isolated_ml_loader import get_ml_loader
+                    self._ml_loader_ref = await get_ml_loader()
+                except Exception:
+                    pass
+
+            if self._ml_loader_ref and hasattr(self._ml_loader_ref, '_active_processes'):
+                for pid in list(self._ml_loader_ref._active_processes.keys()):
+                    if self._pause_process(pid, "ml_loader"):
+                        paused_count += 1
+
+            # Scan for known LLM process patterns
+            llm_patterns = [
+                "ollama", "llama", "llama.cpp", "llamacpp",
+                "text-generation", "vllm", "transformers",
+                "jarvis-prime", "jarvis_prime",
+            ]
+
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_info = proc.info
+                    pid = proc_info['pid']
+
+                    # Skip already paused
+                    if pid in self._paused_processes:
+                        continue
+
+                    # Check process name and cmdline
+                    name = (proc_info.get('name') or '').lower()
+                    cmdline = ' '.join(proc_info.get('cmdline') or []).lower()
+
+                    is_llm_process = any(
+                        pattern in name or pattern in cmdline
+                        for pattern in llm_patterns
+                    )
+
+                    if is_llm_process:
+                        if self._pause_process(pid, name):
+                            paused_count += 1
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+        except Exception as e:
+            self.logger.error(f"[v93.0] Error pausing LLM processes: {e}")
+
+        return paused_count
+
+    def _pause_process(self, pid: int, name: str) -> bool:
+        """v93.0: Send SIGSTOP to a process."""
+        try:
+            import psutil
+
+            # Verify process exists
+            if not psutil.pid_exists(pid):
+                return False
+
+            # Skip system processes
+            if pid <= 1:
+                return False
+
+            # Send SIGSTOP
+            os.kill(pid, signal.SIGSTOP)
+            self._paused_processes[pid] = name
+            self.logger.debug(f"[v93.0] SIGSTOP sent to PID {pid} ({name})")
+            return True
+
+        except PermissionError:
+            self.logger.warning(f"[v93.0] Permission denied pausing PID {pid}")
+            return False
+        except ProcessLookupError:
+            return False
+        except Exception as e:
+            self.logger.warning(f"[v93.0] Error pausing PID {pid}: {e}")
+            return False
+
+    async def _check_emergency_offload_release(self, current_used_percent: float) -> None:
+        """
+        v93.0: Check if emergency offload should be released.
+
+        Releases if:
+        1. RAM dropped below threshold (processes can resume)
+        2. Timeout exceeded (force resume to prevent permanent freeze)
+        3. GCP VM is ready and processes should terminate
+        """
+        elapsed = time.time() - self._emergency_offload_started_at
+
+        # Timeout - force release
+        if elapsed >= EMERGENCY_OFFLOAD_TIMEOUT_SEC:
+            self.logger.warning(
+                f"[v93.0] Emergency offload timeout ({elapsed:.1f}s) - force releasing"
+            )
+            await self._release_emergency_offload(reason="timeout")
+            return
+
+        # RAM recovered
+        if current_used_percent < VM_PROVISIONING_THRESHOLD - 10:
+            self.logger.info(
+                f"[v93.0] RAM recovered to {current_used_percent:.1f}% - releasing paused processes"
+            )
+            await self._release_emergency_offload(reason="ram_recovered")
+            return
+
+        # GCP ready - can terminate local processes
+        if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+            if self._gcp_controller.is_vm_available():
+                self.logger.info(
+                    "[v93.0] GCP VM ready - terminating local LLM processes for cloud takeover"
+                )
+                await self._terminate_paused_processes()
+                self._emergency_offload_active = False
+                return
+
+    async def _release_emergency_offload(self, reason: str) -> None:
+        """v93.0: Release emergency offload - SIGCONT all paused processes."""
+        if not self._emergency_offload_active:
+            return
+
+        self.logger.info(f"[v93.0] Releasing emergency offload (reason: {reason})")
+
+        resumed_count = 0
+        for pid, name in list(self._paused_processes.items()):
+            if self._resume_process(pid, name):
+                resumed_count += 1
+
+        self._paused_processes.clear()
+        self._emergency_offload_active = False
+        self._emergency_offload_started_at = 0.0
+
+        # v93.0: Signal to other repos that pressure is normal
+        await self._signal_memory_pressure_to_repos(
+            status="normal",
+            action=None,
+            used_percent=0.0,
+        )
+
+        self.logger.info(f"[v93.0] Emergency offload released - resumed {resumed_count} processes")
+
+    def _resume_process(self, pid: int, name: str) -> bool:
+        """v93.0: Send SIGCONT to a process."""
+        try:
+            import psutil
+
+            if not psutil.pid_exists(pid):
+                return False
+
+            os.kill(pid, signal.SIGCONT)
+            self.logger.debug(f"[v93.0] SIGCONT sent to PID {pid} ({name})")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"[v93.0] Error resuming PID {pid}: {e}")
+            return False
+
+    async def _terminate_paused_processes(self) -> None:
+        """v93.0: Terminate paused processes (when GCP ready to take over)."""
+        # Signal to other repos that they should terminate
+        await self._signal_memory_pressure_to_repos(
+            status="offload_active",
+            action="terminate",
+            used_percent=0.0,
+        )
+
+        for pid, name in list(self._paused_processes.items()):
+            try:
+                import psutil
+
+                if not psutil.pid_exists(pid):
+                    continue
+
+                # First resume so it can clean up
+                os.kill(pid, signal.SIGCONT)
+                await asyncio.sleep(0.1)
+
+                # Then terminate
+                os.kill(pid, signal.SIGTERM)
+                self.logger.info(f"[v93.0] Terminated local LLM process PID {pid} ({name})")
+
+                # Wait for graceful exit
+                await asyncio.sleep(1.0)
+
+                # Force kill if still alive
+                if psutil.pid_exists(pid):
+                    os.kill(pid, signal.SIGKILL)
+                    self.logger.warning(f"[v93.0] Force killed PID {pid}")
+
+            except Exception as e:
+                self.logger.warning(f"[v93.0] Error terminating PID {pid}: {e}")
+
+        self._paused_processes.clear()
+
+    async def _signal_memory_pressure_to_repos(
+        self,
+        status: str,
+        action: Optional[str] = None,
+        used_percent: float = 0.0,
+        rate_mb_sec: float = 0.0,
+    ) -> None:
+        """
+        v93.0: Signal memory pressure status to other repos via shared file.
+
+        This allows jarvis-prime and other processes to be aware of memory pressure
+        and respond appropriately (reduce load, prepare for offload, etc.)
+
+        Args:
+            status: One of "normal", "elevated", "critical", "offload_active"
+            action: Optional action hint: "pause", "terminate", "reduce_load"
+            used_percent: Current RAM usage percentage
+            rate_mb_sec: Current memory growth rate
+        """
+        try:
+            # Ensure cross-repo directory exists
+            CROSS_REPO_DIR.mkdir(parents=True, exist_ok=True)
+
+            signal_data = {
+                "timestamp": time.time(),
+                "status": status,
+                "action": action,
+                "used_percent": used_percent,
+                "rate_mb_sec": rate_mb_sec,
+                "source": "gcp_hybrid_prime_router",
+                "thresholds": {
+                    "gcp_trigger": GCP_TRIGGER_RAM_PERCENT,
+                    "vm_provisioning": VM_PROVISIONING_THRESHOLD,
+                    "emergency_offload": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "critical": CRITICAL_RAM_PERCENT,
+                },
+                "emergency_offload_active": self._emergency_offload_active,
+                "paused_processes_count": len(self._paused_processes),
+            }
+
+            with open(MEMORY_PRESSURE_SIGNAL_FILE, "w") as f:
+                json.dump(signal_data, f, indent=2)
+
+            self.logger.debug(
+                f"[v93.0] Signaled memory pressure to repos: {status} "
+                f"(action={action}, RAM={used_percent:.1f}%)"
+            )
+
+        except Exception as e:
+            self.logger.warning(f"[v93.0] Failed to signal memory pressure: {e}")
+
+    async def _clear_memory_pressure_signal(self) -> None:
+        """v93.0: Clear memory pressure signal when returning to normal."""
+        try:
+            if MEMORY_PRESSURE_SIGNAL_FILE.exists():
+                await self._signal_memory_pressure_to_repos(
+                    status="normal",
+                    action=None,
+                    used_percent=0.0,
+                )
+        except Exception as e:
+            self.logger.warning(f"[v93.0] Failed to clear memory pressure signal: {e}")
 
     async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
         """
@@ -601,6 +1173,11 @@ class GCPHybridPrimeRouter:
     async def stop(self) -> None:
         """Stop the hybrid router."""
         self._running = False
+
+        # v93.0: Release emergency offload FIRST to ensure paused processes resume
+        if self._emergency_offload_active:
+            self.logger.info("[v93.0] Releasing emergency offload during shutdown...")
+            await self._release_emergency_offload(reason="router_shutdown")
 
         # v2.0: Cancel memory pressure monitoring
         if self._memory_pressure_task:
@@ -1496,7 +2073,7 @@ class GCPHybridPrimeRouter:
     # =========================================================================
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get router metrics (v2.0 extended)."""
+        """Get router metrics (v93.0 extended with Predictive Memory Defense)."""
         # Get circuit breaker status
         cb_status = {}
         if self._circuit_breaker:
@@ -1513,6 +2090,15 @@ class GCPHybridPrimeRouter:
             cb_status = {
                 tier.value: cb["state"]
                 for tier, cb in self._legacy_circuit_breakers.items()
+            }
+
+        # v93.0: Get current RAM info if available
+        current_ram_info = {}
+        if self._cached_ram_info:
+            current_ram_info = {
+                "used_percent": self._cached_ram_info.get("used_percent", 0),
+                "available_gb": self._cached_ram_info.get("available_gb", 0),
+                "used_mb": self._cached_ram_info.get("used_mb", 0),
             }
 
         return {
@@ -1548,6 +2134,32 @@ class GCPHybridPrimeRouter:
             "degradation_reason": self._degradation_reason,
             "last_successful_tier": self._last_successful_tier.value if self._last_successful_tier else None,
             "tier_failure_counts": {tier.value: count for tier, count in self._tier_failure_counts.items()},
+            # v93.0: Predictive Memory Defense metrics
+            "predictive_defense": {
+                "enabled": True,
+                "thresholds": {
+                    "gcp_trigger_percent": GCP_TRIGGER_RAM_PERCENT,
+                    "vm_provisioning_percent": VM_PROVISIONING_THRESHOLD,
+                    "emergency_offload_percent": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "critical_percent": CRITICAL_RAM_PERCENT,
+                    "adaptive_poll_threshold_percent": MEMORY_ADAPTIVE_POLL_THRESHOLD,
+                    "spike_rate_threshold_mb_sec": MEMORY_SPIKE_RATE_THRESHOLD_MB,
+                },
+                "current_state": {
+                    "ram": current_ram_info,
+                    "memory_rate_mb_sec": self._current_memory_rate_mb_sec,
+                    "in_fast_polling_mode": self._in_fast_polling_mode,
+                    "current_poll_interval_sec": self._current_poll_interval,
+                    "emergency_offload_active": self._emergency_offload_active,
+                    "paused_processes_count": len(self._paused_processes),
+                    "paused_pids": list(self._paused_processes.keys()),
+                },
+                "history": {
+                    "memory_samples": len(self._memory_history),
+                    "pressure_consecutive_failures": self._pressure_consecutive_failures,
+                    "gcp_permanently_unavailable": self._gcp_permanently_unavailable,
+                },
+            },
         }
 
     def on_decision(self, callback: Callable) -> None:
