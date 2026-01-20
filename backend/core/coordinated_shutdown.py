@@ -1388,6 +1388,14 @@ class OrphanProcessDetector:
                     with open(hb_file) as f:
                         data = json.load(f)
 
+                    # v93.1: Validate JSON structure to prevent "'list' object has no attribute 'get'" errors
+                    if not isinstance(data, dict):
+                        logger.debug(
+                            f"[OrphanDetector] Invalid heartbeat file format in {hb_file}: "
+                            f"expected dict, got {type(data).__name__}"
+                        )
+                        continue
+
                     pid = data.get("pid")
                     if not pid:
                         continue
@@ -1478,6 +1486,14 @@ class OrphanProcessDetector:
 
                 with open(heartbeat_file) as f:
                     data = json.load(f)
+
+                # v93.1: Validate JSON structure to prevent "'list' object has no attribute 'get'" errors
+                if not isinstance(data, dict):
+                    logger.debug(
+                        f"[OrphanDetector] Invalid heartbeat file format in {heartbeat_file}: "
+                        f"expected dict, got {type(data).__name__}"
+                    )
+                    continue
 
                 # Check PID matches
                 file_pid = data.get("pid")

@@ -10130,6 +10130,14 @@ class TrinityUnifiedOrchestrator:
                         with open(heartbeat_file, 'r') as f:
                             data = json.load(f)
 
+                        # v93.1: Validate JSON structure to prevent "'list' object has no attribute 'get'" errors
+                        if not isinstance(data, dict):
+                            logger.debug(
+                                f"[Discovery] Invalid heartbeat file format in {heartbeat_file}: "
+                                f"expected dict, got {type(data).__name__}"
+                            )
+                            continue
+
                         # Check freshness (30 second threshold)
                         timestamp = data.get("timestamp", 0)
                         age = time.time() - timestamp
@@ -10322,27 +10330,35 @@ class TrinityUnifiedOrchestrator:
             try:
                 with open(heartbeat_file, 'r') as f:
                     hb_data = json.load(f)
-                diagnosis["last_heartbeat"] = hb_data.get("timestamp")
-                diagnosis["pid"] = hb_data.get("pid")
-                diagnosis["port"] = hb_data.get("port", default_port)
 
-                if diagnosis["last_heartbeat"]:
-                    age = time.time() - diagnosis["last_heartbeat"]
-                    diagnosis["heartbeat_age_seconds"] = age
+                # v93.1: Validate JSON structure to prevent "'list' object has no attribute 'get'" errors
+                if not isinstance(hb_data, dict):
+                    logger.debug(
+                        f"[Diagnosis] Invalid heartbeat file format in {heartbeat_file}: "
+                        f"expected dict, got {type(hb_data).__name__}"
+                    )
+                else:
+                    diagnosis["last_heartbeat"] = hb_data.get("timestamp")
+                    diagnosis["pid"] = hb_data.get("pid")
+                    diagnosis["port"] = hb_data.get("port", default_port)
 
-                    # Check if process is alive
-                    if diagnosis["pid"]:
-                        try:
-                            import psutil
-                            proc = psutil.Process(diagnosis["pid"])
-                            if proc.is_running() and age < 30.0:
-                                diagnosis["currently_running"] = True
-                                diagnosis["status_emoji"] = "✅"
-                                diagnosis["status_message"] = f"Running (PID {diagnosis['pid']}, port {diagnosis['port']})"
-                                diagnosis["recommended_action"] = "Component is healthy"
-                                return diagnosis
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
+                    if diagnosis["last_heartbeat"]:
+                        age = time.time() - diagnosis["last_heartbeat"]
+                        diagnosis["heartbeat_age_seconds"] = age
+
+                        # Check if process is alive
+                        if diagnosis["pid"]:
+                            try:
+                                import psutil
+                                proc = psutil.Process(diagnosis["pid"])
+                                if proc.is_running() and age < 30.0:
+                                    diagnosis["currently_running"] = True
+                                    diagnosis["status_emoji"] = "✅"
+                                    diagnosis["status_message"] = f"Running (PID {diagnosis['pid']}, port {diagnosis['port']})"
+                                    diagnosis["recommended_action"] = "Component is healthy"
+                                    return diagnosis
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
             except Exception as e:
                 logger.debug(f"[Diagnosis] Heartbeat read error for {component}: {e}")
 
@@ -10802,6 +10818,14 @@ class TrinityUnifiedOrchestrator:
         try:
             with open(heartbeat_file, 'r') as f:
                 data = json.load(f)
+
+            # v93.1: Validate JSON structure to prevent "'list' object has no attribute 'get'" errors
+            if not isinstance(data, dict):
+                logger.debug(
+                    f"[Supervisor] Invalid heartbeat file format in {heartbeat_file}: "
+                    f"expected dict, got {type(data).__name__}"
+                )
+                return False
 
             # Check timestamp freshness
             timestamp = data.get("timestamp", 0)

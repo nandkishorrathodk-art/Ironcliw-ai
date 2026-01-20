@@ -207,6 +207,12 @@ class HeartbeatData:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "HeartbeatData":
+        # v93.1: Defensive type checking to prevent "'list' object has no attribute 'get'" errors
+        if not isinstance(data, dict):
+            raise TypeError(
+                f"HeartbeatData.from_dict expected dict, got {type(data).__name__}"
+            )
+
         component_type = data.get("component_type", "unknown")
         if isinstance(component_type, str):
             try:
@@ -424,7 +430,16 @@ class AtomicIPCFile:
                     content = os.read(fd, 1024 * 1024)  # 1MB max
                     if not content:
                         return None
-                    return json.loads(content.decode("utf-8"))
+                    parsed = json.loads(content.decode("utf-8"))
+                    # v93.1: Validate that parsed JSON is a dict, not a list or other type
+                    # This prevents "'list' object has no attribute 'get'" errors during shutdown
+                    if not isinstance(parsed, dict):
+                        logger.debug(
+                            f"[AtomicIPCFile] Invalid JSON structure in {self._file_path}: "
+                            f"expected dict, got {type(parsed).__name__}"
+                        )
+                        return None
+                    return parsed
                 finally:
                     fcntl.flock(fd, fcntl.LOCK_UN)
             finally:
