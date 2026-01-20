@@ -701,17 +701,53 @@ class PrimeNeuralMeshBridge:
         return True
 
     async def _init_communication_bus(self) -> None:
-        """Initialize connection to Neural Mesh communication bus."""
-        try:
-            from neural_mesh.communication.agent_communication_bus import (
-                get_communication_bus,
-            )
-            self._communication_bus = await get_communication_bus()
-            logger.info("[PrimeNeuralMesh] ✓ Connected to Neural Mesh communication bus")
-        except ImportError:
-            logger.warning("[PrimeNeuralMesh] Communication bus not available")
-        except Exception as e:
-            logger.error(f"[PrimeNeuralMesh] Communication bus init failed: {e}")
+        """
+        Initialize connection to Neural Mesh communication bus.
+
+        v93.5: Enhanced with multiple import path attempts and graceful fallback.
+        The communication bus may be imported from different paths depending on
+        how the module is run (as package vs script).
+        """
+        import_attempts = [
+            # Try backend-prefixed import first (when running from JARVIS-AI-Agent root)
+            ("backend.neural_mesh.communication.agent_communication_bus", "get_communication_bus"),
+            # Try direct import (when backend is in PYTHONPATH)
+            ("neural_mesh.communication.agent_communication_bus", "get_communication_bus"),
+            # Try relative from current location
+            ("backend.neural_mesh", "get_communication_bus"),
+        ]
+
+        for module_path, func_name in import_attempts:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                get_bus_func = getattr(module, func_name, None)
+
+                if get_bus_func:
+                    self._communication_bus = await get_bus_func()
+                    logger.info(f"[PrimeNeuralMesh] ✓ Connected to Neural Mesh communication bus (via {module_path})")
+                    return
+
+            except ImportError as e:
+                logger.debug(f"[PrimeNeuralMesh] Import attempt failed for {module_path}: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"[PrimeNeuralMesh] Bus init failed for {module_path}: {e}")
+                continue
+
+        # v93.5: All import attempts failed - create fallback in-memory bus
+        logger.warning("[PrimeNeuralMesh] Communication bus not available via any import path, using fallback")
+        self._communication_bus = await self._create_fallback_bus()
+
+    async def _create_fallback_bus(self) -> "FallbackCommunicationBus":
+        """
+        v93.5: Create a lightweight fallback communication bus.
+
+        This provides basic pub/sub functionality when the main Neural Mesh
+        communication bus is not available. Allows cross-repo communication
+        to continue in degraded mode.
+        """
+        return FallbackCommunicationBus()
 
     async def _init_prime_client(self) -> None:
         """Initialize JARVIS-Prime client connection."""
@@ -1013,6 +1049,179 @@ class PrimeNeuralMeshBridge:
                 and not self._event_stream_task.done()
             ),
             "registered_callbacks": len(self._callbacks),
+        }
+
+
+# =============================================================================
+# Fallback Communication Bus (v93.5)
+# =============================================================================
+
+class FallbackCommunicationBus:
+    """
+    v93.5: Lightweight fallback communication bus for cross-repo messaging.
+
+    Provides basic pub/sub functionality when the main Neural Mesh
+    communication bus is not available. This ensures the system can
+    still operate in degraded mode without the full neural mesh.
+
+    Features:
+    - In-memory message queue
+    - Basic topic-based pub/sub
+    - Async-safe operations
+    - Message history for debugging
+    """
+
+    def __init__(self):
+        self._subscribers: Dict[str, List[Callable]] = {}
+        self._message_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        self._history: List[Dict[str, Any]] = []
+        self._max_history = 100
+        self._running = False
+        self._processor_task: Optional[asyncio.Task] = None
+        logger.info("[FallbackBus] Initialized (degraded mode)")
+
+    async def start(self) -> None:
+        """Start the message processor."""
+        if self._running:
+            return
+        self._running = True
+        self._processor_task = asyncio.create_task(self._process_messages())
+        logger.debug("[FallbackBus] Started message processor")
+
+    async def stop(self) -> None:
+        """Stop the message processor."""
+        self._running = False
+        if self._processor_task:
+            self._processor_task.cancel()
+            try:
+                await self._processor_task
+            except asyncio.CancelledError:
+                pass
+        logger.debug("[FallbackBus] Stopped")
+
+    async def publish(self, message: Any) -> bool:
+        """
+        Publish a message to subscribers.
+
+        Args:
+            message: Message object with 'to_agent' or topic info
+
+        Returns:
+            True if message was queued successfully
+        """
+        try:
+            # Auto-start if not running
+            if not self._running:
+                await self.start()
+
+            # Extract topic from message
+            if hasattr(message, 'to_agent'):
+                topic = message.to_agent
+            elif hasattr(message, 'message_type'):
+                topic = str(message.message_type)
+            elif isinstance(message, dict):
+                topic = message.get('to_agent', message.get('topic', 'broadcast'))
+            else:
+                topic = 'broadcast'
+
+            # Queue the message
+            await asyncio.wait_for(
+                self._message_queue.put({'topic': topic, 'message': message}),
+                timeout=1.0
+            )
+
+            # Track history
+            self._history.append({
+                'topic': topic,
+                'timestamp': datetime.now().isoformat(),
+                'type': str(type(message).__name__),
+            })
+            if len(self._history) > self._max_history:
+                self._history.pop(0)
+
+            return True
+
+        except asyncio.TimeoutError:
+            logger.warning("[FallbackBus] Message queue full, dropping message")
+            return False
+        except Exception as e:
+            logger.error(f"[FallbackBus] Publish failed: {e}")
+            return False
+
+    async def subscribe(self, topic: str, callback: Callable) -> bool:
+        """
+        Subscribe to a topic.
+
+        Args:
+            topic: Topic to subscribe to (or 'broadcast' for all)
+            callback: Async callback function to handle messages
+
+        Returns:
+            True if subscribed successfully
+        """
+        if topic not in self._subscribers:
+            self._subscribers[topic] = []
+        self._subscribers[topic].append(callback)
+        logger.debug(f"[FallbackBus] Subscribed to topic: {topic}")
+        return True
+
+    async def unsubscribe(self, topic: str, callback: Callable) -> bool:
+        """Unsubscribe from a topic."""
+        if topic in self._subscribers and callback in self._subscribers[topic]:
+            self._subscribers[topic].remove(callback)
+            return True
+        return False
+
+    async def _process_messages(self) -> None:
+        """Background task to deliver messages to subscribers."""
+        while self._running:
+            try:
+                item = await asyncio.wait_for(
+                    self._message_queue.get(),
+                    timeout=1.0
+                )
+
+                topic = item['topic']
+                message = item['message']
+
+                # Deliver to specific topic subscribers
+                if topic in self._subscribers:
+                    for callback in self._subscribers[topic]:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(message)
+                            else:
+                                callback(message)
+                        except Exception as e:
+                            logger.warning(f"[FallbackBus] Callback error: {e}")
+
+                # Deliver to broadcast subscribers
+                if 'broadcast' in self._subscribers:
+                    for callback in self._subscribers['broadcast']:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(message)
+                            else:
+                                callback(message)
+                        except Exception as e:
+                            logger.warning(f"[FallbackBus] Broadcast callback error: {e}")
+
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[FallbackBus] Process error: {e}")
+                await asyncio.sleep(0.1)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get bus statistics."""
+        return {
+            'running': self._running,
+            'queue_size': self._message_queue.qsize(),
+            'subscribers': {k: len(v) for k, v in self._subscribers.items()},
+            'history_size': len(self._history),
+            'mode': 'fallback',
         }
 
 

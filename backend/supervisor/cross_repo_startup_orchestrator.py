@@ -178,13 +178,22 @@ class OrchestratorConfig:
         default_factory=lambda: float(os.getenv("SERVICE_STARTUP_TIMEOUT", "60.0"))
     )
 
-    # v93.0: Per-service startup timeouts for services with different initialization times
-    # JARVIS Prime loads heavy ML models (ECAPA-TDNN, etc.) and needs longer timeout
+    # v93.5: Per-service startup timeouts with intelligent progress-based extension
+    # JARVIS Prime loads heavy ML models (ECAPA-TDNN, torch, etc.) and needs longer timeout
+    # Default increased from 300s to 600s (10 minutes) for 70B+ models
     jarvis_prime_startup_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "300.0"))  # 5 minutes for ML models (70B models can take 200+ seconds)
+        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0"))  # 10 minutes for ML models
     )
     reactor_core_startup_timeout: float = field(
-        default_factory=lambda: float(os.getenv("REACTOR_CORE_STARTUP_TIMEOUT", "90.0"))  # 1.5 minutes
+        default_factory=lambda: float(os.getenv("REACTOR_CORE_STARTUP_TIMEOUT", "120.0"))  # 2 minutes
+    )
+    # v93.5: If model is actively loading (progress detected), extend timeout automatically
+    model_loading_timeout_extension: float = field(
+        default_factory=lambda: float(os.getenv("MODEL_LOADING_TIMEOUT_EXTENSION", "300.0"))  # Extra 5 min if progress
+    )
+    # v93.5: Maximum total timeout (hard cap for safety)
+    max_startup_timeout: float = field(
+        default_factory=lambda: float(os.getenv("MAX_STARTUP_TIMEOUT", "900.0"))  # 15 min absolute max
     )
 
     # Graceful shutdown
@@ -1182,34 +1191,43 @@ class ProcessOrchestrator:
         timeout: float = 60.0
     ) -> bool:
         """
-        Wait for service to become healthy with two-phase startup detection.
+        Wait for service to become healthy with intelligent progress-based timeout extension.
 
-        v93.0: Completely redesigned for ML model loading scenarios:
+        v93.5: Enhanced with intelligent progress detection:
 
         PHASE 1 (Quick): Wait for server to start responding (max 60s)
         - Server starts listening on port
         - Health endpoint returns any status (including "starting")
         - If this times out, the service failed to start
 
-        PHASE 2 (Patient): Wait for model to load (remaining timeout)
+        PHASE 2 (Patient + Intelligent): Wait for model to load with progress detection
         - Health endpoint returns "healthy" status
-        - Server is up, just loading models in background
-        - Unlimited effective timeout as long as server responds
+        - Server is up, loading models in background
+        - KEY ENHANCEMENT: If progress is detected (model_load_elapsed increasing),
+          timeout is dynamically extended up to max_startup_timeout
+        - This prevents timeout when model is actively loading (just slow)
 
         This prevents the scenario where:
         - Server takes 5s to start listening
-        - Model takes 200s to load
-        - Old approach: times out at 180s even though server was healthy
-        - New approach: detects server at 5s, waits patiently for model
+        - Model takes 304s to load (just 4s over 300s timeout)
+        - Old approach: times out at 300s even though model was 98% loaded
+        - New approach: detects progress, extends timeout, model loads successfully
         """
         start_time = time.time()
         check_interval = 1.0
         check_count = 0
         last_milestone_log = start_time
 
-        # v93.0: Detect if this is a long-timeout service (likely loading ML models)
+        # v93.5: Detect if this is a long-timeout service (likely loading ML models)
         is_ml_heavy = timeout > 90.0
         milestone_interval = 30.0 if is_ml_heavy else 15.0
+
+        # v93.5: Progress tracking for intelligent timeout extension
+        last_model_elapsed = 0.0
+        progress_detected_at = 0.0
+        timeout_extended = False
+        effective_timeout = timeout
+        max_timeout = self.config.max_startup_timeout
 
         # Phase 1: Wait for server to respond (quick timeout)
         phase1_timeout = min(60.0, timeout / 3)  # Max 60s or 1/3 of total timeout
@@ -1253,10 +1271,8 @@ class ProcessOrchestrator:
             )
             return False
 
-        # Phase 2: Wait for "healthy" status (model loading)
-        # Reset for phase 2
+        # Phase 2: Wait for "healthy" status (model loading) with intelligent progress detection
         phase2_start = time.time()
-        phase2_timeout = timeout  # Full timeout for model loading
         check_interval = 2.0  # Slower checks now that server is up
         check_count = 0
         last_status = "unknown"
@@ -1264,16 +1280,36 @@ class ProcessOrchestrator:
         if is_ml_heavy:
             logger.info(
                 f"    ⏳ Phase 2: Waiting for {managed.definition.name} model to load "
-                f"(timeout: {phase2_timeout:.0f}s)..."
+                f"(base timeout: {effective_timeout:.0f}s, max: {max_timeout:.0f}s)..."
             )
             logger.info(
                 f"    ℹ️  {managed.definition.name}: Server is up, model loading in background"
             )
 
-        while (time.time() - phase2_start) < phase2_timeout:
-            check_count += 1
-            elapsed = time.time() - start_time
+        while True:
             phase2_elapsed = time.time() - phase2_start
+            total_elapsed = time.time() - start_time
+
+            # v93.5: Check against effective (possibly extended) timeout
+            if phase2_elapsed >= effective_timeout:
+                # Final timeout check - but only if no recent progress
+                if progress_detected_at > 0 and (time.time() - progress_detected_at) < 60:
+                    # Progress was detected within last 60s - extend if under max
+                    if effective_timeout < max_timeout:
+                        extension = min(
+                            self.config.model_loading_timeout_extension,
+                            max_timeout - effective_timeout
+                        )
+                        effective_timeout += extension
+                        logger.info(
+                            f"    🔄 {managed.definition.name}: Progress detected, extending timeout by {extension:.0f}s "
+                            f"(new timeout: {effective_timeout:.0f}s)"
+                        )
+                        timeout_extended = True
+                        continue
+                break  # Actually timed out
+
+            check_count += 1
 
             # Check if process died
             if not managed.is_running:
@@ -1287,12 +1323,13 @@ class ProcessOrchestrator:
             # Check for full "healthy" status
             if await self._check_health(managed, require_ready=True):
                 logger.info(
-                    f"    ✅ {managed.definition.name} fully healthy after {elapsed:.1f}s "
+                    f"    ✅ {managed.definition.name} fully healthy after {total_elapsed:.1f}s "
                     f"(server: {phase2_start - start_time:.1f}s, model: {phase2_elapsed:.1f}s)"
+                    + (f" [timeout was extended]" if timeout_extended else "")
                 )
                 return True
 
-            # v93.0: Get current status for progress logging
+            # v93.5: Get current status and track progress for intelligent timeout extension
             try:
                 url = f"http://localhost:{managed.port}{managed.definition.health_endpoint}"
                 async with aiohttp.ClientSession() as session:
@@ -1303,7 +1340,12 @@ class ProcessOrchestrator:
                         if response.status == 200:
                             data = await response.json()
                             current_status = data.get("status", "unknown")
-                            model_elapsed = data.get("model_load_elapsed_seconds")
+                            model_elapsed = data.get("model_load_elapsed_seconds", 0)
+
+                            # v93.5: Detect progress (model_elapsed increasing)
+                            if model_elapsed and model_elapsed > last_model_elapsed:
+                                progress_detected_at = time.time()
+                                last_model_elapsed = model_elapsed
 
                             if current_status != last_status:
                                 logger.info(
@@ -1311,21 +1353,25 @@ class ProcessOrchestrator:
                                 )
                                 last_status = current_status
 
-                            # v93.0: Milestone logging for long waits
+                            # v93.5: Enhanced milestone logging with progress info
                             if (time.time() - last_milestone_log) >= milestone_interval:
-                                remaining = phase2_timeout - phase2_elapsed
+                                remaining = effective_timeout - phase2_elapsed
                                 model_info = f", model loading: {model_elapsed:.0f}s" if model_elapsed else ""
+                                progress_info = ""
+                                if progress_detected_at > 0:
+                                    since_progress = time.time() - progress_detected_at
+                                    progress_info = f", last progress: {since_progress:.0f}s ago"
                                 logger.info(
                                     f"    ⏳ {managed.definition.name}: {current_status} "
-                                    f"({phase2_elapsed:.0f}s elapsed, {remaining:.0f}s remaining{model_info})"
+                                    f"({phase2_elapsed:.0f}s elapsed, {remaining:.0f}s remaining{model_info}{progress_info})"
                                 )
                                 last_milestone_log = time.time()
             except Exception:
                 pass  # Non-critical, just for logging
 
-            # v93.0: Adaptive check intervals for phase 2
-            if phase2_elapsed > 120:
-                check_interval = 10.0  # After 2 min, check every 10s
+            # v93.5: Adaptive check intervals for phase 2
+            if phase2_elapsed > 180:
+                check_interval = 10.0  # After 3 min, check every 10s
             elif phase2_elapsed > 60:
                 check_interval = 5.0   # After 1 min, check every 5s
             else:
@@ -1334,10 +1380,10 @@ class ProcessOrchestrator:
             await asyncio.sleep(check_interval)
 
         # Timeout
-        elapsed = time.time() - start_time
+        total_elapsed = time.time() - start_time
         logger.warning(
-            f"    ⚠️ {managed.definition.name} model loading timed out after {elapsed:.1f}s "
-            f"({check_count} phase 2 checks)"
+            f"    ⚠️ {managed.definition.name} model loading timed out after {total_elapsed:.1f}s "
+            f"({check_count} phase 2 checks, effective_timeout={effective_timeout:.0f}s)"
         )
         return False
 
