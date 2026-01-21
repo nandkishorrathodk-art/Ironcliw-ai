@@ -1253,6 +1253,28 @@ async def initialize_trinity_ecosystem() -> TrinityBridge:
 
 
 # =============================================================================
+# v1.0: ProcessCoordinationHub Re-export for Convenience
+# =============================================================================
+# This provides easy access to the process coordination system from trinity_bridge
+try:
+    from backend.core.trinity_process_coordination import (
+        ProcessCoordinationHub,
+        get_coordination_hub,
+        initialize_coordination,
+        EntryPoint,
+        LockType,
+    )
+    PROCESS_COORDINATION_AVAILABLE = True
+except ImportError:
+    PROCESS_COORDINATION_AVAILABLE = False
+    ProcessCoordinationHub = None  # type: ignore
+    get_coordination_hub = None  # type: ignore
+    initialize_coordination = None  # type: ignore
+    EntryPoint = None  # type: ignore
+    LockType = None  # type: ignore
+
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -1267,4 +1289,12 @@ __all__ = [
     "get_trinity_bridge",
     "shutdown_trinity_bridge",
     "initialize_trinity_ecosystem",
+
+    # v1.0: Process Coordination (re-exported for convenience)
+    "ProcessCoordinationHub",
+    "get_coordination_hub",
+    "initialize_coordination",
+    "EntryPoint",
+    "LockType",
+    "PROCESS_COORDINATION_AVAILABLE",
 ]

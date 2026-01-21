@@ -5163,6 +5163,37 @@ class SupervisorBootstrapper:
             os.environ["JARVIS_CLEANUP_TIMESTAMP"] = str(time.time())
             self.logger.info("Set JARVIS_CLEANUP_DONE=1 - start_system.py will skip redundant cleanup")
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v1.0 ProcessCoordinationHub: Enhanced cross-script coordination
+            # Provides: supervisor heartbeat, atomic port locks, shared state
+            # ═══════════════════════════════════════════════════════════════════
+            try:
+                from backend.core.trinity_process_coordination import (
+                    get_coordination_hub,
+                    EntryPoint,
+                )
+
+                self._coord_hub = await get_coordination_hub()
+                coord_success, coord_warnings = await self._coord_hub.initialize(
+                    EntryPoint.RUN_SUPERVISOR
+                )
+
+                if coord_warnings:
+                    for warn in coord_warnings:
+                        self.logger.warning(f"[CoordHub] {warn}")
+
+                # Mark cleanup complete through the hub (persists to shared state file)
+                await self._coord_hub.mark_cleanup_complete()
+                self.logger.info("[CoordHub] ✅ ProcessCoordinationHub initialized with heartbeat")
+                TerminalUI.print_success("[CoordHub] Enhanced coordination active")
+
+            except ImportError as e:
+                self.logger.debug(f"[CoordHub] Not available (optional): {e}")
+                self._coord_hub = None
+            except Exception as e:
+                self.logger.warning(f"[CoordHub] Initialization failed (continuing without): {e}")
+                self._coord_hub = None
+
             self.perf.end("cleanup")
 
             # ═══════════════════════════════════════════════════════════════════

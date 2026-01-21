@@ -8672,6 +8672,43 @@ class AsyncSystemManager:
         # 2. Race conditions where ports aren't fully released yet
         # 3. Unnecessary process scanning and termination attempts
         # ═══════════════════════════════════════════════════════════════════
+
+        # v1.0: Use ProcessCoordinationHub for robust supervisor validation
+        # This verifies supervisor is ACTUALLY alive, not just that env vars are set
+        try:
+            from backend.core.trinity_process_coordination import (
+                get_coordination_hub,
+                EntryPoint,
+            )
+
+            coord_hub = await get_coordination_hub()
+
+            # Initialize as start_system entry point
+            if not hasattr(self, '_coord_hub_initialized'):
+                await coord_hub.initialize(EntryPoint.START_SYSTEM)
+                self._coord_hub_initialized = True
+
+            # Use robust supervisor validation (checks heartbeat + PID + process time)
+            can_trust, trust_reason = await coord_hub.trust_supervisor_cleanup()
+
+            if can_trust:
+                print(f"\n{Colors.GREEN}✓ Supervisor cleanup verified via ProcessCoordinationHub{Colors.ENDC}")
+                print(f"{Colors.CYAN}   Supervisor heartbeat confirmed, skipping redundant cleanup...{Colors.ENDC}")
+                return True
+            else:
+                if trust_reason:
+                    print(f"{Colors.YELLOW}   Supervisor validation failed: {trust_reason}{Colors.ENDC}")
+
+                # Check if standalone mode should be enabled
+                if await coord_hub.is_standalone_mode():
+                    print(f"{Colors.CYAN}   Running in standalone mode (supervisor unavailable){Colors.ENDC}")
+
+        except ImportError:
+            pass  # Fall back to legacy env var check
+        except Exception as e:
+            print(f"{Colors.YELLOW}   CoordHub check failed (falling back to legacy): {e}{Colors.ENDC}")
+
+        # Legacy fallback: Check env vars directly
         if os.environ.get("JARVIS_CLEANUP_DONE") == "1":
             cleanup_timestamp = float(os.environ.get("JARVIS_CLEANUP_TIMESTAMP", "0"))
             age_seconds = time.time() - cleanup_timestamp if cleanup_timestamp else 0

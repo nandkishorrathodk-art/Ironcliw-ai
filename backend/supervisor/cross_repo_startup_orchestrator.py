@@ -113,6 +113,73 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# v95.0: Orchestrator-Narrator Bridge Integration
+# =============================================================================
+
+# Import event types and emitter for real-time voice feedback
+_NARRATOR_BRIDGE_AVAILABLE = False
+OrchestratorEvent = None
+AnnouncementPriority = None
+emit_orchestrator_event = None
+
+try:
+    from backend.core.supervisor.orchestrator_narrator_bridge import (
+        OrchestratorEvent as _OrchestratorEvent,
+        AnnouncementPriority as _AnnouncementPriority,
+        emit_orchestrator_event as _emit_orchestrator_event,
+    )
+    OrchestratorEvent = _OrchestratorEvent
+    AnnouncementPriority = _AnnouncementPriority
+    emit_orchestrator_event = _emit_orchestrator_event
+    _NARRATOR_BRIDGE_AVAILABLE = True
+except ImportError:
+    pass  # Keep defaults
+
+
+async def _emit_event(
+    event: str,
+    service_name: Optional[str] = None,
+    priority: str = "MEDIUM",
+    details: Optional[Dict[str, Any]] = None,
+    **kwargs
+) -> None:
+    """
+    v95.0: Safely emit an orchestrator event for voice narration.
+
+    This wrapper ensures the orchestrator doesn't fail if the narrator
+    bridge is unavailable.
+    """
+    if not _NARRATOR_BRIDGE_AVAILABLE or OrchestratorEvent is None:
+        return
+
+    try:
+        # Convert string event to enum
+        event_enum = getattr(OrchestratorEvent, event, None)
+        if event_enum is None:
+            return
+
+        # Convert string priority to enum
+        if AnnouncementPriority is not None:
+            priority_enum = getattr(AnnouncementPriority, priority, None)
+            if priority_enum is None:
+                priority_enum = getattr(AnnouncementPriority, "MEDIUM", None)
+        else:
+            priority_enum = None
+
+        if emit_orchestrator_event is not None:
+            await emit_orchestrator_event(
+                event=event_enum,
+                service_name=service_name,
+                priority=priority_enum,
+                details=details or {},
+                **kwargs
+            )
+    except Exception as e:
+        # Never let narrator issues block orchestration
+        logger.debug(f"[NarratorBridge] Event emission failed (non-blocking): {e}")
+
+
+# =============================================================================
 # Configuration (Zero Hardcoding - All Environment Driven)
 # =============================================================================
 
@@ -1515,18 +1582,35 @@ class ProcessOrchestrator:
         definition: ServiceDefinition,
     ) -> bool:
         """
-        v93.9: Build Docker image for a service.
+        v95.0: Build Docker image for a service with comprehensive event emissions.
 
-        Uses docker-compose build with progress output.
+        Uses docker-compose build with progress output and real-time voice narration.
         """
         compose_file = definition.repo_path / self.config.jarvis_prime_docker_compose
 
         if not compose_file.exists():
             logger.warning(f"    Docker compose file not found: {compose_file}")
+            await _emit_event(
+                "DOCKER_BUILD_FAILED",
+                service_name=definition.name,
+                priority="HIGH",
+                details={"reason": "compose_file_missing", "path": str(compose_file)}
+            )
             return False
 
         try:
             logger.info(f"    🔨 Building Docker image (this may take several minutes)...")
+
+            # v95.0: Emit build start event for voice narration
+            await _emit_event(
+                "DOCKER_BUILD_START",
+                service_name=definition.name,
+                priority="HIGH",
+                details={
+                    "compose_file": str(compose_file),
+                    "estimated_duration": "several minutes"
+                }
+            )
 
             proc = await asyncio.create_subprocess_exec(
                 "docker", "compose",
@@ -1537,9 +1621,12 @@ class ProcessOrchestrator:
                 cwd=str(definition.repo_path),
             )
 
-            # Stream build output
+            # Stream build output with progress events
             build_start = time.time()
             last_log = build_start
+            last_progress_event = build_start
+            step_count = 0
+            progress_event_interval = 30.0  # Emit progress event every 30 seconds
 
             while True:
                 line = await asyncio.wait_for(
@@ -1551,6 +1638,10 @@ class ProcessOrchestrator:
 
                 decoded = line.decode('utf-8', errors='replace').rstrip()
                 if decoded:
+                    # Track step progress
+                    if 'step' in decoded.lower():
+                        step_count += 1
+
                     # Log progress every 30 seconds or on important lines
                     now = time.time()
                     is_important = any(k in decoded.lower() for k in [
@@ -1563,18 +1654,63 @@ class ProcessOrchestrator:
                         logger.info(f"    [build {elapsed:.0f}s] {decoded[:100]}")
                         last_log = now
 
+                    # v95.0: Emit periodic progress events for voice narration
+                    if (now - last_progress_event) >= progress_event_interval:
+                        elapsed = now - build_start
+                        await _emit_event(
+                            "DOCKER_BUILD_PROGRESS",
+                            service_name=definition.name,
+                            priority="LOW",
+                            details={
+                                "elapsed_seconds": int(elapsed),
+                                "steps_completed": step_count,
+                                "current_activity": decoded[:50] if decoded else "building"
+                            }
+                        )
+                        last_progress_event = now
+
             return_code = await proc.wait()
             build_time = time.time() - build_start
 
             if return_code == 0:
                 logger.info(f"    ✅ Docker image built successfully ({build_time:.0f}s)")
+                # v95.0: Emit build complete event
+                await _emit_event(
+                    "DOCKER_BUILD_COMPLETE",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "build_time_seconds": int(build_time),
+                        "steps_completed": step_count
+                    }
+                )
                 return True
             else:
                 logger.warning(f"    ❌ Docker build failed (exit code: {return_code})")
+                # v95.0: Emit build failed event
+                await _emit_event(
+                    "DOCKER_BUILD_FAILED",
+                    service_name=definition.name,
+                    priority="CRITICAL",
+                    details={
+                        "exit_code": return_code,
+                        "build_time_seconds": int(build_time)
+                    }
+                )
                 return False
 
         except asyncio.TimeoutError:
             logger.warning(f"    ❌ Docker build timed out after {self.config.docker_build_timeout}s")
+            # v95.0: Emit timeout event
+            await _emit_event(
+                "DOCKER_BUILD_FAILED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={
+                    "reason": "timeout",
+                    "timeout_seconds": self.config.docker_build_timeout
+                }
+            )
             try:
                 proc.terminate()
             except Exception:
@@ -1582,6 +1718,13 @@ class ProcessOrchestrator:
             return False
         except Exception as e:
             logger.warning(f"    ❌ Docker build failed: {e}")
+            # v95.0: Emit exception event
+            await _emit_event(
+                "DOCKER_BUILD_FAILED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={"reason": "exception", "error": str(e)}
+            )
             return False
 
     # =========================================================================
@@ -1593,31 +1736,48 @@ class ProcessOrchestrator:
         definition: ServiceDefinition,
     ) -> bool:
         """
-        v93.10: Start service on GCP Spot VM when local memory is insufficient.
+        v95.0: Start service on GCP Spot VM with comprehensive event emissions.
 
         Integrates with existing GCP infrastructure:
         - GCPVMManager for VM lifecycle management
         - CloudMLRouter for intelligent model routing
         - HybridRouter for capability-based routing
         - Cost-optimized Spot VM instances
+        - Real-time voice narration of GCP operations
 
         Features:
         - Auto VM selection based on model requirements
         - Spot VM for cost savings (with preemption handling)
         - Health check with retry
         - Automatic service deployment on VM
+        - Voice feedback for all GCP operations
         """
         if not self.config.gcp_fallback_enabled:
             logger.info("    ℹ️ GCP fallback disabled via config")
             return False
 
         try:
+            # v95.0: Emit GCP routing decision event
+            await _emit_event(
+                "GCP_ROUTING_DECISION",
+                service_name=definition.name,
+                priority="HIGH",
+                details={"reason": "starting_gcp_service"}
+            )
+
             # ================================================================
             # Step 1: Initialize GCP infrastructure
             # ================================================================
             gcp_infra = await self._initialize_gcp_infrastructure()
             if not gcp_infra:
                 logger.warning("    ⚠️ GCP infrastructure not available")
+                # v95.0: Emit GCP failed event
+                await _emit_event(
+                    "GCP_VM_FAILED",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={"reason": "infrastructure_not_available"}
+                )
                 return False
 
             vm_manager = gcp_infra.get("vm_manager")
@@ -1639,6 +1799,19 @@ class ProcessOrchestrator:
                 f"({'Spot' if use_spot else 'On-demand'})"
             )
 
+            # v95.0: Emit Spot allocation event if using spot
+            if use_spot:
+                await _emit_event(
+                    "GCP_SPOT_ALLOCATED",
+                    service_name=definition.name,
+                    priority="MEDIUM",
+                    details={
+                        "machine_type": machine_type,
+                        "vm_name": vm_name,
+                        "cost_savings": "up to 80%"
+                    }
+                )
+
             # ================================================================
             # Step 3: Check if VM already exists and is running
             # ================================================================
@@ -1646,11 +1819,34 @@ class ProcessOrchestrator:
                 vm_manager, vm_name, definition
             )
             if existing_vm:
+                # v95.0: Emit GCP VM ready event (reusing existing)
+                await _emit_event(
+                    "GCP_VM_READY",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "vm_name": vm_name,
+                        "status": "reusing_existing",
+                        "machine_type": machine_type
+                    }
+                )
                 return True
 
             # ================================================================
             # Step 4: Create/start VM with service deployment
             # ================================================================
+            # v95.0: Emit VM creating event
+            await _emit_event(
+                "GCP_VM_CREATING",
+                service_name=definition.name,
+                priority="HIGH",
+                details={
+                    "vm_name": vm_name,
+                    "machine_type": machine_type,
+                    "spot_instance": use_spot
+                }
+            )
+
             vm_started = await self._create_and_start_gcp_vm(
                 vm_manager,
                 vm_name,
@@ -1661,22 +1857,83 @@ class ProcessOrchestrator:
 
             if not vm_started:
                 logger.warning(f"    ⚠️ Failed to start GCP VM")
+                # v95.0: Emit GCP VM failed event
+                await _emit_event(
+                    "GCP_VM_FAILED",
+                    service_name=definition.name,
+                    priority="CRITICAL",
+                    details={
+                        "vm_name": vm_name,
+                        "reason": "vm_start_failed"
+                    }
+                )
                 return False
+
+            # v95.0: Emit VM starting event
+            await _emit_event(
+                "GCP_VM_STARTING",
+                service_name=definition.name,
+                priority="MEDIUM",
+                details={
+                    "vm_name": vm_name,
+                    "phase": "waiting_for_health"
+                }
+            )
 
             # ================================================================
             # Step 5: Wait for service to be healthy
             # ================================================================
-            return await self._wait_for_gcp_service_health(
+            healthy = await self._wait_for_gcp_service_health(
                 vm_manager,
                 vm_name,
                 definition,
             )
 
+            if healthy:
+                # v95.0: Emit GCP VM ready event
+                await _emit_event(
+                    "GCP_VM_READY",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "vm_name": vm_name,
+                        "machine_type": machine_type,
+                        "spot_instance": use_spot
+                    }
+                )
+            else:
+                # v95.0: Emit GCP VM failed event
+                await _emit_event(
+                    "GCP_VM_FAILED",
+                    service_name=definition.name,
+                    priority="CRITICAL",
+                    details={
+                        "vm_name": vm_name,
+                        "reason": "health_check_failed"
+                    }
+                )
+
+            return healthy
+
         except ImportError as e:
             logger.warning(f"    ⚠️ GCP module not available: {e}")
+            # v95.0: Emit GCP failed event
+            await _emit_event(
+                "GCP_VM_FAILED",
+                service_name=definition.name,
+                priority="HIGH",
+                details={"reason": "module_not_available", "error": str(e)}
+            )
             return False
         except Exception as e:
             logger.error(f"    ❌ GCP service start failed: {e}")
+            # v95.0: Emit GCP failed event
+            await _emit_event(
+                "GCP_VM_FAILED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={"reason": "exception", "error": str(e)}
+            )
             import traceback
             logger.debug(traceback.format_exc())
             return False
@@ -2073,12 +2330,14 @@ echo "=== JARVIS Prime started ==="
 
     async def _start_docker_container(self, definition: ServiceDefinition) -> bool:
         """
-        v93.9: Enhanced Docker container startup with:
-        - Memory-aware routing (Docker vs GCP)
-        - Circuit breaker protection
-        - Retry with exponential backoff
+        v95.0: Enhanced Docker container startup with comprehensive event emissions.
+
+        Features:
+        - Memory-aware routing (Docker vs GCP) with voice narration
+        - Circuit breaker protection with state announcements
+        - Retry with exponential backoff and progress events
         - Auto-build if image missing
-        - Comprehensive error handling
+        - Comprehensive error handling with voice feedback
 
         Args:
             definition: Service definition
@@ -2088,6 +2347,14 @@ echo "=== JARVIS Prime started ==="
         """
         if definition.name != "jarvis-prime":
             return False
+
+        # v95.0: Emit memory check event
+        await _emit_event(
+            "MEMORY_CHECK",
+            service_name=definition.name,
+            priority="MEDIUM",
+            details={"phase": "pre_startup"}
+        )
 
         # Step 1: Check memory and make routing decision
         memory_status = await self._get_memory_status()
@@ -2099,8 +2366,31 @@ echo "=== JARVIS Prime started ==="
                 f"{memory_status.percent_used:.0f}% used)"
             )
 
+            # v95.0: Emit memory pressure event
+            pressure_level = "MEMORY_PRESSURE_CRITICAL" if memory_status.percent_used > 90 else "MEMORY_PRESSURE_HIGH"
+            await _emit_event(
+                pressure_level,
+                service_name=definition.name,
+                priority="HIGH",
+                details={
+                    "available_gb": memory_status.available_gb,
+                    "percent_used": memory_status.percent_used,
+                    "can_load_local_model": memory_status.can_load_local_model
+                }
+            )
+
             if await self._should_route_to_gcp(definition, memory_status):
                 logger.info(f"    ☁️ Routing to GCP due to memory constraints...")
+                # v95.0: Emit routing decision event
+                await _emit_event(
+                    "ROUTING_GCP",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "reason": "memory_constraints",
+                        "available_gb": memory_status.available_gb
+                    }
+                )
                 return await self._start_gcp_service(definition)
 
         # Step 2: Check circuit breaker
@@ -2110,18 +2400,52 @@ echo "=== JARVIS Prime started ==="
                 f"    ⚠️ Docker circuit breaker OPEN for {definition.name}, "
                 f"waiting for recovery timeout..."
             )
+            # v95.0: Emit circuit breaker open event
+            await _emit_event(
+                "CIRCUIT_BREAKER_OPEN",
+                service_name=definition.name,
+                priority="HIGH",
+                details={
+                    "failure_count": cb.failure_count,
+                    "state": "open",
+                    "recovery_timeout": cb.recovery_timeout
+                }
+            )
             return False
+
+        # v95.0: Emit Docker check event
+        await _emit_event(
+            "DOCKER_CHECK",
+            service_name=definition.name,
+            priority="MEDIUM",
+            details={"checking": "image_exists"}
+        )
 
         # Step 3: Check if Docker image exists, build if needed
         image_name = "jarvis-prime:latest"
         image_exists = await self._check_docker_image_exists(image_name)
 
         if not image_exists:
+            # v95.0: Emit Docker not found event
+            await _emit_event(
+                "DOCKER_NOT_FOUND",
+                service_name=definition.name,
+                priority="MEDIUM",
+                details={"image_name": image_name}
+            )
+
             if self.config.docker_auto_build:
                 logger.info(f"    🔨 Docker image '{image_name}' not found, building...")
                 built = await self._build_docker_image(definition)
                 if not built:
                     cb.record_failure()
+                    # v95.0: Emit circuit breaker trip event
+                    await _emit_event(
+                        "CIRCUIT_BREAKER_TRIP",
+                        service_name=definition.name,
+                        priority="HIGH",
+                        details={"reason": "docker_build_failed"}
+                    )
                     logger.warning(f"    ⚠️ Docker build failed, trying alternative...")
                     return await self._fallback_to_alternative(definition, memory_status)
             else:
@@ -2129,6 +2453,14 @@ echo "=== JARVIS Prime started ==="
                     f"    ⚠️ Docker image '{image_name}' not found and auto-build disabled"
                 )
                 return False
+        else:
+            # v95.0: Emit Docker found event
+            await _emit_event(
+                "DOCKER_FOUND",
+                service_name=definition.name,
+                priority="MEDIUM",
+                details={"image_name": image_name}
+            )
 
         # Step 4: Start container with retry and exponential backoff
         compose_file = definition.repo_path / self.config.jarvis_prime_docker_compose
@@ -2141,6 +2473,17 @@ echo "=== JARVIS Prime started ==="
         retry_state = self._get_retry_state(f"docker-start-{definition.name}")
         retry_state.reset()  # Reset for new startup attempt
         start_time = time.time()
+
+        # v95.0: Emit Docker starting event
+        await _emit_event(
+            "DOCKER_STARTING",
+            service_name=definition.name,
+            priority="HIGH",
+            details={
+                "image_name": image_name,
+                "max_attempts": retry_state.max_attempts
+            }
+        )
 
         while retry_state.should_retry():
             attempt = retry_state.attempt + 1
@@ -2178,6 +2521,18 @@ echo "=== JARVIS Prime started ==="
 
                 logger.info(f"    Docker container starting, waiting for health...")
 
+                # v95.0: Emit Docker health check event
+                await _emit_event(
+                    "DOCKER_HEALTH_CHECK",
+                    service_name=definition.name,
+                    priority="MEDIUM",
+                    details={
+                        "port": definition.default_port,
+                        "endpoint": definition.health_endpoint,
+                        "timeout": self.config.docker_startup_timeout
+                    }
+                )
+
                 # Wait for container to become healthy
                 healthy = await self._wait_for_docker_health(
                     definition.name,
@@ -2190,6 +2545,27 @@ echo "=== JARVIS Prime started ==="
                     elapsed = time.time() - start_time
                     cb.record_success()
                     retry_state.reset()
+
+                    # v95.0: Emit circuit breaker closed event (healthy)
+                    await _emit_event(
+                        "CIRCUIT_BREAKER_CLOSED",
+                        service_name=definition.name,
+                        priority="MEDIUM",
+                        details={"reason": "container_healthy"}
+                    )
+
+                    # v95.0: Emit Docker healthy event
+                    await _emit_event(
+                        "DOCKER_HEALTHY",
+                        service_name=definition.name,
+                        priority="HIGH",
+                        details={
+                            "startup_time_seconds": int(elapsed),
+                            "attempts": attempt,
+                            "port": definition.default_port
+                        }
+                    )
+
                     logger.info(
                         f"    ✅ Docker container healthy after {elapsed:.1f}s "
                         f"(attempt {attempt})"
@@ -2198,6 +2574,17 @@ echo "=== JARVIS Prime started ==="
                 else:
                     retry_state.record_attempt("Health check timeout")
                     logger.warning(f"    ⚠️ Container started but health check failed")
+
+                    # v95.0: Emit Docker unhealthy event
+                    await _emit_event(
+                        "DOCKER_UNHEALTHY",
+                        service_name=definition.name,
+                        priority="HIGH",
+                        details={
+                            "reason": "health_check_timeout",
+                            "attempt": attempt
+                        }
+                    )
 
                     if retry_state.should_retry():
                         delay = retry_state.get_next_delay()
@@ -2235,6 +2622,19 @@ echo "=== JARVIS Prime started ==="
 
         # All retries exhausted
         cb.record_failure()
+
+        # v95.0: Emit circuit breaker trip event
+        await _emit_event(
+            "CIRCUIT_BREAKER_TRIP",
+            service_name=definition.name,
+            priority="CRITICAL",
+            details={
+                "reason": "retries_exhausted",
+                "failure_count": cb.failure_count,
+                "last_error": retry_state.last_error
+            }
+        )
+
         total_elapsed = time.time() - start_time
         logger.error(
             f"    ❌ Docker startup failed after {retry_state.attempt} attempts "
@@ -2273,33 +2673,89 @@ echo "=== JARVIS Prime started ==="
         memory_status: MemoryStatus,
     ) -> bool:
         """
-        v93.9: Fallback to alternative deployment when Docker fails.
+        v95.0: Fallback to alternative deployment with comprehensive event emissions.
 
-        Order of fallback:
+        Order of fallback (with voice narration):
         1. GCP cloud (if enabled and sufficient resources)
         2. Local process (if memory allows)
+        3. GCP as last resort
         """
         logger.info(f"    🔄 Attempting fallback for {definition.name}...")
+
+        # v95.0: Emit routing fallback event
+        await _emit_event(
+            "ROUTING_FALLBACK",
+            service_name=definition.name,
+            priority="HIGH",
+            details={
+                "phase": "starting_fallback_chain",
+                "available_memory_gb": memory_status.available_gb,
+                "can_load_local": memory_status.can_load_local_model,
+                "gcp_enabled": self.config.gcp_fallback_enabled
+            }
+        )
 
         # Try GCP if enabled and memory is an issue
         if self.config.gcp_fallback_enabled:
             if memory_status.is_memory_pressure or not memory_status.can_load_local_model:
                 logger.info(f"    ☁️ Trying GCP fallback...")
+                # v95.0: Emit GCP fallback event
+                await _emit_event(
+                    "GCP_FALLBACK",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "reason": "memory_pressure" if memory_status.is_memory_pressure else "insufficient_memory",
+                        "fallback_tier": 1
+                    }
+                )
                 if await self._start_gcp_service(definition):
                     return True
 
         # Try local process if memory allows
         if memory_status.can_load_local_model:
             logger.info(f"    🐍 Falling back to local process...")
+            # v95.0: Emit routing local event
+            await _emit_event(
+                "ROUTING_LOCAL",
+                service_name=definition.name,
+                priority="MEDIUM",
+                details={
+                    "reason": "memory_sufficient_for_local",
+                    "available_gb": memory_status.available_gb,
+                    "fallback_tier": 2
+                }
+            )
             # Return False to let the caller spawn local process
             return False
 
         # Last resort: try GCP anyway
         if self.config.gcp_fallback_enabled:
             logger.info(f"    ☁️ Last resort: trying GCP...")
+            # v95.0: Emit GCP fallback event (last resort)
+            await _emit_event(
+                "GCP_FALLBACK",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={
+                    "reason": "last_resort",
+                    "fallback_tier": 3,
+                    "all_other_options_exhausted": True
+                }
+            )
             return await self._start_gcp_service(definition)
 
         logger.warning(f"    ❌ No viable fallback options for {definition.name}")
+        # v95.0: Emit final fallback failure event
+        await _emit_event(
+            "ROUTING_FALLBACK",
+            service_name=definition.name,
+            priority="CRITICAL",
+            details={
+                "phase": "fallback_chain_exhausted",
+                "result": "no_viable_options"
+            }
+        )
         return False
 
     @property
@@ -2818,7 +3274,7 @@ echo "=== JARVIS Prime started ==="
 
     async def _auto_heal(self, managed: ManagedProcess) -> bool:
         """
-        Attempt to restart a failed service with exponential backoff.
+        v95.0: Attempt to restart a failed service with exponential backoff and event emissions.
 
         Returns True if restart succeeded.
         """
@@ -2828,6 +3284,17 @@ echo "=== JARVIS Prime started ==="
                 f"({self.config.max_restart_attempts}). Giving up."
             )
             managed.status = ServiceStatus.FAILED
+            # v95.0: Emit service crashed event (gave up)
+            await _emit_event(
+                "SERVICE_CRASHED",
+                service_name=managed.definition.name,
+                priority="CRITICAL",
+                details={
+                    "reason": "max_restart_attempts_exceeded",
+                    "attempts": managed.restart_count,
+                    "max_attempts": self.config.max_restart_attempts
+                }
+            )
             return False
 
         # Calculate backoff
@@ -2839,6 +3306,18 @@ echo "=== JARVIS Prime started ==="
         logger.info(
             f"🔄 Restarting {managed.definition.name} in {backoff:.1f}s "
             f"(attempt {managed.restart_count + 1}/{self.config.max_restart_attempts})"
+        )
+
+        # v95.0: Emit service restarting event
+        await _emit_event(
+            "SERVICE_RESTARTING",
+            service_name=managed.definition.name,
+            priority="HIGH",
+            details={
+                "attempt": managed.restart_count + 1,
+                "max_attempts": self.config.max_restart_attempts,
+                "backoff_seconds": backoff
+            }
         )
 
         managed.status = ServiceStatus.RESTARTING
@@ -2856,9 +3335,29 @@ echo "=== JARVIS Prime started ==="
         if success:
             logger.info(f"✅ {managed.definition.name} restarted successfully")
             managed.consecutive_failures = 0
+            # v95.0: Emit service recovered event
+            await _emit_event(
+                "SERVICE_RECOVERED",
+                service_name=managed.definition.name,
+                priority="HIGH",
+                details={
+                    "restart_count": managed.restart_count,
+                    "recovery_time_seconds": time.time() - managed.last_restart
+                }
+            )
             return True
         else:
             logger.error(f"❌ {managed.definition.name} restart failed")
+            # v95.0: Emit service unhealthy event (restart failed)
+            await _emit_event(
+                "SERVICE_UNHEALTHY",
+                service_name=managed.definition.name,
+                priority="CRITICAL",
+                details={
+                    "reason": "restart_failed",
+                    "attempt": managed.restart_count
+                }
+            )
             return False
 
     async def restart_service(self, service_name: str) -> bool:
@@ -2962,22 +3461,42 @@ echo "=== JARVIS Prime started ==="
 
     async def _spawn_service(self, managed: ManagedProcess) -> bool:
         """
-        Spawn a service process using asyncio.create_subprocess_exec.
+        v95.0: Spawn a service process with comprehensive event emissions.
 
-        v4.0: Enhanced with:
+        Enhanced with:
         - Pre-spawn validation (venv detection, port check)
         - Better error reporting
         - Environment isolation
+        - Real-time voice narration of service lifecycle
 
         Returns True if spawn and health check succeeded.
         """
         definition = managed.definition
+
+        # v95.0: Emit service spawning event
+        await _emit_event(
+            "SERVICE_SPAWNING",
+            service_name=definition.name,
+            priority="HIGH",
+            details={
+                "port": definition.default_port,
+                "repo_path": str(definition.repo_path),
+                "startup_timeout": definition.startup_timeout
+            }
+        )
 
         # Pre-spawn validation
         is_valid, python_exec = await self._pre_spawn_validation(definition)
         if not is_valid:
             logger.error(f"Cannot spawn {definition.name}: pre-spawn validation failed")
             managed.status = ServiceStatus.FAILED
+            # v95.0: Emit service failed event
+            await _emit_event(
+                "SERVICE_CRASHED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={"reason": "pre_spawn_validation_failed"}
+            )
             return False
 
         script_path = self._find_script(definition)
@@ -2985,6 +3504,13 @@ echo "=== JARVIS Prime started ==="
         if script_path is None:
             logger.error(f"Cannot spawn {definition.name}: no script found")
             managed.status = ServiceStatus.FAILED
+            # v95.0: Emit service failed event
+            await _emit_event(
+                "SERVICE_CRASHED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={"reason": "script_not_found"}
+            )
             return False
 
         managed.status = ServiceStatus.STARTING
@@ -3058,6 +3584,18 @@ echo "=== JARVIS Prime started ==="
             if healthy:
                 managed.status = ServiceStatus.HEALTHY
 
+                # v95.0: Emit service healthy event
+                await _emit_event(
+                    "SERVICE_HEALTHY",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "pid": managed.pid,
+                        "port": managed.port,
+                        "startup_timeout": definition.startup_timeout
+                    }
+                )
+
                 # Register in service registry
                 if self.registry:
                     await self.registry.register_service(
@@ -3080,11 +3618,29 @@ echo "=== JARVIS Prime started ==="
                     f"within {definition.startup_timeout}s"
                 )
                 managed.status = ServiceStatus.DEGRADED
+                # v95.0: Emit service unhealthy event
+                await _emit_event(
+                    "SERVICE_UNHEALTHY",
+                    service_name=definition.name,
+                    priority="HIGH",
+                    details={
+                        "reason": "health_check_timeout",
+                        "timeout_seconds": definition.startup_timeout,
+                        "pid": managed.pid
+                    }
+                )
                 return False
 
         except Exception as e:
             logger.error(f"❌ Failed to spawn {definition.name}: {e}", exc_info=True)
             managed.status = ServiceStatus.FAILED
+            # v95.0: Emit service crashed event
+            await _emit_event(
+                "SERVICE_CRASHED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={"reason": "spawn_exception", "error": str(e)}
+            )
             return False
 
     async def _wait_for_health(
@@ -3566,6 +4122,9 @@ echo "=== JARVIS Prime started ==="
         """
         self._ensure_locks_initialized()
 
+        # v95.0: Emit parallel startup begin event
+        await _emit_event("PARALLEL_STARTUP_BEGIN", priority="MEDIUM", details={"service_count": len(definitions)})
+
         # Separate heavy (ML-based) and light services
         heavy_services = [d for d in definitions if d.name == "jarvis-prime"]
         light_services = [d for d in definitions if d.name != "jarvis-prime"]
@@ -3595,8 +4154,12 @@ echo "=== JARVIS Prime started ==="
 
                 if success:
                     logger.info(f"    ✅ {name}: {reason}")
+                    # v95.0: Emit service healthy event
+                    await _emit_event("SERVICE_HEALTHY", service_name=name, priority="MEDIUM")
                 else:
                     logger.warning(f"    ⚠️ {name}: {reason}")
+                    # v95.0: Emit service unhealthy event
+                    await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="HIGH", details={"reason": reason})
 
         # Phase 2: Start heavy services (with memory check)
         if heavy_services:
@@ -3627,8 +4190,15 @@ echo "=== JARVIS Prime started ==="
 
                 if success:
                     logger.info(f"    ✅ {name}: {reason}")
+                    # v95.0: Emit service healthy event for heavy service
+                    await _emit_event("SERVICE_HEALTHY", service_name=name, priority="HIGH")
                 else:
                     logger.warning(f"    ⚠️ {name}: {reason}")
+                    # v95.0: Emit service unhealthy event for heavy service
+                    await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="CRITICAL", details={"reason": reason})
+
+        # v95.0: Emit parallel startup complete event
+        await _emit_event("PARALLEL_STARTUP_COMPLETE", priority="MEDIUM", details={"results": results})
 
         return results
 
@@ -3762,11 +4332,14 @@ echo "=== JARVIS Prime started ==="
         results = {"jarvis": True}  # JARVIS is already running
 
         logger.info("=" * 70)
-        logger.info("Cross-Repo Startup Orchestrator v93.11 - Enterprise Grade")
-        logger.info("  Features: Parallel startup, Connection pooling, Thread-safe ops")
+        logger.info("Cross-Repo Startup Orchestrator v95.0 - Enterprise Grade")
+        logger.info("  Features: Parallel startup, Connection pooling, Thread-safe ops, Voice narration")
         logger.info("=" * 70)
         logger.info(f"  Ports: jarvis-prime={self.config.jarvis_prime_default_port}, "
                     f"reactor-core={self.config.reactor_core_default_port}")
+
+        # v95.0: Emit startup begin event for voice narration
+        await _emit_event("STARTUP_BEGIN", priority="HIGH")
 
         # Phase 0: Pre-flight cleanup (v5.0 + v4.0 Service Registry)
         logger.info("\n📍 PHASE 0: Pre-flight cleanup")
@@ -3817,9 +4390,18 @@ echo "=== JARVIS Prime started ==="
 
         if healthy_count == total_count:
             logger.info(f"✅ All {total_count} services operational - FULL MODE")
+            # v95.0: Emit startup complete event
+            await _emit_event("STARTUP_COMPLETE", priority="HIGH", elapsed_seconds=time.time() - self._running)
         else:
             logger.warning(
                 f"⚠️ Running in DEGRADED MODE: {healthy_count}/{total_count} services operational"
+            )
+            # v95.0: Emit health degraded event
+            unhealthy = [name for name, success in results.items() if not success]
+            await _emit_event(
+                "HEALTH_DEGRADED",
+                priority="HIGH",
+                details={"unhealthy_services": unhealthy, "healthy_count": healthy_count, "total_count": total_count}
             )
 
         # Phase 4: v93.0 - Register restart commands with resilient mesh
