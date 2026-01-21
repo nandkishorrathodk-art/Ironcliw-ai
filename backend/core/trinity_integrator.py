@@ -4386,12 +4386,17 @@ class UnifiedStateCoordinator:
 
     async def _validate_and_recover_lock_file(self, lock_file: Path) -> bool:
         """
-        v86.0: Validate lock file integrity and recover if corrupted.
+        v93.14: Validate lock file integrity and recover if corrupted or orphaned.
 
-        Checks:
+        Enhanced checks (v93.14):
         - File size (should be small)
         - File readability
         - File permissions
+        - Stale lock detection (check if owner PID is dead)
+        - Orphaned lock cleanup (no process holds the lock)
+
+        This proactively cleans up stale locks from crashed processes on startup,
+        preventing the 30-second ownership timeout.
 
         Returns:
             True if lock file is valid or recovered
@@ -4400,40 +4405,48 @@ class UnifiedStateCoordinator:
             if not lock_file.exists():
                 return True  # Doesn't exist = valid (will be created)
 
+            # ═══════════════════════════════════════════════════════════════════════
+            # v93.14: Proactive stale lock detection and cleanup
+            # This runs BEFORE entering the acquisition loop to prevent timeout
+            # ═══════════════════════════════════════════════════════════════════════
+            await self._detect_and_cleanup_orphaned_lock(lock_file)
+
             # Check file size (should be small)
             max_size = int(os.getenv("JARVIS_LOCK_FILE_MAX_SIZE", "4096"))  # 4KB max
             try:
-                size = lock_file.stat().st_size
-                if size > max_size:
-                    logger.warning(
-                        f"[StateCoord] Lock file {lock_file} suspiciously large "
-                        f"({size} bytes > {max_size}), recovering..."
-                    )
-                    backup = lock_file.with_suffix(".lock.corrupted")
-                    try:
-                        lock_file.rename(backup)
-                    except Exception:
-                        lock_file.unlink(missing_ok=True)
-                    logger.info(f"[StateCoord] Recovered corrupted lock file")
-                    return True
+                if lock_file.exists():  # Re-check after cleanup
+                    size = lock_file.stat().st_size
+                    if size > max_size:
+                        logger.warning(
+                            f"[StateCoord] Lock file {lock_file} suspiciously large "
+                            f"({size} bytes > {max_size}), recovering..."
+                        )
+                        backup = lock_file.with_suffix(".lock.corrupted")
+                        try:
+                            lock_file.rename(backup)
+                        except Exception:
+                            lock_file.unlink(missing_ok=True)
+                        logger.info(f"[StateCoord] Recovered corrupted lock file")
+                        return True
             except OSError:
                 pass  # Can't stat, try to continue
 
-            # Check if file is readable/writable
-            try:
-                fd = os.open(str(lock_file), os.O_RDWR)
-                os.close(fd)
-            except PermissionError:
-                logger.warning(f"[StateCoord] Lock file {lock_file} permission denied, recovering...")
+            # Check if file is readable/writable (only if it still exists)
+            if lock_file.exists():
                 try:
-                    lock_file.chmod(0o644)
-                except Exception:
+                    fd = os.open(str(lock_file), os.O_RDWR)
+                    os.close(fd)
+                except PermissionError:
+                    logger.warning(f"[StateCoord] Lock file {lock_file} permission denied, recovering...")
+                    try:
+                        lock_file.chmod(0o644)
+                    except Exception:
+                        lock_file.unlink(missing_ok=True)
+                    return True
+                except OSError as e:
+                    logger.warning(f"[StateCoord] Lock file {lock_file} error: {e}, recovering...")
                     lock_file.unlink(missing_ok=True)
-                return True
-            except OSError as e:
-                logger.warning(f"[StateCoord] Lock file {lock_file} error: {e}, recovering...")
-                lock_file.unlink(missing_ok=True)
-                return True
+                    return True
 
             return True
 
@@ -4444,6 +4457,146 @@ class UnifiedStateCoordinator:
             except Exception:
                 pass
             return True
+
+    async def _detect_and_cleanup_orphaned_lock(self, lock_file: Path) -> bool:
+        """
+        v93.14: Detect and clean up orphaned lock files from crashed processes.
+
+        This method checks:
+        1. If any process is holding the lock file open (via lsof)
+        2. If the state file records an owner PID, and if that PID is still alive
+        3. Whether the lock file is truly orphaned (no holder, dead owner)
+
+        This is called proactively on startup to prevent timeout waiting for
+        a lock that will never be released.
+
+        Returns:
+            True if lock was cleaned up, False if lock is valid/held
+        """
+        try:
+            if not lock_file.exists():
+                return False  # Nothing to cleanup
+
+            # ═══════════════════════════════════════════════════════════════════════
+            # Step 1: Check if any process has the lock file open
+            # ═══════════════════════════════════════════════════════════════════════
+            holding_pids: List[int] = []
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "lsof", "-t", str(lock_file),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+                if stdout and stdout.strip():
+                    holding_pids = [
+                        int(p) for p in stdout.decode().strip().split('\n')
+                        if p.strip()
+                    ]
+            except asyncio.TimeoutError:
+                logger.debug("[StateCoord] v93.14 lsof check timed out")
+                return False  # Can't determine - don't cleanup
+            except FileNotFoundError:
+                # lsof not available - fall through to PID check
+                pass
+            except ValueError:
+                # Failed to parse lsof output
+                pass
+
+            # If a process is holding the lock, it's valid
+            if holding_pids:
+                # Don't count ourselves
+                non_self_pids = [p for p in holding_pids if p != self._pid]
+                if non_self_pids:
+                    logger.debug(
+                        f"[StateCoord] v93.14 Lock file held by PIDs: {non_self_pids}"
+                    )
+                    return False  # Lock is valid
+
+            # ═══════════════════════════════════════════════════════════════════════
+            # Step 2: No process has lock open - check state file for recorded owner
+            # ═══════════════════════════════════════════════════════════════════════
+            state_file = self.state_file
+            if state_file.exists():
+                try:
+                    content = state_file.read_text()
+                    state = json.loads(content)
+                    owners = state.get("owners", {})
+
+                    # Check each component owner
+                    for component, owner_data in owners.items():
+                        if isinstance(owner_data, dict):
+                            owner_pid = owner_data.get("pid")
+                            if owner_pid:
+                                # Check if owner PID is still alive
+                                try:
+                                    os.kill(owner_pid, 0)
+                                    # PID exists - but we already know no one has the lock
+                                    # This is a PID reuse scenario - the lock is stale
+                                    logger.info(
+                                        f"[StateCoord] v93.14 Lock orphaned: owner PID {owner_pid} "
+                                        f"exists but doesn't hold lock (PID reuse)"
+                                    )
+                                except (ProcessLookupError, PermissionError):
+                                    # PID is dead - lock is definitely stale
+                                    logger.info(
+                                        f"[StateCoord] v93.14 Lock orphaned: owner PID {owner_pid} is dead"
+                                    )
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.debug(f"[StateCoord] v93.14 State file read error: {e}")
+
+            # ═══════════════════════════════════════════════════════════════════════
+            # Step 3: Lock is orphaned - clean it up
+            # ═══════════════════════════════════════════════════════════════════════
+            logger.info(
+                f"[StateCoord] v93.14 Cleaning up orphaned lock file: {lock_file}"
+            )
+
+            async with self._file_lock:
+                if lock_file.exists():
+                    lock_file.unlink()
+                    logger.info(
+                        f"[StateCoord] v93.14 Removed orphaned lock file successfully"
+                    )
+
+                # Also clean stale owners from state file
+                if state_file.exists():
+                    try:
+                        content = state_file.read_text()
+                        state = json.loads(content)
+                        owners = state.get("owners", {})
+                        cleaned_owners = {}
+
+                        for comp, owner_data in owners.items():
+                            if isinstance(owner_data, dict):
+                                owner_pid = owner_data.get("pid")
+                                if owner_pid:
+                                    try:
+                                        os.kill(owner_pid, 0)
+                                        # PID alive - check if it actually holds locks
+                                        # If we got here, no one holds the lock, so skip
+                                    except (ProcessLookupError, PermissionError):
+                                        pass  # Dead - skip this owner
+                                    continue
+                            # Preserve non-dict entries
+                            cleaned_owners[comp] = owner_data
+
+                        if len(cleaned_owners) < len(owners):
+                            state["owners"] = cleaned_owners
+                            state_file.write_text(json.dumps(state, indent=2))
+                            logger.debug(
+                                f"[StateCoord] v93.14 Cleaned {len(owners) - len(cleaned_owners)} "
+                                f"stale owners from state"
+                            )
+                    except (json.JSONDecodeError, OSError) as e:
+                        logger.debug(f"[StateCoord] v93.14 State cleanup error: {e}")
+
+            return True
+
+        except Exception as e:
+            logger.debug(f"[StateCoord] v93.14 Orphaned lock detection error: {e}")
+            return False
 
     async def _validate_and_recover_state_file(self) -> bool:
         """
