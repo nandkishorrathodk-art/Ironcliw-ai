@@ -468,16 +468,26 @@ warnings.filterwarnings(
     message=".*list_audio_backends.*deprecated.*",
     category=UserWarning
 )
+# v93.14: Suppress "Wav2Vec2Model is frozen" informational warning
+# This is expected behavior - the model is frozen for inference
+warnings.filterwarnings(
+    "ignore",
+    message=".*Wav2Vec2Model is frozen.*",
+    category=UserWarning
+)
 
 # Also pre-configure SpeechBrain loggers to WARNING level BEFORE import
 # This prevents DEBUG messages during model loading
+# v93.14: Added huggingface_transformers for "frozen model" warnings
 for _sb_logger_name in [
     "speechbrain",
     "speechbrain.utils.checkpoints",
     "speechbrain.utils.quirks",
     "speechbrain.utils.torch_audio_backend",
+    "speechbrain.lobes.models.huggingface_transformers",
+    "speechbrain.lobes.models.huggingface_transformers.huggingface",
 ]:
-    logging.getLogger(_sb_logger_name).setLevel(logging.WARNING)
+    logging.getLogger(_sb_logger_name).setLevel(logging.ERROR)  # v93.14: Changed to ERROR to suppress frozen warnings
 
 # =============================================================================
 # HYPER-RUNTIME ENGINE v9.0: Rust-First Async Architecture

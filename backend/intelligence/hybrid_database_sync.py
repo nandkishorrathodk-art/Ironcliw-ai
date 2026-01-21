@@ -86,21 +86,27 @@ try:
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
-    logger.warning("FAISS not available - install with: pip install faiss-cpu")
+    # v93.14: Changed from WARNING to INFO since FAISS is optional
+    # System works with fallback in-memory vector storage
+    logger.info("FAISS not available - using fallback vector store (install with: pip install faiss-cpu)")
 
 try:
     import redis.asyncio as aioredis
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
-    logger.warning("Redis not available - install with: pip install redis")
+    # v93.14: Changed from WARNING to INFO since Redis is optional
+    # System works without distributed caching
+    logger.info("Redis not available - distributed caching disabled (install with: pip install redis)")
 
 try:
     from prometheus_client import Counter, Gauge, Histogram, start_http_server
     PROMETHEUS_AVAILABLE = True
 except ImportError:
     PROMETHEUS_AVAILABLE = False
-    logger.warning("Prometheus not available - install with: pip install prometheus-client")
+    # v93.14: Changed from WARNING to INFO since Prometheus is optional
+    # System works without metrics export
+    logger.info("Prometheus not available - metrics export disabled (install with: pip install prometheus-client)")
 
 try:
     import grpc
@@ -108,7 +114,9 @@ try:
     GRPC_AVAILABLE = True
 except ImportError:
     GRPC_AVAILABLE = False
-    logger.warning("gRPC not available - install with: pip install grpcio grpcio-tools")
+    # v93.14: Changed from WARNING to INFO since gRPC is optional
+    # System works without gRPC transport
+    logger.info("gRPC not available - using HTTP transport (install with: pip install grpcio grpcio-tools)")
 
 
 class SyncStatus(Enum):
@@ -711,7 +719,8 @@ class RedisMetrics:
         self.key_prefix = "jarvis:metrics:"
 
         if not self.enabled:
-            logger.warning("⚠️  Redis not available - distributed metrics disabled")
+            # v93.14: Changed from WARNING to DEBUG - already logged at import time
+            logger.debug("Redis not available - distributed metrics disabled")
 
     async def connect(self):
         """Connect to Redis"""

@@ -220,7 +220,8 @@ class NeuralMeshCoordinator:
             raise RuntimeError("Coordinator not initialized. Call initialize() first.")
 
         if self._running:
-            logger.warning("Coordinator already running")
+            # v93.14: Changed from WARNING to DEBUG - this is expected idempotent behavior
+            logger.debug("Coordinator already running - skipping duplicate start")
             return
 
         logger.info("Starting Neural Mesh system...")
