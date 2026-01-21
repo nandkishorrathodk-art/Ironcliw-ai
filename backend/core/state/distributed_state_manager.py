@@ -357,29 +357,60 @@ class RedisStateStore(StateStore):
         self._instance_id = str(uuid.uuid4())[:12]
 
     async def connect(self) -> bool:
-        """Connect to Redis."""
+        """
+        Connect to Redis with retry logic.
+
+        v93.14: Enhanced with:
+        - Retry mechanism for transient connection failures
+        - Better error logging with specific failure reasons
+        - Connection timeout configuration
+        """
         if self._connected:
             return True
 
-        try:
-            import redis.asyncio as aioredis
+        max_retries = 3
+        retry_delay = 0.5
 
-            self._redis = aioredis.from_url(
-                self.redis_url,
-                db=self.db,
-                decode_responses=True,
-            )
-            await self._redis.ping()
-            self._connected = True
-            self.logger.info(f"Connected to Redis for state at {self.redis_url}")
-            return True
+        for attempt in range(max_retries):
+            try:
+                import redis.asyncio as aioredis
 
-        except ImportError:
-            self.logger.warning("redis package not installed")
-            return False
-        except Exception as e:
-            self.logger.warning(f"Redis connection failed: {e}")
-            return False
+                self.logger.debug(
+                    f"Attempting Redis connection to {self.redis_url} (DB {self.db}), "
+                    f"attempt {attempt + 1}/{max_retries}"
+                )
+
+                self._redis = aioredis.from_url(
+                    self.redis_url,
+                    db=self.db,
+                    decode_responses=True,
+                    socket_timeout=5.0,
+                    socket_connect_timeout=5.0,
+                )
+                await self._redis.ping()
+                self._connected = True
+                self.logger.info(f"Connected to Redis for state at {self.redis_url} (DB {self.db})")
+                return True
+
+            except ImportError as e:
+                self.logger.warning(f"redis package not installed: {e}")
+                return False
+            except ConnectionRefusedError:
+                self.logger.warning(
+                    f"Redis connection refused at {self.redis_url} - "
+                    "is Redis server running? (brew services start redis)"
+                )
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+            except Exception as e:
+                self.logger.warning(f"Redis connection failed (attempt {attempt + 1}): {type(e).__name__}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+
+        self.logger.warning(f"Redis connection failed after {max_retries} attempts - using local fallback")
+        return False
 
     async def disconnect(self) -> None:
         """Disconnect from Redis."""

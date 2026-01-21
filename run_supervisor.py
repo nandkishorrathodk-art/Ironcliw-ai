@@ -15301,7 +15301,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 print(f"  {TerminalUI.GREEN}   ├─ Transactional updates enabled{TerminalUI.RESET}")
                 print(f"  {TerminalUI.GREEN}   └─ Leader election active{TerminalUI.RESET}")
             else:
-                print(f"  {TerminalUI.YELLOW}   └─ Running in local-only mode (Redis unavailable){TerminalUI.RESET}")
+                # v93.14: Changed from YELLOW to DIM - local mode is valid fallback
+                print(f"  {TerminalUI.DIM}   └─ Local mode (Redis optional){TerminalUI.RESET}")
 
         except ImportError as e:
             self.logger.warning(f"[v100.0] ⚠️ Distributed State Manager import failed: {e}")
