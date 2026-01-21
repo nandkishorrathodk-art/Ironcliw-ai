@@ -3183,12 +3183,22 @@ echo "=== JARVIS Prime started ==="
                     if response.status == 200:
                         data = await response.json()
                         current_status = data.get("status", "unknown")
+                        current_phase = data.get("phase", "")  # v93.12: Also track phase
                         model_elapsed = data.get("model_load_elapsed_seconds", 0)
                         current_step = data.get("current_step", "")
                         model_progress = data.get("model_load_progress_pct", 0)
+                        startup_elapsed = data.get("startup_elapsed_seconds", 0)  # v93.12: Track overall startup
 
-                        # v93.7: Check if fully healthy (replaces separate _check_health call)
-                        if current_status == "healthy":
+                        # v93.12: Multiple ways to detect "healthy" state
+                        # - status == "healthy" (standard)
+                        # - phase == "ready" (jarvis-prime specific)
+                        is_healthy = (
+                            current_status == "healthy"
+                            or current_phase == "ready"
+                            or (data.get("ready_for_inference", False) and data.get("model_loaded", False))
+                        )
+
+                        if is_healthy:
                             logger.info(
                                 f"    ✅ {managed.definition.name} fully healthy after {total_elapsed:.1f}s "
                                 f"(server: {phase2_start - start_time:.1f}s, model: {phase2_elapsed:.1f}s)"
@@ -3196,16 +3206,34 @@ echo "=== JARVIS Prime started ==="
                             )
                             return True
 
+                        # v93.12: Early exit on error status
+                        if current_status == "error":
+                            error_msg = data.get("error", "Unknown error")
+                            logger.error(
+                                f"    ❌ {managed.definition.name} reported error: {error_msg}"
+                            )
+                            # Don't return False immediately - let the process try to recover
+                            # unless error persists for multiple checks
+
                         # v93.5: Detect progress (model_elapsed increasing)
                         if model_elapsed and model_elapsed > last_model_elapsed:
                             progress_detected_at = time.time()
                             last_model_elapsed = model_elapsed
 
+                        # v93.12: Also detect step changes as progress
+                        if current_step and current_step != getattr(self, '_last_detected_step', ''):
+                            progress_detected_at = time.time()
+                            self._last_detected_step = current_step
+                            logger.info(
+                                f"    📍 {managed.definition.name}: Step changed to '{current_step}'"
+                            )
+
                         # v93.7: Log status changes with step info
                         if current_status != last_status:
                             step_info = f" (step: {current_step})" if current_step else ""
+                            phase_info = f", phase: {current_phase}" if current_phase else ""
                             logger.info(
-                                f"    ℹ️  {managed.definition.name}: status={current_status}{step_info}"
+                                f"    ℹ️  {managed.definition.name}: status={current_status}{step_info}{phase_info}"
                             )
                             last_status = current_status
 
