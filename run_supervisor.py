@@ -868,7 +868,7 @@ class BootstrapConfig:
     jarvis_prime_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true")
     jarvis_prime_auto_start: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_AUTO_START", "true").lower() == "true")
     jarvis_prime_host: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "127.0.0.1"))
-    jarvis_prime_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8002")))
+    jarvis_prime_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000")))  # v93.15: Standardized to 8000
     jarvis_prime_repo_path: Path = field(default_factory=lambda: Path(os.getenv(
         "JARVIS_PRIME_PATH",
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
@@ -1225,7 +1225,7 @@ class TrinityLaunchConfig:
     # Port Configuration
     # =========================================================================
     jprime_ports: List[int] = field(default_factory=lambda:
-        [int(p) for p in os.getenv("TRINITY_JPRIME_PORTS", "8000,8002").split(",")]
+        [int(p) for p in os.getenv("TRINITY_JPRIME_PORTS", "8000").split(",")]  # v93.15: Standardized to 8000
     )
     reactor_core_ports: List[int] = field(default_factory=lambda:
         [int(p) for p in os.getenv("TRINITY_REACTOR_PORTS", "8090").split(",")]

@@ -789,11 +789,24 @@ class ProcessOrchestrator:
             pids = stdout.decode().strip().split('\n')
             killed = False
 
+            # v93.15: Get current process ID to avoid self-kill
+            current_pid = os.getpid()
+            parent_pid = os.getppid()
+
             for pid_str in pids:
                 if not pid_str:
                     continue
                 try:
                     pid = int(pid_str)
+
+                    # v93.15: CRITICAL - Never kill the current process or its parent
+                    if pid == current_pid:
+                        logger.debug(f"    Skipping current process (PID: {pid}) on port {port}")
+                        continue
+                    if pid == parent_pid:
+                        logger.debug(f"    Skipping parent process (PID: {pid}) on port {port}")
+                        continue
+
                     os.kill(pid, signal.SIGTERM)
                     logger.info(f"    🔪 Killed stale process on port {port} (PID: {pid})")
                     killed = True
