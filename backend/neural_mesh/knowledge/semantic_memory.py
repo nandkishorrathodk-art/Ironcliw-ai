@@ -1234,6 +1234,7 @@ class SemanticMemory:
         max_runtime = float(os.getenv("TIMEOUT_MEMORY_CONSOLIDATION_SESSION", "86400.0"))  # 24 hours
         consolidation_timeout = float(os.getenv("TIMEOUT_MEMORY_CONSOLIDATION_ITERATION", "120.0"))
         start = time.time()
+        cancelled = False
 
         while time.time() - start < max_runtime:
             try:
@@ -1242,11 +1243,15 @@ class SemanticMemory:
             except asyncio.TimeoutError:
                 logger.warning("Memory consolidation iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.exception(f"Error in consolidation loop: {e}")
 
-        logger.info("Memory consolidation loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("Memory consolidation loop cancelled (shutdown)")
+        else:
+            logger.info("Memory consolidation loop reached max runtime, exiting")
 
     async def _consolidate_memories(self):
         """
@@ -1296,6 +1301,7 @@ class SemanticMemory:
         max_runtime = float(os.getenv("TIMEOUT_MEMORY_PRUNING_SESSION", "86400.0"))  # 24 hours
         pruning_timeout = float(os.getenv("TIMEOUT_MEMORY_PRUNING_ITERATION", "120.0"))
         start = time.time()
+        cancelled = False
 
         while time.time() - start < max_runtime:
             try:
@@ -1304,11 +1310,15 @@ class SemanticMemory:
             except asyncio.TimeoutError:
                 logger.warning("Memory pruning iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.exception(f"Error in pruning loop: {e}")
 
-        logger.info("Memory pruning loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("Memory pruning loop cancelled (shutdown)")
+        else:
+            logger.info("Memory pruning loop reached max runtime, exiting")
 
     async def _prune_memories(self):
         """Prune memories with very low relevance."""

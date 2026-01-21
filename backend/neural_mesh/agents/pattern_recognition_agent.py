@@ -683,6 +683,7 @@ class PatternRecognitionAgent(BaseNeuralMeshAgent):
         analysis_interval = float(os.getenv("PATTERN_ANALYSIS_INTERVAL", "300.0"))  # 5 minutes
         iteration_timeout = float(os.getenv("TIMEOUT_PATTERN_ANALYSIS_ITERATION", "60.0"))
         start = time.monotonic()
+        cancelled = False
 
         while time.monotonic() - start < max_runtime:
             try:
@@ -704,8 +705,12 @@ class PatternRecognitionAgent(BaseNeuralMeshAgent):
             except asyncio.TimeoutError:
                 logger.warning("Pattern analysis iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.exception(f"Error in periodic pattern analysis: {e}")
 
-        logger.info("Pattern analysis loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("Pattern analysis loop cancelled (shutdown)")
+        else:
+            logger.info("Pattern analysis loop reached max runtime, exiting")

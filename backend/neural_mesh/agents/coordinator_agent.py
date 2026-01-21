@@ -366,6 +366,7 @@ class CoordinatorAgent(BaseNeuralMeshAgent):
         queue_timeout = float(os.getenv("TIMEOUT_TASK_QUEUE_GET", "1.0"))
         task_timeout = float(os.getenv("TIMEOUT_TASK_PROCESSING", "30.0"))
         start = time.monotonic()
+        cancelled = False
 
         while time.monotonic() - start < max_runtime:
             try:
@@ -386,8 +387,12 @@ class CoordinatorAgent(BaseNeuralMeshAgent):
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.exception(f"Error processing task: {e}")
 
-        logger.info("Task queue processor reached max runtime, exiting")
+        if cancelled:
+            logger.info("Task queue processor cancelled (shutdown)")
+        else:
+            logger.info("Task queue processor reached max runtime, exiting")

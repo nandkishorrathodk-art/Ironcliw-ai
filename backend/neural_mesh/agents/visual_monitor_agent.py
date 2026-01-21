@@ -10330,6 +10330,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         max_runtime = float(os.getenv("TIMEOUT_STATE_SYNC_SESSION", "86400.0"))  # 24 hours
         sync_timeout = float(os.getenv("TIMEOUT_STATE_SYNC_ITERATION", "30.0"))
         start = time.time()
+        cancelled = False
 
         while time.time() - start < max_runtime:
             try:
@@ -10338,11 +10339,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             except asyncio.TimeoutError:
                 logger.warning("State sync iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.error(f"Error in state sync: {e}")
 
-        logger.info("State sync loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("State sync loop cancelled (shutdown)")
+        else:
+            logger.info("State sync loop reached max runtime, exiting")
 
     async def _sync_state(self):
         """Write current state to cross-repo file."""

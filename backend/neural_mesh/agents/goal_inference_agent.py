@@ -644,6 +644,7 @@ class GoalInferenceAgent(BaseNeuralMeshAgent):
         max_runtime = float(os.getenv("TIMEOUT_GOAL_ANALYSIS_SESSION", "86400.0"))  # 24 hours
         iteration_timeout = float(os.getenv("TIMEOUT_GOAL_ANALYSIS_ITERATION", "30.0"))
         start = time.monotonic()
+        cancelled = False
 
         while time.monotonic() - start < max_runtime:
             try:
@@ -667,8 +668,12 @@ class GoalInferenceAgent(BaseNeuralMeshAgent):
             except asyncio.TimeoutError:
                 logger.warning("Goal analysis iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.warning(f"Goal analysis error: {e}")
 
-        logger.info("Goal analysis loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("Goal analysis loop cancelled (shutdown)")
+        else:
+            logger.info("Goal analysis loop reached max runtime, exiting")

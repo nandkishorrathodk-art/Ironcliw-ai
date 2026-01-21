@@ -250,6 +250,7 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         max_runtime = float(os.getenv("TIMEOUT_HEALTH_MONITORING_SESSION", "86400.0"))  # 24 hours
         health_check_timeout = float(os.getenv("TIMEOUT_HEALTH_CHECK_ITERATION", "30.0"))
         start = time.monotonic()
+        cancelled = False
 
         while time.monotonic() - start < max_runtime:
             try:
@@ -282,8 +283,12 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
             except asyncio.TimeoutError:
                 logger.warning("Health check iteration timed out")
             except asyncio.CancelledError:
+                cancelled = True
                 break
             except Exception as e:
                 logger.exception(f"Error in health monitoring: {e}")
 
-        logger.info("Health monitoring loop reached max runtime, exiting")
+        if cancelled:
+            logger.info("Health monitoring loop cancelled (shutdown)")
+        else:
+            logger.info("Health monitoring loop reached max runtime, exiting")
