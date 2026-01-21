@@ -438,12 +438,46 @@ import platform
 import signal
 import sys
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+# =============================================================================
+# v93.12: SUPPRESS SPEECHBRAIN AND TORCHAUDIO DEPRECATION WARNINGS
+# =============================================================================
+# SpeechBrain 1.0 deprecated speechbrain.pretrained in favor of speechbrain.inference
+# This filter prevents noisy deprecation warnings during startup while we maintain
+# backwards compatibility with older SpeechBrain versions.
+# =============================================================================
+warnings.filterwarnings(
+    "ignore",
+    message=".*speechbrain\.pretrained.*deprecated.*",
+    category=UserWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*torchaudio.*_backend.*deprecated.*",
+    category=UserWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*list_audio_backends.*deprecated.*",
+    category=UserWarning
+)
+
+# Also pre-configure SpeechBrain loggers to WARNING level BEFORE import
+# This prevents DEBUG messages during model loading
+for _sb_logger_name in [
+    "speechbrain",
+    "speechbrain.utils.checkpoints",
+    "speechbrain.utils.quirks",
+    "speechbrain.utils.torch_audio_backend",
+]:
+    logging.getLogger(_sb_logger_name).setLevel(logging.WARNING)
 
 # =============================================================================
 # HYPER-RUNTIME ENGINE v9.0: Rust-First Async Architecture
@@ -1999,6 +2033,12 @@ def setup_logging(config: BootstrapConfig) -> logging.Logger:
         noisy_loggers = [
             "urllib3", "asyncio", "aiohttp", "httpx",
             "httpcore", "charset_normalizer", "google", "grpc",
+            # v93.12: Suppress SpeechBrain verbose debug logging
+            "speechbrain",
+            "speechbrain.utils.checkpoints",
+            "speechbrain.utils.quirks",
+            "speechbrain.utils.torch_audio_backend",
+            "speechbrain.lobes.models.huggingface_transformers.huggingface",
         ]
         for logger_name in noisy_loggers:
             logging.getLogger(logger_name).setLevel(logging.WARNING)
@@ -2025,7 +2065,13 @@ def setup_logging(config: BootstrapConfig) -> logging.Logger:
         # Reduce noise from libraries
         noisy_loggers = [
             "urllib3", "asyncio", "aiohttp", "httpx",
-            "httpcore", "charset_normalizer"
+            "httpcore", "charset_normalizer",
+            # v93.12: Suppress SpeechBrain verbose debug logging
+            "speechbrain",
+            "speechbrain.utils.checkpoints",
+            "speechbrain.utils.quirks",
+            "speechbrain.utils.torch_audio_backend",
+            "speechbrain.lobes.models.huggingface_transformers.huggingface",
         ]
         for logger_name in noisy_loggers:
             logging.getLogger(logger_name).setLevel(logging.WARNING)
