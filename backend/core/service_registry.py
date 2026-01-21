@@ -414,6 +414,12 @@ class ServiceRegistry:
         # v93.0: Use DirectoryManager for robust directory handling
         self._dir_manager = DirectoryManager(self.registry_dir)
 
+        # v93.14: Rate limit stale warnings (max 1 per service per 60s)
+        self._stale_warning_times: Dict[str, float] = {}
+        self._warning_rate_limit_seconds = float(
+            os.environ.get("JARVIS_STALE_WARNING_RATE_LIMIT", "60.0")
+        )
+
         # v93.0: Ensure directory exists with retry logic
         if not self._dir_manager.ensure_directory_sync():
             logger.error(f"[v93.0] CRITICAL: Failed to create registry directory: {self.registry_dir}")
@@ -641,11 +647,18 @@ class ServiceRegistry:
         )
 
         if is_stale:
-            startup_note = " (after startup grace)" if not is_in_startup else ""
-            logger.warning(
-                f"⚠️  Service {service_name} is stale{startup_note} "
-                f"(last heartbeat {time.time() - service.last_heartbeat:.0f}s ago)"
-            )
+            # v93.14: Rate limit stale warnings to prevent log flooding
+            current_time = time.time()
+            last_warning_time = self._stale_warning_times.get(service_name, 0)
+
+            if current_time - last_warning_time >= self._warning_rate_limit_seconds:
+                startup_note = " (after startup grace)" if not is_in_startup else ""
+                logger.warning(
+                    f"⚠️  Service {service_name} is stale{startup_note} "
+                    f"(last heartbeat {current_time - service.last_heartbeat:.0f}s ago)"
+                )
+                self._stale_warning_times[service_name] = current_time
+
             return None
 
         return service
@@ -711,6 +724,10 @@ class ServiceRegistry:
             service.metadata.update(metadata)
 
         await asyncio.to_thread(self._write_registry, services)
+
+        # v93.14: Clear stale warning rate limiter on successful heartbeat
+        if service_name in self._stale_warning_times:
+            del self._stale_warning_times[service_name]
 
         return True
 
@@ -1468,8 +1485,21 @@ class ServiceSupervisor:
         return process is not None
 
     async def _monitor_loop(self) -> None:
-        """Background loop to monitor and auto-restart services."""
-        logger.info(f"[v17.0] Service monitor started (interval: {self._monitor_interval}s)")
+        """
+        v93.14: Enhanced background loop with proactive heartbeat sending.
+
+        CRITICAL FIX: The previous implementation only checked if services were
+        stale via discover_service(), but didn't send heartbeats to keep them alive.
+        This caused a vicious cycle where services were marked stale because no one
+        was sending heartbeats on their behalf.
+
+        Now:
+        1. List all services WITHOUT triggering stale warnings
+        2. Do actual HTTP health checks for services with health endpoints
+        3. Send heartbeats for healthy services to keep them alive
+        4. Only restart truly unhealthy services
+        """
+        logger.info(f"[v93.14] Service monitor started (interval: {self._monitor_interval}s)")
 
         while self._running:
             try:
@@ -1480,21 +1510,145 @@ class ServiceSupervisor:
                     if config.restart_policy == "never":
                         continue
 
-                    # Try to discover the service
-                    service_info = await self.registry.discover_service(service_name)
-
-                    if service_info is None:
-                        # Service is dead or stale - restart it
-                        logger.warning(
-                            f"[v17.0] Service {service_name} is dead/stale, initiating restart"
-                        )
-                        await self.restart_service(service_name)
+                    try:
+                        await self._check_and_heartbeat_service(service_name, config)
+                    except Exception as svc_error:
+                        logger.debug(f"[v93.14] Error checking {service_name}: {svc_error}")
 
             except asyncio.CancelledError:
-                logger.info("[v17.0] Service monitor stopping")
+                logger.info("[v93.14] Service monitor stopping")
                 break
             except Exception as e:
-                logger.error(f"[v17.0] Monitor loop error: {e}", exc_info=True)
+                logger.error(f"[v93.14] Monitor loop error: {e}", exc_info=True)
+
+    async def _check_and_heartbeat_service(
+        self,
+        service_name: str,
+        config: "ServiceLaunchConfig"
+    ) -> None:
+        """
+        v93.14: Check service health and send heartbeat if alive.
+
+        This method performs:
+        1. Direct HTTP health check (preferred if endpoint available)
+        2. Process alive check (fallback)
+        3. Heartbeat sending on successful health check
+        4. Service restart if truly dead
+
+        Args:
+            service_name: Name of service to check
+            config: Launch configuration with health endpoint info
+        """
+        import aiohttp
+
+        is_healthy = False
+        health_status = "unknown"
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # Step 1: Try HTTP health check if endpoint is configured
+        # ═══════════════════════════════════════════════════════════════════════
+        health_url = None
+        if hasattr(config, 'health_endpoint') and config.health_endpoint:
+            # Get port from environment or config
+            port = None
+            if "jarvis-prime" in service_name.lower() or "jprime" in service_name.lower():
+                port = int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+            elif "reactor" in service_name.lower():
+                port = int(os.environ.get("REACTOR_CORE_PORT", "8090"))
+
+            if port:
+                health_url = f"http://localhost:{port}{config.health_endpoint}"
+
+        if health_url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        health_url,
+                        timeout=aiohttp.ClientTimeout(total=config.health_check_timeout_sec or 5.0)
+                    ) as response:
+                        is_healthy = response.status == 200
+                        if is_healthy:
+                            health_status = "healthy"
+                            logger.debug(f"[v93.14] {service_name} HTTP health check passed")
+                        else:
+                            health_status = f"unhealthy (HTTP {response.status})"
+            except aiohttp.ClientError as http_err:
+                health_status = f"unreachable ({type(http_err).__name__})"
+                logger.debug(f"[v93.14] {service_name} HTTP health check failed: {http_err}")
+            except Exception as http_err:
+                health_status = f"error ({type(http_err).__name__})"
+                logger.debug(f"[v93.14] {service_name} HTTP health check error: {http_err}")
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # Step 2: Fallback to process alive check if HTTP check failed
+        # ═══════════════════════════════════════════════════════════════════════
+        if not is_healthy and service_name in self._processes:
+            proc = self._processes[service_name]
+            if proc.returncode is None:
+                # Process is running - assume healthy for heartbeat purposes
+                is_healthy = True
+                health_status = "process_alive"
+                logger.debug(f"[v93.14] {service_name} process alive (PID: {proc.pid})")
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # Step 3: Send heartbeat if service is healthy
+        # ═══════════════════════════════════════════════════════════════════════
+        if is_healthy:
+            try:
+                await self.registry.heartbeat(
+                    service_name,
+                    status=health_status,
+                    metadata={"checked_by": "ServiceSupervisor", "health_url": health_url}
+                )
+                logger.debug(f"[v93.14] Sent heartbeat for {service_name} ({health_status})")
+            except Exception as hb_err:
+                logger.warning(f"[v93.14] Failed to send heartbeat for {service_name}: {hb_err}")
+        else:
+            # ═══════════════════════════════════════════════════════════════════
+            # Step 4: Service is unhealthy - check if we should restart
+            # ═══════════════════════════════════════════════════════════════════
+            history = self._restart_history.get(service_name)
+            if history and not history.should_restart(config.max_restarts or 5):
+                logger.warning(
+                    f"[v93.14] {service_name} unhealthy but max restarts reached, skipping"
+                )
+                return
+
+            # Check if service is registered but stale (use list_services to avoid warning)
+            services = await self.registry.list_services(healthy_only=False)
+            service_info = next(
+                (s for s in services if s.service_name == service_name),
+                None
+            )
+
+            if service_info is None:
+                # Service not registered at all - needs restart
+                logger.warning(
+                    f"[v93.14] {service_name} not registered, initiating restart"
+                )
+                await self.restart_service(service_name)
+            elif not service_info.is_process_alive():
+                # Service registered but process is dead
+                logger.warning(
+                    f"[v93.14] {service_name} process dead (was PID {service_info.pid}), "
+                    f"initiating restart"
+                )
+                await self.restart_service(service_name)
+            else:
+                # Process is alive but HTTP check failed - send degraded heartbeat
+                # to prevent stale detection, but don't restart yet
+                try:
+                    await self.registry.heartbeat(
+                        service_name,
+                        status="degraded",
+                        metadata={"reason": health_status}
+                    )
+                    logger.debug(
+                        f"[v93.14] Sent degraded heartbeat for {service_name} "
+                        f"(process alive but health check failed)"
+                    )
+                except Exception as hb_err:
+                    logger.debug(f"[v93.14] Failed to send degraded heartbeat: {hb_err}")
 
     async def start(self) -> None:
         """Start the service supervisor."""
