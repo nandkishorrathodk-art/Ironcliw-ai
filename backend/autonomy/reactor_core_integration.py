@@ -874,6 +874,31 @@ class PrimeNeuralMeshBridge:
                             await self._poll_prime_status()
                             retry_count = 0
                             await asyncio.sleep(60)
+                elif "403" in error_msg:
+                    # v93.15: HTTP 403 Forbidden - WebSocket endpoint might not be ready yet
+                    # or authentication/CORS issue. This is common during startup.
+                    if in_startup:
+                        delay = min(5.0 * retry_count, 15.0)
+                        if retry_count <= 5:
+                            if retry_count == 1:
+                                logger.info("[PrimeNeuralMesh] WebSocket not ready (403) - Prime may still be starting")
+                            await asyncio.sleep(delay)
+                        else:
+                            logger.info("[PrimeNeuralMesh] WebSocket unavailable - using REST polling")
+                            asyncio.create_task(self._poll_prime_status())
+                            retry_count = 0
+                            await asyncio.sleep(30)
+                    else:
+                        # After startup, use REST polling as fallback
+                        delay = min(30.0 * (retry_count - 1), 120.0)
+                        if retry_count <= 3:
+                            logger.info(f"[PrimeNeuralMesh] WebSocket 403 - retry {retry_count}/3 in {delay:.0f}s")
+                            await asyncio.sleep(delay)
+                        else:
+                            logger.info("[PrimeNeuralMesh] WebSocket unavailable - falling back to REST polling")
+                            await self._poll_prime_status()
+                            retry_count = 0
+                            await asyncio.sleep(60)
                 else:
                     # Other errors
                     if retry_count <= 3:
