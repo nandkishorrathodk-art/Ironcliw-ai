@@ -119,6 +119,43 @@ class StartupPhase(str, Enum):
     KNOWLEDGE_GRAPH = "knowledge_graph"         # Knowledge graph initialization
     TRAINING_PIPELINE = "training_pipeline"     # Training pipeline
     OBSERVABILITY = "observability"             # Trinity observability/monitoring
+    # v93.16: OUROBOROS Self-Improvement Engine Phases
+    OUROBOROS_INIT = "ouroboros_init"           # Ouroboros engine initialization
+    OUROBOROS_ANALYZER = "ouroboros_analyzer"   # Code analyzer activation
+    OUROBOROS_GENETIC = "ouroboros_genetic"     # Genetic evolver ready
+    OUROBOROS_VALIDATOR = "ouroboros_validator" # Test validator online
+    OUROBOROS_PROTECTOR = "ouroboros_protector" # Rollback protector ready
+    OUROBOROS_ORACLE = "ouroboros_oracle"       # Oracle prediction system
+    OUROBOROS_ACTIVE = "ouroboros_active"       # Full Ouroboros active
+    OUROBOROS_EVOLVING = "ouroboros_evolving"   # Currently evolving code
+    OUROBOROS_COMPLETE = "ouroboros_complete"   # Evolution cycle complete
+    # v93.16: Coding Council Phases
+    CODING_COUNCIL_INIT = "coding_council_init"     # Council initialization
+    CODING_COUNCIL_MEMBERS = "coding_council_members" # Council members joining
+    CODING_COUNCIL_READY = "coding_council_ready"   # Council ready for review
+    CODING_COUNCIL_VOTING = "coding_council_voting" # Council voting on changes
+    # v93.16: Surveillance & Security Phases
+    SURVEILLANCE_INIT = "surveillance_init"         # Surveillance initialization
+    SURVEILLANCE_VISION = "surveillance_vision"     # Vision monitoring active
+    SURVEILLANCE_THREAT = "surveillance_threat"     # Threat detection ready
+    SURVEILLANCE_ACTIVE = "surveillance_active"     # Full surveillance active
+    # v93.16: Advanced Neural Mesh Agent Phases
+    NEURAL_MESH_COORDINATOR = "neural_mesh_coordinator" # Coordinator agent
+    NEURAL_MESH_MEMORY = "neural_mesh_memory"       # Memory agent
+    NEURAL_MESH_PATTERN = "neural_mesh_pattern"     # Pattern recognition agent
+    NEURAL_MESH_SPATIAL = "neural_mesh_spatial"     # Spatial awareness agent
+    NEURAL_MESH_VISUAL = "neural_mesh_visual"       # Visual monitor agent
+    NEURAL_MESH_HEALTH = "neural_mesh_health"       # Health monitor agent
+    NEURAL_MESH_GOAL = "neural_mesh_goal"           # Goal inference agent
+    # v93.16: Data Flywheel Advanced Phases
+    FLYWHEEL_SCRAPING = "flywheel_scraping"         # Web scraping active
+    FLYWHEEL_INDEXING = "flywheel_indexing"         # Knowledge indexing
+    FLYWHEEL_EMBEDDING = "flywheel_embedding"       # Embedding generation
+    FLYWHEEL_EXPORTING = "flywheel_exporting"       # Training data export
+    # v93.16: Cross-Repo Integration Phases
+    CROSS_REPO_HEARTBEAT = "cross_repo_heartbeat"   # Heartbeat system active
+    CROSS_REPO_EVENTS = "cross_repo_events"         # Event streaming active
+    CROSS_REPO_SYNC = "cross_repo_sync"             # State sync active
 
 
 class NarrationPriority(Enum):
@@ -905,6 +942,297 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
         ],
         "complete": [
             "Observability online. Full system visibility achieved.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: OUROBOROS Self-Improvement Engine - The Serpent That Eats Itself
+    # ==========================================================================
+    StartupPhase.OUROBOROS_INIT: {
+        "start": [
+            "Awakening Ouroboros. Self-improvement engine initializing.",
+            "The serpent stirs. Ouroboros coming online.",
+            "Initiating Ouroboros self-evolution engine.",
+        ],
+        "preparing": [
+            "Preparing autonomous code evolution capabilities.",
+        ],
+    },
+    StartupPhase.OUROBOROS_ANALYZER: {
+        "start": [
+            "Ouroboros code analyzer activating. AST analysis ready.",
+            "Semantic code understanding coming online.",
+        ],
+        "complete": [
+            "Code analyzer ready. I can now understand my own structure.",
+        ],
+    },
+    StartupPhase.OUROBOROS_GENETIC: {
+        "start": [
+            "Genetic evolver initializing. Multi-path evolution preparing.",
+            "Evolution algorithms coming online.",
+        ],
+        "complete": [
+            "Genetic evolver ready. Evolutionary optimization enabled.",
+        ],
+    },
+    StartupPhase.OUROBOROS_VALIDATOR: {
+        "start": [
+            "Test validator coming online. Automated testing preparing.",
+        ],
+        "complete": [
+            "Test validator ready. All changes will be validated automatically.",
+        ],
+    },
+    StartupPhase.OUROBOROS_PROTECTOR: {
+        "start": [
+            "Rollback protector initializing. Safety snapshots preparing.",
+        ],
+        "complete": [
+            "Rollback protector active. Safe evolution with automatic recovery.",
+        ],
+    },
+    StartupPhase.OUROBOROS_ORACLE: {
+        "start": [
+            "Ouroboros Oracle initializing. Predictive analysis preparing.",
+        ],
+        "complete": [
+            "Oracle online. I can predict the impact of changes before making them.",
+        ],
+    },
+    StartupPhase.OUROBOROS_ACTIVE: {
+        "start": [
+            "Ouroboros fully awakened. Self-improvement capabilities online.",
+            "The serpent is complete. I can now evolve my own code.",
+        ],
+        "complete": [
+            "Ouroboros active. Autonomous self-improvement enabled.",
+            "I am now capable of improving myself. The cycle of evolution begins.",
+        ],
+        "announcement": [
+            "Ouroboros self-improvement engine is fully operational. I can analyze, improve, and evolve my own codebase autonomously. The serpent eats its tail.",
+        ],
+    },
+    StartupPhase.OUROBOROS_EVOLVING: {
+        "start": [
+            "Ouroboros evolving. Code improvement in progress.",
+            "Self-improvement cycle initiated.",
+        ],
+        "progress": [
+            "Evolution in progress. Analyzing and improving.",
+        ],
+    },
+    StartupPhase.OUROBOROS_COMPLETE: {
+        "complete": [
+            "Evolution cycle complete. Changes validated and committed.",
+            "Self-improvement successful. I have grown stronger.",
+            "Ouroboros cycle finished. Code evolved successfully.",
+        ],
+        "rollback": [
+            "Evolution cycle rolled back. Maintaining stability.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: Coding Council - Peer Review for Autonomous Code Changes
+    # ==========================================================================
+    StartupPhase.CODING_COUNCIL_INIT: {
+        "start": [
+            "Convening the Coding Council. Peer review system initializing.",
+            "Coding Council assembling. Multi-perspective code review preparing.",
+        ],
+    },
+    StartupPhase.CODING_COUNCIL_MEMBERS: {
+        "start": [
+            "Council members joining. Specialized reviewers coming online.",
+        ],
+        "python_expert": [
+            "Python expert joined the council.",
+        ],
+        "security_expert": [
+            "Security expert joined the council.",
+        ],
+        "performance_expert": [
+            "Performance expert joined the council.",
+        ],
+        "complete": [
+            "All council members present. Ready for deliberation.",
+        ],
+    },
+    StartupPhase.CODING_COUNCIL_READY: {
+        "complete": [
+            "Coding Council ready. All code changes will be peer reviewed.",
+            "Council assembled. Quality gates enforced.",
+        ],
+    },
+    StartupPhase.CODING_COUNCIL_VOTING: {
+        "start": [
+            "Council deliberating on proposed changes.",
+        ],
+        "approved": [
+            "Council approved the changes. Proceeding with implementation.",
+        ],
+        "rejected": [
+            "Council rejected the changes. Revisions required.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: Surveillance & Security System
+    # ==========================================================================
+    StartupPhase.SURVEILLANCE_INIT: {
+        "start": [
+            "Initializing surveillance systems. Security monitoring preparing.",
+            "Activating environmental awareness. Security systems coming online.",
+        ],
+    },
+    StartupPhase.SURVEILLANCE_VISION: {
+        "start": [
+            "Vision-based monitoring activating. Camera feeds connecting.",
+        ],
+        "complete": [
+            "Vision surveillance online. I can see my environment.",
+        ],
+    },
+    StartupPhase.SURVEILLANCE_THREAT: {
+        "start": [
+            "Threat detection systems initializing.",
+        ],
+        "complete": [
+            "Threat detection ready. Monitoring for security risks.",
+        ],
+    },
+    StartupPhase.SURVEILLANCE_ACTIVE: {
+        "complete": [
+            "Full surveillance active. Environmental security monitoring engaged.",
+            "Security systems operational. I am watching and protecting.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: Neural Mesh Agent Network - Distributed Intelligence
+    # ==========================================================================
+    StartupPhase.NEURAL_MESH_COORDINATOR: {
+        "start": [
+            "Neural Mesh coordinator coming online. Agent orchestration preparing.",
+        ],
+        "complete": [
+            "Coordinator agent online. Agent swarm management ready.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_MEMORY: {
+        "start": [
+            "Memory agent activating. Distributed memory management preparing.",
+        ],
+        "complete": [
+            "Memory agent online. Shared knowledge across all agents.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_PATTERN: {
+        "start": [
+            "Pattern recognition agent initializing.",
+        ],
+        "complete": [
+            "Pattern agent online. I can recognize patterns in data and behavior.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_SPATIAL: {
+        "start": [
+            "Spatial awareness agent activating.",
+        ],
+        "complete": [
+            "Spatial agent online. Environmental awareness enhanced.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_VISUAL: {
+        "start": [
+            "Visual monitor agent initializing. Screen analysis preparing.",
+        ],
+        "complete": [
+            "Visual agent online. Screen monitoring active.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_HEALTH: {
+        "start": [
+            "Health monitor agent activating.",
+        ],
+        "complete": [
+            "Health agent online. System wellness monitoring active.",
+        ],
+    },
+    StartupPhase.NEURAL_MESH_GOAL: {
+        "start": [
+            "Goal inference agent initializing. Intent understanding preparing.",
+        ],
+        "complete": [
+            "Goal agent online. I can infer user intentions.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: Data Flywheel Advanced Operations
+    # ==========================================================================
+    StartupPhase.FLYWHEEL_SCRAPING: {
+        "start": [
+            "Intelligent scraper activating. Web data collection preparing.",
+        ],
+        "active": [
+            "Scraping in progress. Gathering knowledge from the web.",
+        ],
+        "complete": [
+            "Scraping complete. New knowledge acquired.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_INDEXING: {
+        "start": [
+            "Knowledge indexer activating. Semantic indexing preparing.",
+        ],
+        "progress": [
+            "Indexing in progress. Organizing knowledge for retrieval.",
+        ],
+        "complete": [
+            "Indexing complete. Knowledge searchable and retrievable.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_EMBEDDING: {
+        "start": [
+            "Embedding generator activating. Vector representations preparing.",
+        ],
+        "progress": [
+            "Generating embeddings. Creating semantic representations.",
+        ],
+        "complete": [
+            "Embeddings generated. Semantic search enabled.",
+        ],
+    },
+    StartupPhase.FLYWHEEL_EXPORTING: {
+        "start": [
+            "Training data exporter activating. Preparing data for Reactor Core.",
+        ],
+        "complete": [
+            "Training data exported. Ready for model improvement.",
+        ],
+    },
+    # ==========================================================================
+    # v93.16: Cross-Repo Integration Systems
+    # ==========================================================================
+    StartupPhase.CROSS_REPO_HEARTBEAT: {
+        "start": [
+            "Cross-repo heartbeat system initializing.",
+        ],
+        "complete": [
+            "Heartbeat system active. All repositories pulsing in sync.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_EVENTS: {
+        "start": [
+            "Cross-repo event streaming initializing.",
+        ],
+        "complete": [
+            "Event streaming active. Real-time communication between repos.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_SYNC: {
+        "start": [
+            "Cross-repo state synchronization initializing.",
+        ],
+        "complete": [
+            "State sync active. All repositories in agreement.",
         ],
     },
 }
@@ -2207,6 +2535,308 @@ class IntelligentStartupNarrator:
         # Lower priority for subsystems to avoid overwhelming the user
         await self._speak(text, NarrationPriority.LOW)
 
+    # =========================================================================
+    # v93.16: OUROBOROS Self-Improvement Engine Announcements
+    # =========================================================================
+
+    async def announce_ouroboros_init(self) -> None:
+        """v93.16: Announce Ouroboros engine awakening."""
+        text = self._get_phase_message(StartupPhase.OUROBOROS_INIT, "start")
+        if not text:
+            text = "Awakening Ouroboros. Self-improvement engine initializing."
+        await self._speak(text, NarrationPriority.HIGH)
+        logger.info("[Narrator] Ouroboros initialization announced")
+
+    async def announce_ouroboros_component(
+        self,
+        component: str,
+        status: str = "start",
+    ) -> None:
+        """
+        v93.16: Announce Ouroboros component status.
+
+        Args:
+            component: One of 'analyzer', 'genetic', 'validator', 'protector', 'oracle'
+            status: One of 'start', 'complete', 'error'
+        """
+        phase_map = {
+            "analyzer": StartupPhase.OUROBOROS_ANALYZER,
+            "genetic": StartupPhase.OUROBOROS_GENETIC,
+            "validator": StartupPhase.OUROBOROS_VALIDATOR,
+            "protector": StartupPhase.OUROBOROS_PROTECTOR,
+            "oracle": StartupPhase.OUROBOROS_ORACLE,
+        }
+        phase = phase_map.get(component.lower(), StartupPhase.OUROBOROS_INIT)
+        text = self._get_phase_message(phase, status)
+        if not text:
+            text = f"Ouroboros {component} {status}."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_ouroboros_active(self) -> None:
+        """v93.16: Announce full Ouroboros activation."""
+        text = self._get_phase_message(StartupPhase.OUROBOROS_ACTIVE, "announcement")
+        if not text:
+            text = (
+                "Ouroboros self-improvement engine is fully operational. "
+                "I can analyze, improve, and evolve my own codebase autonomously. "
+                "The serpent eats its tail."
+            )
+        await self._speak(text, NarrationPriority.HIGH)
+
+    async def announce_ouroboros_evolution(
+        self,
+        action: str = "start",
+        target_file: Optional[str] = None,
+        improvement_type: Optional[str] = None,
+    ) -> None:
+        """
+        v93.16: Announce Ouroboros evolution activity.
+
+        Args:
+            action: One of 'start', 'progress', 'complete', 'rollback'
+            target_file: File being evolved (optional)
+            improvement_type: Type of improvement (optional)
+        """
+        if action == "start":
+            if target_file:
+                text = f"Ouroboros evolving {target_file}."
+            elif improvement_type:
+                text = f"Ouroboros improving {improvement_type}."
+            else:
+                text = "Ouroboros evolution cycle starting."
+            priority = NarrationPriority.MEDIUM
+        elif action == "complete":
+            text = self._get_phase_message(StartupPhase.OUROBOROS_COMPLETE, "complete")
+            if not text:
+                text = "Evolution cycle complete. I have grown stronger."
+            priority = NarrationPriority.HIGH
+        elif action == "rollback":
+            text = self._get_phase_message(StartupPhase.OUROBOROS_COMPLETE, "rollback")
+            if not text:
+                text = "Evolution rolled back. Maintaining stability."
+            priority = NarrationPriority.HIGH
+        else:
+            text = "Evolution in progress."
+            priority = NarrationPriority.LOW
+
+        await self._speak(text, priority)
+
+    # =========================================================================
+    # v93.16: Coding Council Announcements
+    # =========================================================================
+
+    async def announce_coding_council_init(self) -> None:
+        """v93.16: Announce Coding Council convening."""
+        text = self._get_phase_message(StartupPhase.CODING_COUNCIL_INIT, "start")
+        if not text:
+            text = "Convening the Coding Council. Peer review system initializing."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_coding_council_member(
+        self,
+        member_type: str,
+    ) -> None:
+        """v93.16: Announce a council member joining."""
+        phase = StartupPhase.CODING_COUNCIL_MEMBERS
+        text = self._get_phase_message(phase, member_type)
+        if not text:
+            text = f"{member_type.replace('_', ' ').title()} joined the council."
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_coding_council_ready(self) -> None:
+        """v93.16: Announce Council ready for deliberation."""
+        text = self._get_phase_message(StartupPhase.CODING_COUNCIL_READY, "complete")
+        if not text:
+            text = "Coding Council ready. All code changes will be peer reviewed."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_coding_council_verdict(
+        self,
+        approved: bool,
+        reason: Optional[str] = None,
+    ) -> None:
+        """v93.16: Announce Council voting result."""
+        phase = StartupPhase.CODING_COUNCIL_VOTING
+        status = "approved" if approved else "rejected"
+        text = self._get_phase_message(phase, status)
+        if not text:
+            if approved:
+                text = "Council approved the changes. Proceeding with implementation."
+            else:
+                text = "Council rejected the changes. Revisions required."
+        if reason:
+            text = f"{text} {reason}"
+        await self._speak(text, NarrationPriority.HIGH)
+
+    # =========================================================================
+    # v93.16: Surveillance & Security Announcements
+    # =========================================================================
+
+    async def announce_surveillance_init(self) -> None:
+        """v93.16: Announce surveillance system initialization."""
+        text = self._get_phase_message(StartupPhase.SURVEILLANCE_INIT, "start")
+        if not text:
+            text = "Initializing surveillance systems. Security monitoring preparing."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    async def announce_surveillance_active(
+        self,
+        vision_active: bool = True,
+        threat_detection: bool = True,
+    ) -> None:
+        """v93.16: Announce full surveillance activation."""
+        if vision_active and threat_detection:
+            text = self._get_phase_message(StartupPhase.SURVEILLANCE_ACTIVE, "complete")
+            if not text:
+                text = "Full surveillance active. Environmental security monitoring engaged."
+        elif vision_active:
+            text = "Vision surveillance online. Threat detection initializing."
+        elif threat_detection:
+            text = "Threat detection ready. Vision systems still initializing."
+        else:
+            text = "Surveillance systems in partial mode."
+        await self._speak(text, NarrationPriority.MEDIUM)
+
+    # =========================================================================
+    # v93.16: Neural Mesh Agent Network Announcements
+    # =========================================================================
+
+    async def announce_neural_mesh_agent(
+        self,
+        agent_type: str,
+        status: str = "complete",
+    ) -> None:
+        """
+        v93.16: Announce individual Neural Mesh agent status.
+
+        Args:
+            agent_type: One of 'coordinator', 'memory', 'pattern', 'spatial',
+                        'visual', 'health', 'goal'
+            status: One of 'start', 'complete'
+        """
+        phase_map = {
+            "coordinator": StartupPhase.NEURAL_MESH_COORDINATOR,
+            "memory": StartupPhase.NEURAL_MESH_MEMORY,
+            "pattern": StartupPhase.NEURAL_MESH_PATTERN,
+            "spatial": StartupPhase.NEURAL_MESH_SPATIAL,
+            "visual": StartupPhase.NEURAL_MESH_VISUAL,
+            "health": StartupPhase.NEURAL_MESH_HEALTH,
+            "goal": StartupPhase.NEURAL_MESH_GOAL,
+        }
+        phase = phase_map.get(agent_type.lower())
+        if phase:
+            text = self._get_phase_message(phase, status)
+        else:
+            text = None
+
+        if not text:
+            agent_name = agent_type.replace("_", " ").title()
+            if status == "complete":
+                text = f"{agent_name} agent online."
+            else:
+                text = f"{agent_name} agent initializing."
+
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_neural_mesh_complete(
+        self,
+        agent_count: int = 0,
+    ) -> None:
+        """v93.16: Announce full Neural Mesh activation."""
+        text = self._get_phase_message(StartupPhase.NEURAL_MESH, "complete")
+        if not text:
+            if agent_count > 0:
+                text = f"Neural Mesh fully operational. {agent_count} agents coordinated and ready."
+            else:
+                text = "Neural Mesh fully operational. All agents coordinated."
+        await self._speak(text, NarrationPriority.HIGH)
+
+    # =========================================================================
+    # v93.16: Data Flywheel Advanced Announcements
+    # =========================================================================
+
+    async def announce_flywheel_scraping(
+        self,
+        status: str = "start",
+        source_count: int = 0,
+    ) -> None:
+        """v93.16: Announce web scraping activity."""
+        phase = StartupPhase.FLYWHEEL_SCRAPING
+        text = self._get_phase_message(phase, status)
+        if not text:
+            if status == "complete" and source_count > 0:
+                text = f"Scraping complete. Gathered knowledge from {source_count} sources."
+            elif status == "active":
+                text = "Scraping in progress. Gathering knowledge from the web."
+            else:
+                text = "Intelligent scraper activating."
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_flywheel_indexing(
+        self,
+        status: str = "start",
+        document_count: int = 0,
+    ) -> None:
+        """v93.16: Announce knowledge indexing."""
+        phase = StartupPhase.FLYWHEEL_INDEXING
+        text = self._get_phase_message(phase, status)
+        if not text:
+            if status == "complete" and document_count > 0:
+                text = f"Indexing complete. {document_count} documents searchable."
+            else:
+                text = "Knowledge indexer activating."
+        await self._speak(text, NarrationPriority.LOW)
+
+    async def announce_flywheel_embedding(
+        self,
+        status: str = "start",
+    ) -> None:
+        """v93.16: Announce embedding generation."""
+        phase = StartupPhase.FLYWHEEL_EMBEDDING
+        text = self._get_phase_message(phase, status)
+        if not text:
+            if status == "complete":
+                text = "Embeddings generated. Semantic search enabled."
+            else:
+                text = "Generating embeddings for semantic understanding."
+        await self._speak(text, NarrationPriority.LOW)
+
+    # =========================================================================
+    # v93.16: Cross-Repo Integration Announcements
+    # =========================================================================
+
+    async def announce_cross_repo_system(
+        self,
+        system: str,
+        status: str = "complete",
+    ) -> None:
+        """
+        v93.16: Announce cross-repo integration system status.
+
+        Args:
+            system: One of 'heartbeat', 'events', 'sync'
+            status: One of 'start', 'complete'
+        """
+        phase_map = {
+            "heartbeat": StartupPhase.CROSS_REPO_HEARTBEAT,
+            "events": StartupPhase.CROSS_REPO_EVENTS,
+            "sync": StartupPhase.CROSS_REPO_SYNC,
+        }
+        phase = phase_map.get(system.lower())
+        if phase:
+            text = self._get_phase_message(phase, status)
+        else:
+            text = None
+
+        if not text:
+            system_name = system.replace("_", " ").title()
+            if status == "complete":
+                text = f"Cross-repo {system_name} active."
+            else:
+                text = f"Cross-repo {system_name} initializing."
+
+        await self._speak(text, NarrationPriority.MEDIUM)
+
 
 # Phase mapping from progress reporter stages to StartupPhase
 STAGE_TO_PHASE: Dict[str, StartupPhase] = {
@@ -2265,6 +2895,53 @@ STAGE_TO_PHASE: Dict[str, StartupPhase] = {
     "knowledge_graph": StartupPhase.KNOWLEDGE_GRAPH,
     "training_pipeline": StartupPhase.TRAINING_PIPELINE,
     "observability": StartupPhase.OBSERVABILITY,
+    # v93.16: Ouroboros Self-Improvement phases
+    "ouroboros": StartupPhase.OUROBOROS_INIT,
+    "ouroboros_init": StartupPhase.OUROBOROS_INIT,
+    "ouroboros_analyzer": StartupPhase.OUROBOROS_ANALYZER,
+    "ouroboros_genetic": StartupPhase.OUROBOROS_GENETIC,
+    "ouroboros_validator": StartupPhase.OUROBOROS_VALIDATOR,
+    "ouroboros_protector": StartupPhase.OUROBOROS_PROTECTOR,
+    "ouroboros_oracle": StartupPhase.OUROBOROS_ORACLE,
+    "ouroboros_active": StartupPhase.OUROBOROS_ACTIVE,
+    "ouroboros_evolving": StartupPhase.OUROBOROS_EVOLVING,
+    "ouroboros_complete": StartupPhase.OUROBOROS_COMPLETE,
+    "self_improvement": StartupPhase.OUROBOROS_ACTIVE,
+    # v93.16: Coding Council phases
+    "coding_council": StartupPhase.CODING_COUNCIL_INIT,
+    "coding_council_init": StartupPhase.CODING_COUNCIL_INIT,
+    "coding_council_members": StartupPhase.CODING_COUNCIL_MEMBERS,
+    "coding_council_ready": StartupPhase.CODING_COUNCIL_READY,
+    "coding_council_voting": StartupPhase.CODING_COUNCIL_VOTING,
+    "peer_review": StartupPhase.CODING_COUNCIL_READY,
+    # v93.16: Surveillance & Security phases
+    "surveillance": StartupPhase.SURVEILLANCE_INIT,
+    "surveillance_init": StartupPhase.SURVEILLANCE_INIT,
+    "surveillance_vision": StartupPhase.SURVEILLANCE_VISION,
+    "surveillance_threat": StartupPhase.SURVEILLANCE_THREAT,
+    "surveillance_active": StartupPhase.SURVEILLANCE_ACTIVE,
+    "security": StartupPhase.SURVEILLANCE_ACTIVE,
+    # v93.16: Neural Mesh agent phases
+    "neural_mesh_coordinator": StartupPhase.NEURAL_MESH_COORDINATOR,
+    "neural_mesh_memory": StartupPhase.NEURAL_MESH_MEMORY,
+    "neural_mesh_pattern": StartupPhase.NEURAL_MESH_PATTERN,
+    "neural_mesh_spatial": StartupPhase.NEURAL_MESH_SPATIAL,
+    "neural_mesh_visual": StartupPhase.NEURAL_MESH_VISUAL,
+    "neural_mesh_health": StartupPhase.NEURAL_MESH_HEALTH,
+    "neural_mesh_goal": StartupPhase.NEURAL_MESH_GOAL,
+    # v93.16: Data Flywheel advanced phases
+    "flywheel_scraping": StartupPhase.FLYWHEEL_SCRAPING,
+    "flywheel_indexing": StartupPhase.FLYWHEEL_INDEXING,
+    "flywheel_embedding": StartupPhase.FLYWHEEL_EMBEDDING,
+    "flywheel_exporting": StartupPhase.FLYWHEEL_EXPORTING,
+    "scraping": StartupPhase.FLYWHEEL_SCRAPING,
+    "indexing": StartupPhase.FLYWHEEL_INDEXING,
+    "embedding": StartupPhase.FLYWHEEL_EMBEDDING,
+    # v93.16: Cross-repo integration phases
+    "cross_repo_heartbeat": StartupPhase.CROSS_REPO_HEARTBEAT,
+    "cross_repo_events": StartupPhase.CROSS_REPO_EVENTS,
+    "cross_repo_sync": StartupPhase.CROSS_REPO_SYNC,
+    "heartbeat": StartupPhase.CROSS_REPO_HEARTBEAT,
 }
 
 

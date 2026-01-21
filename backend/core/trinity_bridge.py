@@ -480,7 +480,15 @@ class TrinityBridge:
             logger.warning(f"Training coordinator not available: {e}")
 
     async def _wait_for_services(self) -> None:
-        """Wait for all services to be healthy."""
+        """
+        v95.0: Wait for all services to be healthy with adaptive timeouts.
+
+        Features:
+        - Adaptive timeout based on system conditions
+        - Parallel health checks for faster detection
+        - Progress tracking and reporting
+        - Intelligent degraded mode with future recovery scheduling
+        """
         logger.info("Waiting for services to be healthy...")
 
         start_time = time.time()
@@ -491,43 +499,151 @@ class TrinityBridge:
         if self.config.reactor_enabled:
             services_to_check.append("reactor-core")
 
-        while (time.time() - start_time) < self.config.startup_timeout:
+        # v95.0: Adaptive timeout calculation
+        adaptive_timeout = self._get_adaptive_timeout("startup")
+        base_timeout = self.config.startup_timeout
+        effective_timeout = max(base_timeout, adaptive_timeout)
+
+        logger.info(f"  Timeout: {effective_timeout:.1f}s (base: {base_timeout}s, adaptive: {adaptive_timeout:.1f}s)")
+
+        # v95.0: Track progress for each service
+        service_progress: Dict[str, Dict[str, Any]] = {
+            name: {"first_seen": None, "healthy": False, "checks": 0, "last_error": None}
+            for name in services_to_check
+        }
+
+        # v95.0: Minimum degraded mode threshold - wait at least this before accepting degraded
+        min_degraded_wait = float(os.getenv("TRINITY_MIN_DEGRADED_WAIT", "45.0"))
+
+        while (time.time() - start_time) < effective_timeout:
+            elapsed = time.time() - start_time
             healthy_count = 0
 
-            for service_name in services_to_check:
+            # v95.0: Parallel health checks for all services
+            async def check_service(service_name: str) -> bool:
                 try:
+                    if self._service_registry is None:
+                        return False
                     service = await self._service_registry.discover_service(service_name)
                     if service:
-                        healthy_count += 1
+                        service_progress[service_name]["healthy"] = True
+                        if service_progress[service_name]["first_seen"] is None:
+                            service_progress[service_name]["first_seen"] = time.time()
+                            logger.info(f"  ✅ {service_name} discovered")
                         self._service_health[service_name] = ServiceHealth(
                             name=service_name,
                             healthy=True
                         )
-                except Exception:
-                    pass
+                        return True
+                except Exception as e:
+                    service_progress[service_name]["last_error"] = str(e)
+                service_progress[service_name]["checks"] += 1
+                return False
+
+            # Check all services in parallel
+            check_results = await asyncio.gather(
+                *[check_service(name) for name in services_to_check],
+                return_exceptions=True
+            )
+
+            for i, result in enumerate(check_results):
+                if result is True:
+                    healthy_count += 1
+                elif isinstance(result, Exception):
+                    logger.debug(f"  Health check exception for {services_to_check[i]}: {result}")
 
             if healthy_count >= len(services_to_check):
-                logger.info(f"  All {healthy_count} services healthy")
+                duration = time.time() - start_time
+                logger.info(f"  All {healthy_count} services healthy in {duration:.1f}s")
+                self._record_operation_duration("startup", duration)
                 return
 
-            # Some services not ready, check if degraded mode is acceptable
-            if healthy_count >= 1 and (time.time() - start_time) > 30:
-                logger.warning(
-                    f"  Running in degraded mode: {healthy_count}/{len(services_to_check)} services"
-                )
-                self._set_state(TrinityState.DEGRADED)
-                return
+            # v95.0: Intelligent degraded mode transition
+            # - Wait at least min_degraded_wait before accepting degraded
+            # - Require at least 1 healthy service (jarvis-body minimum)
+            # - Check if unhealthy services show any progress
+            if healthy_count >= 1 and elapsed > min_degraded_wait:
+                unhealthy = [
+                    name for name, prog in service_progress.items()
+                    if not prog["healthy"]
+                ]
 
-            await asyncio.sleep(2.0)
+                # v95.0: Check if unhealthy services are making progress
+                # (e.g., they exist but still initializing)
+                all_stuck = True
+                for name in unhealthy:
+                    prog = service_progress[name]
+                    if prog["checks"] < 3:  # Not enough checks yet
+                        all_stuck = False
+                        break
 
-        logger.warning("Service startup timeout reached")
+                if all_stuck or elapsed > effective_timeout * 0.8:
+                    logger.warning(
+                        f"  Running in degraded mode: {healthy_count}/{len(services_to_check)} services "
+                        f"(unhealthy: {', '.join(unhealthy)})"
+                    )
+                    logger.info(
+                        f"  🔄 Auto-recovery will attempt to restore unhealthy services"
+                    )
+                    self._set_state(TrinityState.DEGRADED)
+                    self._record_operation_duration("startup", time.time() - start_time)
+
+                    # v95.0: Schedule background recovery for unhealthy services
+                    for name in unhealthy:
+                        self._service_health[name] = ServiceHealth(
+                            name=name,
+                            healthy=False,
+                            error=service_progress[name]["last_error"] or "Startup timeout"
+                        )
+
+                    return
+
+            # v95.0: Adaptive sleep - faster polling when close to having all services
+            sleep_time = 1.0 if healthy_count >= len(services_to_check) - 1 else 2.0
+            await asyncio.sleep(sleep_time)
+
+        logger.warning(f"Service startup timeout reached after {effective_timeout:.1f}s")
+        self._record_operation_duration("startup", effective_timeout)
 
     async def _health_monitor_loop(self) -> None:
-        """Monitor health of all services."""
+        """
+        v95.0: Enhanced health monitor with auto-recovery and cross-repo sync.
+
+        Features:
+        - Periodic health checks with adaptive intervals
+        - Automatic recovery attempts for unhealthy services
+        - Cross-repo health synchronization
+        - Intelligent state transitions
+        """
+        recovery_check_interval = 3  # Attempt recovery every N health checks
+        check_count = 0
+
         while not self._shutdown_event.is_set():
             try:
-                await asyncio.sleep(self.config.health_check_interval)
+                # v95.0: Adaptive sleep based on system state
+                interval = self.config.health_check_interval
+                if self._state == TrinityState.DEGRADED:
+                    # More frequent checks in degraded mode
+                    interval = max(5.0, interval / 2)
+
+                await asyncio.sleep(interval)
+
+                # Standard health check
                 await self._check_all_health()
+                check_count += 1
+
+                # v95.0: Periodic auto-recovery attempts
+                if self._state == TrinityState.DEGRADED and check_count >= recovery_check_interval:
+                    check_count = 0
+                    recovery_results = await self._enhanced_health_check()
+
+                    if recovery_results:
+                        recovered = sum(1 for v in recovery_results.values() if v)
+                        if recovered > 0:
+                            logger.info(f"[AutoRecovery] Recovered {recovered} service(s)")
+
+                # v95.0: Cross-repo health synchronization
+                await self._cross_repo_health_sync()
 
             except asyncio.CancelledError:
                 break
@@ -535,25 +651,76 @@ class TrinityBridge:
                 logger.error(f"Health check error: {e}")
 
     async def _check_all_health(self) -> None:
-        """Check health of all registered services."""
+        """
+        v95.0: Enhanced health check with multi-layer verification.
+
+        Layers:
+        1. Service registry discovery (fast, cached)
+        2. Direct HTTP health check (fallback if registry fails)
+        3. Known service ports (final fallback)
+        """
+        import aiohttp
+
+        if self._service_registry is None:
+            logger.warning("[HealthCheck] Service registry not available")
+            return
+
         services = await self._service_registry.list_services(healthy_only=False)
+
+        # v95.0: Build fallback port map for direct health checks
+        service_ports = {
+            "jarvis-body": self.config.jarvis_port,
+            "jarvis-prime": self.config.jprime_port,
+            "reactor-core": self.config.reactor_port,
+        }
 
         healthy_count = 0
         for service in services:
             start = time.time()
+            service_name = service.service_name
+            healthy = False
+            error_msg = None
 
             try:
-                # Quick health check via service registry
-                discovered = await self._service_registry.discover_service(
-                    service.service_name
-                )
+                # Layer 1: Quick health check via service registry
+                discovered = await self._service_registry.discover_service(service_name)
                 healthy = discovered is not None
 
-                self._service_health[service.service_name] = ServiceHealth(
-                    name=service.service_name,
+                # v95.0: Layer 2 - Direct HTTP health check if registry says unhealthy
+                # This handles cases where the service is running but failed to heartbeat
+                if not healthy and service_name in service_ports:
+                    port = service_ports[service_name]
+                    try:
+                        async with aiohttp.ClientSession(
+                            timeout=aiohttp.ClientTimeout(total=3.0)
+                        ) as session:
+                            url = f"http://localhost:{port}/health"
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    # Service is actually healthy - registry was stale
+                                    healthy = True
+                                    logger.info(
+                                        f"[HealthCheck] {service_name} healthy via direct HTTP "
+                                        f"(registry was stale)"
+                                    )
+                                    # v95.0: Send heartbeat to refresh stale registry entry
+                                    try:
+                                        await self._service_registry.heartbeat(
+                                            service_name,
+                                            status="healthy"
+                                        )
+                                    except Exception as hb_err:
+                                        logger.debug(f"Heartbeat refresh failed: {hb_err}")
+                    except Exception as http_err:
+                        error_msg = f"Direct HTTP check failed: {http_err}"
+                        logger.debug(f"[HealthCheck] {service_name} {error_msg}")
+
+                self._service_health[service_name] = ServiceHealth(
+                    name=service_name,
                     healthy=healthy,
                     latency_ms=(time.time() - start) * 1000,
-                    details={"port": service.port, "status": service.status}
+                    details={"port": service.port, "status": service.status},
+                    error=error_msg if not healthy else None
                 )
 
                 if healthy:
@@ -562,34 +729,67 @@ class TrinityBridge:
                 # ═══════════════════════════════════════════════════════════════════
                 # v92.0 FIX: ALWAYS send heartbeat regardless of health status
                 # ═══════════════════════════════════════════════════════════════════
-                # Previously: Heartbeat only sent when healthy=True
-                # Problem: If discover_service returns None (service marked stale),
-                # healthy=False, so no heartbeat sent, service stays stale forever.
-                # Now: Always send heartbeat to keep service alive in registry,
-                # with appropriate status to indicate health state.
-                # ═══════════════════════════════════════════════════════════════════
                 await self._service_registry.heartbeat(
-                    service.service_name,
+                    service_name,
                     status="healthy" if healthy else "degraded"
                 )
 
             except Exception as e:
-                self._service_health[service.service_name] = ServiceHealth(
-                    name=service.service_name,
+                self._service_health[service_name] = ServiceHealth(
+                    name=service_name,
                     healthy=False,
                     error=str(e)
                 )
                 # v92.0: Still try to send heartbeat even on exception
                 try:
                     await self._service_registry.heartbeat(
-                        service.service_name,
+                        service_name,
                         status="unhealthy"
                     )
                 except Exception:
                     pass  # Don't let heartbeat failure mask original error
 
+        # v95.0: Also check expected services that might not be in registry yet
+        expected_services = ["jarvis-body"]
+        if self.config.jprime_enabled:
+            expected_services.append("jarvis-prime")
+        if self.config.reactor_enabled:
+            expected_services.append("reactor-core")
+
+        registered_names = {s.service_name for s in services}
+        for service_name in expected_services:
+            if service_name not in registered_names and service_name in service_ports:
+                # Check if service is running but not registered
+                port = service_ports[service_name]
+                try:
+                    async with aiohttp.ClientSession(
+                        timeout=aiohttp.ClientTimeout(total=3.0)
+                    ) as session:
+                        url = f"http://localhost:{port}/health"
+                        async with session.get(url) as resp:
+                            if resp.status == 200:
+                                healthy_count += 1
+                                self._service_health[service_name] = ServiceHealth(
+                                    name=service_name,
+                                    healthy=True,
+                                    latency_ms=0,
+                                    details={"port": port, "status": "unregistered"}
+                                )
+                                logger.info(
+                                    f"[HealthCheck] {service_name} healthy but unregistered - "
+                                    f"adding to health tracking"
+                                )
+                except Exception:
+                    # Service not running
+                    if service_name not in self._service_health:
+                        self._service_health[service_name] = ServiceHealth(
+                            name=service_name,
+                            healthy=False,
+                            error="Not running and not registered"
+                        )
+
         # Update state based on health
-        total = len(services)
+        total = max(len(services), len(expected_services))
         if total > 0:
             if healthy_count == total:
                 if self._state == TrinityState.DEGRADED:
@@ -597,7 +797,13 @@ class TrinityBridge:
                     self._set_state(TrinityState.RUNNING)
             elif healthy_count > 0:
                 if self._state == TrinityState.RUNNING:
-                    logger.warning(f"Some services unhealthy ({healthy_count}/{total})")
+                    unhealthy = [
+                        name for name, h in self._service_health.items()
+                        if not h.healthy
+                    ]
+                    logger.warning(
+                        f"Some services unhealthy ({healthy_count}/{total}): {unhealthy}"
+                    )
                     self._set_state(TrinityState.DEGRADED)
 
     async def _handle_state_query(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -703,6 +909,257 @@ class TrinityBridge:
             "process_orchestrator_active": self._process_orchestrator is not None,
             "health": health,
         }
+
+    # =========================================================================
+    # v95.0: INTELLIGENT AUTO-RECOVERY SYSTEM
+    # Advanced self-healing with adaptive timeouts and cross-repo synchronization
+    # =========================================================================
+
+    async def _attempt_service_recovery(self, service_name: str) -> bool:
+        """
+        v95.0: Attempt to recover an unhealthy service.
+
+        Uses intelligent retry with exponential backoff and circuit breaker pattern.
+        Coordinates with process orchestrator for actual recovery actions.
+
+        Returns:
+            True if recovery successful, False otherwise
+        """
+        if not self.config.auto_heal_enabled:
+            logger.debug(f"[AutoRecovery] Skipping {service_name} - auto_heal disabled")
+            return False
+
+        # Check recovery cooldown (don't spam recovery attempts)
+        recovery_key = f"_last_recovery_{service_name}"
+        last_recovery = getattr(self, recovery_key, 0)
+        cooldown = self._get_adaptive_cooldown(service_name)
+
+        if time.time() - last_recovery < cooldown:
+            logger.debug(
+                f"[AutoRecovery] {service_name} in cooldown "
+                f"({cooldown - (time.time() - last_recovery):.1f}s remaining)"
+            )
+            return False
+
+        setattr(self, recovery_key, time.time())
+
+        logger.info(f"[AutoRecovery] Attempting to recover {service_name}...")
+
+        try:
+            # Track recovery attempts for circuit breaker
+            attempts_key = f"_recovery_attempts_{service_name}"
+            attempts = getattr(self, attempts_key, 0)
+            max_attempts = int(os.getenv("TRINITY_MAX_RECOVERY_ATTEMPTS", "5"))
+
+            if attempts >= max_attempts:
+                logger.warning(
+                    f"[AutoRecovery] {service_name} exceeded max attempts ({max_attempts}) - "
+                    f"circuit breaker OPEN"
+                )
+                return False
+
+            setattr(self, attempts_key, attempts + 1)
+
+            # Attempt recovery via process orchestrator
+            if self._process_orchestrator:
+                # Try to restart the service
+                result = await self._process_orchestrator.restart_service(service_name)
+                if result:
+                    logger.info(f"[AutoRecovery] ✅ {service_name} recovered successfully")
+                    setattr(self, attempts_key, 0)  # Reset on success
+                    return True
+
+            # Fallback: Try to re-register with service registry
+            if self._service_registry:
+                service = await self._service_registry.discover_service(service_name)
+                if service:
+                    logger.info(f"[AutoRecovery] ✅ {service_name} found in registry")
+                    setattr(self, attempts_key, 0)
+                    return True
+
+            logger.warning(f"[AutoRecovery] ❌ {service_name} recovery failed (attempt {attempts + 1})")
+            return False
+
+        except Exception as e:
+            logger.error(f"[AutoRecovery] {service_name} recovery error: {e}")
+            return False
+
+    def _get_adaptive_cooldown(self, service_name: str) -> float:
+        """
+        v95.0: Calculate adaptive cooldown based on failure history.
+
+        Uses exponential backoff with jitter to prevent thundering herd.
+        """
+        import random
+
+        attempts_key = f"_recovery_attempts_{service_name}"
+        attempts = getattr(self, attempts_key, 0)
+
+        base_cooldown = float(os.getenv("TRINITY_RECOVERY_BASE_COOLDOWN", "30.0"))
+        max_cooldown = float(os.getenv("TRINITY_RECOVERY_MAX_COOLDOWN", "300.0"))
+
+        # Exponential backoff
+        cooldown = min(base_cooldown * (2 ** attempts), max_cooldown)
+
+        # Add jitter (±20%) to prevent synchronized recovery storms
+        jitter = cooldown * 0.2 * (2 * random.random() - 1)
+        cooldown = max(10.0, cooldown + jitter)
+
+        return cooldown
+
+    def _get_adaptive_timeout(self, operation: str) -> float:
+        """
+        v95.0: Calculate adaptive timeout based on system conditions.
+
+        Considers:
+        - Historical operation durations
+        - Current system load (CPU/memory)
+        - Previous timeout patterns
+        """
+        base_timeout = float(os.getenv(f"TRINITY_{operation.upper()}_TIMEOUT", "60.0"))
+
+        # Track historical durations
+        history_key = f"_timeout_history_{operation}"
+        history = getattr(self, history_key, [])
+
+        if history:
+            # Use P95 of historical durations as base
+            sorted_history = sorted(history)
+            p95_idx = int(len(sorted_history) * 0.95)
+            p95_duration = sorted_history[min(p95_idx, len(sorted_history) - 1)]
+
+            # Adaptive timeout = max(base, P95 * 1.5)
+            adaptive_timeout = max(base_timeout, p95_duration * 1.5)
+        else:
+            adaptive_timeout = base_timeout
+
+        # Adjust for system load
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory_percent = psutil.virtual_memory().percent
+
+            # Increase timeout under high load
+            if cpu_percent > 80 or memory_percent > 85:
+                load_factor = 1.5
+            elif cpu_percent > 60 or memory_percent > 70:
+                load_factor = 1.25
+            else:
+                load_factor = 1.0
+
+            adaptive_timeout *= load_factor
+        except Exception:
+            pass  # Continue without load adjustment
+
+        # Cap at reasonable maximum
+        max_timeout = float(os.getenv("TRINITY_MAX_ADAPTIVE_TIMEOUT", "600.0"))
+        return min(adaptive_timeout, max_timeout)
+
+    def _record_operation_duration(self, operation: str, duration: float) -> None:
+        """Record operation duration for adaptive timeout calculations."""
+        history_key = f"_timeout_history_{operation}"
+        history = getattr(self, history_key, [])
+
+        history.append(duration)
+
+        # Keep only last 100 measurements
+        if len(history) > 100:
+            history = history[-100:]
+
+        setattr(self, history_key, history)
+
+    async def _enhanced_health_check(self) -> Dict[str, bool]:
+        """
+        v95.0: Enhanced health check with recovery attempts.
+
+        Returns dict of service_name -> recovery_successful
+        """
+        recovery_results = {}
+        unhealthy_services = [
+            name for name, health in self._service_health.items()
+            if not health.healthy
+        ]
+
+        if not unhealthy_services:
+            return recovery_results
+
+        # Attempt parallel recovery for unhealthy services
+        recovery_tasks = []
+        for service_name in unhealthy_services:
+            recovery_tasks.append(
+                self._attempt_service_recovery(service_name)
+            )
+
+        if recovery_tasks:
+            results = await asyncio.gather(*recovery_tasks, return_exceptions=True)
+
+            for i, result in enumerate(results):
+                service_name = unhealthy_services[i]
+                if isinstance(result, Exception):
+                    logger.error(f"[AutoRecovery] {service_name} raised exception: {result}")
+                    recovery_results[service_name] = False
+                else:
+                    recovery_results[service_name] = result
+
+        return recovery_results
+
+    async def _cross_repo_health_sync(self) -> None:
+        """
+        v95.0: Synchronize health status across all repos.
+
+        Broadcasts local health to other repos and receives their health status.
+        Enables coordinated recovery decisions.
+        """
+        if not self._ipc_hub:
+            return
+
+        try:
+            local_health = {
+                "source": "jarvis_body",
+                "timestamp": time.time(),
+                "state": self._state.value,
+                "services": {
+                    name: {
+                        "healthy": h.healthy,
+                        "latency_ms": h.latency_ms,
+                        "error": h.error
+                    }
+                    for name, h in self._service_health.items()
+                }
+            }
+
+            # Broadcast health to other repos
+            await self._ipc_hub.events.publish("trinity.health.sync", local_health)
+
+            # Receive health from other repos (if available)
+            # This enables coordinated recovery decisions
+            logger.debug("[HealthSync] Broadcasted health status to Trinity ecosystem")
+
+        except Exception as e:
+            logger.debug(f"[HealthSync] Sync error (non-critical): {e}")
+
+    async def force_recovery(self, service_name: Optional[str] = None) -> Dict[str, bool]:
+        """
+        v95.0: Force recovery of services (bypass cooldown).
+
+        Args:
+            service_name: Specific service to recover, or None for all unhealthy
+
+        Returns:
+            Dict of service_name -> recovery_successful
+        """
+        if service_name:
+            # Reset cooldown for specific service
+            setattr(self, f"_last_recovery_{service_name}", 0)
+            setattr(self, f"_recovery_attempts_{service_name}", 0)
+            return {service_name: await self._attempt_service_recovery(service_name)}
+        else:
+            # Reset cooldown for all services and attempt recovery
+            for name in self._service_health:
+                setattr(self, f"_last_recovery_{name}", 0)
+                setattr(self, f"_recovery_attempts_{name}", 0)
+
+            return await self._enhanced_health_check()
 
     # =========================================================================
     # Convenience Methods for Cross-Repo Communication
