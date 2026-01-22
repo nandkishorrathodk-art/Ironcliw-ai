@@ -107,7 +107,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import aiohttp
 
@@ -1115,50 +1115,96 @@ class IntelligentRepoDiscovery:
         search_dirs = self._get_search_directories()
         name_variants = self._get_name_variants(service_name)
 
+        logger.debug(
+            f"[v95.7] Async discovery for '{service_name}' searching "
+            f"{len(search_dirs)} directories with {len(name_variants)} variants"
+        )
+
         discovered_path: Optional[Path] = None
         best_score = 0
+        candidates_found = 0
+        symlinks_resolved = 0
+        broken_symlinks = 0
 
         for search_dir in search_dirs:
             try:
+                logger.debug(f"[v95.7] Scanning directory: {search_dir}")
+
                 # List all subdirectories
                 for item in search_dir.iterdir():
-                    if not item.is_dir():
+                    # v95.7: Handle symlinks explicitly
+                    resolved_item = item
+                    is_symlink = item.is_symlink()
+
+                    if is_symlink:
+                        try:
+                            # Resolve symlink to get real path
+                            resolved_item = item.resolve()
+                            symlinks_resolved += 1
+                            if not resolved_item.exists():
+                                broken_symlinks += 1
+                                logger.debug(
+                                    f"[v95.7] Skipping broken symlink: {item} -> {resolved_item}"
+                                )
+                                continue
+                        except (OSError, RuntimeError) as e:
+                            broken_symlinks += 1
+                            logger.debug(f"[v95.7] Cannot resolve symlink {item}: {e}")
+                            continue
+
+                    # Check if it's a directory (after resolving symlinks)
+                    if not resolved_item.is_dir():
                         continue
 
+                    # Use the original item name for matching
                     item_name = item.name.lower()
 
                     # Check if name matches any variant
                     for variant in name_variants:
                         if item_name == variant.lower():
+                            candidates_found += 1
                             # Calculate match score
                             score = 10  # Base score for name match
 
-                            # Bonus for git repo
-                            if self._is_git_repo(item):
+                            # v95.7: Check git repo on resolved path
+                            if self._is_git_repo(resolved_item):
                                 score += 5
+                                # Bonus for full .git directory
+                                if (resolved_item / ".git").is_dir():
+                                    score += 1
 
-                            # Bonus for signature match
-                            if self._validate_repo_signature(item, service_name):
+                            # v95.7: Signature match on resolved path
+                            if self._validate_repo_signature(resolved_item, service_name):
                                 score += 10
 
                             # Bonus for exact case match
                             if item.name == variant:
                                 score += 2
 
+                            # v95.7: Bonus for symlink (canonical location indicator)
+                            if is_symlink:
+                                score += 1
+
                             if score > best_score:
                                 best_score = score
-                                discovered_path = item
+                                discovered_path = resolved_item
                                 logger.debug(
-                                    f"[v95.6] Candidate for {service_name}: {item} (score: {score})"
+                                    f"[v95.7] Candidate for {service_name}: {item} "
+                                    f"{'-> ' + str(resolved_item) if is_symlink else ''} "
+                                    f"(score: {score})"
                                 )
 
             except (PermissionError, OSError) as e:
-                logger.debug(f"[v95.6] Cannot search {search_dir}: {e}")
+                logger.debug(f"[v95.7] Cannot search {search_dir}: {e}")
                 continue
 
         if discovered_path:
             resolved = discovered_path.resolve()
-            logger.info(f"[v95.6] Discovered {service_name} at: {resolved} (score: {best_score})")
+            logger.info(
+                f"[v95.7] Discovered {service_name} at: {resolved} "
+                f"(score: {best_score}, candidates: {candidates_found}, "
+                f"symlinks: {symlinks_resolved}, broken: {broken_symlinks})"
+            )
             self._discovery_cache[cache_key] = (resolved, time.time())
             return resolved
 
@@ -1402,12 +1448,29 @@ class ServiceDefinitionRegistry:
         # Resolve path using v95.6 intelligent discovery
         repo_path = path_override
         if repo_path is None:
+            env_var_name = canonical["repo_path_env"]
+
             # Priority 1: Check environment variable
-            env_path = os.getenv(canonical["repo_path_env"])
+            env_path = os.getenv(env_var_name)
             if env_path:
-                repo_path = Path(env_path).expanduser()
-            else:
-                # Priority 2: Use intelligent discovery (v95.6)
+                raw_path = Path(env_path).expanduser()
+                # v95.6: Resolve symlinks and validate
+                if raw_path.exists():
+                    # Resolve symlinks to get real path
+                    repo_path = raw_path.resolve()
+                    logger.info(f"[v95.6] Using {env_var_name}={repo_path}")
+                elif raw_path.is_symlink():
+                    # Broken symlink
+                    logger.warning(
+                        f"[v95.6] {env_var_name} points to broken symlink: {raw_path}"
+                    )
+                else:
+                    logger.warning(
+                        f"[v95.6] {env_var_name} path does not exist: {raw_path}"
+                    )
+
+            # Priority 2: Use intelligent discovery (v95.6)
+            if repo_path is None:
                 discovery = get_repo_discovery()
                 discovery_name = canonical.get("discovery_service_name", service_name)
 
@@ -1415,6 +1478,7 @@ class ServiceDefinitionRegistry:
                 cached = discovery.get_cached_path(discovery_name)
                 if cached:
                     repo_path = cached
+                    logger.debug(f"[v95.6] Using cached path for {service_name}: {repo_path}")
                 else:
                     # Fallback: Try synchronous discovery for common locations
                     repo_path = cls._sync_discover_repo(discovery_name)
@@ -1422,8 +1486,22 @@ class ServiceDefinitionRegistry:
                     if repo_path is None:
                         logger.warning(
                             f"[v95.6] Could not discover {service_name}. "
-                            f"Set {canonical['repo_path_env']} environment variable."
+                            f"Set {env_var_name} environment variable or ensure repo exists."
                         )
+                        return None  # v95.6: Cannot create definition without valid path
+
+        # v95.6: Final path validation and symlink resolution
+        if repo_path is not None:
+            # Resolve symlinks
+            if repo_path.is_symlink():
+                repo_path = repo_path.resolve()
+            # Make absolute
+            if not repo_path.is_absolute():
+                repo_path = repo_path.resolve()
+            # Validate exists
+            if not repo_path.exists():
+                logger.error(f"[v95.6] Repository path does not exist: {repo_path}")
+                return None
 
         # Build definition
         definition = ServiceDefinition(
@@ -1473,10 +1551,16 @@ class ServiceDefinitionRegistry:
     @classmethod
     def _sync_discover_repo(cls, service_name: str) -> Optional[Path]:
         """
-        v95.6: Synchronous repo discovery for use in get_definition.
+        v95.7: Enhanced synchronous repo discovery with symlink resolution.
 
-        This is a simplified synchronous version of IntelligentRepoDiscovery
-        that works in non-async contexts.
+        This is a comprehensive synchronous version of IntelligentRepoDiscovery
+        that works in non-async contexts with full symlink support.
+
+        Features:
+        - Symlink resolution during directory iteration
+        - Broken symlink detection and logging
+        - Comprehensive candidate scoring
+        - Detailed discovery logging
 
         Args:
             service_name: Service name to discover
@@ -1493,52 +1577,108 @@ class ServiceDefinitionRegistry:
         # Get search directories
         search_dirs = discovery._get_search_directories()
 
+        logger.debug(
+            f"[v95.7] Sync discovery for '{service_name}' searching "
+            f"{len(search_dirs)} directories with {len(name_variants)} name variants"
+        )
+
         best_match: Optional[Path] = None
         best_score = 0
+        candidates_found = 0
 
         for search_dir in search_dirs:
             try:
                 if not search_dir.exists():
                     continue
 
+                logger.debug(f"[v95.7] Scanning directory: {search_dir}")
+
                 for item in search_dir.iterdir():
-                    if not item.is_dir():
+                    # v95.7: Handle symlinks explicitly
+                    resolved_item = item
+                    is_symlink = item.is_symlink()
+
+                    if is_symlink:
+                        try:
+                            # Resolve symlink to get real path
+                            resolved_item = item.resolve()
+                            if not resolved_item.exists():
+                                logger.debug(
+                                    f"[v95.7] Skipping broken symlink: {item} -> {resolved_item}"
+                                )
+                                continue
+                            logger.debug(f"[v95.7] Resolved symlink: {item} -> {resolved_item}")
+                        except (OSError, RuntimeError) as e:
+                            logger.debug(f"[v95.7] Cannot resolve symlink {item}: {e}")
+                            continue
+
+                    # Check if it's a directory (after resolving symlinks)
+                    if not resolved_item.is_dir():
                         continue
 
+                    # Use the original item name for matching (symlink name is what user sees)
                     item_name = item.name.lower()
 
                     # Check if name matches any variant
                     for variant in name_variants:
                         if item_name == variant.lower():
-                            score = 10
+                            candidates_found += 1
+                            score = 10  # Base score for name match
 
-                            # Bonus for git repo
-                            if (item / ".git").exists():
+                            # v95.7: Check git repo on resolved path
+                            git_dir = resolved_item / ".git"
+                            if git_dir.exists():
                                 score += 5
+                                # Additional bonus for .git being a directory (not worktree file)
+                                if git_dir.is_dir():
+                                    score += 1
 
-                            # Bonus for signature match
-                            if discovery._validate_repo_signature(item, service_name):
+                            # v95.7: Signature match on resolved path
+                            if discovery._validate_repo_signature(resolved_item, service_name):
                                 score += 10
 
                             # Bonus for exact case match
                             if item.name == variant:
                                 score += 2
 
+                            # v95.7: Bonus for symlink (often indicates preferred/canonical location)
+                            if is_symlink:
+                                score += 1
+
+                            # v95.7: Bonus if resolved path is in typical dev directory
+                            resolved_str = str(resolved_item).lower()
+                            if any(dev_dir in resolved_str for dev_dir in ["repos", "code", "projects", "github"]):
+                                score += 1
+
                             if score > best_score:
                                 best_score = score
-                                best_match = item
-                                logger.debug(f"[v95.6] Sync discovery candidate: {item} (score: {score})")
+                                best_match = resolved_item  # Use resolved path
+                                logger.debug(
+                                    f"[v95.7] Sync discovery candidate: {item} "
+                                    f"{'-> ' + str(resolved_item) if is_symlink else ''} "
+                                    f"(score: {score}, git: {git_dir.exists()}, symlink: {is_symlink})"
+                                )
 
-            except (PermissionError, OSError):
+            except (PermissionError, OSError) as e:
+                logger.debug(f"[v95.7] Cannot scan directory {search_dir}: {e}")
                 continue
 
         if best_match:
+            # Final resolution to ensure absolute canonical path
             resolved = best_match.resolve()
-            logger.info(f"[v95.6] Sync discovered {service_name} at: {resolved}")
+            logger.info(
+                f"[v95.7] Sync discovered {service_name} at: {resolved} "
+                f"(score: {best_score}, candidates: {candidates_found})"
+            )
             # Cache the result
             discovery._discovery_cache[service_name] = (resolved, time.time())
             return resolved
 
+        logger.warning(
+            f"[v95.7] Sync discovery failed for '{service_name}'. "
+            f"Searched {len(search_dirs)} directories, found {candidates_found} candidates, "
+            f"none with sufficient score. Variants searched: {name_variants[:5]}..."
+        )
         return None
 
     @classmethod
@@ -1762,6 +1902,69 @@ class ProcessOrchestrator:
         if self._trace_lock is None:
             self._trace_lock = asyncio.Lock()
 
+    @property
+    def _degradation_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for degradation lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._degradation_lock is not None, "Degradation lock should be initialized"
+        return self._degradation_lock
+
+    @property
+    def _trace_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for trace lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._trace_lock is not None, "Trace lock should be initialized"
+        return self._trace_lock
+
+    @property
+    def _http_session_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for HTTP session lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._http_session_lock is not None, "HTTP session lock should be initialized"
+        return self._http_session_lock
+
+    @property
+    def _health_cache_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for health cache lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._health_cache_lock is not None, "Health cache lock should be initialized"
+        return self._health_cache_lock
+
+    @property
+    def _startup_coordination_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for startup coordination lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._startup_coordination_lock is not None, "Startup coordination lock should be initialized"
+        return self._startup_coordination_lock
+
+    @property
+    def _service_startup_semaphore_safe(self) -> asyncio.Semaphore:
+        """v95.7: Type-safe accessor for startup semaphore. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._service_startup_semaphore is not None, "Service startup semaphore should be initialized"
+        return self._service_startup_semaphore
+
+    @property
+    def _background_tasks_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for background tasks lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._background_tasks_lock is not None, "Background tasks lock should be initialized"
+        return self._background_tasks_lock
+
+    @property
+    def _memory_status_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for memory status lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._memory_status_lock is not None, "Memory status lock should be initialized"
+        return self._memory_status_lock
+
+    @property
+    def _circuit_breaker_lock_safe(self) -> asyncio.Lock:
+        """v95.7: Type-safe accessor for circuit breaker lock. Always returns non-None."""
+        self._ensure_locks_initialized()
+        assert self._circuit_breaker_lock is not None, "Circuit breaker lock should be initialized"
+        return self._circuit_breaker_lock
+
     # =========================================================================
     # v95.5: Graceful Degradation with Circuit Breaker Pattern
     # =========================================================================
@@ -1792,7 +1995,7 @@ class ProcessOrchestrator:
                 logger.info(f"[v95.5] Circuit breaker state change: {tier}: {old_state.value} -> {new_state.value}")
 
                 # Update degradation mode based on circuit state
-                async with self._degradation_lock:
+                async with self._degradation_lock_safe:
                     if new_state == CircuitState.OPEN:
                         self._degradation_mode[tier] = "isolated"
                         # Reduce capabilities for this service
@@ -1876,7 +2079,7 @@ class ProcessOrchestrator:
         kwargs = kwargs or {}
         self._ensure_locks_initialized()
 
-        async with self._degradation_lock:
+        async with self._degradation_lock_safe:
             mode = self._degradation_mode.get(service, "full")
             capabilities = self._service_capabilities.get(service, set())
 
@@ -2032,7 +2235,7 @@ class ProcessOrchestrator:
             for key, value in metadata.items():
                 ctx.baggage[key] = str(value)
 
-            async with self._trace_lock:
+            async with self._trace_lock_safe:
                 self._active_traces[ctx.correlation_id] = ctx
 
             logger.debug(f"[v95.5] Created span: {operation} ({ctx.correlation_id})")
@@ -2060,7 +2263,7 @@ class ProcessOrchestrator:
         """
         self._ensure_locks_initialized()
 
-        async with self._trace_lock:
+        async with self._trace_lock_safe:
             ctx = self._active_traces.pop(span_id, None)
 
         if ctx and hasattr(ctx, "current_span") and ctx.current_span:
@@ -2195,7 +2398,7 @@ class ProcessOrchestrator:
                         service = payload.get("service", source)
                         healthy = payload.get("healthy", True)
                         if not healthy:
-                            async with self._degradation_lock:
+                            async with self._degradation_lock_safe:
                                 self._degradation_mode[service] = "degraded"
 
                 except Exception as e:
@@ -2468,7 +2671,7 @@ class ProcessOrchestrator:
         """
         self._ensure_locks_initialized()
 
-        async with self._http_session_lock:
+        async with self._http_session_lock_safe:
             if self._http_session is None or self._http_session.closed:
                 # Configure connection pooling
                 connector = aiohttp.TCPConnector(
@@ -2677,7 +2880,7 @@ class ProcessOrchestrator:
         """
         self._ensure_locks_initialized()
 
-        async with self._circuit_breaker_lock:
+        async with self._circuit_breaker_lock_safe:
             if service_name not in self._circuit_breakers:
                 self._circuit_breakers[service_name] = CircuitBreaker(
                     name=f"docker-{service_name}",
@@ -3006,7 +3209,7 @@ class ProcessOrchestrator:
                     f"    ℹ️  Docker container running but not healthy: {status}"
                 )
 
-                if "starting" in status or "model loading" in status:
+                if status and ("starting" in status or "model loading" in status):
                     # Service is starting in Docker, wait for it
                     logger.info(
                         f"    ⏳ Waiting for Docker container to become healthy..."
@@ -6018,7 +6221,9 @@ echo "=== JARVIS Prime started ==="
         logger.debug(f"No venv found in {repo_path}, using system Python")
         return None
 
-    async def _pre_spawn_validation(self, definition: ServiceDefinition) -> tuple[bool, Optional[str]]:
+    async def _pre_spawn_validation(
+        self, definition: ServiceDefinition
+    ) -> Tuple[Union[bool, Literal["ALREADY_HEALTHY"]], Optional[str]]:
         """
         Validate a service before spawning.
 
@@ -6029,9 +6234,12 @@ echo "=== JARVIS Prime started ==="
         - Port not already in use
 
         v95.0: Enhanced with detailed diagnostic logging for troubleshooting.
+        v95.7: Return type now includes Literal["ALREADY_HEALTHY"] for type safety.
 
         Returns:
-            Tuple of (is_valid, python_executable)
+            Tuple of (is_valid_or_status, python_executable)
+            - is_valid_or_status: True if valid, False if invalid, "ALREADY_HEALTHY" if service is running
+            - python_executable: Path to Python executable or None
         """
         logger.info(f"    🔍 Pre-spawn validation for {definition.name}...")
 
@@ -6367,6 +6575,11 @@ echo "=== JARVIS Prime started ==="
 
         script_path = self._find_script(definition)
 
+        # v95.7: Guard to ensure python_exec is non-None after validation passed
+        if python_exec is None:
+            python_exec = sys.executable  # Fallback to system Python
+            logger.warning(f"Using system Python for {definition.name} as no venv detected")
+
         if script_path is None:
             logger.error(f"Cannot spawn {definition.name}: no script found")
             managed.status = ServiceStatus.FAILED
@@ -6403,17 +6616,21 @@ echo "=== JARVIS Prime started ==="
 
             if definition.use_uvicorn and definition.uvicorn_app:
                 # Uvicorn-based FastAPI app
+                # v95.7: Use str() to ensure type safety (uvicorn_app is verified non-None by condition)
+                uvicorn_app: str = definition.uvicorn_app  # Narrow type for Pyright
                 cmd = [
                     python_exec, "-m", "uvicorn",
-                    definition.uvicorn_app,
+                    uvicorn_app,
                     "--host", "0.0.0.0",
                     "--port", str(definition.default_port),
                 ]
-                logger.info(f"🚀 Spawning {definition.name} via uvicorn: {definition.uvicorn_app}")
+                logger.info(f"🚀 Spawning {definition.name} via uvicorn: {uvicorn_app}")
 
             elif definition.module_path:
                 # Module-based entry point (python -m)
-                cmd = [python_exec, "-m", definition.module_path]
+                # v95.7: Use type narrowing for Pyright
+                module_path: str = definition.module_path  # Narrow type for Pyright
+                cmd = [python_exec, "-m", module_path]
                 # Add script_args if any
                 if definition.script_args:
                     cmd.extend(definition.script_args)
@@ -6943,7 +7160,7 @@ echo "=== JARVIS Prime started ==="
         service_name = definition.name
 
         # Mark service as starting (outside semaphore - just bookkeeping)
-        async with self._startup_coordination_lock:
+        async with self._startup_coordination_lock_safe:
             self._services_starting.add(service_name)
             if service_name not in self._startup_events:
                 self._startup_events[service_name] = asyncio.Event()
@@ -6977,7 +7194,7 @@ echo "=== JARVIS Prime started ==="
             semaphore_timeout = 60.0  # Max wait for semaphore slot
             try:
                 acquired = await asyncio.wait_for(
-                    self._service_startup_semaphore.acquire(),
+                    self._service_startup_semaphore_safe.acquire(),
                     timeout=semaphore_timeout
                 )
                 if not acquired:
@@ -7083,7 +7300,7 @@ echo "=== JARVIS Prime started ==="
                 # ==============================================================
                 # PHASE 4: Release semaphore (always, even on error)
                 # ==============================================================
-                self._service_startup_semaphore.release()
+                self._service_startup_semaphore_safe.release()
 
         except Exception as e:
             logger.error(f"    ❌ {service_name} startup error: {e}")
@@ -7094,7 +7311,7 @@ echo "=== JARVIS Prime started ==="
 
         finally:
             # Mark service as no longer starting
-            async with self._startup_coordination_lock:
+            async with self._startup_coordination_lock_safe:
                 self._services_starting.discard(service_name)
                 if service_name in self._startup_events:
                     self._startup_events[service_name].set()
@@ -7196,7 +7413,8 @@ echo "=== JARVIS Prime started ==="
             light_results = await asyncio.gather(*light_tasks, return_exceptions=True)
 
             for result in light_results:
-                if isinstance(result, Exception):
+                # v95.7: Check for BaseException (not just Exception) for proper type narrowing
+                if isinstance(result, BaseException):
                     logger.error(f"  ❌ Service startup exception: {result}")
                     continue
 
@@ -7250,8 +7468,10 @@ echo "=== JARVIS Prime started ==="
                         await _emit_event("SERVICE_HEALTHY", service_name=name, priority="HIGH")
 
                         # v95.2: Mark this service as ready for dependent services
-                        if name in self._services_ready:
-                            self._services_ready[name].set()
+                        # v95.7: Fixed bug - use _startup_events (Dict) not _services_ready (Set)
+                        self._services_ready.add(name)
+                        if name in self._startup_events:
+                            self._startup_events[name].set()
                     else:
                         logger.warning(f"    ⚠️ {name}: {reason}")
                         # v95.0: Emit service unhealthy event for heavy service
@@ -7339,18 +7559,21 @@ echo "=== JARVIS Prime started ==="
         }
 
         for result in health_results:
-            if isinstance(result, Exception):
+            # v95.7: Check for BaseException for proper type narrowing with asyncio.gather
+            if isinstance(result, BaseException):
                 continue
-            name = result["name"]
-            aggregated["services"][name] = result
+            # v95.7: Explicit cast for type narrowing since Pyright doesn't narrow dict types well
+            health_info: Dict[str, Any] = result  # type: ignore[assignment]
+            name = health_info["name"]
+            aggregated["services"][name] = health_info
 
-            if result.get("healthy"):
+            if health_info.get("healthy"):
                 aggregated["healthy_count"] += 1
             else:
                 aggregated["all_healthy"] = False
 
         # Update cache
-        async with self._health_cache_lock:
+        async with self._health_cache_lock_safe:
             self._service_health_cache = aggregated
 
         return aggregated
