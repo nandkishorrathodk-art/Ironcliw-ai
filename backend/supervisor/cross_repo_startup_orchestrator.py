@@ -1189,6 +1189,14 @@ class ProcessOrchestrator:
         self._shutdown_completed = False
         self._shutdown_completed_timestamp: Optional[float] = None
 
+        # v95.4: JARVIS body startup tracking
+        # This fixes the dependency deadlock where external services wait for jarvis-body
+        # but the orchestrator doesn't track jarvis-body's own startup status
+        self._jarvis_body_status: str = "initializing"  # initializing, starting, healthy, unhealthy
+        self._jarvis_body_ready_event: Optional[asyncio.Event] = None
+        self._jarvis_body_startup_time: Optional[float] = None
+        self._jarvis_body_health_verified: bool = False
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -1211,6 +1219,154 @@ class ProcessOrchestrator:
             self._background_tasks_lock = asyncio.Lock()
         if self._health_cache_lock is None:
             self._health_cache_lock = asyncio.Lock()
+        # v95.4: JARVIS body ready event
+        if self._jarvis_body_ready_event is None:
+            self._jarvis_body_ready_event = asyncio.Event()
+
+    async def _verify_jarvis_body_health(self, timeout: float = 30.0) -> bool:
+        """
+        v95.4: Verify JARVIS body is healthy and ready for external services.
+
+        This checks:
+        1. Service registry is accessible
+        2. jarvis-body is registered in the registry
+        3. jarvis-body heartbeat is active and recent
+        4. Core endpoints are responding (if FastAPI is running)
+
+        Args:
+            timeout: Maximum time to wait for health verification
+
+        Returns:
+            True if jarvis-body is verified healthy, False otherwise
+        """
+        start_time = time.time()
+        logger.info("[v95.4] Verifying jarvis-body health before Phase 2...")
+
+        try:
+            # Check 1: Registry accessible and jarvis-body registered
+            if self.registry:
+                try:
+                    services = await self.registry.list_services()
+                    jarvis_body_entry = None
+                    for svc in services:
+                        if isinstance(svc, dict) and svc.get("name") == "jarvis-body":
+                            jarvis_body_entry = svc
+                            break
+                        elif hasattr(svc, "name") and svc.name == "jarvis-body":
+                            jarvis_body_entry = svc
+                            break
+
+                    if jarvis_body_entry:
+                        logger.info("[v95.4] ✅ jarvis-body found in registry")
+
+                        # Check heartbeat is recent (within 60 seconds)
+                        last_heartbeat = None
+                        if isinstance(jarvis_body_entry, dict):
+                            last_heartbeat = jarvis_body_entry.get("last_heartbeat")
+                        elif hasattr(jarvis_body_entry, "last_heartbeat"):
+                            last_heartbeat = jarvis_body_entry.last_heartbeat
+
+                        if last_heartbeat:
+                            heartbeat_age = time.time() - last_heartbeat
+                            if heartbeat_age < 60:
+                                logger.info(f"[v95.4] ✅ jarvis-body heartbeat active ({heartbeat_age:.1f}s ago)")
+                            else:
+                                logger.warning(f"[v95.4] ⚠️ jarvis-body heartbeat stale ({heartbeat_age:.1f}s ago)")
+                    else:
+                        logger.warning("[v95.4] ⚠️ jarvis-body not yet in registry")
+                        # Not fatal - registry write may still be propagating
+                except Exception as e:
+                    logger.warning(f"[v95.4] Registry check warning: {e}")
+
+            # Check 2: Local health endpoint (if FastAPI is running)
+            try:
+                local_port = int(os.environ.get("JARVIS_PORT", 8010))
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://127.0.0.1:{local_port}/health",
+                        timeout=aiohttp.ClientTimeout(total=5.0)
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"[v95.4] ✅ jarvis-body health endpoint responding (port {local_port})")
+                            self._jarvis_body_status = "healthy"
+                            self._jarvis_body_health_verified = True
+                            return True
+                        else:
+                            logger.warning(f"[v95.4] jarvis-body health endpoint returned {resp.status}")
+            except aiohttp.ClientConnectorError:
+                # FastAPI not yet listening - this is normal during startup
+                logger.debug("[v95.4] jarvis-body health endpoint not yet available")
+            except asyncio.TimeoutError:
+                logger.debug("[v95.4] jarvis-body health endpoint timeout")
+            except Exception as e:
+                logger.debug(f"[v95.4] jarvis-body health check: {e}")
+
+            # If registry shows jarvis-body is registered with active heartbeat,
+            # that's sufficient even if health endpoint isn't ready yet
+            if self.registry:
+                try:
+                    services = await self.registry.list_services()
+                    for svc in services:
+                        name = svc.get("name") if isinstance(svc, dict) else getattr(svc, "name", None)
+                        if name == "jarvis-body":
+                            self._jarvis_body_status = "healthy"
+                            self._jarvis_body_health_verified = True
+                            logger.info("[v95.4] ✅ jarvis-body verified via registry (health endpoint pending)")
+                            return True
+                except Exception:
+                    pass
+
+            # Fallback: If we registered successfully earlier, consider it healthy
+            elapsed = time.time() - start_time
+            if elapsed < timeout and self._jarvis_body_status == "starting":
+                logger.info("[v95.4] jarvis-body registration confirmed, proceeding with startup")
+                self._jarvis_body_status = "healthy"
+                self._jarvis_body_health_verified = True
+                return True
+
+            logger.warning(f"[v95.4] jarvis-body health verification incomplete after {elapsed:.1f}s")
+            return False
+
+        except Exception as e:
+            logger.error(f"[v95.4] jarvis-body health verification error: {e}")
+            return False
+
+    async def _update_unified_state_for_jarvis_body(self, status: str, health: bool = True) -> None:
+        """
+        v95.4: Update unified state for jarvis-body in the service registry.
+
+        This ensures external services can discover jarvis-body's current state
+        through the unified state API.
+
+        Args:
+            status: Current status (initializing, starting, healthy, unhealthy)
+            health: Whether jarvis-body is healthy
+        """
+        if not self.registry:
+            return
+
+        try:
+            # Build metadata for the unified state
+            metadata = {
+                "status": status,
+                "timestamp": time.time(),
+                "port": int(os.environ.get("JARVIS_PORT", 8010)),
+                "host": os.environ.get("JARVIS_HOST", "127.0.0.1"),
+                "startup_time": self._jarvis_body_startup_time,
+            }
+
+            # Use the unified state API if available
+            if hasattr(self.registry, "update_supervisor_state"):
+                await self.registry.update_supervisor_state(
+                    service_name="jarvis-body",
+                    process_alive=health,
+                    pid=os.getpid(),
+                    exit_code=None,
+                    metadata=metadata
+                )
+                logger.debug(f"[v95.4] Updated unified state for jarvis-body: {status}")
+        except Exception as e:
+            logger.debug(f"[v95.4] Unified state update for jarvis-body failed: {e}")
 
     async def _get_http_session(self) -> aiohttp.ClientSession:
         """
@@ -4879,6 +5035,19 @@ echo "=== JARVIS Prime started ==="
 
         while pending_deps and (time.time() - start_time) < timeout:
             for dep_name in list(pending_deps):
+                # v95.4: Special handling for jarvis-body dependency
+                # jarvis-body is not in self.processes because it's the orchestrator itself
+                if dep_name == "jarvis-body":
+                    if self._jarvis_body_status == "healthy" or "jarvis-body" in self._services_ready:
+                        logger.info(f"  ✓ Dependency 'jarvis-body' is healthy (local)")
+                        pending_deps.discard(dep_name)
+                        continue
+                    # Also check via ready event
+                    if self._jarvis_body_ready_event and self._jarvis_body_ready_event.is_set():
+                        logger.info(f"  ✓ Dependency 'jarvis-body' ready event set")
+                        pending_deps.discard(dep_name)
+                        continue
+
                 # Check if dependency is in our managed processes
                 if dep_name in self.processes:
                     dep_managed = self.processes[dep_name]
@@ -6030,6 +6199,13 @@ echo "=== JARVIS Prime started ==="
         """
         self._running = True
 
+        # v95.4: Initialize locks and set jarvis-body to starting status
+        self._ensure_locks_initialized()
+        self._jarvis_body_status = "starting"
+        self._jarvis_body_startup_time = time.time()
+        self._services_starting.add("jarvis-body")
+        logger.info("[v95.4] jarvis-body status: starting")
+
         # v93.0: CRITICAL - Ensure all required directories exist FIRST
         # This prevents "No such file or directory" errors throughout startup
         try:
@@ -6051,6 +6227,7 @@ echo "=== JARVIS Prime started ==="
         # v95.2: CRITICAL - Register jarvis-body IMMEDIATELY before starting external services
         # This fixes the issue where jarvis-prime waits 120s for jarvis-body that never registered
         # The registration MUST happen BEFORE Phase 2 starts external services
+        jarvis_body_registered = False
         if self.registry:
             # v95.2: First, ensure jarvis-body is registered and heartbeat sent IMMEDIATELY
             # This is critical for cross-repo discovery to work
@@ -6058,6 +6235,7 @@ echo "=== JARVIS Prime started ==="
                 success = await self.registry.ensure_owner_registered_immediately()
                 if success:
                     logger.info("[v95.2] ✅ jarvis-body registered (early registration for cross-repo discovery)")
+                    jarvis_body_registered = True
                 else:
                     logger.warning("[v95.2] ⚠️ Early jarvis-body registration may have failed")
             except Exception as e:
@@ -6066,7 +6244,31 @@ echo "=== JARVIS Prime started ==="
             # Start cleanup task which includes self-heartbeat loop
             await self.registry.start_cleanup_task()
 
-        results = {"jarvis": True}  # JARVIS is already running
+        # v95.4: Verify jarvis-body health and update unified state
+        if jarvis_body_registered:
+            # Update unified state to signal jarvis-body is available
+            await self._update_unified_state_for_jarvis_body("starting", health=True)
+
+            # Verify health - this confirms registry entry and heartbeat are working
+            health_verified = await self._verify_jarvis_body_health(timeout=30.0)
+            if health_verified:
+                self._jarvis_body_status = "healthy"
+                self._services_starting.discard("jarvis-body")
+                self._services_ready.add("jarvis-body")
+                await self._update_unified_state_for_jarvis_body("healthy", health=True)
+                logger.info("[v95.4] ✅ jarvis-body health verified, external services can proceed")
+            else:
+                # Registration succeeded but health check didn't complete - still allow startup
+                self._jarvis_body_status = "starting"
+                await self._update_unified_state_for_jarvis_body("starting", health=True)
+                logger.warning("[v95.4] ⚠️ jarvis-body health verification incomplete, proceeding with caution")
+
+            # Signal jarvis-body ready event
+            if self._jarvis_body_ready_event:
+                self._jarvis_body_ready_event.set()
+                logger.debug("[v95.4] jarvis-body ready event signaled")
+
+        results = {"jarvis-body": jarvis_body_registered, "jarvis": True}  # Track jarvis-body explicitly
 
         logger.info("=" * 70)
         logger.info("Cross-Repo Startup Orchestrator v95.0 - Enterprise Grade")

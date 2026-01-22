@@ -72,8 +72,8 @@ class TrinityComponent(str, Enum):
 @dataclass
 class HealthCheckResult:
     """Result of a single health check."""
-    check_type: str  # "http", "heartbeat", "internal"
-    success: bool
+    check_type: str  # "http", "heartbeat", "internal", "readiness"
+    success: bool = False  # v94.0: Default to False for safety
     response_time_ms: float = 0.0
     error: Optional[str] = None
     details: Dict[str, Any] = field(default_factory=dict)
@@ -378,30 +378,70 @@ class TrinityHealthMonitor:
         return snapshot
 
     async def _check_jarvis_body(self) -> ComponentHealthStatus:
-        """Check JARVIS Body (main backend) health."""
+        """
+        Check JARVIS Body (main backend) health.
+
+        v94.0: Now uses /health/ready endpoint instead of /health/ping
+        to properly detect initialization state. This fixes the false
+        positive issue where health checks passed during initialization.
+        """
         status = ComponentHealthStatus(component=TrinityComponent.JARVIS_BODY)
         checks = []
 
-        # HTTP health check
-        http_result = await self._check_http_endpoint(
-            f"http://127.0.0.1:{self.config.jarvis_backend_port}/health/ping",
+        # v94.0: First check readiness endpoint (the KEY fix for false positives)
+        ready_result = await self._check_readiness_endpoint(
+            f"http://127.0.0.1:{self.config.jarvis_backend_port}/health/ready",
             timeout=self.config.http_timeout_seconds,
         )
-        checks.append(http_result)
-        status.http_response_time_ms = http_result.response_time_ms
+        checks.append(ready_result)
+        status.http_response_time_ms = ready_result.response_time_ms
 
-        # Determine status based on checks
-        if http_result.success:
-            status.status = ComponentStatus.HEALTHY
-            if http_result.details.get("uptime"):
-                status.uptime_seconds = http_result.details["uptime"]
-        else:
-            status.consecutive_failures += 1
-            status.last_error = http_result.error
-            if status.consecutive_failures >= self.config.consecutive_failures_for_unhealthy:
-                status.status = ComponentStatus.UNHEALTHY
-            else:
+        # Determine status based on readiness check
+        if ready_result.success:
+            # Ready endpoint returned 200 - component is fully initialized
+            ready_data = ready_result.details
+            phase = ready_data.get("phase", "unknown")
+
+            if phase == "healthy":
+                status.status = ComponentStatus.HEALTHY
+            elif phase in ("ready", "degraded"):
                 status.status = ComponentStatus.DEGRADED
+            else:
+                status.status = ComponentStatus.HEALTHY
+
+            status.uptime_seconds = ready_data.get("uptime_seconds", 0)
+            status.consecutive_failures = 0
+            status.metadata["readiness_phase"] = phase
+            status.metadata["ready_components"] = ready_data.get("ready_components", 0)
+            status.metadata["total_components"] = ready_data.get("total_components", 0)
+        else:
+            # Ready endpoint returned non-200 (503 or error)
+            # Check if it's still starting or actually unhealthy
+            ready_data = ready_result.details
+
+            if ready_result.error and "503" in str(ready_result.error):
+                # 503 means "not ready yet" - component is STARTING
+                phase = ready_data.get("phase", "starting")
+                progress = ready_data.get("progress_percent", 0)
+
+                status.status = ComponentStatus.STARTING
+                status.metadata["readiness_phase"] = phase
+                status.metadata["progress_percent"] = progress
+                status.last_error = f"Still initializing ({progress:.0f}%)"
+
+                self.log.debug(
+                    f"[TrinityHealthMonitor] JARVIS Body in STARTING state "
+                    f"(phase={phase}, progress={progress:.0f}%)"
+                )
+            else:
+                # Actual failure (connection refused, timeout, etc.)
+                status.consecutive_failures += 1
+                status.last_error = ready_result.error
+
+                if status.consecutive_failures >= self.config.consecutive_failures_for_unhealthy:
+                    status.status = ComponentStatus.UNHEALTHY
+                else:
+                    status.status = ComponentStatus.DEGRADED
 
         status.check_results = checks
         status.last_check = time.time()
@@ -570,6 +610,72 @@ class TrinityHealthMonitor:
         except Exception as e:
             result.success = False
             result.error = str(e)
+            result.response_time_ms = (time.time() - start_time) * 1000
+
+        result.timestamp = time.time()
+        return result
+
+    async def _check_readiness_endpoint(
+        self,
+        url: str,
+        timeout: float = 5.0,
+    ) -> HealthCheckResult:
+        """
+        v94.0: Check a readiness endpoint.
+
+        Unlike _check_http_endpoint, this method:
+        1. Treats 503 as "not ready yet" rather than failure
+        2. Extracts readiness-specific data from response
+        3. Returns details even on non-200 responses
+        """
+        result = HealthCheckResult(check_type="readiness", success=False)
+        start_time = time.time()
+
+        try:
+            import aiohttp
+
+            if self._http_session is None or self._http_session.closed:
+                self._http_session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                )
+
+            async with self._http_session.get(url) as response:
+                result.response_time_ms = (time.time() - start_time) * 1000
+
+                # Try to parse JSON response body regardless of status code
+                try:
+                    result.details = await response.json()
+                except Exception:
+                    result.details = {}
+
+                if response.status == 200:
+                    result.success = True
+                    # Check if response indicates ready
+                    if result.details.get("ready", True) is False:
+                        result.success = False
+                        result.error = "Endpoint returned ready=false"
+                elif response.status == 503:
+                    # 503 = Service Unavailable = Not ready yet
+                    result.success = False
+                    result.error = f"HTTP 503 (not ready)"
+                    # Include phase info if available
+                    phase = result.details.get("phase", "unknown")
+                    progress = result.details.get("progress_percent", 0)
+                    result.error = f"HTTP 503 (phase={phase}, progress={progress}%)"
+                else:
+                    result.success = False
+                    result.error = f"HTTP {response.status}"
+
+        except asyncio.TimeoutError:
+            result.success = False
+            result.error = f"Timeout after {timeout}s"
+            result.response_time_ms = timeout * 1000
+        except Exception as e:
+            error_str = str(e)
+            if "ConnectionRefusedError" in error_str or "Cannot connect" in error_str:
+                result.error = "Connection refused (service not running)"
+            else:
+                result.error = error_str
             result.response_time_ms = (time.time() - start_time) * 1000
 
         result.timestamp = time.time()

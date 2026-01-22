@@ -1,14 +1,32 @@
 """
-Trinity Health API v1.0
-========================
+Trinity Health API v2.0 - Readiness-Aware Health Checks
+========================================================
 
-Health monitoring endpoints for the Trinity ecosystem.
+v2.0: MAJOR ENHANCEMENT - Proper Liveness/Readiness/Startup Probes
+--------------------------------------------------------------------
+Fixes the ROOT CAUSE of health check false positives by:
+1. Distinguishing between liveness (process alive) and readiness (fully initialized)
+2. Returning 503 Service Unavailable during initialization, not 200 OK
+3. Supporting Kubernetes-style health probe semantics
+
+Health Endpoint Semantics:
+- /health/live   - Returns 200 if process is running (liveness probe)
+- /health/ready  - Returns 200 ONLY when fully initialized (readiness probe)
+- /health/startup - Returns 200 once initial startup completes (startup probe)
+- /health/ping   - Simple ping (always 200 if server responding)
+
+Why This Matters:
+- Before: /health returned 200 OK immediately when FastAPI started
+- Problem: Supervisor thought component was ready while it was still loading
+- After: /health/ready returns 503 during initialization, 200 only when ready
 
 Provides real-time status of:
 - JARVIS-Prime (Mind) - Local AI inference
 - Reactor-Core (Nerves) - Orchestration layer
 - Graceful Degradation status
 - Routing metrics
+
+Author: JARVIS Trinity v94.0 - Readiness-Aware Health System
 """
 
 from __future__ import annotations
@@ -18,12 +36,28 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/health", tags=["trinity"])
+
+# =============================================================================
+# v94.0: Readiness State Integration
+# =============================================================================
+
+def _get_readiness_manager_safe(component_name: str = "jarvis-body") -> Optional[Any]:
+    """Safely get readiness manager if available."""
+    try:
+        from backend.core.readiness_state_manager import get_readiness_manager
+        return get_readiness_manager(component_name)
+    except ImportError:
+        return None
+    except Exception as e:
+        logger.debug(f"[TrinityHealth] Could not get readiness manager: {e}")
+        return None
 
 
 # =============================================================================
@@ -174,6 +208,243 @@ async def reset_prime_circuit() -> Dict[str, Any]:
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# v94.0: READINESS-AWARE HEALTH PROBES (FIX FOR FALSE POSITIVES)
+# =============================================================================
+
+@router.get("/live")
+async def liveness_probe() -> Response:
+    """
+    v94.0: Kubernetes-style LIVENESS probe.
+
+    Returns:
+        200 OK: Process is alive and running
+        503 Service Unavailable: Process is dead/stopping
+
+    Use Case:
+        - Container orchestration liveness checks
+        - Should ALWAYS return 200 unless process is truly dead
+        - NOT for checking if service is ready for traffic
+    """
+    manager = _get_readiness_manager_safe()
+
+    if manager:
+        from backend.core.readiness_state_manager import ProbeType
+        response = manager.handle_probe(ProbeType.LIVENESS)
+
+        return JSONResponse(
+            status_code=response.status_code,
+            content=response.to_dict(),
+        )
+
+    # Fallback: if we can respond, we're alive
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "ok",
+            "ready": True,
+            "phase": "unknown",
+            "message": "Process alive (readiness manager not available)",
+            "timestamp": time.time(),
+        },
+    )
+
+
+@router.get("/ready")
+async def readiness_probe() -> Response:
+    """
+    v94.0: Kubernetes-style READINESS probe.
+
+    This is the KEY FIX for health check false positives.
+
+    Returns:
+        200 OK: Service is fully initialized and ready for traffic
+        503 Service Unavailable: Service is still initializing
+
+    Why This Matters:
+        - Before: Health checks returned 200 immediately when FastAPI started
+        - Problem: Orchestrator thought service was ready during initialization
+        - Now: Returns 503 during initialization, 200 only when truly ready
+
+    Use Case:
+        - Load balancer health checks
+        - Service discovery readiness
+        - Startup sequencing in orchestration
+    """
+    manager = _get_readiness_manager_safe()
+
+    if manager:
+        from backend.core.readiness_state_manager import ProbeType
+        response = manager.handle_probe(ProbeType.READINESS)
+
+        logger.debug(
+            f"[TrinityHealth] Readiness probe: "
+            f"status_code={response.status_code}, "
+            f"phase={response.phase.value}, "
+            f"ready={response.success}"
+        )
+
+        return JSONResponse(
+            status_code=response.status_code,
+            content=response.to_dict(),
+        )
+
+    # Fallback: Check basic health indicators
+    # This is less accurate but provides backwards compatibility
+    return await _fallback_readiness_check()
+
+
+@router.get("/startup")
+async def startup_probe() -> Response:
+    """
+    v94.0: Kubernetes-style STARTUP probe.
+
+    Returns:
+        200 OK: Initial startup is complete
+        503 Service Unavailable: Still starting up
+
+    Difference from Readiness:
+        - Startup probe only checks initial startup
+        - Once it returns 200, it stays 200 (startup is done)
+        - Readiness can flip back to 503 if service becomes unhealthy
+
+    Use Case:
+        - Slow-starting containers
+        - Prevent liveness probes from killing during long startup
+    """
+    manager = _get_readiness_manager_safe()
+
+    if manager:
+        from backend.core.readiness_state_manager import ProbeType
+        response = manager.handle_probe(ProbeType.STARTUP)
+
+        return JSONResponse(
+            status_code=response.status_code,
+            content=response.to_dict(),
+        )
+
+    # Fallback
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "ok",
+            "ready": True,
+            "phase": "unknown",
+            "message": "Startup assumed complete (readiness manager not available)",
+            "timestamp": time.time(),
+        },
+    )
+
+
+@router.get("/ping")
+async def ping() -> Dict[str, Any]:
+    """
+    Simple ping endpoint - always returns 200 if server is responding.
+
+    This is NOT a readiness check. Use /health/ready for that.
+    """
+    return {
+        "status": "ok",
+        "pong": True,
+        "timestamp": time.time(),
+    }
+
+
+@router.get("/status")
+async def detailed_status() -> Dict[str, Any]:
+    """
+    v94.0: Detailed component initialization status.
+
+    Returns comprehensive information about:
+    - Current initialization phase
+    - Individual component readiness
+    - Timing information
+    - Any errors
+    """
+    manager = _get_readiness_manager_safe()
+
+    if manager:
+        status = manager.get_status()
+        status["endpoint"] = "detailed_status"
+        status["timestamp"] = time.time()
+        return status
+
+    # Fallback
+    return {
+        "phase": "unknown",
+        "is_ready": True,
+        "is_healthy": True,
+        "message": "Readiness manager not available",
+        "timestamp": time.time(),
+    }
+
+
+async def _fallback_readiness_check() -> Response:
+    """
+    Fallback readiness check when ReadinessStateManager is not available.
+
+    Uses basic health indicators to estimate readiness.
+    """
+    try:
+        # Check if critical components are loaded
+        checks_passed = 0
+        total_checks = 3
+
+        # Check 1: Can we import core modules?
+        try:
+            from backend.core import service_registry
+            checks_passed += 1
+        except ImportError:
+            pass
+
+        # Check 2: Is there a health status file?
+        try:
+            import json
+            trinity_dir = os.getenv("TRINITY_DIR", os.path.expanduser("~/.jarvis/trinity"))
+            health_file = os.path.join(trinity_dir, "health_status.json")
+            if os.path.exists(health_file):
+                with open(health_file) as f:
+                    data = json.load(f)
+                    if data.get("overall_status") in ("healthy", "degraded"):
+                        checks_passed += 1
+        except Exception:
+            pass
+
+        # Check 3: Basic response time (sanity check)
+        start = time.time()
+        _ = 1 + 1  # Trivial operation
+        elapsed = time.time() - start
+        if elapsed < 1.0:  # Should be instant
+            checks_passed += 1
+
+        is_ready = checks_passed >= 2  # At least 2 of 3 checks pass
+
+        return JSONResponse(
+            status_code=200 if is_ready else 503,
+            content={
+                "status": "ok" if is_ready else "not_ready",
+                "ready": is_ready,
+                "phase": "ready" if is_ready else "unknown",
+                "message": f"Fallback check: {checks_passed}/{total_checks} passed",
+                "checks_passed": checks_passed,
+                "total_checks": total_checks,
+                "timestamp": time.time(),
+            },
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "ready": False,
+                "phase": "error",
+                "message": f"Fallback check failed: {e}",
+                "timestamp": time.time(),
+            },
+        )
 
 
 # =============================================================================

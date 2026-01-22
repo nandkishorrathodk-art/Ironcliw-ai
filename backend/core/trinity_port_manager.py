@@ -2,6 +2,14 @@
 Trinity Port Manager - Cross-Component Port Allocation with Fallback.
 =====================================================================
 
+v94.0: MAJOR ENHANCEMENT - Process Identity Verification
+---------------------------------------------------------
+Fixes the ROOT CAUSE of port allocation race conditions by:
+1. Identifying process ownership BEFORE falling back to different ports
+2. Detecting if port owner is a JARVIS component (adoptable) vs external process
+3. Supporting healthy JARVIS instance adoption instead of unnecessary restarts
+4. Cross-referencing with service registry for registered services
+
 Manages port allocation for ALL Trinity components (JARVIS Body, J-Prime, Reactor-Core)
 with intelligent fallback, conflict detection, and IPC-based coordination.
 
@@ -11,17 +19,20 @@ Key Features:
 3. Fallback allocation with socket verification
 4. IPC integration for port announcements
 5. Hot reload support for port re-allocation
+6. v94.0: Process identity verification before fallback
+7. v94.0: JARVIS component adoption for existing healthy instances
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────┐
-    │  TrinityPortManager                                                 │
+    │  TrinityPortManager v94.0                                           │
     │  ├── PortAllocation (per-component port config with fallbacks)      │
     │  ├── PortReservation (tracks allocated ports across components)     │
     │  ├── ConflictDetector (prevents port collision between Trinity)     │
-    │  └── IPCPortAnnouncer (broadcasts port assignments via IPC)         │
+    │  ├── IPCPortAnnouncer (broadcasts port assignments via IPC)         │
+    │  └── ProcessIdentityVerifier (v94.0: identifies port owner)         │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v81.0 - Cross-Component Port Coordination
+Author: JARVIS Trinity v94.0 - Process-Aware Port Coordination
 """
 
 from __future__ import annotations
@@ -190,6 +201,10 @@ class AllocationResult:
     elapsed_ms: float
     fallback_reason: Optional[str] = None
     error: Optional[str] = None
+    # v94.0: Process identity verification results
+    adopted_existing: bool = False  # True if we adopted an existing healthy JARVIS instance
+    process_owner: Optional[str] = None  # Process name/type that owns the port
+    verification_result: Optional[str] = None  # Result of process identity verification
 
     @property
     def used_fallback(self) -> bool:
@@ -208,12 +223,20 @@ class TrinityPortManager:
     Coordinates port allocation across JARVIS Body, Prime, and Reactor Core
     to prevent conflicts and enable graceful fallback.
 
+    v94.0 Enhancement: Process Identity Verification
+    - Before falling back to a different port, verifies if the process holding
+      the port is a JARVIS component (which can be adopted) vs external process
+    - Supports adoption of healthy existing JARVIS instances
+    - Cross-references with service registry for registered services
+
     Features:
     - Environment-driven configuration (zero hardcoding)
     - Cross-component conflict detection
     - Parallel port checking for speed
     - IPC-based port announcements
     - Hot reload support
+    - v94.0: Process identity verification before fallback
+    - v94.0: JARVIS component adoption for existing healthy instances
     """
 
     def __init__(
@@ -221,6 +244,8 @@ class TrinityPortManager:
         config: Optional[TrinityPortConfig] = None,
         host: str = "127.0.0.1",
         ipc_bus: Optional[Any] = None,  # TrinityIPCBus from trinity_ipc.py
+        enable_process_verification: bool = True,  # v94.0
+        service_registry: Optional[Any] = None,  # v94.0: For process verification
     ):
         """
         Initialize the port manager.
@@ -229,10 +254,14 @@ class TrinityPortManager:
             config: Port configuration (loads from env if not provided)
             host: Host to bind ports on
             ipc_bus: Optional IPC bus for port announcements
+            enable_process_verification: v94.0 - Enable process identity verification
+            service_registry: v94.0 - ServiceRegistry for cross-referencing
         """
         self.config = config or TrinityPortConfig()
         self.host = host
         self.ipc_bus = ipc_bus
+        self.enable_process_verification = enable_process_verification
+        self.service_registry = service_registry
 
         # Reservation tracking
         self._reservations: Dict[ComponentType, PortReservation] = {}
@@ -242,6 +271,9 @@ class TrinityPortManager:
         # Callbacks for port changes
         self._port_change_callbacks: List[Callable[[ComponentType, int, int], None]] = []
 
+        # v94.0: Process identity verifier (lazy initialized)
+        self._process_verifier: Optional[Any] = None
+
         # Ensure IPC directory exists
         self.config.trinity_dir.mkdir(parents=True, exist_ok=True)
 
@@ -249,8 +281,25 @@ class TrinityPortManager:
             f"[TrinityPortManager] Initialized with config: "
             f"Body={self.config.allocations[ComponentType.JARVIS_BODY].primary}, "
             f"Prime={self.config.allocations[ComponentType.JARVIS_PRIME].primary}, "
-            f"Reactor={self.config.allocations[ComponentType.REACTOR_CORE].primary}"
+            f"Reactor={self.config.allocations[ComponentType.REACTOR_CORE].primary}, "
+            f"ProcessVerification={enable_process_verification}"
         )
+
+    async def _get_process_verifier(self) -> Any:
+        """v94.0: Get or create process identity verifier."""
+        if self._process_verifier is None and self.enable_process_verification:
+            try:
+                from backend.core.process_identity_verifier import get_process_identity_verifier
+                self._process_verifier = await get_process_identity_verifier(
+                    service_registry=self.service_registry,
+                )
+            except ImportError:
+                logger.warning(
+                    "[TrinityPortManager] ProcessIdentityVerifier not available, "
+                    "falling back to basic port checking"
+                )
+                self.enable_process_verification = False
+        return self._process_verifier
 
     # =========================================================================
     # Main API
@@ -490,24 +539,95 @@ class TrinityPortManager:
         """
         Verify a port is usable (not in use by external process).
 
-        Performs both lsof check and socket bind test.
+        v94.0 Enhancement: Uses ProcessIdentityVerifier to determine if
+        the port owner is a JARVIS component (adoptable) vs external process.
+
+        Returns:
+            True if port is usable (free or can be adopted)
+            False if port is held by external process (need fallback)
         """
         # Check if port is in use via lsof
         pid = await self._get_pid_on_port(port)
-        if pid is not None:
-            # Port is in use - check if it's our own process
-            our_reservation = self._reservations.get(component)
-            if our_reservation and our_reservation.pid == pid:
-                return True  # Our own process
+        if pid is None:
+            # Port appears free - verify with socket bind
+            return await self._verify_socket_bindable(port)
 
-            logger.debug(
-                f"[TrinityPortManager] Port {port} in use by PID {pid} "
-                f"(not ours for {component.value})"
-            )
-            return False
+        # Port is in use - check if it's our own process
+        our_reservation = self._reservations.get(component)
+        if our_reservation and our_reservation.pid == pid:
+            return True  # Our own process
 
-        # Verify with socket bind
-        return await self._verify_socket_bindable(port)
+        # v94.0: Use ProcessIdentityVerifier to determine if we should fallback
+        if self.enable_process_verification:
+            verifier = await self._get_process_verifier()
+            if verifier:
+                from backend.core.process_identity_verifier import (
+                    ProcessVerificationResult,
+                    ComponentType as VerifierComponentType,
+                )
+
+                # Map our ComponentType to verifier's expected type
+                expected_type = None
+                if component == ComponentType.JARVIS_BODY:
+                    expected_type = VerifierComponentType.JARVIS_BODY
+                elif component == ComponentType.JARVIS_PRIME:
+                    expected_type = VerifierComponentType.JARVIS_PRIME
+                elif component == ComponentType.REACTOR_CORE:
+                    expected_type = VerifierComponentType.REACTOR_CORE
+
+                verification = await verifier.verify_port_owner(port, expected_type)
+
+                logger.info(
+                    f"[TrinityPortManager] Port {port} process verification: "
+                    f"{verification.result.value} "
+                    f"(adoptable={verification.is_adoptable}, "
+                    f"fallback={verification.should_use_fallback})"
+                )
+
+                # If it's a healthy JARVIS component, we can adopt it
+                if verification.result == ProcessVerificationResult.JARVIS_HEALTHY:
+                    if verification.is_adoptable:
+                        logger.info(
+                            f"[TrinityPortManager] ✅ Port {port} held by healthy "
+                            f"{component.value} - can be adopted"
+                        )
+                        # Store adoption info for allocation result
+                        self._last_verification = verification
+                        return True  # We'll adopt this instance
+
+                # If it's an external process, we should use fallback
+                if verification.result == ProcessVerificationResult.EXTERNAL_PROCESS:
+                    owner = (
+                        verification.fingerprint.name
+                        if verification.fingerprint else "unknown"
+                    )
+                    logger.info(
+                        f"[TrinityPortManager] Port {port} held by external process "
+                        f"'{owner}' (PID {pid}) - will use fallback"
+                    )
+                    return False
+
+                # If it's a JARVIS component that's unhealthy/starting, also fallback
+                if verification.result in (
+                    ProcessVerificationResult.JARVIS_UNHEALTHY,
+                    ProcessVerificationResult.JARVIS_STARTING,
+                ):
+                    logger.info(
+                        f"[TrinityPortManager] Port {port} held by unhealthy/starting "
+                        f"JARVIS component - will use fallback"
+                    )
+                    return False
+
+                # For other cases (system process, permission denied), use fallback
+                if verification.should_use_fallback:
+                    return False
+
+        # Fallback: basic PID check (original behavior)
+        logger.debug(
+            f"[TrinityPortManager] Port {port} in use by PID {pid} "
+            f"(not ours for {component.value})"
+        )
+        return False
 
     async def _get_pid_on_port(self, port: int) -> Optional[int]:
         """Get PID of process using a port."""

@@ -488,6 +488,18 @@ class ServiceRegistry:
         )
         self._suspicious_retry_counts: Dict[str, int] = {}  # service_name -> retry_count
 
+        # v95.2: Read-Write Lock for atomic registry operations
+        # This prevents race conditions when multiple processes update the registry
+        # Example race: heartbeat reads registry, another process writes, heartbeat overwrites
+        self._registry_rw_lock: Optional[asyncio.Lock] = None
+        self._registry_rw_lock_initialized = False
+
+        # v95.2: Unified State Management for process-component synchronization
+        # Tracks both supervisor's process state AND component's self-reported state
+        # This solves the gap where supervisor thinks process is dead but component is healthy
+        self._unified_state: Dict[str, Dict[str, Any]] = {}
+        self._state_version: int = 0  # Monotonic version for conflict detection
+
         # v93.0: Ensure directory exists with retry logic
         if not self._dir_manager.ensure_directory_sync():
             logger.error(f"[v93.0] CRITICAL: Failed to create registry directory: {self.registry_dir}")
@@ -872,18 +884,18 @@ class ServiceRegistry:
     async def register_service(
         self,
         service_name: str,
-        pid: int,
-        port: int,
+        pid: Optional[int] = None,
+        port: Optional[int] = None,
         host: str = "localhost",
         health_endpoint: str = "/health",
         metadata: Optional[Dict] = None
     ) -> ServiceInfo:
         """
-        Register a service in the registry.
+        v95.2: Register a service with atomic locking to prevent race conditions.
 
         Args:
             service_name: Unique service identifier
-            pid: Process ID
+            pid: Process ID (defaults to current process)
             port: Port number service is listening on
             host: Hostname (default: localhost)
             health_endpoint: Health check endpoint path
@@ -892,28 +904,52 @@ class ServiceRegistry:
         Returns:
             ServiceInfo for the registered service
         """
+        # Use current PID if not specified
+        actual_pid = pid if pid is not None else os.getpid()
+
+        # Use default port from environment if not specified
+        actual_port = port if port is not None else int(
+            os.environ.get("JARVIS_BODY_PORT", "8010")
+        )
+
         service = ServiceInfo(
             service_name=service_name,
-            pid=pid,
-            port=port,
+            pid=actual_pid,
+            port=actual_port,
             host=host,
             health_endpoint=health_endpoint,
             status="starting",
             metadata=metadata or {}
         )
 
-        # Read existing registry
-        services = await asyncio.to_thread(self._read_registry)
+        lock = self._ensure_registry_lock()
 
-        # Add/update service
-        services[service_name] = service
+        # v95.2: Use lock for atomic read-modify-write
+        async with lock:
+            # Read existing registry
+            services = await asyncio.to_thread(self._read_registry)
 
-        # Write back atomically
-        await asyncio.to_thread(self._write_registry, services)
+            # Add/update service
+            services[service_name] = service
+
+            # v95.2: Update unified state
+            self._state_version += 1
+            self._unified_state[service_name] = {
+                "pid": actual_pid,
+                "status": "starting",
+                "last_heartbeat": time.time(),
+                "component_healthy": True,
+                "supervisor_healthy": None,
+                "state_version": self._state_version,
+                "registered_at": time.time(),
+            }
+
+            # Write back atomically
+            await asyncio.to_thread(self._write_registry, services)
 
         logger.info(
             f"📝 Service registered: {service_name} "
-            f"(PID: {pid}, Port: {port}, Host: {host})"
+            f"(PID: {actual_pid}, Port: {actual_port}, Host: {host})"
         )
 
         return service
@@ -1111,6 +1147,21 @@ class ServiceRegistry:
             logger.debug(f"Heartbeat error for {service_name}: {e} (non-fatal)")
             return False
 
+    def _ensure_registry_lock(self) -> asyncio.Lock:
+        """
+        v95.2: Lazily initialize the registry read-write lock.
+
+        This handles the case where __init__ runs before event loop exists.
+        """
+        if self._registry_rw_lock is None or not self._registry_rw_lock_initialized:
+            try:
+                self._registry_rw_lock = asyncio.Lock()
+                self._registry_rw_lock_initialized = True
+            except RuntimeError:
+                # No event loop - create one when needed
+                pass
+        return self._registry_rw_lock
+
     async def _heartbeat_internal(
         self,
         service_name: str,
@@ -1118,26 +1169,51 @@ class ServiceRegistry:
         metadata: Optional[Dict] = None
     ) -> bool:
         """
-        v95.0: Internal heartbeat implementation.
+        v95.2: Internal heartbeat implementation with race condition fix.
 
-        Separated from public method to allow timeout wrapping.
+        CRITICAL FIX (v95.2): Uses asyncio lock to prevent read-modify-write race.
+        Without this lock, the following race can occur:
+        1. Process A reads registry (sees service X with old heartbeat)
+        2. Process B reads registry (also sees service X with old heartbeat)
+        3. Process A updates service X heartbeat, writes registry
+        4. Process B updates service Y heartbeat, writes registry
+        5. Process A's changes to X are LOST!
+
+        Now uses _registry_rw_lock for atomic operations.
         """
-        services = await asyncio.to_thread(self._read_registry)
+        lock = self._ensure_registry_lock()
 
-        if service_name not in services:
-            logger.debug(f"Heartbeat for unregistered service: {service_name}")
-            return False
+        # v95.2: Acquire lock for entire read-modify-write cycle
+        async with lock:
+            services = await asyncio.to_thread(self._read_registry)
 
-        service = services[service_name]
-        service.last_heartbeat = time.time()
+            if service_name not in services:
+                logger.debug(f"Heartbeat for unregistered service: {service_name}")
+                return False
 
-        if status:
-            service.status = status
+            service = services[service_name]
+            service.last_heartbeat = time.time()
 
-        if metadata:
-            service.metadata.update(metadata)
+            if status:
+                service.status = status
 
-        await asyncio.to_thread(self._write_registry, services)
+            if metadata:
+                service.metadata.update(metadata)
+
+            # v95.2: Increment state version for conflict detection
+            self._state_version += 1
+
+            # v95.2: Update unified state for supervisor-component sync
+            self._unified_state[service_name] = {
+                "pid": service.pid,
+                "status": service.status,
+                "last_heartbeat": service.last_heartbeat,
+                "component_healthy": True,  # Component reporting heartbeat = healthy
+                "supervisor_healthy": None,  # Unknown until supervisor confirms
+                "state_version": self._state_version,
+            }
+
+            await asyncio.to_thread(self._write_registry, services)
 
         # v93.14: Clear stale warning rate limiter on successful heartbeat
         if service_name in self._stale_warning_times:
@@ -1415,6 +1491,129 @@ class ServiceRegistry:
         except Exception as e:
             logger.warning(f"[v95.2] Immediate owner registration failed: {e}")
             return False
+
+    # =========================================================================
+    # v95.2: Unified State Management API
+    # =========================================================================
+
+    async def update_supervisor_state(
+        self,
+        service_name: str,
+        process_alive: bool,
+        pid: Optional[int] = None,
+        exit_code: Optional[int] = None,
+        metadata: Optional[Dict] = None
+    ) -> None:
+        """
+        v95.2: Update state from supervisor's perspective.
+
+        This solves the process-component state synchronization gap:
+        - Supervisor tracks PIDs and process lifecycle
+        - Components track their own health state
+        - This method synchronizes supervisor's view into unified state
+
+        Args:
+            service_name: Name of the service
+            process_alive: Whether the process is alive (from supervisor's view)
+            pid: Process ID (if known)
+            exit_code: Exit code if process died
+            metadata: Additional metadata
+        """
+        lock = self._ensure_registry_lock()
+
+        async with lock:
+            if service_name not in self._unified_state:
+                self._unified_state[service_name] = {
+                    "pid": pid,
+                    "status": "unknown",
+                    "last_heartbeat": 0,
+                    "component_healthy": None,
+                    "supervisor_healthy": None,
+                    "state_version": 0,
+                }
+
+            state = self._unified_state[service_name]
+            state["supervisor_healthy"] = process_alive
+            state["supervisor_updated_at"] = time.time()
+
+            if pid is not None:
+                state["pid"] = pid
+            if exit_code is not None:
+                state["exit_code"] = exit_code
+            if metadata:
+                state.setdefault("supervisor_metadata", {}).update(metadata)
+
+            # v95.2: Detect state conflicts
+            component_healthy = state.get("component_healthy")
+            if component_healthy is not None and component_healthy != process_alive:
+                logger.warning(
+                    f"[v95.2] State conflict for '{service_name}': "
+                    f"supervisor says {'alive' if process_alive else 'dead'}, "
+                    f"component says {'healthy' if component_healthy else 'unhealthy'}"
+                )
+                state["state_conflict"] = True
+                state["conflict_detected_at"] = time.time()
+
+    async def get_unified_state(self, service_name: str) -> Optional[Dict[str, Any]]:
+        """
+        v95.2: Get unified state for a service.
+
+        Returns combined supervisor and component state for consensus checking.
+        """
+        lock = self._ensure_registry_lock()
+
+        async with lock:
+            return self._unified_state.get(service_name)
+
+    async def get_all_unified_states(self) -> Dict[str, Dict[str, Any]]:
+        """v95.2: Get all unified states for monitoring."""
+        lock = self._ensure_registry_lock()
+
+        async with lock:
+            return dict(self._unified_state)
+
+    async def resolve_state_conflict(
+        self,
+        service_name: str,
+        trust_source: str = "component"
+    ) -> bool:
+        """
+        v95.2: Resolve a state conflict between supervisor and component.
+
+        Args:
+            service_name: Service with conflict
+            trust_source: Which source to trust ("supervisor" or "component")
+
+        Returns:
+            True if conflict was resolved
+        """
+        lock = self._ensure_registry_lock()
+
+        async with lock:
+            if service_name not in self._unified_state:
+                return False
+
+            state = self._unified_state[service_name]
+            if not state.get("state_conflict"):
+                return False
+
+            if trust_source == "component":
+                # Trust component's view - it knows its own health
+                state["resolved_status"] = state.get("component_healthy", False)
+            else:
+                # Trust supervisor's view - it can verify process existence
+                state["resolved_status"] = state.get("supervisor_healthy", False)
+
+            state["state_conflict"] = False
+            state["conflict_resolved_at"] = time.time()
+            state["conflict_resolution"] = trust_source
+
+            logger.info(
+                f"[v95.2] Resolved state conflict for '{service_name}' "
+                f"(trusted: {trust_source})"
+            )
+
+            return True
 
     async def wait_for_service(
         self,

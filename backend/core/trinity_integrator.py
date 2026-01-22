@@ -192,6 +192,17 @@ class ConfigRegistry:
         "REACTOR_CORE_REPO_PATH": "",
         "JARVIS_PRIME_ENABLED": True,
         "REACTOR_CORE_ENABLED": True,
+
+        # v95.0: Component Registration Verification (CRITICAL FIX)
+        # Problem: Components marked "pending" when actually running
+        # Solution: Wait for explicit registration confirmation, not just HTTP discovery
+        "TRINITY_REGISTRATION_TIMEOUT": 60.0,           # Max wait for registration
+        "TRINITY_REGISTRATION_POLL_INTERVAL": 0.5,      # Check every 500ms
+        "TRINITY_REGISTRATION_REQUIRE_EXPLICIT": True,  # Require explicit registration (not just HTTP)
+        "TRINITY_REGISTRATION_VERIFICATION_PHASES": 3,  # Number of verification phases
+        "TRINITY_REGISTRATION_GRACE_PERIOD": 5.0,       # Grace period after HTTP discovery
+        "TRINITY_REGISTRATION_RETRY_BACKOFF": 1.5,      # Backoff multiplier for retries
+        "TRINITY_REGISTRATION_MAX_RETRIES": 10,         # Max registration verification retries
     }
 
     def __new__(cls) -> "ConfigRegistry":
@@ -9637,51 +9648,86 @@ class TrinityUnifiedOrchestrator:
                             logger.info("   ℹ️  [v100.4] Skipping component launch (supervisor handles)")
                             logger.info("   ℹ️  [v100.4] TrinityIntegrator: coordination mode only")
 
-                            # v93.13: Wait for components with retry since orchestrator launches in parallel
-                            # The cross_repo_startup_orchestrator runs BEFORE Trinity starts,
-                            # but components may still be initializing when Trinity checks
-                            discovery_timeout = float(os.getenv("TRINITY_DISCOVERY_TIMEOUT", "60.0"))
-                            discovery_interval = float(os.getenv("TRINITY_DISCOVERY_INTERVAL", "3.0"))
-                            discovery_start = time.time()
+                            # v95.0: CRITICAL FIX - Registration-aware component verification
+                            # OLD: _discover_running_component (HTTP/heartbeat/process checks only)
+                            # NEW: _verify_and_register_component (waits for explicit registration)
+                            #
+                            # This fixes the timing issue where components were marked "pending"
+                            # even when actually running, because verification happened before
+                            # the component had time to register itself with the service registry.
+                            config = ConfigRegistry()
+                            registration_timeout = config.get("TRINITY_REGISTRATION_TIMEOUT", 60.0)
 
                             logger.info(
-                                f"   ⏳ [v93.13] Waiting for components to become discoverable "
-                                f"(timeout: {discovery_timeout}s)..."
+                                f"   ⏳ [v95.0] Waiting for components to REGISTER "
+                                f"(timeout: {registration_timeout}s)..."
+                            )
+                            logger.info(
+                                "   ℹ️  [v95.0] 3-phase verification: HTTP discovery → "
+                                "Registry confirmation → Health validation"
                             )
 
-                            while (time.time() - discovery_start) < discovery_timeout:
-                                # Check components in parallel
-                                jprime_ok = await self._discover_running_component("jarvis_prime") if self.enable_jprime else True
-                                reactor_ok = await self._discover_running_component("reactor_core") if self.enable_reactor else True
+                            # v95.0: Run registration verification in parallel for both components
+                            verification_tasks = []
+                            task_names = []
 
-                                # Success condition
-                                if jprime_ok and reactor_ok:
-                                    elapsed = time.time() - discovery_start
-                                    logger.info(
-                                        f"   ✅ [v93.13] All components discovered after {elapsed:.1f}s"
+                            if self.enable_jprime:
+                                verification_tasks.append(
+                                    self._verify_and_register_component(
+                                        "jarvis_prime",
+                                        timeout=registration_timeout
                                     )
-                                    break
-
-                                # Log partial status
-                                if not jprime_ok and self.enable_jprime:
-                                    logger.debug("   ⏳ [v93.13] Waiting for J-Prime...")
-                                if not reactor_ok and self.enable_reactor:
-                                    logger.debug("   ⏳ [v93.13] Waiting for Reactor-Core...")
-
-                                # Wait before retry with progressive backoff
-                                await asyncio.sleep(discovery_interval)
-                                discovery_interval = min(discovery_interval * 1.2, 10.0)  # Max 10s between checks
-
-                            # Final status logging
-                            if not jprime_ok and self.enable_jprime:
-                                logger.warning(
-                                    f"   ⚠️  [v93.13] J-Prime not discovered after {discovery_timeout}s - "
-                                    "will continue in degraded mode"
                                 )
-                            if not reactor_ok and self.enable_reactor:
-                                logger.warning(
-                                    f"   ⚠️  [v93.13] Reactor-Core not discovered after {discovery_timeout}s - "
-                                    "will continue in degraded mode"
+                                task_names.append("jarvis_prime")
+
+                            if self.enable_reactor:
+                                verification_tasks.append(
+                                    self._verify_and_register_component(
+                                        "reactor_core",
+                                        timeout=registration_timeout
+                                    )
+                                )
+                                task_names.append("reactor_core")
+
+                            if verification_tasks:
+                                verification_start = time.time()
+                                results = await asyncio.gather(*verification_tasks, return_exceptions=True)
+
+                                # Process results
+                                for i, (result, name) in enumerate(zip(results, task_names)):
+                                    if isinstance(result, Exception):
+                                        logger.error(
+                                            f"   ❌ [v95.0] {name.replace('_', ' ').title()} "
+                                            f"verification EXCEPTION: {result}"
+                                        )
+                                        if name == "jarvis_prime":
+                                            jprime_ok = False
+                                        else:
+                                            reactor_ok = False
+                                    elif result:
+                                        logger.info(
+                                            f"   ✅ [v95.0] {name.replace('_', ' ').title()} "
+                                            f"FULLY VERIFIED (3 phases complete)"
+                                        )
+                                        if name == "jarvis_prime":
+                                            jprime_ok = True
+                                        else:
+                                            reactor_ok = True
+                                    else:
+                                        logger.warning(
+                                            f"   ⚠️  [v95.0] {name.replace('_', ' ').title()} "
+                                            "registration verification FAILED - degraded mode"
+                                        )
+                                        if name == "jarvis_prime":
+                                            jprime_ok = False
+                                        else:
+                                            reactor_ok = False
+
+                                verification_elapsed = time.time() - verification_start
+                                logger.info(
+                                    f"   📊 [v95.0] Component verification completed in "
+                                    f"{verification_elapsed:.1f}s (J-Prime: {'✅' if jprime_ok else '❌'}, "
+                                    f"Reactor: {'✅' if reactor_ok else '❌'})"
                                 )
                         else:
                             # Legacy mode: TrinityIntegrator launches components directly
@@ -10441,6 +10487,344 @@ class TrinityUnifiedOrchestrator:
                 logger.debug(f"[Discovery] {component} PID check error: {e}")
 
         return False
+
+    # =========================================================================
+    # v95.0: Registration-Aware Component Verification (CRITICAL FIX)
+    # =========================================================================
+
+    async def _wait_for_component_registration(
+        self,
+        component: str,
+        timeout: Optional[float] = None,
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        v95.0: Wait for a component to fully register with Trinity.
+
+        This FIXES the timing issue where components were marked "pending" even
+        when actually running, because verification happened before registration.
+
+        VERIFICATION PHASES:
+        ┌─────────────────────────────────────────────────────────────────────┐
+        │ Phase 1: HTTP Discovery (Quick Check)                               │
+        │   - Check if component is responding to HTTP health endpoint        │
+        │   - Does NOT guarantee registration - just proves process is alive  │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │ Phase 2: Registry Confirmation (Registration Check)                 │
+        │   - Wait for component to appear in services.json registry          │
+        │   - Component must write itself to registry after startup           │
+        │   - Uses exponential backoff with jitter to avoid thundering herd   │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │ Phase 3: Health Validation (Operational Check)                      │
+        │   - Confirm component reports "healthy" or "ready" status           │
+        │   - Validates the component is ready to accept requests             │
+        │   - Checks for required capabilities (model_loaded, etc.)           │
+        └─────────────────────────────────────────────────────────────────────┘
+
+        Args:
+            component: Component name (jarvis_prime, reactor_core)
+            timeout: Maximum wait time (defaults to TRINITY_REGISTRATION_TIMEOUT)
+
+        Returns:
+            Tuple of (success: bool, details: Dict with verification results)
+        """
+        import aiohttp
+        import random
+
+        config = ConfigRegistry()
+        timeout = timeout or config.get("TRINITY_REGISTRATION_TIMEOUT", 60.0)
+        poll_interval = config.get("TRINITY_REGISTRATION_POLL_INTERVAL", 0.5)
+        require_explicit = config.get("TRINITY_REGISTRATION_REQUIRE_EXPLICIT", True)
+        grace_period = config.get("TRINITY_REGISTRATION_GRACE_PERIOD", 5.0)
+        backoff_multiplier = config.get("TRINITY_REGISTRATION_RETRY_BACKOFF", 1.5)
+        max_retries = config.get("TRINITY_REGISTRATION_MAX_RETRIES", 10)
+
+        # Component-specific configuration
+        component_config = {
+            "jarvis_prime": {
+                "ports": [8000, 8002, 8004, 8005, 8006],
+                "registry_names": ["jarvis_prime", "jarvis-prime", "jprime"],
+                "required_capabilities": ["inference", "api"],
+            },
+            "reactor_core": {
+                "ports": [8090, 8091, 8092, 8093],
+                "registry_names": ["reactor_core", "reactor-core", "reactor"],
+                "required_capabilities": ["orchestration"],
+            },
+        }
+
+        comp_config = component_config.get(component, {
+            "ports": [],
+            "registry_names": [component],
+            "required_capabilities": [],
+        })
+
+        # Registry path for service registration
+        registry_dir = Path(os.getenv(
+            "JARVIS_REGISTRY_DIR",
+            str(Path.home() / ".jarvis" / "registry")
+        ))
+        registry_file = registry_dir / "services.json"
+
+        verification_result = {
+            "component": component,
+            "verified": False,
+            "phase_1_http_discovered": False,
+            "phase_2_registry_confirmed": False,
+            "phase_3_health_validated": False,
+            "discovered_at": None,
+            "registered_at": None,
+            "validated_at": None,
+            "port": None,
+            "pid": None,
+            "total_time_seconds": 0.0,
+            "retries": 0,
+            "error": None,
+        }
+
+        start_time = time.time()
+        current_retry = 0
+        current_interval = poll_interval
+        http_discovered = False
+        discovered_port = None
+
+        logger.info(
+            f"[Registration] ⏳ Waiting for {component} to register "
+            f"(timeout: {timeout}s, explicit: {require_explicit})..."
+        )
+
+        while (time.time() - start_time) < timeout:
+            current_retry += 1
+            verification_result["retries"] = current_retry
+
+            # ═══════════════════════════════════════════════════════════════
+            # PHASE 1: HTTP Discovery (Quick Check)
+            # ═══════════════════════════════════════════════════════════════
+            if not http_discovered:
+                for port in comp_config["ports"]:
+                    try:
+                        async with aiohttp.ClientSession(
+                            timeout=aiohttp.ClientTimeout(total=3.0)
+                        ) as session:
+                            url = f"http://localhost:{port}/health"
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    http_discovered = True
+                                    discovered_port = port
+                                    verification_result["phase_1_http_discovered"] = True
+                                    verification_result["discovered_at"] = time.time()
+                                    verification_result["port"] = port
+
+                                    logger.info(
+                                        f"[Registration] ✅ Phase 1: {component} HTTP "
+                                        f"discovered on port {port}"
+                                    )
+                                    break
+                    except (aiohttp.ClientConnectorError, asyncio.TimeoutError):
+                        continue
+                    except Exception as e:
+                        logger.debug(f"[Registration] Phase 1 error on port {port}: {e}")
+                        continue
+
+            # ═══════════════════════════════════════════════════════════════
+            # PHASE 2: Registry Confirmation (Registration Check)
+            # ═══════════════════════════════════════════════════════════════
+            if http_discovered or not require_explicit:
+                # Check service registry for explicit registration
+                registry_confirmed = False
+
+                if registry_file.exists():
+                    try:
+                        content = registry_file.read_text()
+                        registry_data = json.loads(content)
+                        services = registry_data if isinstance(registry_data, dict) else {}
+
+                        # Check for component under any of its known names
+                        for reg_name in comp_config["registry_names"]:
+                            if reg_name in services:
+                                service_info = services[reg_name]
+                                if isinstance(service_info, dict):
+                                    # Verify service is recent (within last 60s)
+                                    registered_at = service_info.get("registered_at", 0)
+                                    last_heartbeat = service_info.get("last_heartbeat", 0)
+                                    age = time.time() - max(registered_at, last_heartbeat)
+
+                                    if age <= 60.0:
+                                        registry_confirmed = True
+                                        verification_result["phase_2_registry_confirmed"] = True
+                                        verification_result["registered_at"] = time.time()
+                                        verification_result["pid"] = service_info.get("pid")
+
+                                        logger.info(
+                                            f"[Registration] ✅ Phase 2: {component} "
+                                            f"registered in service registry (name: {reg_name})"
+                                        )
+                                        break
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"[Registration] Registry parse error: {e}")
+                    except Exception as e:
+                        logger.debug(f"[Registration] Registry read error: {e}")
+
+                # If explicit registration not required, accept HTTP discovery alone
+                # after grace period
+                if not registry_confirmed and not require_explicit:
+                    if http_discovered:
+                        elapsed_since_discovery = time.time() - verification_result["discovered_at"]
+                        if elapsed_since_discovery >= grace_period:
+                            registry_confirmed = True
+                            verification_result["phase_2_registry_confirmed"] = True
+                            verification_result["registered_at"] = time.time()
+                            logger.info(
+                                f"[Registration] ⚠️  Phase 2: {component} accepted via "
+                                f"grace period (no explicit registration after {grace_period}s)"
+                            )
+
+                # ═══════════════════════════════════════════════════════════════
+                # PHASE 3: Health Validation (Operational Check)
+                # ═══════════════════════════════════════════════════════════════
+                if registry_confirmed and discovered_port:
+                    try:
+                        async with aiohttp.ClientSession(
+                            timeout=aiohttp.ClientTimeout(total=5.0)
+                        ) as session:
+                            url = f"http://localhost:{discovered_port}/health"
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    try:
+                                        health_data = await resp.json()
+
+                                        # Check for healthy status
+                                        status = health_data.get("status", "")
+                                        phase = health_data.get("phase", "")
+                                        ready = health_data.get("ready_for_inference", False)
+                                        model_loaded = health_data.get("model_loaded", False)
+
+                                        is_healthy = (
+                                            status == "healthy"
+                                            or status == "ok"
+                                            or phase == "ready"
+                                            or phase == "operational"
+                                            or ready
+                                        )
+
+                                        if is_healthy:
+                                            verification_result["phase_3_health_validated"] = True
+                                            verification_result["validated_at"] = time.time()
+                                            verification_result["verified"] = True
+                                            verification_result["total_time_seconds"] = (
+                                                time.time() - start_time
+                                            )
+
+                                            logger.info(
+                                                f"[Registration] ✅ Phase 3: {component} "
+                                                f"health validated (status={status}, phase={phase})"
+                                            )
+                                            logger.info(
+                                                f"[Registration] 🎉 {component} FULLY VERIFIED "
+                                                f"in {verification_result['total_time_seconds']:.1f}s "
+                                                f"after {current_retry} checks"
+                                            )
+                                            return True, verification_result
+                                        else:
+                                            # Component responding but not ready yet
+                                            logger.debug(
+                                                f"[Registration] Phase 3: {component} not ready "
+                                                f"(status={status}, phase={phase})"
+                                            )
+                                    except Exception:
+                                        # Non-JSON response but status 200 - accept it
+                                        verification_result["phase_3_health_validated"] = True
+                                        verification_result["validated_at"] = time.time()
+                                        verification_result["verified"] = True
+                                        verification_result["total_time_seconds"] = (
+                                            time.time() - start_time
+                                        )
+                                        logger.info(
+                                            f"[Registration] ✅ Phase 3: {component} "
+                                            f"health endpoint responding (non-JSON)"
+                                        )
+                                        return True, verification_result
+                    except (aiohttp.ClientConnectorError, asyncio.TimeoutError) as e:
+                        logger.debug(f"[Registration] Phase 3 connection error: {e}")
+                    except Exception as e:
+                        logger.debug(f"[Registration] Phase 3 error: {e}")
+
+            # Wait with exponential backoff and jitter
+            jitter = random.uniform(0.0, current_interval * 0.2)
+            await asyncio.sleep(current_interval + jitter)
+
+            # Increase interval for next retry (with ceiling)
+            if current_retry >= max_retries:
+                current_interval = min(current_interval * backoff_multiplier, 10.0)
+
+            # Log progress periodically
+            if current_retry % 10 == 0:
+                elapsed = time.time() - start_time
+                logger.info(
+                    f"[Registration] ⏳ {component} verification in progress "
+                    f"({elapsed:.1f}s elapsed, {current_retry} checks, "
+                    f"phase1={http_discovered}, phase2={verification_result['phase_2_registry_confirmed']})"
+                )
+
+        # Timeout reached
+        elapsed = time.time() - start_time
+        verification_result["total_time_seconds"] = elapsed
+        verification_result["error"] = f"Timeout after {elapsed:.1f}s"
+
+        logger.warning(
+            f"[Registration] ⚠️  {component} verification TIMEOUT after {elapsed:.1f}s. "
+            f"Phase 1 (HTTP): {verification_result['phase_1_http_discovered']}, "
+            f"Phase 2 (Registry): {verification_result['phase_2_registry_confirmed']}, "
+            f"Phase 3 (Health): {verification_result['phase_3_health_validated']}"
+        )
+
+        return False, verification_result
+
+    async def _verify_and_register_component(
+        self,
+        component: str,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """
+        v95.0: Verify component with registration confirmation, then register watchdog.
+
+        This is the RECOMMENDED method for component verification in startup sequences.
+        It combines:
+        1. Registration-aware verification (wait for explicit registration)
+        2. Watchdog registration for ongoing health monitoring
+        3. Version compatibility checking
+
+        Args:
+            component: Component name
+            timeout: Verification timeout
+
+        Returns:
+            True if component is verified and registered for monitoring
+        """
+        success, details = await self._wait_for_component_registration(component, timeout)
+
+        if success:
+            # Register for ongoing health monitoring
+            try:
+                adv_coord = await self._ensure_advanced_coord()
+                if adv_coord:
+                    adv_coord.register_heartbeat_watchdog(component)
+                    logger.debug(f"[Registration] Registered {component} for watchdog monitoring")
+            except Exception as e:
+                logger.debug(f"[Registration] Watchdog registration error: {e}")
+
+            # Record successful verification event
+            try:
+                if hasattr(self, '_event_store') and self._event_store:
+                    await self._event_store.publish({
+                        "type": "component_verified",
+                        "component": component,
+                        "verification_details": details,
+                        "timestamp": time.time(),
+                    })
+            except Exception as e:
+                logger.debug(f"[Registration] Event publish error: {e}")
+
+        return success
 
     async def _diagnose_component_status(self, component: str) -> Dict[str, Any]:
         """
