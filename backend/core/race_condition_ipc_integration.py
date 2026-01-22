@@ -113,6 +113,22 @@ get_message_queue: Any = None
 get_trinity_ipc_bus: Any = None
 get_trinity_port_manager: Any = None
 
+# Issue 16-20 function references
+get_startup_timeout: Any = None
+get_health_checker: Any = None
+get_resource_manager: Any = None
+get_log_writer: Any = None
+get_state_file: Any = None
+
+# Issue 26-30 function references
+get_disk_manager: Any = None
+get_memory_manager: Any = None
+get_permission_validator: Any = None
+get_state_recovery: Any = None
+get_version_manager: Any = None
+startup_health_validation: Any = None
+comprehensive_health_check: Any = None
+
 # Class references
 AtomicFileLock: Any = None
 AtomicHeartbeatWriter: Any = None
@@ -125,9 +141,30 @@ AtomicIPCFile: Any = None
 ComponentType: Any = None
 AllocationResult: Any = None
 
+# Issue 16-20 class references
+AdaptiveStartupTimeout: Any = None
+ResilientHealthChecker: Any = None
+CoordinatedResourceManager: Any = None
+AtomicLogWriter: Any = None
+AtomicStateFile: Any = None
+StartupPhase: Any = None
+HealthCheckResult: Any = None
+ResourceType: Any = None
+
+# Issue 26-30 class references
+DiskSpaceManager: Any = None
+DiskPressureLevel: Any = None
+MemoryPressureManager: Any = None
+MemoryPressureLevel: Any = None
+PermissionValidator: Any = None
+StateFileRecoveryManager: Any = None
+DependencyVersionManager: Any = None
+SystemHealthReport: Any = None
+
 # Race condition prevention imports
 try:
     from backend.core.race_condition_prevention import (
+        # Issues 9-15 classes
         AtomicConfigManager as _AtomicConfigManager,
         AtomicFileLock as _AtomicFileLock,
         AtomicHeartbeatWriter as _AtomicHeartbeatWriter,
@@ -135,6 +172,16 @@ try:
         DependencyHealthMonitor as _DependencyHealthMonitor,
         PersistentMessageQueue as _PersistentMessageQueue,
         SafeProcessManager as _SafeProcessManager,
+        # Issues 16-20 classes
+        AdaptiveStartupTimeout as _AdaptiveStartupTimeout,
+        AtomicLogWriter as _AtomicLogWriter,
+        AtomicStateFile as _AtomicStateFile,
+        CoordinatedResourceManager as _CoordinatedResourceManager,
+        HealthCheckResult as _HealthCheckResult,
+        ResilientHealthChecker as _ResilientHealthChecker,
+        ResourceType as _ResourceType,
+        StartupPhase as _StartupPhase,
+        # Issues 9-15 factory functions
         get_config_manager as _get_config_manager,
         get_dependency_monitor as _get_dependency_monitor,
         get_file_lock as _get_file_lock,
@@ -142,7 +189,31 @@ try:
         get_message_queue as _get_message_queue,
         get_port_reserver as _get_port_reserver,
         get_process_manager as _get_process_manager,
+        # Issues 16-20 factory functions
+        get_health_checker as _get_health_checker,
+        get_log_writer as _get_log_writer,
+        get_resource_manager as _get_resource_manager,
+        get_startup_timeout as _get_startup_timeout,
+        get_state_file as _get_state_file,
+        # Issues 26-30 classes
+        DependencyVersionManager as _DependencyVersionManager,
+        DiskPressureLevel as _DiskPressureLevel,
+        DiskSpaceManager as _DiskSpaceManager,
+        MemoryPressureLevel as _MemoryPressureLevel,
+        MemoryPressureManager as _MemoryPressureManager,
+        PermissionValidator as _PermissionValidator,
+        StateFileRecoveryManager as _StateFileRecoveryManager,
+        SystemHealthReport as _SystemHealthReport,
+        # Issues 26-30 factory functions
+        comprehensive_health_check as _comprehensive_health_check,
+        get_disk_manager as _get_disk_manager,
+        get_memory_manager as _get_memory_manager,
+        get_permission_validator as _get_permission_validator,
+        get_state_recovery as _get_state_recovery,
+        get_version_manager as _get_version_manager,
+        startup_health_validation as _startup_health_validation,
     )
+    # Issues 9-15
     get_file_lock = _get_file_lock
     get_heartbeat_writer = _get_heartbeat_writer
     get_port_reserver = _get_port_reserver
@@ -157,6 +228,36 @@ try:
     SafeProcessManager = _SafeProcessManager
     AtomicConfigManager = _AtomicConfigManager
     PersistentMessageQueue = _PersistentMessageQueue
+    # Issues 16-20
+    get_startup_timeout = _get_startup_timeout
+    get_health_checker = _get_health_checker
+    get_resource_manager = _get_resource_manager
+    get_log_writer = _get_log_writer
+    get_state_file = _get_state_file
+    AdaptiveStartupTimeout = _AdaptiveStartupTimeout
+    ResilientHealthChecker = _ResilientHealthChecker
+    CoordinatedResourceManager = _CoordinatedResourceManager
+    AtomicLogWriter = _AtomicLogWriter
+    AtomicStateFile = _AtomicStateFile
+    StartupPhase = _StartupPhase
+    HealthCheckResult = _HealthCheckResult
+    ResourceType = _ResourceType
+    # Issues 26-30
+    get_disk_manager = _get_disk_manager
+    get_memory_manager = _get_memory_manager
+    get_permission_validator = _get_permission_validator
+    get_state_recovery = _get_state_recovery
+    get_version_manager = _get_version_manager
+    startup_health_validation = _startup_health_validation
+    comprehensive_health_check = _comprehensive_health_check
+    DiskSpaceManager = _DiskSpaceManager
+    DiskPressureLevel = _DiskPressureLevel
+    MemoryPressureManager = _MemoryPressureManager
+    MemoryPressureLevel = _MemoryPressureLevel
+    PermissionValidator = _PermissionValidator
+    StateFileRecoveryManager = _StateFileRecoveryManager
+    DependencyVersionManager = _DependencyVersionManager
+    SystemHealthReport = _SystemHealthReport
     RACE_PREVENTION_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"[RaceIPC] Race prevention not available: {e}")
@@ -1046,6 +1147,712 @@ async def acknowledge_cross_repo_event(msg_id: str, consumer_id: str) -> bool:
 
 
 # =============================================================================
+# Issue 16: Startup Timeout Integration
+# =============================================================================
+
+
+async def track_component_startup(component: str) -> bool:
+    """
+    Start tracking startup for a Trinity component.
+
+    Uses adaptive timeout that adjusts based on system load.
+
+    Args:
+        component: Component name
+
+    Returns:
+        True if tracking started successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_startup_timeout is None:
+        return True
+
+    timeout_mgr = get_startup_timeout()
+    state = await timeout_mgr.start_tracking(component)
+    return state is not None
+
+
+async def confirm_component_spawn(component: str, pid: int) -> bool:
+    """
+    Confirm that a component has been spawned.
+
+    Resets timeout from spawn phase to initialization phase.
+
+    Args:
+        component: Component name
+        pid: Process ID
+
+    Returns:
+        True if confirmed successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_startup_timeout is None:
+        return True
+
+    timeout_mgr = get_startup_timeout()
+    state = await timeout_mgr.confirm_spawn(component, pid)
+    return state is not None
+
+
+async def mark_component_ready(component: str) -> bool:
+    """
+    Mark a component as ready and fully initialized.
+
+    Args:
+        component: Component name
+
+    Returns:
+        True if marked successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_startup_timeout is None:
+        return True
+
+    timeout_mgr = get_startup_timeout()
+    state = await timeout_mgr.mark_ready(component)
+    return state is not None
+
+
+async def check_component_timeout(component: str) -> tuple:
+    """
+    Check if a component has timed out during startup.
+
+    Args:
+        component: Component name
+
+    Returns:
+        Tuple of (is_timed_out, reason)
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_startup_timeout is None:
+        return False, None
+
+    timeout_mgr = get_startup_timeout()
+    return await timeout_mgr.is_timed_out(component)
+
+
+# =============================================================================
+# Issue 17: Health Check Integration
+# =============================================================================
+
+
+def register_component_health_check(
+    component: str,
+    checker: Callable[[], Coroutine[Any, Any, bool]],
+) -> None:
+    """
+    Register a health check function for a component.
+
+    The health checker provides retry with backoff and caching.
+
+    Args:
+        component: Component name
+        checker: Async function returning True if healthy
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_health_checker is None:
+        return
+
+    health_mgr = get_health_checker()
+    health_mgr.register(component, checker)
+
+
+async def check_component_health(component: str) -> Any:
+    """
+    Check component health with retry and caching.
+
+    Returns cached result if within TTL, otherwise performs check
+    with exponential backoff retry.
+
+    Args:
+        component: Component name
+
+    Returns:
+        HealthCheckResult enum or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_health_checker is None:
+        return None
+
+    health_mgr = get_health_checker()
+    status = await health_mgr.check_health(component)
+    return status.result if status else None
+
+
+async def mark_component_restarting(component: str) -> None:
+    """
+    Mark a component as restarting.
+
+    Health checks will return RESTARTING during grace period,
+    preventing false negatives during restart.
+
+    Args:
+        component: Component name
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_health_checker is None:
+        return
+
+    health_mgr = get_health_checker()
+    await health_mgr.mark_restarting(component)
+
+
+# =============================================================================
+# Issue 18: Resource Cleanup Integration
+# =============================================================================
+
+
+async def reserve_component_resource(
+    resource_id: str,
+    resource_type: Any,
+    component: str,
+    ttl: Optional[float] = None,
+) -> bool:
+    """
+    Reserve a resource for a component.
+
+    Prevents resource from being cleaned up during use.
+
+    Args:
+        resource_id: Resource identifier (e.g., "port:8010")
+        resource_type: ResourceType enum value
+        component: Component reserving the resource
+        ttl: Optional time-to-live in seconds
+
+    Returns:
+        True if reserved successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_resource_manager is None:
+        return True
+
+    resource_mgr = get_resource_manager()
+    return await resource_mgr.reserve(resource_id, resource_type, component, ttl)
+
+
+async def release_component_resource(
+    resource_id: str,
+    component: str,
+) -> bool:
+    """
+    Release a resource reservation.
+
+    Args:
+        resource_id: Resource identifier
+        component: Component releasing the resource
+
+    Returns:
+        True if released successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_resource_manager is None:
+        return True
+
+    resource_mgr = get_resource_manager()
+    return await resource_mgr.release(resource_id, component)
+
+
+@asynccontextmanager
+async def component_startup_protection(
+    component: str,
+    timeout: float = 30.0,
+) -> AsyncIterator[bool]:
+    """
+    Context manager for protected startup phase.
+
+    Resources cannot be cleaned up during startup.
+
+    Usage:
+        async with component_startup_protection("jarvis_body") as protected:
+            if protected:
+                # Perform startup safely
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_resource_manager is None:
+        yield True
+        return
+
+    resource_mgr = get_resource_manager()
+    async with resource_mgr.startup_phase(component, timeout) as acquired:
+        yield acquired
+
+
+async def cleanup_stale_component_resources() -> int:
+    """
+    Cleanup all stale component resources.
+
+    Cleans resources where owner is dead or expired.
+
+    Returns:
+        Number of resources cleaned
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_resource_manager is None:
+        return 0
+
+    resource_mgr = get_resource_manager()
+    return await resource_mgr.cleanup_stale_resources()
+
+
+# =============================================================================
+# Issue 19: Log Writing Integration
+# =============================================================================
+
+
+async def write_component_log(
+    component: str,
+    level: str,
+    message: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Write a log entry atomically for a component.
+
+    Uses per-process log files to avoid write conflicts.
+
+    Args:
+        component: Component name
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        message: Log message
+        context: Optional context dictionary
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_log_writer is None:
+        return
+
+    log_writer = get_log_writer(component)
+    await log_writer.write(level, message, context)
+
+
+async def rotate_component_logs(component: str) -> bool:
+    """
+    Rotate log files for a component.
+
+    Acquires rotation lock to prevent concurrent rotation.
+
+    Args:
+        component: Component name
+
+    Returns:
+        True if rotated successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_log_writer is None:
+        return False
+
+    log_writer = get_log_writer(component)
+    return await log_writer.rotate()
+
+
+async def aggregate_component_logs(
+    component: str,
+    output_path: Path,
+    since: Optional[float] = None,
+) -> int:
+    """
+    Aggregate logs from all processes of a component.
+
+    Args:
+        component: Component name
+        output_path: Output file path
+        since: Optional timestamp to filter logs
+
+    Returns:
+        Number of entries aggregated
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_log_writer is None:
+        return 0
+
+    log_writer = get_log_writer(component)
+    return await log_writer.aggregate_logs(
+        log_writer.log_dir,
+        component,
+        output_path,
+        since,
+    )
+
+
+# =============================================================================
+# Issue 20: State File Integration
+# =============================================================================
+
+
+async def read_component_state(name: str) -> Optional[Dict[str, Any]]:
+    """
+    Read component state file atomically.
+
+    Supports automatic recovery from backup.
+
+    Args:
+        name: State file name
+
+    Returns:
+        State data or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_file is None:
+        return None
+
+    state_file = get_state_file(name)
+    state = await state_file.read()
+    return state.data if state else None
+
+
+async def write_component_state(
+    name: str,
+    data: Dict[str, Any],
+) -> bool:
+    """
+    Write component state atomically with versioning.
+
+    Creates backup before writing for corruption recovery.
+
+    Args:
+        name: State file name
+        data: State data
+
+    Returns:
+        True if written successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_file is None:
+        return False
+
+    state_file = get_state_file(name)
+    return await state_file.write(data)
+
+
+@asynccontextmanager
+async def update_component_state(name: str) -> AsyncIterator[Dict[str, Any]]:
+    """
+    Context manager for atomic state updates.
+
+    Holds lock for entire read-modify-write operation.
+
+    Usage:
+        async with update_component_state("supervisor") as state:
+            state["component_count"] += 1
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_file is None:
+        data: Dict[str, Any] = {}
+        yield data
+        return
+
+    state_file = get_state_file(name)
+    async with state_file.update() as data:
+        yield data
+
+
+async def recover_component_state(name: str) -> bool:
+    """
+    Recover component state from backup.
+
+    Args:
+        name: State file name
+
+    Returns:
+        True if recovered successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_file is None:
+        return False
+
+    state_file = get_state_file(name)
+    return await state_file.recover()
+
+
+# =============================================================================
+# Issue 26: Disk Space Integration
+# =============================================================================
+
+
+async def check_trinity_disk_space() -> Optional[Any]:
+    """
+    Check disk space for Trinity system.
+
+    Returns:
+        DiskSpaceStatus or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_disk_manager is None:
+        return None
+
+    manager = get_disk_manager()
+    return await manager.get_status()
+
+
+async def start_disk_space_monitoring() -> None:
+    """Start disk space monitoring for Trinity."""
+    if not RACE_PREVENTION_AVAILABLE or get_disk_manager is None:
+        return
+
+    manager = get_disk_manager()
+    await manager.start_monitoring()
+
+
+async def stop_disk_space_monitoring() -> None:
+    """Stop disk space monitoring."""
+    if not RACE_PREVENTION_AVAILABLE or get_disk_manager is None:
+        return
+
+    manager = get_disk_manager()
+    await manager.stop_monitoring()
+
+
+async def cleanup_trinity_disk() -> Dict[str, Any]:
+    """
+    Clean up old files to free disk space.
+
+    Returns:
+        Cleanup results by category
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_disk_manager is None:
+        return {}
+
+    manager = get_disk_manager()
+    return await manager.cleanup_all()
+
+
+# =============================================================================
+# Issue 27: Memory Pressure Integration
+# =============================================================================
+
+
+async def check_trinity_memory() -> Optional[Any]:
+    """
+    Check memory status for Trinity system.
+
+    Returns:
+        MemoryStatus or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_memory_manager is None:
+        return None
+
+    manager = get_memory_manager()
+    return await manager.get_status()
+
+
+async def start_memory_monitoring() -> None:
+    """Start memory pressure monitoring for Trinity."""
+    if not RACE_PREVENTION_AVAILABLE or get_memory_manager is None:
+        return
+
+    manager = get_memory_manager()
+    await manager.start_monitoring()
+
+
+async def stop_memory_monitoring() -> None:
+    """Stop memory monitoring."""
+    if not RACE_PREVENTION_AVAILABLE or get_memory_manager is None:
+        return
+
+    manager = get_memory_manager()
+    await manager.stop_monitoring()
+
+
+def register_trinity_cache(
+    name: str,
+    clear_func: Callable[[], int],
+) -> None:
+    """
+    Register a cache for automatic cleanup under memory pressure.
+
+    Args:
+        name: Cache name
+        clear_func: Function that clears cache and returns bytes freed
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_memory_manager is None:
+        return
+
+    manager = get_memory_manager()
+    manager.register_cache(name, clear_func)
+
+
+# =============================================================================
+# Issue 28: Permission Validation Integration
+# =============================================================================
+
+
+async def validate_trinity_permissions() -> Optional[Any]:
+    """
+    Validate all required permissions for Trinity.
+
+    Returns:
+        PermissionValidationResult or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_permission_validator is None:
+        return None
+
+    validator = get_permission_validator()
+    return await validator.validate_all()
+
+
+async def validate_trinity_permissions_with_report() -> bool:
+    """
+    Validate permissions and log detailed report.
+
+    Returns:
+        True if all critical permissions are valid
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_permission_validator is None:
+        return True
+
+    validator = get_permission_validator()
+    return await validator.validate_and_report()
+
+
+# =============================================================================
+# Issue 29: State File Recovery Integration
+# =============================================================================
+
+
+async def check_trinity_state_health(name: str) -> Optional[Any]:
+    """
+    Check health of a Trinity state file.
+
+    Args:
+        name: State file name
+
+    Returns:
+        StateFileHealth or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_recovery is None:
+        return None
+
+    recovery = get_state_recovery()
+    return await recovery.check_health(name)
+
+
+async def repair_trinity_state(name: str) -> bool:
+    """
+    Repair a corrupted Trinity state file.
+
+    Args:
+        name: State file name
+
+    Returns:
+        True if repaired successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_recovery is None:
+        return False
+
+    recovery = get_state_recovery()
+    return await recovery.repair(name)
+
+
+async def ensure_trinity_state_healthy(name: str) -> bool:
+    """
+    Ensure Trinity state file is healthy.
+
+    Attempts repair if needed.
+
+    Args:
+        name: State file name
+
+    Returns:
+        True if healthy (after repair if needed)
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_state_recovery is None:
+        return True
+
+    recovery = get_state_recovery()
+    return await recovery.ensure_healthy(name)
+
+
+# =============================================================================
+# Issue 30: Dependency Version Integration
+# =============================================================================
+
+
+async def validate_trinity_dependencies() -> List[Any]:
+    """
+    Validate all Trinity package dependencies.
+
+    Returns:
+        List of VersionCheckResult
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_version_manager is None:
+        return []
+
+    manager = get_version_manager()
+    return await manager.validate_all_packages()
+
+
+async def validate_trinity_dependencies_with_report() -> bool:
+    """
+    Validate dependencies and log detailed report.
+
+    Returns:
+        True if all checks pass
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_version_manager is None:
+        return True
+
+    manager = get_version_manager()
+    return await manager.validate_and_report()
+
+
+def add_trinity_dependency(
+    package: str,
+    min_version: Optional[str] = None,
+    max_version: Optional[str] = None,
+) -> None:
+    """
+    Add a package dependency requirement.
+
+    Args:
+        package: Package name
+        min_version: Minimum required version
+        max_version: Maximum allowed version
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_version_manager is None:
+        return
+
+    manager = get_version_manager()
+    manager.add_requirement(package, min_version, max_version)
+
+
+def register_trinity_component_version(
+    name: str,
+    version: str,
+    api_version: str,
+    min_compatible: str,
+) -> None:
+    """
+    Register a Trinity component's version info.
+
+    Args:
+        name: Component name
+        version: Current version
+        api_version: API version
+        min_compatible: Minimum compatible version
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_version_manager is None:
+        return
+
+    manager = get_version_manager()
+    manager.register_component(name, version, api_version, min_compatible)
+
+
+# =============================================================================
+# Comprehensive Health Check Integration
+# =============================================================================
+
+
+async def trinity_health_check() -> Optional[Any]:
+    """
+    Perform comprehensive Trinity health check.
+
+    Checks disk, memory, permissions, state files, and dependencies.
+
+    Returns:
+        SystemHealthReport or None
+    """
+    if not RACE_PREVENTION_AVAILABLE or comprehensive_health_check is None:
+        return None
+
+    return await comprehensive_health_check()
+
+
+async def trinity_startup_validation() -> bool:
+    """
+    Perform startup health validation.
+
+    Should be called before starting Trinity components.
+
+    Returns:
+        True if system is healthy enough to start
+    """
+    if not RACE_PREVENTION_AVAILABLE or startup_health_validation is None:
+        return True
+
+    return await startup_health_validation()
+
+
+# =============================================================================
 # Full System Integration
 # =============================================================================
 
@@ -1155,6 +1962,65 @@ __all__ = [
     "publish_cross_repo_event",
     "subscribe_cross_repo_events",
     "acknowledge_cross_repo_event",
+
+    # Issue 16: Startup timeout
+    "track_component_startup",
+    "confirm_component_spawn",
+    "mark_component_ready",
+    "check_component_timeout",
+
+    # Issue 17: Health check
+    "register_component_health_check",
+    "check_component_health",
+    "mark_component_restarting",
+
+    # Issue 18: Resource cleanup
+    "reserve_component_resource",
+    "release_component_resource",
+    "component_startup_protection",
+    "cleanup_stale_component_resources",
+
+    # Issue 19: Log writing
+    "write_component_log",
+    "rotate_component_logs",
+    "aggregate_component_logs",
+
+    # Issue 20: State file
+    "read_component_state",
+    "write_component_state",
+    "update_component_state",
+    "recover_component_state",
+
+    # Issue 26: Disk space
+    "check_trinity_disk_space",
+    "start_disk_space_monitoring",
+    "stop_disk_space_monitoring",
+    "cleanup_trinity_disk",
+
+    # Issue 27: Memory pressure
+    "check_trinity_memory",
+    "start_memory_monitoring",
+    "stop_memory_monitoring",
+    "register_trinity_cache",
+
+    # Issue 28: Permission validation
+    "validate_trinity_permissions",
+    "validate_trinity_permissions_with_report",
+
+    # Issue 29: State file recovery
+    "check_trinity_state_health",
+    "repair_trinity_state",
+    "ensure_trinity_state_healthy",
+
+    # Issue 30: Dependency version
+    "validate_trinity_dependencies",
+    "validate_trinity_dependencies_with_report",
+    "add_trinity_dependency",
+    "register_trinity_component_version",
+
+    # Comprehensive health check
+    "trinity_health_check",
+    "trinity_startup_validation",
 
     # Full system integration
     "initialize_race_safe_trinity",

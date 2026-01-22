@@ -2624,6 +2624,53 @@ class ProcessOrchestrator:
         ).lower() == "true"
         self._event_subscriptions: List[str] = []  # Subscription IDs for cleanup
 
+        # =====================================================================
+        # v95.9: Error Handling & Recovery Infrastructure (Issues 21-25)
+        # =====================================================================
+
+        # Issue 21: Silent Failure on Repo Discovery - Explicit error handling
+        self._discovery_failures: Dict[str, Dict[str, Any]] = {}  # service -> failure info
+        self._degraded_services: Set[str] = set()  # Services running in degraded mode
+        self._discovery_retry_state: Dict[str, Dict[str, Any]] = {}  # service -> retry state
+        self._max_discovery_retries: int = int(os.environ.get("JARVIS_DISCOVERY_RETRIES", "5"))
+        self._discovery_retry_base_delay: float = float(os.environ.get("JARVIS_DISCOVERY_DELAY", "2.0"))
+
+        # Issue 22: Process Crash Without Restart - Crash monitoring
+        self._crash_history: Dict[str, List[Dict[str, Any]]] = {}  # service -> list of crash events
+        self._crash_rate_window: float = 300.0  # 5-minute window for crash rate calculation
+        self._max_crashes_per_window: int = 5  # Circuit breaker threshold
+        self._crash_circuit_breakers: Dict[str, bool] = {}  # service -> is_open (True = stopped restarting)
+        self._crash_analysis_enabled: bool = os.environ.get("JARVIS_CRASH_ANALYSIS", "true").lower() == "true"
+        self._last_crash_analysis: Dict[str, Dict[str, Any]] = {}  # service -> analysis result
+
+        # Issue 23: Port Conflict No Recovery - Port resolution
+        self._port_allocation_map: Dict[str, int] = {}  # service -> allocated port
+        self._port_conflict_history: Dict[int, List[Dict[str, Any]]] = {}  # port -> conflict events
+        self._dynamic_port_range: Tuple[int, int] = (
+            int(os.environ.get("JARVIS_PORT_RANGE_START", "9000")),
+            int(os.environ.get("JARVIS_PORT_RANGE_END", "9999"))
+        )
+        self._port_scan_cache: Dict[int, Tuple[bool, float]] = {}  # port -> (in_use, check_time)
+        self._port_scan_cache_ttl: float = 10.0  # 10 seconds
+
+        # Issue 24: Import Error No Fallback - Import error handling
+        self._import_errors: Dict[str, Dict[str, Any]] = {}  # module -> error info
+        self._import_fallbacks: Dict[str, List[str]] = {}  # module -> list of fallback modules
+        self._loaded_alternatives: Dict[str, str] = {}  # original module -> loaded alternative
+        self._lazy_imports: Dict[str, Any] = {}  # module name -> loaded module or None
+
+        # Issue 25: Network Timeout No Retry - Network resilience
+        self._network_circuit_breakers: Dict[str, Dict[str, Any]] = {}  # endpoint -> breaker state
+        self._network_health_status: Dict[str, Dict[str, Any]] = {}  # endpoint -> health info
+        self._network_retry_config: Dict[str, Any] = {
+            "max_retries": int(os.environ.get("JARVIS_NETWORK_RETRIES", "3")),
+            "base_delay": float(os.environ.get("JARVIS_NETWORK_DELAY", "1.0")),
+            "max_delay": float(os.environ.get("JARVIS_NETWORK_MAX_DELAY", "30.0")),
+            "timeout": float(os.environ.get("JARVIS_NETWORK_TIMEOUT", "10.0")),
+            "circuit_threshold": int(os.environ.get("JARVIS_CIRCUIT_THRESHOLD", "5")),
+            "circuit_reset_time": float(os.environ.get("JARVIS_CIRCUIT_RESET", "60.0")),
+        }
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -2717,6 +2764,850 @@ class ProcessOrchestrator:
         self._ensure_locks_initialized()
         assert self._circuit_breaker_lock is not None, "Circuit breaker lock should be initialized"
         return self._circuit_breaker_lock
+
+    # =========================================================================
+    # v95.9: Issue 21 - Silent Failure on Repo Discovery
+    # =========================================================================
+
+    async def _handle_discovery_failure(
+        self,
+        service_name: str,
+        error: str,
+        retry_count: int = 0,
+    ) -> Tuple[bool, Optional[Path]]:
+        """
+        v95.9: Handle repo discovery failure with explicit errors and retry logic.
+
+        Instead of silently continuing, this method:
+        1. Logs explicit, actionable error messages
+        2. Attempts retry with exponential backoff
+        3. Notifies about degraded mode if discovery ultimately fails
+        4. Records failure for monitoring/alerting
+
+        Args:
+            service_name: Service that failed discovery
+            error: Error message
+            retry_count: Current retry attempt
+
+        Returns:
+            Tuple of (success, discovered_path)
+        """
+        self._ensure_locks_initialized()
+
+        # Record the failure
+        failure_info = {
+            "service": service_name,
+            "error": error,
+            "timestamp": time.time(),
+            "retry_count": retry_count,
+            "resolved": False,
+        }
+        self._discovery_failures[service_name] = failure_info
+
+        # Log explicit, actionable error
+        logger.error(
+            f"[v95.9] ❌ DISCOVERY FAILURE for {service_name}:\n"
+            f"  Error: {error}\n"
+            f"  Attempt: {retry_count + 1}/{self._max_discovery_retries}"
+        )
+
+        # Check if we should retry
+        if retry_count < self._max_discovery_retries:
+            # Calculate exponential backoff delay
+            delay = self._discovery_retry_base_delay * (2 ** retry_count)
+            # Add jitter to prevent thundering herd
+            jitter = delay * 0.1 * (time.time() % 1)
+            delay = min(delay + jitter, 60.0)  # Cap at 60 seconds
+
+            logger.info(
+                f"[v95.9] 🔄 Retrying {service_name} discovery in {delay:.1f}s "
+                f"(attempt {retry_count + 2}/{self._max_discovery_retries})"
+            )
+
+            await asyncio.sleep(delay)
+
+            # Retry discovery
+            discovery = get_repo_discovery()
+            env_var = f"{service_name.upper().replace('-', '_')}_PATH"
+
+            try:
+                path = await discovery.discover_repo(service_name, env_var, force_refresh=True)
+                if path:
+                    logger.info(f"[v95.9] ✅ Retry successful! Found {service_name} at: {path}")
+                    self._discovery_failures[service_name]["resolved"] = True
+                    return True, path
+                else:
+                    # Recursive retry with incremented count
+                    return await self._handle_discovery_failure(
+                        service_name,
+                        "Discovery returned None after retry",
+                        retry_count + 1
+                    )
+            except Exception as e:
+                return await self._handle_discovery_failure(
+                    service_name,
+                    str(e),
+                    retry_count + 1
+                )
+
+        # All retries exhausted - enter degraded mode
+        self._degraded_services.add(service_name)
+        self._discovery_failures[service_name]["final"] = True
+
+        # Emit explicit notification about degraded mode
+        logger.warning(
+            f"[v95.9] ⚠️ SERVICE DEGRADED: {service_name}\n"
+            f"  All {self._max_discovery_retries} discovery attempts failed.\n"
+            f"  System will continue in DEGRADED MODE without {service_name}.\n"
+            f"  💡 To fix:\n"
+            f"     1. Ensure the {service_name} repository exists\n"
+            f"     2. Set {service_name.upper().replace('-', '_')}_PATH environment variable\n"
+            f"     3. Check file permissions on the repository"
+        )
+
+        # Publish degradation event
+        await self.publish_service_lifecycle_event(
+            service_name,
+            "degraded",
+            {
+                "reason": "discovery_failed",
+                "error": error,
+                "retries": retry_count,
+            }
+        )
+
+        return False, None
+
+    def get_discovery_status(self) -> Dict[str, Any]:
+        """
+        v95.9: Get current discovery status for all services.
+
+        Returns:
+            Dict with discovery status for monitoring
+        """
+        return {
+            "failures": self._discovery_failures.copy(),
+            "degraded_services": list(self._degraded_services),
+            "retry_states": self._discovery_retry_state.copy(),
+            "timestamp": time.time(),
+        }
+
+    # =========================================================================
+    # v95.9: Issue 22 - Process Crash Without Restart
+    # =========================================================================
+
+    async def _monitor_process_health(self, managed: "ManagedProcess") -> None:
+        """
+        v95.9: Monitor process health and handle crashes with auto-restart.
+
+        Features:
+        - Crash detection with detailed logging
+        - Automatic restart with exponential backoff
+        - Crash rate limiting (circuit breaker)
+        - Crash log analysis
+        """
+        service_name = managed.definition.name
+
+        while not self._shutdown_event.is_set() and not self._shutdown_completed:
+            try:
+                await asyncio.sleep(5.0)  # Check every 5 seconds
+
+                if managed.process is None:
+                    continue
+
+                # Check if process has exited
+                return_code = managed.process.returncode
+
+                if return_code is not None:
+                    # Process has crashed!
+                    await self._handle_process_crash(managed, return_code)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[v95.9] Error monitoring {service_name}: {e}")
+
+    async def _handle_process_crash(
+        self,
+        managed: "ManagedProcess",
+        return_code: int,
+    ) -> None:
+        """
+        v95.9: Handle process crash with analysis and auto-restart.
+
+        Args:
+            managed: The crashed process
+            return_code: Exit code from the process
+        """
+        service_name = managed.definition.name
+        crash_time = time.time()
+
+        # Record crash event
+        crash_event = {
+            "timestamp": crash_time,
+            "return_code": return_code,
+            "pid": managed.pid,
+            "restart_count": managed.restart_count,
+            "uptime": crash_time - (managed.last_restart or crash_time),
+        }
+
+        if service_name not in self._crash_history:
+            self._crash_history[service_name] = []
+        self._crash_history[service_name].append(crash_event)
+
+        # Analyze crash
+        analysis = await self._analyze_crash(managed, return_code)
+        self._last_crash_analysis[service_name] = analysis
+
+        # Log detailed crash info
+        logger.error(
+            f"[v95.9] 💥 PROCESS CRASH: {service_name}\n"
+            f"  Exit code: {return_code}\n"
+            f"  PID: {managed.pid}\n"
+            f"  Uptime: {crash_event['uptime']:.1f}s\n"
+            f"  Restart count: {managed.restart_count}\n"
+            f"  Analysis: {analysis.get('diagnosis', 'Unknown')}"
+        )
+
+        # Check circuit breaker
+        if self._should_circuit_break(service_name):
+            logger.error(
+                f"[v95.9] 🔴 CIRCUIT BREAKER OPEN for {service_name}:\n"
+                f"  Too many crashes ({self._max_crashes_per_window}) in {self._crash_rate_window}s window.\n"
+                f"  Auto-restart DISABLED to prevent crash loop.\n"
+                f"  💡 Manual intervention required. Check logs and fix the issue."
+            )
+            self._crash_circuit_breakers[service_name] = True
+            managed.status = ServiceStatus.FAILED
+
+            # Publish critical event
+            await self.publish_service_lifecycle_event(
+                service_name,
+                "circuit_breaker_open",
+                {"reason": "crash_rate_exceeded", "analysis": analysis}
+            )
+            return
+
+        # Auto-restart with backoff
+        backoff = managed.calculate_backoff(base=2.0, max_backoff=120.0)
+        logger.info(
+            f"[v95.9] 🔄 Auto-restarting {service_name} in {backoff:.1f}s "
+            f"(attempt {managed.restart_count + 1})"
+        )
+
+        await asyncio.sleep(backoff)
+
+        # Check if shutdown started during backoff
+        if self._shutdown_event.is_set() or self._shutdown_completed:
+            return
+
+        # Attempt restart
+        managed.restart_count += 1
+        managed.last_restart = time.time()
+        managed.status = ServiceStatus.RESTARTING
+
+        try:
+            # Use the existing _spawn_service method which handles the full spawn lifecycle
+            success = await self._spawn_service(managed)
+            if success:
+                logger.info(f"[v95.9] ✅ {service_name} restarted successfully")
+                # Reset circuit breaker on successful restart
+                self._crash_circuit_breakers[service_name] = False
+            else:
+                logger.error(f"[v95.9] ❌ {service_name} restart failed")
+        except Exception as e:
+            logger.error(f"[v95.9] ❌ {service_name} restart error: {e}")
+
+    async def _analyze_crash(
+        self,
+        managed: "ManagedProcess",
+        return_code: int,
+    ) -> Dict[str, Any]:
+        """
+        v95.9: Analyze crash to determine cause and suggest fixes.
+
+        Args:
+            managed: The crashed process
+            return_code: Exit code
+
+        Returns:
+            Analysis result with diagnosis and suggestions
+        """
+        analysis: Dict[str, Any] = {
+            "return_code": return_code,
+            "diagnosis": "Unknown",
+            "suggestions": [],
+            "severity": "medium",
+        }
+
+        # Common exit codes
+        if return_code == -9 or return_code == 137:
+            analysis["diagnosis"] = "Killed by SIGKILL (possibly OOM)"
+            analysis["suggestions"] = [
+                "Check system memory usage",
+                "Increase available memory",
+                "Check for memory leaks in the service",
+            ]
+            analysis["severity"] = "high"
+        elif return_code == -15 or return_code == 143:
+            analysis["diagnosis"] = "Killed by SIGTERM (graceful shutdown)"
+            analysis["severity"] = "low"
+        elif return_code == -6 or return_code == 134:
+            analysis["diagnosis"] = "Aborted (SIGABRT) - likely assertion failure"
+            analysis["suggestions"] = [
+                "Check service logs for assertion errors",
+                "Look for programming errors",
+            ]
+            analysis["severity"] = "high"
+        elif return_code == 1:
+            analysis["diagnosis"] = "General error"
+            analysis["suggestions"] = [
+                "Check service logs for error details",
+                "Verify configuration files",
+            ]
+        elif return_code == 2:
+            analysis["diagnosis"] = "Misuse of command (bad arguments)"
+            analysis["suggestions"] = [
+                "Check startup arguments",
+                "Verify port and path configurations",
+            ]
+        elif return_code == 127:
+            analysis["diagnosis"] = "Command not found"
+            analysis["suggestions"] = [
+                "Check if Python/venv is correctly set up",
+                "Verify script path exists",
+            ]
+
+        # Check crash frequency
+        recent_crashes = [
+            c for c in self._crash_history.get(managed.definition.name, [])
+            if time.time() - c["timestamp"] < 60
+        ]
+        if len(recent_crashes) > 2:
+            analysis["suggestions"].append("Multiple crashes in 60s - possible startup issue")
+            analysis["severity"] = "critical"
+
+        return analysis
+
+    def _should_circuit_break(self, service_name: str) -> bool:
+        """
+        v95.9: Check if circuit breaker should activate based on crash rate.
+
+        Args:
+            service_name: Service to check
+
+        Returns:
+            True if circuit should break
+        """
+        if service_name in self._crash_circuit_breakers and self._crash_circuit_breakers[service_name]:
+            return True  # Already open
+
+        # Count recent crashes
+        cutoff = time.time() - self._crash_rate_window
+        recent_crashes = [
+            c for c in self._crash_history.get(service_name, [])
+            if c["timestamp"] > cutoff
+        ]
+
+        return len(recent_crashes) >= self._max_crashes_per_window
+
+    # =========================================================================
+    # v95.9: Issue 23 - Port Conflict No Recovery
+    # =========================================================================
+
+    async def _resolve_port_conflict(
+        self,
+        service_name: str,
+        requested_port: int,
+    ) -> Tuple[int, Optional[str]]:
+        """
+        v95.9: Resolve port conflicts automatically.
+
+        Features:
+        - Detect port conflicts
+        - Find alternative port
+        - Identify conflicting process
+        - Clean up stale processes
+
+        Args:
+            service_name: Service requesting the port
+            requested_port: Originally requested port
+
+        Returns:
+            Tuple of (resolved_port, conflict_info)
+        """
+        # Check if requested port is available
+        is_available = await self._check_port_available(requested_port)
+
+        if is_available:
+            self._port_allocation_map[service_name] = requested_port
+            return requested_port, None
+
+        # Port conflict detected
+        conflict_info = await self._identify_port_conflict(requested_port)
+
+        logger.warning(
+            f"[v95.9] ⚠️ PORT CONFLICT: {service_name} requested port {requested_port}\n"
+            f"  Conflict: {conflict_info}"
+        )
+
+        # Try to clean up if it's a stale JARVIS process
+        if conflict_info and "jarvis" in conflict_info.lower():
+            cleanup_success = await self._cleanup_stale_process(requested_port)
+            if cleanup_success:
+                logger.info(f"[v95.9] ✅ Cleaned up stale process on port {requested_port}")
+                await asyncio.sleep(1.0)  # Give OS time to release port
+                self._port_allocation_map[service_name] = requested_port
+                return requested_port, f"Cleaned up stale process: {conflict_info}"
+
+        # Find alternative port
+        alternative_port = await self._find_available_port(service_name)
+
+        if alternative_port:
+            logger.info(
+                f"[v95.9] 🔄 {service_name}: Using alternative port {alternative_port} "
+                f"(original {requested_port} in use)"
+            )
+            self._port_allocation_map[service_name] = alternative_port
+
+            # Record conflict for monitoring
+            if requested_port not in self._port_conflict_history:
+                self._port_conflict_history[requested_port] = []
+            self._port_conflict_history[requested_port].append({
+                "timestamp": time.time(),
+                "service": service_name,
+                "conflict_info": conflict_info,
+                "resolved_port": alternative_port,
+            })
+
+            return alternative_port, f"Conflict with: {conflict_info}"
+
+        # No alternative found
+        logger.error(
+            f"[v95.9] ❌ CRITICAL: Cannot find available port for {service_name}\n"
+            f"  Requested: {requested_port}\n"
+            f"  Scanned range: {self._dynamic_port_range}\n"
+            f"  💡 Free up ports or adjust JARVIS_PORT_RANGE_START/END"
+        )
+        return -1, f"No ports available in range {self._dynamic_port_range}"
+
+    async def _check_port_available(self, port: int) -> bool:
+        """
+        v95.9: Check if a port is available (with caching).
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            True if port is available
+        """
+        # Check cache
+        if port in self._port_scan_cache:
+            in_use, check_time = self._port_scan_cache[port]
+            if time.time() - check_time < self._port_scan_cache_ttl:
+                return not in_use
+
+        # Perform actual check
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.0)
+        try:
+            result = sock.connect_ex(('localhost', port))
+            in_use = (result == 0)
+        except Exception:
+            in_use = False  # Assume available if check fails
+        finally:
+            sock.close()
+
+        # Update cache
+        self._port_scan_cache[port] = (in_use, time.time())
+        return not in_use
+
+    async def _identify_port_conflict(self, port: int) -> str:
+        """
+        v95.9: Identify what process is using a port.
+
+        Args:
+            port: Port number
+
+        Returns:
+            Description of conflicting process
+        """
+        try:
+            import psutil
+
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr and hasattr(conn.laddr, 'port') and conn.laddr.port == port:
+                    if conn.status == 'LISTEN':
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            cmdline = ' '.join(proc.cmdline()[:3])
+                            return f"PID={conn.pid}, Name={proc.name()}, Cmd={cmdline}"
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            return f"PID={conn.pid} (details unavailable)"
+            return "Unknown process"
+        except ImportError:
+            return "psutil not available for process identification"
+        except Exception as e:
+            return f"Error identifying process: {e}"
+
+    async def _cleanup_stale_process(self, port: int) -> bool:
+        """
+        v95.9: Clean up stale JARVIS process on a port.
+
+        Args:
+            port: Port to clean up
+
+        Returns:
+            True if cleanup successful
+        """
+        try:
+            import psutil
+
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr and hasattr(conn.laddr, 'port') and conn.laddr.port == port:
+                    if conn.status == 'LISTEN':
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            cmdline = ' '.join(proc.cmdline())
+
+                            # Only kill JARVIS-related processes
+                            if any(x in cmdline.lower() for x in ['jarvis', 'prime', 'reactor']):
+                                logger.info(f"[v95.9] Terminating stale process: {proc.name()} (PID={conn.pid})")
+                                proc.terminate()
+
+                                # Wait for graceful shutdown
+                                try:
+                                    proc.wait(timeout=5)
+                                except psutil.TimeoutExpired:
+                                    logger.warning(f"[v95.9] Force killing process {conn.pid}")
+                                    proc.kill()
+
+                                return True
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+            return False
+        except ImportError:
+            return False
+        except Exception as e:
+            logger.error(f"[v95.9] Error cleaning up stale process: {e}")
+            return False
+
+    async def _find_available_port(self, service_name: str) -> Optional[int]:
+        """
+        v95.9: Find an available port in the configured range.
+
+        Args:
+            service_name: Service requesting the port
+
+        Returns:
+            Available port number or None
+        """
+        start, end = self._dynamic_port_range
+
+        # Check ports in range
+        for port in range(start, end + 1):
+            if await self._check_port_available(port):
+                return port
+
+        return None
+
+    # =========================================================================
+    # v95.9: Issue 24 - Import Error No Fallback
+    # =========================================================================
+
+    async def _safe_import(
+        self,
+        module_name: str,
+        fallbacks: Optional[List[str]] = None,
+        lazy: bool = True,
+    ) -> Tuple[Any, Optional[str]]:
+        """
+        v95.9: Safely import a module with fallback options.
+
+        Features:
+        - Primary import attempt
+        - Fallback to alternatives
+        - Error recording
+        - Lazy loading option
+
+        Args:
+            module_name: Primary module to import
+            fallbacks: List of fallback module names
+            lazy: Whether to use lazy loading
+
+        Returns:
+            Tuple of (module_or_none, error_message)
+        """
+        fallbacks = fallbacks or []
+
+        # Check if already loaded
+        if module_name in self._lazy_imports:
+            return self._lazy_imports[module_name], None
+
+        # Try primary import
+        try:
+            module = __import__(module_name)
+            # Handle nested module names
+            for part in module_name.split('.')[1:]:
+                module = getattr(module, part)
+
+            self._lazy_imports[module_name] = module
+            return module, None
+
+        except ImportError as e:
+            error = str(e)
+            logger.warning(f"[v95.9] Import failed for {module_name}: {error}")
+
+            # Record error
+            self._import_errors[module_name] = {
+                "error": error,
+                "timestamp": time.time(),
+                "fallbacks_tried": [],
+            }
+
+            # Try fallbacks
+            for fallback in fallbacks:
+                try:
+                    logger.info(f"[v95.9] Trying fallback import: {fallback}")
+                    module = __import__(fallback)
+                    for part in fallback.split('.')[1:]:
+                        module = getattr(module, part)
+
+                    self._lazy_imports[module_name] = module
+                    self._loaded_alternatives[module_name] = fallback
+                    logger.info(f"[v95.9] ✅ Fallback {fallback} loaded for {module_name}")
+                    return module, None
+
+                except ImportError as fe:
+                    self._import_errors[module_name]["fallbacks_tried"].append({
+                        "module": fallback,
+                        "error": str(fe),
+                    })
+
+            # All imports failed
+            logger.error(
+                f"[v95.9] ❌ IMPORT FAILURE: {module_name}\n"
+                f"  Error: {error}\n"
+                f"  Fallbacks tried: {fallbacks}\n"
+                f"  💡 Install missing package or check PYTHONPATH"
+            )
+            return None, error
+
+    def _register_import_fallback(self, module: str, fallbacks: List[str]) -> None:
+        """
+        v95.9: Register fallback modules for a primary module.
+
+        Args:
+            module: Primary module name
+            fallbacks: List of fallback module names
+        """
+        self._import_fallbacks[module] = fallbacks
+
+    # =========================================================================
+    # v95.9: Issue 25 - Network Timeout No Retry
+    # =========================================================================
+
+    async def _network_request_with_retry(
+        self,
+        url: str,
+        method: str = "GET",
+        timeout: Optional[float] = None,
+        max_retries: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[Optional[Any], Optional[str]]:
+        """
+        v95.9: Make network request with retry and circuit breaker.
+
+        Features:
+        - Exponential backoff retry
+        - Circuit breaker for repeated failures
+        - Network health monitoring
+        - Detailed error reporting
+
+        Args:
+            url: Request URL
+            method: HTTP method
+            timeout: Request timeout
+            max_retries: Maximum retry attempts
+            **kwargs: Additional request arguments
+
+        Returns:
+            Tuple of (response_data, error_message)
+        """
+        config = self._network_retry_config
+        # Ensure non-None values with sensible defaults
+        effective_timeout: float = timeout if timeout is not None else config.get("timeout", 30.0)
+        effective_max_retries: int = max_retries if max_retries is not None else config.get("max_retries", 3)
+
+        # Check circuit breaker
+        endpoint = self._get_endpoint_key(url)
+        if self._is_circuit_open(endpoint):
+            return None, f"Circuit breaker open for {endpoint}"
+
+        last_error: Optional[str] = None
+
+        for attempt in range(effective_max_retries + 1):
+            try:
+                # Get the shared HTTP session (connection pooled)
+                session = await self._get_http_session()
+                request_timeout = aiohttp.ClientTimeout(total=effective_timeout)
+
+                # Make request using the session (don't close - it's shared)
+                async with session.request(
+                    method,
+                    url,
+                    timeout=request_timeout,
+                    **kwargs
+                ) as response:
+                    if response.status < 400:
+                        # Success - reset circuit breaker
+                        self._record_network_success(endpoint)
+                        content_type = response.content_type or ""
+                        data = await response.json() if 'json' in content_type else await response.text()
+                        return data, None
+                    else:
+                        last_error = f"HTTP {response.status}: {await response.text()}"
+
+            except asyncio.TimeoutError:
+                last_error = f"Timeout after {effective_timeout}s"
+            except aiohttp.ClientConnectorError as e:
+                last_error = f"Connection error: {e}"
+            except Exception as e:
+                last_error = f"Request error: {e}"
+
+            # Record failure
+            self._record_network_failure(endpoint, last_error or "Unknown error")
+
+            # Check if we should retry
+            if attempt < effective_max_retries:
+                delay = min(
+                    config.get("base_delay", 1.0) * (2 ** attempt),
+                    config.get("max_delay", 30.0)
+                )
+                # Add jitter
+                jitter = delay * 0.1 * (time.time() % 1)
+                delay += jitter
+
+                logger.debug(
+                    f"[v95.9] Network retry for {endpoint} in {delay:.1f}s "
+                    f"(attempt {attempt + 2}/{effective_max_retries + 1}): {last_error}"
+                )
+                await asyncio.sleep(delay)
+
+        # All retries failed
+        logger.warning(
+            f"[v95.9] ⚠️ Network request failed after {effective_max_retries + 1} attempts: {url}\n"
+            f"  Last error: {last_error}"
+        )
+        return None, last_error
+
+    def _get_endpoint_key(self, url: str) -> str:
+        """Extract endpoint key from URL for circuit breaker tracking."""
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        return f"{parsed.netloc}{parsed.path}"
+
+    def _is_circuit_open(self, endpoint: str) -> bool:
+        """Check if circuit breaker is open for an endpoint."""
+        if endpoint not in self._network_circuit_breakers:
+            return False
+
+        breaker = self._network_circuit_breakers[endpoint]
+        if not breaker.get("open", False):
+            return False
+
+        # Check if reset time has passed
+        reset_time = breaker.get("reset_time", 0)
+        if time.time() > reset_time:
+            # Half-open - allow one request through
+            breaker["open"] = False
+            breaker["half_open"] = True
+            return False
+
+        return True
+
+    def _record_network_success(self, endpoint: str) -> None:
+        """Record successful network request."""
+        if endpoint in self._network_circuit_breakers:
+            self._network_circuit_breakers[endpoint] = {
+                "failures": 0,
+                "open": False,
+                "half_open": False,
+            }
+
+        self._network_health_status[endpoint] = {
+            "healthy": True,
+            "last_success": time.time(),
+        }
+
+    def _record_network_failure(self, endpoint: str, error: str) -> None:
+        """Record failed network request and potentially open circuit."""
+        config = self._network_retry_config
+
+        if endpoint not in self._network_circuit_breakers:
+            self._network_circuit_breakers[endpoint] = {
+                "failures": 0,
+                "open": False,
+            }
+
+        breaker = self._network_circuit_breakers[endpoint]
+        breaker["failures"] = breaker.get("failures", 0) + 1
+        breaker["last_error"] = error
+        breaker["last_failure"] = time.time()
+
+        # Check if we should open the circuit
+        if breaker["failures"] >= config["circuit_threshold"]:
+            breaker["open"] = True
+            breaker["reset_time"] = time.time() + config["circuit_reset_time"]
+            logger.warning(
+                f"[v95.9] 🔴 Circuit breaker OPEN for {endpoint}: "
+                f"{breaker['failures']} consecutive failures"
+            )
+
+        self._network_health_status[endpoint] = {
+            "healthy": False,
+            "last_failure": time.time(),
+            "error": error,
+        }
+
+    # Note: _get_http_session is defined in v93.11 section (line ~4319)
+    # with comprehensive connection pooling configuration
+
+    def get_error_recovery_status(self) -> Dict[str, Any]:
+        """
+        v95.9: Get comprehensive error recovery status.
+
+        Returns:
+            Dict with status of all error recovery systems
+        """
+        return {
+            "discovery": {
+                "failures": self._discovery_failures,
+                "degraded_services": list(self._degraded_services),
+            },
+            "crashes": {
+                "history": {k: len(v) for k, v in self._crash_history.items()},
+                "circuit_breakers": self._crash_circuit_breakers,
+                "last_analysis": self._last_crash_analysis,
+            },
+            "ports": {
+                "allocations": self._port_allocation_map,
+                "conflicts": {k: len(v) for k, v in self._port_conflict_history.items()},
+            },
+            "imports": {
+                "errors": self._import_errors,
+                "alternatives": self._loaded_alternatives,
+            },
+            "network": {
+                "circuit_breakers": {
+                    k: {"open": v.get("open", False), "failures": v.get("failures", 0)}
+                    for k, v in self._network_circuit_breakers.items()
+                },
+                "health": self._network_health_status,
+            },
+            "timestamp": time.time(),
+        }
 
     # =========================================================================
     # v95.5: Graceful Degradation with Circuit Breaker Pattern
@@ -8033,12 +8924,48 @@ echo "=== JARVIS Prime started ==="
                     return service_name, True, f"Docker container ({docker_reason})"
 
                 # Step 4: Spawn local process
+
+                # v95.9: Check for port conflicts and resolve them automatically
+                resolved_port, _ = await self._resolve_port_conflict(
+                    service_name, definition.default_port
+                )
+                if resolved_port != definition.default_port:
+                    logger.info(
+                        f"[v95.9] Port conflict resolved for {service_name}: "
+                        f"{definition.default_port} -> {resolved_port}"
+                    )
+                    # Update the port in place (dataclass is mutable)
+                    definition.default_port = resolved_port
+                    # Also update script_args if they contain the port
+                    if definition.script_args:
+                        updated_args = []
+                        skip_next = False
+                        for i, arg in enumerate(definition.script_args):
+                            if skip_next:
+                                skip_next = False
+                                continue
+                            if arg == "--port" and i + 1 < len(definition.script_args):
+                                updated_args.append(arg)
+                                updated_args.append(str(resolved_port))
+                                skip_next = True
+                            else:
+                                updated_args.append(arg)
+                        definition.script_args = updated_args
+
                 managed = ManagedProcess(definition=definition)
                 self.processes[service_name] = managed
 
                 success = await self._spawn_service(managed)
 
                 if success:
+                    # v95.9: Start process health monitor for crash detection and auto-restart
+                    health_monitor_task = asyncio.create_task(
+                        self._monitor_process_health(managed),
+                        name=f"crash_monitor_{service_name}"
+                    )
+                    self._track_background_task(health_monitor_task)
+                    logger.debug(f"[v95.9] Started crash monitor for {service_name}")
+
                     # v95.5: Publish ready event for local process
                     await self._end_span(service_span, status="success")
                     await self.publish_service_lifecycle_event(service_name, "ready", {"mode": "local"})
