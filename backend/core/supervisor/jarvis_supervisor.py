@@ -2942,13 +2942,23 @@ class JARVISSupervisor:
         # Get exit codes from config
         exit_codes = ExitCode.from_config(self.config)
         
+        # v95.13: Helper to check both local and global shutdown
+        def _is_shutting_down() -> bool:
+            if self._shutdown_event.is_set():
+                return True
+            try:
+                from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+                return is_global_shutdown_initiated()
+            except ImportError:
+                return False
+
         try:
-            while not self._shutdown_event.is_set():
+            while not _is_shutting_down():
                 # Check for pending update request from idle detector
                 if self._update_requested.is_set():
                     self._update_requested.clear()
                     await self._handle_update_request()
-                
+
                 # Spawn JARVIS and wait for exit
                 exit_code = await self._spawn_jarvis()
                 

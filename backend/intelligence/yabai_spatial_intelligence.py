@@ -534,7 +534,19 @@ class YabaiSpatialIntelligence:
         """Main 24/7 monitoring loop"""
         logger.info("[YABAI-SI] 24/7 monitoring loop started")
 
-        while self.is_monitoring:
+        # v95.13: Helper to check both local and global shutdown
+        def _should_continue() -> bool:
+            if not self.is_monitoring:
+                return False
+            try:
+                from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+                if is_global_shutdown_initiated():
+                    return False
+            except ImportError:
+                pass
+            return True
+
+        while _should_continue():
             try:
                 # Scan workspace
                 await self._scan_workspace()

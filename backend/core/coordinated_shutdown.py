@@ -659,6 +659,20 @@ class CoordinatedShutdownManager:
             self._shutdown_in_progress = True
             self._shutdown_reason = reason
 
+            # v95.13: Trigger global shutdown signal IMMEDIATELY
+            # This ensures ALL components (OrphanDetector, recovery coordinator, etc.)
+            # know shutdown is happening, regardless of which shutdown path is taken
+            try:
+                from backend.core.resilience.graceful_shutdown import initiate_global_shutdown
+                initiate_global_shutdown(
+                    reason=f"coordinated_{reason.value}",
+                    initiator="CoordinatedShutdownManager"
+                )
+            except ImportError:
+                logger.debug("[v95.13] Global shutdown signal not available")
+            except Exception as e:
+                logger.warning(f"[v95.13] Failed to trigger global shutdown: {e}")
+
             start_time = time.time()
             total_hooks_executed = 0
             total_hooks_failed = 0
@@ -1229,6 +1243,19 @@ class OrphanProcessDetector:
         """
         self._detected_orphans = []
 
+        # v95.13: Check GLOBAL shutdown signal FIRST (most reliable)
+        try:
+            from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+            if is_global_shutdown_initiated():
+                logger.info(
+                    "[v95.13] OrphanDetector: Skipping detection - global shutdown initiated"
+                )
+                return []
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v95.13] OrphanDetector: Error checking global shutdown: {e}")
+
         # v95.3: Check if orchestrator shutdown is in progress or completed
         # If so, don't detect orphans - processes are being managed by orchestrator
         try:
@@ -1797,6 +1824,20 @@ class OrphanProcessDetector:
         killing processes during orchestrator-managed shutdown.
         """
         # v95.3: Check if orchestrator shutdown is in progress or completed
+        # v95.13: Check GLOBAL shutdown signal FIRST (most reliable)
+        # This catches shutdowns initiated before orchestrator state is updated
+        try:
+            from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+            if is_global_shutdown_initiated():
+                logger.info(
+                    "[v95.13] OrphanDetector: Skipping cleanup - global shutdown initiated"
+                )
+                return (0, 0)
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v95.13] OrphanDetector: Error checking global shutdown: {e}")
+
         # If so, the orchestrator is managing process termination - don't interfere
         try:
             from backend.supervisor.cross_repo_startup_orchestrator import (

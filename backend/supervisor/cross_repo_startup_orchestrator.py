@@ -9247,6 +9247,19 @@ echo "=== JARVIS Prime started ==="
         """
         definition = managed.definition
 
+        # v95.13: Check GLOBAL shutdown signal FIRST (catches external shutdown paths)
+        try:
+            from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+            if is_global_shutdown_initiated():
+                logger.info(
+                    f"[v95.13] Skipping restart of {definition.name}: global shutdown initiated"
+                )
+                return False
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v95.13] Error checking global shutdown: {e}")
+
         # v95.3: CRITICAL - Check ALL shutdown states BEFORE restarting
         if self._shutdown_event.is_set() or self._shutdown_completed:
             logger.info(
@@ -9586,6 +9599,19 @@ echo "=== JARVIS Prime started ==="
         CRITICAL (v95.3): Added comprehensive shutdown state checks to prevent
         recovery attempts after shutdown has started or completed.
         """
+        # v95.13: Check GLOBAL shutdown signal FIRST (catches external shutdown paths)
+        try:
+            from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+            if is_global_shutdown_initiated():
+                logger.info(
+                    f"[v95.13] Skipping recovery for {service_name}: global shutdown initiated"
+                )
+                return False
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v95.13] Error checking global shutdown: {e}")
+
         # v95.3: CRITICAL - Check ALL shutdown states before recovery
         if self._shutdown_event.is_set() or self._shutdown_completed:
             logger.info(
