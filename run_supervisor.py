@@ -8235,6 +8235,81 @@ class SupervisorBootstrapper:
             self.logger.error(f"[v91] Self-healing: Reactor-Core restart failed: {e}")
 
     # =========================================================================
+    # v102.0: Process Tree Registration Helper
+    # =========================================================================
+    # This helper ensures Trinity processes (J-Prime, Reactor-Core) are registered
+    # in the unified process tree for proper cascading shutdown and monitoring.
+    # =========================================================================
+
+    async def _register_trinity_process_in_tree(
+        self,
+        pid: int,
+        name: str,
+        role_str: str,
+    ) -> None:
+        """
+        v102.0: Register a Trinity process in the unified process tree.
+
+        This ensures proper tracking and cascading shutdown of Trinity components.
+
+        Args:
+            pid: Process ID of the spawned process
+            name: Human-readable name (e.g., "J-Prime", "Reactor-Core")
+            role_str: Role string - one of "jprime", "reactor", "backend", "service"
+        """
+        if not hasattr(self, '_process_tree') or self._process_tree is None:
+            self.logger.debug(f"[v102.0] Skipping process tree registration for {name} - tree not initialized")
+            return
+
+        try:
+            from core.coding_council.advanced import ProcessRole
+
+            # Map role string to ProcessRole enum
+            role_map = {
+                "jprime": ProcessRole.TRINITY_JPRIME,
+                "reactor": ProcessRole.TRINITY_REACTOR,
+                "backend": ProcessRole.BACKEND,
+                "service": ProcessRole.SERVICE,
+            }
+            role = role_map.get(role_str, ProcessRole.SERVICE)
+
+            # Register with supervisor as parent
+            supervisor_pid = os.getpid()
+            await self._process_tree.register_process(
+                pid=pid,
+                name=name,
+                role=role,
+                parent_pid=supervisor_pid,
+                critical=True,  # Trinity components are critical
+                metadata={
+                    "version": "v102.0",
+                    "component_type": role_str,
+                    "started_at": time.time(),
+                },
+            )
+            self.logger.debug(f"[v102.0] Registered {name} (PID {pid}) in process tree")
+
+        except ImportError:
+            self.logger.debug(f"[v102.0] ProcessRole not available - skipping registration for {name}")
+        except Exception as e:
+            self.logger.debug(f"[v102.0] Failed to register {name} in process tree: {e}")
+
+    async def _unregister_trinity_process_from_tree(self, pid: int, name: str) -> None:
+        """
+        v102.0: Unregister a Trinity process from the unified process tree.
+
+        Called when a Trinity process is stopped or crashes.
+        """
+        if not hasattr(self, '_process_tree') or self._process_tree is None:
+            return
+
+        try:
+            await self._process_tree.unregister_process(pid)
+            self.logger.debug(f"[v102.0] Unregistered {name} (PID {pid}) from process tree")
+        except Exception as e:
+            self.logger.debug(f"[v102.0] Failed to unregister {name} from process tree: {e}")
+
+    # =========================================================================
     # v100.4: Unified Stop/Start Methods (Fix for undefined method bug)
     # =========================================================================
     # These methods provide a consistent interface for stopping and starting
@@ -8271,6 +8346,9 @@ class SupervisorBootstrapper:
             except Exception as e:
                 self.logger.warning(f"[v100.4] Error stopping J-Prime process: {e}")
             finally:
+                # v102.0: Unregister from process tree
+                if pid:
+                    await self._unregister_trinity_process_from_tree(pid, "J-Prime")
                 self._jprime_orchestrator_process = None
             return
 
@@ -8327,6 +8405,9 @@ class SupervisorBootstrapper:
             except Exception as e:
                 self.logger.warning(f"[v100.4] Error stopping Reactor-Core process: {e}")
             finally:
+                # v102.0: Unregister from process tree
+                if pid:
+                    await self._unregister_trinity_process_from_tree(pid, "Reactor-Core")
                 self._reactor_core_orchestrator_process = None
             return
 
@@ -17991,6 +18072,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             f"(PID: {proc_info.pid}, PGID: {proc_info.pgid}){TerminalUI.RESET}"
                         )
 
+                        # v102.0: Register in process tree for proper shutdown
+                        await self._register_trinity_process_in_tree(
+                            pid=proc_info.pid,
+                            name="J-Prime",
+                            role_str="jprime",
+                        )
+
                         return safe_proc._process
 
                     else:
@@ -18035,6 +18123,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         print(
                             f"  {TerminalUI.GREEN}✓ J-Prime launched "
                             f"(PID: {process.pid}){TerminalUI.RESET}"
+                        )
+
+                        # v102.0: Register in process tree for proper shutdown
+                        await self._register_trinity_process_in_tree(
+                            pid=process.pid,
+                            name="J-Prime",
+                            role_str="jprime",
                         )
 
                         return process
@@ -18202,6 +18297,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             f"(PID: {proc_info.pid}, PGID: {proc_info.pgid}){TerminalUI.RESET}"
                         )
 
+                        # v102.0: Register in process tree for proper shutdown
+                        await self._register_trinity_process_in_tree(
+                            pid=proc_info.pid,
+                            name="Reactor-Core",
+                            role_str="reactor",
+                        )
+
                         return safe_proc._process
 
                     else:
@@ -18246,6 +18348,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         print(
                             f"  {TerminalUI.GREEN}✓ Reactor-Core launched "
                             f"(PID: {process.pid}){TerminalUI.RESET}"
+                        )
+
+                        # v102.0: Register in process tree for proper shutdown
+                        await self._register_trinity_process_in_tree(
+                            pid=process.pid,
+                            name="Reactor-Core",
+                            role_str="reactor",
                         )
 
                     return process
@@ -18650,18 +18759,21 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             except Exception as e:
                 self.logger.debug(f"   Orchestrator shutdown error: {e}")
 
-        # v78.0: Shutdown Process Management Components
+        # v78.0/v102.0: Shutdown Process Management Components
         # Shutdown in reverse order of initialization
         if hasattr(self, '_process_tree') and self._process_tree:
             try:
                 self.logger.info("   Shutting down Process Tree Manager...")
                 await self._process_tree.stop_monitoring()
-                # Use cascading shutdown for clean process termination
+                # v102.0: Use cascading shutdown with exclude_self=True
+                # This prevents the supervisor from trying to kill itself, which would
+                # cause the confusing "0/1 succeeded" message
                 from core.coding_council.advanced import ShutdownStrategy
                 await self._process_tree.shutdown_tree(
                     strategy=ShutdownStrategy.CASCADING,
                     timeout=30.0,
                     force_after=10.0,
+                    exclude_self=True,  # v102.0: Don't try to kill ourselves
                 )
                 self.logger.info("   ✅ Process Tree Manager stopped")
             except Exception as e:

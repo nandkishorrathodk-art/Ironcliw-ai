@@ -429,16 +429,30 @@ class UnifiedProcessTree:
         await _collect(pid)
         return descendants
 
-    async def get_shutdown_order(self, root_pid: Optional[int] = None) -> List[int]:
+    async def get_shutdown_order(
+        self,
+        root_pid: Optional[int] = None,
+        exclude_pids: Optional[Set[int]] = None,
+    ) -> List[int]:
         """
         Get optimal shutdown order (children before parents).
 
         Uses reverse topological sort to ensure children are
         shut down before their parents.
+
+        Args:
+            root_pid: Root of subtree to shutdown (None for entire tree)
+            exclude_pids: PIDs to exclude from shutdown order (e.g., the calling process)
+                         v102.0: Prevents supervisor from trying to kill itself
+
+        Returns:
+            List of PIDs in optimal shutdown order (children before parents)
         """
         root = root_pid or self._root_pid
         if not root:
             return []
+
+        exclude = exclude_pids or set()
 
         # Build shutdown order (deepest first)
         order = []
@@ -457,7 +471,9 @@ class UnifiedProcessTree:
             for child_pid in node.children:
                 await _visit(child_pid, depth + 1)
 
-            order.append((pid, depth))
+            # v102.0: Skip excluded PIDs (e.g., the supervisor calling shutdown)
+            if pid not in exclude:
+                order.append((pid, depth))
 
         await _visit(root)
 
@@ -471,6 +487,8 @@ class UnifiedProcessTree:
         strategy: ShutdownStrategy = ShutdownStrategy.CASCADING,
         timeout: float = 30.0,
         force_after: float = 10.0,
+        exclude_pids: Optional[Set[int]] = None,
+        exclude_self: bool = True,
     ) -> Dict[int, bool]:
         """
         Shutdown the entire process tree.
@@ -480,24 +498,45 @@ class UnifiedProcessTree:
             strategy: Shutdown strategy
             timeout: Maximum time for entire shutdown
             force_after: Time before force killing
+            exclude_pids: PIDs to exclude from shutdown (e.g., the calling process)
+            exclude_self: v102.0: If True, automatically exclude the current process
+                         This prevents the supervisor from trying to kill itself
 
         Returns:
-            Dict mapping PID to success status
+            Dict mapping PID to success status (excludes skipped processes)
         """
         self._shutdown_event.set()
         results: Dict[int, bool] = {}
+        skipped_count = 0
         start_time = time.time()
 
         root = root_pid or self._root_pid
         if not root:
             return results
 
+        # v102.0: Build exclusion set
+        exclude = set(exclude_pids) if exclude_pids else set()
+        if exclude_self:
+            current_pid = os.getpid()
+            exclude.add(current_pid)
+            self.log.debug(f"[ProcessTree] v102.0: Excluding current process PID {current_pid} from shutdown")
+
         self.log.info(f"[ProcessTree] Initiating {strategy.value} shutdown...")
 
         if strategy == ShutdownStrategy.CASCADING:
-            # Get optimal shutdown order
-            shutdown_order = await self.get_shutdown_order(root)
-            self.log.info(f"[ProcessTree] Shutdown order: {shutdown_order}")
+            # Get optimal shutdown order (excluding specified PIDs)
+            shutdown_order = await self.get_shutdown_order(root, exclude_pids=exclude)
+
+            # v102.0: Log what we're doing
+            total_nodes = len(self._nodes)
+            excluded_nodes = total_nodes - len(shutdown_order)
+            if excluded_nodes > 0:
+                self.log.info(
+                    f"[ProcessTree] Shutdown order: {shutdown_order} "
+                    f"({excluded_nodes} process(es) excluded: protected/self)"
+                )
+            else:
+                self.log.info(f"[ProcessTree] Shutdown order: {shutdown_order}")
 
             for pid in shutdown_order:
                 if time.time() - start_time > timeout:
@@ -509,11 +548,18 @@ class UnifiedProcessTree:
                     graceful=True,
                     timeout=force_after
                 )
-                results[pid] = success
+                # v102.0: Track skipped (protected) vs actual results
+                if success is None:  # Skipped/protected
+                    skipped_count += 1
+                else:
+                    results[pid] = success
 
         elif strategy == ShutdownStrategy.GRACEFUL:
-            # Send SIGTERM to all, wait, then force
+            # Send SIGTERM to all (except excluded), wait, then force
             for pid in list(self._nodes.keys()):
+                if pid in exclude:
+                    skipped_count += 1
+                    continue
                 await self._send_signal(pid, signal.SIGTERM)
                 await self.update_state(pid, ProcessState.STOPPING)
 
@@ -522,20 +568,46 @@ class UnifiedProcessTree:
 
             # Force kill remaining
             for pid in list(self._nodes.keys()):
+                if pid in exclude:
+                    continue
                 node = self._nodes.get(pid)
                 if node and node.is_alive:
                     success = await self._shutdown_process(pid, graceful=False)
-                    results[pid] = success
+                    if success is not None:
+                        results[pid] = success
                 else:
                     results[pid] = True
 
         elif strategy == ShutdownStrategy.IMMEDIATE:
-            # Force kill all immediately
+            # Force kill all immediately (except excluded)
             for pid in list(self._nodes.keys()):
+                if pid in exclude:
+                    skipped_count += 1
+                    continue
                 success = await self._shutdown_process(pid, graceful=False)
-                results[pid] = success
+                if success is not None:
+                    results[pid] = success
 
-        self.log.info(f"[ProcessTree] Shutdown complete: {sum(results.values())}/{len(results)} succeeded")
+        # v102.0: Improved logging that distinguishes skipped from failed
+        succeeded = sum(1 for v in results.values() if v)
+        failed = sum(1 for v in results.values() if not v)
+
+        # v102.0: Also count processes excluded at the order level (not just during shutdown)
+        total_excluded = len(self._nodes) - len(results) if strategy == ShutdownStrategy.CASCADING else skipped_count
+
+        if len(results) == 0 and total_excluded > 0:
+            self.log.info(
+                f"[ProcessTree] Shutdown complete: {total_excluded} process(es) excluded/skipped "
+                f"(protected or self) - this is normal when shutting down from supervisor"
+            )
+        elif total_excluded > 0:
+            self.log.info(
+                f"[ProcessTree] Shutdown complete: {succeeded}/{len(results)} succeeded, "
+                f"{failed} failed, {total_excluded} excluded/skipped (protected or self)"
+            )
+        else:
+            self.log.info(f"[ProcessTree] Shutdown complete: {succeeded}/{len(results)} succeeded")
+
         return results
 
     async def _shutdown_process(
@@ -543,8 +615,15 @@ class UnifiedProcessTree:
         pid: int,
         graceful: bool = True,
         timeout: float = 5.0,
-    ) -> bool:
-        """Shutdown a single process with protection for critical processes."""
+    ) -> Optional[bool]:
+        """
+        Shutdown a single process with protection for critical processes.
+
+        Returns:
+            True: Process was successfully stopped
+            False: Process failed to stop (error)
+            None: v102.0: Process was skipped (protected) - not an error
+        """
         node = self._nodes.get(pid)
         if not node:
             return True  # Already gone
@@ -553,25 +632,26 @@ class UnifiedProcessTree:
             await self.update_state(pid, ProcessState.STOPPED)
             return True
 
-        # v89.0: CRITICAL - Never kill supervisor processes
+        # v89.0/v102.0: CRITICAL - Never kill supervisor processes
         # These are the root of the process tree and killing them causes system death
+        # v102.0: Return None (skipped) instead of False (failed) to distinguish
         if node.role == ProcessRole.SUPERVISOR:
-            self.log.warning(
-                f"[ProcessTree] PROTECTED: Refusing to kill SUPERVISOR process {node.name} (PID {pid}). "
-                f"This is a critical system process that should never be terminated by cleanup."
+            self.log.debug(
+                f"[ProcessTree] v102.0: Skipping SUPERVISOR process {node.name} (PID {pid}) - "
+                f"protected system process (this is expected when shutting down from supervisor)"
             )
-            return False  # Return False to indicate we did NOT stop it
+            return None  # v102.0: Return None to indicate skipped, not failed
 
         # v89.0: Also check protected patterns in process name
         protected_patterns = ["run_supervisor", "jarvis_supervisor", "dead_man_switch"]
         name_lower = node.name.lower()
         for pattern in protected_patterns:
             if pattern in name_lower:
-                self.log.warning(
-                    f"[ProcessTree] PROTECTED: Refusing to kill {node.name} (PID {pid}) - "
+                self.log.debug(
+                    f"[ProcessTree] v102.0: Skipping {node.name} (PID {pid}) - "
                     f"matches protected pattern '{pattern}'"
                 )
-                return False
+                return None  # v102.0: Skipped, not failed
 
         self.log.info(f"[ProcessTree] Stopping {node.name} (PID {pid})...")
 
