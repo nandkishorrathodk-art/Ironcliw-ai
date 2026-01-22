@@ -11425,6 +11425,23 @@ echo "=== JARVIS Prime started ==="
         # v95.1: Close shared HTTP session with error handling
         await self._close_http_session()
 
+        # v95.12: Cleanup multiprocessing resources (ProcessPoolExecutors, semaphores)
+        try:
+            from backend.core.resilience.graceful_shutdown import cleanup_multiprocessing_resources
+            mp_timeout = float(os.environ.get("SHUTDOWN_MP_CLEANUP_TIMEOUT", "10.0"))
+            logger.info(f"[v95.12] Cleaning up multiprocessing resources...")
+            mp_result = await cleanup_multiprocessing_resources(timeout=mp_timeout)
+            logger.info(
+                f"[v95.12] ✅ Multiprocessing cleanup: "
+                f"{mp_result.get('successful', 0)} success, "
+                f"{mp_result.get('forced', 0)} forced, "
+                f"{mp_result.get('failed', 0)} failed"
+            )
+        except ImportError:
+            logger.debug("[v95.12] Multiprocessing cleanup not available")
+        except Exception as e:
+            logger.warning(f"[v95.12] Multiprocessing cleanup error: {e}")
+
         # v95.1: Clear startup coordination state
         self._services_starting.clear()
         self._services_ready.clear()

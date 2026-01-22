@@ -1014,6 +1014,404 @@ def should_reject_operation(category: str = "default") -> bool:
 
 
 # =============================================================================
+# v95.12: Multiprocessing Resource Cleanup
+# =============================================================================
+
+import atexit
+import weakref
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+
+
+class MultiprocessingResourceTracker:
+    """
+    v95.12: Tracks and cleans up multiprocessing resources to prevent leaks.
+
+    Problem:
+        ProcessPoolExecutor and multiprocessing.Process use semaphores for
+        synchronization. If shutdown(wait=False) is called or processes are
+        killed abruptly, these semaphores are not released, causing the
+        "leaked semaphore objects" warning.
+
+    Solution:
+        - Track all ProcessPoolExecutors and ThreadPoolExecutors
+        - Ensure proper shutdown with wait=True during graceful shutdown
+        - Clean up orphaned semaphores on startup
+        - Register atexit handler for emergency cleanup
+
+    Usage:
+        tracker = get_multiprocessing_tracker()
+
+        # Register an executor for tracking
+        tracker.register_executor(my_process_pool, "my_executor")
+
+        # During shutdown
+        await tracker.shutdown_all_executors(timeout=10.0)
+    """
+
+    def __init__(self):
+        # Use weak references to avoid preventing garbage collection
+        self._executors: Dict[str, weakref.ref] = {}
+        self._lock = asyncio.Lock()
+        self._shutdown_started = False
+        self._cleanup_stats = {
+            "executors_registered": 0,
+            "executors_shutdown": 0,
+            "forced_shutdowns": 0,
+            "errors": [],
+        }
+
+        # Register atexit handler for emergency cleanup
+        atexit.register(self._emergency_cleanup)
+        logger.debug("[v95.12] MultiprocessingResourceTracker initialized")
+
+    def register_executor(
+        self,
+        executor: Any,  # ProcessPoolExecutor | ThreadPoolExecutor
+        name: str,
+        is_process_pool: bool = False,
+    ) -> None:
+        """
+        Register an executor for tracking.
+
+        Args:
+            executor: The executor to track
+            name: A unique name for this executor
+            is_process_pool: True if this is a ProcessPoolExecutor
+        """
+        # Store as weak reference
+        def on_finalize(ref):
+            # Executor was garbage collected - remove from tracking
+            if name in self._executors:
+                del self._executors[name]
+                logger.debug(f"[v95.12] Executor '{name}' was garbage collected")
+
+        self._executors[name] = weakref.ref(executor, on_finalize)
+        self._cleanup_stats["executors_registered"] += 1
+        logger.debug(
+            f"[v95.12] Registered executor '{name}' "
+            f"(type: {'process' if is_process_pool else 'thread'})"
+        )
+
+    def unregister_executor(self, name: str) -> bool:
+        """Unregister an executor by name."""
+        if name in self._executors:
+            del self._executors[name]
+            return True
+        return False
+
+    async def shutdown_all_executors(
+        self,
+        timeout: float = 10.0,
+        cancel_futures: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Shutdown all tracked executors properly.
+
+        This is the key method that prevents semaphore leaks by:
+        1. Setting wait=True to allow workers to exit cleanly
+        2. Using a timeout to prevent hanging
+        3. Falling back to forced shutdown if timeout is exceeded
+
+        Args:
+            timeout: Maximum time to wait for all executors
+            cancel_futures: Whether to cancel pending futures
+
+        Returns:
+            Dict with shutdown statistics
+        """
+        async with self._lock:
+            if self._shutdown_started:
+                return {"already_shutdown": True}
+            self._shutdown_started = True
+
+        logger.info(f"[v95.12] Shutting down {len(self._executors)} tracked executors...")
+        results = {
+            "total": len(self._executors),
+            "successful": 0,
+            "forced": 0,
+            "failed": 0,
+            "details": {},
+        }
+
+        # Calculate per-executor timeout
+        executor_count = len(self._executors)
+        per_executor_timeout = timeout / max(executor_count, 1)
+
+        for name, executor_ref in list(self._executors.items()):
+            executor = executor_ref()
+            if executor is None:
+                # Already garbage collected
+                results["details"][name] = "garbage_collected"
+                continue
+
+            try:
+                logger.debug(f"[v95.12] Shutting down executor '{name}'...")
+
+                # Run shutdown in thread to avoid blocking event loop
+                shutdown_success = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda e=executor, c=cancel_futures: (
+                            e.shutdown(wait=True, cancel_futures=c)
+                            if hasattr(e.shutdown, '__call__')
+                            else None,
+                            True,
+                        )[1],
+                    ),
+                    timeout=per_executor_timeout,
+                )
+
+                results["successful"] += 1
+                results["details"][name] = "success"
+                self._cleanup_stats["executors_shutdown"] += 1
+                logger.debug(f"[v95.12] ✅ Executor '{name}' shutdown successfully")
+
+            except asyncio.TimeoutError:
+                logger.warning(f"[v95.12] Executor '{name}' shutdown timeout, forcing...")
+                try:
+                    # Force shutdown without waiting
+                    if hasattr(executor, 'shutdown'):
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    results["forced"] += 1
+                    results["details"][name] = "forced"
+                    self._cleanup_stats["forced_shutdowns"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["details"][name] = f"force_error: {e}"
+                    self._cleanup_stats["errors"].append(f"{name}: {e}")
+
+            except Exception as e:
+                logger.error(f"[v95.12] Error shutting down executor '{name}': {e}")
+                results["failed"] += 1
+                results["details"][name] = f"error: {e}"
+                self._cleanup_stats["errors"].append(f"{name}: {e}")
+
+        logger.info(
+            f"[v95.12] Executor shutdown complete: "
+            f"{results['successful']} success, {results['forced']} forced, "
+            f"{results['failed']} failed"
+        )
+        return results
+
+    def shutdown_all_executors_sync(self, timeout: float = 5.0) -> Dict[str, Any]:
+        """
+        Synchronous version of shutdown_all_executors.
+
+        Used by atexit handler and other synchronous contexts.
+        """
+        if self._shutdown_started:
+            return {"already_shutdown": True}
+        self._shutdown_started = True
+
+        results = {
+            "total": len(self._executors),
+            "successful": 0,
+            "forced": 0,
+            "failed": 0,
+        }
+
+        per_executor_timeout = timeout / max(len(self._executors), 1)
+
+        for name, executor_ref in list(self._executors.items()):
+            executor = executor_ref()
+            if executor is None:
+                continue
+
+            try:
+                # Use threading.Timer for timeout in sync context
+                import threading
+
+                shutdown_complete = threading.Event()
+
+                def do_shutdown():
+                    try:
+                        executor.shutdown(wait=True, cancel_futures=True)
+                    except Exception:
+                        pass
+                    finally:
+                        shutdown_complete.set()
+
+                shutdown_thread = threading.Thread(target=do_shutdown)
+                shutdown_thread.start()
+
+                if shutdown_complete.wait(timeout=per_executor_timeout):
+                    results["successful"] += 1
+                else:
+                    # Timeout - force shutdown
+                    try:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+                    results["forced"] += 1
+
+            except Exception:
+                results["failed"] += 1
+
+        return results
+
+    def _emergency_cleanup(self) -> None:
+        """
+        Emergency cleanup called by atexit.
+
+        This is a last-resort cleanup when normal shutdown didn't happen.
+        """
+        if not self._executors:
+            return
+
+        # Perform quick sync cleanup
+        try:
+            result = self.shutdown_all_executors_sync(timeout=2.0)
+            if result.get("successful", 0) > 0 or result.get("forced", 0) > 0:
+                logger.debug(
+                    f"[v95.12] atexit cleanup: {result.get('successful', 0)} success, "
+                    f"{result.get('forced', 0)} forced"
+                )
+        except Exception as e:
+            logger.debug(f"[v95.12] atexit cleanup error: {e}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get resource tracker statistics."""
+        active_executors = sum(1 for ref in self._executors.values() if ref() is not None)
+        return {
+            **self._cleanup_stats,
+            "active_executors": active_executors,
+            "shutdown_started": self._shutdown_started,
+        }
+
+
+# Global multiprocessing resource tracker
+_mp_tracker: Optional[MultiprocessingResourceTracker] = None
+
+
+def get_multiprocessing_tracker() -> MultiprocessingResourceTracker:
+    """Get the global MultiprocessingResourceTracker instance."""
+    global _mp_tracker
+    if _mp_tracker is None:
+        _mp_tracker = MultiprocessingResourceTracker()
+    return _mp_tracker
+
+
+async def cleanup_multiprocessing_resources(timeout: float = 10.0) -> Dict[str, Any]:
+    """
+    Clean up all multiprocessing resources.
+
+    Call this during graceful shutdown to properly release semaphores.
+    """
+    tracker = get_multiprocessing_tracker()
+    return await tracker.shutdown_all_executors(timeout=timeout)
+
+
+def register_executor_for_cleanup(
+    executor: Any,
+    name: str,
+    is_process_pool: bool = False,
+) -> None:
+    """
+    Register an executor for cleanup during shutdown.
+
+    Call this whenever you create a ProcessPoolExecutor or ThreadPoolExecutor.
+
+    Args:
+        executor: The executor to track
+        name: A unique name for this executor
+        is_process_pool: True if this is a ProcessPoolExecutor (critical for semaphore cleanup)
+    """
+    tracker = get_multiprocessing_tracker()
+    tracker.register_executor(executor, name, is_process_pool)
+
+
+async def cleanup_orphaned_semaphores() -> Dict[str, Any]:
+    """
+    Clean up orphaned semaphores left by crashed processes.
+
+    This uses platform-specific commands to identify and remove
+    semaphores that are no longer in use.
+
+    Returns:
+        Dict with cleanup results
+    """
+    import subprocess
+    import platform
+
+    results = {
+        "platform": platform.system(),
+        "semaphores_found": 0,
+        "semaphores_cleaned": 0,
+        "errors": [],
+    }
+
+    if platform.system() != "Darwin" and platform.system() != "Linux":
+        results["skipped"] = "Unsupported platform"
+        return results
+
+    try:
+        if platform.system() == "Darwin":
+            # macOS: Use ipcs to list semaphores
+            proc = await asyncio.create_subprocess_exec(
+                "ipcs", "-s",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode == 0:
+                lines = stdout.decode().strip().split("\n")
+                # Parse semaphore info (skip header lines)
+                for line in lines[3:]:  # Skip headers
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        results["semaphores_found"] += 1
+
+        # Note: Actually removing semaphores requires root privileges
+        # and careful identification to avoid removing active semaphores.
+        # For now, we just report what we find.
+
+        logger.debug(f"[v95.12] Found {results['semaphores_found']} semaphores")
+
+    except Exception as e:
+        results["errors"].append(str(e))
+        logger.debug(f"[v95.12] Error checking semaphores: {e}")
+
+    return results
+
+
+# =============================================================================
+# v95.12: Integration with Shutdown Coordinator
+# =============================================================================
+
+async def register_multiprocessing_shutdown(
+    coordinator: ShutdownCoordinator,
+    timeout: float = 10.0,
+) -> None:
+    """
+    Register multiprocessing cleanup with the shutdown coordinator.
+
+    This ensures all ProcessPoolExecutors are properly shut down before
+    the process exits, preventing semaphore leaks.
+    """
+    async def cleanup_mp_resources():
+        """Cleanup handler for multiprocessing resources."""
+        logger.info("[v95.12] Cleaning up multiprocessing resources...")
+        result = await cleanup_multiprocessing_resources(timeout=timeout)
+        logger.info(
+            f"[v95.12] Multiprocessing cleanup: "
+            f"{result.get('successful', 0)} success, "
+            f"{result.get('forced', 0)} forced, "
+            f"{result.get('failed', 0)} failed"
+        )
+
+    coordinator.register_handler(
+        name="multiprocessing_cleanup",
+        callback=cleanup_mp_resources,
+        priority=95,  # Run late, after most other handlers
+        timeout=timeout + 2.0,
+        critical=False,  # Don't block shutdown if this fails
+    )
+
+    logger.debug("[v95.12] Multiprocessing shutdown handler registered")
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -1035,4 +1433,11 @@ __all__ = [
     "database_operation",
     "register_database_shutdown",
     "should_reject_operation",
+    # v95.12: Multiprocessing cleanup
+    "MultiprocessingResourceTracker",
+    "get_multiprocessing_tracker",
+    "cleanup_multiprocessing_resources",
+    "register_executor_for_cleanup",
+    "cleanup_orphaned_semaphores",
+    "register_multiprocessing_shutdown",
 ]

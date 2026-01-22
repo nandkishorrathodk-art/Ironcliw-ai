@@ -24,6 +24,15 @@ try:
 except ImportError:
     _USE_DAEMON_EXECUTOR = False
 
+# v95.12: Import multiprocessing cleanup tracker
+try:
+    from core.resilience.graceful_shutdown import register_executor_for_cleanup
+    _HAS_MP_TRACKER = True
+except ImportError:
+    _HAS_MP_TRACKER = False
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # No-op fallback
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -55,8 +64,22 @@ class ParallelStartupManager:
         else:
             self.thread_executor = ThreadPoolExecutor(max_workers=self.max_workers)
 
+        # v95.12: Register thread executor for cleanup
+        register_executor_for_cleanup(
+            self.thread_executor,
+            "parallel_startup_thread_pool",
+            is_process_pool=False,
+        )
+
         # Process pool for CPU-intensive operations
         self.process_executor = ProcessPoolExecutor(max_workers=self.max_workers)
+
+        # v95.12: Register process executor for cleanup (critical for semaphore cleanup)
+        register_executor_for_cleanup(
+            self.process_executor,
+            "parallel_startup_process_pool",
+            is_process_pool=True,
+        )
         
         # Track running processes
         self.running_processes: Dict[str, subprocess.Popen] = {}
@@ -311,20 +334,54 @@ class ParallelStartupManager:
                 logger.error(f"Error killing {service_id}: {e}")
     
     async def shutdown_all_services(self):
-        """Shutdown all running services gracefully"""
+        """v95.12: Shutdown all running services gracefully with proper cleanup."""
         logger.info("🛑 Shutting down all services...")
-        
+
         shutdown_tasks = []
         for service_id in list(self.running_processes.keys()):
             task = asyncio.create_task(self._kill_process(service_id))
             shutdown_tasks.append(task)
-        
+
         await asyncio.gather(*shutdown_tasks, return_exceptions=True)
-        
-        # Clean up executors
-        self.thread_executor.shutdown(wait=False)
-        self.process_executor.shutdown(wait=False)
-        
+
+        # v95.12: Proper executor cleanup to prevent semaphore leaks
+        # Must use wait=True for ProcessPoolExecutor to properly release semaphores
+        executor_shutdown_timeout = float(os.getenv('EXECUTOR_SHUTDOWN_TIMEOUT', '5.0'))
+
+        # Shutdown thread executor first (usually faster)
+        try:
+            logger.debug("[v95.12] Shutting down thread executor...")
+            # Use run_in_executor to avoid blocking the event loop
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.thread_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Thread executor shutdown timeout, forcing...")
+            self.thread_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Thread executor shutdown error: {e}")
+
+        # Shutdown process executor (critical for semaphore cleanup)
+        try:
+            logger.debug("[v95.12] Shutting down process executor...")
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.process_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+            logger.debug("[v95.12] ✅ Process executor shutdown complete")
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Process executor shutdown timeout, forcing...")
+            self.process_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Process executor shutdown error: {e}")
+
         logger.info("✅ All services shut down")
 
 class ComponentLoader:

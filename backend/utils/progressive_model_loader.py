@@ -20,6 +20,15 @@ try:
     _USE_DAEMON_EXECUTOR = True
 except ImportError:
     _USE_DAEMON_EXECUTOR = False
+
+# v95.12: Import multiprocessing cleanup tracker
+try:
+    from core.resilience.graceful_shutdown import register_executor_for_cleanup
+    _HAS_MP_TRACKER = True
+except ImportError:
+    _HAS_MP_TRACKER = False
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # No-op fallback
 import json
 import os
 from pathlib import Path
@@ -525,6 +534,10 @@ class ProgressiveModelLoader:
             max_workers=max(1, self.max_workers // 2)
         )
 
+        # v95.12: Register executors for cleanup
+        register_executor_for_cleanup(self.thread_executor, "model_loader_thread_pool")
+        register_executor_for_cleanup(self.process_executor, "model_loader_process_pool", is_process_pool=True)
+
         # State management
         self.loaded_models: Dict[str, Any] = {}
         self.loading_status: Dict[str, str] = {}
@@ -1015,7 +1028,7 @@ class ProgressiveModelLoader:
         }
 
     async def shutdown(self):
-        """Gracefully shutdown the loader"""
+        """v95.12: Gracefully shutdown the loader with proper cleanup"""
         logger.info("🛑 Shutting down model loader...")
 
         # Wait for any ongoing loads
@@ -1032,9 +1045,38 @@ class ProgressiveModelLoader:
             # Add timeout to prevent hanging
             await asyncio.sleep(5)
 
-        # Shutdown executors
-        self.thread_executor.shutdown(wait=False)
-        self.process_executor.shutdown(wait=False)
+        # v95.12: Proper executor cleanup to prevent semaphore leaks
+        executor_shutdown_timeout = float(os.getenv('EXECUTOR_SHUTDOWN_TIMEOUT', '5.0'))
+
+        # Shutdown thread executor
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.thread_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Thread executor shutdown timeout, forcing...")
+            self.thread_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Thread executor shutdown error: {e}")
+
+        # Shutdown process executor (critical for semaphore cleanup)
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.process_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Process executor shutdown timeout, forcing...")
+            self.process_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Process executor shutdown error: {e}")
 
         logger.info("✅ Model loader shutdown complete")
 

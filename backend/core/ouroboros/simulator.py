@@ -71,6 +71,15 @@ import weakref
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future
 from dataclasses import dataclass, field
+
+# v95.12: Import multiprocessing cleanup tracker
+try:
+    from core.resilience.graceful_shutdown import register_executor_for_cleanup
+    _HAS_MP_TRACKER = True
+except ImportError:
+    _HAS_MP_TRACKER = False
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # No-op fallback
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
@@ -909,6 +918,11 @@ class TheSimulator:
                     max_workers=SimulatorConfig.SANDBOX_PROCESS_POOL_SIZE
                 )
                 self._thread_pool = ThreadPoolExecutor(max_workers=4)
+
+                # v95.12: Register executors for cleanup
+                register_executor_for_cleanup(self._process_pool, "simulator_process_pool", is_process_pool=True)
+                register_executor_for_cleanup(self._thread_pool, "simulator_thread_pool")
+
                 self._initialized = True
                 logger.info("The Simulator initialized")
                 return True
@@ -917,14 +931,42 @@ class TheSimulator:
                 return False
 
     async def shutdown(self) -> None:
-        """Shutdown The Simulator."""
+        """v95.12: Shutdown The Simulator with proper cleanup."""
         async with self._lock:
+            executor_shutdown_timeout = 5.0
+
+            # Shutdown process pool (critical for semaphore cleanup)
             if self._process_pool:
-                self._process_pool.shutdown(wait=False)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: self._process_pool.shutdown(wait=True, cancel_futures=True)
+                        ),
+                        timeout=executor_shutdown_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self._process_pool.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
                 self._process_pool = None
+
+            # Shutdown thread pool
             if self._thread_pool:
-                self._thread_pool.shutdown(wait=False)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: self._thread_pool.shutdown(wait=True, cancel_futures=True)
+                        ),
+                        timeout=executor_shutdown_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self._thread_pool.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
                 self._thread_pool = None
+
             self._initialized = False
             logger.info("The Simulator shutdown")
 

@@ -25,6 +25,15 @@ try:
 except ImportError:
     _HAS_MANAGED_EXECUTOR = False
 
+# v95.12: Import multiprocessing cleanup tracker
+try:
+    from core.resilience.graceful_shutdown import register_executor_for_cleanup
+    _HAS_MP_TRACKER = True
+except ImportError:
+    _HAS_MP_TRACKER = False
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # No-op fallback
+
 import aiofiles
 
 logger = logging.getLogger(__name__)
@@ -85,13 +94,14 @@ class RustSelfHealer:
         
         # Thread pools for concurrent operations
         if _HAS_MANAGED_EXECUTOR:
-
-            self._thread_pool = ManagedThreadPoolExecutor(max_workers=4, name='pool')
-
+            self._thread_pool = ManagedThreadPoolExecutor(max_workers=4, name='rust_healer')
         else:
-
             self._thread_pool = ThreadPoolExecutor(max_workers=4)
         self._process_pool = ProcessPoolExecutor(max_workers=2)
+
+        # v95.12: Register executors for cleanup
+        register_executor_for_cleanup(self._thread_pool, "rust_healer_thread_pool")
+        register_executor_for_cleanup(self._process_pool, "rust_healer_process_pool", is_process_pool=True)
         
     async def start(self):
         """Start the self-healing system."""
@@ -108,20 +118,47 @@ class RustSelfHealer:
         self._check_task = asyncio.create_task(self._periodic_check())
         
     async def stop(self):
-        """Stop the self-healing system."""
+        """v95.12: Stop the self-healing system with proper cleanup."""
         self._running = False
-        
+
         if self._check_task:
             self._check_task.cancel()
             try:
                 await self._check_task
             except asyncio.CancelledError:
                 pass
-        
-        # Shutdown thread pools
-        self._thread_pool.shutdown(wait=False)
-        self._process_pool.shutdown(wait=False)
-                
+
+        # v95.12: Proper executor cleanup to prevent semaphore leaks
+        executor_shutdown_timeout = 5.0
+
+        # Shutdown thread pool
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self._thread_pool.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            self._thread_pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+        # Shutdown process pool (critical for semaphore cleanup)
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self._process_pool.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            self._process_pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
         logger.info("Rust self-healer stopped")
         
     async def _periodic_check(self):

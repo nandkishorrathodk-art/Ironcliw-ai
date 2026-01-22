@@ -32,6 +32,15 @@ try:
 except ImportError:
     _HAS_MANAGED_EXECUTOR = False
 
+# v95.12: Import multiprocessing cleanup tracker
+try:
+    from core.resilience.graceful_shutdown import register_executor_for_cleanup
+    _HAS_MP_TRACKER = True
+except ImportError:
+    _HAS_MP_TRACKER = False
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # No-op fallback
+
 logger = logging.getLogger(__name__)
 
 class LoadPhase(Enum):
@@ -98,6 +107,10 @@ class SmartStartupManager:
         else:
             self.thread_executor = ThreadPoolExecutor(max_workers=min(4, self.cpu_count))
         self.process_executor = ProcessPoolExecutor(max_workers=2)
+
+        # v95.12: Register executors for cleanup
+        register_executor_for_cleanup(self.thread_executor, "smart_startup_thread_pool")
+        register_executor_for_cleanup(self.process_executor, "smart_startup_process_pool", is_process_pool=True)
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -401,14 +414,43 @@ class SmartStartupManager:
             return LoadPhase.OPTIONAL.value
     
     async def shutdown(self):
-        """Graceful shutdown"""
+        """v95.12: Graceful shutdown with proper executor cleanup"""
         logger.info("🛑 Shutting down startup manager...")
         self.shutdown_requested = True
-        
-        # Shutdown executors
-        self.thread_executor.shutdown(wait=False)
-        self.process_executor.shutdown(wait=False)
-        
+
+        # v95.12: Proper executor cleanup to prevent semaphore leaks
+        executor_shutdown_timeout = float(os.getenv('EXECUTOR_SHUTDOWN_TIMEOUT', '5.0'))
+
+        # Shutdown thread executor
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.thread_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Thread executor shutdown timeout, forcing...")
+            self.thread_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Thread executor shutdown error: {e}")
+
+        # Shutdown process executor (critical for semaphore cleanup)
+        try:
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.process_executor.shutdown(wait=True, cancel_futures=True)
+                ),
+                timeout=executor_shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[v95.12] Process executor shutdown timeout, forcing...")
+            self.process_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(f"[v95.12] Process executor shutdown error: {e}")
+
         logger.info("✅ Startup manager shutdown complete")
 
 # Global instance
