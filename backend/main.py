@@ -1780,6 +1780,33 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     except Exception as e:
         logger.debug(f"Could not attach progress bridge: {e}")
 
+    # =================================================================
+    # v95.2: CRITICAL - Early jarvis-body registration for cross-repo discovery
+    # =================================================================
+    # This MUST happen immediately so that jarvis-prime and reactor-core
+    # can discover jarvis-body during their startup. Without this, external
+    # services wait 120s and then give up.
+    try:
+        from core.service_registry import get_service_registry
+
+        registry = get_service_registry()
+
+        # v95.2: Use the new public method for immediate registration
+        success = await registry.ensure_owner_registered_immediately()
+        if success:
+            logger.info("📝 [v95.2] jarvis-body registered early for cross-repo discovery")
+        else:
+            logger.warning("⚠️ [v95.2] Early registration may have failed - continuing")
+
+        # Also start self-heartbeat loop
+        await registry.start_cleanup_task()
+        logger.info("💓 [v95.2] jarvis-body heartbeat loop started")
+
+    except ImportError:
+        logger.debug("Service registry not available - skipping early registration")
+    except Exception as e:
+        logger.warning(f"⚠️ [v95.2] Early registration warning (continuing): {e}")
+
     # ═══════════════════════════════════════════════════════════════════════════
     # CRITICAL: Pre-startup cleanup of stuck ML processes
     # This prevents the "startup timeout - please check logs" issue caused by

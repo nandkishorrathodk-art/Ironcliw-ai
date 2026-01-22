@@ -1390,6 +1390,32 @@ class ServiceRegistry:
         except Exception as e:
             logger.warning(f"[v95.1] Failed to send owner heartbeat: {e}")
 
+    async def ensure_owner_registered_immediately(self) -> bool:
+        """
+        v95.2: PUBLIC method to ensure owner is registered immediately.
+
+        This should be called at the START of FastAPI lifespan to ensure
+        jarvis-body is discoverable by external services (jarvis-prime, reactor-core)
+        BEFORE they start waiting for it.
+
+        The issue this fixes:
+        - jarvis-prime waits 120s for jarvis-body
+        - But jarvis-body only registers when start_cleanup_task() is called
+        - start_cleanup_task() is called LATE in the startup process
+        - Result: jarvis-prime times out and runs in standalone mode
+
+        Returns:
+            True if registration succeeded
+        """
+        try:
+            await self._ensure_owner_registered()
+            await self._send_owner_heartbeat()
+            logger.info(f"[v95.2] ✅ Owner '{self._owner_service_name}' registered immediately")
+            return True
+        except Exception as e:
+            logger.warning(f"[v95.2] Immediate owner registration failed: {e}")
+            return False
+
     async def wait_for_service(
         self,
         service_name: str,

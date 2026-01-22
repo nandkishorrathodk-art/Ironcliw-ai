@@ -6048,8 +6048,22 @@ echo "=== JARVIS Prime started ==="
         except Exception as e:
             logger.warning(f"Could not setup signal handlers: {e}")
 
-        # Start service registry cleanup
+        # v95.2: CRITICAL - Register jarvis-body IMMEDIATELY before starting external services
+        # This fixes the issue where jarvis-prime waits 120s for jarvis-body that never registered
+        # The registration MUST happen BEFORE Phase 2 starts external services
         if self.registry:
+            # v95.2: First, ensure jarvis-body is registered and heartbeat sent IMMEDIATELY
+            # This is critical for cross-repo discovery to work
+            try:
+                success = await self.registry.ensure_owner_registered_immediately()
+                if success:
+                    logger.info("[v95.2] ✅ jarvis-body registered (early registration for cross-repo discovery)")
+                else:
+                    logger.warning("[v95.2] ⚠️ Early jarvis-body registration may have failed")
+            except Exception as e:
+                logger.warning(f"[v95.2] Early jarvis-body registration warning: {e}")
+
+            # Start cleanup task which includes self-heartbeat loop
             await self.registry.start_cleanup_task()
 
         results = {"jarvis": True}  # JARVIS is already running
