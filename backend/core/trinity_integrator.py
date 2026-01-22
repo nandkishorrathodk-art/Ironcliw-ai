@@ -11775,28 +11775,62 @@ class TrinityUnifiedOrchestrator:
 
     async def _attempt_late_component_discovery(self) -> None:
         """
-        v93.13: Attempt to discover and connect to components that weren't
+        v95.0: Attempt to discover and connect to components that weren't
         available during startup.
 
         This enables recovery from DEGRADED state when components come online later.
+
+        v95.0 Enhancement:
+        - Uses registration-aware verification (3-phase) instead of simple discovery
+        - Only connects client after component is fully registered
+        - Registers component for watchdog monitoring after successful connection
         """
         try:
+            # v95.0: Use shorter timeout for late discovery (non-blocking)
+            late_discovery_timeout = float(os.getenv("TRINITY_LATE_DISCOVERY_TIMEOUT", "10.0"))
+
             # Check J-Prime if enabled but not connected
             if self.enable_jprime and (not self._jprime_client or not self._jprime_client.is_online):
-                if await self._discover_running_component("jarvis_prime"):
-                    logger.info("[v93.13] Late discovery: J-Prime now available, initializing client...")
+                # v95.0: Use registration-aware verification
+                success, details = await self._wait_for_component_registration(
+                    "jarvis_prime",
+                    timeout=late_discovery_timeout
+                )
+
+                if success:
+                    logger.info(
+                        f"[v95.0] Late discovery: J-Prime REGISTERED "
+                        f"(took {details.get('total_time_seconds', 0):.1f}s), initializing client..."
+                    )
                     try:
                         from backend.clients.jarvis_prime_client import get_jarvis_prime_client
                         self._jprime_client = await get_jarvis_prime_client()
                         if self._jprime_client and self._jprime_client.is_online:
-                            logger.info("[v93.13] Late discovery: J-Prime client connected successfully")
+                            logger.info("[v95.0] Late discovery: J-Prime client connected successfully")
+
+                            # Register for watchdog monitoring
+                            try:
+                                adv_coord = await self._ensure_advanced_coord()
+                                if adv_coord:
+                                    adv_coord.register_heartbeat_watchdog("jarvis_prime")
+                            except Exception:
+                                pass
                     except Exception as e:
-                        logger.debug(f"[v93.13] Late discovery: J-Prime client init failed: {e}")
+                        logger.debug(f"[v95.0] Late discovery: J-Prime client init failed: {e}")
 
             # Check Reactor-Core if enabled but not connected
             if self.enable_reactor and (not self._reactor_client or not self._reactor_client.is_online):
-                if await self._discover_running_component("reactor_core"):
-                    logger.info("[v93.13] Late discovery: Reactor-Core now available, initializing client...")
+                # v95.0: Use registration-aware verification
+                success, details = await self._wait_for_component_registration(
+                    "reactor_core",
+                    timeout=late_discovery_timeout
+                )
+
+                if success:
+                    logger.info(
+                        f"[v95.0] Late discovery: Reactor-Core REGISTERED "
+                        f"(took {details.get('total_time_seconds', 0):.1f}s), initializing client..."
+                    )
                     try:
                         from backend.clients.reactor_core_client import (
                             initialize_reactor_client,
@@ -11805,12 +11839,20 @@ class TrinityUnifiedOrchestrator:
                         await initialize_reactor_client()
                         self._reactor_client = get_reactor_client()
                         if self._reactor_client and self._reactor_client.is_online:
-                            logger.info("[v93.13] Late discovery: Reactor-Core client connected successfully")
+                            logger.info("[v95.0] Late discovery: Reactor-Core client connected successfully")
+
+                            # Register for watchdog monitoring
+                            try:
+                                adv_coord = await self._ensure_advanced_coord()
+                                if adv_coord:
+                                    adv_coord.register_heartbeat_watchdog("reactor_core")
+                            except Exception:
+                                pass
                     except Exception as e:
-                        logger.debug(f"[v93.13] Late discovery: Reactor-Core client init failed: {e}")
+                        logger.debug(f"[v95.0] Late discovery: Reactor-Core client init failed: {e}")
 
         except Exception as e:
-            logger.debug(f"[v93.13] Late component discovery error: {e}")
+            logger.debug(f"[v95.0] Late component discovery error: {e}")
 
     async def _crash_recovery_loop(self) -> None:
         """

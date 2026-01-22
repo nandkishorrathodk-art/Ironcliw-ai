@@ -1197,6 +1197,30 @@ class ProcessOrchestrator:
         self._jarvis_body_startup_time: Optional[float] = None
         self._jarvis_body_health_verified: bool = False
 
+        # v95.5: Graceful Degradation with Circuit Breaker Pattern
+        # Allows services to operate independently when dependencies fail
+        self._degradation_mode: Dict[str, str] = {}  # service -> mode (full, degraded, isolated)
+        self._service_capabilities: Dict[str, Set[str]] = {}  # service -> available capabilities
+        self._fallback_handlers: Dict[str, Callable] = {}  # service -> fallback handler
+        self._cross_repo_breaker: Optional[Any] = None  # CrossRepoCircuitBreaker instance
+        self._degradation_lock: Optional[asyncio.Lock] = None
+
+        # v95.5: Distributed Tracing with Correlation ID Propagation
+        # Enables cross-component request tracking for debugging
+        self._startup_correlation_id: Optional[str] = None
+        self._startup_trace_context: Optional[Any] = None  # CorrelationContext
+        self._active_traces: Dict[str, Any] = {}  # operation_id -> CorrelationContext
+        self._trace_lock: Optional[asyncio.Lock] = None
+
+        # v95.5: Event Bus Integration for Lifecycle Events
+        # Publishes startup/ready/failed events for cross-repo coordination
+        self._event_bus: Optional[Any] = None  # TrinityEventBus instance
+        self._event_bus_initialized: bool = False
+        self._lifecycle_events_enabled: bool = os.environ.get(
+            "JARVIS_LIFECYCLE_EVENTS", "true"
+        ).lower() == "true"
+        self._event_subscriptions: List[str] = []  # Subscription IDs for cleanup
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -1222,6 +1246,563 @@ class ProcessOrchestrator:
         # v95.4: JARVIS body ready event
         if self._jarvis_body_ready_event is None:
             self._jarvis_body_ready_event = asyncio.Event()
+        # v95.5: Degradation and tracing locks
+        if self._degradation_lock is None:
+            self._degradation_lock = asyncio.Lock()
+        if self._trace_lock is None:
+            self._trace_lock = asyncio.Lock()
+
+    # =========================================================================
+    # v95.5: Graceful Degradation with Circuit Breaker Pattern
+    # =========================================================================
+
+    async def _initialize_graceful_degradation(self) -> None:
+        """
+        v95.5: Initialize graceful degradation infrastructure.
+
+        Sets up:
+        1. Cross-repo circuit breaker with failure classification
+        2. Per-service degradation tracking
+        3. Fallback handlers for each service
+        4. Event bus notifications for degradation state changes
+        """
+        self._ensure_locks_initialized()
+
+        try:
+            # Initialize cross-repo circuit breaker
+            from backend.core.resilience.cross_repo_circuit_breaker import (
+                CrossRepoCircuitBreaker,
+                CircuitBreakerConfig,
+                CircuitState,
+            )
+
+            # Create circuit breaker with event bus notifications
+            async def on_state_change(tier: str, old_state: CircuitState, new_state: CircuitState):
+                """Notify event bus and update degradation mode on circuit state changes."""
+                logger.info(f"[v95.5] Circuit breaker state change: {tier}: {old_state.value} -> {new_state.value}")
+
+                # Update degradation mode based on circuit state
+                async with self._degradation_lock:
+                    if new_state == CircuitState.OPEN:
+                        self._degradation_mode[tier] = "isolated"
+                        # Reduce capabilities for this service
+                        self._service_capabilities[tier] = {"basic", "read_only"}
+                    elif new_state == CircuitState.HALF_OPEN:
+                        self._degradation_mode[tier] = "degraded"
+                        self._service_capabilities[tier] = {"basic", "read_only", "limited_write"}
+                    else:  # CLOSED
+                        self._degradation_mode[tier] = "full"
+                        self._service_capabilities[tier] = {"basic", "read_only", "write", "advanced"}
+
+                # Publish degradation event to event bus
+                await self._publish_lifecycle_event(
+                    event_type="system.degradation",
+                    payload={
+                        "service": tier,
+                        "old_state": old_state.value,
+                        "new_state": new_state.value,
+                        "degradation_mode": self._degradation_mode.get(tier, "unknown"),
+                        "available_capabilities": list(self._service_capabilities.get(tier, set())),
+                    },
+                    priority="HIGH" if new_state == CircuitState.OPEN else "NORMAL",
+                )
+
+            config = CircuitBreakerConfig(
+                failure_threshold=5,
+                timeout_seconds=30.0,
+                max_timeout_seconds=300.0,
+                recovery_factor=2.0,
+                half_open_max_calls=3,
+                startup_grace_period_seconds=120.0,  # Generous grace for ML model loading
+                adaptive_thresholds=True,
+            )
+
+            self._cross_repo_breaker = CrossRepoCircuitBreaker(
+                name="orchestrator",
+                config=config,
+                on_state_change=on_state_change,
+            )
+
+            # Initialize default degradation modes (all services start in full mode)
+            for service in ["jarvis-body", "jarvis-prime", "reactor-core"]:
+                self._degradation_mode[service] = "full"
+                self._service_capabilities[service] = {"basic", "read_only", "write", "advanced"}
+
+            logger.info("[v95.5] ✅ Graceful degradation initialized with circuit breaker")
+
+        except ImportError as e:
+            logger.warning(f"[v95.5] Circuit breaker not available: {e}")
+            # Fall back to basic degradation without circuit breaker
+            for service in ["jarvis-body", "jarvis-prime", "reactor-core"]:
+                self._degradation_mode[service] = "full"
+                self._service_capabilities[service] = {"basic", "read_only", "write", "advanced"}
+
+    async def _execute_with_graceful_degradation(
+        self,
+        service: str,
+        func: Callable,
+        args: tuple = (),
+        kwargs: Optional[Dict] = None,
+        fallback: Optional[Callable] = None,
+        required_capability: str = "basic",
+    ) -> Any:
+        """
+        v95.5: Execute operation with graceful degradation.
+
+        If the service is degraded or isolated, uses fallback or returns
+        a degraded response instead of failing completely.
+
+        Args:
+            service: Target service name
+            func: Function to execute
+            args: Function arguments
+            kwargs: Function keyword arguments
+            fallback: Fallback function if service is degraded
+            required_capability: Capability required for this operation
+
+        Returns:
+            Function result or fallback result
+        """
+        kwargs = kwargs or {}
+        self._ensure_locks_initialized()
+
+        async with self._degradation_lock:
+            mode = self._degradation_mode.get(service, "full")
+            capabilities = self._service_capabilities.get(service, set())
+
+        # Check if required capability is available
+        if required_capability not in capabilities:
+            logger.warning(
+                f"[v95.5] Service {service} lacks capability '{required_capability}' "
+                f"(mode: {mode}, available: {capabilities})"
+            )
+            if fallback:
+                logger.info(f"[v95.5] Using fallback for {service}")
+                result = fallback(*args, **kwargs)
+                if asyncio.iscoroutine(result):
+                    return await result
+                return result
+            # Return degraded response
+            return {"status": "degraded", "service": service, "mode": mode}
+
+        # Execute with circuit breaker if available
+        if self._cross_repo_breaker:
+            try:
+                return await self._cross_repo_breaker.execute(
+                    tier=service,
+                    func=func,
+                    args=args,
+                    kwargs=kwargs,
+                    fallback=fallback,
+                )
+            except Exception as e:
+                logger.error(f"[v95.5] Circuit breaker execution failed for {service}: {e}")
+                if fallback:
+                    result = fallback(*args, **kwargs)
+                    if asyncio.iscoroutine(result):
+                        return await result
+                    return result
+                raise
+        else:
+            # Direct execution without circuit breaker
+            result = func(*args, **kwargs)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+    def get_service_degradation_status(self) -> Dict[str, Dict[str, Any]]:
+        """
+        v95.5: Get degradation status for all services.
+
+        Returns:
+            Dict mapping service name to degradation info
+        """
+        status = {}
+        for service in ["jarvis-body", "jarvis-prime", "reactor-core"]:
+            status[service] = {
+                "mode": self._degradation_mode.get(service, "unknown"),
+                "capabilities": list(self._service_capabilities.get(service, set())),
+                "circuit_state": None,
+            }
+            # Add circuit breaker state if available
+            if self._cross_repo_breaker:
+                try:
+                    health = self._cross_repo_breaker.get_tier_health(service)
+                    status[service]["circuit_state"] = health.state.value if health else None
+                    status[service]["success_rate"] = health.success_rate if health else None
+                except Exception:
+                    pass
+        return status
+
+    # =========================================================================
+    # v95.5: Distributed Tracing with Correlation ID Propagation
+    # =========================================================================
+
+    async def _initialize_distributed_tracing(self) -> None:
+        """
+        v95.5: Initialize distributed tracing infrastructure.
+
+        Sets up:
+        1. Startup correlation context
+        2. Trace propagation for all IPC calls
+        3. Integration with event bus for trace visibility
+        """
+        try:
+            from backend.core.resilience.correlation_context import (
+                CorrelationContext,
+                with_correlation,
+            )
+
+            # Create root correlation context for this startup session
+            self._startup_correlation_id = CorrelationContext.generate_id("startup")
+            self._startup_trace_context = CorrelationContext.create(
+                operation="orchestrator_startup",
+                source_repo="jarvis",
+                source_component="orchestrator",
+                timeout=600.0,  # 10 minute timeout for full startup
+            )
+
+            # Add startup metadata to baggage
+            self._startup_trace_context.baggage["startup_time"] = str(time.time())
+            self._startup_trace_context.baggage["orchestrator_version"] = "95.5"
+            self._startup_trace_context.baggage["pid"] = str(os.getpid())
+
+            logger.info(f"[v95.5] ✅ Distributed tracing initialized: {self._startup_correlation_id}")
+
+            # Publish trace start event
+            await self._publish_lifecycle_event(
+                event_type="system.trace.started",
+                payload={
+                    "correlation_id": self._startup_correlation_id,
+                    "operation": "orchestrator_startup",
+                    "baggage": self._startup_trace_context.baggage,
+                },
+                priority="NORMAL",
+            )
+
+        except ImportError as e:
+            logger.warning(f"[v95.5] Correlation context not available: {e}")
+            # Generate a simple correlation ID as fallback
+            self._startup_correlation_id = f"startup-{int(time.time() * 1000)}-{os.getpid()}"
+
+    async def _create_span(
+        self,
+        operation: str,
+        parent_context: Optional[Any] = None,
+        metadata: Optional[Dict] = None,
+    ) -> str:
+        """
+        v95.5: Create a new trace span for an operation.
+
+        Args:
+            operation: Name of the operation
+            parent_context: Parent correlation context (defaults to startup context)
+            metadata: Additional span metadata
+
+        Returns:
+            Span ID
+        """
+        self._ensure_locks_initialized()
+        metadata = metadata or {}
+
+        try:
+            from backend.core.resilience.correlation_context import CorrelationContext
+
+            parent = parent_context or self._startup_trace_context
+
+            # Create child context for this operation
+            ctx = CorrelationContext.create(
+                operation=operation,
+                source_repo="jarvis",
+                source_component="orchestrator",
+                parent=parent,
+            )
+
+            # Add metadata to baggage
+            for key, value in metadata.items():
+                ctx.baggage[key] = str(value)
+
+            async with self._trace_lock:
+                self._active_traces[ctx.correlation_id] = ctx
+
+            logger.debug(f"[v95.5] Created span: {operation} ({ctx.correlation_id})")
+            return ctx.correlation_id
+
+        except Exception as e:
+            logger.debug(f"[v95.5] Span creation failed: {e}")
+            # Return a simple ID as fallback
+            span_id = f"{operation}-{int(time.time() * 1000)}"
+            return span_id
+
+    async def _end_span(
+        self,
+        span_id: str,
+        status: str = "success",
+        error_message: Optional[str] = None,
+    ) -> None:
+        """
+        v95.5: End a trace span.
+
+        Args:
+            span_id: Span ID returned by _create_span
+            status: Span status (success, error)
+            error_message: Error message if status is error
+        """
+        self._ensure_locks_initialized()
+
+        async with self._trace_lock:
+            ctx = self._active_traces.pop(span_id, None)
+
+        if ctx and hasattr(ctx, "current_span") and ctx.current_span:
+            ctx.current_span.end_time = time.time()
+            ctx.current_span.status = status
+            ctx.current_span.error_message = error_message
+
+            # Publish span end event for visibility
+            await self._publish_lifecycle_event(
+                event_type="system.trace.span_end",
+                payload={
+                    "span_id": span_id,
+                    "operation": ctx.current_span.operation if ctx.current_span else "unknown",
+                    "duration_ms": ctx.current_span.duration_ms if ctx.current_span else 0,
+                    "status": status,
+                    "error": error_message,
+                },
+                priority="LOW",
+            )
+
+    def get_correlation_id(self) -> str:
+        """
+        v95.5: Get the current startup correlation ID.
+
+        Returns:
+            Correlation ID for the current startup session
+        """
+        return self._startup_correlation_id or f"unknown-{os.getpid()}"
+
+    def get_trace_headers(self) -> Dict[str, str]:
+        """
+        v95.5: Get HTTP headers for trace propagation.
+
+        Returns:
+            Dict of headers to include in cross-repo HTTP calls
+        """
+        headers = {
+            "X-Correlation-ID": self.get_correlation_id(),
+            "X-Source-Component": "orchestrator",
+            "X-Source-Repo": "jarvis",
+        }
+
+        if self._startup_trace_context:
+            try:
+                # Add baggage items as headers
+                for key, value in self._startup_trace_context.baggage.items():
+                    headers[f"X-Baggage-{key}"] = str(value)
+            except Exception:
+                pass
+
+        return headers
+
+    # =========================================================================
+    # v95.5: Event Bus Integration for Lifecycle Events
+    # =========================================================================
+
+    async def _initialize_event_bus(self) -> None:
+        """
+        v95.5: Initialize event bus connection for lifecycle events.
+
+        Sets up:
+        1. Connection to Trinity Event Bus
+        2. Lifecycle event publishing
+        3. Subscriptions to cross-repo events
+        """
+        if not self._lifecycle_events_enabled:
+            logger.info("[v95.5] Lifecycle events disabled via JARVIS_LIFECYCLE_EVENTS=false")
+            return
+
+        try:
+            from backend.core.trinity_event_bus import (
+                get_trinity_event_bus,
+                TrinityEvent,
+                EventType,
+                EventPriority,
+                RepoType,
+            )
+
+            # Get or create event bus instance
+            self._event_bus = await get_trinity_event_bus()
+            self._event_bus_initialized = True
+
+            logger.info("[v95.5] ✅ Event bus connection initialized")
+
+            # Subscribe to lifecycle events from other repos
+            await self._subscribe_to_lifecycle_events()
+
+        except ImportError as e:
+            logger.warning(f"[v95.5] Event bus not available: {e}")
+        except Exception as e:
+            logger.warning(f"[v95.5] Event bus initialization failed: {e}")
+
+    async def _subscribe_to_lifecycle_events(self) -> None:
+        """
+        v95.5: Subscribe to lifecycle events from other repositories.
+
+        Enables the orchestrator to react to:
+        - Service startup/shutdown events
+        - Health check events
+        - Degradation events
+        """
+        if not self._event_bus:
+            return
+
+        try:
+            # Subscribe to lifecycle events
+            async def handle_lifecycle_event(event):
+                """Handle incoming lifecycle events from other repos."""
+                try:
+                    payload = event.payload if hasattr(event, "payload") else event
+                    source = event.source.value if hasattr(event, "source") else "unknown"
+                    topic = event.topic if hasattr(event, "topic") else "unknown"
+
+                    logger.info(f"[v95.5] Received lifecycle event: {topic} from {source}")
+
+                    # Update internal state based on event
+                    if "startup" in topic:
+                        service = payload.get("service", source)
+                        status = payload.get("status", "unknown")
+                        if status == "ready":
+                            self._services_ready.add(service)
+                            self._services_starting.discard(service)
+                        elif status == "starting":
+                            self._services_starting.add(service)
+
+                    elif "shutdown" in topic:
+                        service = payload.get("service", source)
+                        self._services_ready.discard(service)
+                        self._services_starting.discard(service)
+
+                    elif "health" in topic:
+                        service = payload.get("service", source)
+                        healthy = payload.get("healthy", True)
+                        if not healthy:
+                            async with self._degradation_lock:
+                                self._degradation_mode[service] = "degraded"
+
+                except Exception as e:
+                    logger.warning(f"[v95.5] Error handling lifecycle event: {e}")
+
+            # Subscribe to all lifecycle events
+            sub_id = await self._event_bus.subscribe(
+                topic="lifecycle.*",
+                handler=handle_lifecycle_event,
+            )
+            self._event_subscriptions.append(sub_id)
+
+            # Subscribe to system degradation events
+            sub_id = await self._event_bus.subscribe(
+                topic="system.degradation",
+                handler=handle_lifecycle_event,
+            )
+            self._event_subscriptions.append(sub_id)
+
+            logger.info(f"[v95.5] Subscribed to lifecycle events ({len(self._event_subscriptions)} subscriptions)")
+
+        except Exception as e:
+            logger.warning(f"[v95.5] Failed to subscribe to lifecycle events: {e}")
+
+    async def _publish_lifecycle_event(
+        self,
+        event_type: str,
+        payload: Dict[str, Any],
+        priority: str = "NORMAL",
+    ) -> bool:
+        """
+        v95.5: Publish a lifecycle event to the event bus.
+
+        Args:
+            event_type: Event type (e.g., "lifecycle.startup", "system.degradation")
+            payload: Event payload
+            priority: Event priority (CRITICAL, HIGH, NORMAL, LOW)
+
+        Returns:
+            True if event was published successfully
+        """
+        if not self._event_bus_initialized or not self._event_bus:
+            return False
+
+        try:
+            from backend.core.trinity_event_bus import (
+                TrinityEvent,
+                EventPriority,
+                RepoType,
+            )
+
+            # Map priority string to enum
+            priority_map = {
+                "CRITICAL": EventPriority.CRITICAL,
+                "HIGH": EventPriority.HIGH,
+                "NORMAL": EventPriority.NORMAL,
+                "LOW": EventPriority.LOW,
+            }
+            event_priority = priority_map.get(priority, EventPriority.NORMAL)
+
+            # Add correlation ID to payload
+            payload["correlation_id"] = self.get_correlation_id()
+            payload["timestamp"] = time.time()
+            payload["source_pid"] = os.getpid()
+
+            event = TrinityEvent(
+                topic=event_type,
+                source=RepoType.JARVIS,
+                target=RepoType.BROADCAST,
+                priority=event_priority,
+                payload=payload,
+                correlation_id=self.get_correlation_id(),
+            )
+
+            await self._event_bus.publish(event)
+            logger.debug(f"[v95.5] Published lifecycle event: {event_type}")
+            return True
+
+        except Exception as e:
+            logger.debug(f"[v95.5] Failed to publish lifecycle event: {e}")
+            return False
+
+    async def publish_service_lifecycle_event(
+        self,
+        service: str,
+        status: str,
+        details: Optional[Dict] = None,
+    ) -> None:
+        """
+        v95.5: Publish a service lifecycle event.
+
+        Args:
+            service: Service name
+            status: Status (starting, ready, failed, shutdown)
+            details: Additional details
+        """
+        payload = {
+            "service": service,
+            "status": status,
+            "details": details or {},
+            "degradation_mode": self._degradation_mode.get(service, "unknown"),
+        }
+
+        # Map status to priority
+        priority_map = {
+            "starting": "NORMAL",
+            "ready": "HIGH",
+            "failed": "CRITICAL",
+            "shutdown": "HIGH",
+        }
+        priority = priority_map.get(status, "NORMAL")
+
+        await self._publish_lifecycle_event(
+            event_type=f"lifecycle.{status}",
+            payload=payload,
+            priority=priority,
+        )
 
     async def _verify_jarvis_body_health(self, timeout: float = 30.0) -> bool:
         """
@@ -5799,6 +6380,10 @@ echo "=== JARVIS Prime started ==="
             if service_name not in self._startup_events:
                 self._startup_events[service_name] = asyncio.Event()
 
+        # v95.5: Publish lifecycle event and create trace span for this service
+        await self.publish_service_lifecycle_event(service_name, "starting", {"depends_on": definition.depends_on})
+        service_span = await self._create_span(f"start_{service_name}", metadata={"service": service_name})
+
         try:
             # ==================================================================
             # PHASE 1: Wait for dependencies OUTSIDE semaphore (prevents deadlock)
@@ -6206,6 +6791,17 @@ echo "=== JARVIS Prime started ==="
         self._services_starting.add("jarvis-body")
         logger.info("[v95.4] jarvis-body status: starting")
 
+        # v95.5: Initialize distributed tracing FIRST (for correlation across all phases)
+        await self._initialize_distributed_tracing()
+        startup_span = await self._create_span("full_startup", metadata={"phase": "init"})
+
+        # v95.5: Initialize event bus for lifecycle events
+        await self._initialize_event_bus()
+        await self.publish_service_lifecycle_event("jarvis-body", "starting", {"pid": os.getpid()})
+
+        # v95.5: Initialize graceful degradation infrastructure
+        await self._initialize_graceful_degradation()
+
         # v93.0: CRITICAL - Ensure all required directories exist FIRST
         # This prevents "No such file or directory" errors throughout startup
         try:
@@ -6380,6 +6976,41 @@ echo "=== JARVIS Prime started ==="
             status = "✅ Running" if success else "⚠️ Unavailable"
             logger.info(f"  {name}: {status}")
         logger.info("=" * 70)
+
+        # v95.5: Publish completion lifecycle events for all services
+        for name, success in results.items():
+            if name == "jarvis-body":
+                continue  # Already published
+            status = "ready" if success else "failed"
+            await self.publish_service_lifecycle_event(
+                service=name,
+                status=status,
+                details={
+                    "startup_time": time.time() - (self._jarvis_body_startup_time or time.time()),
+                    "degradation_mode": self._degradation_mode.get(name, "unknown"),
+                }
+            )
+
+        # v95.5: End the startup trace span
+        if startup_span:
+            status = "success" if healthy_count == total_count else "partial"
+            await self._end_span(startup_span, status=status)
+
+        # v95.5: Publish final startup completion event with degradation info
+        await self._publish_lifecycle_event(
+            event_type="lifecycle.startup_complete",
+            payload={
+                "services": results,
+                "healthy_count": healthy_count,
+                "total_count": total_count,
+                "degradation_status": self.get_service_degradation_status(),
+                "startup_duration": time.time() - (self._jarvis_body_startup_time or time.time()),
+            },
+            priority="HIGH" if healthy_count == total_count else "CRITICAL",
+        )
+
+        # v95.5: Log distributed tracing summary
+        logger.info(f"[v95.5] Startup correlation ID: {self.get_correlation_id()}")
 
         return results
 
