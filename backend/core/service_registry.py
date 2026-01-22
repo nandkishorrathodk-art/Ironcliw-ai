@@ -513,6 +513,182 @@ class AtomicSharedRegistry:
         except Exception:
             return False
 
+    @classmethod
+    def cleanup_stale_entries(
+        cls,
+        max_age_seconds: float = 300.0,
+        check_process_alive: bool = True,
+        timeout: float = None,
+    ) -> int:
+        """
+        v96.0: Aggressive cleanup of stale registry entries.
+
+        This method removes entries that are:
+        1. Older than max_age_seconds without heartbeat update
+        2. From processes that are no longer running (if check_process_alive=True)
+        3. Have PID that has been reused by a different process
+
+        This is called automatically during registration to ensure fresh state.
+
+        Args:
+            max_age_seconds: Max age without heartbeat before considered stale
+            check_process_alive: Whether to verify process is still running
+            timeout: Max seconds to wait for lock
+
+        Returns:
+            Number of entries removed
+        """
+        removed_count = 0
+        current_time = time.time()
+
+        try:
+            with cls.atomic_update(timeout) as registry:
+                entries_to_remove = []
+
+                for service_name, service_data in registry.items():
+                    if not isinstance(service_data, dict):
+                        entries_to_remove.append(service_name)
+                        continue
+
+                    should_remove = False
+                    reason = ""
+
+                    # Check 1: Heartbeat age
+                    last_heartbeat = service_data.get("last_heartbeat", 0)
+                    registered_at = service_data.get("registered_at", 0)
+                    last_activity = max(last_heartbeat, registered_at)
+                    age = current_time - last_activity
+
+                    if age > max_age_seconds:
+                        should_remove = True
+                        reason = f"stale ({age:.0f}s without heartbeat)"
+
+                    # Check 2: Process alive (if enabled)
+                    if not should_remove and check_process_alive:
+                        pid = service_data.get("pid")
+                        if pid:
+                            try:
+                                if not psutil.pid_exists(pid):
+                                    should_remove = True
+                                    reason = f"process {pid} no longer exists"
+                                else:
+                                    # Check for PID reuse
+                                    proc = psutil.Process(pid)
+                                    stored_start_time = service_data.get("process_start_time", 0)
+                                    if stored_start_time > 0:
+                                        actual_start_time = proc.create_time()
+                                        if abs(actual_start_time - stored_start_time) > 2.0:
+                                            should_remove = True
+                                            reason = f"PID {pid} reused by different process"
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                should_remove = True
+                                reason = f"process {pid} not accessible"
+                            except Exception:
+                                pass  # Keep if we can't verify
+
+                    if should_remove:
+                        entries_to_remove.append(service_name)
+                        logger.info(f"[v96.0] Removing stale entry: {service_name} ({reason})")
+
+                # Remove stale entries
+                for name in entries_to_remove:
+                    registry.pop(name, None)
+                    removed_count += 1
+
+            if removed_count > 0:
+                logger.info(f"[v96.0] Cleaned up {removed_count} stale registry entries")
+
+        except Exception as e:
+            logger.warning(f"[v96.0] Stale cleanup error: {e}")
+
+        return removed_count
+
+    @classmethod
+    def register_service_with_cleanup(
+        cls,
+        service_name: str,
+        service_data: Dict[str, Any],
+        alternate_names: Optional[List[str]] = None,
+        cleanup_stale: bool = True,
+        max_stale_age: float = 300.0,
+        timeout: float = None,
+    ) -> bool:
+        """
+        v96.0: Register a service with automatic stale cleanup.
+
+        This is the RECOMMENDED method for service registration as it:
+        1. Cleans up stale entries from previous runs
+        2. Registers the new service atomically
+        3. Handles all edge cases
+
+        Args:
+            service_name: Primary service name
+            service_data: Service data dict
+            alternate_names: Optional list of alternate names
+            cleanup_stale: Whether to clean up stale entries first
+            max_stale_age: Max age for stale detection
+            timeout: Max seconds to wait for lock
+
+        Returns:
+            True if registration succeeded
+        """
+        try:
+            with cls.atomic_update(timeout) as registry:
+                # Step 1: Clean up stale entries in same atomic transaction
+                if cleanup_stale:
+                    current_time = time.time()
+                    entries_to_remove = []
+
+                    for name, data in list(registry.items()):
+                        if not isinstance(data, dict):
+                            entries_to_remove.append(name)
+                            continue
+
+                        # Check age
+                        last_activity = max(
+                            data.get("last_heartbeat", 0),
+                            data.get("registered_at", 0)
+                        )
+                        age = current_time - last_activity
+
+                        if age > max_stale_age:
+                            entries_to_remove.append(name)
+                            logger.debug(f"[v96.0] Removing stale: {name} (age: {age:.0f}s)")
+                        else:
+                            # Check if process is alive
+                            pid = data.get("pid")
+                            if pid:
+                                try:
+                                    if not psutil.pid_exists(pid):
+                                        entries_to_remove.append(name)
+                                        logger.debug(f"[v96.0] Removing dead: {name} (pid {pid})")
+                                except Exception:
+                                    pass
+
+                    for name in entries_to_remove:
+                        registry.pop(name, None)
+
+                    if entries_to_remove:
+                        logger.info(f"[v96.0] Cleaned {len(entries_to_remove)} stale entries before registration")
+
+                # Step 2: Register the new service
+                registry[service_name] = service_data
+
+                # Step 3: Register alternate names
+                if alternate_names:
+                    for alt_name in alternate_names:
+                        registry[alt_name] = service_data
+
+            logger.info(f"[v96.0] ✅ Registered {service_name} (with stale cleanup)")
+            return True
+
+        except TimeoutError as e:
+            logger.error(f"[v96.0] ❌ Registration timeout for {service_name}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[v96.0] ❌ Registration failed for {service_name}: {e}")
+            return False
+
 
 # =============================================================================
 # Data Models

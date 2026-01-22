@@ -5991,10 +5991,17 @@ class ProcessOrchestrator:
                     services = await self.registry.list_services()
                     jarvis_body_entry = None
                     for svc in services:
-                        if isinstance(svc, dict) and svc.get("name") == "jarvis-body":
-                            jarvis_body_entry = svc
-                            break
-                        elif hasattr(svc, "name") and svc.name == "jarvis-body":
+                        # v96.0: Fixed - ServiceInfo uses 'service_name' not 'name'
+                        # Check both 'service_name' and 'name' for backwards compatibility
+                        svc_name = None
+                        if isinstance(svc, dict):
+                            svc_name = svc.get("service_name") or svc.get("name")
+                        elif hasattr(svc, "service_name"):
+                            svc_name = svc.service_name
+                        elif hasattr(svc, "name"):
+                            svc_name = svc.name
+
+                        if svc_name == "jarvis-body":
                             jarvis_body_entry = svc
                             break
 
@@ -6049,7 +6056,11 @@ class ProcessOrchestrator:
                 try:
                     services = await self.registry.list_services()
                     for svc in services:
-                        name = svc.get("name") if isinstance(svc, dict) else getattr(svc, "name", None)
+                        # v96.0: Fixed - ServiceInfo uses 'service_name' not 'name'
+                        if isinstance(svc, dict):
+                            name = svc.get("service_name") or svc.get("name")
+                        else:
+                            name = getattr(svc, "service_name", None) or getattr(svc, "name", None)
                         if name == "jarvis-body":
                             self._jarvis_body_status = "healthy"
                             self._jarvis_body_health_verified = True

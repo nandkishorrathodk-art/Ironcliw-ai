@@ -514,10 +514,13 @@ class TrinityBridge:
                 **process_fingerprint,
             }
 
-            AtomicSharedRegistry.register_service(
+            # v96.0: Use register_service_with_cleanup for automatic stale entry removal
+            AtomicSharedRegistry.register_service_with_cleanup(
                 service_name="jarvis-body",
                 service_data=shared_service_data,
                 alternate_names=["jarvis_body", "jarvis"],
+                cleanup_stale=True,
+                max_stale_age=300.0,  # 5 minutes
             )
 
             fallback_msg = f" (fallback from {configured_port})" if is_fallback else ""

@@ -867,7 +867,10 @@ class BootstrapConfig:
     ])
     
     # Patterns to identify JARVIS processes
+    # v97.0: Added run_supervisor.py to detect and kill existing supervisor processes
+    # that may be holding fcntl locks. This prevents 30-second ownership timeouts.
     jarvis_patterns: List[str] = field(default_factory=lambda: [
+        "run_supervisor.py",  # v97.0: CRITICAL - must be first to detect old supervisors
         "start_system.py",
         "main.py",
         "jarvis",
@@ -2362,12 +2365,24 @@ class ParallelProcessCleaner:
     async def discover_and_cleanup(self) -> Tuple[int, List[ProcessInfo]]:
         """
         Discover and cleanup existing JARVIS instances.
-        
+
+        v97.0: Now includes lock holder cleanup as Phase 0 to prevent
+        30-second ownership acquisition timeouts.
+
         Returns:
             Tuple of (terminated_count, discovered_processes)
         """
         perf = PerformanceLogger()
-        
+
+        # v97.0: Phase 0 - Clean up any processes holding ownership locks
+        # This MUST run before discovery to prevent 30-second timeouts
+        perf.start("lock_cleanup")
+        lock_holders_killed = await self.cleanup_stale_lock_holders()
+        perf.end("lock_cleanup")
+        if lock_holders_killed > 0:
+            self.logger.info(f"[v97.0] Killed {lock_holders_killed} stale lock holder(s)")
+            await asyncio.sleep(0.5)  # Allow OS to release resources
+
         # Phase 1: Parallel discovery
         perf.start("discovery")
         discovered = await self._parallel_discover()
@@ -2699,6 +2714,107 @@ class ParallelProcessCleaner:
                 pid_file.unlink(missing_ok=True)
             except Exception:
                 pass
+
+    async def cleanup_stale_lock_holders(self) -> int:
+        """
+        v97.0: Clean up processes holding fcntl locks on ownership files.
+
+        This is a critical safeguard to prevent 30-second ownership timeouts.
+        Uses lsof to detect which process holds the lock file, then kills
+        it if it's an orphaned supervisor from a previous session.
+
+        Returns:
+            Number of lock holders killed
+        """
+        import subprocess
+
+        lock_file = Path.home() / ".jarvis" / "state" / "locks" / "jarvis.lock"
+        killed_count = 0
+
+        if not lock_file.exists():
+            return 0
+
+        try:
+            # Use lsof to find what process has the lock file open
+            result = subprocess.run(
+                ["lsof", str(lock_file)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                # No process has the file open
+                return 0
+
+            # Parse lsof output to find PIDs
+            # Format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+            for line in result.stdout.strip().split('\n')[1:]:  # Skip header
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+
+                try:
+                    holder_pid = int(parts[1])
+                except ValueError:
+                    continue
+
+                # Skip if it's us or our parent
+                if holder_pid in (self._my_pid, self._my_parent):
+                    continue
+
+                # Check if this is a supervisor process
+                try:
+                    import psutil
+                    proc = psutil.Process(holder_pid)
+                    cmdline = " ".join(proc.cmdline())
+
+                    # Only kill if it's a supervisor process
+                    if "run_supervisor.py" in cmdline or "start_system.py" in cmdline:
+                        self.logger.warning(
+                            f"[v97.0] Found stale lock holder PID {holder_pid} "
+                            f"({cmdline[:60]}...), killing..."
+                        )
+
+                        # Kill the process holding the lock
+                        try:
+                            os.kill(holder_pid, signal.SIGTERM)
+                            await asyncio.sleep(0.5)
+
+                            # Force kill if still alive
+                            if psutil.pid_exists(holder_pid):
+                                os.kill(holder_pid, signal.SIGKILL)
+                                await asyncio.sleep(0.2)
+
+                            killed_count += 1
+                            self.logger.info(f"[v97.0] Killed stale lock holder PID {holder_pid}")
+
+                        except (ProcessLookupError, OSError):
+                            # Process already dead
+                            killed_count += 1
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Also clean up the lock file itself if we killed holders
+            if killed_count > 0:
+                await asyncio.sleep(0.3)  # Wait for OS to release lock
+                try:
+                    if lock_file.exists():
+                        lock_file.unlink()
+                        self.logger.debug(f"[v97.0] Removed stale lock file: {lock_file}")
+                except Exception as e:
+                    self.logger.debug(f"[v97.0] Could not remove lock file: {e}")
+
+        except subprocess.TimeoutExpired:
+            self.logger.debug("[v97.0] lsof timed out")
+        except FileNotFoundError:
+            # lsof not available
+            self.logger.debug("[v97.0] lsof not available")
+        except Exception as e:
+            self.logger.debug(f"[v97.0] Lock holder cleanup error: {e}")
+
+        return killed_count
 
 
 # =============================================================================
