@@ -936,8 +936,17 @@ class TrinityBridge:
                             error="Not running and not registered"
                         )
 
-        # Update state based on health
-        total = max(len(services), len(expected_services))
+        # v95.11: Update state based on health - use UNION of all tracked services
+        # This fixes the bug where healthy_count > total was possible
+        all_tracked_services = registered_names.union(set(expected_services))
+        total = len(all_tracked_services)
+
+        # healthy_count should only count services in our tracked set
+        healthy_count = sum(
+            1 for name in all_tracked_services
+            if name in self._service_health and self._service_health[name].healthy
+        )
+
         if total > 0:
             if healthy_count == total:
                 if self._state == TrinityState.DEGRADED:
@@ -946,8 +955,8 @@ class TrinityBridge:
             elif healthy_count > 0:
                 if self._state == TrinityState.RUNNING:
                     unhealthy = [
-                        name for name, h in self._service_health.items()
-                        if not h.healthy
+                        name for name in all_tracked_services
+                        if name in self._service_health and not self._service_health[name].healthy
                     ]
                     logger.warning(
                         f"Some services unhealthy ({healthy_count}/{total}): {unhealthy}"

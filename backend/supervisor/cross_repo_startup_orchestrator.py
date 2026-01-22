@@ -3029,7 +3029,13 @@ class ProcessOrchestrator:
         return_code: int,
     ) -> None:
         """
-        v95.9: Handle process crash with analysis and auto-restart.
+        v95.9 + v95.11: Handle process crash with analysis and auto-restart.
+
+        v95.11 enhancements:
+        - Distinguish between crash vs graceful shutdown
+        - Skip crash handling for SIGTERM during shutdown
+        - Add startup grace period awareness
+        - Better logging for different scenarios
 
         Args:
             managed: The crashed process
@@ -3037,14 +3043,48 @@ class ProcessOrchestrator:
         """
         service_name = managed.definition.name
         crash_time = time.time()
+        uptime = crash_time - (managed.last_restart or crash_time)
 
-        # Record crash event
+        # v95.11: Check if this is a graceful shutdown, not a crash
+        is_sigterm = return_code == -15 or return_code == 143
+        is_shutdown_mode = self._shutdown_event.is_set() or self._shutdown_completed
+
+        if is_sigterm and is_shutdown_mode:
+            # This is expected during graceful shutdown - don't log as crash
+            logger.info(
+                f"[v95.11] Service {service_name} terminated by SIGTERM during shutdown "
+                f"(PID: {managed.pid}, uptime: {uptime:.1f}s)"
+            )
+            # Update status but don't trigger crash handling
+            managed.status = ServiceStatus.STOPPED
+            managed.process = None
+            return
+
+        # v95.11: Check for startup-phase termination (very short uptime + SIGTERM)
+        # This might indicate the service was killed before fully starting
+        startup_grace_period = float(os.environ.get("SERVICE_STARTUP_GRACE_SECONDS", "30.0"))
+        if is_sigterm and uptime < startup_grace_period:
+            logger.warning(
+                f"[v95.11] ⚠️ Service {service_name} terminated during startup phase "
+                f"(PID: {managed.pid}, uptime: {uptime:.1f}s < {startup_grace_period}s grace)"
+            )
+            # Still record it but with lower severity
+            if not is_shutdown_mode:
+                logger.info(
+                    f"[v95.11] This may indicate a shutdown signal arrived during startup. "
+                    f"Service will NOT be auto-restarted to prevent loops."
+                )
+                managed.status = ServiceStatus.STOPPED
+                managed.process = None
+                return
+
+        # Record crash event for genuine crashes
         crash_event = {
             "timestamp": crash_time,
             "return_code": return_code,
             "pid": managed.pid,
             "restart_count": managed.restart_count,
-            "uptime": crash_time - (managed.last_restart or crash_time),
+            "uptime": uptime,
         }
 
         if service_name not in self._crash_history:
@@ -3055,12 +3095,14 @@ class ProcessOrchestrator:
         analysis = await self._analyze_crash(managed, return_code)
         self._last_crash_analysis[service_name] = analysis
 
-        # Log detailed crash info
-        logger.error(
+        # v95.11: Use appropriate log level based on analysis
+        log_level = logging.ERROR if analysis.get("severity") != "low" else logging.WARNING
+        logger.log(
+            log_level,
             f"[v95.9] 💥 PROCESS CRASH: {service_name}\n"
             f"  Exit code: {return_code}\n"
             f"  PID: {managed.pid}\n"
-            f"  Uptime: {crash_event['uptime']:.1f}s\n"
+            f"  Uptime: {uptime:.1f}s\n"
             f"  Restart count: {managed.restart_count}\n"
             f"  Analysis: {analysis.get('diagnosis', 'Unknown')}"
         )
