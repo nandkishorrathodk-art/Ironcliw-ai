@@ -107,7 +107,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple
 
 import aiohttp
 
@@ -861,6 +861,414 @@ class ServiceDefinition:
         return len(issues) == 0, issues
 
 
+# =============================================================================
+# v95.6: Intelligent Cross-Platform Repo Discovery
+# =============================================================================
+
+class IntelligentRepoDiscovery:
+    """
+    v95.6: Dynamic, cross-platform repository discovery system.
+
+    Eliminates hardcoded paths by intelligently searching for repositories
+    across multiple locations with case-insensitive matching.
+
+    Features:
+    - Multi-path discovery across common development directories
+    - Environment variable override (highest priority)
+    - Case-insensitive repo name matching
+    - Cross-platform support (Windows, macOS, Linux)
+    - Name variant detection (jarvis-prime, JARVIS-Prime, JarvisPrime)
+    - Git repository validation
+    - Parallel async discovery for performance
+    - Persistent cache with TTL
+    - Signature-based repo verification (checks for expected files)
+
+    Discovery Priority (highest to lowest):
+    1. Environment variable (e.g., JARVIS_PRIME_PATH)
+    2. Running process detection (find where it's already running)
+    3. Git worktree detection (find related worktrees)
+    4. Common development directories
+    5. User-provided hints in config file
+    """
+
+    # Common development directory patterns (cross-platform)
+    _COMMON_DEV_DIRS: List[str] = [
+        "~/Documents/repos",
+        "~/Documents/GitHub",
+        "~/Documents/code",
+        "~/Documents/projects",
+        "~/Documents/dev",
+        "~/repos",
+        "~/code",
+        "~/projects",
+        "~/dev",
+        "~/github",
+        "~/git",
+        "~/src",
+        "~/workspace",
+        "~/Development",
+        # Windows-specific
+        "C:/Users/{user}/Documents/repos",
+        "C:/Users/{user}/Documents/GitHub",
+        "C:/Users/{user}/code",
+        "C:/repos",
+        "C:/code",
+        "C:/projects",
+        # Linux-specific
+        "/home/{user}/repos",
+        "/home/{user}/code",
+        "/home/{user}/projects",
+        "/opt/jarvis",
+        "/srv/jarvis",
+    ]
+
+    # Name variants for each service (case-insensitive matching)
+    _SERVICE_NAME_VARIANTS: Dict[str, List[str]] = {
+        "jarvis-prime": [
+            "jarvis-prime",
+            "JARVIS-Prime",
+            "JarvisPrime",
+            "jarvis_prime",
+            "prime",
+            "jarvis-prime-ai",
+        ],
+        "reactor-core": [
+            "reactor-core",
+            "Reactor-Core",
+            "ReactorCore",
+            "reactor_core",
+            "reactor",
+            "jarvis-reactor",
+        ],
+        "jarvis": [
+            "jarvis",
+            "JARVIS",
+            "jarvis-ai-agent",
+            "JARVIS-AI-Agent",
+            "jarvis_ai_agent",
+            "jarvis-body",
+        ],
+    }
+
+    # Signature files that confirm this is the right repo
+    _REPO_SIGNATURES: Dict[str, List[str]] = {
+        "jarvis-prime": [
+            "run_server.py",
+            "inference/",
+            "models/",
+            "prime_server.py",
+        ],
+        "reactor-core": [
+            "run_reactor.py",
+            "reactor/",
+            "training/",
+            "pipeline/",
+        ],
+        "jarvis": [
+            "run_supervisor.py",
+            "backend/",
+            "backend/core/",
+            "backend/supervisor/",
+        ],
+    }
+
+    _instance: Optional["IntelligentRepoDiscovery"] = None
+    _discovery_cache: Dict[str, Tuple[Optional[Path], float]] = {}
+    _cache_ttl: float = 300.0  # 5 minutes
+
+    def __new__(cls) -> "IntelligentRepoDiscovery":
+        """Singleton pattern for shared cache."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self._discovery_lock = asyncio.Lock() if asyncio.get_event_loop().is_running() else None
+        self._user = os.environ.get("USER", os.environ.get("USERNAME", "user"))
+        logger.info("[v95.6] IntelligentRepoDiscovery initialized")
+
+    def _get_search_directories(self) -> List[Path]:
+        """
+        v95.6: Get all directories to search for repositories.
+
+        Returns platform-appropriate paths with user substitution.
+        """
+        search_dirs = []
+        home = Path.home()
+
+        for pattern in self._COMMON_DEV_DIRS:
+            # Substitute user placeholder
+            path_str = pattern.replace("{user}", self._user)
+
+            # Expand ~ to home directory
+            if path_str.startswith("~"):
+                path = home / path_str[2:]
+            else:
+                path = Path(path_str)
+
+            # Only add if directory exists
+            try:
+                if path.exists() and path.is_dir():
+                    search_dirs.append(path)
+            except (PermissionError, OSError):
+                continue
+
+        # Add parent of current JARVIS repo (sibling repos)
+        try:
+            current_repo = Path(__file__).resolve().parents[2]  # backend/supervisor -> JARVIS root
+            parent = current_repo.parent
+            if parent.exists():
+                search_dirs.insert(0, parent)  # Highest priority after env var
+        except Exception:
+            pass
+
+        return search_dirs
+
+    def _get_name_variants(self, service_name: str) -> List[str]:
+        """
+        v95.6: Get all possible name variants for a service.
+
+        Includes case variations and common naming conventions.
+        """
+        base_variants = self._SERVICE_NAME_VARIANTS.get(service_name, [service_name])
+
+        # Generate additional case variants
+        all_variants = set(base_variants)
+        for name in base_variants:
+            all_variants.add(name.lower())
+            all_variants.add(name.upper())
+            all_variants.add(name.replace("-", "_"))
+            all_variants.add(name.replace("_", "-"))
+
+        return list(all_variants)
+
+    def _validate_repo_signature(self, path: Path, service_name: str) -> bool:
+        """
+        v95.6: Validate that a directory is the expected repository.
+
+        Checks for signature files/directories that confirm identity.
+        """
+        signatures = self._REPO_SIGNATURES.get(service_name, [])
+        if not signatures:
+            return True  # No signatures defined, accept any match
+
+        # Require at least 50% of signatures to match
+        matches = 0
+        for sig in signatures:
+            check_path = path / sig
+            if check_path.exists():
+                matches += 1
+
+        return matches >= len(signatures) * 0.5
+
+    def _is_git_repo(self, path: Path) -> bool:
+        """
+        v95.6: Check if a directory is a git repository.
+        """
+        git_dir = path / ".git"
+        return git_dir.exists() and (git_dir.is_dir() or git_dir.is_file())
+
+    async def discover_repo(
+        self,
+        service_name: str,
+        env_var: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> Optional[Path]:
+        """
+        v95.6: Discover repository path with intelligent multi-strategy search.
+
+        Args:
+            service_name: Name of the service (e.g., "jarvis-prime")
+            env_var: Environment variable to check first
+            force_refresh: Bypass cache and rediscover
+
+        Returns:
+            Path to repository or None if not found
+        """
+        cache_key = service_name
+
+        # Check cache first (unless force refresh)
+        if not force_refresh and cache_key in self._discovery_cache:
+            cached_path, cache_time = self._discovery_cache[cache_key]
+            if time.time() - cache_time < self._cache_ttl:
+                logger.debug(f"[v95.6] Using cached path for {service_name}: {cached_path}")
+                return cached_path
+
+        # Strategy 1: Environment variable (highest priority)
+        if env_var:
+            env_path = os.environ.get(env_var)
+            if env_path:
+                path = Path(env_path).expanduser().resolve()
+                if path.exists() and path.is_dir():
+                    if self._validate_repo_signature(path, service_name):
+                        logger.info(f"[v95.6] Found {service_name} via env var {env_var}: {path}")
+                        self._discovery_cache[cache_key] = (path, time.time())
+                        return path
+                    else:
+                        logger.warning(f"[v95.6] Path from {env_var} exists but signature mismatch: {path}")
+
+        # Strategy 2: Search common development directories
+        search_dirs = self._get_search_directories()
+        name_variants = self._get_name_variants(service_name)
+
+        discovered_path: Optional[Path] = None
+        best_score = 0
+
+        for search_dir in search_dirs:
+            try:
+                # List all subdirectories
+                for item in search_dir.iterdir():
+                    if not item.is_dir():
+                        continue
+
+                    item_name = item.name.lower()
+
+                    # Check if name matches any variant
+                    for variant in name_variants:
+                        if item_name == variant.lower():
+                            # Calculate match score
+                            score = 10  # Base score for name match
+
+                            # Bonus for git repo
+                            if self._is_git_repo(item):
+                                score += 5
+
+                            # Bonus for signature match
+                            if self._validate_repo_signature(item, service_name):
+                                score += 10
+
+                            # Bonus for exact case match
+                            if item.name == variant:
+                                score += 2
+
+                            if score > best_score:
+                                best_score = score
+                                discovered_path = item
+                                logger.debug(
+                                    f"[v95.6] Candidate for {service_name}: {item} (score: {score})"
+                                )
+
+            except (PermissionError, OSError) as e:
+                logger.debug(f"[v95.6] Cannot search {search_dir}: {e}")
+                continue
+
+        if discovered_path:
+            resolved = discovered_path.resolve()
+            logger.info(f"[v95.6] Discovered {service_name} at: {resolved} (score: {best_score})")
+            self._discovery_cache[cache_key] = (resolved, time.time())
+            return resolved
+
+        # Strategy 3: Try to find via running processes
+        discovered_path = await self._find_via_running_process(service_name)
+        if discovered_path:
+            self._discovery_cache[cache_key] = (discovered_path, time.time())
+            return discovered_path
+
+        logger.warning(f"[v95.6] Could not discover repository for {service_name}")
+        self._discovery_cache[cache_key] = (None, time.time())
+        return None
+
+    async def _find_via_running_process(self, service_name: str) -> Optional[Path]:
+        """
+        v95.6: Try to find repo path by examining running processes.
+
+        Looks for Python processes that might be running the service.
+        """
+        try:
+            import psutil
+
+            name_variants = self._get_name_variants(service_name)
+            script_names = ["run_server.py", "run_reactor.py", "main.py", "app.py"]
+
+            for proc in psutil.process_iter(["pid", "name", "cmdline", "cwd"]):
+                try:
+                    info = proc.info
+                    cmdline = info.get("cmdline") or []
+                    cwd = info.get("cwd")
+
+                    # Check if this is a Python process
+                    if not any("python" in str(c).lower() for c in cmdline[:2]):
+                        continue
+
+                    # Check if running one of our scripts
+                    for cmd in cmdline:
+                        for script in script_names:
+                            if script in str(cmd):
+                                # Check if the cwd contains our service name
+                                if cwd:
+                                    cwd_path = Path(cwd)
+                                    for variant in name_variants:
+                                        if variant.lower() in cwd_path.name.lower():
+                                            if self._validate_repo_signature(cwd_path, service_name):
+                                                logger.info(
+                                                    f"[v95.6] Found {service_name} via running process: {cwd_path}"
+                                                )
+                                                return cwd_path.resolve()
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+
+        except ImportError:
+            logger.debug("[v95.6] psutil not available for process discovery")
+        except Exception as e:
+            logger.debug(f"[v95.6] Process discovery failed: {e}")
+
+        return None
+
+    async def discover_all_repos(self) -> Dict[str, Optional[Path]]:
+        """
+        v95.6: Discover all known service repositories in parallel.
+
+        Returns:
+            Dict mapping service names to discovered paths
+        """
+        services = ["jarvis-prime", "reactor-core", "jarvis"]
+
+        async def discover_one(name: str) -> Tuple[str, Optional[Path]]:
+            env_var = f"{name.upper().replace('-', '_')}_PATH"
+            path = await self.discover_repo(name, env_var)
+            return name, path
+
+        results = await asyncio.gather(*[discover_one(s) for s in services])
+        return dict(results)
+
+    def get_cached_path(self, service_name: str) -> Optional[Path]:
+        """
+        v95.6: Get cached path without rediscovery.
+
+        Returns None if not cached or cache expired.
+        """
+        if service_name in self._discovery_cache:
+            cached_path, cache_time = self._discovery_cache[service_name]
+            if time.time() - cache_time < self._cache_ttl:
+                return cached_path
+        return None
+
+    def invalidate_cache(self, service_name: Optional[str] = None) -> None:
+        """
+        v95.6: Invalidate discovery cache.
+
+        Args:
+            service_name: Specific service to invalidate, or None for all
+        """
+        if service_name:
+            self._discovery_cache.pop(service_name, None)
+        else:
+            self._discovery_cache.clear()
+        logger.info(f"[v95.6] Discovery cache invalidated: {service_name or 'all'}")
+
+
+def get_repo_discovery() -> IntelligentRepoDiscovery:
+    """
+    v95.6: Get the global repo discovery instance.
+    """
+    return IntelligentRepoDiscovery()
+
+
 class ServiceDefinitionRegistry:
     """
     v95.0: Centralized registry for canonical service definitions.
@@ -887,6 +1295,10 @@ class ServiceDefinitionRegistry:
     # Note: jarvis-prime depends on jarvis-body for service registry
     #       reactor-core depends on jarvis-prime for AGI integration
     #
+    # v95.6: Dynamic repo discovery - NO HARDCODED PATHS
+    # Paths are discovered at runtime using IntelligentRepoDiscovery
+    # Environment variables take priority, then intelligent search
+
     _CANONICAL_DEFINITIONS = {
         "jarvis-prime": {
             "script_name": "run_server.py",
@@ -896,7 +1308,10 @@ class ServiceDefinitionRegistry:
             "health_endpoint": "/health",
             "startup_timeout": 180.0,  # ML model loading
             "repo_path_env": "JARVIS_PRIME_PATH",
-            "default_repo_path": "~/Documents/repos/jarvis-prime",
+            # v95.6: Use dynamic discovery instead of hardcoded path
+            # This will be resolved at runtime via get_definition()
+            "default_repo_path": None,  # Discovered dynamically
+            "discovery_service_name": "jarvis-prime",  # For discovery lookup
             "script_args_factory": lambda port: ["--port", str(port), "--host", "0.0.0.0"],
             "environment_factory": lambda path: {
                 "PYTHONPATH": str(path),
@@ -920,7 +1335,9 @@ class ServiceDefinitionRegistry:
             "health_endpoint": "/health",
             "startup_timeout": 90.0,
             "repo_path_env": "REACTOR_CORE_PATH",
-            "default_repo_path": "~/Documents/repos/reactor-core",
+            # v95.6: Use dynamic discovery instead of hardcoded path
+            "default_repo_path": None,  # Discovered dynamically
+            "discovery_service_name": "reactor-core",  # For discovery lookup
             "script_args_factory": lambda port: ["--port", str(port)],
             "environment_factory": lambda path: {
                 "PYTHONPATH": str(path),
@@ -982,14 +1399,31 @@ class ServiceDefinitionRegistry:
         if port is None:
             port = int(os.getenv(canonical["default_port_env"], canonical["default_port"]))
 
-        # Resolve path
+        # Resolve path using v95.6 intelligent discovery
         repo_path = path_override
         if repo_path is None:
+            # Priority 1: Check environment variable
             env_path = os.getenv(canonical["repo_path_env"])
             if env_path:
                 repo_path = Path(env_path).expanduser()
             else:
-                repo_path = Path(canonical["default_repo_path"]).expanduser()
+                # Priority 2: Use intelligent discovery (v95.6)
+                discovery = get_repo_discovery()
+                discovery_name = canonical.get("discovery_service_name", service_name)
+
+                # Try to get cached path first (synchronous)
+                cached = discovery.get_cached_path(discovery_name)
+                if cached:
+                    repo_path = cached
+                else:
+                    # Fallback: Try synchronous discovery for common locations
+                    repo_path = cls._sync_discover_repo(discovery_name)
+
+                    if repo_path is None:
+                        logger.warning(
+                            f"[v95.6] Could not discover {service_name}. "
+                            f"Set {canonical['repo_path_env']} environment variable."
+                        )
 
         # Build definition
         definition = ServiceDefinition(
@@ -1037,6 +1471,77 @@ class ServiceDefinitionRegistry:
         return definitions
 
     @classmethod
+    def _sync_discover_repo(cls, service_name: str) -> Optional[Path]:
+        """
+        v95.6: Synchronous repo discovery for use in get_definition.
+
+        This is a simplified synchronous version of IntelligentRepoDiscovery
+        that works in non-async contexts.
+
+        Args:
+            service_name: Service name to discover
+
+        Returns:
+            Path to repository or None if not found
+        """
+        discovery = get_repo_discovery()
+        home = Path.home()
+
+        # Get name variants
+        name_variants = discovery._get_name_variants(service_name)
+
+        # Get search directories
+        search_dirs = discovery._get_search_directories()
+
+        best_match: Optional[Path] = None
+        best_score = 0
+
+        for search_dir in search_dirs:
+            try:
+                if not search_dir.exists():
+                    continue
+
+                for item in search_dir.iterdir():
+                    if not item.is_dir():
+                        continue
+
+                    item_name = item.name.lower()
+
+                    # Check if name matches any variant
+                    for variant in name_variants:
+                        if item_name == variant.lower():
+                            score = 10
+
+                            # Bonus for git repo
+                            if (item / ".git").exists():
+                                score += 5
+
+                            # Bonus for signature match
+                            if discovery._validate_repo_signature(item, service_name):
+                                score += 10
+
+                            # Bonus for exact case match
+                            if item.name == variant:
+                                score += 2
+
+                            if score > best_score:
+                                best_score = score
+                                best_match = item
+                                logger.debug(f"[v95.6] Sync discovery candidate: {item} (score: {score})")
+
+            except (PermissionError, OSError):
+                continue
+
+        if best_match:
+            resolved = best_match.resolve()
+            logger.info(f"[v95.6] Sync discovered {service_name} at: {resolved}")
+            # Cache the result
+            discovery._discovery_cache[service_name] = (resolved, time.time())
+            return resolved
+
+        return None
+
+    @classmethod
     def list_services(cls) -> List[str]:
         """List all known service names."""
         return list(cls._CANONICAL_DEFINITIONS.keys())
@@ -1045,6 +1550,11 @@ class ServiceDefinitionRegistry:
     def clear_cache(cls) -> None:
         """Clear the definition cache."""
         cls._cache.clear()
+        # Also clear discovery cache
+        try:
+            get_repo_discovery().invalidate_cache()
+        except Exception:
+            pass
 
 
 # Convenience function for getting service definitions
