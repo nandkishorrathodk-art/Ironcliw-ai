@@ -1182,6 +1182,13 @@ class ProcessOrchestrator:
             "JARVIS_CASCADE_RECOVERY", "true"
         ).lower() == "true"
 
+        # v95.3: Global shutdown completion flag (prevents post-shutdown recovery)
+        # This flag is set when shutdown COMPLETES and stays True forever
+        # Unlike _shutdown_event which signals "shutdown in progress", this
+        # signals "shutdown is DONE, do NOT try to recover anything"
+        self._shutdown_completed = False
+        self._shutdown_completed_timestamp: Optional[float] = None
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -3866,8 +3873,17 @@ echo "=== JARVIS Prime started ==="
         is_docker_service = managed.pid is None and managed.port is not None
 
         try:
-            while not self._shutdown_event.is_set():
+            # v95.3: Check both shutdown event AND completion flag
+            while not self._shutdown_event.is_set() and not self._shutdown_completed:
                 await asyncio.sleep(self.config.health_check_interval)
+
+                # v95.3: Re-check shutdown state after sleep
+                if self._shutdown_event.is_set() or self._shutdown_completed:
+                    logger.debug(
+                        f"[v95.3] Health monitor for {managed.definition.name} exiting: "
+                        f"shutdown detected after sleep"
+                    )
+                    return
 
                 # v93.8: For Docker services, skip process death detection
                 # Docker containers don't have a local process to monitor
@@ -3891,11 +3907,13 @@ echo "=== JARVIS Prime started ==="
                     # Process died, trigger auto-heal if enabled
                     exit_code = managed.process.returncode if managed.process else "unknown"
 
-                    # v95.0: Check if this is an intentional shutdown (exit code -15 = SIGTERM)
+                    # v95.3: Check if this is an intentional shutdown (exit code -15 = SIGTERM)
                     # During shutdown, processes are killed with SIGTERM, so we shouldn't
                     # log scary warnings or attempt to restart them
+                    # CRITICAL: Also check shutdown_completed to catch post-shutdown kills
                     is_intentional_shutdown = (
                         self._shutdown_event.is_set() or
+                        self._shutdown_completed or  # v95.3: Added completion check
                         exit_code == -15 or  # SIGTERM
                         exit_code == -2      # SIGINT
                     )
@@ -4056,8 +4074,16 @@ echo "=== JARVIS Prime started ==="
         trinity_heartbeat_path = Path.home() / ".jarvis" / "trinity" / "heartbeats" / f"{service_name}.json"
 
         try:
-            while not self._shutdown_event.is_set():
+            # v95.3: Check both shutdown event AND completion flag
+            while not self._shutdown_event.is_set() and not self._shutdown_completed:
                 await asyncio.sleep(heartbeat_interval)
+
+                # v95.3: Re-check shutdown state after sleep
+                if self._shutdown_event.is_set() or self._shutdown_completed:
+                    logger.debug(
+                        f"[v95.3] Heartbeat loop for {service_name} exiting: shutdown detected"
+                    )
+                    break
 
                 # Check if process is still alive
                 process_alive = managed.is_running
@@ -4234,10 +4260,11 @@ echo "=== JARVIS Prime started ==="
         """
         definition = managed.definition
 
-        # v95.0: CRITICAL - Check if shutdown is in progress BEFORE restarting
-        if self._shutdown_event.is_set():
+        # v95.3: CRITICAL - Check ALL shutdown states BEFORE restarting
+        if self._shutdown_event.is_set() or self._shutdown_completed:
             logger.info(
-                f"[v95.0] Skipping restart of {definition.name}: shutdown in progress"
+                f"[v95.3] Skipping restart of {definition.name}: shutdown detected "
+                f"(event={self._shutdown_event.is_set()}, completed={self._shutdown_completed})"
             )
             return False
 
@@ -4424,24 +4451,44 @@ echo "=== JARVIS Prime started ==="
 
     async def _recovery_coordinator_loop(self) -> None:
         """
-        v95.1: Main recovery coordinator loop.
+        v95.3: Main recovery coordinator loop with shutdown completion check.
 
         Performs proactive health checks and initiates recovery when needed.
+
+        CRITICAL (v95.3): Added multiple shutdown state checks to prevent
+        post-shutdown recovery attempts that caused restart loops.
         """
         logger.info("[v95.1] Recovery coordinator loop started")
 
-        while not self._shutdown_event.is_set():
+        while not self._shutdown_event.is_set() and not self._shutdown_completed:
             try:
                 await asyncio.sleep(self._recovery_check_interval)
 
-                if self._shutdown_event.is_set():
+                # v95.3: CRITICAL - Check ALL shutdown states before any recovery action
+                if self._shutdown_event.is_set() or self._shutdown_completed:
+                    logger.info(
+                        "[v95.3] Recovery coordinator exiting: shutdown detected "
+                        f"(event={self._shutdown_event.is_set()}, completed={self._shutdown_completed})"
+                    )
                     break
 
                 # Perform comprehensive service health assessment
                 health_report = await self._assess_service_health()
 
+                # v95.3: Re-check shutdown state after potentially slow health assessment
+                if self._shutdown_event.is_set() or self._shutdown_completed:
+                    logger.debug("[v95.3] Skipping recovery actions: shutdown in progress")
+                    break
+
                 # Handle any services that need recovery
                 for service_name, health_status in health_report.items():
+                    # v95.3: Check shutdown state before EACH recovery attempt
+                    if self._shutdown_event.is_set() or self._shutdown_completed:
+                        logger.debug(
+                            f"[v95.3] Aborting recovery loop for {service_name}: shutdown detected"
+                        )
+                        break
+
                     if health_status["needs_recovery"]:
                         await self._initiate_intelligent_recovery(
                             service_name,
@@ -4453,19 +4500,29 @@ echo "=== JARVIS Prime started ==="
                 break
             except Exception as e:
                 logger.error(f"[v95.1] Recovery coordinator error: {e}")
-                await asyncio.sleep(5.0)  # Brief pause before retry
+                # v95.3: Check shutdown before sleeping on error
+                if not self._shutdown_event.is_set() and not self._shutdown_completed:
+                    await asyncio.sleep(5.0)  # Brief pause before retry
 
     async def _assess_service_health(self) -> Dict[str, Dict[str, Any]]:
         """
-        v95.1: Comprehensive health assessment for all managed services.
+        v95.3: Comprehensive health assessment for all managed services.
 
         Checks:
         1. Process alive status
         2. Health endpoint responsiveness
         3. Heartbeat recency
         4. Dependency health (transitive)
+
+        CRITICAL (v95.3): Skips assessment if shutdown is in progress
+        to prevent false "needs_recovery" reports during shutdown.
         """
         health_report: Dict[str, Dict[str, Any]] = {}
+
+        # v95.3: Skip health assessment if shutdown is in progress or completed
+        if self._shutdown_event.is_set() or self._shutdown_completed:
+            logger.debug("[v95.3] Skipping health assessment: shutdown in progress")
+            return health_report
 
         for service_name, managed in self.processes.items():
             status = {
@@ -4532,14 +4589,22 @@ echo "=== JARVIS Prime started ==="
         reason: str
     ) -> bool:
         """
-        v95.1: Initiate intelligent recovery for a failed service.
+        v95.3: Initiate intelligent recovery for a failed service.
 
         Handles:
         1. Dependency ordering (restart dependencies first if needed)
         2. Cascade recovery (restart dependents after dependency)
         3. Cross-repo coordination
+
+        CRITICAL (v95.3): Added comprehensive shutdown state checks to prevent
+        recovery attempts after shutdown has started or completed.
         """
-        if self._shutdown_event.is_set():
+        # v95.3: CRITICAL - Check ALL shutdown states before recovery
+        if self._shutdown_event.is_set() or self._shutdown_completed:
+            logger.info(
+                f"[v95.3] Skipping recovery for {service_name}: shutdown detected "
+                f"(event={self._shutdown_event.is_set()}, completed={self._shutdown_completed})"
+            )
             return False
 
         if service_name not in self.processes:
@@ -6011,7 +6076,7 @@ echo "=== JARVIS Prime started ==="
 
     async def shutdown_all_services(self) -> None:
         """
-        v95.1: Gracefully shutdown all managed services with proper ordering.
+        v95.3: Gracefully shutdown all managed services with proper ordering.
 
         Enhanced with:
         - REVERSE DEPENDENCY ORDER: Services shutdown in reverse startup order
@@ -6020,8 +6085,15 @@ echo "=== JARVIS Prime started ==="
         - HTTP session cleanup with error handling
         - Startup coordination cleanup
         - Timeout protection per service
+        - Shutdown completion flag (v95.3) prevents post-shutdown recovery
         """
         logger.info("\n🛑 Shutting down all services...")
+
+        # v95.3: Set shutdown_completed flag EARLY to prevent any new recovery attempts
+        # This is defensive - even if recovery coordinator is slow to stop, it will see this flag
+        self._shutdown_completed = True
+        self._shutdown_completed_timestamp = time.time()
+        logger.info("[v95.3] Shutdown completion flag set - recovery disabled")
 
         # v95.1: Stop recovery coordinator first (prevent restart during shutdown)
         await self.stop_recovery_coordinator()
@@ -6309,6 +6381,70 @@ async def initialize_cross_repo_orchestration() -> None:
 
 
 # =============================================================================
+# v95.3: Global Shutdown State Accessors
+# =============================================================================
+
+def is_orchestrator_shutdown_in_progress() -> bool:
+    """
+    v95.3: Check if the orchestrator's shutdown is in progress.
+
+    This is a cross-component accessor that allows other modules
+    (like OrphanDetector, CoordinatedShutdownManager) to check if
+    the orchestrator is shutting down.
+
+    Returns:
+        True if shutdown is in progress, False otherwise
+    """
+    if _orchestrator is None:
+        return False
+    return _orchestrator._shutdown_event.is_set()
+
+
+def is_orchestrator_shutdown_completed() -> bool:
+    """
+    v95.3: Check if the orchestrator's shutdown has completed.
+
+    This flag is set when shutdown finishes and stays True forever.
+    Use this to prevent post-shutdown recovery attempts.
+
+    Returns:
+        True if shutdown has completed, False otherwise
+    """
+    if _orchestrator is None:
+        return False
+    return _orchestrator._shutdown_completed
+
+
+def get_orchestrator_shutdown_state() -> dict:
+    """
+    v95.3: Get comprehensive shutdown state for debugging and coordination.
+
+    Returns:
+        Dict with shutdown state details:
+        - shutdown_in_progress: bool
+        - shutdown_completed: bool
+        - shutdown_completed_timestamp: float or None
+        - running: bool
+    """
+    if _orchestrator is None:
+        return {
+            "orchestrator_exists": False,
+            "shutdown_in_progress": False,
+            "shutdown_completed": False,
+            "shutdown_completed_timestamp": None,
+            "running": False,
+        }
+
+    return {
+        "orchestrator_exists": True,
+        "shutdown_in_progress": _orchestrator._shutdown_event.is_set(),
+        "shutdown_completed": _orchestrator._shutdown_completed,
+        "shutdown_completed_timestamp": _orchestrator._shutdown_completed_timestamp,
+        "running": _orchestrator._running,
+    }
+
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -6325,4 +6461,8 @@ __all__ = [
     "initialize_cross_repo_orchestration",
     "probe_jarvis_prime",
     "probe_reactor_core",
+    # v95.3: Global shutdown state accessors
+    "is_orchestrator_shutdown_in_progress",
+    "is_orchestrator_shutdown_completed",
+    "get_orchestrator_shutdown_state",
 ]

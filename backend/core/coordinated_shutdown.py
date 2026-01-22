@@ -1219,12 +1219,36 @@ class OrphanProcessDetector:
 
     async def detect_orphans(self) -> List[OrphanProcess]:
         """
-        Detect orphan JARVIS processes.
+        v95.3: Detect orphan JARVIS processes with orchestrator shutdown check.
 
         Returns:
             List of detected orphan processes
+
+        CRITICAL (v95.3): Skips detection if orchestrator shutdown is in progress
+        or completed, as processes may be intentionally terminating.
         """
         self._detected_orphans = []
+
+        # v95.3: Check if orchestrator shutdown is in progress or completed
+        # If so, don't detect orphans - processes are being managed by orchestrator
+        try:
+            from backend.supervisor.cross_repo_startup_orchestrator import (
+                is_orchestrator_shutdown_in_progress,
+                is_orchestrator_shutdown_completed,
+            )
+
+            if is_orchestrator_shutdown_in_progress() or is_orchestrator_shutdown_completed():
+                logger.info(
+                    "[v95.3] OrphanDetector: Skipping detection - orchestrator shutdown "
+                    f"in progress ({is_orchestrator_shutdown_in_progress()}) or "
+                    f"completed ({is_orchestrator_shutdown_completed()})"
+                )
+                return []
+        except ImportError:
+            # Orchestrator module not available - proceed with caution
+            logger.debug("[v95.3] OrphanDetector: Orchestrator module not available")
+        except Exception as e:
+            logger.debug(f"[v95.3] OrphanDetector: Error checking orchestrator state: {e}")
 
         # Method 1: Check PID files for stale PIDs
         await self._check_stale_pid_files()
@@ -1759,7 +1783,7 @@ class OrphanProcessDetector:
         timeout: float = 10.0,
     ) -> Tuple[int, int]:
         """
-        Clean up orphan processes.
+        v95.3: Clean up orphan processes with orchestrator shutdown state check.
 
         Args:
             orphans: List of orphans to clean (detects if None)
@@ -1768,7 +1792,31 @@ class OrphanProcessDetector:
 
         Returns:
             Tuple of (terminated_count, failed_count)
+
+        CRITICAL (v95.3): Checks orchestrator shutdown state to prevent
+        killing processes during orchestrator-managed shutdown.
         """
+        # v95.3: Check if orchestrator shutdown is in progress or completed
+        # If so, the orchestrator is managing process termination - don't interfere
+        try:
+            from backend.supervisor.cross_repo_startup_orchestrator import (
+                is_orchestrator_shutdown_in_progress,
+                is_orchestrator_shutdown_completed,
+            )
+
+            if is_orchestrator_shutdown_in_progress() or is_orchestrator_shutdown_completed():
+                logger.info(
+                    "[v95.3] OrphanDetector: Skipping cleanup - orchestrator shutdown "
+                    f"in progress ({is_orchestrator_shutdown_in_progress()}) or "
+                    f"completed ({is_orchestrator_shutdown_completed()})"
+                )
+                return (0, 0)
+        except ImportError:
+            # Orchestrator module not available - proceed with caution
+            logger.debug("[v95.3] OrphanDetector: Orchestrator module not available")
+        except Exception as e:
+            logger.debug(f"[v95.3] OrphanDetector: Error checking orchestrator state: {e}")
+
         if orphans is None:
             orphans = await self.detect_orphans()
 
