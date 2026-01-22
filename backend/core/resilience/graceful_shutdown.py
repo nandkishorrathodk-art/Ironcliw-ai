@@ -52,10 +52,12 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("GracefulShutdown")
@@ -1412,6 +1414,423 @@ async def register_multiprocessing_shutdown(
 
 
 # =============================================================================
+# v95.13: Global Shutdown Signal - Unified Shutdown Coordination
+# =============================================================================
+
+class GlobalShutdownSignal:
+    """
+    v95.13: Centralized global shutdown signal for all components.
+
+    Problem:
+        Multiple components (WebSocket handlers, background tasks, API servers)
+        have their own internal shutdown events that are not synchronized.
+        When the orchestrator initiates shutdown, these components may continue
+        running, causing post-shutdown activity errors.
+
+    Solution:
+        A single global shutdown signal that:
+        1. Can be checked synchronously or asynchronously
+        2. Supports callback registration for instant notification
+        3. Provides both "in progress" and "completed" states
+        4. Is thread-safe and process-safe (via file-based coordination)
+
+    Usage:
+        # Check if shutdown is happening
+        if is_global_shutdown_initiated():
+            return  # Exit early
+
+        # Register for notification
+        register_shutdown_callback(my_cleanup_function)
+
+        # Wait for shutdown
+        await wait_for_global_shutdown()
+    """
+
+    _instance: Optional["GlobalShutdownSignal"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> "GlobalShutdownSignal":
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
+
+        self._initiated = False
+        self._completed = False
+        self._initiated_at: Optional[float] = None
+        self._completed_at: Optional[float] = None
+        self._reason: Optional[str] = None
+        self._initiator: Optional[str] = None
+
+        # Async event for await support
+        self._async_event: Optional[asyncio.Event] = None
+        self._completed_event: Optional[asyncio.Event] = None
+
+        # Callbacks to notify on shutdown
+        self._callbacks: List[Callable[[], Any]] = []
+        self._async_callbacks: List[Callable[[], Coroutine[Any, Any, None]]] = []
+
+        # Thread-safe lock for state changes
+        self._state_lock = threading.RLock()
+
+        # File-based coordination for cross-process signaling
+        self._signal_file = Path.home() / ".jarvis" / "shutdown_signal.json"
+
+        self._initialized = True
+        logger.debug("[v95.13] GlobalShutdownSignal initialized")
+
+    @property
+    def is_initiated(self) -> bool:
+        """Check if shutdown has been initiated (in progress or completed)."""
+        # Check local state first (fastest)
+        if self._initiated:
+            return True
+
+        # Check file-based signal for cross-process coordination
+        return self._check_file_signal()
+
+    @property
+    def is_completed(self) -> bool:
+        """Check if shutdown has completed."""
+        if self._completed:
+            return True
+        return self._check_file_signal(check_completed=True)
+
+    def _check_file_signal(self, check_completed: bool = False) -> bool:
+        """Check file-based shutdown signal for cross-process coordination."""
+        try:
+            if self._signal_file.exists():
+                content = self._signal_file.read_text()
+                if content:
+                    data = json.loads(content)
+                    # Check age - ignore signals older than 5 minutes (stale)
+                    initiated_at = data.get("initiated_at", 0)
+                    if time.time() - initiated_at > 300:
+                        return False
+
+                    if check_completed:
+                        return data.get("completed", False)
+                    return data.get("initiated", False)
+        except Exception:
+            pass
+        return False
+
+    def _write_signal_file(self) -> None:
+        """Write shutdown signal to file for cross-process coordination."""
+        try:
+            self._signal_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "initiated": self._initiated,
+                "completed": self._completed,
+                "initiated_at": self._initiated_at,
+                "completed_at": self._completed_at,
+                "reason": self._reason,
+                "initiator": self._initiator,
+                "pid": os.getpid(),
+            }
+            self._signal_file.write_text(json.dumps(data))
+        except Exception as e:
+            logger.debug(f"[v95.13] Could not write signal file: {e}")
+
+    def _clear_signal_file(self) -> None:
+        """Clear the shutdown signal file (called on startup)."""
+        try:
+            if self._signal_file.exists():
+                self._signal_file.unlink()
+        except Exception as e:
+            logger.debug(f"[v95.13] Could not clear signal file: {e}")
+
+    def initiate(
+        self,
+        reason: str = "unknown",
+        initiator: Optional[str] = None,
+    ) -> None:
+        """
+        Initiate global shutdown.
+
+        This immediately notifies all registered callbacks and sets the
+        shutdown flag so all components can check it.
+
+        Args:
+            reason: Why shutdown was initiated (user_request, signal, error, etc.)
+            initiator: Identifier of the component that initiated shutdown
+        """
+        with self._state_lock:
+            if self._initiated:
+                logger.debug("[v95.13] Shutdown already initiated, ignoring")
+                return
+
+            self._initiated = True
+            self._initiated_at = time.time()
+            self._reason = reason
+            self._initiator = initiator or f"pid-{os.getpid()}"
+
+            logger.info(
+                f"[v95.13] 🛑 Global shutdown initiated: "
+                f"reason={reason}, initiator={self._initiator}"
+            )
+
+            # Write to file for cross-process coordination
+            self._write_signal_file()
+
+            # Set async event if it exists
+            if self._async_event is not None:
+                self._async_event.set()
+
+            # Execute sync callbacks
+            for callback in self._callbacks:
+                try:
+                    callback()
+                except Exception as e:
+                    logger.warning(f"[v95.13] Shutdown callback error: {e}")
+
+            # Schedule async callbacks if event loop is running
+            try:
+                loop = asyncio.get_running_loop()
+                for async_callback in self._async_callbacks:
+                    loop.create_task(self._run_async_callback(async_callback))
+            except RuntimeError:
+                # No running event loop
+                pass
+
+    async def _run_async_callback(
+        self,
+        callback: Callable[[], Coroutine[Any, Any, None]],
+    ) -> None:
+        """Run an async callback with error handling."""
+        try:
+            await asyncio.wait_for(callback(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"[v95.13] Async shutdown callback timed out")
+        except Exception as e:
+            logger.warning(f"[v95.13] Async shutdown callback error: {e}")
+
+    def complete(self) -> None:
+        """Mark shutdown as completed."""
+        with self._state_lock:
+            self._completed = True
+            self._completed_at = time.time()
+
+            # Write to file for cross-process coordination
+            self._write_signal_file()
+
+            # Set completed event
+            if self._completed_event is not None:
+                self._completed_event.set()
+
+            duration = (self._completed_at - self._initiated_at) if self._initiated_at else 0
+            logger.info(f"[v95.13] ✅ Global shutdown completed (duration: {duration:.2f}s)")
+
+    def reset(self) -> None:
+        """
+        Reset shutdown state (use only during startup to clear stale signals).
+
+        This clears the file-based signal to prevent false positives from
+        previous failed shutdowns.
+        """
+        with self._state_lock:
+            self._initiated = False
+            self._completed = False
+            self._initiated_at = None
+            self._completed_at = None
+            self._reason = None
+            self._initiator = None
+
+            # Reset async events
+            if self._async_event is not None:
+                self._async_event.clear()
+            if self._completed_event is not None:
+                self._completed_event.clear()
+
+            # Clear file signal
+            self._clear_signal_file()
+
+            logger.debug("[v95.13] Global shutdown signal reset")
+
+    def register_callback(self, callback: Callable[[], Any]) -> None:
+        """Register a synchronous callback to be called when shutdown initiates."""
+        self._callbacks.append(callback)
+
+    def register_async_callback(
+        self,
+        callback: Callable[[], Coroutine[Any, Any, None]],
+    ) -> None:
+        """Register an async callback to be called when shutdown initiates."""
+        self._async_callbacks.append(callback)
+
+    async def wait(self, timeout: Optional[float] = None) -> bool:
+        """
+        Wait for shutdown to be initiated.
+
+        Args:
+            timeout: Maximum time to wait (None = forever)
+
+        Returns:
+            True if shutdown was initiated, False if timeout
+        """
+        if self._async_event is None:
+            self._async_event = asyncio.Event()
+            if self._initiated:
+                self._async_event.set()
+
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(self._async_event.wait(), timeout=timeout)
+            else:
+                await self._async_event.wait()
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def wait_for_completion(self, timeout: Optional[float] = None) -> bool:
+        """
+        Wait for shutdown to complete.
+
+        Args:
+            timeout: Maximum time to wait (None = forever)
+
+        Returns:
+            True if shutdown completed, False if timeout
+        """
+        if self._completed_event is None:
+            self._completed_event = asyncio.Event()
+            if self._completed:
+                self._completed_event.set()
+
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(self._completed_event.wait(), timeout=timeout)
+            else:
+                await self._completed_event.wait()
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current shutdown status."""
+        return {
+            "initiated": self._initiated,
+            "completed": self._completed,
+            "initiated_at": self._initiated_at,
+            "completed_at": self._completed_at,
+            "reason": self._reason,
+            "initiator": self._initiator,
+            "callbacks_registered": len(self._callbacks),
+            "async_callbacks_registered": len(self._async_callbacks),
+        }
+
+
+# Global instance
+_global_shutdown: Optional[GlobalShutdownSignal] = None
+
+
+def get_global_shutdown() -> GlobalShutdownSignal:
+    """Get the global shutdown signal instance."""
+    global _global_shutdown
+    if _global_shutdown is None:
+        _global_shutdown = GlobalShutdownSignal()
+    return _global_shutdown
+
+
+def is_global_shutdown_initiated() -> bool:
+    """
+    Check if global shutdown has been initiated.
+
+    This is a fast, synchronous check that can be used anywhere.
+    All components should check this before starting new work.
+
+    Returns:
+        True if shutdown has been initiated
+    """
+    return get_global_shutdown().is_initiated
+
+
+def is_global_shutdown_completed() -> bool:
+    """
+    Check if global shutdown has completed.
+
+    Returns:
+        True if shutdown has completed
+    """
+    return get_global_shutdown().is_completed
+
+
+def initiate_global_shutdown(
+    reason: str = "programmatic",
+    initiator: Optional[str] = None,
+) -> None:
+    """
+    Initiate global shutdown.
+
+    This should be called by the shutdown orchestrator to signal all
+    components that shutdown is happening.
+
+    Args:
+        reason: Why shutdown was initiated
+        initiator: Identifier of component initiating shutdown
+    """
+    get_global_shutdown().initiate(reason=reason, initiator=initiator)
+
+
+def complete_global_shutdown() -> None:
+    """Mark global shutdown as completed."""
+    get_global_shutdown().complete()
+
+
+def reset_global_shutdown() -> None:
+    """
+    Reset global shutdown state.
+
+    Call this during startup to clear any stale shutdown signals
+    from previous runs.
+    """
+    get_global_shutdown().reset()
+
+
+def register_shutdown_callback(callback: Callable[[], Any]) -> None:
+    """
+    Register a callback to be called when shutdown initiates.
+
+    Callbacks should be fast and non-blocking to avoid delaying
+    the shutdown notification process.
+
+    Args:
+        callback: Synchronous function to call on shutdown
+    """
+    get_global_shutdown().register_callback(callback)
+
+
+def register_async_shutdown_callback(
+    callback: Callable[[], Coroutine[Any, Any, None]],
+) -> None:
+    """
+    Register an async callback to be called when shutdown initiates.
+
+    Args:
+        callback: Async function to call on shutdown
+    """
+    get_global_shutdown().register_async_callback(callback)
+
+
+async def wait_for_global_shutdown(timeout: Optional[float] = None) -> bool:
+    """
+    Wait for global shutdown to be initiated.
+
+    Args:
+        timeout: Maximum time to wait (None = forever)
+
+    Returns:
+        True if shutdown was initiated, False if timeout
+    """
+    return await get_global_shutdown().wait(timeout=timeout)
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -1440,4 +1859,15 @@ __all__ = [
     "register_executor_for_cleanup",
     "cleanup_orphaned_semaphores",
     "register_multiprocessing_shutdown",
+    # v95.13: Global shutdown signal
+    "GlobalShutdownSignal",
+    "get_global_shutdown",
+    "is_global_shutdown_initiated",
+    "is_global_shutdown_completed",
+    "initiate_global_shutdown",
+    "complete_global_shutdown",
+    "reset_global_shutdown",
+    "register_shutdown_callback",
+    "register_async_shutdown_callback",
+    "wait_for_global_shutdown",
 ]

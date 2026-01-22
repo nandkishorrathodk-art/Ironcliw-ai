@@ -10533,24 +10533,35 @@ class TrinityUnifiedOrchestrator:
         config = ConfigRegistry()
         timeout = timeout or config.get("TRINITY_REGISTRATION_TIMEOUT", 60.0)
         poll_interval = config.get("TRINITY_REGISTRATION_POLL_INTERVAL", 0.5)
-        require_explicit = config.get("TRINITY_REGISTRATION_REQUIRE_EXPLICIT", True)
-        grace_period = config.get("TRINITY_REGISTRATION_GRACE_PERIOD", 5.0)
+        require_explicit_default = config.get("TRINITY_REGISTRATION_REQUIRE_EXPLICIT", True)
+        grace_period = config.get("TRINITY_REGISTRATION_GRACE_PERIOD", 10.0)  # v95.12: Increased from 5s
         backoff_multiplier = config.get("TRINITY_REGISTRATION_RETRY_BACKOFF", 1.5)
         max_retries = config.get("TRINITY_REGISTRATION_MAX_RETRIES", 10)
 
-        # Component-specific configuration
+        # v95.12: Component-specific configuration with per-component require_explicit
+        # reactor_core uses atomic file locking which can race with supervisor's registry
+        # so we allow grace period fallback for it
         component_config = {
             "jarvis_prime": {
                 "ports": [8000, 8002, 8004, 8005, 8006],
                 "registry_names": ["jarvis_prime", "jarvis-prime", "jprime"],
                 "required_capabilities": ["inference", "api"],
+                "require_explicit": True,  # jarvis-prime should register explicitly
             },
             "reactor_core": {
                 "ports": [8090, 8091, 8092, 8093],
                 "registry_names": ["reactor_core", "reactor-core", "reactor"],
                 "required_capabilities": ["orchestration"],
+                "require_explicit": False,  # v95.12: Allow grace period fallback for reactor
+                "extended_grace_period": 15.0,  # v95.12: Extended grace period for reactor
             },
         }
+
+        # v95.12: Use component-specific require_explicit, fallback to default
+        comp_specific_config = component_config.get(component, {})
+        require_explicit = comp_specific_config.get("require_explicit", require_explicit_default)
+        if "extended_grace_period" in comp_specific_config:
+            grace_period = comp_specific_config["extended_grace_period"]
 
         comp_config = component_config.get(component, {
             "ports": [],
@@ -10632,84 +10643,110 @@ class TrinityUnifiedOrchestrator:
                 # Check service registry for explicit registration
                 registry_confirmed = False
 
-                if registry_file.exists():
-                    try:
-                        content = registry_file.read_text()
-                        registry_data = json.loads(content)
-                        services = registry_data if isinstance(registry_data, dict) else {}
+                # v95.12: Retry registry read with small delays to handle file write latency
+                # This addresses race conditions where reactor-core's atomic write hasn't
+                # completed when we try to read the registry
+                registry_read_attempts = 3
+                registry_read_delay = 0.2  # 200ms between attempts
 
-                        # Check for component under any of its known names
-                        for reg_name in comp_config["registry_names"]:
-                            if reg_name in services:
-                                service_info = services[reg_name]
-                                if isinstance(service_info, dict):
-                                    # Verify service is recent (within last 60s)
-                                    registered_at = service_info.get("registered_at", 0)
-                                    last_heartbeat = service_info.get("last_heartbeat", 0)
-                                    age = time.time() - max(registered_at, last_heartbeat)
+                for read_attempt in range(registry_read_attempts):
+                    if registry_file.exists():
+                        try:
+                            content = registry_file.read_text()
+                            if not content.strip():
+                                # Empty file, wait and retry
+                                if read_attempt < registry_read_attempts - 1:
+                                    await asyncio.sleep(registry_read_delay)
+                                    continue
+                            registry_data = json.loads(content)
+                            services = registry_data if isinstance(registry_data, dict) else {}
+                            break  # Success, exit retry loop
+                        except json.JSONDecodeError as e:
+                            # Partial write, wait and retry
+                            if read_attempt < registry_read_attempts - 1:
+                                logger.debug(f"[Registration] Registry JSON incomplete, retrying ({read_attempt + 1}/{registry_read_attempts})")
+                                await asyncio.sleep(registry_read_delay)
+                                continue
+                            else:
+                                logger.debug(f"[Registration] Registry parse error after retries: {e}")
+                                services = {}
+                        except Exception as e:
+                            logger.debug(f"[Registration] Registry read error: {e}")
+                            services = {}
+                    else:
+                        services = {}
+                        break
+                else:
+                    services = {}
 
-                                    if age <= 60.0:
-                                        # v96.0: Enhanced process identity validation
-                                        # Check if the registered PID still matches the expected process
-                                        process_valid = True
-                                        validation_reason = ""
+                # Check for component under any of its known names
+                for reg_name in comp_config["registry_names"]:
+                    if reg_name in services:
+                        service_info = services[reg_name]
+                        if isinstance(service_info, dict):
+                            # Verify service is recent (within last 60s)
+                            registered_at = service_info.get("registered_at", 0)
+                            last_heartbeat = service_info.get("last_heartbeat", 0)
+                            age = time.time() - max(registered_at, last_heartbeat)
 
-                                        service_pid = service_info.get("pid")
-                                        process_start_time = service_info.get("process_start_time", 0.0)
-                                        process_name = service_info.get("process_name", "")
+                            if age <= 60.0:
+                                # v96.0: Enhanced process identity validation
+                                # Check if the registered PID still matches the expected process
+                                process_valid = True
+                                validation_reason = ""
 
-                                        if service_pid:
-                                            try:
-                                                import psutil
-                                                if psutil.pid_exists(service_pid):
-                                                    proc = psutil.Process(service_pid)
+                                service_pid = service_info.get("pid")
+                                process_start_time = service_info.get("process_start_time", 0.0)
+                                process_name = service_info.get("process_name", "")
 
-                                                    # Validate process start time (PID reuse detection)
-                                                    if process_start_time > 0:
-                                                        actual_start_time = proc.create_time()
-                                                        time_diff = abs(actual_start_time - process_start_time)
-                                                        if time_diff > 2.0:  # Allow 2s tolerance
-                                                            process_valid = False
-                                                            validation_reason = f"PID reused (start time mismatch: {time_diff:.1f}s)"
+                                if service_pid:
+                                    try:
+                                        import psutil
+                                        if psutil.pid_exists(service_pid):
+                                            proc = psutil.Process(service_pid)
 
-                                                    # Validate process name if available
-                                                    if process_valid and process_name:
-                                                        actual_name = proc.name()
-                                                        if process_name != actual_name:
-                                                            process_valid = False
-                                                            validation_reason = f"Process name mismatch: {actual_name} vs {process_name}"
-                                                else:
+                                            # Validate process start time (PID reuse detection)
+                                            if process_start_time > 0:
+                                                actual_start_time = proc.create_time()
+                                                time_diff = abs(actual_start_time - process_start_time)
+                                                if time_diff > 2.0:  # Allow 2s tolerance
                                                     process_valid = False
-                                                    validation_reason = f"PID {service_pid} no longer exists"
-                                            except Exception as e:
-                                                logger.debug(f"[Registration] Process validation error: {e}")
-                                                # Continue without validation on error
+                                                    validation_reason = f"PID reused (start time mismatch: {time_diff:.1f}s)"
 
-                                        if process_valid:
-                                            registry_confirmed = True
-                                            verification_result["phase_2_registry_confirmed"] = True
-                                            verification_result["registered_at"] = time.time()
-                                            verification_result["pid"] = service_pid
-                                            # v96.0: Include port tracking info
-                                            verification_result["port"] = service_info.get("port")
-                                            verification_result["is_fallback_port"] = service_info.get("is_fallback_port", False)
-                                            verification_result["primary_port"] = service_info.get("primary_port", 0)
-
-                                            logger.info(
-                                                f"[Registration] ✅ Phase 2: {component} "
-                                                f"registered in service registry (name: {reg_name})"
-                                            )
-                                            break
+                                            # Validate process name if available
+                                            if process_valid and process_name:
+                                                actual_name = proc.name()
+                                                if process_name != actual_name:
+                                                    process_valid = False
+                                                    validation_reason = f"Process name mismatch: {actual_name} vs {process_name}"
                                         else:
-                                            logger.warning(
-                                                f"[Registration] ⚠️  Phase 2: {component} "
-                                                f"registry entry invalid: {validation_reason}"
-                                            )
-                                            # Don't break - try other registry names
-                    except json.JSONDecodeError as e:
-                        logger.debug(f"[Registration] Registry parse error: {e}")
-                    except Exception as e:
-                        logger.debug(f"[Registration] Registry read error: {e}")
+                                            process_valid = False
+                                            validation_reason = f"PID {service_pid} no longer exists"
+                                    except Exception as e:
+                                        logger.debug(f"[Registration] Process validation error: {e}")
+                                        # Continue without validation on error
+
+                                if process_valid:
+                                    registry_confirmed = True
+                                    verification_result["phase_2_registry_confirmed"] = True
+                                    verification_result["registered_at"] = time.time()
+                                    verification_result["pid"] = service_pid
+                                    # v96.0: Include port tracking info
+                                    verification_result["port"] = service_info.get("port")
+                                    verification_result["is_fallback_port"] = service_info.get("is_fallback_port", False)
+                                    verification_result["primary_port"] = service_info.get("primary_port", 0)
+
+                                    logger.info(
+                                        f"[Registration] ✅ Phase 2: {component} "
+                                        f"registered in service registry (name: {reg_name})"
+                                    )
+                                    break
+                                else:
+                                    logger.warning(
+                                        f"[Registration] ⚠️  Phase 2: {component} "
+                                        f"registry entry invalid: {validation_reason}"
+                                    )
+                                    # Don't break - try other registry names
 
                 # If explicit registration not required, accept HTTP discovery alone
                 # after grace period

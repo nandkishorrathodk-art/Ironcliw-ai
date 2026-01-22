@@ -234,8 +234,28 @@ class UnifiedWebSocketManager:
     async def start_health_monitoring(self):
         """Start intelligent health monitoring"""
         if self.health_monitor_task is None:
+            # v95.13: Register for global shutdown notification
+            self._register_global_shutdown_callback()
+
             self.health_monitor_task = asyncio.create_task(self._health_monitoring_loop())
             logger.info("[UNIFIED-WS] 🏥 Health monitoring started")
+
+    def _register_global_shutdown_callback(self):
+        """v95.13: Register callback for global shutdown notification."""
+        try:
+            from backend.core.resilience.graceful_shutdown import register_async_shutdown_callback
+            register_async_shutdown_callback(self._on_global_shutdown)
+            logger.debug("[UNIFIED-WS] Registered for global shutdown notification")
+        except ImportError:
+            logger.debug("[UNIFIED-WS] Global shutdown not available, using local events only")
+
+    async def _on_global_shutdown(self):
+        """v95.13: Handle global shutdown notification."""
+        logger.info("[UNIFIED-WS] 🛑 Received global shutdown signal")
+        # Set local shutdown event to stop background tasks
+        self._shutdown_event.set()
+        # Trigger graceful shutdown
+        await self.shutdown()
 
     async def stop_health_monitoring(self):
         """Stop health monitoring"""
@@ -341,7 +361,17 @@ class UnifiedWebSocketManager:
         max_run_time = float(os.getenv("TIMEOUT_HEALTH_MONITOR_MAX", "86400.0"))
         start_time = time.time()
 
-        while not self._shutdown_event.is_set():
+        # v95.13: Helper to check both local and global shutdown
+        def _is_shutting_down() -> bool:
+            if self._shutdown_event.is_set():
+                return True
+            try:
+                from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+                return is_global_shutdown_initiated()
+            except ImportError:
+                return False
+
+        while not _is_shutting_down():
             try:
                 # Check if we've exceeded maximum run time
                 if time.time() - start_time > max_run_time:
@@ -920,7 +950,17 @@ class UnifiedWebSocketManager:
         Raises:
             WebSocketDisconnect: If connection is rejected due to shutdown or rate limit
         """
-        # Check if shutting down
+        # v95.13: Check global shutdown signal first (cross-component coordination)
+        try:
+            from backend.core.resilience.graceful_shutdown import is_global_shutdown_initiated
+            if is_global_shutdown_initiated():
+                logger.warning(f"[UNIFIED-WS] Rejecting connection from {client_id} - global shutdown in progress")
+                await websocket.close(code=1001, reason="Server shutting down")
+                raise WebSocketDisconnect(code=1001, reason="Global shutdown in progress")
+        except ImportError:
+            pass  # Graceful shutdown not available, continue with local check
+
+        # Check if local shutting down
         if self._shutdown_event.is_set():
             logger.warning(f"[UNIFIED-WS] Rejecting connection from {client_id} - system is shutting down")
             await websocket.close(code=1001, reason="Server shutting down")

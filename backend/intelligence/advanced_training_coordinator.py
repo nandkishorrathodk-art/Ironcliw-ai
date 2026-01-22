@@ -112,6 +112,13 @@ from backend.intelligence.continuous_learning_orchestrator import (
     ModelType, TrainingJob, TrainingStatus
 )
 
+# v95.13: Import for proper executor cleanup
+try:
+    from backend.core.resilience.graceful_shutdown import register_executor_for_cleanup
+except ImportError:
+    def register_executor_for_cleanup(*args, **kwargs):
+        pass  # Fallback if graceful_shutdown not available
+
 logger = logging.getLogger(__name__)
 
 
@@ -354,6 +361,12 @@ class DataSerializer:
 
         if self._executor is None:
             self._executor = ProcessPoolExecutor(max_workers=self.config.serialization_workers)
+            # v95.13: Register for proper cleanup
+            register_executor_for_cleanup(
+                self._executor,
+                "training_coordinator_process_pool",
+                is_process_pool=True,
+            )
 
         compress_enabled = compress and self.config.compression_enabled
         level = self.config.compression_level
@@ -379,10 +392,18 @@ class DataSerializer:
         json_str = data.decode('utf-8')
         return json.loads(json_str)
 
-    def shutdown(self):
-        """Shutdown the executor."""
+    def shutdown(self, wait: bool = True, timeout: float = 5.0):
+        """
+        Shutdown the executor.
+
+        v95.13: Changed from wait=False to wait=True to prevent semaphore leaks.
+        """
         if self._executor:
-            self._executor.shutdown(wait=False)
+            try:
+                # Use wait=True to properly release semaphores
+                self._executor.shutdown(wait=wait, cancel_futures=True)
+            except Exception as e:
+                logger.warning(f"[v95.13] Executor shutdown error: {e}")
             self._executor = None
 
 

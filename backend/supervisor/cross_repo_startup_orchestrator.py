@@ -10560,6 +10560,14 @@ echo "=== JARVIS Prime started ==="
         sig_name = signal.Signals(signum).name
         logger.info(f"\n🛑 Received {sig_name}, initiating graceful shutdown...")
 
+        # v95.13: Initiate global shutdown signal FIRST
+        # This notifies ALL components (WebSocket handlers, background tasks, etc.)
+        try:
+            from backend.core.resilience.graceful_shutdown import initiate_global_shutdown
+            initiate_global_shutdown(reason=f"signal_{sig_name}", initiator="orchestrator")
+        except Exception as e:
+            logger.warning(f"[v95.13] Could not initiate global shutdown signal: {e}")
+
         # Set shutdown event FIRST (signals other tasks to stop)
         self._shutdown_event.set()
         self._running = False
@@ -11449,6 +11457,13 @@ echo "=== JARVIS Prime started ==="
         self._service_health_cache.clear()
         self._background_tasks.clear()
 
+        # v95.13: Mark global shutdown as completed
+        try:
+            from backend.core.resilience.graceful_shutdown import complete_global_shutdown
+            complete_global_shutdown()
+        except Exception as e:
+            logger.debug(f"[v95.13] Could not complete global shutdown signal: {e}")
+
         logger.info("✅ All services shut down")
         self._running = False
 
@@ -11664,6 +11679,14 @@ async def initialize_cross_repo_orchestration() -> None:
 
     This is called by run_supervisor.py during startup.
     """
+    # v95.13: Reset global shutdown signal from previous runs
+    try:
+        from backend.core.resilience.graceful_shutdown import reset_global_shutdown
+        reset_global_shutdown()
+        logger.debug("[v95.13] Global shutdown signal reset for new startup")
+    except Exception as e:
+        logger.warning(f"[v95.13] Could not reset global shutdown signal: {e}")
+
     try:
         orchestrator = get_orchestrator()
         results = await orchestrator.start_all_services()
