@@ -867,7 +867,7 @@ class ServiceDefinition:
 
 class IntelligentRepoDiscovery:
     """
-    v95.6: Dynamic, cross-platform repository discovery system.
+    v95.8: Enterprise-Grade Dynamic Repository Discovery System.
 
     Eliminates hardcoded paths by intelligently searching for repositories
     across multiple locations with case-insensitive matching.
@@ -883,6 +883,14 @@ class IntelligentRepoDiscovery:
     - Persistent cache with TTL
     - Signature-based repo verification (checks for expected files)
 
+    v95.8 Enhancements:
+    - __file__-based absolute path resolution (Issue 6)
+    - Network drive/mount point resilience with timeouts (Issue 7)
+    - Comprehensive permission validation (Issue 8)
+    - Working directory independence
+    - Async path accessibility checks
+    - Intelligent retry with exponential backoff
+
     Discovery Priority (highest to lowest):
     1. Environment variable (e.g., JARVIS_PRIME_PATH)
     2. Running process detection (find where it's already running)
@@ -890,6 +898,30 @@ class IntelligentRepoDiscovery:
     4. Common development directories
     5. User-provided hints in config file
     """
+
+    # ==========================================================================
+    # v95.8: Path Resolution Configuration
+    # ==========================================================================
+
+    # Network/mount path detection patterns
+    _NETWORK_PATH_PATTERNS: List[str] = [
+        "/mnt/",           # Linux mount points
+        "/media/",         # Linux media mounts
+        "/Volumes/",       # macOS volumes
+        "/net/",           # NFS mounts
+        "/nfs/",           # NFS mounts
+        "//",              # UNC paths (Windows)
+        "\\\\",            # UNC paths (Windows backslash)
+        "/run/user/",      # User runtime mounts
+        "/tmp/.mount_",    # AppImage mounts
+    ]
+
+    # Timeout configurations (in seconds)
+    _PATH_ACCESS_TIMEOUT: float = 5.0       # Single path access timeout
+    _NETWORK_PATH_TIMEOUT: float = 10.0     # Network path access timeout
+    _DISCOVERY_TIMEOUT: float = 30.0        # Total discovery timeout
+    _RETRY_MAX_ATTEMPTS: int = 3            # Max retry attempts for network paths
+    _RETRY_BASE_DELAY: float = 0.5          # Base delay for exponential backoff
 
     # Common development directory patterns (cross-platform)
     _COMMON_DEV_DIRS: List[str] = [
@@ -989,44 +1021,605 @@ class IntelligentRepoDiscovery:
         self._initialized = True
         self._discovery_lock = asyncio.Lock() if asyncio.get_event_loop().is_running() else None
         self._user = os.environ.get("USER", os.environ.get("USERNAME", "user"))
-        logger.info("[v95.6] IntelligentRepoDiscovery initialized")
 
-    def _get_search_directories(self) -> List[Path]:
+        # v95.8: Compute absolute base paths using __file__ (Issue 6)
+        # This ensures paths work regardless of current working directory
+        self._module_path: Path = Path(__file__).resolve()
+        self._module_dir: Path = self._module_path.parent  # backend/supervisor
+        self._backend_dir: Path = self._module_dir.parent  # backend
+        self._jarvis_root: Path = self._backend_dir.parent  # JARVIS-AI-Agent
+        self._repos_parent: Path = self._jarvis_root.parent  # Parent containing sibling repos
+
+        # v95.8: Track network path accessibility results
+        self._network_path_status: Dict[str, Tuple[bool, float]] = {}  # path -> (accessible, check_time)
+
+        # v95.8: Permission check results cache
+        self._permission_cache: Dict[str, Tuple[Dict[str, bool], float]] = {}  # path -> ({perms}, check_time)
+        self._permission_cache_ttl: float = 60.0  # 1 minute TTL for permission cache
+
+        logger.info(
+            f"[v95.8] IntelligentRepoDiscovery initialized:\n"
+            f"  Module path: {self._module_path}\n"
+            f"  JARVIS root: {self._jarvis_root}\n"
+            f"  Repos parent: {self._repos_parent}"
+        )
+
+    # ==========================================================================
+    # v95.8: Issue 6 - Absolute Path Resolution Engine
+    # ==========================================================================
+
+    def _resolve_to_absolute(self, path: Union[str, Path]) -> Path:
         """
-        v95.6: Get all directories to search for repositories.
+        v95.8: Resolve any path to absolute, handling all edge cases.
 
-        Returns platform-appropriate paths with user substitution.
+        This ensures paths work regardless of:
+        - Current working directory
+        - Relative path references
+        - Symlinks
+        - Home directory expansion
+
+        Args:
+            path: Path string or Path object (can be relative or absolute)
+
+        Returns:
+            Absolute resolved Path
         """
-        search_dirs = []
-        home = Path.home()
+        if isinstance(path, str):
+            path_str = path
 
-        for pattern in self._COMMON_DEV_DIRS:
-            # Substitute user placeholder
-            path_str = pattern.replace("{user}", self._user)
-
-            # Expand ~ to home directory
+            # Handle ~ expansion
             if path_str.startswith("~"):
-                path = home / path_str[2:]
+                path = Path(path_str).expanduser()
+            # Handle relative paths - resolve from JARVIS root, not cwd
+            elif not path_str.startswith("/") and not (len(path_str) > 1 and path_str[1] == ":"):
+                # This is a relative path - resolve from jarvis root
+                path = self._jarvis_root / path_str
             else:
                 path = Path(path_str)
+        else:
+            # Path object
+            if not path.is_absolute():
+                # Relative Path - resolve from jarvis root
+                path = self._jarvis_root / path
 
-            # Only add if directory exists
+        # Final resolution: resolve symlinks and normalize
+        try:
+            return path.resolve()
+        except (OSError, RuntimeError) as e:
+            logger.debug(f"[v95.8] Cannot fully resolve {path}: {e}, using as-is")
+            return path.absolute()
+
+    def _get_canonical_jarvis_root(self) -> Path:
+        """
+        v95.8: Get the canonical JARVIS root directory.
+
+        Uses __file__ to ensure correctness regardless of cwd.
+
+        Returns:
+            Absolute path to JARVIS-AI-Agent root
+        """
+        return self._jarvis_root
+
+    def _get_sibling_repo_path(self, repo_name: str) -> Optional[Path]:
+        """
+        v95.8: Get path to a sibling repository (same parent directory).
+
+        This is the most reliable way to find jarvis-prime and reactor-core
+        when they're in the same parent directory as JARVIS-AI-Agent.
+
+        Args:
+            repo_name: Name of the sibling repo
+
+        Returns:
+            Absolute path if found, None otherwise
+        """
+        variants = self._get_name_variants(repo_name)
+
+        for variant in variants:
+            candidate = self._repos_parent / variant
             try:
-                if path.exists() and path.is_dir():
-                    search_dirs.append(path)
-            except (PermissionError, OSError):
+                if candidate.exists() and candidate.is_dir():
+                    if self._validate_repo_signature(candidate, repo_name):
+                        logger.debug(f"[v95.8] Found sibling repo: {candidate}")
+                        return candidate.resolve()
+            except (PermissionError, OSError) as e:
+                logger.debug(f"[v95.8] Cannot access sibling {candidate}: {e}")
                 continue
 
-        # Add parent of current JARVIS repo (sibling repos)
+        return None
+
+    # ==========================================================================
+    # v95.8: Issue 7 - Network Drive/Mount Point Resilience
+    # ==========================================================================
+
+    def _is_network_path(self, path: Path) -> bool:
+        """
+        v95.8: Detect if a path is on a network drive or mount point.
+
+        Network paths need special handling (timeouts, retries) because they
+        may be slow or transiently unavailable.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if path appears to be on network/mount
+        """
+        path_str = str(path)
+
+        # Check against known network path patterns
+        for pattern in self._NETWORK_PATH_PATTERNS:
+            if pattern in path_str:
+                return True
+
+        # Additional checks for mounted filesystems
         try:
-            current_repo = Path(__file__).resolve().parents[2]  # backend/supervisor -> JARVIS root
-            parent = current_repo.parent
-            if parent.exists():
-                search_dirs.insert(0, parent)  # Highest priority after env var
+            # On Unix, check if the path's device differs from home
+            if hasattr(os, 'stat'):
+                path_stat = os.stat(path) if path.exists() else None
+                home_stat = os.stat(Path.home())
+
+                if path_stat and path_stat.st_dev != home_stat.st_dev:
+                    # Different device - likely a mount point
+                    return True
+        except (OSError, PermissionError):
+            pass
+
+        return False
+
+    async def _check_path_accessible_async(
+        self,
+        path: Path,
+        timeout: Optional[float] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        v95.8: Async check if a path is accessible with timeout.
+
+        Handles network drives and slow filesystems gracefully.
+
+        Args:
+            path: Path to check
+            timeout: Timeout in seconds (auto-detected based on path type)
+
+        Returns:
+            Tuple of (accessible, error_message)
+        """
+        if timeout is None:
+            timeout = self._NETWORK_PATH_TIMEOUT if self._is_network_path(path) else self._PATH_ACCESS_TIMEOUT
+
+        def _sync_check() -> Tuple[bool, Optional[str]]:
+            """Synchronous path check (runs in thread pool)."""
+            try:
+                if not path.exists():
+                    return False, f"Path does not exist: {path}"
+
+                if not path.is_dir():
+                    return False, f"Path is not a directory: {path}"
+
+                # Try to list directory (confirms read access)
+                try:
+                    next(path.iterdir(), None)
+                except StopIteration:
+                    pass  # Empty directory is fine
+
+                return True, None
+
+            except PermissionError as e:
+                return False, f"Permission denied: {path} - {e}"
+            except OSError as e:
+                # Catches network timeouts, stale mounts, etc.
+                return False, f"OS error accessing {path}: {e}"
+            except Exception as e:
+                return False, f"Unexpected error accessing {path}: {e}"
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, _sync_check),
+                timeout=timeout
+            )
+            return result
+        except asyncio.TimeoutError:
+            error_msg = f"Timeout ({timeout}s) accessing path: {path}"
+            if self._is_network_path(path):
+                error_msg += " (network/mount path detected)"
+            logger.warning(f"[v95.8] {error_msg}")
+            return False, error_msg
+        except Exception as e:
+            return False, f"Failed to check path {path}: {e}"
+
+    async def _check_path_with_retry(
+        self,
+        path: Path,
+        max_attempts: Optional[int] = None,
+        base_delay: Optional[float] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        v95.8: Check path accessibility with exponential backoff retry.
+
+        Handles transient network issues gracefully.
+
+        Args:
+            path: Path to check
+            max_attempts: Maximum retry attempts
+            base_delay: Base delay for exponential backoff
+
+        Returns:
+            Tuple of (accessible, error_message)
+        """
+        max_attempts = max_attempts or self._RETRY_MAX_ATTEMPTS
+        base_delay = base_delay or self._RETRY_BASE_DELAY
+
+        last_error: Optional[str] = None
+
+        for attempt in range(max_attempts):
+            accessible, error = await self._check_path_accessible_async(path)
+
+            if accessible:
+                if attempt > 0:
+                    logger.info(f"[v95.8] Path {path} accessible after {attempt + 1} attempts")
+                return True, None
+
+            last_error = error
+
+            # Don't retry for permission errors (won't change)
+            if error and "Permission denied" in error:
+                return False, error
+
+            # Don't retry for non-existent paths
+            if error and "does not exist" in error:
+                return False, error
+
+            # Retry with exponential backoff for transient errors
+            if attempt < max_attempts - 1:
+                delay = base_delay * (2 ** attempt)
+                # Add jitter to prevent thundering herd
+                jitter = delay * 0.1 * (0.5 - time.time() % 1)
+                delay = max(0.1, delay + jitter)
+
+                logger.debug(
+                    f"[v95.8] Path {path} access failed (attempt {attempt + 1}/{max_attempts}), "
+                    f"retrying in {delay:.2f}s: {error}"
+                )
+                await asyncio.sleep(delay)
+
+        return False, f"Failed after {max_attempts} attempts: {last_error}"
+
+    def _check_path_accessible_sync(self, path: Path, timeout: float = 5.0) -> Tuple[bool, Optional[str]]:
+        """
+        v95.8: Synchronous path accessibility check with timeout.
+
+        For use in non-async contexts.
+
+        Args:
+            path: Path to check
+            timeout: Timeout in seconds
+
+        Returns:
+            Tuple of (accessible, error_message)
+        """
+        import concurrent.futures
+
+        def _check() -> Tuple[bool, Optional[str]]:
+            try:
+                if not path.exists():
+                    return False, f"Path does not exist: {path}"
+                if not path.is_dir():
+                    return False, f"Path is not a directory: {path}"
+                # Try to list (confirms access)
+                next(path.iterdir(), None)
+                return True, None
+            except PermissionError as e:
+                return False, f"Permission denied: {e}"
+            except OSError as e:
+                return False, f"OS error: {e}"
+            except Exception as e:
+                return False, f"Error: {e}"
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_check)
+                return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            return False, f"Timeout ({timeout}s) accessing path"
+        except Exception as e:
+            return False, f"Check failed: {e}"
+
+    # ==========================================================================
+    # v95.8: Issue 8 - Comprehensive Permission Validation
+    # ==========================================================================
+
+    def _check_permissions(self, path: Path) -> Dict[str, bool]:
+        """
+        v95.8: Comprehensive permission check for a path.
+
+        Checks read, write, and execute permissions with clear results.
+
+        Args:
+            path: Path to check permissions for
+
+        Returns:
+            Dict with permission results: {
+                'exists': bool,
+                'readable': bool,
+                'writable': bool,
+                'executable': bool,
+                'listable': bool,  # Can list directory contents
+                'is_dir': bool,
+                'is_file': bool,
+                'is_symlink': bool,
+                'owner_match': bool,  # True if current user owns the path
+            }
+        """
+        result = {
+            'exists': False,
+            'readable': False,
+            'writable': False,
+            'executable': False,
+            'listable': False,
+            'is_dir': False,
+            'is_file': False,
+            'is_symlink': False,
+            'owner_match': False,
+        }
+
+        try:
+            # Check existence first
+            result['exists'] = path.exists()
+            if not result['exists']:
+                return result
+
+            # Basic type checks
+            result['is_dir'] = path.is_dir()
+            result['is_file'] = path.is_file()
+            result['is_symlink'] = path.is_symlink()
+
+            # Permission checks using os.access
+            result['readable'] = os.access(path, os.R_OK)
+            result['writable'] = os.access(path, os.W_OK)
+            result['executable'] = os.access(path, os.X_OK)
+
+            # For directories, check if we can list contents
+            if result['is_dir']:
+                try:
+                    next(path.iterdir(), None)
+                    result['listable'] = True
+                except (PermissionError, OSError):
+                    result['listable'] = False
+
+            # Check ownership
+            try:
+                stat_info = path.stat()
+                result['owner_match'] = stat_info.st_uid == os.getuid()
+            except (OSError, AttributeError):
+                pass  # os.getuid() not available on Windows
+
+        except PermissionError:
+            # Can't even stat the path
+            result['exists'] = True  # We know it exists if we got PermissionError
+        except OSError as e:
+            logger.debug(f"[v95.8] Permission check error for {path}: {e}")
+
+        return result
+
+    def _validate_repo_permissions(
+        self,
+        path: Path,
+        require_write: bool = False,
+    ) -> Tuple[bool, List[str]]:
+        """
+        v95.8: Validate that a repository path has required permissions.
+
+        Args:
+            path: Repository path to validate
+            require_write: Whether write permission is required
+
+        Returns:
+            Tuple of (valid, list_of_issues)
+        """
+        issues: List[str] = []
+        perms = self._check_permissions(path)
+
+        if not perms['exists']:
+            issues.append(f"Repository path does not exist: {path}")
+            return False, issues
+
+        if not perms['is_dir']:
+            issues.append(f"Repository path is not a directory: {path}")
+            return False, issues
+
+        if not perms['readable']:
+            issues.append(f"No read permission for repository: {path}")
+
+        if not perms['listable']:
+            issues.append(f"Cannot list directory contents: {path}")
+
+        if not perms['executable']:
+            issues.append(f"No execute permission (cannot cd into): {path}")
+
+        if require_write and not perms['writable']:
+            issues.append(f"No write permission for repository: {path}")
+
+        # Check key subdirectories and scripts
+        if perms['listable']:
+            # Check if we can read the main script
+            for script_name in ['run_server.py', 'run_reactor.py', 'run_supervisor.py', 'main.py']:
+                script_path = path / script_name
+                if script_path.exists():
+                    script_perms = self._check_permissions(script_path)
+                    if not script_perms['readable']:
+                        issues.append(f"Cannot read script {script_name}: no read permission")
+                    break
+
+        return len(issues) == 0, issues
+
+    def _get_permission_error_hints(self, path: Path, perms: Dict[str, bool]) -> List[str]:
+        """
+        v95.8: Generate helpful hints for permission issues.
+
+        Args:
+            path: Path with permission issues
+            perms: Permission check results
+
+        Returns:
+            List of helpful hint strings
+        """
+        hints: List[str] = []
+
+        if not perms['exists']:
+            hints.append(f"Ensure the path exists: mkdir -p {path}")
+            return hints
+
+        if not perms['readable'] or not perms['listable']:
+            hints.append(f"Fix read permissions: chmod +r {path}")
+            if perms['is_dir']:
+                hints.append(f"Or recursively: chmod -R +r {path}")
+
+        if not perms['executable'] and perms['is_dir']:
+            hints.append(f"Fix execute permission (for directory access): chmod +x {path}")
+
+        if not perms['owner_match']:
+            hints.append(f"You don't own this path. Consider: sudo chown -R $USER {path}")
+
+        # Check if path is on a read-only filesystem
+        try:
+            if path.exists():
+                parent = path.parent
+                test_file = parent / f".jarvis_perm_test_{os.getpid()}"
+                try:
+                    test_file.touch()
+                    test_file.unlink()
+                except (PermissionError, OSError):
+                    hints.append("Parent directory may be read-only or on a read-only filesystem")
         except Exception:
             pass
 
+        return hints
+
+    def _get_search_directories(self) -> List[Path]:
+        """
+        v95.8: Get all directories to search for repositories.
+
+        Enhanced with:
+        - __file__-based resolution (works from any cwd)
+        - Permission validation
+        - Network path detection
+        - Prioritized ordering
+
+        Returns platform-appropriate paths with user substitution.
+        """
+        search_dirs: List[Path] = []
+        seen_paths: Set[Path] = set()  # Avoid duplicates after resolution
+        home = Path.home()
+
+        def add_if_valid(path: Path, priority: int = 0) -> None:
+            """Add path if valid and not already seen."""
+            try:
+                # Resolve to canonical absolute path
+                resolved = self._resolve_to_absolute(path)
+                if resolved in seen_paths:
+                    return
+                seen_paths.add(resolved)
+
+                # Quick permission check (sync, with timeout for network paths)
+                is_network = self._is_network_path(resolved)
+                timeout = 3.0 if is_network else 1.0
+
+                accessible, error = self._check_path_accessible_sync(resolved, timeout=timeout)
+
+                if accessible:
+                    if priority == 0:
+                        search_dirs.insert(0, resolved)  # High priority
+                    else:
+                        search_dirs.append(resolved)
+
+                    if is_network:
+                        logger.debug(f"[v95.8] Added network path to search: {resolved}")
+                else:
+                    logger.debug(f"[v95.8] Skipping inaccessible path: {resolved} - {error}")
+
+            except Exception as e:
+                logger.debug(f"[v95.8] Error adding search path {path}: {e}")
+
+        # Priority 1: Parent of current JARVIS repo (sibling repos - most reliable)
+        # Uses __file__ so works regardless of cwd
+        try:
+            add_if_valid(self._repos_parent, priority=0)
+        except Exception as e:
+            logger.debug(f"[v95.8] Cannot add repos parent: {e}")
+
+        # Priority 2: JARVIS root itself (for self-discovery)
+        try:
+            add_if_valid(self._jarvis_root, priority=0)
+        except Exception as e:
+            logger.debug(f"[v95.8] Cannot add JARVIS root: {e}")
+
+        # Priority 3: Common development directories
+        for pattern in self._COMMON_DEV_DIRS:
+            try:
+                # Substitute user placeholder
+                path_str = pattern.replace("{user}", self._user)
+
+                # Expand ~ to home directory
+                if path_str.startswith("~"):
+                    path = home / path_str[2:]
+                else:
+                    path = Path(path_str)
+
+                add_if_valid(path, priority=1)
+
+            except Exception as e:
+                logger.debug(f"[v95.8] Error processing pattern {pattern}: {e}")
+                continue
+
+        # Priority 4: Current working directory (user might be there)
+        try:
+            cwd = Path.cwd()
+            add_if_valid(cwd, priority=1)
+            # Also check cwd's parent (common for sibling repos)
+            add_if_valid(cwd.parent, priority=1)
+        except Exception:
+            pass
+
+        # Priority 5: Paths from config file (if exists)
+        config_paths = self._load_config_paths()
+        for config_path in config_paths:
+            try:
+                add_if_valid(Path(config_path), priority=1)
+            except Exception:
+                pass
+
+        logger.debug(f"[v95.8] Search directories ({len(search_dirs)} total): {[str(p) for p in search_dirs[:5]]}...")
         return search_dirs
+
+    def _load_config_paths(self) -> List[str]:
+        """
+        v95.8: Load additional search paths from config file.
+
+        Looks for ~/.jarvis/discovery_paths.json or similar.
+
+        Returns:
+            List of additional paths to search
+        """
+        config_locations = [
+            Path.home() / ".jarvis" / "discovery_paths.json",
+            Path.home() / ".config" / "jarvis" / "discovery_paths.json",
+            self._jarvis_root / ".discovery_paths.json",
+        ]
+
+        for config_path in config_locations:
+            try:
+                if config_path.exists():
+                    with open(config_path, 'r') as f:
+                        data = json.load(f)
+                        if isinstance(data, dict) and "search_paths" in data:
+                            return data["search_paths"]
+                        elif isinstance(data, list):
+                            return data
+            except Exception as e:
+                logger.debug(f"[v95.8] Could not load config from {config_path}: {e}")
+
+        return []
 
     def _get_name_variants(self, service_name: str) -> List[str]:
         """
@@ -1046,31 +1639,118 @@ class IntelligentRepoDiscovery:
 
         return list(all_variants)
 
-    def _validate_repo_signature(self, path: Path, service_name: str) -> bool:
+    def _validate_repo_signature(
+        self,
+        path: Path,
+        service_name: str,
+        check_permissions: bool = True,
+    ) -> bool:
         """
-        v95.6: Validate that a directory is the expected repository.
+        v95.8: Validate that a directory is the expected repository.
 
-        Checks for signature files/directories that confirm identity.
+        Enhanced with:
+        - Signature file/directory checking
+        - Permission validation (Issue 8)
+        - Detailed logging for debugging
+
+        Args:
+            path: Path to validate
+            service_name: Service name for signature lookup
+            check_permissions: Whether to validate permissions
+
+        Returns:
+            True if path is valid repository
         """
         signatures = self._REPO_SIGNATURES.get(service_name, [])
+
+        # First, check permissions (Issue 8)
+        if check_permissions:
+            perms = self._check_permissions(path)
+
+            if not perms['exists']:
+                logger.debug(f"[v95.8] Signature check failed - path doesn't exist: {path}")
+                return False
+
+            if not perms['readable'] or not perms['listable']:
+                logger.warning(
+                    f"[v95.8] Permission issue with {path}:\n"
+                    f"  readable={perms['readable']}, listable={perms['listable']}"
+                )
+                # Generate hints
+                hints = self._get_permission_error_hints(path, perms)
+                for hint in hints:
+                    logger.warning(f"  💡 {hint}")
+                return False
+
         if not signatures:
             return True  # No signatures defined, accept any match
 
         # Require at least 50% of signatures to match
         matches = 0
+        checked = []
+
         for sig in signatures:
             check_path = path / sig
-            if check_path.exists():
-                matches += 1
+            try:
+                exists = check_path.exists()
+                checked.append((sig, exists))
+                if exists:
+                    # Also verify we can access it
+                    if check_path.is_file():
+                        # Check file is readable
+                        if os.access(check_path, os.R_OK):
+                            matches += 1
+                        else:
+                            logger.debug(f"[v95.8] Signature {sig} exists but not readable")
+                    elif check_path.is_dir():
+                        # Check directory is listable
+                        try:
+                            next(check_path.iterdir(), None)
+                            matches += 1
+                        except (PermissionError, OSError):
+                            logger.debug(f"[v95.8] Signature dir {sig} exists but not listable")
+                    else:
+                        matches += 1  # Symlink or other - count it
+            except (PermissionError, OSError) as e:
+                logger.debug(f"[v95.8] Cannot check signature {sig}: {e}")
+                checked.append((sig, False))
 
-        return matches >= len(signatures) * 0.5
+        threshold = len(signatures) * 0.5
+        valid = matches >= threshold
+
+        if not valid and matches > 0:
+            logger.debug(
+                f"[v95.8] Signature check failed for {service_name} at {path}: "
+                f"{matches}/{len(signatures)} signatures (need {threshold}). "
+                f"Checked: {checked}"
+            )
+
+        return valid
 
     def _is_git_repo(self, path: Path) -> bool:
         """
-        v95.6: Check if a directory is a git repository.
+        v95.8: Check if a directory is a git repository.
+
+        Enhanced with permission handling.
         """
-        git_dir = path / ".git"
-        return git_dir.exists() and (git_dir.is_dir() or git_dir.is_file())
+        try:
+            git_dir = path / ".git"
+            if not git_dir.exists():
+                return False
+
+            # Check if we can access .git
+            if git_dir.is_dir():
+                # Try to access HEAD to confirm it's a valid git repo
+                head = git_dir / "HEAD"
+                return head.exists() and os.access(head, os.R_OK)
+            elif git_dir.is_file():
+                # Worktree reference file
+                return os.access(git_dir, os.R_OK)
+
+            return False
+        except (PermissionError, OSError) as e:
+            logger.debug(f"[v95.8] Cannot check git repo at {path}: {e}")
+            return False
 
     async def discover_repo(
         self,
@@ -1079,7 +1759,13 @@ class IntelligentRepoDiscovery:
         force_refresh: bool = False,
     ) -> Optional[Path]:
         """
-        v95.6: Discover repository path with intelligent multi-strategy search.
+        v95.8: Discover repository path with intelligent multi-strategy search.
+
+        Enhanced with:
+        - __file__-based sibling repo detection (Issue 6)
+        - Network drive resilience with timeouts (Issue 7)
+        - Comprehensive permission validation (Issue 8)
+        - Async path accessibility checks
 
         Args:
             service_name: Name of the service (e.g., "jarvis-prime")
@@ -1095,21 +1781,52 @@ class IntelligentRepoDiscovery:
         if not force_refresh and cache_key in self._discovery_cache:
             cached_path, cache_time = self._discovery_cache[cache_key]
             if time.time() - cache_time < self._cache_ttl:
-                logger.debug(f"[v95.6] Using cached path for {service_name}: {cached_path}")
+                logger.debug(f"[v95.8] Using cached path for {service_name}: {cached_path}")
                 return cached_path
+
+        discovery_start = time.time()
+        logger.info(f"[v95.8] Starting discovery for {service_name}...")
 
         # Strategy 1: Environment variable (highest priority)
         if env_var:
             env_path = os.environ.get(env_var)
             if env_path:
-                path = Path(env_path).expanduser().resolve()
-                if path.exists() and path.is_dir():
+                # v95.8: Use absolute resolution
+                path = self._resolve_to_absolute(env_path)
+
+                # v95.8: Check accessibility with network resilience
+                is_network = self._is_network_path(path)
+                if is_network:
+                    logger.debug(f"[v95.8] Env path appears to be network path: {path}")
+                    accessible, error = await self._check_path_with_retry(path)
+                else:
+                    accessible, error = await self._check_path_accessible_async(path)
+
+                if accessible:
                     if self._validate_repo_signature(path, service_name):
-                        logger.info(f"[v95.6] Found {service_name} via env var {env_var}: {path}")
+                        logger.info(f"[v95.8] Found {service_name} via env var {env_var}: {path}")
                         self._discovery_cache[cache_key] = (path, time.time())
                         return path
                     else:
-                        logger.warning(f"[v95.6] Path from {env_var} exists but signature mismatch: {path}")
+                        logger.warning(f"[v95.8] Path from {env_var} exists but signature mismatch: {path}")
+                else:
+                    logger.warning(f"[v95.8] Path from {env_var} not accessible: {error}")
+                    # v95.8: Provide hints for common issues
+                    perms = self._check_permissions(path)
+                    hints = self._get_permission_error_hints(path, perms)
+                    for hint in hints:
+                        logger.info(f"  💡 {hint}")
+
+        # Strategy 2: Sibling repo detection using __file__ (v95.8 - most reliable)
+        # This works regardless of current working directory
+        sibling_path = self._get_sibling_repo_path(service_name)
+        if sibling_path:
+            # Verify accessibility
+            accessible, error = await self._check_path_accessible_async(sibling_path)
+            if accessible and self._validate_repo_signature(sibling_path, service_name):
+                logger.info(f"[v95.8] Found {service_name} as sibling repo: {sibling_path}")
+                self._discovery_cache[cache_key] = (sibling_path, time.time())
+                return sibling_path
 
         # Strategy 2: Search common development directories
         search_dirs = self._get_search_directories()
@@ -1208,13 +1925,28 @@ class IntelligentRepoDiscovery:
             self._discovery_cache[cache_key] = (resolved, time.time())
             return resolved
 
-        # Strategy 3: Try to find via running processes
+        # Strategy 4: Try to find via running processes
         discovered_path = await self._find_via_running_process(service_name)
         if discovered_path:
             self._discovery_cache[cache_key] = (discovered_path, time.time())
             return discovered_path
 
-        logger.warning(f"[v95.6] Could not discover repository for {service_name}")
+        # v95.8: Enhanced failure reporting
+        discovery_duration = time.time() - discovery_start
+        logger.warning(
+            f"[v95.8] Could not discover repository for {service_name} "
+            f"(searched {len(search_dirs)} directories in {discovery_duration:.2f}s)"
+        )
+
+        # Provide actionable suggestions
+        env_var_name = env_var or f"{service_name.upper().replace('-', '_')}_PATH"
+        logger.info(
+            f"  💡 To fix: Set {env_var_name} environment variable to the repo path\n"
+            f"     Example: export {env_var_name}=/path/to/{service_name}\n"
+            f"  💡 Or ensure the repository is in one of these locations:\n"
+            f"     {[str(p) for p in search_dirs[:3]]}"
+        )
+
         self._discovery_cache[cache_key] = (None, time.time())
         return None
 
@@ -1551,16 +2283,21 @@ class ServiceDefinitionRegistry:
     @classmethod
     def _sync_discover_repo(cls, service_name: str) -> Optional[Path]:
         """
-        v95.7: Enhanced synchronous repo discovery with symlink resolution.
+        v95.8: Enterprise-grade synchronous repo discovery.
 
         This is a comprehensive synchronous version of IntelligentRepoDiscovery
-        that works in non-async contexts with full symlink support.
+        that works in non-async contexts with full support for:
+        - __file__-based sibling repo detection (Issue 6)
+        - Network path handling with timeouts (Issue 7)
+        - Permission validation (Issue 8)
 
         Features:
+        - Sibling repo detection using __file__ (highest priority)
         - Symlink resolution during directory iteration
         - Broken symlink detection and logging
         - Comprehensive candidate scoring
-        - Detailed discovery logging
+        - Permission validation with helpful error messages
+        - Network path timeout handling
 
         Args:
             service_name: Service name to discover
@@ -1569,12 +2306,28 @@ class ServiceDefinitionRegistry:
             Path to repository or None if not found
         """
         discovery = get_repo_discovery()
-        home = Path.home()
+
+        # Strategy 1: Sibling repo detection using __file__ (v95.8 - most reliable)
+        # This works regardless of current working directory
+        sibling_path = discovery._get_sibling_repo_path(service_name)
+        if sibling_path:
+            # Verify accessibility with timeout
+            accessible, error = discovery._check_path_accessible_sync(sibling_path, timeout=3.0)
+            if accessible:
+                # Validate signature with permission check
+                if discovery._validate_repo_signature(sibling_path, service_name, check_permissions=True):
+                    logger.info(f"[v95.8] Sync discovered {service_name} as sibling repo: {sibling_path}")
+                    discovery._discovery_cache[service_name] = (sibling_path, time.time())
+                    return sibling_path
+                else:
+                    logger.debug(f"[v95.8] Sibling path {sibling_path} failed signature validation")
+            else:
+                logger.debug(f"[v95.8] Sibling path {sibling_path} not accessible: {error}")
 
         # Get name variants
         name_variants = discovery._get_name_variants(service_name)
 
-        # Get search directories
+        # Get search directories (v95.8: now includes permission-validated paths only)
         search_dirs = discovery._get_search_directories()
 
         logger.debug(

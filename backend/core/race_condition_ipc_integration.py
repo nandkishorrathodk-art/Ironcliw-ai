@@ -107,6 +107,9 @@ get_file_lock: Any = None
 get_heartbeat_writer: Any = None
 get_port_reserver: Any = None
 get_dependency_monitor: Any = None
+get_process_manager: Any = None
+get_config_manager: Any = None
+get_message_queue: Any = None
 get_trinity_ipc_bus: Any = None
 get_trinity_port_manager: Any = None
 
@@ -115,6 +118,9 @@ AtomicFileLock: Any = None
 AtomicHeartbeatWriter: Any = None
 AtomicPortReservation: Any = None
 DependencyHealthMonitor: Any = None
+SafeProcessManager: Any = None
+AtomicConfigManager: Any = None
+PersistentMessageQueue: Any = None
 AtomicIPCFile: Any = None
 ComponentType: Any = None
 AllocationResult: Any = None
@@ -122,23 +128,35 @@ AllocationResult: Any = None
 # Race condition prevention imports
 try:
     from backend.core.race_condition_prevention import (
+        AtomicConfigManager as _AtomicConfigManager,
         AtomicFileLock as _AtomicFileLock,
         AtomicHeartbeatWriter as _AtomicHeartbeatWriter,
         AtomicPortReservation as _AtomicPortReservation,
         DependencyHealthMonitor as _DependencyHealthMonitor,
+        PersistentMessageQueue as _PersistentMessageQueue,
+        SafeProcessManager as _SafeProcessManager,
+        get_config_manager as _get_config_manager,
         get_dependency_monitor as _get_dependency_monitor,
         get_file_lock as _get_file_lock,
         get_heartbeat_writer as _get_heartbeat_writer,
+        get_message_queue as _get_message_queue,
         get_port_reserver as _get_port_reserver,
+        get_process_manager as _get_process_manager,
     )
     get_file_lock = _get_file_lock
     get_heartbeat_writer = _get_heartbeat_writer
     get_port_reserver = _get_port_reserver
     get_dependency_monitor = _get_dependency_monitor
+    get_process_manager = _get_process_manager
+    get_config_manager = _get_config_manager
+    get_message_queue = _get_message_queue
     AtomicFileLock = _AtomicFileLock
     AtomicHeartbeatWriter = _AtomicHeartbeatWriter
     AtomicPortReservation = _AtomicPortReservation
     DependencyHealthMonitor = _DependencyHealthMonitor
+    SafeProcessManager = _SafeProcessManager
+    AtomicConfigManager = _AtomicConfigManager
+    PersistentMessageQueue = _PersistentMessageQueue
     RACE_PREVENTION_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"[RaceIPC] Race prevention not available: {e}")
@@ -828,6 +846,280 @@ async def race_safe_operation(
 
 
 # =============================================================================
+# Cross-Repo Process Management (Issue 13 Integration)
+# =============================================================================
+
+
+async def register_trinity_process(
+    component: str,
+    pid: int,
+) -> bool:
+    """
+    Register a Trinity process with fingerprint validation.
+
+    Args:
+        component: Component name (e.g., "reactor_core", "jarvis_prime", "jarvis_body")
+        pid: Process ID
+
+    Returns:
+        True if registered successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_process_manager is None:
+        return True  # Fallback: assume success
+
+    manager = get_process_manager()
+    return await manager.register_process(component, pid)
+
+
+async def verify_trinity_process(component: str, pid: int) -> bool:
+    """
+    Verify a Trinity process is who we think it is.
+
+    Args:
+        component: Component name
+        pid: Expected PID
+
+    Returns:
+        True if verified
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_process_manager is None:
+        # Fallback: basic PID check
+        try:
+            os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+    manager = get_process_manager()
+    from backend.core.race_condition_prevention import ProcessVerificationResult
+    result = await manager.verify_process(component, pid)
+    return result == ProcessVerificationResult.VERIFIED
+
+
+async def safe_terminate_trinity_process(
+    component: str,
+    timeout: float = 10.0,
+) -> bool:
+    """
+    Safely terminate a Trinity process with verification.
+
+    Args:
+        component: Component name
+        timeout: Timeout for graceful shutdown
+
+    Returns:
+        True if terminated successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_process_manager is None:
+        return False
+
+    manager = get_process_manager()
+    return await manager.safe_kill(component, timeout=timeout)
+
+
+# =============================================================================
+# Cross-Repo Configuration (Issue 14 Integration)
+# =============================================================================
+
+
+async def load_trinity_config(config_name: str) -> Dict[str, Any]:
+    """
+    Load Trinity configuration atomically with version tracking.
+
+    Args:
+        config_name: Configuration name
+
+    Returns:
+        Configuration data (empty dict if not found)
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_config_manager is None:
+        return {}
+
+    config_mgr = get_config_manager(config_name)
+    config = await config_mgr.read()
+    return config.data if config else {}
+
+
+async def save_trinity_config(
+    config_name: str,
+    data: Dict[str, Any],
+) -> bool:
+    """
+    Save Trinity configuration atomically.
+
+    Args:
+        config_name: Configuration name
+        data: Configuration data
+
+    Returns:
+        True if saved successfully
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_config_manager is None:
+        return False
+
+    config_mgr = get_config_manager(config_name)
+    return await config_mgr.write(data)
+
+
+@asynccontextmanager
+async def modify_trinity_config(config_name: str) -> AsyncIterator[Dict[str, Any]]:
+    """
+    Context manager for atomic read-modify-write config operations.
+
+    Usage:
+        async with modify_trinity_config("jarvis_settings") as config:
+            config["new_key"] = "new_value"
+            # Automatically saved on exit
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_config_manager is None:
+        data: Dict[str, Any] = {}
+        yield data
+        return
+
+    config_mgr = get_config_manager(config_name)
+    async with config_mgr.modify() as data:
+        yield data
+
+
+# =============================================================================
+# Cross-Repo Event Bus (Issue 15 Integration)
+# =============================================================================
+
+
+async def publish_cross_repo_event(
+    topic: str,
+    payload: Dict[str, Any],
+    source_component: str,
+) -> str:
+    """
+    Publish an event to the cross-repo event bus.
+
+    Args:
+        topic: Event topic
+        payload: Event payload
+        source_component: Source component name
+
+    Returns:
+        Message ID
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_message_queue is None:
+        return ""
+
+    queue = get_message_queue("cross_repo_events")
+    enriched_payload = {
+        **payload,
+        "_source": source_component,
+        "_timestamp": time.time(),
+    }
+    return await queue.publish(topic, enriched_payload)
+
+
+async def subscribe_cross_repo_events(
+    consumer_id: str,
+    topics: Optional[List[str]] = None,
+) -> AsyncIterator[Any]:
+    """
+    Subscribe to cross-repo events.
+
+    Args:
+        consumer_id: Unique consumer identifier
+        topics: Optional list of topics to subscribe to
+
+    Yields:
+        Event messages
+    """
+    if not RACE_PREVENTION_AVAILABLE or get_message_queue is None:
+        return
+
+    queue = get_message_queue("cross_repo_events")
+    async for msg in queue.consume(consumer_id, topics):
+        yield msg
+
+
+async def acknowledge_cross_repo_event(msg_id: str, consumer_id: str) -> bool:
+    """Acknowledge a cross-repo event."""
+    if not RACE_PREVENTION_AVAILABLE or get_message_queue is None:
+        return False
+
+    queue = get_message_queue("cross_repo_events")
+    return await queue.acknowledge(msg_id, consumer_id)
+
+
+# =============================================================================
+# Full System Integration
+# =============================================================================
+
+
+async def initialize_race_safe_trinity() -> Dict[str, Any]:
+    """
+    Initialize the complete race-safe Trinity system.
+
+    This should be called once at supervisor startup.
+
+    Returns:
+        Initialization status and any warnings
+    """
+    result = {
+        "success": True,
+        "warnings": [],
+        "features_enabled": {
+            "race_prevention": RACE_PREVENTION_AVAILABLE,
+            "trinity_ipc": TRINITY_IPC_AVAILABLE,
+            "port_manager": PORT_MANAGER_AVAILABLE,
+        },
+    }
+
+    if not RACE_PREVENTION_AVAILABLE:
+        result["warnings"].append("Race prevention not available")
+        return result
+
+    try:
+        # Ensure race-safe startup
+        startup_ok = await ensure_race_safe_startup()
+        if not startup_ok:
+            result["warnings"].append("Startup validation had issues")
+
+        # Start event queue cleanup
+        if get_message_queue is not None:
+            queue = get_message_queue("cross_repo_events")
+            await queue.start_cleanup_task()
+
+        logger.info("[RaceIPC] Trinity race-safe system initialized")
+        return result
+
+    except Exception as e:
+        result["success"] = False
+        result["warnings"].append(f"Initialization error: {e}")
+        logger.error(f"[RaceIPC] Initialization failed: {e}")
+        return result
+
+
+async def shutdown_race_safe_trinity() -> None:
+    """
+    Shutdown the race-safe Trinity system gracefully.
+
+    Releases all resources and stops background tasks.
+    """
+    if not RACE_PREVENTION_AVAILABLE:
+        return
+
+    try:
+        # Stop startup validator monitoring
+        validator = get_startup_validator()
+        await validator.stop_monitoring()
+
+        # Stop event queue
+        if get_message_queue is not None:
+            queue = get_message_queue("cross_repo_events")
+            await queue.stop()
+
+        logger.info("[RaceIPC] Trinity race-safe system shutdown complete")
+
+    except Exception as e:
+        logger.error(f"[RaceIPC] Shutdown error: {e}")
+
+
+# =============================================================================
 # Module Exports
 # =============================================================================
 
@@ -844,10 +1136,29 @@ __all__ = [
     "get_race_aware_port_manager",
     "get_startup_validator",
 
-    # Convenience functions
+    # Basic convenience functions
     "validate_startup_order",
     "ensure_race_safe_startup",
     "race_safe_operation",
+
+    # Issue 13: Process management
+    "register_trinity_process",
+    "verify_trinity_process",
+    "safe_terminate_trinity_process",
+
+    # Issue 14: Configuration management
+    "load_trinity_config",
+    "save_trinity_config",
+    "modify_trinity_config",
+
+    # Issue 15: Event bus
+    "publish_cross_repo_event",
+    "subscribe_cross_repo_events",
+    "acknowledge_cross_repo_event",
+
+    # Full system integration
+    "initialize_race_safe_trinity",
+    "shutdown_race_safe_trinity",
 
     # Flags
     "INTEGRATION_ENABLED",
