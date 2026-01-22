@@ -933,11 +933,15 @@ class ServiceInfo:
     @classmethod
     def from_dict(cls, data: Dict) -> "ServiceInfo":
         """
-        v96.0: Create from dictionary with backward compatibility.
+        v96.0/v102.0: Create from dictionary with backward compatibility.
 
         Handles legacy entries that don't have:
         - v4.0 fields: process_start_time
         - v96.0 fields: port tracking, process fingerprint
+
+        v102.0: Also filters out unknown fields to prevent TypeError when
+        registry contains fields from other components (e.g., machine_id from
+        J-Prime or Reactor-Core that JARVIS doesn't have in its dataclass).
         """
         # Make a copy to avoid modifying original
         data = dict(data)
@@ -972,7 +976,13 @@ class ServiceInfo:
         if "parent_name" not in data:
             data["parent_name"] = ""
 
-        return cls(**data)
+        # v102.0: Filter out unknown fields to prevent TypeError
+        # This handles cross-repo field differences (e.g., J-Prime has machine_id)
+        import dataclasses
+        known_fields = {f.name for f in dataclasses.fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+
+        return cls(**filtered_data)
 
     def update_port(
         self,
