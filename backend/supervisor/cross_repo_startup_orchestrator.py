@@ -5775,9 +5775,65 @@ echo "=== JARVIS Prime started ==="
         # v95.0: Emit parallel startup begin event
         await _emit_event("PARALLEL_STARTUP_BEGIN", priority="MEDIUM", details={"service_count": len(definitions)})
 
-        # Separate heavy (ML-based) and light services
-        heavy_services = [d for d in definitions if d.name == "jarvis-prime"]
-        light_services = [d for d in definitions if d.name != "jarvis-prime"]
+        # v95.2: CRITICAL FIX - Dependency-aware service ordering
+        # The previous logic had a deadlock:
+        # - Phase 1 started "light" services (including reactor-core)
+        # - Phase 2 started "heavy" services (jarvis-prime)
+        # - But reactor-core depends on jarvis-prime!
+        # - reactor-core in Phase 1 would wait forever for jarvis-prime in Phase 2
+        #
+        # New logic: Services that depend on heavy services are also considered "heavy"
+        # This ensures proper startup order based on dependency graph, not just ML load.
+
+        # Build set of heavy service names
+        heavy_service_names = {"jarvis-prime"}  # Base heavy services
+
+        # Find all services that depend on heavy services (transitively)
+        # These must also be treated as "heavy" to respect dependency order
+        changed = True
+        while changed:
+            changed = False
+            for d in definitions:
+                if d.name not in heavy_service_names:
+                    # Check if this service depends on any heavy service
+                    if d.depends_on and any(dep in heavy_service_names for dep in d.depends_on):
+                        heavy_service_names.add(d.name)
+                        changed = True
+                        logger.debug(f"[v95.2] '{d.name}' depends on heavy service, promoting to Phase 2")
+
+        # Separate into phases based on dependency-aware classification
+        heavy_services = [d for d in definitions if d.name in heavy_service_names]
+        light_services = [d for d in definitions if d.name not in heavy_service_names]
+
+        # v95.2: Sort heavy services by dependency order using topological sort
+        # jarvis-prime must start before reactor-core
+        def get_dependency_order(services: List[ServiceDefinition]) -> List[ServiceDefinition]:
+            """Sort services so dependencies come first."""
+            ordered = []
+            remaining = list(services)
+            service_names = {s.name for s in services}
+            started_names = set()
+
+            max_iterations = len(remaining) * 2  # Prevent infinite loop
+            iterations = 0
+
+            while remaining and iterations < max_iterations:
+                iterations += 1
+                for service in list(remaining):
+                    # Check if all dependencies (within our set) are satisfied
+                    deps_in_set = [d for d in (service.depends_on or []) if d in service_names]
+                    if all(dep in started_names for dep in deps_in_set):
+                        ordered.append(service)
+                        started_names.add(service.name)
+                        remaining.remove(service)
+
+            # Add any remaining (circular deps) at the end
+            ordered.extend(remaining)
+            return ordered
+
+        heavy_services = get_dependency_order(heavy_services)
+        logger.info(f"[v95.2] Startup order - Light: {[s.name for s in light_services]}, "
+                    f"Heavy: {[s.name for s in heavy_services]}")
 
         results: Dict[str, bool] = {}
         reasons: Dict[str, str] = {}
@@ -5811,9 +5867,11 @@ echo "=== JARVIS Prime started ==="
                     # v95.0: Emit service unhealthy event
                     await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="HIGH", details={"reason": reason})
 
-        # Phase 2: Start heavy services (with memory check)
+        # Phase 2: Start heavy services SEQUENTIALLY (respecting dependency order)
+        # v95.2: Heavy services are started in dependency order, not parallel
+        # This ensures jarvis-prime is healthy BEFORE reactor-core starts
         if heavy_services:
-            logger.info(f"  🚀 Starting {len(heavy_services)} heavy service(s)...")
+            logger.info(f"  🚀 Starting {len(heavy_services)} heavy service(s) in dependency order...")
 
             # Check memory before starting heavy services
             memory_status = await self._get_memory_status()
@@ -5822,30 +5880,45 @@ echo "=== JARVIS Prime started ==="
                 f"({memory_status.percent_used:.0f}% used)"
             )
 
-            heavy_tasks = [
-                self._start_single_service_with_coordination(d)
-                for d in heavy_services
-            ]
+            # v95.2: Start heavy services SEQUENTIALLY in dependency order
+            # This is critical: jarvis-prime must be HEALTHY before reactor-core starts
+            for definition in heavy_services:
+                logger.info(f"    🔄 Starting {definition.name}...")
 
-            heavy_results = await asyncio.gather(*heavy_tasks, return_exceptions=True)
+                try:
+                    result = await self._start_single_service_with_coordination(definition)
 
-            for result in heavy_results:
-                if isinstance(result, Exception):
-                    logger.error(f"  ❌ Heavy service startup exception: {result}")
-                    continue
+                    if isinstance(result, Exception):
+                        logger.error(f"  ❌ Heavy service startup exception: {result}")
+                        results[definition.name] = False
+                        reasons[definition.name] = str(result)
+                        continue
 
-                name, success, reason = result
-                results[name] = success
-                reasons[name] = reason
+                    name, success, reason = result
+                    results[name] = success
+                    reasons[name] = reason
 
-                if success:
-                    logger.info(f"    ✅ {name}: {reason}")
-                    # v95.0: Emit service healthy event for heavy service
-                    await _emit_event("SERVICE_HEALTHY", service_name=name, priority="HIGH")
-                else:
-                    logger.warning(f"    ⚠️ {name}: {reason}")
-                    # v95.0: Emit service unhealthy event for heavy service
-                    await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="CRITICAL", details={"reason": reason})
+                    if success:
+                        logger.info(f"    ✅ {name}: {reason}")
+                        # v95.0: Emit service healthy event for heavy service
+                        await _emit_event("SERVICE_HEALTHY", service_name=name, priority="HIGH")
+
+                        # v95.2: Mark this service as ready for dependent services
+                        if name in self._services_ready:
+                            self._services_ready[name].set()
+                    else:
+                        logger.warning(f"    ⚠️ {name}: {reason}")
+                        # v95.0: Emit service unhealthy event for heavy service
+                        await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="CRITICAL", details={"reason": reason})
+
+                        # v95.2: If a heavy service fails, dependent services will also fail
+                        # But we continue trying other services in case they don't depend on this one
+                        logger.warning(f"    ⚠️ Services depending on {name} may fail")
+
+                except Exception as e:
+                    logger.error(f"  ❌ Exception starting {definition.name}: {e}")
+                    results[definition.name] = False
+                    reasons[definition.name] = str(e)
 
         # v95.0: Emit parallel startup complete event
         await _emit_event("PARALLEL_STARTUP_COMPLETE", priority="MEDIUM", details={"results": results})
