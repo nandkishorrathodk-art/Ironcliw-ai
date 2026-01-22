@@ -156,6 +156,16 @@ class StartupPhase(str, Enum):
     CROSS_REPO_HEARTBEAT = "cross_repo_heartbeat"   # Heartbeat system active
     CROSS_REPO_EVENTS = "cross_repo_events"         # Event streaming active
     CROSS_REPO_SYNC = "cross_repo_sync"             # State sync active
+    # v95.10: Advanced Cross-Repo Integration Systems
+    CROSS_REPO_CONFIG = "cross_repo_config"         # Unified configuration
+    CROSS_REPO_LOGGING = "cross_repo_logging"       # Distributed logging
+    CROSS_REPO_METRICS = "cross_repo_metrics"       # Unified metrics
+    CROSS_REPO_ERROR = "cross_repo_error"           # Error propagation
+    CROSS_REPO_STATE = "cross_repo_state"           # State synchronization
+    CROSS_REPO_RESOURCE = "cross_repo_resource"     # Resource coordination
+    CROSS_REPO_VERSION = "cross_repo_version"       # Version compatibility
+    CROSS_REPO_SECURITY = "cross_repo_security"     # Security context
+    CROSS_REPO_INTEGRATION = "cross_repo_integration"  # Full integration
 
 
 class NarrationPriority(Enum):
@@ -1233,6 +1243,116 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
         ],
         "complete": [
             "State sync active. All repositories in agreement.",
+        ],
+    },
+    # ==========================================================================
+    # v95.10: Advanced Cross-Repo Integration Systems
+    # ==========================================================================
+    StartupPhase.CROSS_REPO_CONFIG: {
+        "start": [
+            "Initializing unified configuration system.",
+            "Loading cross-repository configuration.",
+        ],
+        "loaded": [
+            "Configuration loaded from all repositories.",
+            "Unified config assembled.",
+        ],
+        "synced": [
+            "Configuration synchronized across repositories.",
+        ],
+        "complete": [
+            "Unified configuration ready. All repos configured.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_LOGGING: {
+        "start": [
+            "Initializing distributed logging.",
+            "Setting up W3C trace context.",
+        ],
+        "complete": [
+            "Distributed logging active. All logs correlated.",
+            "Unified logging with tracing enabled.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_METRICS: {
+        "start": [
+            "Initializing cross-repo metrics collection.",
+            "Setting up unified telemetry.",
+        ],
+        "complete": [
+            "Metrics collection active across all systems.",
+            "Unified telemetry online.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_ERROR: {
+        "start": [
+            "Initializing error propagation system.",
+            "Setting up error correlation.",
+        ],
+        "complete": [
+            "Error propagation active. Failures will be tracked.",
+            "Error correlation enabled.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_STATE: {
+        "start": [
+            "Initializing distributed state management.",
+            "Setting up shared state synchronization.",
+        ],
+        "synced": [
+            "Shared state synchronized.",
+        ],
+        "complete": [
+            "Distributed state ready. All repositories in sync.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_RESOURCE: {
+        "start": [
+            "Initializing resource coordination.",
+            "Setting up fair allocation.",
+        ],
+        "complete": [
+            "Resource coordination active.",
+            "Fair allocation enabled across all repos.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_VERSION: {
+        "start": [
+            "Checking version compatibility.",
+            "Verifying cross-repo versions.",
+        ],
+        "compatible": [
+            "All versions compatible.",
+            "Version check passed.",
+        ],
+        "incompatible": [
+            "Version incompatibility detected. Some features may be limited.",
+            "Cross-repo version mismatch. Running in compatibility mode.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_SECURITY: {
+        "start": [
+            "Initializing cross-repo security context.",
+            "Setting up secure inter-service communication.",
+        ],
+        "complete": [
+            "Security context established. Tokens active.",
+            "Cross-repo authentication enabled.",
+        ],
+    },
+    StartupPhase.CROSS_REPO_INTEGRATION: {
+        "start": [
+            "Initializing cross-repo integration systems.",
+        ],
+        "complete": [
+            "Cross-repository integration complete. All systems unified.",
+            "Full cross-repo coordination established.",
+            "All eight integration systems online.",
+        ],
+        "announcement": [
+            "Cross-repo integration is complete. Unified configuration, logging, metrics, "
+            "error propagation, state sync, resource coordination, version compatibility, "
+            "and security are all active. The Trinity operates as one.",
         ],
     },
 }
@@ -2809,18 +2929,32 @@ class IntelligentStartupNarrator:
         self,
         system: str,
         status: str = "complete",
+        details: Optional[str] = None,
     ) -> None:
         """
-        v93.16: Announce cross-repo integration system status.
+        v93.16 + v95.10: Announce cross-repo integration system status.
 
         Args:
-            system: One of 'heartbeat', 'events', 'sync'
-            status: One of 'start', 'complete'
+            system: One of 'heartbeat', 'events', 'sync', 'config', 'logging',
+                   'metrics', 'error', 'state', 'resource', 'version',
+                   'security', 'integration'
+            status: One of 'start', 'complete', 'loaded', 'synced', etc.
+            details: Optional additional details to include
         """
         phase_map = {
             "heartbeat": StartupPhase.CROSS_REPO_HEARTBEAT,
             "events": StartupPhase.CROSS_REPO_EVENTS,
             "sync": StartupPhase.CROSS_REPO_SYNC,
+            # v95.10: Advanced systems
+            "config": StartupPhase.CROSS_REPO_CONFIG,
+            "logging": StartupPhase.CROSS_REPO_LOGGING,
+            "metrics": StartupPhase.CROSS_REPO_METRICS,
+            "error": StartupPhase.CROSS_REPO_ERROR,
+            "state": StartupPhase.CROSS_REPO_STATE,
+            "resource": StartupPhase.CROSS_REPO_RESOURCE,
+            "version": StartupPhase.CROSS_REPO_VERSION,
+            "security": StartupPhase.CROSS_REPO_SECURITY,
+            "integration": StartupPhase.CROSS_REPO_INTEGRATION,
         }
         phase = phase_map.get(system.lower())
         if phase:
@@ -2832,10 +2966,43 @@ class IntelligentStartupNarrator:
             system_name = system.replace("_", " ").title()
             if status == "complete":
                 text = f"Cross-repo {system_name} active."
+            elif status == "loaded":
+                text = f"Cross-repo {system_name} loaded."
+            elif status == "synced":
+                text = f"Cross-repo {system_name} synchronized."
             else:
                 text = f"Cross-repo {system_name} initializing."
 
-        await self._speak(text, NarrationPriority.MEDIUM)
+        if details:
+            text = f"{text} {details}"
+
+        # Use higher priority for integration complete
+        priority = NarrationPriority.HIGH if system == "integration" else NarrationPriority.MEDIUM
+        await self._speak(text, priority)
+
+    async def announce_cross_repo_integration_complete(
+        self,
+        systems_online: int = 8,
+        duration_seconds: Optional[float] = None,
+    ) -> None:
+        """
+        v95.10: Announce complete cross-repo integration.
+
+        This is a flagship announcement when all eight v95.10 systems are online.
+        """
+        text = self._get_phase_message(StartupPhase.CROSS_REPO_INTEGRATION, "announcement")
+        if not text:
+            text = (
+                "Cross-repo integration is complete. Unified configuration, logging, metrics, "
+                "error propagation, state sync, resource coordination, version compatibility, "
+                "and security are all active. The Trinity operates as one."
+            )
+
+        if duration_seconds and duration_seconds < 5:
+            text += f" Integration took only {duration_seconds:.1f} seconds."
+
+        await self._speak(text, NarrationPriority.HIGH)
+        logger.info(f"[Narrator] v95.10 cross-repo integration complete: {systems_online} systems online")
 
 
 # Phase mapping from progress reporter stages to StartupPhase
@@ -2942,6 +3109,25 @@ STAGE_TO_PHASE: Dict[str, StartupPhase] = {
     "cross_repo_events": StartupPhase.CROSS_REPO_EVENTS,
     "cross_repo_sync": StartupPhase.CROSS_REPO_SYNC,
     "heartbeat": StartupPhase.CROSS_REPO_HEARTBEAT,
+    # v95.10: Advanced cross-repo integration systems
+    "cross_repo_config": StartupPhase.CROSS_REPO_CONFIG,
+    "cross_repo_config_init": StartupPhase.CROSS_REPO_CONFIG,
+    "cross_repo_logging": StartupPhase.CROSS_REPO_LOGGING,
+    "cross_repo_logging_init": StartupPhase.CROSS_REPO_LOGGING,
+    "cross_repo_metrics": StartupPhase.CROSS_REPO_METRICS,
+    "cross_repo_metrics_init": StartupPhase.CROSS_REPO_METRICS,
+    "cross_repo_error": StartupPhase.CROSS_REPO_ERROR,
+    "cross_repo_error_propagation": StartupPhase.CROSS_REPO_ERROR,
+    "cross_repo_state": StartupPhase.CROSS_REPO_STATE,
+    "cross_repo_state_init": StartupPhase.CROSS_REPO_STATE,
+    "cross_repo_resource": StartupPhase.CROSS_REPO_RESOURCE,
+    "cross_repo_resource_init": StartupPhase.CROSS_REPO_RESOURCE,
+    "cross_repo_version": StartupPhase.CROSS_REPO_VERSION,
+    "cross_repo_version_check": StartupPhase.CROSS_REPO_VERSION,
+    "cross_repo_security": StartupPhase.CROSS_REPO_SECURITY,
+    "cross_repo_security_init": StartupPhase.CROSS_REPO_SECURITY,
+    "cross_repo_integration": StartupPhase.CROSS_REPO_INTEGRATION,
+    "cross_repo_integration_complete": StartupPhase.CROSS_REPO_INTEGRATION,
 }
 
 

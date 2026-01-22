@@ -120,6 +120,27 @@ class OrchestratorEvent(str, Enum):
     CROSS_REPO_DISCONNECT = "cross_repo_disconnect"
     CROSS_REPO_RECONNECT = "cross_repo_reconnect"
 
+    # v95.10: Cross-Repo Integration Systems
+    CROSS_REPO_CONFIG_INIT = "cross_repo_config_init"
+    CROSS_REPO_CONFIG_LOADED = "cross_repo_config_loaded"
+    CROSS_REPO_CONFIG_SYNCED = "cross_repo_config_synced"
+    CROSS_REPO_LOGGING_INIT = "cross_repo_logging_init"
+    CROSS_REPO_LOGGING_ACTIVE = "cross_repo_logging_active"
+    CROSS_REPO_METRICS_INIT = "cross_repo_metrics_init"
+    CROSS_REPO_METRICS_ACTIVE = "cross_repo_metrics_active"
+    CROSS_REPO_ERROR_PROPAGATION_INIT = "cross_repo_error_propagation_init"
+    CROSS_REPO_ERROR_PROPAGATION_ACTIVE = "cross_repo_error_propagation_active"
+    CROSS_REPO_STATE_INIT = "cross_repo_state_init"
+    CROSS_REPO_STATE_SYNCED = "cross_repo_state_synced"
+    CROSS_REPO_RESOURCE_INIT = "cross_repo_resource_init"
+    CROSS_REPO_RESOURCE_ACTIVE = "cross_repo_resource_active"
+    CROSS_REPO_VERSION_CHECK = "cross_repo_version_check"
+    CROSS_REPO_VERSION_COMPATIBLE = "cross_repo_version_compatible"
+    CROSS_REPO_VERSION_INCOMPATIBLE = "cross_repo_version_incompatible"
+    CROSS_REPO_SECURITY_INIT = "cross_repo_security_init"
+    CROSS_REPO_SECURITY_ACTIVE = "cross_repo_security_active"
+    CROSS_REPO_INTEGRATION_COMPLETE = "cross_repo_integration_complete"
+
     # Retry and recovery
     RETRY_ATTEMPT = "retry_attempt"
     RETRY_BACKOFF = "retry_backoff"
@@ -510,6 +531,122 @@ EVENT_MESSAGE_TEMPLATES: Dict[OrchestratorEvent, Dict[str, List[str]]] = {
         "default": [
             "All parallel services are ready.",
             "Parallel startup complete.",
+        ],
+    },
+
+    # v95.10: Cross-Repo Integration Systems
+    OrchestratorEvent.CROSS_REPO_CONFIG_INIT: {
+        "default": [
+            "Initializing unified configuration system.",
+            "Loading cross-repository configuration.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_CONFIG_LOADED: {
+        "default": [
+            "Configuration loaded from all repositories.",
+            "Unified config assembled.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_CONFIG_SYNCED: {
+        "default": [
+            "Configuration synchronized across repositories.",
+            "Config changes propagated.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_LOGGING_INIT: {
+        "default": [
+            "Initializing unified logging with distributed tracing.",
+            "Setting up cross-repo log correlation.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_LOGGING_ACTIVE: {
+        "default": [
+            "Unified logging active. All logs correlated.",
+            "Distributed tracing enabled.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_METRICS_INIT: {
+        "default": [
+            "Initializing cross-repo metrics collection.",
+            "Setting up unified telemetry.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_METRICS_ACTIVE: {
+        "default": [
+            "Metrics collection active across all systems.",
+            "Unified telemetry online.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_ERROR_PROPAGATION_INIT: {
+        "default": [
+            "Initializing error propagation system.",
+            "Setting up error correlation.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_ERROR_PROPAGATION_ACTIVE: {
+        "default": [
+            "Error propagation active. Failures will be tracked.",
+            "Error correlation enabled.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_STATE_INIT: {
+        "default": [
+            "Initializing distributed state synchronization.",
+            "Setting up shared state management.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_STATE_SYNCED: {
+        "default": [
+            "Shared state synchronized.",
+            "Distributed state ready.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_RESOURCE_INIT: {
+        "default": [
+            "Initializing resource coordination.",
+            "Setting up resource allocation.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_RESOURCE_ACTIVE: {
+        "default": [
+            "Resource coordination active.",
+            "Fair allocation enabled.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_VERSION_CHECK: {
+        "default": [
+            "Checking version compatibility.",
+            "Verifying cross-repo versions.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_VERSION_COMPATIBLE: {
+        "default": [
+            "All versions compatible.",
+            "Version check passed.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_VERSION_INCOMPATIBLE: {
+        "default": [
+            "Version incompatibility detected. Some features may be limited.",
+            "Cross-repo version mismatch. Running in compatibility mode.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_SECURITY_INIT: {
+        "default": [
+            "Initializing cross-repo security context.",
+            "Setting up secure inter-service communication.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_SECURITY_ACTIVE: {
+        "default": [
+            "Security context established. Tokens active.",
+            "Cross-repo authentication enabled.",
+        ],
+    },
+    OrchestratorEvent.CROSS_REPO_INTEGRATION_COMPLETE: {
+        "default": [
+            "Cross-repository integration complete. All systems unified.",
+            "Full cross-repo coordination established.",
         ],
     },
 }
@@ -1085,6 +1222,78 @@ class OrchestratorNarratorBridge:
                 event_type="reconnected",
                 details={"service": service}
             )
+
+        # v95.10: Cross-repo integration system events
+        elif event == OrchestratorEvent.CROSS_REPO_CONFIG_INIT:
+            await narrator.announce_subsystem("unified_config", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_CONFIG_LOADED:
+            await narrator.announce_subsystem("unified_config", "loaded",
+                                              f"{details.get('repo_count', 3)} repositories configured")
+
+        elif event == OrchestratorEvent.CROSS_REPO_CONFIG_SYNCED:
+            await narrator.announce_cross_repo_system("config", "complete")
+
+        elif event == OrchestratorEvent.CROSS_REPO_LOGGING_INIT:
+            await narrator.announce_subsystem("distributed_logging", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_LOGGING_ACTIVE:
+            await narrator.announce_subsystem("distributed_logging", "complete",
+                                              "W3C trace context enabled")
+
+        elif event == OrchestratorEvent.CROSS_REPO_METRICS_INIT:
+            await narrator.announce_subsystem("metrics_collection", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_METRICS_ACTIVE:
+            await narrator.announce_subsystem("metrics_collection", "complete",
+                                              f"{details.get('metric_count', 0)} metrics registered")
+
+        elif event == OrchestratorEvent.CROSS_REPO_ERROR_PROPAGATION_INIT:
+            await narrator.announce_subsystem("error_propagation", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_ERROR_PROPAGATION_ACTIVE:
+            await narrator.announce_subsystem("error_propagation", "complete",
+                                              "Circuit breakers enabled")
+
+        elif event == OrchestratorEvent.CROSS_REPO_STATE_INIT:
+            await narrator.announce_subsystem("state_sync", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_STATE_SYNCED:
+            await narrator.announce_cross_repo_system("sync", "complete")
+
+        elif event == OrchestratorEvent.CROSS_REPO_RESOURCE_INIT:
+            await narrator.announce_subsystem("resource_coordinator", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_RESOURCE_ACTIVE:
+            await narrator.announce_subsystem("resource_coordinator", "complete",
+                                              "Fair allocation enabled")
+
+        elif event == OrchestratorEvent.CROSS_REPO_VERSION_CHECK:
+            await narrator.announce_subsystem("version_compatibility", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_VERSION_COMPATIBLE:
+            await narrator.announce_subsystem("version_compatibility", "complete",
+                                              "All versions compatible")
+
+        elif event == OrchestratorEvent.CROSS_REPO_VERSION_INCOMPATIBLE:
+            incompatible = details.get("incompatible_count", 0)
+            await narrator.announce_warning(
+                message=f"Version incompatibility detected. {incompatible} issues found.",
+                context="version_check"
+            )
+
+        elif event == OrchestratorEvent.CROSS_REPO_SECURITY_INIT:
+            await narrator.announce_subsystem("security_context", "start")
+
+        elif event == OrchestratorEvent.CROSS_REPO_SECURITY_ACTIVE:
+            await narrator.announce_subsystem("security_context", "complete",
+                                              "Secure tokens active")
+
+        elif event == OrchestratorEvent.CROSS_REPO_INTEGRATION_COMPLETE:
+            systems_online = details.get("systems_online", 8)
+            await narrator.announce_cross_repo_system("integration", "complete")
+            # This is a major milestone - log it prominently
+            logger.info(f"[OrchestratorNarratorBridge] v95.10 Cross-repo integration complete: {systems_online} systems online")
 
         # Retry events
         elif event == OrchestratorEvent.RETRY_ATTEMPT:

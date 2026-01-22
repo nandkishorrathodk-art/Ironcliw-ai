@@ -383,6 +383,17 @@ class TrinityBridge:
                 except Exception as e:
                     shutdown_errors.append(f"process_orchestrator: {e}")
 
+            # v96.0: Deregister from shared registry using atomic locking
+            try:
+                from backend.core.service_registry import AtomicSharedRegistry
+                AtomicSharedRegistry.deregister_service(
+                    service_name="jarvis-body",
+                    alternate_names=["jarvis_body", "jarvis"],
+                )
+                logger.info("[v96.0] Deregistered jarvis-body from shared registry")
+            except Exception as e:
+                logger.debug(f"[v96.0] Shared registry deregistration: {e}")
+
             # Stop service registry cleanup task
             if self._service_registry:
                 try:
@@ -436,18 +447,18 @@ class TrinityBridge:
         logger.info("Starting Service Registry...")
 
         try:
-            from backend.core.service_registry import get_service_registry
+            from backend.core.service_registry import get_service_registry, AtomicSharedRegistry
 
             self._service_registry = get_service_registry()
             await self._service_registry.start_cleanup_task()
 
-            # Register JARVIS Body with v96.0 enhanced fields
+            # v96.0: Register JARVIS Body with enhanced fields
             # Determine configured port vs actual port
-            import os as os_module
-            configured_port = int(os_module.getenv("JARVIS_PORT", "8080"))
+            configured_port = int(os.getenv("JARVIS_PORT", "8080"))
             actual_port = self.config.jarvis_port
             is_fallback = actual_port != configured_port
 
+            # Register with internal ServiceRegistry
             await self._service_registry.register_service(
                 service_name="jarvis-body",
                 pid=os.getpid(),
@@ -462,6 +473,51 @@ class TrinityBridge:
                 is_fallback_port=is_fallback,
                 fallback_reason=f"Port {configured_port} unavailable" if is_fallback else "",
                 ports_tried=[configured_port] if is_fallback else [],
+            )
+
+            # v96.0: Also write to shared registry using ATOMIC locking
+            # This ensures cross-repo coordination with JARVIS Prime and Reactor Core
+            import time as time_module
+            import psutil
+            try:
+                proc = psutil.Process()
+                process_fingerprint = {
+                    "process_name": proc.name(),
+                    "process_cmdline": " ".join(proc.cmdline()),
+                    "process_exe_path": proc.exe(),
+                    "process_cwd": proc.cwd(),
+                    "parent_pid": proc.parent().pid if proc.parent() else 0,
+                    "parent_name": proc.parent().name() if proc.parent() else "",
+                    "process_start_time": proc.create_time(),
+                }
+            except Exception:
+                process_fingerprint = {
+                    "process_name": "", "process_cmdline": "", "process_exe_path": "",
+                    "process_cwd": "", "parent_pid": 0, "parent_name": "", "process_start_time": 0.0,
+                }
+
+            shared_service_data = {
+                "service_name": "jarvis-body",
+                "pid": os.getpid(),
+                "port": actual_port,
+                "host": "localhost",
+                "health_endpoint": "/health",
+                "status": "starting",
+                "registered_at": time_module.time(),
+                "last_heartbeat": time_module.time(),
+                "metadata": {"version": "4.0.0", "role": "orchestrator"},
+                "primary_port": configured_port,
+                "is_fallback_port": is_fallback,
+                "fallback_reason": f"Port {configured_port} unavailable" if is_fallback else "",
+                "ports_tried": [configured_port] if is_fallback else [],
+                "port_allocation_time": time_module.time(),
+                **process_fingerprint,
+            }
+
+            AtomicSharedRegistry.register_service(
+                service_name="jarvis-body",
+                service_data=shared_service_data,
+                alternate_names=["jarvis_body", "jarvis"],
             )
 
             fallback_msg = f" (fallback from {configured_port})" if is_fallback else ""

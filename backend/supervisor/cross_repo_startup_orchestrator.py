@@ -5245,22 +5245,87 @@ class ProcessOrchestrator:
         - Resource coordination
         - Version compatibility
         - Security context
+
+        v95.10.1: Now emits voice events for real-time user feedback.
         """
         self._ensure_locks_initialized()
 
         logger.info("[v95.10] 🔧 Initializing cross-repo integration systems...")
 
-        # Initialize in order (some depend on others)
-        await self._initialize_unified_config()
-        await self._initialize_security_context()
-        await self._initialize_unified_logging()
-        await self._initialize_error_propagation()
-        await self._initialize_state_sync()
-        await self._initialize_resource_coordination()
-        await self._initialize_version_compatibility()
-        await self._initialize_metrics_collection()
+        # Track initialization for voice feedback
+        systems_initialized = 0
+        total_systems = 8
 
-        logger.info("[v95.10] ✅ All cross-repo integration systems initialized")
+        # Initialize in order (some depend on others)
+        # 1. Unified Configuration
+        await _emit_event("CROSS_REPO_CONFIG_INIT", priority="MEDIUM")
+        await self._initialize_unified_config()
+        await _emit_event("CROSS_REPO_CONFIG_LOADED", priority="LOW",
+                         details={"repo_count": len(self._config_sources)})
+        systems_initialized += 1
+
+        # 2. Security Context (must be early for authenticated communication)
+        await _emit_event("CROSS_REPO_SECURITY_INIT", priority="MEDIUM")
+        await self._initialize_security_context()
+        await _emit_event("CROSS_REPO_SECURITY_ACTIVE", priority="LOW",
+                         details={"token_count": len(self._security_tokens)})
+        systems_initialized += 1
+
+        # 3. Unified Logging with distributed tracing
+        await _emit_event("CROSS_REPO_LOGGING_INIT", priority="MEDIUM")
+        await self._initialize_unified_logging()
+        await _emit_event("CROSS_REPO_LOGGING_ACTIVE", priority="LOW")
+        systems_initialized += 1
+
+        # 4. Error Propagation with correlation
+        await _emit_event("CROSS_REPO_ERROR_PROPAGATION_INIT", priority="LOW")
+        await self._initialize_error_propagation()
+        await _emit_event("CROSS_REPO_ERROR_PROPAGATION_ACTIVE", priority="LOW")
+        systems_initialized += 1
+
+        # 5. Distributed State Synchronization
+        await _emit_event("CROSS_REPO_STATE_INIT", priority="MEDIUM")
+        await self._initialize_state_sync()
+        await _emit_event("CROSS_REPO_STATE_SYNCED", priority="LOW",
+                         details={"state_keys": len(self._shared_state)})
+        systems_initialized += 1
+
+        # 6. Resource Coordination
+        await _emit_event("CROSS_REPO_RESOURCE_INIT", priority="LOW")
+        await self._initialize_resource_coordination()
+        await _emit_event("CROSS_REPO_RESOURCE_ACTIVE", priority="LOW",
+                         details={"resource_types": len(self._resource_limits)})
+        systems_initialized += 1
+
+        # 7. Version Compatibility Check
+        await _emit_event("CROSS_REPO_VERSION_CHECK", priority="MEDIUM")
+        await self._initialize_version_compatibility()
+
+        # Check if there are incompatibilities using the proper method
+        compatibility_issues = await self._check_compatibility()
+        incompatible_count = len(compatibility_issues)
+
+        if incompatible_count > 0:
+            await _emit_event("CROSS_REPO_VERSION_INCOMPATIBLE", priority="HIGH",
+                             details={"incompatible_count": incompatible_count})
+            for issue in compatibility_issues:
+                logger.warning(f"[v95.10] Version issue: {issue}")
+        else:
+            await _emit_event("CROSS_REPO_VERSION_COMPATIBLE", priority="LOW")
+        systems_initialized += 1
+
+        # 8. Metrics Collection
+        await _emit_event("CROSS_REPO_METRICS_INIT", priority="LOW")
+        await self._initialize_metrics_collection()
+        await _emit_event("CROSS_REPO_METRICS_ACTIVE", priority="LOW",
+                         details={"metric_count": len(self._metrics_registry)})
+        systems_initialized += 1
+
+        # All systems initialized - emit completion event
+        await _emit_event("CROSS_REPO_INTEGRATION_COMPLETE", priority="HIGH",
+                         details={"systems_online": systems_initialized})
+
+        logger.info(f"[v95.10] ✅ All {systems_initialized} cross-repo integration systems initialized")
 
     def get_cross_repo_integration_status(self) -> Dict[str, Any]:
         """Get status of all cross-repo integration systems."""

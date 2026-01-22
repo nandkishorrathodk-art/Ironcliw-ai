@@ -198,6 +198,323 @@ class DirectoryManager:
 
 
 # =============================================================================
+# v96.0: Atomic Shared Registry for Cross-Process Coordination
+# =============================================================================
+
+class AtomicSharedRegistry:
+    """
+    v96.0: Thread-safe and process-safe shared registry operations.
+
+    This class provides atomic read-modify-write operations for the shared
+    service registry (~/.jarvis/registry/services.json). It uses a separate
+    lock file to coordinate access across multiple processes.
+
+    THE CRITICAL FIX:
+        Previous implementations locked the TEMP file during write, which
+        doesn't prevent race conditions during read-modify-write cycles.
+
+        This implementation uses a SEPARATE LOCK FILE (.lock) that is
+        held for the ENTIRE read-modify-write cycle, ensuring true atomicity.
+
+    Usage:
+        # From JARVIS Prime, Reactor Core, or any external process
+        from backend.core.service_registry import AtomicSharedRegistry
+
+        async with AtomicSharedRegistry.atomic_update() as registry:
+            registry["my_service"] = {"pid": os.getpid(), ...}
+            # Registry is automatically saved when context exits
+
+    Or for simple registration:
+        AtomicSharedRegistry.register_service("my_service", {...})
+    """
+
+    # Default paths
+    DEFAULT_REGISTRY_DIR = Path.home() / ".jarvis" / "registry"
+    DEFAULT_REGISTRY_FILE = "services.json"
+    DEFAULT_LOCK_FILE = "services.json.lock"
+
+    # Timeouts
+    LOCK_TIMEOUT = 30.0  # Max seconds to wait for lock
+    LOCK_POLL_INTERVAL = 0.05  # Poll interval when waiting for lock
+
+    @classmethod
+    def get_registry_path(cls) -> Path:
+        """Get the registry file path from environment or default."""
+        registry_dir = Path(os.getenv(
+            "JARVIS_REGISTRY_DIR",
+            str(cls.DEFAULT_REGISTRY_DIR)
+        ))
+        return registry_dir / cls.DEFAULT_REGISTRY_FILE
+
+    @classmethod
+    def get_lock_path(cls) -> Path:
+        """Get the lock file path."""
+        registry_dir = Path(os.getenv(
+            "JARVIS_REGISTRY_DIR",
+            str(cls.DEFAULT_REGISTRY_DIR)
+        ))
+        return registry_dir / cls.DEFAULT_LOCK_FILE
+
+    @classmethod
+    @contextmanager
+    def _acquire_registry_lock(cls, timeout: float = None):
+        """
+        v96.0: Acquire exclusive lock on the registry using a separate lock file.
+
+        This is the CRITICAL fix - we lock a separate file and hold it for the
+        entire read-modify-write cycle.
+
+        Args:
+            timeout: Max seconds to wait (default: LOCK_TIMEOUT)
+
+        Yields:
+            The lock file handle (for cleanup)
+
+        Raises:
+            TimeoutError: If lock cannot be acquired within timeout
+        """
+        timeout = timeout or cls.LOCK_TIMEOUT
+        lock_path = cls.get_lock_path()
+
+        # Ensure directory exists
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create lock file if it doesn't exist
+        lock_path.touch(exist_ok=True)
+
+        start_time = time.time()
+        lock_fd = None
+
+        try:
+            # Open lock file
+            lock_fd = open(lock_path, 'r+')
+
+            # Try to acquire lock with timeout
+            while True:
+                try:
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Lock acquired!
+                    break
+                except (IOError, OSError):
+                    # Lock is held by another process
+                    elapsed = time.time() - start_time
+                    if elapsed >= timeout:
+                        lock_fd.close()
+                        raise TimeoutError(
+                            f"Could not acquire registry lock within {timeout}s. "
+                            f"Another process may be holding the lock."
+                        )
+                    time.sleep(cls.LOCK_POLL_INTERVAL)
+
+            yield lock_fd
+
+        finally:
+            # Release lock
+            if lock_fd:
+                try:
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
+
+    @classmethod
+    def _read_registry_unlocked(cls) -> Dict[str, Any]:
+        """Read registry file without locking (caller must hold lock)."""
+        registry_path = cls.get_registry_path()
+
+        if not registry_path.exists():
+            return {}
+
+        try:
+            content = registry_path.read_text()
+            if not content.strip():
+                return {}
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                return {}
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"[v96.0] Registry read error: {e}")
+            return {}
+
+    @classmethod
+    def _write_registry_unlocked(cls, data: Dict[str, Any]) -> None:
+        """Write registry file atomically (caller must hold lock)."""
+        registry_path = cls.get_registry_path()
+
+        # Ensure directory exists
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to temp file first, then atomic rename
+        temp_path = registry_path.with_suffix(".tmp")
+        try:
+            with open(temp_path, 'w') as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic rename
+            temp_path.replace(registry_path)
+
+        except Exception as e:
+            # Clean up temp file
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"Failed to write registry: {e}")
+
+    @classmethod
+    @contextmanager
+    def atomic_update(cls, timeout: float = None):
+        """
+        v96.0: Context manager for atomic read-modify-write on the registry.
+
+        This is the MAIN ENTRY POINT for safe registry modifications.
+        The lock is held for the ENTIRE context duration.
+
+        Usage:
+            with AtomicSharedRegistry.atomic_update() as registry:
+                registry["my_service"] = {"pid": os.getpid(), ...}
+                # Changes automatically saved when context exits
+
+        Args:
+            timeout: Max seconds to wait for lock
+
+        Yields:
+            Dict that can be modified; changes saved on successful exit
+        """
+        with cls._acquire_registry_lock(timeout):
+            # Read current state
+            registry = cls._read_registry_unlocked()
+
+            try:
+                yield registry
+                # On successful exit, write back
+                cls._write_registry_unlocked(registry)
+            except Exception as e:
+                logger.error(f"[v96.0] Error during atomic registry update: {e}")
+                raise
+
+    @classmethod
+    def register_service(
+        cls,
+        service_name: str,
+        service_data: Dict[str, Any],
+        alternate_names: Optional[List[str]] = None,
+        timeout: float = None,
+    ) -> bool:
+        """
+        v96.0: Register a service with the shared registry atomically.
+
+        This is a convenience method for simple service registration.
+
+        Args:
+            service_name: Primary service name
+            service_data: Service data dict (pid, port, host, etc.)
+            alternate_names: Optional list of alternate names to also register
+            timeout: Max seconds to wait for lock
+
+        Returns:
+            True if registration succeeded, False otherwise
+        """
+        try:
+            with cls.atomic_update(timeout) as registry:
+                registry[service_name] = service_data
+
+                # Register alternate names
+                if alternate_names:
+                    for alt_name in alternate_names:
+                        registry[alt_name] = service_data
+
+            logger.info(f"[v96.0] ✅ Registered {service_name} with shared registry")
+            return True
+
+        except TimeoutError as e:
+            logger.error(f"[v96.0] ❌ Registry lock timeout for {service_name}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[v96.0] ❌ Failed to register {service_name}: {e}")
+            return False
+
+    @classmethod
+    def deregister_service(
+        cls,
+        service_name: str,
+        alternate_names: Optional[List[str]] = None,
+        timeout: float = None,
+    ) -> bool:
+        """
+        v96.0: Deregister a service from the shared registry atomically.
+
+        Args:
+            service_name: Primary service name to remove
+            alternate_names: Optional list of alternate names to also remove
+            timeout: Max seconds to wait for lock
+
+        Returns:
+            True if deregistration succeeded, False otherwise
+        """
+        try:
+            with cls.atomic_update(timeout) as registry:
+                registry.pop(service_name, None)
+
+                # Remove alternate names
+                if alternate_names:
+                    for alt_name in alternate_names:
+                        registry.pop(alt_name, None)
+
+            logger.info(f"[v96.0] ✅ Deregistered {service_name} from shared registry")
+            return True
+
+        except TimeoutError as e:
+            logger.error(f"[v96.0] ❌ Registry lock timeout for {service_name}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[v96.0] ❌ Failed to deregister {service_name}: {e}")
+            return False
+
+    @classmethod
+    def get_service(cls, service_name: str, timeout: float = None) -> Optional[Dict[str, Any]]:
+        """
+        v96.0: Get a service from the registry.
+
+        Args:
+            service_name: Service name to look up
+
+        Returns:
+            Service data dict or None if not found
+        """
+        try:
+            with cls._acquire_registry_lock(timeout or 5.0):
+                registry = cls._read_registry_unlocked()
+                return registry.get(service_name)
+        except Exception as e:
+            logger.warning(f"[v96.0] Failed to get service {service_name}: {e}")
+            return None
+
+    @classmethod
+    def heartbeat(cls, service_name: str, timeout: float = None) -> bool:
+        """
+        v96.0: Update the heartbeat timestamp for a service.
+
+        Args:
+            service_name: Service name to update
+
+        Returns:
+            True if heartbeat succeeded
+        """
+        try:
+            with cls.atomic_update(timeout) as registry:
+                if service_name in registry:
+                    registry[service_name]["last_heartbeat"] = time.time()
+                    return True
+            return False
+        except Exception:
+            return False
+
+
+# =============================================================================
 # Data Models
 # =============================================================================
 
