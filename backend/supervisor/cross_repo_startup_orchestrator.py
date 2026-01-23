@@ -5934,15 +5934,16 @@ class ProcessOrchestrator:
                     logger.warning(f"[v95.5] Error handling lifecycle event: {e}")
 
             # Subscribe to all lifecycle events
+            # v95.16: Fixed - use 'pattern' not 'topic' per TrinityEventBus.subscribe signature
             sub_id = await self._event_bus.subscribe(
-                topic="lifecycle.*",
+                pattern="lifecycle.*",
                 handler=handle_lifecycle_event,
             )
             self._event_subscriptions.append(sub_id)
 
             # Subscribe to system degradation events
             sub_id = await self._event_bus.subscribe(
-                topic="system.degradation",
+                pattern="system.degradation",
                 handler=handle_lifecycle_event,
             )
             self._event_subscriptions.append(sub_id)

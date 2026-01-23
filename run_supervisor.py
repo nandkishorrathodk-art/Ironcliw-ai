@@ -17802,7 +17802,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                                 # Direct restart if no health monitor
                                 self.logger.info("[v95.0] Attempting direct J-Prime restart")
                                 try:
-                                    await self._restart_jprime_on_crash()
+                                    await self._restart_jprime_on_crash(f"exit_code_{returncode}")
                                 except Exception as e:
                                     self.logger.error(f"[v95.0] J-Prime direct restart failed: {e}")
                         else:
@@ -17842,7 +17842,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                                 # Direct restart if no health monitor
                                 self.logger.info("[v95.0] Attempting direct Reactor-Core restart")
                                 try:
-                                    await self._restart_reactor_core_on_crash()
+                                    await self._restart_reactor_core_on_crash(f"exit_code_{returncode}")
                                 except Exception as e:
                                     self.logger.error(f"[v95.0] Reactor-Core direct restart failed: {e}")
                         else:
@@ -18068,12 +18068,16 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         self.logger.info("[v80.0] ✅ Cross-Repo Loading System shutdown complete")
 
-    async def _restart_jprime_on_crash(self, reason: str) -> None:
+    async def _restart_jprime_on_crash(self, reason: str = "process_exited") -> None:
         """
-        v75.0: Callback to restart J-Prime when crash detected.
+        v95.16: Callback to restart J-Prime when crash detected.
 
         Called by TrinityHealthMonitor when J-Prime heartbeat goes stale
         or process is detected as dead.
+
+        Args:
+            reason: Why the restart is happening. Defaults to "process_exited"
+                    to support callback invocation without arguments.
         """
         self.logger.warning(f"🔄 [Trinity] Restarting J-Prime (reason: {reason})")
 
@@ -18102,12 +18106,16 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     wait=False,
                 )
 
-    async def _restart_reactor_core_on_crash(self, reason: str) -> None:
+    async def _restart_reactor_core_on_crash(self, reason: str = "process_exited") -> None:
         """
-        v75.0: Callback to restart Reactor-Core when crash detected.
+        v95.16: Callback to restart Reactor-Core when crash detected.
 
         Called by TrinityHealthMonitor when Reactor-Core heartbeat goes stale
         or process is detected as dead.
+
+        Args:
+            reason: Why the restart is happening. Defaults to "process_exited"
+                    to support callback invocation without arguments.
         """
         self.logger.warning(f"🔄 [Trinity] Restarting Reactor-Core (reason: {reason})")
 
