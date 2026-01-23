@@ -118,6 +118,21 @@ except ImportError:
     except ImportError:
         pass
 
+# v4.0: Enterprise connection management components
+ENTERPRISE_CONNECTION_AVAILABLE = False
+try:
+    from backend.core.connection import (
+        AtomicCircuitBreaker,
+        CircuitBreakerConfig,
+        ProactiveProxyDetector,
+        ProxyStatus as EnterpriseProxyStatus,
+        EventLoopAwareLock,
+        CircuitState as EnterpriseCircuitState,
+    )
+    ENTERPRISE_CONNECTION_AVAILABLE = True
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # Type variable for generic async operations
@@ -896,9 +911,13 @@ class CloudSQLConnectionManager:
             self.is_shutting_down = False
             self.creation_time: Optional[datetime] = None
 
-            # Async-safe locks
-            self._pool_lock = AsyncLock()
-            self._checkout_lock = AsyncLock()
+            # Async-safe locks - use enterprise version if available
+            if ENTERPRISE_CONNECTION_AVAILABLE:
+                self._pool_lock = EventLoopAwareLock()
+                self._checkout_lock = EventLoopAwareLock()
+            else:
+                self._pool_lock = AsyncLock()
+                self._checkout_lock = AsyncLock()
 
             # Legacy compatibility
             self.connection_count = 0
@@ -1042,11 +1061,35 @@ class CloudSQLConnectionManager:
                 "max_connections": max_connections
             }
 
-            # Initialize circuit breaker
-            self._circuit_breaker = CircuitBreaker(self._conn_config)
+            # v4.0: Initialize circuit breaker (use enterprise version if available)
+            if ENTERPRISE_CONNECTION_AVAILABLE:
+                self._circuit_breaker = AtomicCircuitBreaker(
+                    config=CircuitBreakerConfig(
+                        failure_threshold=self._conn_config.circuit_breaker_threshold,
+                        recovery_timeout_seconds=self._conn_config.circuit_breaker_timeout_seconds,
+                        half_open_max_requests=1,
+                    )
+                )
+                logger.debug("   Using AtomicCircuitBreaker (enterprise)")
+            else:
+                self._circuit_breaker = CircuitBreaker(self._conn_config)
 
             # Initialize leak detector
             self._leak_detector = LeakDetector(self._conn_config, self)
+
+            # v4.0: Proactive proxy detection (sub-100ms fast-fail)
+            if ENTERPRISE_CONNECTION_AVAILABLE:
+                try:
+                    detector = ProactiveProxyDetector()
+                    proxy_status, proxy_msg = await detector.detect()
+                    if proxy_status == EnterpriseProxyStatus.UNAVAILABLE:
+                        logger.warning(f"⚠️ Proxy not available: {proxy_msg}")
+                        self.last_error = f"Proxy unavailable: {proxy_msg}"
+                        self.last_error_time = datetime.now()
+                        return False
+                    logger.info(f"   Proxy detected: {proxy_msg}")
+                except Exception as e:
+                    logger.debug(f"   Proxy detection error (continuing): {e}")
 
             try:
                 logger.info(f"🔌 Creating CloudSQL connection pool (max={max_connections})...")

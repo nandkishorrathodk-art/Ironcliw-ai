@@ -232,6 +232,13 @@ from .container import (
     bootstrap_container,
 )
 
+# Import from connection_services module (enterprise connection management)
+from .connection_services import (
+    register_connection_services,
+    get_connection_health,
+    get_connection_services_status,
+)
+
 # Import from remote module (cross-repo coordination)
 from .remote import (
     # Enums
@@ -477,4 +484,11 @@ __all__ = [
 
     # Constants
     "TRINITY_SERVICES",
+
+    # === CONNECTION SERVICES MODULE ===
+
+    # Registration
+    "register_connection_services",
+    "get_connection_health",
+    "get_connection_services_status",
 ]
