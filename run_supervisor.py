@@ -10280,7 +10280,12 @@ class SupervisorBootstrapper:
                 self.logger.info("   Deploy with: terraform apply -var='enable_jarvis_prime=true'")
 
     async def _wait_for_jarvis_prime_health(self) -> bool:
-        """Wait for JARVIS-Prime to become healthy."""
+        """
+        Wait for JARVIS-Prime to become healthy.
+
+        v108.0: Enhanced with early process death detection - if J-Prime crashes
+        during startup, we detect it immediately instead of waiting for timeout.
+        """
         import aiohttp
 
         url = f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}/health"
@@ -10291,6 +10296,28 @@ class SupervisorBootstrapper:
 
         async with aiohttp.ClientSession() as session:
             while (time.perf_counter() - start_time) < timeout:
+                # v108.0: Check if process has died during startup
+                if self._jarvis_prime_process and self._jarvis_prime_process.returncode is not None:
+                    elapsed = time.perf_counter() - start_time
+                    exit_code = self._jarvis_prime_process.returncode
+                    self.logger.error(
+                        f"❌ JARVIS-Prime process died during startup (exit code: {exit_code}, "
+                        f"after {elapsed:.1f}s)"
+                    )
+                    # Try to capture stderr for diagnostics
+                    try:
+                        if self._jarvis_prime_process.stderr:
+                            stderr_data = await asyncio.wait_for(
+                                self._jarvis_prime_process.stderr.read(),
+                                timeout=2.0
+                            )
+                            if stderr_data:
+                                stderr_text = stderr_data.decode()[-2000:]  # Last 2000 chars
+                                self.logger.error(f"   Last stderr output:\n{stderr_text}")
+                    except Exception as e:
+                        self.logger.debug(f"   Could not read stderr: {e}")
+                    return False
+
                 try:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
                         if resp.status == 200:
@@ -10302,7 +10329,20 @@ class SupervisorBootstrapper:
 
                 await asyncio.sleep(1.0)
 
-        self.logger.warning(f"⚠️ JARVIS-Prime health check timed out after {timeout}s")
+        # v108.0: Enhanced timeout message with process status
+        if self._jarvis_prime_process:
+            if self._jarvis_prime_process.returncode is not None:
+                self.logger.error(
+                    f"⚠️ JARVIS-Prime died with exit code {self._jarvis_prime_process.returncode} "
+                    f"during {timeout}s startup timeout"
+                )
+            else:
+                self.logger.warning(
+                    f"⚠️ JARVIS-Prime health check timed out after {timeout}s "
+                    f"(process still running, PID: {self._jarvis_prime_process.pid})"
+                )
+        else:
+            self.logger.warning(f"⚠️ JARVIS-Prime health check timed out after {timeout}s")
         return False
 
     async def _read_jarvis_prime_logs(self) -> None:
