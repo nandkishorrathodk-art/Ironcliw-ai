@@ -316,6 +316,164 @@ def ensure_asyncio_imported() -> bool:
         return False
 
 
+async def cancel_tasks_safely(
+    tasks: list,
+    timeout: float = 5.0,
+    log_cancellations: bool = True
+) -> list:
+    """
+    Cancel multiple tasks safely, ensuring CancelledError exceptions are retrieved.
+
+    This prevents the "_GatheringFuture exception was never retrieved" warning
+    that occurs when tasks are cancelled without awaiting them.
+
+    Args:
+        tasks: List of asyncio.Task objects to cancel
+        timeout: Timeout for waiting on cancelled tasks
+        log_cancellations: Whether to log cancelled task names
+
+    Returns:
+        List of results (successful task results, exceptions, or None for cancelled)
+
+    Usage:
+        tasks = [asyncio.create_task(coro()) for coro in coroutines]
+        # ... some tasks may timeout ...
+        results = await cancel_tasks_safely(tasks)
+    """
+    if not tasks:
+        return []
+
+    # Cancel tasks that aren't done yet
+    cancelled_names = []
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+            task_name = task.get_name() if hasattr(task, 'get_name') else str(task)
+            cancelled_names.append(task_name)
+
+    if log_cancellations and cancelled_names:
+        logger.debug(f"[safe_asyncio] Cancelled {len(cancelled_names)} tasks")
+
+    # CRITICAL: Await all tasks to retrieve CancelledError exceptions
+    # Without this, asyncio will complain about unretrieved exceptions
+    if any(not t.done() for t in tasks):
+        try:
+            await _ASYNCIO.wait_for(
+                _ASYNCIO.gather(*tasks, return_exceptions=True),
+                timeout=timeout
+            )
+        except _ASYNCIO.TimeoutError:
+            logger.warning(f"[safe_asyncio] Timed out waiting for task cancellation after {timeout}s")
+        except Exception as e:
+            logger.debug(f"[safe_asyncio] Exception during cancellation await: {e}")
+
+    # Collect results
+    results = []
+    for task in tasks:
+        if task.done():
+            if task.cancelled():
+                results.append(None)  # Task was cancelled
+            else:
+                try:
+                    results.append(task.result())
+                except Exception as e:
+                    results.append(e)
+        else:
+            results.append(None)  # Task still not done after timeout
+
+    return results
+
+
+async def run_with_timeout_and_cleanup(
+    coro,
+    timeout: float,
+    cleanup_timeout: float = 5.0
+):
+    """
+    Run a coroutine with timeout, ensuring proper cleanup on timeout.
+
+    Unlike asyncio.wait_for, this ensures the task's CancelledError is
+    properly retrieved even if timeout occurs.
+
+    Args:
+        coro: Coroutine to run
+        timeout: Timeout in seconds
+        cleanup_timeout: Timeout for cleanup after cancellation
+
+    Returns:
+        Result of the coroutine
+
+    Raises:
+        asyncio.TimeoutError: If timeout exceeded
+    """
+    task = _ASYNCIO.create_task(coro)
+    try:
+        return await _ASYNCIO.wait_for(task, timeout=timeout)
+    except _ASYNCIO.TimeoutError:
+        # Cancel the task
+        task.cancel()
+        # Wait for cancellation to complete
+        try:
+            await _ASYNCIO.wait_for(
+                _ASYNCIO.shield(task),
+                timeout=cleanup_timeout
+            )
+        except (_ASYNCIO.TimeoutError, _ASYNCIO.CancelledError):
+            pass
+        raise
+
+
+class TaskGroup:
+    """
+    Context manager for managing a group of tasks with safe cancellation.
+
+    Usage:
+        async with TaskGroup() as tg:
+            tg.create_task(coro1())
+            tg.create_task(coro2())
+        # All tasks are awaited and properly cleaned up
+    """
+
+    def __init__(self, timeout: Optional[float] = None):
+        self._tasks: list = []
+        self._timeout = timeout
+        self._entered = False
+
+    def create_task(self, coro, *, name: Optional[str] = None):
+        """Create and track a task."""
+        if not self._entered:
+            raise RuntimeError("TaskGroup not entered")
+        task = _ASYNCIO.create_task(coro, name=name)
+        self._tasks.append(task)
+        return task
+
+    async def __aenter__(self):
+        self._entered = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            # Exception occurred - cancel all tasks
+            await cancel_tasks_safely(self._tasks)
+        else:
+            # Normal exit - wait for all tasks
+            if self._tasks:
+                try:
+                    if self._timeout:
+                        await _ASYNCIO.wait_for(
+                            _ASYNCIO.gather(*self._tasks, return_exceptions=True),
+                            timeout=self._timeout
+                        )
+                    else:
+                        await _ASYNCIO.gather(*self._tasks, return_exceptions=True)
+                except _ASYNCIO.TimeoutError:
+                    # Timeout - cancel remaining tasks safely
+                    await cancel_tasks_safely(self._tasks)
+
+        self._tasks.clear()
+        return False
+
+
 # Module-level verification at import time
 if not ensure_asyncio_imported():
     logger.critical("[safe_asyncio] Failed to verify asyncio availability!")
