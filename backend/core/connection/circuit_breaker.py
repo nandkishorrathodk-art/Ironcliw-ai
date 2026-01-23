@@ -352,3 +352,59 @@ class AtomicCircuitBreaker:
             f"failures={self._failure_count}, "
             f"config=threshold:{self._config.failure_threshold})"
         )
+
+    # =========================================================================
+    # BACKWARD COMPATIBILITY METHODS
+    # =========================================================================
+    # These methods provide API compatibility with the legacy CircuitBreaker
+    # class used in cloud_sql_connection_manager.py. They delegate to the
+    # atomic async methods while maintaining the expected method signatures.
+
+    def can_execute_sync(self) -> bool:
+        """
+        Synchronous check if requests are allowed (backward compatibility).
+
+        This provides a quick check without the full atomic OPEN->HALF_OPEN
+        transition logic. For full atomicity, use `await can_execute()`.
+
+        Returns:
+            True if likely allowed, False if definitely blocked
+        """
+        current = self._state_machine.current_state
+
+        if current == CircuitState.CLOSED:
+            return True
+
+        if current == CircuitState.OPEN:
+            # Quick check if recovery timeout might have elapsed
+            if self._last_failure_time:
+                elapsed = (datetime.now() - self._last_failure_time).total_seconds()
+                if elapsed >= self._config.recovery_timeout_seconds:
+                    # Timeout elapsed - caller should use async version for transition
+                    return True  # Optimistic - let async version handle transition
+            return False
+
+        if current == CircuitState.HALF_OPEN:
+            with self._lock:
+                return self._half_open_request_count < self._config.half_open_max_requests
+
+        return False
+
+    async def record_success_async(self) -> None:
+        """
+        Backward compatibility alias for record_success().
+
+        This is the method name used by cloud_sql_connection_manager.py.
+        """
+        await self.record_success()
+
+    async def record_failure_async(self, error: str = "") -> None:
+        """
+        Backward compatibility alias for record_failure().
+
+        This is the method name used by cloud_sql_connection_manager.py.
+
+        Args:
+            error: Error message for logging and tracking
+        """
+        await self.record_failure(error)

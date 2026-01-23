@@ -1558,11 +1558,20 @@ class CloudSQLConnectionManager:
         # Start timing for metrics
         start_time = time.time()
 
-        # Check circuit breaker
-        if self._circuit_breaker and not self._circuit_breaker.can_execute():
-            raise RuntimeError(
-                f"Circuit breaker OPEN - retry in {self._conn_config.recovery_timeout_seconds}s"
-            )
+        # Check circuit breaker (v4.0: handle both async and sync versions)
+        if self._circuit_breaker:
+            # Enterprise AtomicCircuitBreaker has async can_execute(), legacy has sync
+            if ENTERPRISE_CONNECTION_AVAILABLE and hasattr(self._circuit_breaker, 'can_execute_sync'):
+                # Use async version for full atomic HALF_OPEN transition
+                can_proceed = await self._circuit_breaker.can_execute()
+            else:
+                # Legacy sync version
+                can_proceed = self._circuit_breaker.can_execute()
+
+            if not can_proceed:
+                raise RuntimeError(
+                    f"Circuit breaker OPEN - retry in {self._conn_config.recovery_timeout_seconds}s"
+                )
 
         # v10.5: Enhanced intelligent rate limiting with adaptive backoff
         if INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE:
