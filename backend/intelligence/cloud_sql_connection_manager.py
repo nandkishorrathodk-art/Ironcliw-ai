@@ -1065,8 +1065,8 @@ class CloudSQLConnectionManager:
             if ENTERPRISE_CONNECTION_AVAILABLE:
                 self._circuit_breaker = AtomicCircuitBreaker(
                     config=CircuitBreakerConfig(
-                        failure_threshold=self._conn_config.circuit_breaker_threshold,
-                        recovery_timeout_seconds=self._conn_config.circuit_breaker_timeout_seconds,
+                        failure_threshold=self._conn_config.failure_threshold,
+                        recovery_timeout_seconds=self._conn_config.recovery_timeout_seconds,
                         half_open_max_requests=1,
                     )
                 )
