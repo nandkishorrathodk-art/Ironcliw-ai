@@ -8872,7 +8872,14 @@ echo "=== JARVIS Prime started ==="
         """
         Check health of a service via HTTP endpoint.
 
-        v93.0: Enhanced to support startup-aware health checking.
+        v109.0: Enhanced to accept multiple health response formats:
+        - {"status": "healthy"} (standard)
+        - {"status": "ok"} (common alternative)
+        - {"status": "UP"} (Spring Boot style)
+        - {"healthy": true} (boolean flag)
+        - {"ready": true} (boolean flag)
+        - {"phase": "ready"} (J-Prime specific)
+        - HTTP 200 with any JSON body (lenient fallback)
 
         Args:
             managed: The managed process to check
@@ -8895,18 +8902,45 @@ echo "=== JARVIS Prime started ==="
                 if response.status != 200:
                     return False
 
-                # v93.0: Parse response to check status field
                 try:
                     data = await response.json()
-                    status = data.get("status", "unknown")
 
-                    if status == "healthy":
+                    # v109.0: Multiple ways to detect healthy status
+                    # Priority order: explicit status > boolean flags > phase indicators
+
+                    # 1. Check explicit status field (multiple accepted values)
+                    status = data.get("status", "").lower() if data.get("status") else ""
+                    if status in ("healthy", "ok", "up", "running", "ready"):
                         return True
-                    elif status == "starting":
-                        # Server is up but model still loading
-                        if not require_ready:
+
+                    # 2. Check boolean healthy/ready flags
+                    if data.get("healthy") is True:
+                        return True
+                    if data.get("ready") is True:
+                        return True
+                    if data.get("ready_for_inference") is True and data.get("model_loaded") is True:
+                        return True
+
+                    # 3. Check phase indicator (J-Prime specific)
+                    phase = data.get("phase", "").lower() if data.get("phase") else ""
+                    if phase == "ready":
+                        return True
+
+                    # 4. Check starting status (if not requiring ready)
+                    if not require_ready:
+                        if status == "starting" or phase in ("starting", "loading", "initializing"):
                             return True
-                        # Log progress if available
+
+                    # 5. Check error status explicitly
+                    if status == "error":
+                        error = data.get("model_load_error") or data.get("error") or "unknown error"
+                        logger.warning(
+                            f"    ⚠️ {managed.definition.name}: status=error - {error}"
+                        )
+                        return False
+
+                    # 6. If status is explicitly "starting" but we require_ready, return False
+                    if status == "starting":
                         elapsed = data.get("model_load_elapsed_seconds")
                         if elapsed:
                             logger.debug(
@@ -8914,20 +8948,36 @@ echo "=== JARVIS Prime started ==="
                                 f"model loading for {elapsed:.0f}s"
                             )
                         return False
-                    elif status == "error":
-                        error = data.get("model_load_error", "unknown error")
-                        logger.warning(
-                            f"    ⚠️ {managed.definition.name}: status=error - {error}"
+
+                    # 7. v109.0: If we got a valid JSON response with HTTP 200 but no
+                    #    recognized status field, log it and return True (lenient mode)
+                    if status == "":
+                        logger.debug(
+                            f"    ℹ️  {managed.definition.name}: HTTP 200 OK with no status field "
+                            f"(keys: {list(data.keys())[:5]}) - accepting as healthy"
                         )
-                        return False
-                    else:
-                        # Unknown status, be conservative
-                        return False
-                except Exception:
-                    # Couldn't parse JSON, fall back to HTTP status
+                        return True
+
+                    # Unknown status value - log for debugging but be conservative
+                    logger.debug(
+                        f"    ℹ️  {managed.definition.name}: unrecognized status='{status}' "
+                        f"- treating as unhealthy"
+                    )
+                    return False
+
+                except Exception as json_error:
+                    # Couldn't parse JSON - HTTP 200 is still success
+                    logger.debug(
+                        f"    ℹ️  {managed.definition.name}: HTTP 200 but not JSON - "
+                        f"accepting as healthy"
+                    )
                     return True
 
-        except Exception:
+        except asyncio.TimeoutError:
+            logger.debug(f"    Health check timeout for {managed.definition.name}")
+            return False
+        except Exception as e:
+            logger.debug(f"    Health check error for {managed.definition.name}: {e}")
             return False
 
     async def _check_service_responding(self, managed: ManagedProcess) -> bool:
@@ -9967,6 +10017,7 @@ echo "=== JARVIS Prime started ==="
     async def _handle_port_conflict(self, definition: ServiceDefinition) -> bool:
         """
         v108.0: Handle port conflict by attempting to identify and resolve the issue.
+        v109.0: Enhanced with diagnostic logging and PID safety validation.
 
         CRITICAL FIX: This now actually CLEANS UP conflicting processes instead of
         just logging them. Uses the EnterpriseProcessManager for comprehensive
@@ -9977,6 +10028,15 @@ echo "=== JARVIS Prime started ==="
             False if cleanup failed and port is still occupied
         """
         port = definition.default_port
+
+        # v109.0: Log our own identity for debugging port conflict resolution
+        current_pid = os.getpid()
+        parent_pid = os.getppid()
+        logger.info(
+            f"    🔍 [v109.0] Port conflict diagnostics for {definition.name} on port {port}:\n"
+            f"       Supervisor PID: {current_pid}\n"
+            f"       Parent PID: {parent_pid}"
+        )
 
         # v108.0: Use EnterpriseProcessManager for comprehensive port handling
         try:
@@ -9994,6 +10054,7 @@ echo "=== JARVIS Prime started ==="
             logger.info(
                 f"    📋 Port {port} validation: occupied={validation.is_occupied}, "
                 f"healthy={validation.is_healthy}, state={validation.socket_state}, "
+                f"pid={validation.pid}, process={validation.process_name}, "
                 f"recommendation={validation.recommendation}"
             )
 
@@ -10003,6 +10064,16 @@ echo "=== JARVIS Prime started ==="
                     f"    📋 Port {port} held by: PID={validation.pid}, "
                     f"Name={validation.process_name or 'unknown'}"
                 )
+
+                # v109.0: CRITICAL SAFETY CHECK - Is the detected PID ourselves?
+                if validation.pid in (current_pid, parent_pid):
+                    logger.error(
+                        f"    ❌ [v109.0] CRITICAL BUG DETECTED: Port validation returned our own PID!\n"
+                        f"       This indicates lsof may be returning client connections, not just LISTEN.\n"
+                        f"       Detected PID: {validation.pid}, Our PID: {current_pid}, Parent: {parent_pid}\n"
+                        f"       NOT proceeding with cleanup - this would kill ourselves."
+                    )
+                    return False
 
             # Handle based on recommendation
             if validation.recommendation == "proceed":

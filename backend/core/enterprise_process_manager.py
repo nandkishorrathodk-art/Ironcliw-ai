@@ -291,10 +291,22 @@ class EnterpriseProcessManager:
             return {"occupied": True, "state": "unknown"}
 
     async def _get_port_pid(self, port: int) -> Dict[str, Any]:
-        """Get PID and process name for a port."""
+        """
+        Get PID and process name for a port - LISTEN state only.
+
+        v109.0: CRITICAL FIX - Only get PIDs in LISTEN state.
+        Previous: lsof -ti :PORT (returns ALL connections including clients)
+        Fixed: lsof -i :PORT -sTCP:LISTEN -t (returns only LISTENING processes)
+
+        This prevents the supervisor from detecting itself as a port conflict
+        when it makes HTTP health check connections to services.
+        """
         try:
+            # v109.0: Use -sTCP:LISTEN to only get LISTENING processes
+            # This prevents returning the supervisor's PID when it has
+            # ESTABLISHED connections (e.g., during health checks)
             proc = await asyncio.create_subprocess_exec(
-                "lsof", "-ti", f":{port}",
+                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -305,7 +317,30 @@ class EnterpriseProcessManager:
 
             pids = stdout.decode().strip().split('\n')
             if pids and pids[0]:
-                pid = int(pids[0])
+                try:
+                    pid = int(pids[0])
+                except ValueError:
+                    return {"pid": None, "name": None}
+
+                # v109.0: Safety check - Never return our own PID or parent
+                current_pid = os.getpid()
+                parent_pid = os.getppid()
+                if pid in (current_pid, parent_pid):
+                    logger.warning(
+                        f"[v109.0] _get_port_pid safety filter: "
+                        f"Ignoring self ({current_pid}) or parent ({parent_pid}) "
+                        f"for port {port} - this should not happen with -sTCP:LISTEN filter"
+                    )
+                    # Try to get the next PID if available
+                    if len(pids) > 1 and pids[1]:
+                        try:
+                            pid = int(pids[1])
+                            if pid in (current_pid, parent_pid):
+                                return {"pid": None, "name": None}
+                        except ValueError:
+                            return {"pid": None, "name": None}
+                    else:
+                        return {"pid": None, "name": None}
 
                 # Get process name
                 try:
@@ -411,8 +446,42 @@ class EnterpriseProcessManager:
             logger.warning(f"[Cleanup] Port {port} TIME_WAIT timeout after {max_wait}s")
             return False
 
-        # Kill the process
+        # v109.0: CRITICAL - Multi-layer PID validation before kill
         if validation.pid:
+            # Layer 1: Basic self-protection (also in _kill_process)
+            current_pid = os.getpid()
+            parent_pid = os.getppid()
+            if validation.pid in (current_pid, parent_pid):
+                logger.error(
+                    f"[v109.0] SAFETY: Refusing to clean up port {port} - "
+                    f"PID {validation.pid} is self ({current_pid}) or parent ({parent_pid})"
+                )
+                return False
+
+            # Layer 2: Verify PID is actually the LISTENER (not an ESTABLISHED connection)
+            listener_check = await self._verify_pid_is_listener(port, validation.pid)
+            if not listener_check:
+                logger.warning(
+                    f"[v109.0] SAFETY: PID {validation.pid} is not the LISTEN owner of port {port} "
+                    f"- skipping cleanup to avoid killing wrong process"
+                )
+                return False
+
+            # Layer 3: Process name sanity check
+            dangerous_names = {"systemd", "launchd", "init", "kernel", "python3", "bash", "zsh"}
+            if validation.process_name and validation.process_name.lower() in dangerous_names:
+                # Additional check: is this OUR python3 process?
+                if validation.process_name.lower() == "python3":
+                    # Check if it's running JARVIS or supervisor
+                    cmdline = await self._get_process_cmdline(validation.pid)
+                    if cmdline and any(x in cmdline.lower() for x in ["supervisor", "jarvis", "run_supervisor"]):
+                        logger.error(
+                            f"[v109.0] SAFETY: PID {validation.pid} appears to be JARVIS/supervisor "
+                            f"(cmdline contains jarvis/supervisor) - refusing to kill"
+                        )
+                        return False
+
+            # All safety checks passed - proceed with kill
             success = await self._kill_process(
                 validation.pid,
                 force=force,
@@ -486,6 +555,73 @@ class EnterpriseProcessManager:
         except Exception as e:
             logger.error(f"[Kill] Error killing PID {pid}: {e}")
             return False
+
+    async def _verify_pid_is_listener(self, port: int, expected_pid: int) -> bool:
+        """
+        v109.0: Verify that a PID is actually the LISTENING process on a port.
+
+        This prevents killing the wrong process when lsof returns multiple PIDs
+        (e.g., the supervisor making health check connections).
+
+        Args:
+            port: The port to check
+            expected_pid: The PID we expect to be the listener
+
+        Returns:
+            True if expected_pid is the LISTENING process on this port
+        """
+        try:
+            # Use lsof with explicit LISTEN filter
+            proc = await asyncio.create_subprocess_exec(
+                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if not stdout:
+                return False
+
+            listener_pids = []
+            for p in stdout.decode().strip().split('\n'):
+                if p.strip():
+                    try:
+                        listener_pids.append(int(p.strip()))
+                    except ValueError:
+                        continue
+
+            is_listener = expected_pid in listener_pids
+            logger.debug(
+                f"[v109.0] _verify_pid_is_listener: port={port}, expected_pid={expected_pid}, "
+                f"listener_pids={listener_pids}, is_listener={is_listener}"
+            )
+            return is_listener
+
+        except Exception as e:
+            logger.debug(f"[v109.0] _verify_pid_is_listener error: {e}")
+            return False
+
+    async def _get_process_cmdline(self, pid: int) -> Optional[str]:
+        """
+        v109.0: Get the command line of a process for safety validation.
+
+        Args:
+            pid: The process ID to check
+
+        Returns:
+            The command line string, or None if unavailable
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ps", "-p", str(pid), "-o", "command=",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            return stdout.decode().strip() if stdout else None
+        except Exception as e:
+            logger.debug(f"[v109.0] _get_process_cmdline error for PID {pid}: {e}")
+            return None
 
     # =========================================================================
     # Process Startup (Enhanced with stderr capture)
