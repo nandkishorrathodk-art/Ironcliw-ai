@@ -266,6 +266,268 @@ Score = 0.6 × Success_Rate + 0.2 × Latency_Score + 0.2 × Recency_Score
 
 ---
 
+## 🔧 Enterprise Dependency Injection (DI) Container
+
+**DI** stands for **Dependency Injection**—a design pattern that manages how components receive their dependencies, eliminating manual instantiation and ensuring proper initialization order.
+
+### What is Dependency Injection?
+
+Dependency Injection is a software design pattern where components don't create their own dependencies. Instead, dependencies are "injected" from outside, typically by a container that manages the entire lifecycle.
+
+**Traditional Approach (Manual):**
+```python
+# ❌ Manual instantiation - error-prone
+config = CollaborationConfig()
+engine = CollaborationEngine(config)
+coordinator = CrossRepoCollaborationCoordinator(engine)  # Wrong parameter!
+await coordinator.start()  # Wrong method name!
+```
+
+**DI Container Approach:**
+```python
+# ✅ Automatic dependency resolution
+container = ServiceContainer()
+container.register(CollaborationConfig)
+container.register(CollaborationEngine, dependencies=[CollaborationConfig])
+container.register(CrossRepoCollaborationCoordinator, dependencies=[CollaborationConfig])
+
+await container.initialize_all()  # Correct order, correct parameters
+coordinator = container.resolve(CrossRepoCollaborationCoordinator)
+```
+
+### Why JARVIS Uses DI
+
+JARVIS's DI container solves **4 critical initialization bugs** that plagued the system:
+
+1. **Parameter Mismatch** - Coordinators received `collaboration_engine=` but expected `config=`
+2. **Method Name Errors** - Code called `.start()` but coordinators only had `.initialize()`
+3. **Manual Ordering** - Services initialized in wrong order, causing dependency failures
+4. **Uncoordinated Factories** - 112+ singleton factories weren't coordinated
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│              JARVIS Enterprise DI Container v1.0                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐  │
+│  │  Registration   │────▶│   Resolution    │────▶│   Lifecycle     │  │
+│  │  (Startup)      │     │  (Dependency)   │     │   (Init/Stop)   │  │
+│  └─────────────────┘     └─────────────────┘     └─────────────────┘  │
+│          │                        │                        │            │
+│          ▼                        ▼                        ▼            │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                    Service Registry                              │  │
+│  │                                                                  │  │
+│  │  • Singleton Scope (one instance, shared)                       │  │
+│  │  • Transient Scope (new instance each resolve)                 │  │
+│  │  • Scoped (per-request/session)                                 │  │
+│  │  • Lazy Initialization (on first resolve)                       │  │
+│  │  • Eager Initialization (at startup)                           │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                    Lifecycle Manager                             │  │
+│  │                                                                  │  │
+│  │  • Topological sort for init order (respects dependencies)    │  │
+│  │  • Reverse order for shutdown (LIFO)                            │  │
+│  │  • Health monitoring hooks                                       │  │
+│  │  • Graceful degradation on failures                             │  │
+│  │  • Transactional initialization (rollback on failure)            │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+#### 1. **Automatic Dependency Resolution**
+The container automatically resolves dependencies using topological sorting (Kahn's algorithm):
+
+```python
+# Declare dependencies
+class CollaborationEngine:
+    def __init__(self, config: CollaborationConfig):
+        self.config = config
+
+class CrossRepoCollaborationCoordinator:
+    def __init__(self, config: CollaborationConfig):  # Correct parameter!
+        self.config = config
+
+# Container resolves order automatically
+# 1. CollaborationConfig (no dependencies)
+# 2. CollaborationEngine (depends on Config)
+# 3. CrossRepoCollaborationCoordinator (depends on Config)
+```
+
+#### 2. **Cycle Detection**
+Prevents infinite loops using Tarjan's algorithm for strongly connected components:
+
+```python
+# ❌ This would cause an error:
+class ServiceA:
+    def __init__(self, service_b: ServiceB): ...
+
+class ServiceB:
+    def __init__(self, service_a: ServiceA): ...
+
+# Container detects: CircularDependencyError
+# Suggestion: Use lazy injection or event-based decoupling
+```
+
+#### 3. **Parallel Initialization**
+Services with no dependencies on each other initialize concurrently:
+
+```python
+# These can initialize in parallel:
+container.register(ConfigA)  # Level 0
+container.register(ConfigB)  # Level 0
+container.register(ServiceA, dependencies=[ConfigA])  # Level 1
+container.register(ServiceB, dependencies=[ConfigB])  # Level 1
+```
+
+#### 4. **Protocol-Based Contracts**
+All services implement the `AsyncService` protocol:
+
+```python
+class AsyncService(Protocol):
+    async def initialize(self) -> None: ...
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+    async def health_check(self) -> HealthReport: ...
+```
+
+#### 5. **Lifecycle Events**
+Subscribe to service lifecycle events:
+
+```python
+container.events.subscribe(
+    ServiceEvent.INITIALIZED,
+    lambda event: logger.info(f"{event['service_name']} ready")
+)
+```
+
+#### 6. **Cross-Repo Coordination**
+Circuit breakers and exponential backoff for distributed services:
+
+```python
+# Services in JARVIS-Prime and Reactor-Core can be registered
+# Container handles retries, timeouts, and circuit breaking
+```
+
+### Implementation Details
+
+**Location:** `backend/core/di/`
+
+**Core Files:**
+- `protocols.py` (~1,500 lines) - Core protocols, enums, data classes, exceptions
+- `resolution.py` (~900 lines) - Dependency resolver with Tarjan/Kahn algorithms
+- `container.py` (~1,100 lines) - ServiceContainer with double-check locking
+- `events.py` (~2,000 lines) - Lifecycle event system with distributed tracing
+- `remote.py` (~2,000 lines) - Cross-repo coordination with circuit breakers
+- `intelligence_services.py` (~350 lines) - Service registration with correct parameters
+
+**Total:** ~7,850 lines of production-grade DI infrastructure
+
+### Usage Example
+
+**Registering Services:**
+```python
+from backend.core.di import ServiceContainer, Scope, ServiceCriticality
+
+container = ServiceContainer()
+
+# Register config (no dependencies)
+container.register(
+    CollaborationConfig,
+    scope=Scope.SINGLETON,
+    factory=CollaborationConfig.from_env,
+)
+
+# Register engine (depends on config)
+container.register(
+    CollaborationEngine,
+    scope=Scope.SINGLETON,
+    criticality=ServiceCriticality.OPTIONAL,
+    dependencies=[CollaborationConfig],
+)
+
+# Register coordinator (depends on config, not engine!)
+container.register(
+    CrossRepoCollaborationCoordinator,
+    scope=Scope.SINGLETON,
+    dependencies=[CollaborationConfig],  # Correct!
+)
+```
+
+**Initializing Services:**
+```python
+# Container handles dependency order automatically
+await container.initialize_all()  # Topological sort
+await container.start_all()        # Start in correct order
+
+# Resolve services
+coordinator = container.resolve(CrossRepoCollaborationCoordinator)
+```
+
+**Shutting Down:**
+```python
+# Reverse initialization order (LIFO)
+await container.shutdown_all()
+```
+
+### Backward Compatibility
+
+All existing factory functions still work:
+
+```python
+# Old way (still works)
+engine = get_collaboration_engine(config)
+
+# New way (delegates to container if available)
+engine = get_collaboration_engine()  # Uses container.resolve() internally
+```
+
+### Benefits
+
+✅ **Eliminates Initialization Bugs** - Correct parameters, correct methods, correct order  
+✅ **Improves Testability** - Easy to mock dependencies in tests  
+✅ **Reduces Coupling** - Services don't know how dependencies are created  
+✅ **Enables Parallel Startup** - Services initialize concurrently when possible  
+✅ **Provides Observability** - Lifecycle events for monitoring  
+✅ **Supports Graceful Degradation** - Optional services can fail without breaking system  
+✅ **Cross-Repo Coordination** - Works across JARVIS, J-Prime, and Reactor-Core  
+
+### Current Status
+
+**All 14 intelligence services** now initialize correctly:
+- ✅ 5 Config types (CollaborationConfig, OwnershipConfig, etc.)
+- ✅ 5 Engine types (CollaborationEngine, CodeOwnershipEngine, etc.)
+- ✅ 4 Coordinator types (CrossRepoCollaborationCoordinator, etc.)
+
+**Success Rate:** 100% (previously had 4 critical bugs)
+
+### Technical Specifications
+
+- **Language:** Python 3.9+
+- **Async:** Fully async-native (asyncio)
+- **Threading:** Thread-safe with double-check locking
+- **Algorithms:** Tarjan's (cycle detection), Kahn's (topological sort)
+- **Patterns:** Protocol-based contracts, factory pattern, singleton pattern
+- **Testing:** TestContainer with mocking support
+
+### Documentation
+
+For detailed implementation guides, see:
+- `backend/core/di/` - Source code with comprehensive docstrings
+- `tests/core/di/` - Test suite demonstrating usage patterns
+- `docs/plans/2026-01-22-enterprise-di-container-implementation.md` - Implementation plan
+
+**Think of it as:** The "circulatory system" - ensures all components receive what they need, when they need it, in the correct order
+
+---
+
 ## 🐍 Ouroboros: Autonomous Self-Programming Engine
 
 **Ouroboros** is JARVIS's self-improvement system—the engine that enables JARVIS to read, understand, modify, and improve its own code autonomously. Named after the symbol of a snake eating its own tail, representing continuous self-reference and evolution.
