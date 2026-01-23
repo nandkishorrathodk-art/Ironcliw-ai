@@ -5032,13 +5032,33 @@ class SupervisorBootstrapper:
 
             supervisor = JARVISSupervisor()
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v111.2: Start backend in-process (Unified Monolith Mode) - FAST PATH
+            # ═══════════════════════════════════════════════════════════════════
+            # Fast startup mode must also use in-process backend for consistency.
+            # This ensures the unified monolith architecture works in all modes.
+            # ═══════════════════════════════════════════════════════════════════
+            if self._in_process_mode:
+                backend_started = await self._start_backend_in_process()
+                if not backend_started:
+                    self.logger.error("[v111.2] Backend failed to start in-process mode (fast path)")
+                    TerminalUI.print_error("[v111.2] Backend failed to start - aborting")
+                    return 1
+
             print(f"\n{TerminalUI.GREEN}{'═' * 60}{TerminalUI.RESET}")
             print(f"{TerminalUI.GREEN}⚡ JARVIS FAST MODE STARTING{TerminalUI.RESET}")
-            print(f"{TerminalUI.GREEN}   Backend: http://localhost:8010{TerminalUI.RESET}")
+            print(f"{TerminalUI.GREEN}   Backend: http://localhost:{self._backend_port}{TerminalUI.RESET}")
+            print(f"{TerminalUI.GREEN}   Mode: {'In-Process' if self._in_process_mode else 'Subprocess'}{TerminalUI.RESET}")
             print(f"{TerminalUI.GREEN}{'═' * 60}{TerminalUI.RESET}\n")
 
-            # Run supervisor (blocks until shutdown)
-            await supervisor.run()
+            try:
+                # Run supervisor (blocks until shutdown)
+                await supervisor.run()
+            finally:
+                # v111.2: Stop in-process backend on fast path exit
+                if self._in_process_mode and self._backend_server:
+                    await self._stop_backend_in_process()
+
             self.perf.end("fast_supervisor")
             return 0
 
