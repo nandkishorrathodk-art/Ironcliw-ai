@@ -3571,6 +3571,7 @@ class ProcessOrchestrator:
     async def _cleanup_stale_process(self, port: int) -> bool:
         """
         v95.9: Clean up stale JARVIS process on a port.
+        v111.3: CRITICAL FIX - Never kill processes spawned in this session.
 
         Args:
             port: Port to clean up
@@ -3581,11 +3582,36 @@ class ProcessOrchestrator:
         try:
             import psutil
 
+            # v111.3: Get PIDs of processes we spawned in this session
+            # NEVER kill our own spawned children - they are not "stale"
+            spawned_pids = set()
+            for managed in self._managed_processes.values():
+                if managed.pid:
+                    spawned_pids.add(managed.pid)
+
+            current_pid = os.getpid()
+            parent_pid = os.getppid()
+
             for conn in psutil.net_connections(kind='inet'):
                 if conn.laddr and hasattr(conn.laddr, 'port') and conn.laddr.port == port:
                     if conn.status == 'LISTEN':
                         try:
                             proc = psutil.Process(conn.pid)
+
+                            # v111.3: Skip self, parent, and processes we spawned
+                            if conn.pid == current_pid:
+                                logger.debug(f"[v111.3] Skipping self (PID={conn.pid}) on port {port}")
+                                continue
+                            if conn.pid == parent_pid:
+                                logger.debug(f"[v111.3] Skipping parent (PID={conn.pid}) on port {port}")
+                                continue
+                            if conn.pid in spawned_pids:
+                                logger.info(
+                                    f"[v111.3] Skipping PID {conn.pid} on port {port} - "
+                                    f"it's a process we spawned this session (NOT stale)"
+                                )
+                                continue
+
                             cmdline = ' '.join(proc.cmdline())
 
                             # Only kill JARVIS-related processes
@@ -6570,13 +6596,19 @@ class ProcessOrchestrator:
         Kill any process listening on the specified port.
 
         v5.3: Uses lsof to find and kill stale processes.
+        v111.3: CRITICAL FIX - Use -sTCP:LISTEN to only get LISTENING processes.
+                Previous: lsof -ti :PORT (returned ALL connections including clients)
+                Fixed: lsof -i :PORT -sTCP:LISTEN -t (returns only LISTENING processes)
+                This prevents killing processes that just have connections to the port.
         Resilient to CancelledError during startup.
         Returns True if a process was killed.
         """
         try:
-            # Find process on port using lsof
+            # v111.3: Find ONLY LISTENING processes on port using lsof with -sTCP:LISTEN
+            # This is critical to prevent killing the wrong process when we have
+            # ESTABLISHED connections (e.g., supervisor doing health checks)
             proc = await asyncio.create_subprocess_exec(
-                "lsof", "-ti", f":{port}",
+                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -6592,6 +6624,13 @@ class ProcessOrchestrator:
             current_pid = os.getpid()
             parent_pid = os.getppid()
 
+            # v111.3: Get PIDs of processes we spawned in this session
+            # NEVER kill our own spawned children - they are not "stale"
+            spawned_pids = set()
+            for managed in self._managed_processes.values():
+                if managed.pid:
+                    spawned_pids.add(managed.pid)
+
             for pid_str in pids:
                 if not pid_str:
                     continue
@@ -6604,6 +6643,14 @@ class ProcessOrchestrator:
                         continue
                     if pid == parent_pid:
                         logger.debug(f"    Skipping parent process (PID: {pid}) on port {port}")
+                        continue
+
+                    # v111.3: CRITICAL - Never kill processes we spawned in this session
+                    if pid in spawned_pids:
+                        logger.info(
+                            f"    ⚠️ [v111.3] Skipping PID {pid} on port {port} - "
+                            f"it's a process we spawned this session (NOT stale)"
+                        )
                         continue
 
                     os.kill(pid, signal.SIGTERM)
