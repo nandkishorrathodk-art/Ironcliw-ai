@@ -1214,18 +1214,39 @@ class GCPHybridPrimeRouter:
         )
 
     async def _connect_integrations(self) -> None:
-        """Connect to external integrations."""
-        # Cross-repo cost sync
+        """
+        Connect to external integrations.
+
+        v95.19: Enhanced with internal operation timeouts to prevent phase blocking.
+        Uses non-blocking acquisition for singletons that may be initializing in other phases.
+        """
+        # v95.19: Internal operation timeout (shorter than phase timeout)
+        op_timeout = float(os.getenv("GCP_ROUTER_OP_TIMEOUT", "5.0"))
+
+        # Cross-repo cost sync (with timeout)
         try:
             from backend.core.cross_repo_cost_sync import get_cross_repo_cost_sync
-            self._cost_sync = await get_cross_repo_cost_sync("jarvis")
+            self._cost_sync = await asyncio.wait_for(
+                get_cross_repo_cost_sync("jarvis"),
+                timeout=op_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.warning(f"CrossRepoCostSync connection timed out ({op_timeout}s)")
         except Exception as e:
             self.logger.warning(f"CrossRepoCostSync not available: {e}")
 
-        # Cross-repo neural mesh
+        # Cross-repo neural mesh (with non-blocking timeout)
+        # v95.19: Use timeout to avoid blocking if Phase 13 is still initializing
         try:
             from backend.core.registry.cross_repo_neural_mesh import get_cross_repo_neural_mesh
-            self._neural_mesh = await get_cross_repo_neural_mesh()
+            self._neural_mesh = await get_cross_repo_neural_mesh(
+                timeout=op_timeout,
+                create_if_missing=False,  # Don't create - Phase 13 should do that
+            )
+            if self._neural_mesh is None:
+                self.logger.info("Neural Mesh not yet ready - will retry later")
+        except asyncio.TimeoutError:
+            self.logger.warning(f"CrossRepoNeuralMesh connection timed out ({op_timeout}s)")
         except Exception as e:
             self.logger.warning(f"CrossRepoNeuralMesh not available: {e}")
 

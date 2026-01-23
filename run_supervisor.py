@@ -14915,7 +14915,17 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         try:
             from backend.core.registry.cross_repo_neural_mesh import get_cross_repo_neural_mesh
 
-            self._cross_repo_neural_mesh = await get_cross_repo_neural_mesh()
+            # v95.19: Use timeout to prevent phase blocking
+            op_timeout = float(os.getenv("NEURAL_MESH_INIT_TIMEOUT", "10.0"))
+            self._cross_repo_neural_mesh = await asyncio.wait_for(
+                get_cross_repo_neural_mesh(),
+                timeout=op_timeout,
+            )
+
+            if self._cross_repo_neural_mesh is None:
+                print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: Not yet initialized{TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Neural Mesh Bridge: Initialization pending")
+                return
 
             # Get status
             metrics = self._cross_repo_neural_mesh.get_metrics()
@@ -14933,15 +14943,16 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 print(f"  {TerminalUI.GREEN}✅ Neural Mesh Bridge: {connections} registered{TerminalUI.RESET}")
                 self.logger.info(f"[v101.0] ✅ Neural Mesh Bridge: {connections} registered as agents")
 
-                # Run initial health probes
-                probe_results = await self._cross_repo_neural_mesh.probe_all()
-                for repo_name, result in probe_results.items():
-                    status = "healthy" if result.healthy else f"unhealthy ({result.error})"
-                    self.logger.info(f"[v101.0] {repo_name}: {status}, latency={result.latency_ms:.1f}ms")
+                # v95.19: DEFER probe_all() to background task - don't block startup
+                # The health loop in CrossRepoNeuralMeshBridge will do probing
+                self.logger.info("[v95.19] Health probes deferred to background task (prevents startup blocking)")
             else:
-                print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: No external repos detected{TerminalUI.RESET}")
-                self.logger.warning("[v101.0] ⚠️ Neural Mesh Bridge: No external repos available")
+                print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: No external repos detected (probing in background){TerminalUI.RESET}")
+                self.logger.warning("[v101.0] ⚠️ Neural Mesh Bridge: No external repos available yet")
 
+        except asyncio.TimeoutError:
+            self.logger.warning(f"[v95.19] ⚠️ Neural Mesh Bridge initialization timed out ({op_timeout}s)")
+            print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: Timed out (will retry in background){TerminalUI.RESET}")
         except ImportError as e:
             self.logger.warning(f"[v101.0] ⚠️ Neural Mesh Bridge import failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ Neural Mesh Bridge: Not available{TerminalUI.RESET}")
@@ -15032,10 +15043,17 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         print(f"  {TerminalUI.CYAN}🔀 Hybrid Router: Initializing cost-aware tier routing...{TerminalUI.RESET}")
 
+        # v95.19: Internal operation timeout to prevent phase blocking
+        op_timeout = float(os.getenv("GCP_ROUTER_INIT_TIMEOUT", "15.0"))
+
         try:
             from backend.core.gcp_hybrid_prime_router import get_gcp_hybrid_prime_router
 
-            self._gcp_hybrid_router = await get_gcp_hybrid_prime_router()
+            # v95.19: Wrap in timeout to prevent cross-phase blocking
+            self._gcp_hybrid_router = await asyncio.wait_for(
+                get_gcp_hybrid_prime_router(),
+                timeout=op_timeout,
+            )
 
             # Connect to cost sync for budget-aware routing
             if self._cross_repo_cost_sync:
@@ -15097,6 +15115,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             except Exception as vm_init_error:
                 self.logger.debug(f"[v95.0] VM manager pre-init skipped: {vm_init_error}")
 
+        except asyncio.TimeoutError:
+            self.logger.warning(f"[v95.19] ⚠️ Hybrid Router initialization timed out ({op_timeout}s)")
+            print(f"  {TerminalUI.YELLOW}⚠️ Hybrid Router: Timed out (background initialization){TerminalUI.RESET}")
         except ImportError as e:
             self.logger.warning(f"[v101.0] ⚠️ Hybrid Router import failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ Hybrid Router: Not available{TerminalUI.RESET}")

@@ -368,24 +368,53 @@ class CrossRepoNeuralMeshBridge:
         self._metrics.file_watch_restarts += 1
 
     async def start(self) -> bool:
-        """Start the cross-repo bridge."""
+        """
+        Start the cross-repo bridge.
+
+        v95.19: Enhanced with internal operation timeouts to prevent phase blocking.
+        Each initialization step has its own timeout to ensure start() completes
+        even if external services are not ready.
+        """
         if self._running:
             return True
 
         self._running = True
         self.logger.info("CrossRepoNeuralMeshBridge v2.0 starting...")
 
-        # Connect to Neural Mesh
-        await self._connect_neural_mesh()
+        # v95.19: Internal operation timeout (shorter than phase timeout)
+        op_timeout = float(os.getenv("NEURAL_MESH_OP_TIMEOUT", "5.0"))
 
-        # Initial health check
-        await self._check_all_repos()
+        # Connect to Neural Mesh (with timeout)
+        try:
+            await asyncio.wait_for(self._connect_neural_mesh(), timeout=op_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Neural Mesh connection timed out ({op_timeout}s) - will retry in background")
+        except Exception as e:
+            self.logger.warning(f"Neural Mesh connection failed: {e}")
 
-        # Register agents with Neural Mesh
-        await self._register_agents_with_mesh()
+        # Initial health check (with timeout) - fast, just reads files
+        try:
+            await asyncio.wait_for(self._check_all_repos(), timeout=op_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Health check timed out ({op_timeout}s)")
+        except Exception as e:
+            self.logger.warning(f"Health check failed: {e}")
 
-        # Start heartbeat watchers (v2.0)
-        await self._start_heartbeat_watchers()
+        # Register agents with Neural Mesh (with timeout)
+        try:
+            await asyncio.wait_for(self._register_agents_with_mesh(), timeout=op_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Agent registration timed out ({op_timeout}s)")
+        except Exception as e:
+            self.logger.warning(f"Agent registration failed: {e}")
+
+        # Start heartbeat watchers (v2.0) - with timeout
+        try:
+            await asyncio.wait_for(self._start_heartbeat_watchers(), timeout=op_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Heartbeat watcher start timed out ({op_timeout}s)")
+        except Exception as e:
+            self.logger.warning(f"Heartbeat watcher start failed: {e}")
 
         # Start health monitoring
         self._health_task = asyncio.create_task(
@@ -967,17 +996,51 @@ def _get_mesh_lock() -> asyncio.Lock:
     return _mesh_lock
 
 
-async def get_cross_repo_neural_mesh() -> CrossRepoNeuralMeshBridge:
-    """Get the global CrossRepoNeuralMeshBridge instance."""
+async def get_cross_repo_neural_mesh(
+    timeout: Optional[float] = None,
+    create_if_missing: bool = True,
+) -> Optional[CrossRepoNeuralMeshBridge]:
+    """
+    Get the global CrossRepoNeuralMeshBridge instance.
+
+    v95.19: Enhanced with timeout to prevent cross-phase deadlocks.
+
+    Args:
+        timeout: Max time to wait for lock acquisition (None = block forever)
+        create_if_missing: If True, create instance if not exists
+
+    Returns:
+        CrossRepoNeuralMeshBridge instance or None if timeout/unavailable
+    """
     global _cross_repo_mesh
 
+    # Fast path: already initialized
+    if _cross_repo_mesh is not None and _cross_repo_mesh._running:
+        return _cross_repo_mesh
+
     lock = _get_mesh_lock()
-    async with lock:
-        if _cross_repo_mesh is None:
+
+    # v95.19: Non-blocking acquisition with timeout
+    if timeout is not None:
+        try:
+            acquired = await asyncio.wait_for(lock.acquire(), timeout=timeout)
+            if not acquired:
+                logger.warning(f"Neural Mesh lock acquisition failed (timeout: {timeout}s)")
+                return _cross_repo_mesh  # Return existing even if not fully started
+        except asyncio.TimeoutError:
+            logger.warning(f"Neural Mesh lock timed out ({timeout}s) - using existing instance")
+            return _cross_repo_mesh  # Return existing (may be None)
+    else:
+        await lock.acquire()
+
+    try:
+        if _cross_repo_mesh is None and create_if_missing:
             _cross_repo_mesh = CrossRepoNeuralMeshBridge()
             await _cross_repo_mesh.start()
 
         return _cross_repo_mesh
+    finally:
+        lock.release()
 
 
 async def shutdown_cross_repo_neural_mesh() -> None:

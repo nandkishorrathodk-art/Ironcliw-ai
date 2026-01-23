@@ -10547,6 +10547,9 @@ class TrinityUnifiedOrchestrator:
                 "registry_names": ["jarvis_prime", "jarvis-prime", "jprime"],
                 "required_capabilities": ["inference", "api"],
                 "require_explicit": True,  # jarvis-prime should register explicitly
+                # v95.18: J-Prime model loading takes 60-90s on first startup
+                # Accept "starting" status after this grace period to avoid blocking
+                "starting_acceptance_grace_period": 30.0,  # 30s before accepting degraded mode
             },
             "reactor_core": {
                 "ports": [8090, 8091, 8092, 8093],
@@ -10782,7 +10785,10 @@ class TrinityUnifiedOrchestrator:
                                         ready = health_data.get("ready_for_inference", False)
                                         model_loaded = health_data.get("model_loaded", False)
 
-                                        is_healthy = (
+                                        # v95.18: Enhanced health validation with "starting" status support
+                                        # J-Prime returns "starting" during model loading (can take 60s+)
+                                        # We should accept "starting" as valid intermediate state
+                                        is_fully_healthy = (
                                             status == "healthy"
                                             or status == "ok"
                                             or phase == "ready"
@@ -10790,7 +10796,25 @@ class TrinityUnifiedOrchestrator:
                                             or ready
                                         )
 
-                                        if is_healthy:
+                                        # v95.18: Accept "starting" status after grace period
+                                        # This allows Trinity to start in degraded mode while
+                                        # J-Prime loads models in background
+                                        is_starting_acceptable = (
+                                            status == "starting"
+                                            and phase in ("starting", "initializing", "loading_model")
+                                        )
+
+                                        elapsed_since_phase2 = 0
+                                        if verification_result.get("registered_at"):
+                                            elapsed_since_phase2 = time.time() - verification_result["registered_at"]
+
+                                        # Accept "starting" after 30s grace period (model loading takes time)
+                                        starting_grace_period = comp_specific_config.get(
+                                            "starting_acceptance_grace_period",
+                                            30.0  # Default 30s wait before accepting "starting"
+                                        )
+
+                                        if is_fully_healthy:
                                             verification_result["phase_3_health_validated"] = True
                                             verification_result["validated_at"] = time.time()
                                             verification_result["verified"] = True
@@ -10808,11 +10832,36 @@ class TrinityUnifiedOrchestrator:
                                                 f"after {current_retry} checks"
                                             )
                                             return True, verification_result
+                                        elif is_starting_acceptable and elapsed_since_phase2 >= starting_grace_period:
+                                            # v95.18: Accept "starting" status after grace period
+                                            # This allows Trinity to proceed in degraded mode
+                                            verification_result["phase_3_health_validated"] = True
+                                            verification_result["validated_at"] = time.time()
+                                            verification_result["verified"] = True
+                                            verification_result["degraded_mode"] = True
+                                            verification_result["background_loading"] = True
+                                            verification_result["loading_phase"] = phase
+                                            verification_result["total_time_seconds"] = (
+                                                time.time() - start_time
+                                            )
+
+                                            logger.warning(
+                                                f"[Registration] ⚠️  Phase 3: {component} accepted "
+                                                f"in DEGRADED mode (status={status}, phase={phase}). "
+                                                f"Background model loading in progress..."
+                                            )
+                                            logger.info(
+                                                f"[Registration] 🎉 {component} VERIFIED (DEGRADED) "
+                                                f"in {verification_result['total_time_seconds']:.1f}s. "
+                                                f"Will become fully operational when models load."
+                                            )
+                                            return True, verification_result
                                         else:
                                             # Component responding but not ready yet
                                             logger.debug(
                                                 f"[Registration] Phase 3: {component} not ready "
-                                                f"(status={status}, phase={phase})"
+                                                f"(status={status}, phase={phase}, "
+                                                f"wait {starting_grace_period - elapsed_since_phase2:.1f}s more for degraded acceptance)"
                                             )
                                     except Exception:
                                         # Non-JSON response but status 200 - accept it
