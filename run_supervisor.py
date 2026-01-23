@@ -4397,6 +4397,61 @@ class SupervisorBootstrapper:
 
         self._setup_signal_handlers()
 
+    async def _safe_phase_init(
+        self,
+        phase_name: str,
+        init_coro,
+        timeout_seconds: float = 30.0,
+        critical: bool = False,
+    ) -> bool:
+        """
+        v107.0: Safe phase initialization with timeout and error handling.
+
+        CRITICAL FIX: This prevents any single initialization phase from blocking
+        the entire startup flow indefinitely. Each phase gets a timeout and proper
+        error handling so the startup can continue even if non-critical phases fail.
+
+        Args:
+            phase_name: Human-readable name for logging (e.g., "PHASE 13: Neural Mesh Bridge")
+            init_coro: The async coroutine to execute
+            timeout_seconds: Maximum time to wait (default: 30s)
+            critical: If True, failure will be logged as error; otherwise warning
+
+        Returns:
+            True if initialization succeeded, False otherwise
+
+        Features:
+        - Timeout protection prevents indefinite blocking
+        - Error isolation ensures one phase can't crash startup
+        - Clear logging for debugging startup issues
+        - Graceful degradation - startup continues on non-critical failures
+        - Async-safe with proper cancellation handling
+        """
+        try:
+            self.logger.info(f"[v107.0] Starting {phase_name} (timeout: {timeout_seconds}s)...")
+            await asyncio.wait_for(init_coro, timeout=timeout_seconds)
+            self.logger.info(f"[v107.0] ✅ {phase_name} completed")
+            return True
+        except asyncio.TimeoutError:
+            msg = f"[v107.0] ⏱️ {phase_name} timed out after {timeout_seconds}s - skipping"
+            if critical:
+                self.logger.error(msg)
+            else:
+                self.logger.warning(msg)
+            print(f"  {TerminalUI.YELLOW}⚠️ {phase_name}: Timed out (continuing){TerminalUI.RESET}")
+            return False
+        except asyncio.CancelledError:
+            self.logger.warning(f"[v107.0] ❌ {phase_name} cancelled")
+            raise  # Re-raise cancellation
+        except Exception as e:
+            msg = f"[v107.0] ❌ {phase_name} failed: {e}"
+            if critical:
+                self.logger.error(msg)
+            else:
+                self.logger.warning(msg)
+            print(f"  {TerminalUI.YELLOW}⚠️ {phase_name}: Failed ({e}){TerminalUI.RESET}")
+            return False
+
     async def _run_fast_startup(self) -> int:
         """
         Fast startup mode - minimal overhead, instant JARVIS boot.
@@ -5705,110 +5760,95 @@ class SupervisorBootstrapper:
             # - Auto-integrates with Reactor-Core for model hot-swapping
             # ═══════════════════════════════════════════════════════════════════
 
+            # ═══════════════════════════════════════════════════════════════════
+            # v107.0: Major initializations with timeout protection
+            # ═══════════════════════════════════════════════════════════════════
+            # Each initialization is wrapped with _safe_phase_init() to prevent
+            # any single component from blocking the entire startup indefinitely.
+            # ═══════════════════════════════════════════════════════════════════
+            major_init_timeout = float(os.getenv("JARVIS_INIT_TIMEOUT", "60.0"))
+
             # v9.4: Initialize Model Manager BEFORE JARVIS-Prime
-            # This ensures a model is available for local inference
             if self.config.model_manager_enabled:
-                await self._init_model_manager()
+                await self._safe_phase_init(
+                    "Model Manager",
+                    self._init_model_manager(),
+                    timeout_seconds=major_init_timeout,
+                )
 
-            await self._initialize_jarvis_prime()
+            # v7.0: Initialize JARVIS-Prime (Local Brain)
+            await self._safe_phase_init(
+                "JARVIS-Prime (Local Brain)",
+                self._initialize_jarvis_prime(),
+                timeout_seconds=major_init_timeout,
+            )
 
-            # NOTE: Cross-Repo Orchestration (v10.1) has been moved earlier in the startup
-            # sequence (before TrinityIntegrator) to ensure services are running when
-            # TrinityIntegrator checks for them. See line ~4961.
+            # NOTE: Cross-Repo Orchestration (v10.1) moved earlier (see ~4961)
 
-            # ═══════════════════════════════════════════════════════════════════
             # v9.0: Initialize Intelligence Systems (UAE/SAI/Neural Mesh/MAS)
-            # ═══════════════════════════════════════════════════════════════════
-            # This enables the full Agentic OS intelligence stack:
-            # - UAE (Unified Awareness Engine): Screen awareness, computer vision
-            # - SAI (Situational Awareness Intelligence): Window/app tracking
-            # - Neural Mesh: Distributed intelligence coordination
-            # - MAS (Multi-Agent System): Coordinated agent execution
-            # - Continuous background web scraping for self-improvement
-            # ═══════════════════════════════════════════════════════════════════
-            await self._initialize_intelligence_systems()
+            await self._safe_phase_init(
+                "Intelligence Systems (UAE/SAI/MAS)",
+                self._initialize_intelligence_systems(),
+                timeout_seconds=major_init_timeout,
+            )
 
-            # ═══════════════════════════════════════════════════════════════════
             # v9.5: Initialize Infrastructure Orchestrator (On-Demand GCP)
-            # ═══════════════════════════════════════════════════════════════════
-            # This fixes the root issue: GCP resources staying deployed when JARVIS is off.
-            # The orchestrator:
-            # - Provisions Cloud Run/Redis only when needed (memory pressure, explicit config)
-            # - Tracks what WE created vs pre-existing resources
-            # - Automatically destroys OUR resources on shutdown
-            # - Leaves pre-existing infrastructure alone
-            # ═══════════════════════════════════════════════════════════════════
             if self._infra_orchestrator_enabled:
-                await self._initialize_infrastructure_orchestrator()
+                await self._safe_phase_init(
+                    "Infrastructure Orchestrator",
+                    self._initialize_infrastructure_orchestrator(),
+                    timeout_seconds=major_init_timeout,
+                )
 
-            # ═══════════════════════════════════════════════════════════════════
             # v10.0: Reactor-Core API Server (Training Pipeline)
-            # This starts the training API that enables programmatic training triggers.
-            # The "Ignition Key" connects JARVIS to Reactor-Core for continuous learning.
-            # ═══════════════════════════════════════════════════════════════════
             if self._reactor_core_enabled:
-                await self._initialize_reactor_core_api()
+                await self._safe_phase_init(
+                    "Reactor-Core API",
+                    self._initialize_reactor_core_api(),
+                    timeout_seconds=major_init_timeout,
+                )
 
-            # ═══════════════════════════════════════════════════════════════════
             # v11.0: PROJECT TRINITY - Unified Cognitive Architecture
-            # ═══════════════════════════════════════════════════════════════════
-            # This initializes the Trinity network connecting:
-            # - JARVIS Body (execution layer) ↔ J-Prime (cognitive mind) ↔ Reactor Core (nerves)
-            # - Enables distributed AI reasoning and cross-repo command execution
-            # - Provides file-based message passing with heartbeat monitoring
-            # ═══════════════════════════════════════════════════════════════════
+            # This initializes the Trinity network (JARVIS Body ↔ J-Prime ↔ Reactor Core)
             if self._trinity_enabled:
-                await self._initialize_trinity()
+                await self._safe_phase_init(
+                    "PROJECT TRINITY",
+                    self._initialize_trinity(),
+                    timeout_seconds=major_init_timeout * 2,  # Double timeout for Trinity (calls many PHASES)
+                )
 
-            # ═══════════════════════════════════════════════════════════════════
             # v72.0: Auto-Launch Trinity Components (J-Prime + Reactor-Core)
-            # ═══════════════════════════════════════════════════════════════════
-            # This enables "one-command" startup - running run_supervisor.py
-            # automatically launches all three Trinity repos as subprocesses.
-            # - JARVIS Body: Already running (this process)
-            # - J-Prime Mind: Launched as subprocess (trinity_bridge.py)
-            # - Reactor-Core Nerves: Launched as subprocess (trinity_orchestrator.py)
-            # ═══════════════════════════════════════════════════════════════════
             if self._trinity_enabled and self._trinity_auto_launch_enabled:
-                await self._launch_trinity_components()
+                await self._safe_phase_init(
+                    "Trinity Components Launch",
+                    self._launch_trinity_components(),
+                    timeout_seconds=major_init_timeout,
+                )
 
-            # ═══════════════════════════════════════════════════════════════════
             # v77.0: Initialize Unified Coding Council (Self-Evolution Framework)
-            # ═══════════════════════════════════════════════════════════════════
-            # This enables JARVIS self-evolution capabilities:
-            # - MetaGPT for multi-agent planning
-            # - RepoMaster for codebase analysis
-            # - Aider for direct code editing
-            # - OpenHands for sandboxed execution
-            # - Continue for IDE integration
-            # ═══════════════════════════════════════════════════════════════════
             if os.getenv("CODING_COUNCIL_ENABLED", "true").lower() == "true":
                 try:
                     from core.coding_council.startup import coding_council_startup_hook
-                    await coding_council_startup_hook(
-                        bootstrapper=self,
-                        phase="supervisor_init"
+                    await self._safe_phase_init(
+                        "Coding Council",
+                        coding_council_startup_hook(
+                            bootstrapper=self,
+                            phase="supervisor_init"
+                        ),
+                        timeout_seconds=30.0,  # Shorter timeout for Coding Council
                     )
                     print(f"  {TerminalUI.GREEN}✓ Coding Council: Self-evolution framework active{TerminalUI.RESET}")
                 except ImportError as e:
                     self.logger.info(f"[CodingCouncil] Not available: {e}")
                     print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Not available{TerminalUI.RESET}")
-                except Exception as e:
-                    self.logger.warning(f"[CodingCouncil] Initialization failed: {e}")
-                    print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Failed ({e}){TerminalUI.RESET}")
 
-            # ═══════════════════════════════════════════════════════════════════
             # v13.0: Initialize Collaboration & IDE Integration System
-            # ═══════════════════════════════════════════════════════════════════
-            # This enables advanced collaboration and IDE features:
-            # - CRDT-based multi-user conflict resolution
-            # - Code ownership awareness (CODEOWNERS, git blame)
-            # - Review workflow integration (GitHub/GitLab PR/MR)
-            # - LSP server for completions, diagnostics, code actions
-            # - VS Code/Cursor extension support with commands & keybindings
-            # ═══════════════════════════════════════════════════════════════════
             if os.getenv("JARVIS_COLLABORATION_ENABLED", "true").lower() == "true":
-                await self._initialize_collaboration_and_ide_systems()
+                await self._safe_phase_init(
+                    "Collaboration & IDE Integration",
+                    self._initialize_collaboration_and_ide_systems(),
+                    timeout_seconds=30.0,
+                )
 
             # ═══════════════════════════════════════════════════════════════════
             # v78.0: Verify Trinity Connections (Advanced Orchestrator)
@@ -14028,108 +14068,145 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             self.logger.info("[v100.0] Started Trinity Core Systems monitoring task")
 
         # =====================================================================
+        # PHASE 4-15: Initialize remaining Trinity components with TIMEOUTS
+        # v107.0: Each phase wrapped with _safe_phase_init() to prevent blocking
+        # =====================================================================
+        phase_timeout = float(os.getenv("TRINITY_PHASE_TIMEOUT", "30.0"))  # Configurable timeout
+
         # PHASE 4: Initialize AGI Orchestrator (v100.0)
-        # =====================================================================
         if self._agi_orchestrator_enabled:
-            await self._initialize_agi_orchestrator()
+            await self._safe_phase_init(
+                "PHASE 4: AGI Orchestrator",
+                self._initialize_agi_orchestrator(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 5: Initialize Unified Model Serving (v100.0)
-        # =====================================================================
         if self._model_serving_enabled:
-            await self._initialize_unified_model_serving()
+            await self._safe_phase_init(
+                "PHASE 5: Unified Model Serving",
+                self._initialize_unified_model_serving(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 6: Initialize Unified Agent Registry (v100.0)
-        # =====================================================================
         if self._agent_registry_enabled:
-            await self._initialize_unified_agent_registry()
+            await self._safe_phase_init(
+                "PHASE 6: Unified Agent Registry",
+                self._initialize_unified_agent_registry(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 7: Initialize Distributed State Manager (v100.0)
-        # =====================================================================
         if self._state_manager_enabled:
-            await self._initialize_distributed_state_manager()
+            await self._safe_phase_init(
+                "PHASE 7: Distributed State Manager",
+                self._initialize_distributed_state_manager(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 8: Initialize Continuous Learning Orchestrator (v100.0)
-        # =====================================================================
         if self._continuous_learning_enabled:
-            await self._initialize_continuous_learning_orchestrator()
+            await self._safe_phase_init(
+                "PHASE 8: Continuous Learning Orchestrator",
+                self._initialize_continuous_learning_orchestrator(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 9: Initialize Neural Mesh Registry Bridge (v100.0)
-        # =====================================================================
         if self._neural_mesh_bridge_enabled:
-            await self._initialize_neural_mesh_bridge()
+            await self._safe_phase_init(
+                "PHASE 9: Neural Mesh Registry Bridge",
+                self._initialize_neural_mesh_bridge(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 10: Initialize Learning State Connector (v100.0)
-        # =====================================================================
         if self._learning_state_connector_enabled:
-            await self._initialize_learning_state_connector()
+            await self._safe_phase_init(
+                "PHASE 10: Learning State Connector",
+                self._initialize_learning_state_connector(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 11: Initialize Cross-Repo Experience Forwarder (v100.0)
-        # =====================================================================
         if self._experience_forwarder_enabled:
-            await self._initialize_experience_forwarder()
+            await self._safe_phase_init(
+                "PHASE 11: Cross-Repo Experience Forwarder",
+                self._initialize_experience_forwarder(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 12: Initialize Trinity Bridge Adapter (v101.0) - CRITICAL
         # This MUST be initialized to close the Trinity Loop:
         # Training → MODEL_READY → TrinityBridgeAdapter → Hot-Swap
-        # =====================================================================
         if self._trinity_bridge_adapter_enabled:
-            await self._initialize_trinity_bridge_adapter()
+            await self._safe_phase_init(
+                "PHASE 12: Trinity Bridge Adapter",
+                self._initialize_trinity_bridge_adapter(),
+                timeout_seconds=phase_timeout,
+                critical=True,  # Mark as critical
+            )
 
-        # =====================================================================
         # PHASE 12.5: Initialize Trinity IPC Hub v4.0 (v104.0) - CRITICAL
-        # Enterprise-grade communication with ALL 10 channels:
-        # Command, Status, Feedback, Training, Model Registry, Query,
-        # Event Stream, RPC, Pub/Sub, Message Queue
-        # =====================================================================
+        # Enterprise-grade communication with ALL 10 channels
         if self._trinity_ipc_hub_enabled:
-            await self._initialize_trinity_ipc_hub()
+            await self._safe_phase_init(
+                "PHASE 12.5: Trinity IPC Hub",
+                self._initialize_trinity_ipc_hub(),
+                timeout_seconds=phase_timeout,
+                critical=True,
+            )
 
-        # =====================================================================
         # PHASE 12.6: Initialize Trinity State Manager v4.0 (v105.0) - CRITICAL
-        # Enterprise-grade distributed state with ALL 8 gaps addressed:
-        # Unified Coordinator, Sync, Versioning, Conflict Resolution,
-        # Snapshots, Partitioning, Compression, Access Control (RBAC)
-        # =====================================================================
+        # Enterprise-grade distributed state with ALL 8 gaps addressed
         if self._trinity_state_manager_enabled:
-            await self._initialize_trinity_state_manager()
+            await self._safe_phase_init(
+                "PHASE 12.6: Trinity State Manager",
+                self._initialize_trinity_state_manager(),
+                timeout_seconds=phase_timeout,
+                critical=True,
+            )
 
-        # =====================================================================
         # PHASE 12.7: Initialize Trinity Observability v4.0 (v106.0) - CRITICAL
-        # Enterprise-grade observability with ALL 10 gaps addressed:
-        # Distributed Tracing, Metrics, Logging, Profiling, Errors,
-        # Health Dashboard, Alerts, Dependency Graph, Request Flow, Resources
-        # =====================================================================
+        # Enterprise-grade observability with ALL 10 gaps addressed
         if self._trinity_observability_enabled:
-            await self._initialize_trinity_observability()
+            await self._safe_phase_init(
+                "PHASE 12.7: Trinity Observability",
+                self._initialize_trinity_observability(),
+                timeout_seconds=phase_timeout,
+                critical=True,
+            )
 
-        # =====================================================================
         # PHASE 13: Initialize Cross-Repo Neural Mesh Bridge (v101.0)
         # Registers JARVIS Prime and Reactor Core as Neural Mesh agents
-        # =====================================================================
+        # THIS IS THE PHASE THAT WAS BLOCKING - now has timeout protection
         if self._cross_repo_neural_mesh_enabled:
-            await self._initialize_cross_repo_neural_mesh()
+            await self._safe_phase_init(
+                "PHASE 13: Cross-Repo Neural Mesh Bridge",
+                self._initialize_cross_repo_neural_mesh(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 14: Initialize Cross-Repo Cost Sync (v101.0)
         # Unified budget tracking across all repos via Redis
-        # =====================================================================
         if self._cross_repo_cost_sync_enabled:
-            await self._initialize_cross_repo_cost_sync()
+            await self._safe_phase_init(
+                "PHASE 14: Cross-Repo Cost Sync",
+                self._initialize_cross_repo_cost_sync(),
+                timeout_seconds=phase_timeout,
+            )
 
-        # =====================================================================
         # PHASE 15: Initialize GCP Hybrid Prime Router (v101.0)
         # Memory-triggered VM provisioning with distributed locking
-        # =====================================================================
         if self._gcp_hybrid_router_enabled:
-            await self._initialize_gcp_hybrid_router()
+            await self._safe_phase_init(
+                "PHASE 15: GCP Hybrid Prime Router",
+                self._initialize_gcp_hybrid_router(),
+                timeout_seconds=phase_timeout,
+            )
+
+        self.logger.info("[v107.0] Trinity Core Systems initialization complete (with timeout protection)")
 
     async def _initialize_trinity_bridge_adapter(self) -> None:
         """
