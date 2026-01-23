@@ -31,16 +31,16 @@ Architecture:
     ┌──────────────────────────────────────────────────────────────────┐
     │         Cross-Repo Orchestrator v5.0 - Process Manager           │
     ├──────────────────────────────────────────────────────────────────┤
-    │                                                                   │
+    │                                                                  │
     │  Service Registry: ~/.jarvis/registry/services.json              │
-    │  ┌────────────────┬──────────────┬─────────────────────┐        │
-    │  │   JARVIS       │   J-PRIME    │   REACTOR-CORE      │        │
-    │  │  PID: auto     │  PID: auto   │   PID: auto         │        │
-    │  │  Port: 8010    │  Port: 8000  │   Port: 8090        │        │
-    │  │  Status: ✅    │  Status: ✅  │   Status: ✅        │        │
-    │  └────────────────┴──────────────┴─────────────────────┘        │
-    │                                                                   │
-    │  Process Lifecycle:                                               │
+    │  ┌────────────────┬──────────────┬─────────────────────┐         │
+    │  │   JARVIS       │   J-PRIME    │   REACTOR-CORE      │         │
+    │  │  PID: auto     │  PID: auto   │   PID: auto         │         │
+    │  │  Port: 8010    │  Port: 8000  │   Port: 8090        │         │
+    │  │  Status: ✅     │  Status: ✅  │   Status: ✅        │         │
+    │  └────────────────┴──────────────┴─────────────────────┘         │
+    │                                                                  │
+    │  Process Lifecycle:                                              │
     │  0. Pre-flight Cleanup (kill stale legacy processes)             │
     │  1. Pre-Spawn Validation (venv detect, port check)               │
     │  2. Spawn (asyncio.create_subprocess_exec with venv Python)      │
@@ -48,7 +48,7 @@ Architecture:
     │  4. Stream Output (real-time with [SERVICE] prefix)              │
     │  5. Auto-Heal (restart on crash with exponential backoff)        │
     │  6. Graceful Shutdown (SIGTERM → wait → SIGKILL)                 │
-    │                                                                   │
+    │                                                                  │
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
