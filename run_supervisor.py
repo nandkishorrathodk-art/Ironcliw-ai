@@ -444,6 +444,26 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+# v110.0: Singleton enforcement to prevent duplicate supervisors
+try:
+    from backend.core.supervisor_singleton import (
+        acquire_supervisor_lock,
+        release_supervisor_lock,
+        start_supervisor_heartbeat,
+        is_supervisor_running,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    _SINGLETON_AVAILABLE = False
+    def acquire_supervisor_lock(entry_point: str) -> bool:
+        return True  # Fallback: always allow
+    def release_supervisor_lock() -> None:
+        pass
+    async def start_supervisor_heartbeat() -> None:
+        pass
+    def is_supervisor_running():
+        return False, None
+
 # =============================================================================
 # v93.12: SUPPRESS SPEECHBRAIN AND TORCHAUDIO DEPRECATION WARNINGS
 # =============================================================================
@@ -22055,6 +22075,38 @@ async def main() -> int:
     """Main entry point."""
     args = parse_args()
 
+    # =========================================================================
+    # v110.0: SINGLETON ENFORCEMENT - Prevent duplicate supervisors
+    # =========================================================================
+    # This prevents the critical bug where both run_supervisor.py and
+    # start_system.py run simultaneously, causing memory exhaustion and crashes.
+    # =========================================================================
+    if _SINGLETON_AVAILABLE:
+        is_running, existing_state = is_supervisor_running()
+        if is_running and existing_state:
+            print(f"\n{'='*70}")
+            print(f"❌ JARVIS SUPERVISOR ALREADY RUNNING!")
+            print(f"{'='*70}")
+            print(f"   Entry Point: {existing_state.get('entry_point', 'unknown')}")
+            print(f"   PID:         {existing_state.get('pid', 'unknown')}")
+            print(f"   Started:     {existing_state.get('started_at', 'unknown')}")
+            print(f"   Working Dir: {existing_state.get('working_dir', 'unknown')}")
+            print(f"{'='*70}")
+            print(f"\nTo stop the existing instance:")
+            print(f"   kill {existing_state.get('pid', '<PID>')}")
+            print(f"\nOr use the shutdown command:")
+            print(f"   curl http://localhost:8010/shutdown")
+            print(f"{'='*70}\n")
+            return 1
+
+        if not acquire_supervisor_lock("run_supervisor"):
+            print("\n❌ Could not acquire supervisor lock. Another instance may be starting.")
+            return 1
+
+        # Start heartbeat to keep lock fresh
+        await start_supervisor_heartbeat()
+
+    # =========================================================================
     # v95.17: Clean up orphaned semaphores from previous crashes
     # This prevents semaphore accumulation across restarts
     try:
@@ -22109,5 +22161,16 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    try:
+        exit_code = asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n[Supervisor] Interrupted by user")
+        exit_code = 130  # 128 + SIGINT(2)
+    except Exception as e:
+        print(f"\n[Supervisor] Fatal error: {e}")
+        exit_code = 1
+    finally:
+        # v110.0: Release singleton lock on exit
+        if _SINGLETON_AVAILABLE:
+            release_supervisor_lock()
     sys.exit(exit_code)

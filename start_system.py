@@ -661,6 +661,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# v110.0: Singleton enforcement to prevent duplicate entry points
+try:
+    from backend.core.supervisor_singleton import (
+        acquire_supervisor_lock,
+        release_supervisor_lock,
+        start_supervisor_heartbeat,
+        is_supervisor_running,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    _SINGLETON_AVAILABLE = False
+    def acquire_supervisor_lock(entry_point: str) -> bool:
+        return True  # Fallback: always allow
+    def release_supervisor_lock() -> None:
+        pass
+    async def start_supervisor_heartbeat() -> None:
+        pass
+    def is_supervisor_running():
+        return False, None
+
 
 # =============================================================================
 # LAZY ASYNC LOCK HELPER - Python 3.9 Compatibility
@@ -21932,6 +21952,35 @@ if __name__ == "__main__":
     # ============================================================================
     # ADVANCED STARTUP ENTRY POINT
     # ============================================================================
+
+    # =========================================================================
+    # v110.0: SINGLETON ENFORCEMENT - Prevent duplicate entry points
+    # =========================================================================
+    # This prevents start_system.py from running when run_supervisor.py is
+    # already active, which was causing memory exhaustion and crashes.
+    # =========================================================================
+    if _SINGLETON_AVAILABLE:
+        is_running, existing_state = is_supervisor_running()
+        if is_running and existing_state:
+            print(f"\n{'='*70}")
+            print(f"❌ JARVIS SUPERVISOR ALREADY RUNNING!")
+            print(f"{'='*70}")
+            print(f"   Entry Point: {existing_state.get('entry_point', 'unknown')}")
+            print(f"   PID:         {existing_state.get('pid', 'unknown')}")
+            print(f"   Started:     {existing_state.get('started_at', 'unknown')}")
+            print(f"   Working Dir: {existing_state.get('working_dir', 'unknown')}")
+            print(f"{'='*70}")
+            print(f"\n⚠️  RECOMMENDATION: Use run_supervisor.py instead of start_system.py")
+            print(f"   The supervisor manages all services including Trinity integration.")
+            print(f"\nTo stop the existing instance:")
+            print(f"   kill {existing_state.get('pid', '<PID>')}")
+            print(f"{'='*70}\n")
+            sys.exit(1)
+
+        if not acquire_supervisor_lock("start_system"):
+            print("\n❌ Could not acquire supervisor lock. Another instance may be starting.")
+            sys.exit(1)
+
     # Create and initialize the advanced bootstrapper
     _bootstrapper = AdvancedStartupBootstrapper()
 
@@ -22011,6 +22060,10 @@ if __name__ == "__main__":
         logger.exception("Fatal error during startup")
         sys.exit(1)
     finally:
+        # v110.0: Release singleton lock first
+        if _SINGLETON_AVAILABLE:
+            release_supervisor_lock()
+
         # Cleanup PID file on exit
         pid_file = Path(tempfile.gettempdir()) / "jarvis.pid"
         try:
