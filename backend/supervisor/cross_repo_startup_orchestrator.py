@@ -2749,6 +2749,16 @@ class ProcessOrchestrator:
         self._token_refresh_interval: float = float(os.environ.get("JARVIS_TOKEN_REFRESH", "3600.0"))
         self._token_refresh_task: Optional[asyncio.Task] = None
 
+        # =====================================================================
+        # v95.16: Per-Service Recovery Locking (Race Condition Prevention)
+        # =====================================================================
+        # Prevents concurrent _auto_heal calls for the same service.
+        # When multiple detection mechanisms (health check, registry stale,
+        # process crash) trigger simultaneously, only ONE recovery proceeds.
+        self._recovery_locks: Dict[str, asyncio.Lock] = {}
+        self._recovery_locks_lock: Optional[asyncio.Lock] = None  # Protects _recovery_locks dict
+        self._recovery_in_progress: Dict[str, bool] = {}  # service -> is_recovering
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -2797,6 +2807,9 @@ class ProcessOrchestrator:
             self._version_lock = asyncio.Lock()
         if self._security_lock is None:
             self._security_lock = asyncio.Lock()
+        # v95.16: Recovery locking
+        if self._recovery_locks_lock is None:
+            self._recovery_locks_lock = asyncio.Lock()
 
     @property
     def _degradation_lock_safe(self) -> asyncio.Lock:
@@ -2832,6 +2845,74 @@ class ProcessOrchestrator:
         self._ensure_locks_initialized()
         assert self._startup_coordination_lock is not None, "Startup coordination lock should be initialized"
         return self._startup_coordination_lock
+
+    async def _get_recovery_lock(self, service_name: str) -> asyncio.Lock:
+        """
+        v95.16: Get or create a per-service recovery lock.
+
+        This ensures each service has its own lock to prevent concurrent
+        _auto_heal calls for the same service while allowing different
+        services to recover in parallel.
+        """
+        self._ensure_locks_initialized()
+        assert self._recovery_locks_lock is not None
+
+        async with self._recovery_locks_lock:
+            if service_name not in self._recovery_locks:
+                self._recovery_locks[service_name] = asyncio.Lock()
+            return self._recovery_locks[service_name]
+
+    async def _try_acquire_recovery(self, service_name: str) -> bool:
+        """
+        v95.16: Try to acquire recovery lock for a service (non-blocking).
+
+        Returns True if lock acquired (caller should proceed with recovery).
+        Returns False if another recovery is already in progress (caller should skip).
+
+        This prevents the "thundering herd" of multiple concurrent recovery
+        attempts when a service dies and triggers multiple detection mechanisms
+        (health check failure, registry stale, process crash) simultaneously.
+        """
+        lock = await self._get_recovery_lock(service_name)
+
+        # Non-blocking try-acquire
+        if lock.locked():
+            logger.debug(
+                f"[v95.16] Recovery already in progress for {service_name}, "
+                f"skipping duplicate recovery attempt"
+            )
+            return False
+
+        # Try to acquire - if we get it, we're the recovery leader
+        try:
+            # Use wait_for with 0 timeout for non-blocking acquire
+            await asyncio.wait_for(lock.acquire(), timeout=0.001)
+            self._recovery_in_progress[service_name] = True
+            return True
+        except asyncio.TimeoutError:
+            # Another coroutine got it first
+            logger.debug(
+                f"[v95.16] Lost recovery lock race for {service_name}, "
+                f"another handler will recover this service"
+            )
+            return False
+
+    def _release_recovery(self, service_name: str) -> None:
+        """
+        v95.16: Release recovery lock for a service.
+
+        Called after recovery completes (success or failure).
+        """
+        self._recovery_in_progress[service_name] = False
+
+        if service_name in self._recovery_locks:
+            lock = self._recovery_locks[service_name]
+            if lock.locked():
+                try:
+                    lock.release()
+                except RuntimeError:
+                    # Lock wasn't held by this task - shouldn't happen but be defensive
+                    pass
 
     @property
     def _service_startup_semaphore_safe(self) -> asyncio.Semaphore:
@@ -9235,15 +9316,17 @@ echo "=== JARVIS Prime started ==="
 
     async def _auto_heal(self, managed: ManagedProcess) -> bool:
         """
-        v95.2: Attempt to restart a failed service with intelligent prevention.
+        v95.16: Attempt to restart a failed service with intelligent prevention.
 
-        CRITICAL FIXES (v95.2):
-        1. Check if service is ACTUALLY healthy before restarting
-        2. Skip restart if service is responding to health checks
-        3. Reset restart count if service recovered on its own
-        4. Prevent restart loops when service is already running
+        CRITICAL FIXES:
+        - v95.2: Check if service is ACTUALLY healthy before restarting
+        - v95.2: Skip restart if service is responding to health checks
+        - v95.2: Reset restart count if service recovered on its own
+        - v95.2: Prevent restart loops when service is already running
+        - v95.16: Per-service locking prevents concurrent recovery attempts
 
-        Returns True if restart succeeded or service is already healthy.
+        Returns True if restart succeeded, service is already healthy,
+        or another recovery is already in progress (deferred to leader).
         """
         definition = managed.definition
 
@@ -9267,6 +9350,32 @@ echo "=== JARVIS Prime started ==="
                 f"(event={self._shutdown_event.is_set()}, completed={self._shutdown_completed})"
             )
             return False
+
+        # v95.16: CRITICAL - Prevent concurrent recovery attempts for same service
+        # When multiple detection mechanisms trigger (health check, registry, process crash),
+        # only ONE recovery proceeds. Others return True (recovery is being handled).
+        acquired = await self._try_acquire_recovery(definition.name)
+        if not acquired:
+            logger.info(
+                f"[v95.16] Recovery already in progress for {definition.name}, "
+                f"deferring to existing recovery handler"
+            )
+            return True  # Recovery is being handled by another caller
+
+        # v95.16: From here on, we hold the recovery lock - use try/finally to ensure release
+        try:
+            return await self._auto_heal_inner(managed)
+        finally:
+            self._release_recovery(definition.name)
+
+    async def _auto_heal_inner(self, managed: ManagedProcess) -> bool:
+        """
+        v95.16: Inner implementation of auto_heal, called while holding recovery lock.
+
+        This separation ensures the recovery lock is always released even if
+        an exception occurs during recovery.
+        """
+        definition = managed.definition
 
         # v95.2: CRITICAL - Check if service is ACTUALLY healthy before restarting
         # This prevents restart loops when the service is already running
