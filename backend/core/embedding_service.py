@@ -123,8 +123,9 @@ class EmbeddingService:
     _instance_lock = threading.Lock()
     _initialized: bool = False
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "EmbeddingService":
         """Ensure singleton pattern."""
+        del args, kwargs  # Unused but required for signature
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -158,10 +159,8 @@ class EmbeddingService:
     def _register_with_shutdown_manager(self) -> None:
         """Register with the graceful shutdown manager."""
         try:
-            from backend.core.resilience.graceful_shutdown import (
-                GracefulShutdownManager,
-                get_shutdown_manager,
-            )
+            from backend.core.resilience.graceful_shutdown import get_shutdown_manager
+
             manager = get_shutdown_manager()
             if manager:
                 manager.register_callback(

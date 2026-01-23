@@ -1831,6 +1831,121 @@ async def wait_for_global_shutdown(timeout: Optional[float] = None) -> bool:
 
 
 # =============================================================================
+# v95.20: Enhanced Multiprocessing Cleanup (Torch/ML Library Support)
+# =============================================================================
+
+def cleanup_torch_multiprocessing_resources() -> Dict[str, Any]:
+    """
+    v95.20: Clean up torch.multiprocessing resources to prevent semaphore leaks.
+
+    ROOT CAUSE: SentenceTransformer and other ML libraries use torch.multiprocessing
+    internally for parallel operations. These can create semaphores that aren't
+    properly released during shutdown, causing:
+    "resource_tracker: There appear to be N leaked semaphore objects to clean up"
+
+    This function:
+    1. Terminates any active torch.multiprocessing child processes
+    2. Cleans up the embedding service (single SentenceTransformer instance)
+    3. Forces garbage collection to release semaphore resources
+
+    Returns:
+        Dict with cleanup statistics
+    """
+    import gc
+    from contextlib import suppress
+
+    results = {
+        "torch_children_terminated": 0,
+        "embedding_service_cleaned": False,
+        "gc_collected": 0,
+        "errors": [],
+    }
+
+    # Step 1: Clean up torch.multiprocessing children
+    try:
+        import torch.multiprocessing as mp
+
+        # Get list of active child processes
+        if hasattr(mp, 'active_children'):
+            children = mp.active_children()
+            for child in children:
+                try:
+                    if child.is_alive():
+                        child.terminate()
+                        child.join(timeout=1.0)
+                        if child.is_alive():
+                            child.kill()
+                        results["torch_children_terminated"] += 1
+                except Exception as e:
+                    results["errors"].append(f"Child terminate error: {e}")
+
+        logger.debug(
+            f"[v95.20] Terminated {results['torch_children_terminated']} torch.multiprocessing children"
+        )
+    except ImportError:
+        pass  # torch not installed
+    except Exception as e:
+        results["errors"].append(f"torch.multiprocessing cleanup error: {e}")
+
+    # Step 2: Clean up embedding service (sync version)
+    try:
+        from backend.core.embedding_service import EmbeddingService
+
+        # Get singleton instance and call sync cleanup
+        instance = EmbeddingService.get_instance()
+        if instance is not None:
+            instance._sync_cleanup()
+            results["embedding_service_cleaned"] = True
+            logger.debug("[v95.20] Embedding service sync cleanup complete")
+    except ImportError:
+        pass  # embedding_service not available
+    except Exception as e:
+        results["errors"].append(f"Embedding service cleanup error: {e}")
+
+    # Step 3: Force garbage collection
+    try:
+        collected = gc.collect()
+        results["gc_collected"] = collected
+        logger.debug(f"[v95.20] Garbage collection freed {collected} objects")
+    except Exception as e:
+        results["errors"].append(f"GC error: {e}")
+
+    # Step 4: Clean up multiprocessing semaphores directly
+    try:
+        import multiprocessing.resource_tracker as rt
+
+        # Get the resource tracker's cache
+        if hasattr(rt, '_resource_tracker'):
+            tracker = rt._resource_tracker
+            if tracker is not None and hasattr(tracker, '_fd'):
+                # Don't actually clear the tracker - let it clean up naturally
+                # Just ensure it's aware we're shutting down
+                pass
+    except Exception as e:
+        results["errors"].append(f"Resource tracker cleanup error: {e}")
+
+    return results
+
+
+async def cleanup_ml_resources_async(timeout: float = 5.0) -> Dict[str, Any]:
+    """
+    v95.20: Async version of ML resource cleanup.
+
+    Runs cleanup in a thread pool to avoid blocking the event loop.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, cleanup_torch_multiprocessing_resources),
+            timeout=timeout,
+        )
+        return result
+    except asyncio.TimeoutError:
+        logger.warning(f"[v95.20] ML resource cleanup timed out after {timeout}s")
+        return {"timeout": True, "errors": ["Cleanup timed out"]}
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -1870,4 +1985,7 @@ __all__ = [
     "register_shutdown_callback",
     "register_async_shutdown_callback",
     "wait_for_global_shutdown",
+    # v95.20: Enhanced ML cleanup
+    "cleanup_torch_multiprocessing_resources",
+    "cleanup_ml_resources_async",
 ]

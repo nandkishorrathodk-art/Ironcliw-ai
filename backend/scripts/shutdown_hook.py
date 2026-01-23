@@ -307,6 +307,45 @@ async def _close_client_sessions() -> None:
     except Exception as e:
         logger.debug(f"   AsyncResourceManager cleanup error (non-critical): {e}")
 
+    # v108.0: Clean up embedding service to prevent semaphore leaks
+    try:
+        cleanup_embedding_service = None
+        for module_path in ["core.embedding_service", "backend.core.embedding_service"]:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                cleanup_embedding_service = getattr(module, "cleanup_embedding_service", None)
+                if cleanup_embedding_service:
+                    break
+            except ImportError:
+                continue
+
+        if cleanup_embedding_service:
+            await cleanup_embedding_service()
+            logger.debug("   Cleaned up embedding service")
+    except Exception as e:
+        logger.debug(f"   Embedding service cleanup error (non-critical): {e}")
+
+    # v108.0: Clean up torch.multiprocessing and ML resources
+    try:
+        cleanup_ml_resources_async = None
+        for module_path in ["core.resilience.graceful_shutdown", "backend.core.resilience.graceful_shutdown"]:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                cleanup_ml_resources_async = getattr(module, "cleanup_ml_resources_async", None)
+                if cleanup_ml_resources_async:
+                    break
+            except ImportError:
+                continue
+
+        if cleanup_ml_resources_async:
+            ml_stats = await cleanup_ml_resources_async(timeout=5.0)
+            if ml_stats.get("torch_children_terminated", 0) > 0:
+                logger.info(f"   ML cleanup: terminated {ml_stats['torch_children_terminated']} processes")
+    except Exception as e:
+        logger.debug(f"   ML resource cleanup error (non-critical): {e}")
+
 
 async def _cleanup_via_infrastructure_orchestrator(timeout: float) -> int:
     """
@@ -690,6 +729,9 @@ def _cleanup_multiprocessing_sync_fast(timeout: float = 2.0) -> int:
 
     This is the first line of defense against semaphore leaks.
 
+    v108.0: Enhanced to also clean up torch.multiprocessing resources from
+    SentenceTransformer and other ML libraries.
+
     Returns:
         Number of executors cleaned
     """
@@ -713,6 +755,29 @@ def _cleanup_multiprocessing_sync_fast(timeout: float = 2.0) -> int:
                 continue
     except Exception as e:
         logger.debug(f"   [v95.17] Fast MP cleanup error (non-critical): {e}")
+
+    # v108.0: Clean up torch.multiprocessing resources (SentenceTransformer pools)
+    try:
+        cleanup_torch_func = None
+        for module_path in ["core.resilience.graceful_shutdown", "backend.core.resilience.graceful_shutdown"]:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                cleanup_torch_func = getattr(module, "cleanup_torch_multiprocessing_resources", None)
+                if cleanup_torch_func:
+                    break
+            except ImportError:
+                continue
+
+        if cleanup_torch_func:
+            torch_result = cleanup_torch_func()
+            torch_cleaned = torch_result.get("torch_children_terminated", 0)
+            if torch_cleaned > 0:
+                logger.debug(f"   [v108.0] Torch MP cleanup: {torch_cleaned} children")
+            cleaned += torch_cleaned
+    except Exception as e:
+        logger.debug(f"   [v108.0] Torch MP cleanup error (non-critical): {e}")
+
     return cleaned
 
 
