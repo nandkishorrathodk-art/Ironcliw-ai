@@ -222,7 +222,9 @@ class MLIntentPredictor:
                 )
                 logger.info("✅ CoreML Neural Engine classifier initialized")
             except Exception as e:
-                logger.warning(f"CoreML classifier not available: {e}")
+                # v109.1: Changed from WARNING to INFO - CoreML is an optional optimization
+                # sklearn fallback provides full functionality, just without Neural Engine acceleration
+                logger.info(f"ℹ️  CoreML Neural Engine not available (using sklearn fallback): {e}")
                 self.coreml_classifier = None
 
         # Fallback sklearn model
@@ -384,7 +386,8 @@ class MLIntentPredictor:
                     logger.info(f"✅ CoreML model trained in {train_time_s:.2f}s (with Neural Engine acceleration)")
                     return True
             except Exception as e:
-                logger.warning(f"CoreML training failed: {e}, falling back to sklearn")
+                # v109.1: Changed to INFO - sklearn fallback is fully functional
+                logger.info(f"ℹ️  CoreML training skipped ({type(e).__name__}), using sklearn fallback")
 
         # Fallback to sklearn training
         loop = asyncio.get_event_loop()

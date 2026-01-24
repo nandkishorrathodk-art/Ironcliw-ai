@@ -1468,9 +1468,11 @@ class CloudECAPAClient:
         except Exception:
             pass
 
-        logger.warning(
-            "⚠️  No healthy backends found. Client initialized for retry. "
-            "Requests will attempt Cloud Run with wait-for-ready or local fallback."
+        # v109.1: Changed from WARNING to INFO - this is expected behavior during startup
+        # when Cloud Run instances are cold. The client has graceful fallback and retry.
+        logger.info(
+            "ℹ️  Cloud ECAPA: No backends immediately available (normal during cold start). "
+            "Client ready with automatic retry and local fallback enabled."
         )
         self._initialized = True
 
