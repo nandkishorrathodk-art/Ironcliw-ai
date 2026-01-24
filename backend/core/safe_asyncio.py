@@ -23,7 +23,8 @@ from __future__ import annotations
 # Guaranteed import - this happens at module load time, before any function execution
 import asyncio as _asyncio_module
 import logging
-from typing import Any, Coroutine, Optional, TypeVar, Union
+import threading
+from typing import Any, Coroutine, Dict, Optional, Tuple, TypeVar, Union
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +473,149 @@ class TaskGroup:
 
         self._tasks.clear()
         return False
+
+
+# =============================================================================
+# v109.1: SUBPROCESS RESOURCE LIMITER
+# =============================================================================
+# Prevents Python crashes from file descriptor exhaustion during startup
+# by limiting concurrent subprocess execution.
+
+# Global subprocess semaphore - limits concurrent subprocess execution
+# Set to 20 to allow parallelism while preventing FD exhaustion
+# (Each subprocess uses ~4 file descriptors: stdin, stdout, stderr, proc)
+_SUBPROCESS_SEMAPHORE: Optional[_asyncio_module.Semaphore] = None
+_SUBPROCESS_LOCK = threading.Lock()
+_SUBPROCESS_COUNT = 0
+_MAX_CONCURRENT_SUBPROCESSES = 20
+
+
+def _get_subprocess_semaphore() -> _asyncio_module.Semaphore:
+    """Get or create the global subprocess semaphore (thread-safe)."""
+    global _SUBPROCESS_SEMAPHORE
+    if _SUBPROCESS_SEMAPHORE is None:
+        with _SUBPROCESS_LOCK:
+            if _SUBPROCESS_SEMAPHORE is None:
+                try:
+                    _SUBPROCESS_SEMAPHORE = _ASYNCIO.Semaphore(_MAX_CONCURRENT_SUBPROCESSES)
+                except RuntimeError:
+                    # No event loop - create a basic semaphore
+                    _SUBPROCESS_SEMAPHORE = _ASYNCIO.Semaphore(_MAX_CONCURRENT_SUBPROCESSES)
+    return _SUBPROCESS_SEMAPHORE
+
+
+async def create_subprocess_exec_safe(
+    *args,
+    stdin=None,
+    stdout=_asyncio_module.subprocess.PIPE,
+    stderr=_asyncio_module.subprocess.PIPE,
+    timeout: Optional[float] = 30.0,
+    **kwargs
+) -> Tuple[Optional[bytes], Optional[bytes], int]:
+    """
+    Create and execute a subprocess safely with resource limiting.
+
+    v109.1: This function prevents Python crashes from file descriptor exhaustion
+    by limiting concurrent subprocess execution with a global semaphore.
+
+    Args:
+        *args: Command and arguments (e.g., 'ls', '-la')
+        stdin: Stdin configuration (default: None)
+        stdout: Stdout configuration (default: PIPE)
+        stderr: Stderr configuration (default: PIPE)
+        timeout: Timeout in seconds (default: 30.0, None for no timeout)
+        **kwargs: Additional subprocess kwargs
+
+    Returns:
+        Tuple of (stdout_bytes, stderr_bytes, return_code)
+        If timeout or error, returns (None, error_message_bytes, -1)
+
+    Example:
+        stdout, stderr, code = await create_subprocess_exec_safe('yabai', '-m', 'query', '--spaces')
+        if code == 0:
+            data = json.loads(stdout)
+    """
+    global _SUBPROCESS_COUNT
+
+    semaphore = _get_subprocess_semaphore()
+
+    try:
+        # Acquire semaphore to limit concurrency
+        await _ASYNCIO.wait_for(semaphore.acquire(), timeout=10.0)
+    except _ASYNCIO.TimeoutError:
+        logger.warning(
+            f"[safe_asyncio] Subprocess semaphore timeout - too many concurrent processes "
+            f"(max={_MAX_CONCURRENT_SUBPROCESSES})"
+        )
+        return None, b"Subprocess queue full - try again later", -1
+
+    try:
+        with _SUBPROCESS_LOCK:
+            _SUBPROCESS_COUNT += 1
+
+        # Create the subprocess
+        process = await _ASYNCIO.create_subprocess_exec(
+            *args,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            **kwargs
+        )
+
+        try:
+            # Wait for completion with timeout
+            if timeout:
+                stdout_data, stderr_data = await _ASYNCIO.wait_for(
+                    process.communicate(),
+                    timeout=timeout
+                )
+            else:
+                stdout_data, stderr_data = await process.communicate()
+
+            return stdout_data, stderr_data, process.returncode if process.returncode is not None else -1
+
+        except _ASYNCIO.TimeoutError:
+            # Kill the hung process
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass  # Already dead
+
+            try:
+                await _ASYNCIO.wait_for(process.wait(), timeout=2.0)
+            except _ASYNCIO.TimeoutError:
+                pass  # Give up waiting
+
+            return None, f"Subprocess timed out after {timeout}s".encode(), -1
+
+        except Exception as e:
+            # Ensure process is terminated on error
+            try:
+                if process.returncode is None:
+                    process.kill()
+                    await process.wait()
+            except Exception:
+                pass
+
+            return None, str(e).encode(), -1
+
+    except Exception as e:
+        logger.error(f"[safe_asyncio] Subprocess creation failed: {e}")
+        return None, str(e).encode(), -1
+
+    finally:
+        with _SUBPROCESS_LOCK:
+            _SUBPROCESS_COUNT -= 1
+        semaphore.release()
+
+
+def get_subprocess_stats() -> Dict[str, Any]:
+    """Get current subprocess statistics for monitoring."""
+    return {
+        "active_subprocesses": _SUBPROCESS_COUNT,
+        "max_concurrent": _MAX_CONCURRENT_SUBPROCESSES,
+        "utilization_percent": (_SUBPROCESS_COUNT / _MAX_CONCURRENT_SUBPROCESSES) * 100,
+    }
 
 
 # Module-level verification at import time
