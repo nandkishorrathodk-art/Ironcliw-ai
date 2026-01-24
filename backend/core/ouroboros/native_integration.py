@@ -108,6 +108,15 @@ try:
 except ImportError:
     aiofiles = None
 
+# v109.3: Safe file descriptor management to prevent EXC_GUARD crashes
+try:
+    from backend.core.safe_fd import safe_close, safe_open, async_safe_sync_file
+except ImportError:
+    # Fallback if module not available
+    safe_close = lambda fd, **kwargs: os.close(fd) if fd >= 0 else None  # noqa: E731
+    safe_open = os.open
+    async_safe_sync_file = None
+
 try:
     import aiohttp
 except ImportError:
@@ -25545,14 +25554,20 @@ class AtomicFileManager:
             logger.debug(f"Backup cleanup error: {e}")
 
     async def _sync_file(self, path: Path) -> None:
-        """Sync file to disk."""
+        """Sync file to disk. v109.3: Uses safe_close to prevent EXC_GUARD."""
         try:
+            # v109.3: Use async_safe_sync_file if available
+            if async_safe_sync_file is not None:
+                await async_safe_sync_file(path)
+                return
+
+            # Fallback: Use safe_close manually
             def sync():
-                fd = os.open(str(path), os.O_RDONLY)
+                fd = safe_open(str(path), os.O_RDONLY)
                 try:
                     os.fsync(fd)
                 finally:
-                    os.close(fd)
+                    safe_close(fd)
 
             await asyncio.get_event_loop().run_in_executor(None, sync)
         except Exception as e:

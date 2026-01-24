@@ -446,6 +446,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+# v109.3: Safe file descriptor management to prevent EXC_GUARD crashes
+try:
+    from backend.core.safe_fd import safe_close
+except ImportError:
+    # Fallback if module not available
+    safe_close = lambda fd, **kwargs: os.close(fd) if fd >= 0 else None  # noqa: E731
+
 # =============================================================================
 # v111.4: ENVIRONMENT LOADING - Load .env files including GCP hybrid cloud config
 # =============================================================================
@@ -19240,8 +19247,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                         finally:
                             # Close file descriptors (process has its own copy)
-                            os.close(stdout_fd)
-                            os.close(stderr_fd)
+                            # v109.3: Use safe_close to prevent EXC_GUARD crashes
+                            safe_close(stdout_fd)
+                            safe_close(stderr_fd)
 
                         self.logger.info(
                             f"   ✅ [legacy] J-Prime launched (PID: {process.pid}, "
@@ -19465,8 +19473,9 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                         finally:
                             # Close file descriptors
-                            os.close(stdout_fd)
-                            os.close(stderr_fd)
+                            # v109.3: Use safe_close to prevent EXC_GUARD crashes
+                            safe_close(stdout_fd)
+                            safe_close(stderr_fd)
 
                         self.logger.info(
                             f"   ✅ [legacy] Reactor-Core launched (PID: {process.pid}, "

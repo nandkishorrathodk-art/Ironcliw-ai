@@ -76,6 +76,14 @@ try:
 except ImportError:
     aiofiles = None
 
+# v109.3: Safe file descriptor management to prevent EXC_GUARD crashes
+try:
+    from backend.core.safe_fd import safe_close, safe_open
+except ImportError:
+    # Fallback if module not available
+    safe_close = lambda fd, **kwargs: os.close(fd) if fd >= 0 else None  # noqa: E731
+    safe_open = os.open
+
 logger = logging.getLogger("Ouroboros.AdvancedOrchestrator")
 
 T = TypeVar("T")
@@ -597,7 +605,8 @@ class FileLockManager:
                     except Exception:
                         pass
                     self._locks.pop(str(file_path), None)
-                os.close(fd)
+                # v109.3: Use safe_close to prevent EXC_GUARD crash on guarded FDs
+                safe_close(fd)
 
     def is_locked(self, file_path: Path) -> bool:
         """Check if a file is currently locked."""

@@ -74,6 +74,13 @@ from typing import (
     Type, TypeVar, Union, cast, overload, runtime_checkable,
 )
 
+# v109.3: Safe file descriptor management to prevent EXC_GUARD crashes
+try:
+    from backend.core.safe_fd import safe_close
+except ImportError:
+    # Fallback if module not available
+    safe_close = lambda fd, **kwargs: os.close(fd) if fd >= 0 else None  # noqa: E731
+
 # Lazy imports for optional dependencies
 _psutil: Optional[Any] = None
 _fcntl: Optional[Any] = None
@@ -462,7 +469,8 @@ class FileLock:
 
         except (BlockingIOError, OSError) as e:
             if self._fd is not None:
-                os.close(self._fd)
+                # v109.3: Use safe_close to prevent EXC_GUARD crash
+                safe_close(self._fd)
                 self._fd = None
 
             if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
@@ -495,7 +503,8 @@ class FileLock:
 
         except OSError:
             if self._fd is not None:
-                os.close(self._fd)
+                # v109.3: Use safe_close to prevent EXC_GUARD crash
+                safe_close(self._fd)
                 self._fd = None
             return False
 
@@ -572,7 +581,8 @@ class FileLock:
                         except Exception:
                             pass
 
-                os.close(self._fd)
+                # v109.3: Use safe_close to prevent EXC_GUARD crash
+                safe_close(self._fd)
                 self._fd = None
 
             # Remove lock file
@@ -928,10 +938,8 @@ class SafeProcess:
         # Close file handles first
         for fd in [self._stdout_fd, self._stderr_fd]:
             if fd is not None:
-                try:
-                    os.close(fd)
-                except Exception:
-                    pass
+                # v109.3: Use safe_close to prevent EXC_GUARD crash
+                safe_close(fd)
 
         for f in [self._stdout_file, self._stderr_file]:
             if f is not None:
