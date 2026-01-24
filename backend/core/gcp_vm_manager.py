@@ -1102,8 +1102,10 @@ class GCPVMManager:
         # ═══════════════════════════════════════════════════════════════════════════
         is_valid, validation_error = self.config.is_valid_for_vm_operations()
         if not is_valid:
-            logger.error(f"❌ VM creation blocked - configuration invalid: {validation_error}")
-            logger.error("   Ensure GCP_PROJECT_ID and GCP_ZONE environment variables are set")
+            # v109.1: Changed from ERROR to INFO - GCP being disabled is expected
+            # configuration when running without cloud resources. This is not an error.
+            logger.info(f"ℹ️  VM creation skipped - {validation_error}")
+            logger.debug("   To enable: set GCP_PROJECT_ID, GCP_ZONE, and GCP_ENABLED=true")
             self.stats["total_failed"] += 1
             self.stats["last_error"] = f"Configuration invalid: {validation_error}"
             self.stats["last_error_time"] = time.time()

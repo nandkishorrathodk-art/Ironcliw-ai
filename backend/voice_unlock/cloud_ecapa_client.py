@@ -631,7 +631,10 @@ class SpotVMBackend:
                 logger.info(f"✅ Spot VM created: {vm.name} ({self._vm_endpoint or 'IP pending'})")
                 return True
             else:
-                logger.warning("VM creation returned None - may have hit rate limits or budget")
+                # v109.1: Changed from WARNING to INFO - VM creation returning None
+                # is expected when GCP is disabled, rate limits hit, or budget exhausted.
+                # The system gracefully continues with local processing.
+                logger.info("ℹ️  VM creation skipped (GCP disabled, rate limits, or budget)")
                 self._record_failure()
                 return False
 

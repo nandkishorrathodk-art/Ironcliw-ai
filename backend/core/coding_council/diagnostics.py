@@ -342,12 +342,15 @@ class EnvironmentChecker:
                     duration_ms=(time.time() - start) * 1000,
                 )
             else:
+                # v109.1: Changed from WARN to PASS - using defaults for optional
+                # env vars is expected behavior, not a warning condition.
+                # The system is correctly configured when defaults are used.
                 default = config.get("default", "")
                 return CheckResult(
                     name=f"Env: {name}",
                     category=CheckCategory.ENVIRONMENT,
-                    status=CheckStatus.WARN,
-                    message=f"{name} not set, using default: {default}",
+                    status=CheckStatus.PASS,
+                    message=f"{name} using default: {default}",
                     details=description,
                     duration_ms=(time.time() - start) * 1000,
                 )
