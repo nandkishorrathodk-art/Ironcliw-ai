@@ -446,6 +446,58 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+# =============================================================================
+# v111.4: ENVIRONMENT LOADING - Load .env files including GCP hybrid cloud config
+# =============================================================================
+# This enables the hybrid cloud architecture to offload heavy model inference
+# to GCP Cloud Run or Spot VMs instead of loading locally (which can cause
+# memory pressure and process death on resource-constrained local systems).
+# =============================================================================
+def _load_environment_files():
+    """
+    Load environment variables from .env files in priority order.
+
+    v111.4: Added .env.gcp loading for hybrid cloud architecture.
+    This enables JARVIS_PREFER_CLOUD_RUN, JARVIS_SPOT_VM_ENABLED, etc.
+    which are critical for offloading ML workloads to GCP.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        # dotenv not available - skip
+        return
+
+    project_root = Path(__file__).parent.resolve()
+
+    # Load order (later files override earlier):
+    # 1. Root .env (base configuration)
+    # 2. backend/.env (backend-specific)
+    # 3. .env.gcp (GCP hybrid cloud - enables cloud offloading)
+
+    env_files = [
+        project_root / ".env",
+        project_root / "backend" / ".env",
+        project_root / ".env.gcp",  # v111.4: Critical for hybrid cloud
+    ]
+
+    loaded_files = []
+    for env_file in env_files:
+        if env_file.exists():
+            load_dotenv(env_file, override=True)
+            loaded_files.append(env_file.name)
+
+    # Log which files were loaded (only if GCP config was found)
+    if ".env.gcp" in loaded_files:
+        print(f"[v111.4] ✅ Loaded GCP hybrid cloud config - cloud offloading enabled")
+        # Verify key settings
+        if os.environ.get("JARVIS_PREFER_CLOUD_RUN", "").lower() == "true":
+            print(f"[v111.4]    → JARVIS_PREFER_CLOUD_RUN=true (ML inference → GCP Cloud Run)")
+        if os.environ.get("JARVIS_SPOT_VM_ENABLED", "").lower() == "true":
+            print(f"[v111.4]    → JARVIS_SPOT_VM_ENABLED=true (heavy workloads → Spot VMs)")
+
+# Execute environment loading immediately
+_load_environment_files()
+
 # v110.0: Singleton enforcement to prevent duplicate supervisors
 try:
     from backend.core.supervisor_singleton import (
