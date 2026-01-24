@@ -269,7 +269,12 @@ class PortChecker:
         name: str,
         host: str = "127.0.0.1",
     ) -> CheckResult:
-        """Check a port and return a diagnostic result."""
+        """
+        Check a port and return a diagnostic result.
+
+        v109.1: Enhanced with intelligent service detection.
+        If port is in use by a healthy JARVIS service, returns PASS (already running).
+        """
         start = time.time()
 
         if PortChecker.is_port_available(port, host):
@@ -282,6 +287,19 @@ class PortChecker:
             )
         else:
             user = PortChecker.get_port_user(port)
+
+            # v109.1: Check if it's our own healthy JARVIS service
+            # If so, no need to report as failure - service is already running
+            if await PortChecker._is_healthy_jarvis_service(port, name):
+                return CheckResult(
+                    name=f"Port {port} ({name})",
+                    category=CheckCategory.PORTS,
+                    status=CheckStatus.PASS,
+                    message=f"Port {port} has healthy {name} service running",
+                    details=f"Service already active: {user}" if user else "Service already active",
+                    duration_ms=(time.time() - start) * 1000,
+                )
+
             return CheckResult(
                 name=f"Port {port} ({name})",
                 category=CheckCategory.PORTS,
@@ -291,6 +309,48 @@ class PortChecker:
                 fix_command=f"lsof -ti:{port} | xargs kill -9" if user else None,
                 duration_ms=(time.time() - start) * 1000,
             )
+
+    @staticmethod
+    async def _is_healthy_jarvis_service(port: int, expected_name: str) -> bool:
+        """
+        v109.1: Check if port is used by a healthy JARVIS service.
+
+        This prevents false "port in use" errors when the service is already
+        running and healthy from a previous startup or parallel process.
+        """
+        try:
+            import aiohttp
+
+            # Map port to expected health endpoint
+            health_endpoints = {
+                8010: "/health",        # jarvis_api
+                8000: "/health",        # jarvis_prime
+                8090: "/health",        # reactor_core
+            }
+
+            health_path = health_endpoints.get(port, "/health")
+            url = f"http://127.0.0.1:{port}{health_path}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=2.0)) as response:
+                    if response.status == 200:
+                        try:
+                            data = await response.json()
+                            # Check for healthy indicators
+                            status = data.get("status", "").lower()
+                            if status in ("healthy", "ok", "ready", "running"):
+                                return True
+                            # Also accept if there's a service name that matches
+                            service_name = data.get("service", data.get("name", "")).lower()
+                            if expected_name.lower() in service_name:
+                                return True
+                        except Exception:
+                            # Non-JSON response but 200 OK - service is responding
+                            return True
+            return False
+        except Exception:
+            # Connection failed - service not healthy
+            return False
 
 
 # =============================================================================
@@ -622,9 +682,27 @@ class RuntimeChecker:
 
     @staticmethod
     async def check_anthropic_api() -> CheckResult:
-        """Test Anthropic API connectivity."""
+        """
+        Test Anthropic API connectivity.
+
+        v109.1: Enhanced with offline mode detection and better error handling.
+        - Respects JARVIS_OFFLINE_MODE environment variable
+        - Provides specific error details (timeout, connection refused, etc.)
+        - Returns PASS when offline mode is intentionally enabled
+        """
         start = time.time()
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
+
+        # v109.1: Check for offline mode - AI features intentionally disabled
+        offline_mode = os.getenv("JARVIS_OFFLINE_MODE", "").lower() in ("true", "1", "yes")
+        if offline_mode:
+            return CheckResult(
+                name="Anthropic API",
+                category=CheckCategory.CONNECTIVITY,
+                status=CheckStatus.PASS,
+                message="Offline mode enabled (AI features disabled by configuration)",
+                duration_ms=(time.time() - start) * 1000,
+            )
 
         if not api_key:
             return CheckResult(
@@ -683,12 +761,25 @@ class RuntimeChecker:
                 duration_ms=(time.time() - start) * 1000,
             )
         except Exception as e:
+            # v109.1: Provide specific error details based on exception type
+            error_str = str(e)
+            if "timeout" in error_str.lower() or "timed out" in error_str.lower():
+                details = "Connection timed out - network may be slow or API endpoint unreachable"
+            elif "connection refused" in error_str.lower():
+                details = "Connection refused - check network/firewall settings"
+            elif "name resolution" in error_str.lower() or "dns" in error_str.lower():
+                details = "DNS resolution failed - check network connectivity"
+            elif "ssl" in error_str.lower() or "certificate" in error_str.lower():
+                details = "SSL/TLS error - check system certificates"
+            else:
+                details = error_str
+
             return CheckResult(
                 name="Anthropic API",
                 category=CheckCategory.CONNECTIVITY,
                 status=CheckStatus.WARN,
                 message="Cannot reach Anthropic API",
-                details=str(e),
+                details=details,
                 duration_ms=(time.time() - start) * 1000,
             )
 
