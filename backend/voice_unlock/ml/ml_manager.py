@@ -56,7 +56,8 @@ try:
     RESOURCE_MANAGER_AVAILABLE = True
 except ImportError:
     RESOURCE_MANAGER_AVAILABLE = False
-    logger.warning("Resource manager not available - running without strict limits")
+    # v109.3: Resource manager is optional - graceful degradation
+    logger.info("Resource manager not available - running without strict limits")
 
 
 @dataclass
