@@ -10856,9 +10856,12 @@ class TrinityUnifiedOrchestrator:
                                                 time.time() - start_time
                                             )
 
-                                            logger.warning(
-                                                f"[Registration] ⚠️  Phase 3: {component} accepted "
-                                                f"in DEGRADED mode (status={status}, phase={phase}). "
+                                            # v109.1: Changed from WARNING to INFO - this is expected behavior
+                                            # during normal startup when JARVIS Prime is loading models.
+                                            # The system proceeds correctly with degraded mode acceptance.
+                                            logger.info(
+                                                f"[Registration] ℹ️  Phase 3: {component} accepted "
+                                                f"in degraded mode (status={status}, phase={phase}). "
                                                 f"Background model loading in progress..."
                                             )
                                             logger.info(

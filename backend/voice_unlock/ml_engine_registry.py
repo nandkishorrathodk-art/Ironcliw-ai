@@ -1832,62 +1832,99 @@ class MLEngineRegistry:
         import aiohttp
 
         # =====================================================================
-        # PHASE 1: Health check (verify endpoint is reachable)
+        # PHASE 1: Health check with INTELLIGENT ENDPOINT DISCOVERY (v109.1)
         # =====================================================================
-        health_endpoint = f"{self._cloud_endpoint.rstrip('/')}/health"
+        # v109.1: Try multiple health check paths to handle different service configurations
+        # This prevents 404 errors when service has a different health endpoint path
+        health_paths = ["/health", "/api/ml/health", "/healthz", "/"]
+        base_url = self._cloud_endpoint.rstrip('/')
+
         endpoint_reachable = False
         ecapa_ready = False
         reason = "Unknown error"
         last_health_data = {}
+        working_health_path = None  # Track which path worked
+
+        # v109.1: Track if we're getting 404s (service not deployed) vs other errors
+        consecutive_404s = 0
+        max_404s_before_skip = 2  # If we get 404 on 2+ paths, service likely not deployed
 
         for attempt in range(1, retry_count + 1):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        health_endpoint,
-                        timeout=aiohttp.ClientTimeout(total=timeout),
-                        headers={"Accept": "application/json"}
-                    ) as response:
-                        if response.status == 200:
-                            try:
-                                data = await response.json()
-                                last_health_data = data
-                                endpoint_reachable = True
+            # v109.1: Try all health paths on first attempt, then stick with working one
+            paths_to_try = [working_health_path] if working_health_path else health_paths
 
-                                # Check if ECAPA is already ready
-                                if data.get("ecapa_ready", False):
-                                    ecapa_ready = True
-                                    load_source = data.get("load_source", "unknown")
-                                    logger.info(f"✅ Cloud ECAPA already ready! Source: {load_source}")
+            for health_path in paths_to_try:
+                health_endpoint = f"{base_url}{health_path}"
+
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            health_endpoint,
+                            timeout=aiohttp.ClientTimeout(total=timeout),
+                            headers={"Accept": "application/json"}
+                        ) as response:
+                            if response.status == 200:
+                                try:
+                                    data = await response.json()
+                                    last_health_data = data
+                                    endpoint_reachable = True
+                                    working_health_path = health_path  # Remember this path
+
+                                    # Check if ECAPA is already ready
+                                    if data.get("ecapa_ready", False):
+                                        ecapa_ready = True
+                                        load_source = data.get("load_source", "unknown")
+                                        logger.info(f"✅ Cloud ECAPA already ready! Source: {load_source}")
+                                        break
+                                    else:
+                                        status = data.get("status", "unknown")
+                                        logger.info(f"☁️  Cloud endpoint reachable (path: {health_path}), ECAPA initializing (status: {status})")
+                                        break  # Exit path loop, proceed to wait phase
+
+                                except Exception:
+                                    # JSON parse failed but HTTP 200 - endpoint reachable
+                                    endpoint_reachable = True
+                                    working_health_path = health_path
+                                    logger.info(f"✅ Cloud backend responded (non-JSON, path: {health_path})")
                                     break
+                            elif response.status == 404:
+                                # v109.1: 404 = path not found, try next path
+                                consecutive_404s += 1
+                                logger.debug(f"   Path {health_path} returned 404, trying next...")
+                                continue  # Try next path
+                            else:
+                                reason = f"Cloud returned HTTP {response.status}"
+                                # v109.1: Only log WARNING for server errors (5xx), INFO for client errors
+                                if response.status >= 500:
+                                    logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason}")
                                 else:
-                                    status = data.get("status", "unknown")
-                                    logger.info(f"☁️  Cloud endpoint reachable, ECAPA initializing (status: {status})")
-                                    break  # Exit retry loop, proceed to wait phase
+                                    logger.info(f"   Attempt {attempt}/{retry_count}: {reason}")
 
-                            except Exception:
-                                # JSON parse failed but HTTP 200 - endpoint reachable
-                                endpoint_reachable = True
-                                logger.info("✅ Cloud backend responded (non-JSON)")
-                                break
-                        else:
-                            reason = f"Cloud returned HTTP {response.status}"
-                            logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason}")
+                except asyncio.TimeoutError:
+                    reason = f"Cloud health check timed out after {timeout}s"
+                    logger.info(f"⏱️ Attempt {attempt}/{retry_count}: {reason}")
+                except aiohttp.ClientError as e:
+                    reason = f"Cloud connection error: {e}"
+                    # v109.1: Connection errors are expected when service isn't deployed
+                    logger.info(f"🔌 Attempt {attempt}/{retry_count}: {reason}")
+                except Exception as e:
+                    reason = f"Cloud verification error: {e}"
+                    logger.info(f"   Attempt {attempt}/{retry_count}: {reason}")
 
-            except asyncio.TimeoutError:
-                reason = f"Cloud health check timed out after {timeout}s"
-                logger.warning(f"⏱️ Attempt {attempt}/{retry_count}: {reason}")
-            except aiohttp.ClientError as e:
-                reason = f"Cloud connection error: {e}"
-                logger.warning(f"🔌 Attempt {attempt}/{retry_count}: {reason}")
-            except Exception as e:
-                reason = f"Cloud verification error: {e}"
-                logger.warning(f"❌ Attempt {attempt}/{retry_count}: {reason}")
+            # v109.1: If we found a working path or endpoint is reachable, exit retry loop
+            if endpoint_reachable:
+                break
+
+            # v109.1: If all paths returned 404, service likely isn't deployed
+            if consecutive_404s >= len(health_paths):
+                reason = f"Cloud service not available (all health paths returned 404)"
+                logger.info(f"ℹ️  {reason} - falling back to local processing")
+                break  # No point retrying
 
             # Exponential backoff between retries
             if attempt < retry_count:
                 backoff = min(2 ** (attempt - 1), 5)
-                logger.info(f"   Retrying in {backoff}s...")
+                logger.debug(f"   Retrying in {backoff}s...")
                 await asyncio.sleep(backoff)
 
         # =====================================================================
@@ -1897,11 +1934,14 @@ class MLEngineRegistry:
             logger.info(f"⏳ Waiting for Cloud ECAPA to initialize (max {ecapa_wait_timeout}s)...")
             wait_start = time.time()
 
+            # v109.1: Use the working health path discovered in Phase 1
+            poll_endpoint = f"{base_url}{working_health_path}" if working_health_path else f"{base_url}/health"
+
             while time.time() - wait_start < ecapa_wait_timeout:
                 try:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
-                            health_endpoint,
+                            poll_endpoint,
                             timeout=aiohttp.ClientTimeout(total=timeout),
                             headers={"Accept": "application/json"}
                         ) as response:
@@ -1924,17 +1964,19 @@ class MLEngineRegistry:
                                     status = data.get("status", "unknown")
                                     elapsed = time.time() - wait_start
                                     remaining = ecapa_wait_timeout - elapsed
-                                    logger.info(f"   [{elapsed:.0f}s] ECAPA status: {status} (waiting up to {remaining:.0f}s more)")
+                                    logger.debug(f"   [{elapsed:.0f}s] ECAPA status: {status} (waiting up to {remaining:.0f}s more)")
 
                 except Exception as e:
-                    logger.warning(f"   Health poll error: {e}")
+                    # v109.1: Changed to DEBUG - health poll errors are common during startup
+                    logger.debug(f"   Health poll error: {e}")
 
                 await asyncio.sleep(ecapa_poll_interval)
 
             if not ecapa_ready:
                 elapsed = time.time() - wait_start
                 reason = f"ECAPA not ready after {elapsed:.1f}s wait (last status: {last_health_data.get('status', 'unknown')})"
-                logger.warning(f"⏱️ {reason}")
+                # v109.1: Changed to INFO - this is expected when cloud service isn't deployed
+                logger.info(f"⏱️ {reason}")
 
         # Determine if health check passed
         health_check_passed = endpoint_reachable and ecapa_ready
@@ -1945,10 +1987,12 @@ class MLEngineRegistry:
         # If health check failed, return early
         if not health_check_passed:
             self._cloud_verified = False
-            logger.error(f"❌ Cloud health check FAILED after {retry_count} attempts")
-            logger.error(f"   Last error: {reason}")
+            # v109.1: Changed from ERROR to INFO - cloud unavailable is a common, expected scenario
+            # The system gracefully falls back to local processing
+            logger.info(f"ℹ️  Cloud ECAPA not available after {retry_count} attempts")
+            logger.debug(f"   Last status: {reason}")
             if fallback_enabled:
-                logger.warning("🔄 Cloud verification failed - fallback to local ECAPA enabled")
+                logger.info("🔄 Using local ECAPA processing (cloud fallback enabled)")
             return False, reason
 
         # =====================================================================
