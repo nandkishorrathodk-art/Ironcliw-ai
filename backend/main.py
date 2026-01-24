@@ -486,7 +486,8 @@ except ImportError:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
-    logger.warning("Enhanced ML logging not available - using standard logging")
+    # v109.3: Enhanced ML logging is optional - use INFO not WARNING
+    logger.info("Enhanced ML logging not available - using standard logging")
     ML_LOGGING_ENABLED = False
 
 # Enable debug logging for specific modules
