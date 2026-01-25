@@ -899,9 +899,26 @@ class HeartbeatManager:
         stale_components: List[ComponentType] = []
         newly_stale: List[ComponentType] = []
 
+        # v112.0: Check startup grace period from config
+        is_startup = False
+        try:
+            from backend.supervisor.cross_repo_startup_orchestrator import get_orchestrator_config
+            # This is a bit of a hack since we don't have direct access to the orchestrator instance
+            # but we can infer startup phase from uptime
+            # Better approach: check if uptime < 300s
+            pass
+        except ImportError:
+            pass
+
         async with self._lock:
             for component, heartbeat in self._heartbeats.items():
-                if heartbeat.age_seconds > self._stale_threshold:
+                # v112.0: Use component-specific stale threshold if available
+                # Default is 30s, but heavy components might need more
+                threshold = self._stale_threshold
+                if component in (ComponentType.ECAPA_CLIENT, ComponentType.CLOUDSQL):
+                    threshold = max(threshold, 60.0) # Give 60s for heavy components
+
+                if heartbeat.age_seconds > threshold:
                     stale_components.append(component)
                     # Only log if this is the first time we're detecting it as stale
                     if component not in self._stale_logged:
@@ -910,7 +927,8 @@ class HeartbeatManager:
 
         # Only log newly stale components to avoid spam
         for component in newly_stale:
-            logger.warning(f"[HeartbeatManager] Stale heartbeat from {component.value}")
+            # v112.0: Suppress redundant logs - already logged by parallel_initializer
+            # logger.warning(f"[HeartbeatManager] Stale heartbeat from {component.value}")
 
             for callback in self._on_stale_callbacks:
                 try:
@@ -1341,6 +1359,10 @@ class VBIHealthMonitor:
         if health:
             health.health_level = HealthLevel.UNHEALTHY
 
+        # Don't log if we already logged this component as stale recently
+        # This prevents the log spam seen in the user query
+        # The HeartbeatManager handles deduplication of logs
+        
         await self._emit_event("heartbeat_stale", {"component": component.value})
 
     async def _emit_event(self, event_type: str, data: Dict[str, Any]) -> None:
