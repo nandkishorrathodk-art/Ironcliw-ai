@@ -2913,6 +2913,19 @@ class ProcessOrchestrator:
         self._recovery_locks_lock: Optional[asyncio.Lock] = None  # Protects _recovery_locks dict
         self._recovery_in_progress: Dict[str, bool] = {}  # service -> is_recovering
 
+        # =====================================================================
+        # v109.5: Progress Broadcasting to Loading Server (Watchdog Fix)
+        # =====================================================================
+        # CRITICAL: The loading server has a 60-second watchdog that shuts down
+        # the system if no progress updates are received. The cross-repo
+        # orchestrator must broadcast progress during service startup.
+        self._progress_broadcaster_enabled: bool = True
+        self._last_progress_broadcast: float = 0.0
+        self._progress_broadcast_interval: float = 10.0  # Keepalive every 10s
+        self._progress_keepalive_task: Optional[asyncio.Task] = None
+        self._current_startup_phase: str = "initializing"
+        self._current_startup_progress: int = 35  # Start after "Backend API online"
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -2999,6 +3012,116 @@ class ProcessOrchestrator:
         self._ensure_locks_initialized()
         assert self._startup_coordination_lock is not None, "Startup coordination lock should be initialized"
         return self._startup_coordination_lock
+
+    # =========================================================================
+    # v109.5: Progress Broadcasting to Loading Server
+    # =========================================================================
+
+    async def _broadcast_progress_to_loading_server(
+        self,
+        stage: str,
+        message: str,
+        progress: int,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        v109.5: Broadcast progress update to the loading server.
+
+        CRITICAL: The loading server has a 60-second watchdog that shuts down
+        the system if no progress updates are received. This method must be
+        called regularly during startup to prevent premature shutdown.
+
+        Args:
+            stage: Current stage name (e.g., "cross_repo_startup")
+            message: Human-readable message
+            progress: Progress percentage (0-100)
+            metadata: Optional metadata dict
+
+        Returns:
+            True if broadcast succeeded, False otherwise
+        """
+        if not self._progress_broadcaster_enabled:
+            return False
+
+        try:
+            import aiohttp
+            from datetime import datetime
+
+            # Use the loading server port (3001)
+            loading_port = 3001
+            url = f"http://localhost:{loading_port}/api/update-progress"
+
+            data = {
+                "stage": stage,
+                "message": message,
+                "progress": progress,
+                "timestamp": datetime.now().isoformat(),
+                "metadata": metadata or {},
+            }
+
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=2.0)
+            ) as session:
+                async with session.post(url, json=data) as resp:
+                    if resp.status == 200:
+                        self._last_progress_broadcast = time.time()
+                        self._current_startup_phase = stage
+                        self._current_startup_progress = progress
+                        logger.debug(f"[v109.5] 📡 Progress broadcast: {stage} ({progress}%)")
+                        return True
+                    else:
+                        logger.debug(f"[v109.5] Progress broadcast failed: status {resp.status}")
+                        return False
+
+        except Exception as e:
+            logger.debug(f"[v109.5] Progress broadcast failed: {e}")
+            return False
+
+    async def _start_progress_keepalive(self) -> None:
+        """
+        v109.5: Start a background task that sends keepalive progress updates.
+
+        This prevents the loading server watchdog from triggering shutdown
+        during long-running startup phases (e.g., waiting for J-Prime to load).
+        """
+        if self._progress_keepalive_task is not None:
+            return
+
+        async def keepalive_loop():
+            """Send periodic keepalive progress updates."""
+            while not self._shutdown_event.is_set():
+                try:
+                    elapsed = time.time() - self._last_progress_broadcast
+                    if elapsed >= self._progress_broadcast_interval:
+                        await self._broadcast_progress_to_loading_server(
+                            self._current_startup_phase,
+                            f"Cross-repo startup in progress... ({self._current_startup_phase})",
+                            self._current_startup_progress,
+                            {"keepalive": True},
+                        )
+                    await asyncio.sleep(self._progress_broadcast_interval / 2)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.debug(f"[v109.5] Keepalive loop error: {e}")
+                    await asyncio.sleep(5.0)
+
+        self._progress_keepalive_task = asyncio.create_task(
+            keepalive_loop(),
+            name="progress-keepalive-v109.5"
+        )
+        logger.debug("[v109.5] Progress keepalive task started")
+
+    async def _stop_progress_keepalive(self) -> None:
+        """v109.5: Stop the progress keepalive task."""
+        if self._progress_keepalive_task is not None:
+            self._progress_keepalive_task.cancel()
+            try:
+                await self._progress_keepalive_task
+            except asyncio.CancelledError:
+                pass
+            self._progress_keepalive_task = None
+            logger.debug("[v109.5] Progress keepalive task stopped")
 
     async def _get_recovery_lock(self, service_name: str) -> asyncio.Lock:
         """
@@ -12227,8 +12350,17 @@ echo "=== JARVIS Prime started ==="
 
             # v95.2: Start heavy services SEQUENTIALLY in dependency order
             # This is critical: jarvis-prime must be HEALTHY before reactor-core starts
-            for definition in heavy_services:
+            for idx, definition in enumerate(heavy_services):
                 logger.info(f"    🔄 Starting {definition.name}...")
+
+                # v109.5: Broadcast service startup progress
+                service_progress = 55 + (idx * 8)  # 55%, 63%, etc.
+                await self._broadcast_progress_to_loading_server(
+                    f"service_starting_{definition.name}",
+                    f"Starting {definition.name}... (may take time for model loading)",
+                    min(service_progress, 70),
+                    {"service": definition.name, "action": "starting", "phase": 2}
+                )
 
                 try:
                     result = await self._start_single_service_with_coordination(definition)
@@ -12248,6 +12380,14 @@ echo "=== JARVIS Prime started ==="
                         # v95.0: Emit service healthy event for heavy service
                         await _emit_event("SERVICE_HEALTHY", service_name=name, priority="HIGH")
 
+                        # v109.5: Broadcast service healthy
+                        await self._broadcast_progress_to_loading_server(
+                            f"service_healthy_{name}",
+                            f"✅ {name} is healthy and responding",
+                            min(65 + (idx * 8), 72),
+                            {"service": name, "status": "healthy", "phase": 2}
+                        )
+
                         # v95.2: Mark this service as ready for dependent services
                         # v95.7: Fixed bug - use _startup_events (Dict) not _services_ready (Set)
                         self._services_ready.add(name)
@@ -12257,6 +12397,14 @@ echo "=== JARVIS Prime started ==="
                         logger.warning(f"    ⚠️ {name}: {reason}")
                         # v95.0: Emit service unhealthy event for heavy service
                         await _emit_event("SERVICE_UNHEALTHY", service_name=name, priority="CRITICAL", details={"reason": reason})
+
+                        # v109.5: Broadcast service failed (but continue)
+                        await self._broadcast_progress_to_loading_server(
+                            f"service_unavailable_{name}",
+                            f"⚠️ {name} unavailable (continuing in degraded mode)",
+                            min(65 + (idx * 8), 72),
+                            {"service": name, "status": "unavailable", "phase": 2}
+                        )
 
                         # v95.2: If a heavy service fails, dependent services will also fail
                         # But we continue trying other services in case they don't depend on this one
@@ -12387,6 +12535,16 @@ echo "=== JARVIS Prime started ==="
         self._services_starting.add("jarvis-body")
         logger.info("[v95.4] jarvis-body status: starting")
 
+        # v109.5: Start progress keepalive and broadcast initial progress
+        # CRITICAL: Prevents 60-second watchdog shutdown during cross-repo startup
+        await self._start_progress_keepalive()
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_init",
+            "Cross-repo orchestration starting...",
+            38,
+            {"phase": "init", "service": "orchestrator"}
+        )
+
         # v95.5: Initialize distributed tracing FIRST (for correlation across all phases)
         await self._initialize_distributed_tracing()
         startup_span = await self._create_span("full_startup", metadata={"phase": "init"})
@@ -12478,6 +12636,14 @@ echo "=== JARVIS Prime started ==="
         # Phase 0: Pre-flight cleanup (v5.0 + v4.0 Service Registry)
         logger.info("\n📍 PHASE 0: Pre-flight cleanup")
 
+        # v109.5: Broadcast Phase 0 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase0",
+            "Pre-flight cleanup: Cleaning up legacy ports...",
+            40,
+            {"phase": 0, "action": "cleanup"}
+        )
+
         # v5.0: Clean up legacy ports (processes on old hardcoded ports)
         await self._cleanup_legacy_ports()
 
@@ -12507,8 +12673,24 @@ echo "=== JARVIS Prime started ==="
         logger.info("\n📍 PHASE 1: JARVIS Core (starting via supervisor)")
         logger.info("✅ JARVIS Core initialization in progress...")
 
+        # v109.5: Broadcast Phase 1 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase1",
+            "JARVIS Core initialization in progress...",
+            45,
+            {"phase": 1, "service": "jarvis-core"}
+        )
+
         # Phase 2: Probe and spawn external services (v93.11: PARALLEL)
         logger.info("\n📍 PHASE 2: External services startup (PARALLEL)")
+
+        # v109.5: Broadcast Phase 2 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase2",
+            "Starting external services (JARVIS-Prime, Reactor-Core)...",
+            50,
+            {"phase": 2, "action": "external_services"}
+        )
 
         definitions = self._get_service_definitions()
 
@@ -12518,6 +12700,14 @@ echo "=== JARVIS Prime started ==="
 
         # Phase 3: Verification
         logger.info("\n📍 PHASE 3: Integration verification")
+
+        # v109.5: Broadcast Phase 3 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase3",
+            "Integration verification in progress...",
+            75,
+            {"phase": 3, "action": "verification"}
+        )
 
         healthy_count = sum(1 for v in results.values() if v)
         total_count = len(results)
@@ -12540,6 +12730,14 @@ echo "=== JARVIS Prime started ==="
 
         # Phase 4: v93.0 - Register restart commands with resilient mesh
         logger.info("\n📍 PHASE 4: Registering auto-restart commands")
+
+        # v109.5: Broadcast Phase 4 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase4",
+            "Registering auto-restart commands...",
+            80,
+            {"phase": 4, "action": "restart_commands"}
+        )
         try:
             # Get service names that were started (excluding jarvis which is always running)
             started_services = [
@@ -12562,6 +12760,14 @@ echo "=== JARVIS Prime started ==="
 
         # v95.1: Phase 5 - Start intelligent recovery coordinator
         logger.info("\n📍 PHASE 5: Starting intelligent recovery coordinator")
+
+        # v109.5: Broadcast Phase 5 progress
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_phase5",
+            "Starting intelligent recovery coordinator...",
+            85,
+            {"phase": 5, "action": "recovery_coordinator"}
+        )
         try:
             await self.start_recovery_coordinator()
             logger.info("  ✅ Recovery coordinator active (proactive health monitoring enabled)")
@@ -12610,6 +12816,15 @@ echo "=== JARVIS Prime started ==="
 
         # v95.5: Log distributed tracing summary
         logger.info(f"[v95.5] Startup correlation ID: {self.get_correlation_id()}")
+
+        # v109.5: Stop keepalive and broadcast final completion
+        await self._stop_progress_keepalive()
+        await self._broadcast_progress_to_loading_server(
+            "cross_repo_complete",
+            f"Cross-repo orchestration complete! {healthy_count}/{total_count} services healthy",
+            90 if healthy_count == total_count else 85,
+            {"phase": "complete", "healthy_count": healthy_count, "total_count": total_count}
+        )
 
         return results
 
