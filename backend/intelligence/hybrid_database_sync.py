@@ -1479,8 +1479,8 @@ class HybridDatabaseSync:
         - Non-blocking background operation
         - v18.0: Overall timeout protection to prevent long connection holds
         """
-        # v18.0: Overall timeout to prevent holding connections too long
-        CACHE_WARM_TIMEOUT = float(os.getenv("CACHE_WARM_TIMEOUT_SECONDS", "30.0"))
+        # v112.0: Increased timeout for robustness
+        CACHE_WARM_TIMEOUT = float(os.getenv("CACHE_WARM_TIMEOUT_SECONDS", "60.0"))
 
         try:
             logger.info("🔥 Warming voice profile cache after reconnection...")
@@ -1488,9 +1488,10 @@ class HybridDatabaseSync:
             # v18.0: Wrap entire operation in timeout
             try:
                 # Check if cache needs refresh (with timeout)
+                # v112.0: Allow more time for staleness check
                 needs_refresh = await asyncio.wait_for(
                     self._check_cache_staleness(),
-                    timeout=min(10.0, CACHE_WARM_TIMEOUT / 3)
+                    timeout=min(15.0, CACHE_WARM_TIMEOUT / 3)
                 )
             except asyncio.TimeoutError:
                 logger.warning("[v18.0] Cache staleness check timed out - assuming refresh needed")
@@ -1525,45 +1526,65 @@ class HybridDatabaseSync:
     async def _check_cache_staleness(self) -> bool:
         """
         Check if voice profile cache needs refreshing.
+        
+        v112.0: Robust implementation with lock handling and adaptive retry.
 
         Returns:
             True if cache is stale or missing, False if fresh
         """
         try:
-            # Check 1: Is FAISS cache empty?
+            # Check 1: Is FAISS cache empty? (Fast, in-memory)
             if not self.faiss_cache or self.faiss_cache.size() == 0:
                 logger.info("📊 Cache check: FAISS cache is empty - refresh needed")
                 return True
 
-            # Check 2: Is SQLite cache empty?
-            async with self.sqlite_conn.execute("SELECT COUNT(*) FROM speaker_profiles") as cursor:
-                row = await cursor.fetchone()
-                sqlite_count = row[0] if row else 0
+            # v112.0: Retry loop for SQLite lock
+            sqlite_count = 0
+            for attempt in range(3):
+                try:
+                    # Check 2: Is SQLite cache empty?
+                    async with self.sqlite_conn.execute("SELECT COUNT(*) FROM speaker_profiles") as cursor:
+                        row = await cursor.fetchone()
+                        sqlite_count = row[0] if row else 0
+                    break
+                except Exception as e:
+                    if "database is locked" in str(e).lower() and attempt < 2:
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+                    # Log but continue (will return True below)
+                    logger.warning(f"SQLite check failed: {e}")
+                    return True # Assume stale on error
 
             if sqlite_count == 0:
                 logger.info("📊 Cache check: SQLite cache is empty - refresh needed")
                 return True
 
             # Check 3: Compare counts with CloudSQL (only valid profiles with embeddings)
+            # v112.0: Use shorter timeout for CloudSQL check
             if self.connection_manager and self.connection_manager.is_initialized:
                 try:
-                    async with self.connection_manager.connection() as conn:
-                        cloudsql_count = await conn.fetchval("""
-                            SELECT COUNT(*) FROM speaker_profiles
-                            WHERE voiceprint_embedding IS NOT NULL
-                        """)
+                    async def check_cloud_sql_ops():
+                        async with self.connection_manager.connection() as conn:
+                            cloudsql_count = await conn.fetchval("""
+                                SELECT COUNT(*) FROM speaker_profiles
+                                WHERE voiceprint_embedding IS NOT NULL
+                            """)
+                            
+                            if cloudsql_count != sqlite_count:
+                                logger.info(f"📊 Cache check: Count mismatch (CloudSQL: {cloudsql_count}, SQLite: {sqlite_count}) - refresh needed")
+                                return True, None
 
-                    if cloudsql_count != sqlite_count:
-                        logger.info(f"📊 Cache check: Count mismatch (CloudSQL: {cloudsql_count}, SQLite: {sqlite_count}) - refresh needed")
+                            latest_update = await conn.fetchval("""
+                                SELECT MAX(last_updated)
+                                FROM speaker_profiles
+                                WHERE voiceprint_embedding IS NOT NULL
+                            """)
+                            return False, latest_update
+
+                    mismatch, latest_update = await asyncio.wait_for(check_cloud_sql_ops(), timeout=5.0)
+
+                    if mismatch:
                         return True
-
-                    # Check 4: Has CloudSQL been updated since last cache refresh?
-                    async with self.connection_manager.connection() as conn:
-                        latest_update = await conn.fetchval("""
-                            SELECT MAX(last_updated)
-                            FROM speaker_profiles
-                            WHERE voiceprint_embedding IS NOT NULL
-                        """)
 
                     if latest_update:
                         # Get last refresh time from metrics or SQLite
@@ -1577,6 +1598,11 @@ class HybridDatabaseSync:
                             logger.info("📊 Cache check: CloudSQL has newer profiles - refresh needed")
                             return True
 
+                except asyncio.TimeoutError:
+                     logger.warning("CloudSQL staleness check timed out - skipping deep check")
+                     # If we timed out checking CloudSQL, assume cache is OK if SQLite has data
+                     # to avoid blocking/hanging. The background refresh will catch up later.
+                     return False
                 except Exception as e:
                     logger.debug(f"Cache staleness check failed (CloudSQL unavailable): {e}")
                     # Can't check CloudSQL, assume cache is okay
