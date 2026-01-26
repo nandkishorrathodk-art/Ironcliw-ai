@@ -23193,7 +23193,7 @@ async def main() -> int:
         if args.shutdown:
             if is_running and existing_state:
                 print(f"\n🔄 Requesting graceful shutdown of supervisor (PID {existing_state.get('pid')})...")
-                result = send_supervisor_command_sync('shutdown', timeout=10.0)
+                result = await send_ipc_command('shutdown', timeout=10.0)
                 if result.get('success') or result.get('shutdown_initiated'):
                     print(f"✅ Shutdown initiated. Supervisor will exit gracefully.")
                     return 0
@@ -23210,7 +23210,7 @@ async def main() -> int:
         if args.restart and not args.takeover:
             if is_running and existing_state:
                 print(f"\n🔄 Requesting restart of supervisor (PID {existing_state.get('pid')})...")
-                result = send_supervisor_command_sync('restart', timeout=10.0)
+                result = await send_ipc_command('restart', timeout=10.0)
                 if result.get('success') or result.get('restart_initiated'):
                     print(f"✅ Restart initiated. Supervisor will restart in-place.")
                     return 0
@@ -23233,7 +23233,7 @@ async def main() -> int:
                 print(f"   This may cause conflicts! Existing PID: {existing_pid}")
                 print(f"   Attempting to force-stop existing instance...")
 
-                result = send_supervisor_command_sync('force-stop', timeout=5.0)
+                result = await send_ipc_command('force-stop', timeout=5.0)
                 await asyncio.sleep(2.0)  # Give it time to die
 
             # --takeover: Graceful takeover from existing supervisor
@@ -23241,7 +23241,7 @@ async def main() -> int:
                 print(f"\n🔄 Requesting graceful takeover from existing supervisor (PID {existing_pid})...")
                 print(f"   Sending takeover request...")
 
-                result = send_supervisor_command_sync('takeover', timeout=10.0)
+                result = await send_ipc_command('takeover', timeout=10.0)
                 if result.get('success') or result.get('takeover_accepted'):
                     print(f"   ✅ Takeover accepted. Waiting for existing supervisor to shutdown...")
 
@@ -23280,10 +23280,11 @@ async def main() -> int:
 
                 # Check if existing supervisor is healthy
                 print(f"\n   Checking health of existing supervisor...")
-                health_result = send_supervisor_command_sync('health', timeout=5.0)
+                health_result = await send_ipc_command('health', timeout=5.0)
 
                 if health_result.get('success'):
-                    health_data = health_result.get('health', {})
+                    # v116.0: Health data is in 'result' key from IPC wrapper
+                    health_data = health_result.get('result', {})
                     health_level = health_data.get('health_level', 'UNKNOWN')
                     print(f"   Health Level: {health_level}")
 
@@ -23307,7 +23308,7 @@ async def main() -> int:
                         print(f"\n   ⚠️  Existing supervisor appears unhealthy (level: {health_level})")
                         print(f"   Initiating automatic takeover...")
 
-                        result = send_supervisor_command_sync('takeover', timeout=5.0)
+                        result = await send_ipc_command('takeover', timeout=5.0)
                         await asyncio.sleep(3.0)  # Give it time
                 else:
                     # Can't reach existing supervisor - it may be zombie
@@ -23315,7 +23316,7 @@ async def main() -> int:
                     print(f"   It may be a zombie process. Attempting cleanup...")
 
                     # Try force-stop
-                    result = send_supervisor_command_sync('force-stop', timeout=2.0)
+                    result = await send_ipc_command('force-stop', timeout=2.0)
                     await asyncio.sleep(2.0)
 
         # =====================================================================
