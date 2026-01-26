@@ -3334,6 +3334,654 @@ class ParallelProcessCleaner:
 
 
 # =============================================================================
+# v109.7: COMPREHENSIVE ZOMBIE CLEANUP SYSTEM
+# =============================================================================
+# Ultra-robust, async, parallel cleanup that integrates:
+# - Cross-repo coordination (JARVIS, J-Prime, Reactor-Core)
+# - Zombie detection (orphaned, stuck, unresponsive processes)
+# - Memory-aware cleanup (IntelligentMemoryController integration)
+# - Port-based Trinity service cleanup
+# - Registry-based orphan detection
+# =============================================================================
+
+@dataclass
+class ZombieProcessInfo:
+    """Extended process info with zombie detection metadata."""
+    pid: int
+    cmdline: str
+    age_seconds: float
+    memory_mb: float = 0.0
+    cpu_percent: float = 0.0
+    status: str = "unknown"
+    is_orphaned: bool = False
+    is_zombie_like: bool = False
+    stale_connection_count: int = 0
+    repo_origin: str = "unknown"  # jarvis, jarvis-prime, reactor-core
+    detection_source: str = "scan"  # scan, port, registry, pid_file
+
+
+class ComprehensiveZombieCleanup:
+    """
+    v109.7: Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+
+    This system provides ultra-robust cleanup across all three repos:
+    - JARVIS (main AI agent) - port 8010
+    - JARVIS-Prime (J-Prime Mind) - port 8000
+    - Reactor-Core (Nerves) - port 8090
+
+    Features:
+    - Async parallel discovery across multiple detection sources
+    - Zombie detection via responsiveness heuristics (orphaned, stuck, stale connections)
+    - Cross-repo registry integration for coordinated cleanup
+    - Memory-aware cleanup with IntelligentMemoryController
+    - Port-based Trinity service detection
+    - Graceful termination with cascade (SIGINT → SIGTERM → SIGKILL)
+    - Circuit breaker pattern to prevent cleanup storms
+    - File descriptor safe operations
+
+    This runs BEFORE Trinity launch to ensure a clean environment.
+    """
+
+    # Trinity ports by service
+    TRINITY_PORTS = {
+        "jarvis-body": [8010],  # Main JARVIS backend
+        "jarvis-prime": [8000],  # J-Prime orchestrator
+        "reactor-core": [8090],  # Reactor-Core API
+    }
+
+    # Process patterns by repo
+    REPO_PATTERNS = {
+        "jarvis": ["run_supervisor.py", "start_system.py", "jarvis", "uvicorn.*8010"],
+        "jarvis-prime": ["trinity_orchestrator.*jarvis-prime", "jarvis.prime", "uvicorn.*8000"],
+        "reactor-core": ["trinity_orchestrator.*reactor-core", "reactor.core", "uvicorn.*8090"],
+    }
+
+    def __init__(
+        self,
+        config: "BootstrapConfig",
+        logger: logging.Logger,
+        enable_cross_repo: bool = True,
+        enable_memory_aware: bool = True,
+        enable_circuit_breaker: bool = True,
+    ):
+        self.config = config
+        self.logger = logger
+        self._my_pid = os.getpid()
+        self._my_parent = os.getppid()
+        self._enable_cross_repo = enable_cross_repo
+        self._enable_memory_aware = enable_memory_aware
+        self._enable_circuit_breaker = enable_circuit_breaker
+
+        # Circuit breaker state
+        self._cleanup_attempts = 0
+        self._cleanup_failures = 0
+        self._circuit_open = False
+        self._circuit_open_until = 0.0
+        self._max_failures_before_open = 3
+        self._circuit_cooldown = 30.0
+
+        # Stats
+        self._stats = {
+            "zombies_detected": 0,
+            "zombies_killed": 0,
+            "ports_freed": 0,
+            "orphans_cleaned": 0,
+            "cross_repo_cleaned": 0,
+        }
+
+    async def run_comprehensive_cleanup(self) -> Dict[str, Any]:
+        """
+        v109.7: Run comprehensive zombie cleanup before Trinity launch.
+
+        This is the main entry point that coordinates all cleanup phases:
+        1. Circuit breaker check
+        2. Cross-repo orphan cleanup (registry-based)
+        3. Zombie process detection (multi-source)
+        4. Parallel termination
+        5. Port verification
+        6. Memory cleanup (if enabled)
+
+        Returns:
+            Dict with cleanup results and statistics
+        """
+        results = {
+            "success": True,
+            "phases_completed": [],
+            "zombies_found": 0,
+            "zombies_killed": 0,
+            "ports_freed": [],
+            "errors": [],
+            "duration_ms": 0,
+        }
+
+        start_time = time.time()
+
+        try:
+            # Phase 0: Circuit breaker check
+            if self._enable_circuit_breaker and self._is_circuit_open():
+                results["success"] = False
+                results["errors"].append("Circuit breaker open - cleanup skipped")
+                self.logger.warning("[v109.7] Zombie cleanup skipped - circuit breaker open")
+                return results
+
+            self._cleanup_attempts += 1
+            self.logger.info("[v109.7] 🧹 Starting comprehensive zombie cleanup...")
+
+            # Phase 1: Cross-repo orphan cleanup
+            if self._enable_cross_repo:
+                try:
+                    orphans_cleaned = await self._cleanup_cross_repo_orphans()
+                    self._stats["orphans_cleaned"] += orphans_cleaned
+                    results["phases_completed"].append("cross_repo_orphans")
+                    if orphans_cleaned > 0:
+                        self.logger.info(f"[v109.7] Cleaned {orphans_cleaned} cross-repo orphans")
+                except Exception as e:
+                    self.logger.debug(f"[v109.7] Cross-repo cleanup error (non-fatal): {e}")
+
+            # Phase 2: Parallel zombie discovery
+            zombies = await self._parallel_zombie_discovery()
+            results["zombies_found"] = len(zombies)
+            self._stats["zombies_detected"] += len(zombies)
+            results["phases_completed"].append("zombie_discovery")
+
+            if zombies:
+                self.logger.info(f"[v109.7] Found {len(zombies)} zombie process(es)")
+
+                # Phase 3: Parallel termination
+                killed = await self._parallel_zombie_termination(zombies)
+                results["zombies_killed"] = killed
+                self._stats["zombies_killed"] += killed
+                results["phases_completed"].append("zombie_termination")
+
+                # Phase 4: Port verification and cleanup
+                await asyncio.sleep(0.3)  # Brief pause for port release
+                ports_freed = await self._verify_and_free_ports()
+                results["ports_freed"] = ports_freed
+                self._stats["ports_freed"] += len(ports_freed)
+                results["phases_completed"].append("port_verification")
+
+            # Phase 5: Memory cleanup (if enabled and needed)
+            if self._enable_memory_aware:
+                try:
+                    memory_result = await self._memory_aware_cleanup()
+                    if memory_result.get("actions_taken"):
+                        results["phases_completed"].append("memory_cleanup")
+                except Exception as e:
+                    self.logger.debug(f"[v109.7] Memory cleanup error (non-fatal): {e}")
+
+            results["success"] = True
+            self._cleanup_failures = 0  # Reset on success
+
+        except Exception as e:
+            results["success"] = False
+            results["errors"].append(str(e))
+            self._cleanup_failures += 1
+
+            # Open circuit if too many failures
+            if self._cleanup_failures >= self._max_failures_before_open:
+                self._open_circuit()
+
+            self.logger.error(f"[v109.7] Comprehensive cleanup failed: {e}")
+
+        results["duration_ms"] = int((time.time() - start_time) * 1000)
+        self.logger.info(
+            f"[v109.7] ✅ Cleanup complete: "
+            f"{results['zombies_killed']}/{results['zombies_found']} zombies killed, "
+            f"{len(results['ports_freed'])} ports freed in {results['duration_ms']}ms"
+        )
+
+        return results
+
+    async def _cleanup_cross_repo_orphans(self) -> int:
+        """
+        Phase 1: Clean up orphaned resources from the cross-repo registry.
+
+        Uses the CrossRepoCleanupCoordinator to find resources registered
+        by processes that are no longer running.
+        """
+        try:
+            from backend.core.cross_repo_cleanup import (
+                get_cleanup_coordinator,
+                cleanup_orphaned,
+            )
+
+            # Get orphaned resources count
+            coordinator = get_cleanup_coordinator()
+            orphaned = coordinator.registry.get_orphaned_resources()
+
+            if not orphaned:
+                return 0
+
+            self.logger.info(f"[v109.7] Found {len(orphaned)} orphaned cross-repo resources")
+
+            # Clean them up
+            cleaned = cleanup_orphaned()
+            self._stats["cross_repo_cleaned"] += cleaned
+
+            return cleaned
+
+        except ImportError:
+            self.logger.debug("[v109.7] cross_repo_cleanup not available")
+            return 0
+        except Exception as e:
+            self.logger.debug(f"[v109.7] Cross-repo orphan cleanup error: {e}")
+            return 0
+
+    async def _parallel_zombie_discovery(self) -> Dict[int, ZombieProcessInfo]:
+        """
+        Phase 2: Parallel zombie discovery using multiple detection sources.
+
+        Detection sources:
+        1. Port scanning (Trinity ports)
+        2. Process pattern matching (repo-specific patterns)
+        3. Zombie heuristics (orphaned, stuck, stale connections)
+        4. Cross-repo registry
+        """
+        discovered: Dict[int, ZombieProcessInfo] = {}
+
+        try:
+            import psutil
+        except ImportError:
+            return discovered
+
+        loop = asyncio.get_event_loop()
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Task 1: Trinity port scanning
+            port_task = loop.run_in_executor(
+                executor, self._discover_from_trinity_ports
+            )
+
+            # Task 2: Process pattern scanning
+            pattern_task = loop.run_in_executor(
+                executor, self._discover_from_patterns
+            )
+
+            # Task 3: Zombie heuristic detection
+            zombie_task = loop.run_in_executor(
+                executor, self._discover_zombies_by_heuristics
+            )
+
+            # Wait for all
+            port_procs, pattern_procs, zombie_procs = await asyncio.gather(
+                port_task, pattern_task, zombie_task,
+                return_exceptions=True
+            )
+
+        # Merge results (zombie heuristics take precedence)
+        if isinstance(pattern_procs, dict):
+            discovered.update(pattern_procs)
+        if isinstance(port_procs, dict):
+            discovered.update(port_procs)
+        if isinstance(zombie_procs, dict):
+            discovered.update(zombie_procs)
+
+        # Filter out ourselves and our parent
+        discovered = {
+            pid: info for pid, info in discovered.items()
+            if pid not in (self._my_pid, self._my_parent)
+        }
+
+        return discovered
+
+    def _discover_from_trinity_ports(self) -> Dict[int, ZombieProcessInfo]:
+        """Discover processes holding Trinity ports."""
+        try:
+            import psutil
+        except ImportError:
+            return {}
+
+        discovered = {}
+
+        # Flatten all Trinity ports
+        all_ports = []
+        port_to_repo = {}
+        for repo, ports in self.TRINITY_PORTS.items():
+            for port in ports:
+                all_ports.append(port)
+                port_to_repo[port] = repo
+
+        try:
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port in all_ports and conn.pid:
+                    pid = conn.pid
+                    if pid in (self._my_pid, self._my_parent):
+                        continue
+                    if pid in discovered:
+                        continue
+
+                    try:
+                        proc = psutil.Process(pid)
+                        cmdline = " ".join(proc.cmdline())
+                        mem_info = proc.memory_info()
+
+                        discovered[pid] = ZombieProcessInfo(
+                            pid=pid,
+                            cmdline=cmdline[:200],
+                            age_seconds=time.time() - proc.create_time(),
+                            memory_mb=mem_info.rss / (1024 * 1024),
+                            cpu_percent=proc.cpu_percent(interval=0.05),
+                            status=proc.status(),
+                            repo_origin=port_to_repo.get(conn.laddr.port, "unknown"),
+                            detection_source=f"port_{conn.laddr.port}",
+                        )
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+        except (psutil.AccessDenied, PermissionError):
+            pass
+
+        return discovered
+
+    def _discover_from_patterns(self) -> Dict[int, ZombieProcessInfo]:
+        """Discover processes matching repo patterns."""
+        try:
+            import psutil
+        except ImportError:
+            return {}
+
+        discovered = {}
+
+        for proc in psutil.process_iter(['pid', 'cmdline', 'create_time', 'memory_info', 'status']):
+            try:
+                pid = proc.info['pid']
+                if pid in (self._my_pid, self._my_parent):
+                    continue
+
+                cmdline = " ".join(proc.info.get('cmdline') or [])
+                if not cmdline:
+                    continue
+
+                cmdline_lower = cmdline.lower()
+
+                # Check against repo patterns
+                for repo, patterns in self.REPO_PATTERNS.items():
+                    import re
+                    for pattern in patterns:
+                        if re.search(pattern, cmdline_lower):
+                            mem_info = proc.info.get('memory_info')
+                            discovered[pid] = ZombieProcessInfo(
+                                pid=pid,
+                                cmdline=cmdline[:200],
+                                age_seconds=time.time() - proc.info['create_time'],
+                                memory_mb=mem_info.rss / (1024 * 1024) if mem_info else 0,
+                                status=proc.info.get('status', 'unknown'),
+                                repo_origin=repo,
+                                detection_source="pattern_scan",
+                            )
+                            break
+                    if pid in discovered:
+                        break
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        return discovered
+
+    def _discover_zombies_by_heuristics(self) -> Dict[int, ZombieProcessInfo]:
+        """
+        Discover zombie-like processes using heuristics.
+
+        A process is zombie-like if:
+        - Orphaned (PPID=1) AND sleeping AND has stale connections
+        - OR has many stale connections (>5) and <0.1% CPU
+        - OR is in zombie/dead state
+        """
+        try:
+            import psutil
+        except ImportError:
+            return {}
+
+        discovered = {}
+
+        for proc in psutil.process_iter(['pid', 'ppid', 'cmdline', 'create_time', 'status', 'connections']):
+            try:
+                pid = proc.info['pid']
+                if pid in (self._my_pid, self._my_parent):
+                    continue
+
+                cmdline = " ".join(proc.info.get('cmdline') or [])
+                cmdline_lower = cmdline.lower()
+
+                # Only check JARVIS-related processes
+                is_jarvis_related = any(
+                    pattern in cmdline_lower
+                    for patterns in self.REPO_PATTERNS.values()
+                    for pattern in patterns
+                )
+
+                if not is_jarvis_related:
+                    continue
+
+                # Get process details
+                ppid = proc.info.get('ppid', 0)
+                status = proc.info.get('status', '')
+                is_orphaned = ppid == 1
+                is_sleeping = status in ('sleeping', 'idle')
+                is_zombie_state = status in ('zombie', 'dead')
+
+                # Count stale connections
+                stale_count = 0
+                try:
+                    connections = proc.connections(kind='inet')
+                    for conn in connections:
+                        if conn.status in ('CLOSE_WAIT', 'TIME_WAIT', 'FIN_WAIT1', 'FIN_WAIT2'):
+                            stale_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+                # Get CPU percent
+                try:
+                    cpu_percent = proc.cpu_percent(interval=0.05)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    cpu_percent = 0.0
+
+                # Apply zombie heuristics
+                is_zombie_like = (
+                    is_zombie_state or
+                    (is_orphaned and is_sleeping and stale_count > 0) or
+                    (stale_count > 5 and cpu_percent < 0.1)
+                )
+
+                if is_zombie_like:
+                    mem_info = proc.memory_info()
+                    discovered[pid] = ZombieProcessInfo(
+                        pid=pid,
+                        cmdline=cmdline[:200],
+                        age_seconds=time.time() - proc.info['create_time'],
+                        memory_mb=mem_info.rss / (1024 * 1024),
+                        cpu_percent=cpu_percent,
+                        status=status,
+                        is_orphaned=is_orphaned,
+                        is_zombie_like=True,
+                        stale_connection_count=stale_count,
+                        detection_source="zombie_heuristic",
+                    )
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        return discovered
+
+    async def _parallel_zombie_termination(
+        self, zombies: Dict[int, ZombieProcessInfo]
+    ) -> int:
+        """
+        Phase 3: Terminate zombies in parallel with semaphore control.
+
+        Uses cascade strategy: SIGINT → SIGTERM → SIGKILL
+        """
+        if not zombies:
+            return 0
+
+        semaphore = asyncio.Semaphore(self.config.max_parallel_cleanups)
+
+        async def terminate_one(pid: int, info: ZombieProcessInfo) -> bool:
+            async with semaphore:
+                return await self._terminate_zombie(pid, info)
+
+        tasks = [
+            asyncio.create_task(terminate_one(pid, info))
+            for pid, info in zombies.items()
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        terminated = sum(1 for r in results if r is True)
+        return terminated
+
+    async def _terminate_zombie(
+        self, pid: int, info: ZombieProcessInfo
+    ) -> bool:
+        """Terminate a single zombie with cascade strategy."""
+        try:
+            import psutil
+
+            self.logger.info(
+                f"[v109.7] Killing zombie PID {pid} "
+                f"(repo={info.repo_origin}, source={info.detection_source})"
+            )
+
+            # Phase 1: SIGINT (graceful)
+            try:
+                os.kill(pid, signal.SIGINT)
+                await asyncio.sleep(0.5)
+                if not psutil.pid_exists(pid):
+                    return True
+            except (ProcessLookupError, OSError):
+                return True
+
+            # Phase 2: SIGTERM
+            try:
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(1.0)
+                if not psutil.pid_exists(pid):
+                    return True
+            except (ProcessLookupError, OSError):
+                return True
+
+            # Phase 3: SIGKILL (force)
+            try:
+                os.kill(pid, signal.SIGKILL)
+                await asyncio.sleep(0.3)
+            except (ProcessLookupError, OSError):
+                pass
+
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"[v109.7] Failed to terminate zombie {pid}: {e}")
+            return False
+
+    async def _verify_and_free_ports(self) -> List[int]:
+        """
+        Phase 4: Verify Trinity ports are free, force-free if needed.
+        """
+        freed_ports = []
+
+        try:
+            import psutil
+        except ImportError:
+            return freed_ports
+
+        # Check all Trinity ports
+        all_ports = []
+        for ports in self.TRINITY_PORTS.values():
+            all_ports.extend(ports)
+
+        for port in all_ports:
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port == port and conn.pid:
+                        pid = conn.pid
+                        if pid in (self._my_pid, self._my_parent):
+                            continue
+
+                        self.logger.warning(
+                            f"[v109.7] Port {port} still held by PID {pid}, force-freeing..."
+                        )
+
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                            freed_ports.append(port)
+                            await asyncio.sleep(0.2)
+                        except (ProcessLookupError, OSError):
+                            pass
+            except (psutil.AccessDenied, PermissionError):
+                pass
+
+        return freed_ports
+
+    async def _memory_aware_cleanup(self) -> Dict[str, Any]:
+        """
+        Phase 5: Memory-aware cleanup using IntelligentMemoryController.
+        """
+        result = {"actions_taken": []}
+
+        try:
+            import psutil
+
+            # Check memory pressure
+            memory = psutil.virtual_memory()
+            available_gb = memory.available / (1024**3)
+
+            if available_gb < 2.0:
+                self.logger.info(
+                    f"[v109.7] Low memory ({available_gb:.1f}GB available), "
+                    "triggering additional cleanup..."
+                )
+
+                # Try to use IntelligentMemoryController
+                try:
+                    from backend.process_cleanup_manager import emergency_cleanup
+                    cleanup_result = emergency_cleanup(force=True)
+                    result["actions_taken"].append("emergency_cleanup")
+                    result["cleanup_result"] = cleanup_result
+                except ImportError:
+                    pass
+
+                # Force garbage collection
+                import gc
+                gc.collect()
+                result["actions_taken"].append("gc_collect")
+
+        except Exception as e:
+            self.logger.debug(f"[v109.7] Memory cleanup error: {e}")
+
+        return result
+
+    def _is_circuit_open(self) -> bool:
+        """Check if circuit breaker is open."""
+        if not self._circuit_open:
+            return False
+
+        if time.time() > self._circuit_open_until:
+            # Circuit cooldown expired, close it
+            self._circuit_open = False
+            self._cleanup_failures = 0
+            self.logger.info("[v109.7] Circuit breaker closed after cooldown")
+            return False
+
+        return True
+
+    def _open_circuit(self) -> None:
+        """Open the circuit breaker."""
+        self._circuit_open = True
+        self._circuit_open_until = time.time() + self._circuit_cooldown
+        self.logger.warning(
+            f"[v109.7] Circuit breaker OPEN - cleanup disabled for {self._circuit_cooldown}s"
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cleanup statistics."""
+        return {
+            **self._stats,
+            "cleanup_attempts": self._cleanup_attempts,
+            "cleanup_failures": self._cleanup_failures,
+            "circuit_open": self._circuit_open,
+        }
+
+
+# =============================================================================
 # System Resource Validator - Pre-flight Checks
 # =============================================================================
 
@@ -7047,6 +7695,51 @@ class SupervisorBootstrapper:
                     self._initialize_trinity(),
                     timeout_seconds=major_init_timeout * 2,  # Double timeout for Trinity (calls many PHASES)
                 )
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v109.7: COMPREHENSIVE ZOMBIE CLEANUP - Pre-Trinity Cleanup
+            # ═══════════════════════════════════════════════════════════════════
+            # Run comprehensive zombie cleanup BEFORE launching Trinity components.
+            # This ensures:
+            # 1. No stale J-Prime or Reactor-Core processes blocking ports
+            # 2. Cross-repo orphans are cleaned from the registry
+            # 3. Zombie processes (orphaned, stuck) are terminated
+            # 4. Ports 8000 (J-Prime) and 8090 (Reactor-Core) are free
+            # ═══════════════════════════════════════════════════════════════════
+            if self._trinity_enabled and self._trinity_auto_launch_enabled:
+                try:
+                    TerminalUI.print_step("[v109.7] Pre-Trinity zombie cleanup")
+
+                    zombie_cleaner = ComprehensiveZombieCleanup(
+                        config=self.config,
+                        logger=self.logger,
+                        enable_cross_repo=True,
+                        enable_memory_aware=True,
+                        enable_circuit_breaker=True,
+                    )
+
+                    cleanup_result = await zombie_cleaner.run_comprehensive_cleanup()
+
+                    if cleanup_result["zombies_killed"] > 0:
+                        TerminalUI.print_success(
+                            f"[v109.7] Cleaned {cleanup_result['zombies_killed']} zombie(s), "
+                            f"freed ports: {cleanup_result['ports_freed']}"
+                        )
+                        # Give ports time to fully release
+                        await asyncio.sleep(0.5)
+                    elif cleanup_result["zombies_found"] > 0:
+                        TerminalUI.print_warning(
+                            f"[v109.7] Found {cleanup_result['zombies_found']} zombie(s) but cleanup incomplete"
+                        )
+                    else:
+                        TerminalUI.print_success("[v109.7] No zombies found - clean environment")
+
+                    # Store cleanup stats for diagnostics
+                    self._pre_trinity_cleanup_stats = zombie_cleaner.get_stats()
+
+                except Exception as e:
+                    self.logger.warning(f"[v109.7] Pre-Trinity cleanup error (continuing): {e}")
+                    TerminalUI.print_warning(f"[v109.7] Cleanup warning: {e}")
 
             # v72.0: Auto-Launch Trinity Components (J-Prime + Reactor-Core)
             # v109.5: Use Trinity's configured timeout to avoid timeout hierarchy conflict.
@@ -22757,6 +23450,12 @@ v116.0 Intelligent Startup Behavior:
     )
 
     parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Run comprehensive zombie cleanup and exit (v109.7)"
+    )
+
+    parser.add_argument(
         "--connect-repos",
         action="store_true",
         default=True,
@@ -23250,6 +23949,57 @@ async def main() -> int:
                 print(f"{'='*70}")
                 print(f"   Status: NOT RUNNING")
                 print(f"{'='*70}\n")
+                return 1
+
+        # =====================================================================
+        # Handle --cleanup: Run comprehensive zombie cleanup and exit (v109.7)
+        # =====================================================================
+        if args.cleanup:
+            print(f"\n{'='*70}")
+            print(f"🧹 JARVIS COMPREHENSIVE ZOMBIE CLEANUP v109.7")
+            print(f"{'='*70}")
+            print(f"   Cleaning up zombie processes across JARVIS ecosystem...")
+            print(f"   Repos: JARVIS, J-Prime, Reactor-Core")
+            print(f"   Ports: 8000 (J-Prime), 8010 (JARVIS), 8090 (Reactor-Core)")
+            print(f"{'='*70}\n")
+
+            try:
+                # Create a minimal config for cleanup
+                cleanup_config = BootstrapConfig()
+                cleanup_logger = logging.getLogger("jarvis.cleanup")
+                cleanup_logger.setLevel(logging.INFO)
+
+                zombie_cleaner = ComprehensiveZombieCleanup(
+                    config=cleanup_config,
+                    logger=cleanup_logger,
+                    enable_cross_repo=True,
+                    enable_memory_aware=True,
+                    enable_circuit_breaker=False,  # Don't use circuit breaker for manual run
+                )
+
+                result = await zombie_cleaner.run_comprehensive_cleanup()
+
+                print(f"\n{'='*70}")
+                print(f"📊 CLEANUP RESULTS")
+                print(f"{'='*70}")
+                print(f"   Zombies found:  {result['zombies_found']}")
+                print(f"   Zombies killed: {result['zombies_killed']}")
+                print(f"   Ports freed:    {result['ports_freed']}")
+                print(f"   Duration:       {result['duration_ms']}ms")
+                print(f"   Phases:         {', '.join(result['phases_completed'])}")
+
+                if result['errors']:
+                    print(f"   Errors:         {', '.join(result['errors'])}")
+
+                stats = zombie_cleaner.get_stats()
+                print(f"\n   Cross-repo orphans cleaned: {stats['orphans_cleaned']}")
+                print(f"   Cross-repo resources cleaned: {stats['cross_repo_cleaned']}")
+                print(f"{'='*70}\n")
+
+                return 0 if result['success'] else 1
+
+            except Exception as e:
+                print(f"❌ Cleanup failed: {e}")
                 return 1
 
         # =====================================================================

@@ -2001,30 +2001,75 @@ def _setup_sighup_handler() -> None:
         except Exception as e:
             logger.debug(f"IPC socket cleanup warning: {e}")
 
-        # Step 4: v109.5: Kill Trinity subprocesses before restart
-        # Without this, J-Prime/Reactor-Core will still be running after execv,
-        # causing "address already in use" errors when new supervisor tries to launch them.
+        # Step 4: v109.7: Comprehensive Trinity cleanup before restart
+        # Kill ALL Trinity-related processes, not just our children.
+        # This handles orphaned processes from previous crashed sessions.
         try:
             import psutil
             current_pid = os.getpid()
-            current_proc = psutil.Process(current_pid)
-            children = current_proc.children(recursive=True)
-            if children:
-                logger.info(f"[Singleton] Terminating {len(children)} child process(es) before restart")
-                for child in children:
-                    try:
-                        child.terminate()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                # Wait briefly for graceful termination
-                _, alive = psutil.wait_procs(children, timeout=3.0)
-                # Force kill any survivors
-                for proc in alive:
-                    try:
-                        logger.debug(f"[Singleton] Force killing stubborn process PID {proc.pid}")
-                        proc.kill()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+            current_ppid = os.getppid()
+
+            # Trinity ports that MUST be free for restart
+            TRINITY_PORTS = [8000, 8010, 8090]  # J-Prime, JARVIS, Reactor-Core
+
+            # Step 4a: Kill our direct children first
+            try:
+                current_proc = psutil.Process(current_pid)
+                children = current_proc.children(recursive=True)
+                if children:
+                    logger.info(f"[Singleton] Terminating {len(children)} child process(es)")
+                    for child in children:
+                        try:
+                            child.terminate()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    _, alive = psutil.wait_procs(children, timeout=2.0)
+                    for proc in alive:
+                        try:
+                            proc.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+            except Exception as e:
+                logger.debug(f"Child cleanup warning: {e}")
+
+            # Step 4b: Kill any process holding Trinity ports (orphans from prev session)
+            killed_ports = []
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port in TRINITY_PORTS and conn.pid:
+                        pid = conn.pid
+                        if pid in (current_pid, current_ppid):
+                            continue  # Don't kill ourselves or parent
+
+                        try:
+                            proc = psutil.Process(pid)
+                            cmdline = " ".join(proc.cmdline())
+
+                            # Only kill JARVIS-related processes
+                            if any(p in cmdline.lower() for p in
+                                   ['jarvis', 'uvicorn', 'trinity_orchestrator', 'reactor']):
+                                logger.info(
+                                    f"[Singleton] Killing orphan on port {conn.laddr.port}: "
+                                    f"PID {pid}"
+                                )
+                                try:
+                                    os.kill(pid, signal.SIGTERM)
+                                    killed_ports.append(conn.laddr.port)
+                                except (ProcessLookupError, OSError):
+                                    pass
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+            except (psutil.AccessDenied, PermissionError):
+                pass
+            except Exception as e:
+                logger.debug(f"Port cleanup warning: {e}")
+
+            if killed_ports:
+                # Wait for ports to be released
+                import time
+                time.sleep(0.5)
+                logger.info(f"[Singleton] Freed ports: {killed_ports}")
+
         except ImportError:
             # psutil not available - try basic approach
             try:
@@ -2033,7 +2078,7 @@ def _setup_sighup_handler() -> None:
             except Exception:
                 pass
         except Exception as e:
-            logger.debug(f"Child process cleanup warning: {e}")
+            logger.debug(f"Trinity cleanup warning: {e}")
 
         # Step 5: Restart via execv - this REPLACES the process (atexit NOT called)
         # v109.6: Filter out command flags that would cause restart loop
