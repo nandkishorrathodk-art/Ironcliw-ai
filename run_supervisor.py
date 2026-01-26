@@ -4739,6 +4739,7 @@ class SupervisorBootstrapper:
             "JARVIS_REPO",
             str(Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent")
         ))
+        self._frontend_startup_task: Optional[asyncio.Task] = None
 
         # v100.0: AGI Orchestrator (Unified Cognitive Architecture)
         # - MetaCognitiveEngine: Self-aware reasoning and introspection
@@ -5700,6 +5701,16 @@ class SupervisorBootstrapper:
                 except Exception:
                     pass
 
+            # v113.0: Cancel frontend startup task
+            if self._frontend_startup_task and not self._frontend_startup_task.done():
+                self._frontend_startup_task.cancel()
+                try:
+                    await asyncio.wait_for(self._frontend_startup_task, timeout=1.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                self._frontend_startup_task = None
+
+
             # Cleanup graceful degradation
             try:
                 from backend.core.graceful_degradation import shutdown_degradation
@@ -6612,21 +6623,35 @@ class SupervisorBootstrapper:
                 self.logger.info("[v111.3] ✅ Backend running - proceeding with cross-repo orchestration")
 
                 # ═══════════════════════════════════════════════════════════════════
-                # v113.0: START FRONTEND (after backend is healthy)
+                # v113.0: START FRONTEND AS BACKGROUND TASK (non-blocking)
                 # ═══════════════════════════════════════════════════════════════════
-                # This is the FIX for "ERR_CONNECTION_REFUSED on port 3000".
-                # The React frontend starts AFTER the backend is verified healthy.
-                # Once frontend is ready, we stop the loading server.
+                # CRITICAL: Frontend startup waits for webpack (up to 120s).
+                # We MUST run this as a background task so cross-repo orchestration
+                # and other critical initialization can proceed in parallel.
                 # ═══════════════════════════════════════════════════════════════════
-                frontend_started = await self._start_frontend_v113()
-                if frontend_started:
-                    # Frontend is ready - stop loading server and redirect users
-                    await self._stop_loading_server_v113()
-                    self.logger.info(f"🚀 [v113.0] JARVIS is online at http://localhost:{self._frontend_port}")
-                    TerminalUI.print_success(f"🚀 JARVIS ready: http://localhost:{self._frontend_port}")
-                else:
-                    # Frontend failed - keep loading server running as fallback
-                    self.logger.warning("[v113.0] Frontend failed - loading page remains active on port 3001")
+                async def _frontend_startup_background():
+                    """Background task for frontend startup."""
+                    try:
+                        frontend_started = await self._start_frontend_v113()
+                        if frontend_started:
+                            # Frontend is ready - stop loading server
+                            await self._stop_loading_server_v113()
+                            self.logger.info(f"🚀 [v113.0] JARVIS is online at http://localhost:{self._frontend_port}")
+                            TerminalUI.print_success(f"🚀 JARVIS ready: http://localhost:{self._frontend_port}")
+                        else:
+                            # Frontend failed - keep loading server running as fallback
+                            self.logger.warning("[v113.0] Frontend failed - loading page remains active on port 3001")
+                    except asyncio.CancelledError:
+                        self.logger.info("[v113.0] Frontend startup cancelled")
+                    except Exception as e:
+                        self.logger.warning(f"[v113.0] Frontend startup error: {e}")
+
+                # Start frontend in background (non-blocking)
+                self._frontend_startup_task = asyncio.create_task(
+                    _frontend_startup_background(),
+                    name="frontend-startup-v113"
+                )
+                self.logger.info("[v113.0] Frontend startup initiated (background task)")
 
             # ═══════════════════════════════════════════════════════════════════
             # v10.1: Cross-Repo Startup Orchestration (MUST RUN BEFORE TrinityIntegrator)
