@@ -1620,6 +1620,22 @@ class ResilientTrinityIPCBus(TrinityIPCBus):
             )
             await self._heartbeat_circuit.record_success()
 
+        except asyncio.CancelledError:
+            logger.warning(f"[ResilientIPC] Heartbeat publish cancelled for {component.value} - using fallback")
+            # Fall back to in-memory on cancellation too (shutdown shielding)
+            heartbeat = HeartbeatData(
+                component_type=component,
+                component_id=f"{component.value}_{pid}",
+                timestamp=time.time(),
+                pid=pid,
+                host=os.uname().nodename,
+                status=status,
+                uptime_seconds=time.time() - self._start_time,
+                metrics=metrics or {},
+                dependencies_ready=dependencies_ready or {},
+            )
+            await self._fallback_queue.store_heartbeat(heartbeat)
+            
         except Exception as e:
             await self._heartbeat_circuit.record_failure()
             logger.warning(f"[ResilientIPC] Heartbeat publish failed: {e}")
@@ -1677,6 +1693,12 @@ class ResilientTrinityIPCBus(TrinityIPCBus):
             await self._command_circuit.record_success()
             return result
 
+        except asyncio.CancelledError:
+            logger.warning(f"[ResilientIPC] Command enqueue cancelled: {command.command_id} - using fallback")
+            # Fall back to in-memory (prevent data loss during shutdown)
+            await self._fallback_queue.store_command(command)
+            return command.command_id
+
         except Exception as e:
             await self._command_circuit.record_failure()
             logger.warning(f"[ResilientIPC] Command enqueue failed: {e}")
@@ -1701,6 +1723,9 @@ class ResilientTrinityIPCBus(TrinityIPCBus):
                 result = await super().dequeue_command(target)
                 await self._command_circuit.record_success()
                 return result
+            except asyncio.CancelledError:
+                logger.debug(f"[ResilientIPC] Command dequeue cancelled for {target.value}")
+                return None
             except Exception as e:
                 await self._command_circuit.record_failure()
                 logger.debug(f"[ResilientIPC] Command dequeue failed: {e}")
