@@ -194,9 +194,13 @@ class OrchestratorConfig:
         default_factory=lambda: _get_env_float("JARVIS_IPC_TIMEOUT", 5.0)
     )
 
-    # v2.0: HTTP health check ports
-    jarvis_http_port: int = 8080
-    jprime_http_port: int = 8081
+    # v2.0: HTTP health check ports (configurable via env)
+    # JARVIS Core backend typically runs on 8010, supervisor metrics on 9090
+    # JARVIS Prime runs on 8000
+    # Reactor Core typically runs on 8082
+    jarvis_http_port: int = 8010
+    jarvis_http_fallback_ports: List[int] = field(default_factory=lambda: [8080, 8000, 9090])
+    jprime_http_port: int = 8000
     jreactor_http_port: int = 8082
 
 
@@ -328,6 +332,7 @@ class CrossRepoOrchestrator:
         repos = {}
 
         # JARVIS Core (this repo - always exists)
+        # Note: Supervisor listens on 9090 (Prometheus), backend on 8010
         jarvis_path = _get_env_path(
             "JARVIS_CORE_PATH",
             REPOS_BASE_DIR / "JARVIS-AI-Agent"
@@ -336,17 +341,18 @@ class CrossRepoOrchestrator:
             name="JARVIS Core",
             path=jarvis_path,
             required=True,
-            http_port=self.config.jarvis_http_port,
+            http_port=self.config.jarvis_http_port,  # 8010
             ipc_socket=Path.home() / ".jarvis" / "locks" / "supervisor.sock",
             state_file=CROSS_REPO_DIR / "vbia_state.json",
             health_check_methods=[
+                HealthCheckMethod.PROCESS,  # Most reliable - check if supervisor PID exists
                 HealthCheckMethod.IPC,
                 HealthCheckMethod.HTTP,
                 HealthCheckMethod.FILE_BASED
             ]
         )
 
-        # JARVIS Prime
+        # JARVIS Prime (runs on port 8000)
         jprime_path = _get_env_path(
             "JARVIS_PRIME_PATH",
             REPOS_BASE_DIR / "jarvis-prime"
@@ -355,12 +361,12 @@ class CrossRepoOrchestrator:
             name="JARVIS Prime",
             path=jprime_path,
             required=False,
-            http_port=self.config.jprime_http_port,
+            http_port=self.config.jprime_http_port,  # 8000
             ipc_socket=Path.home() / ".jarvis" / "prime" / "prime.sock",
             state_file=CROSS_REPO_DIR / "prime_state.json",
             health_check_methods=[
+                HealthCheckMethod.HTTP,  # HTTP first - Prime has reliable /health endpoint
                 HealthCheckMethod.FILE_BASED,
-                HealthCheckMethod.HTTP,
                 HealthCheckMethod.PROCESS
             ]
         )
@@ -1016,6 +1022,18 @@ class CrossRepoOrchestrator:
                     pass
 
         if not pid:
+            # v2.0: For JARVIS Core, try to read PID from supervisor lock file
+            supervisor_lock = Path.home() / ".jarvis" / "locks" / "supervisor.lock"
+            if supervisor_lock.exists():
+                try:
+                    lock_content = supervisor_lock.read_text().strip()
+                    if lock_content.isdigit():
+                        pid = int(lock_content)
+                        repo_info.pid = pid  # Cache for future checks
+                except Exception:
+                    pass
+
+        if not pid:
             return HealthCheckResult(
                 healthy=False,
                 method=HealthCheckMethod.PROCESS,
@@ -1040,7 +1058,8 @@ class CrossRepoOrchestrator:
                     )
 
                 cmdline = " ".join(proc.cmdline())
-                if not any(p in cmdline for p in ["python", "jarvis", "prime", "reactor"]):
+                cmdline_lower = cmdline.lower()
+                if not any(p in cmdline_lower for p in ["python", "jarvis", "prime", "reactor"]):
                     return HealthCheckResult(
                         healthy=False,
                         method=HealthCheckMethod.PROCESS,
