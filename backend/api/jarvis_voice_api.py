@@ -4160,12 +4160,20 @@ if COREML_AVAILABLE:
     except FileNotFoundError as e:
         logger.warning(f"[CoreML] CoreML models not found: {e}")
         logger.warning("[CoreML] CoreML voice detection disabled - models required")
+        logger.info("[CoreML] Hint: Run 'cd backend/voice/coreml && cmake . && make' to compile")
+        coreml_engine = None
+    except RuntimeError as e:
+        # v113.0: Handle library compilation issues gracefully
+        logger.warning(f"[CoreML] CoreML library not compiled: {e}")
+        logger.info("[CoreML] Hint: Compile with 'cd backend/voice/coreml && cmake . && make'")
+        logger.info("[CoreML] Falling back to standard voice recognition (no performance impact)")
         coreml_engine = None
     except Exception as e:
         logger.error(f"[CoreML] Failed to initialize CoreML engine: {e}")
+        logger.info("[CoreML] Continuing without CoreML - standard voice recognition will be used")
         coreml_engine = None
 else:
-    logger.info("[CoreML] CoreML not available - using standard voice recognition")
+    logger.info("[CoreML] CoreML not available - using standard voice recognition (no impact on functionality)")
 
 
 # ========================================

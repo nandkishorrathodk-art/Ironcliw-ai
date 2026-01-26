@@ -23411,10 +23411,13 @@ class SQLiteExperienceStore:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = await aiosqlite.connect(str(self.db_path))
 
-            # Enable WAL mode for better concurrency
+            # v113.0: Enable WAL mode + busy timeout for better concurrency
+            # This prevents "database is locked" errors during cleanup
             await self._conn.execute("PRAGMA journal_mode=WAL")
             await self._conn.execute("PRAGMA synchronous=NORMAL")
             await self._conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+            await self._conn.execute("PRAGMA busy_timeout=30000")  # v113.0: 30s busy timeout
+            await self._conn.execute("PRAGMA wal_autocheckpoint=1000")  # v113.0: Auto-checkpoint
 
             # Create tables
             await self._conn.execute("""
@@ -23594,11 +23597,16 @@ class SQLiteExperienceStore:
             return False
 
     async def cleanup_expired(self) -> int:
-        """Remove expired packets."""
+        """
+        Remove expired packets.
+        
+        v113.0: Added timeout protection to prevent indefinite blocking
+        on database locks during concurrent operations.
+        """
         if not self._initialized:
             return 0
 
-        try:
+        async def _do_cleanup() -> int:
             async with self._lock:
                 now = time.time()
                 cursor = await self._conn.execute("""
@@ -23610,8 +23618,16 @@ class SQLiteExperienceStore:
                 await self._conn.commit()
                 return len(rows)
 
+        try:
+            # v113.0: Use timeout to prevent indefinite blocking on locks
+            return await asyncio.wait_for(_do_cleanup(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("SQLiteExperienceStore cleanup_expired timed out (5s) - will retry later")
+            return 0
         except Exception as e:
+            # v113.0: Enhanced error message with recovery hint
             logger.error(f"SQLiteExperienceStore cleanup_expired failed: {e}")
+            logger.debug("Hint: 'database is locked' usually resolves after busy_timeout (30s)")
             return 0
 
     async def get_pending_count(self) -> int:
