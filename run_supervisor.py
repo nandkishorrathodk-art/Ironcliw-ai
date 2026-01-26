@@ -10282,9 +10282,9 @@ class SupervisorBootstrapper:
                 component=name,
                 port=port_map.get(role_str, 0)
             )
-            self.logger.debug(f"[v116.0] Registered {name} (PID {pid}) in GlobalProcessRegistry")
+            print(f"  [v116.0] ✅ Launched {name} (PID {pid}) registered in GlobalProcessRegistry")
         except Exception as reg_err:
-            self.logger.debug(f"[v116.0] GlobalProcessRegistry registration failed for {name}: {reg_err}")
+            print(f"  [v116.0] ⚠️ {name} GlobalProcessRegistry registration failed: {reg_err}")
 
         # v102.0: Process tree registration (optional - may not be initialized)
         if not hasattr(self, '_process_tree') or self._process_tree is None:
@@ -20128,6 +20128,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         f"  {TerminalUI.GREEN}✓ J-Prime: Already running "
                         f"(PID: {heartbeat_data.pid}, heartbeat: {heartbeat_data.age_seconds:.1f}s ago){TerminalUI.RESET}"
                     )
+                    # v116.0: Register adopted J-Prime in GlobalProcessRegistry
+                    try:
+                        from backend.core.supervisor_singleton import GlobalProcessRegistry
+                        GlobalProcessRegistry.register(pid=heartbeat_data.pid, component="J-Prime (adopted)", port=8000)
+                        print(f"  [v116.0] ✅ Adopted J-Prime (PID {heartbeat_data.pid}) registered")
+                    except Exception:
+                        pass
                     return None  # Already running, not an error
                 elif status == HeartbeatStatus.DEAD:
                     self.logger.info(
@@ -20384,6 +20391,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     f"  {TerminalUI.GREEN}✓ Reactor-Core: Already running "
                     f"(PID: {heartbeat_data.pid}, heartbeat: {heartbeat_data.age_seconds:.1f}s ago){TerminalUI.RESET}"
                 )
+                # v116.0: Register adopted Reactor-Core in GlobalProcessRegistry
+                try:
+                    from backend.core.supervisor_singleton import GlobalProcessRegistry
+                    GlobalProcessRegistry.register(pid=heartbeat_data.pid, component="Reactor-Core (adopted)", port=8090)
+                    print(f"  [v116.0] ✅ Adopted Reactor-Core (PID {heartbeat_data.pid}) registered")
+                except Exception:
+                    pass
                 return None  # Already running, not an error
             elif status == HeartbeatStatus.DEAD:
                 self.logger.info(

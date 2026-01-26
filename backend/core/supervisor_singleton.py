@@ -2152,23 +2152,50 @@ def _setup_sighup_handler() -> None:
             # Trinity ports that MUST be free for restart
             TRINITY_PORTS = [8000, 8010, 8090]  # J-Prime, JARVIS, Reactor-Core
 
-            # Step 4a: Kill our direct children first
+            # Step 4a: Kill our direct children EXCEPT registered Trinity services
+            # v117.0: Check GlobalProcessRegistry BEFORE killing to preserve Trinity services
             try:
                 current_proc = psutil.Process(current_pid)
                 children = current_proc.children(recursive=True)
                 if children:
-                    logger.info(f"[Singleton] Terminating {len(children)} child process(es)")
+                    # v117.0: Separate children into: (a) registered Trinity services to KEEP
+                    #         and (b) internal children to terminate
+                    children_to_terminate = []
+                    children_to_preserve = []
+
                     for child in children:
-                        try:
-                            child.terminate()
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
-                    _, alive = psutil.wait_procs(children, timeout=2.0)
-                    for proc in alive:
-                        try:
-                            proc.kill()
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
+                        if GlobalProcessRegistry.is_ours(child.pid):
+                            # This is a registered Trinity service - PRESERVE IT
+                            children_to_preserve.append(child)
+                            logger.info(
+                                f"[Singleton] v117.0: PRESERVING registered Trinity service "
+                                f"PID {child.pid} during restart"
+                            )
+                        else:
+                            # This is an internal child - terminate it
+                            children_to_terminate.append(child)
+
+                    if children_to_terminate:
+                        logger.info(
+                            f"[Singleton] Terminating {len(children_to_terminate)} internal child(ren), "
+                            f"preserving {len(children_to_preserve)} registered service(s)"
+                        )
+                        for child in children_to_terminate:
+                            try:
+                                child.terminate()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                        _, alive = psutil.wait_procs(children_to_terminate, timeout=2.0)
+                        for proc in alive:
+                            try:
+                                proc.kill()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                    else:
+                        logger.info(
+                            f"[Singleton] No internal children to terminate, "
+                            f"preserving {len(children_to_preserve)} registered service(s)"
+                        )
             except Exception as e:
                 logger.debug(f"Child cleanup warning: {e}")
 
@@ -2178,8 +2205,8 @@ def _setup_sighup_handler() -> None:
             killed_ports = []
             skipped_our_processes = []
             try:
-                # v116.0: Get set of child PIDs we just terminated
-                terminated_child_pids = {c.pid for c in children} if children else set()
+                # v117.0: Get set of child PIDs we just terminated (not preserved services)
+                terminated_child_pids = {c.pid for c in children_to_terminate} if 'children_to_terminate' in dir() and children_to_terminate else set()
 
                 for conn in psutil.net_connections(kind='inet'):
                     if conn.laddr.port in TRINITY_PORTS and conn.pid:

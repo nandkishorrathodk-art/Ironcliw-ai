@@ -11094,6 +11094,18 @@ echo "=== JARVIS Prime started ==="
 
             logger.info(f"📋 {definition.name} spawned with PID {managed.pid}")
 
+            # v116.0: Register spawned service in GlobalProcessRegistry for SIGHUP protection
+            try:
+                from backend.core.supervisor_singleton import GlobalProcessRegistry
+                GlobalProcessRegistry.register(
+                    pid=managed.pid,
+                    component=f"{definition.name} (spawned)",
+                    port=definition.default_port
+                )
+                logger.info(f"    [v116.0] ✅ {definition.name} (PID {managed.pid}) registered in GlobalProcessRegistry")
+            except Exception as reg_err:
+                logger.warning(f"    [v116.0] ⚠️ GlobalProcessRegistry registration failed for {definition.name}: {reg_err}")
+
             # v108.0: Record startup time for grace period tracking
             # This allows the heartbeat validator to NOT mark components as dead during startup
             await self._record_component_startup(definition.name, managed.pid)
@@ -12158,6 +12170,17 @@ echo "=== JARVIS Prime started ==="
                     existing = await self.registry.discover_service(service_name)
                     if existing:
                         reason = f"already running (PID: {existing.pid}, Port: {existing.port})"
+                        # v116.0: Register adopted service in GlobalProcessRegistry for SIGHUP protection
+                        try:
+                            from backend.core.supervisor_singleton import GlobalProcessRegistry
+                            GlobalProcessRegistry.register(
+                                pid=existing.pid,
+                                component=f"{service_name} (adopted)",
+                                port=existing.port
+                            )
+                            logger.info(f"    [v116.0] ✅ Adopted {service_name} (PID {existing.pid}) registered in GlobalProcessRegistry")
+                        except Exception as reg_err:
+                            logger.warning(f"    [v116.0] ⚠️ GlobalProcessRegistry registration failed for {service_name}: {reg_err}")
                         # v95.5: Service already running, publish ready event
                         await self._end_span(service_span, status="success")
                         await self.publish_service_lifecycle_event(service_name, "ready", {"mode": "existing"})

@@ -1102,11 +1102,11 @@ def setup_signal_handlers(
             )
 
     # Signals to handle
+    # v117.0: SIGHUP is reserved for os.execv() restart in supervisor_singleton.py
+    # Only SIGTERM and SIGINT should trigger shutdown
     signals_to_handle = [signal.SIGTERM, signal.SIGINT]
-
-    # SIGHUP is not available on Windows
-    if hasattr(signal, "SIGHUP"):
-        signals_to_handle.append(signal.SIGHUP)
+    # NOTE: Do NOT add SIGHUP here - it's handled by supervisor_singleton._handle_sighup
+    # for clean restart via os.execv() (fixes EXC_GUARD crash)
 
     # Register handlers with proper error handling
     for sig in signals_to_handle:
