@@ -1836,6 +1836,41 @@ class DynamicComponentManager:
             self._last_pressure_log_time[pressure.value] = current_time
             self._last_logged_pressure = pressure
 
+        # ====================================================================
+        # INTELLIGENT HYBRID CLOUD OFFLOADING (v2.1)
+        # ====================================================================
+        # Automatically provision GCP Spot VMs when memory pressure rises.
+        # This prevents local OOM kills by offloading heavy ML work.
+        # ====================================================================
+        
+        # Check if we should trigger cloud offloading
+        # Trigger on MEDIUM pressure or HIGH/CRITICAL, or if specifically enabled for LOW
+        cloud_trigger_pressure = [MemoryPressure.MEDIUM, MemoryPressure.HIGH, MemoryPressure.CRITICAL, MemoryPressure.EMERGENCY]
+        if os.getenv("JARVIS_CLOUD_OFFLOAD_AGGRESSIVE", "false").lower() == "true":
+            cloud_trigger_pressure.append(MemoryPressure.LOW)
+            
+        if pressure in cloud_trigger_pressure:
+            try:
+                # Lazy import to avoid circular dependencies
+                from .gcp_vm_manager import get_gcp_vm_manager
+                vm_manager = get_gcp_vm_manager()
+                
+                # Only if feature is enabled
+                if vm_manager.enabled:
+                    # Check if we already have an active VM
+                    active_vm = await vm_manager.get_active_vm()
+                    
+                    if not active_vm:
+                        logger.info(f"🌩️ Memory pressure {pressure.value} detected - Initiating Hybrid Cloud Protocol...")
+                        logger.info("   Requesting GCP Spot Instance for compute offloading...")
+                        
+                        # Trigger async provisioning (fire and forget to not block main thread)
+                        asyncio.create_task(self._provision_cloud_resources(vm_manager))
+            except ImportError:
+                logger.debug("GCP VM Manager not available for offloading")
+            except Exception as e:
+                logger.warning(f"Failed to trigger cloud offloading: {e}")
+
         if pressure == MemoryPressure.HIGH:
             # Unload LOW priority idle components
             await self._unload_idle_components(ComponentPriority.LOW, idle_seconds=60)
@@ -1851,6 +1886,38 @@ class DynamicComponentManager:
                 # Never unload CORE components or vision (needed for multi-space queries)
                 if comp.priority != ComponentPriority.CORE and name != 'vision':
                     await self.unload_component(name)
+
+    async def _provision_cloud_resources(self, vm_manager):
+        """Provision cloud resources in background and update registry."""
+        try:
+            # Start VM
+            success, ip_address = await vm_manager.start_spot_vm()
+            
+            if success and ip_address:
+                logger.info(f"✅ Hybrid Cloud Active: Spot VM running at {ip_address}")
+                
+                # Update ML Registry with new cloud endpoint
+                try:
+                    from voice_unlock.ml_engine_registry import MLEngineRegistry
+                    registry = MLEngineRegistry()
+                    
+                    # Construct URL (assuming standard ML port 8010 or Prime port 8000 depending on image)
+                    # For now default to ML service port 8010
+                    cloud_url = f"http://{ip_address}:8010"
+                    
+                    # Update registry endpoint
+                    registry._cloud_endpoint = cloud_url
+                    registry._use_cloud = True
+                    logger.info(f"   🔄 ML Registry updated to use cloud backend: {cloud_url}")
+                    
+                    # Also notify Trinity/Reactor if possible
+                except ImportError:
+                    pass
+            else:
+                logger.warning("❌ Failed to provision GCP Spot VM")
+                
+        except Exception as e:
+            logger.error(f"Cloud provisioning task failed: {e}")
 
     async def _unload_idle_components(self, priority: ComponentPriority, idle_seconds: float):
         """Unload idle components of given priority"""

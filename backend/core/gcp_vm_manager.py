@@ -789,6 +789,51 @@ class GCPVMManager:
             logger.warning(f"⚠️  GCP optimizer initialization failed (non-critical): {e}")
             self.gcp_optimizer = None
 
+            self.gcp_optimizer = None
+
+    async def get_active_vm(self) -> Optional[VMInstance]:
+        """
+        Get the currently active (RUNNING) VM instance.
+        
+        Returns:
+            VMInstance if found and running, None otherwise.
+        """
+        async with self._vm_lock:
+            for vm in self.managed_vms.values():
+                if vm.state == VMState.RUNNING and vm.is_healthy:
+                    return vm
+        return None
+
+    async def start_spot_vm(self) -> Tuple[bool, Optional[str]]:
+        """
+        Start a Spot VM for immediate use.
+        
+        Wrapper around create_vm that returns success status and IP.
+        
+        Returns:
+            (success, ip_address)
+        """
+        if not self.config.enabled:
+            return False, None
+            
+        try:
+            # Check if we already have one
+            existing = await self.get_active_vm()
+            if existing:
+                return True, existing.ip_address
+                
+            # Create new one
+            vm = await self.create_vm(reason="auto_offload")
+            
+            # Wait for IP (create_vm usually returns loaded VM but IP might take a moment)
+            if vm and vm.state == VMState.RUNNING:
+                return True, vm.ip_address
+                
+            return False, None
+        except Exception as e:
+            logger.error(f"Failed to start Spot VM: {e}")
+            return False, None
+
         # Initialize regions client for quota checking
         # Use modern asyncio patterns with fallback
         try:
