@@ -292,74 +292,153 @@ class EnterpriseProcessManager:
 
     async def _get_port_pid(self, port: int) -> Dict[str, Any]:
         """
-        Get PID and process name for a port - LISTEN state only.
+        Get PID and process name for a port.
 
         v109.0: CRITICAL FIX - Only get PIDs in LISTEN state.
-        Previous: lsof -ti :PORT (returns ALL connections including clients)
-        Fixed: lsof -i :PORT -sTCP:LISTEN -t (returns only LISTENING processes)
+        v109.8: ENHANCED - Multi-layer fallback for comprehensive PID detection.
+
+        Detection layers:
+        1. lsof -sTCP:LISTEN (primary - safe, only listeners)
+        2. lsof without LISTEN filter (fallback for CLOSE_WAIT, FIN_WAIT, etc.)
+        3. psutil.net_connections (final fallback - catches orphaned sockets)
 
         This prevents the supervisor from detecting itself as a port conflict
-        when it makes HTTP health check connections to services.
+        while still catching zombie processes in non-LISTEN states.
+        """
+        current_pid = os.getpid()
+        parent_pid = os.getppid()
+
+        # Layer 1: Try LISTEN filter first (safest, avoids self-detection)
+        pid, name = await self._get_port_pid_lsof(port, listen_only=True)
+        if pid and pid not in (current_pid, parent_pid):
+            logger.debug(f"[v109.8] Port {port}: Found LISTEN PID {pid} ({name})")
+            return {"pid": pid, "name": name}
+
+        # Layer 2: Fallback - Check ALL socket states (CLOSE_WAIT, FIN_WAIT, etc.)
+        # This catches zombie connections that aren't in LISTEN state
+        pid, name = await self._get_port_pid_lsof(port, listen_only=False)
+        if pid and pid not in (current_pid, parent_pid):
+            logger.info(
+                f"[v109.8] Port {port}: Found non-LISTEN PID {pid} ({name}) via lsof fallback"
+            )
+            return {"pid": pid, "name": name}
+
+        # Layer 3: Final fallback - Use psutil for comprehensive detection
+        pid, name = await self._get_port_pid_psutil(port)
+        if pid and pid not in (current_pid, parent_pid):
+            logger.info(
+                f"[v109.8] Port {port}: Found PID {pid} ({name}) via psutil fallback"
+            )
+            return {"pid": pid, "name": name}
+
+        logger.debug(f"[v109.8] Port {port}: No owning PID found via any method")
+        return {"pid": None, "name": None}
+
+    async def _get_port_pid_lsof(
+        self, port: int, listen_only: bool = True
+    ) -> tuple[Optional[int], Optional[str]]:
+        """
+        v109.8: Get PID using lsof with configurable LISTEN filter.
+
+        Args:
+            port: Port number to check
+            listen_only: If True, only return LISTEN PIDs (safer). If False, return any.
+
+        Returns:
+            Tuple of (pid, process_name) or (None, None)
         """
         try:
-            # v109.0: Use -sTCP:LISTEN to only get LISTENING processes
-            # This prevents returning the supervisor's PID when it has
-            # ESTABLISHED connections (e.g., during health checks)
+            # Build command based on filter mode
+            if listen_only:
+                cmd = ["lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t"]
+            else:
+                # Get all TCP states but prioritize server-side states
+                cmd = ["lsof", "-i", f":{port}", "-t"]
+
             proc = await asyncio.create_subprocess_exec(
-                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
             if not stdout:
-                return {"pid": None, "name": None}
+                return None, None
 
             pids = stdout.decode().strip().split('\n')
-            if pids and pids[0]:
-                try:
-                    pid = int(pids[0])
-                except ValueError:
-                    return {"pid": None, "name": None}
+            current_pid = os.getpid()
+            parent_pid = os.getppid()
 
-                # v109.0: Safety check - Never return our own PID or parent
-                current_pid = os.getpid()
-                parent_pid = os.getppid()
+            for pid_str in pids:
+                if not pid_str.strip():
+                    continue
+                try:
+                    pid = int(pid_str.strip())
+                except ValueError:
+                    continue
+
+                # Skip self and parent
                 if pid in (current_pid, parent_pid):
-                    logger.warning(
-                        f"[v109.0] _get_port_pid safety filter: "
-                        f"Ignoring self ({current_pid}) or parent ({parent_pid}) "
-                        f"for port {port} - this should not happen with -sTCP:LISTEN filter"
-                    )
-                    # Try to get the next PID if available
-                    if len(pids) > 1 and pids[1]:
-                        try:
-                            pid = int(pids[1])
-                            if pid in (current_pid, parent_pid):
-                                return {"pid": None, "name": None}
-                        except ValueError:
-                            return {"pid": None, "name": None}
-                    else:
-                        return {"pid": None, "name": None}
+                    continue
 
                 # Get process name
-                try:
-                    name_proc = await asyncio.create_subprocess_exec(
-                        "ps", "-p", str(pid), "-o", "comm=",
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    name_stdout, _ = await asyncio.wait_for(name_proc.communicate(), timeout=2.0)
-                    name = name_stdout.decode().strip() if name_stdout else None
-                except Exception:
-                    name = None
+                name = await self._get_process_name(pid)
+                return pid, name
 
-                return {"pid": pid, "name": name}
+            return None, None
 
         except Exception as e:
-            logger.debug(f"[PortValidation] Get PID error: {e}")
+            logger.debug(f"[v109.8] lsof error for port {port}: {e}")
+            return None, None
 
-        return {"pid": None, "name": None}
+    async def _get_port_pid_psutil(self, port: int) -> tuple[Optional[int], Optional[str]]:
+        """
+        v109.8: Get PID using psutil.net_connections as final fallback.
+
+        This catches cases where lsof fails but psutil can still see the socket.
+        Particularly useful for:
+        - Orphaned sockets from crashed processes
+        - UDP ports (lsof TCP filters miss these)
+        - Race conditions where process is exiting
+        """
+        try:
+            import psutil
+
+            current_pid = os.getpid()
+            parent_pid = os.getppid()
+
+            # Check all network connections
+            for conn in psutil.net_connections(kind='inet'):
+                # Check both local and foreign addresses
+                if conn.laddr and conn.laddr.port == port:
+                    if conn.pid and conn.pid not in (current_pid, parent_pid):
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            return conn.pid, proc.name()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            continue
+
+            return None, None
+
+        except ImportError:
+            logger.debug("[v109.8] psutil not available for fallback PID detection")
+            return None, None
+        except Exception as e:
+            logger.debug(f"[v109.8] psutil error for port {port}: {e}")
+            return None, None
+
+    async def _get_process_name(self, pid: int) -> Optional[str]:
+        """Get process name for a PID."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ps", "-p", str(pid), "-o", "comm=",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            return stdout.decode().strip() if stdout else None
+        except Exception:
+            return None
 
     async def _check_port_health(self, port: int, health_endpoint: str) -> Dict[str, Any]:
         """
@@ -411,10 +490,14 @@ class EnterpriseProcessManager:
         """
         Clean up a port for reuse.
 
+        v109.8: Enhanced with multi-layer cleanup and fallback strategies.
+
         Handles:
         1. LISTEN state: Kill process with SIGTERM, escalate to SIGKILL
         2. TIME_WAIT state: Wait for OS to release (up to max_wait)
-        3. Process not responding: Force kill
+        3. CLOSE_WAIT/FIN_WAIT: Find and kill holding process
+        4. Orphaned sockets: Use psutil fallback
+        5. Process not responding: Force kill
 
         Args:
             port: Port to clean up
@@ -446,60 +529,75 @@ class EnterpriseProcessManager:
             logger.warning(f"[Cleanup] Port {port} TIME_WAIT timeout after {max_wait}s")
             return False
 
+        current_pid = os.getpid()
+        parent_pid = os.getppid()
+
+        # v109.8: If primary detection found no PID, try fallback methods
+        pid_to_kill = validation.pid
+        if pid_to_kill is None:
+            logger.info(
+                f"[v109.8] Port {port}: No PID from primary detection, trying fallbacks..."
+            )
+            pid_to_kill = await self._find_port_pid_comprehensive(port)
+
         # v109.0: CRITICAL - Multi-layer PID validation before kill
-        if validation.pid:
+        if pid_to_kill:
             # Layer 1: Basic self-protection (also in _kill_process)
-            current_pid = os.getpid()
-            parent_pid = os.getppid()
-            if validation.pid in (current_pid, parent_pid):
+            if pid_to_kill in (current_pid, parent_pid):
                 logger.error(
                     f"[v109.0] SAFETY: Refusing to clean up port {port} - "
-                    f"PID {validation.pid} is self ({current_pid}) or parent ({parent_pid})"
+                    f"PID {pid_to_kill} is self ({current_pid}) or parent ({parent_pid})"
                 )
                 return False
 
             # Layer 2: Verify PID is actually the LISTENER (not an ESTABLISHED connection)
-            listener_check = await self._verify_pid_is_listener(port, validation.pid)
-            if not listener_check:
-                logger.warning(
-                    f"[v109.0] SAFETY: PID {validation.pid} is not the LISTEN owner of port {port} "
-                    f"- skipping cleanup to avoid killing wrong process"
-                )
-                return False
+            # v109.8: Skip this check for non-LISTEN states (we're explicitly cleaning orphans)
+            if validation.socket_state == "LISTEN":
+                listener_check = await self._verify_pid_is_listener(port, pid_to_kill)
+                if not listener_check:
+                    logger.warning(
+                        f"[v109.0] SAFETY: PID {pid_to_kill} is not the LISTEN owner of port {port} "
+                        f"- skipping cleanup to avoid killing wrong process"
+                    )
+                    return False
 
             # Layer 3: Process name sanity check
             # v109.3: CRITICAL FIX - Only protect SYSTEM processes and the SUPERVISOR
             # NOT jarvis-prime or other JARVIS services (which can be safely killed if stale)
+            process_name = validation.process_name
+            if not process_name:
+                process_name = await self._get_process_name(pid_to_kill)
+
             system_processes = {"systemd", "launchd", "init", "kernel", "bash", "zsh"}
-            if validation.process_name and validation.process_name.lower() in system_processes:
+            if process_name and process_name.lower() in system_processes:
                 logger.error(
-                    f"[v109.3] SAFETY: PID {validation.pid} is a system process "
-                    f"({validation.process_name}) - refusing to kill"
+                    f"[v109.3] SAFETY: PID {pid_to_kill} is a system process "
+                    f"({process_name}) - refusing to kill"
                 )
                 return False
 
             # v109.3: For Python processes, only protect the SUPERVISOR, not other JARVIS services
-            if validation.process_name and validation.process_name.lower() in ("python3", "python"):
-                cmdline = await self._get_process_cmdline(validation.pid)
+            if process_name and process_name.lower() in ("python3", "python"):
+                cmdline = await self._get_process_cmdline(pid_to_kill)
                 if cmdline:
                     cmdline_lower = cmdline.lower()
                     # Only protect "run_supervisor.py" - NOT jarvis-prime or other services
                     # The check for current_pid/parent_pid already protects us from killing ourselves
                     if "run_supervisor" in cmdline_lower and "jarvis_prime" not in cmdline_lower:
                         logger.warning(
-                            f"[v109.3] SAFETY: PID {validation.pid} appears to be a supervisor process "
+                            f"[v109.3] SAFETY: PID {pid_to_kill} appears to be a supervisor process "
                             f"(run_supervisor in cmdline) - refusing to kill. Cmdline: {cmdline[:100]}"
                         )
                         return False
                     # Log what we're about to kill for debugging
                     logger.info(
-                        f"[v109.3] Port cleanup: Will kill PID {validation.pid} "
+                        f"[v109.3] Port cleanup: Will kill PID {pid_to_kill} "
                         f"(cmdline: {cmdline[:100]}...)"
                     )
 
             # All safety checks passed - proceed with kill
             success = await self._kill_process(
-                validation.pid,
+                pid_to_kill,
                 force=force,
                 wait_timeout=self.cleanup_wait_time
             )
@@ -508,7 +606,7 @@ class EnterpriseProcessManager:
                 await asyncio.sleep(0.5)
                 check = await self._check_socket_state(port)
                 if not check.get("occupied", True):
-                    logger.info(f"[Cleanup] Port {port} successfully cleaned up (killed PID {validation.pid})")
+                    logger.info(f"[Cleanup] Port {port} successfully cleaned up (killed PID {pid_to_kill})")
                     return True
 
                 # May be in TIME_WAIT now
@@ -520,6 +618,89 @@ class EnterpriseProcessManager:
                         max_wait=max_wait - (time.time() - start_time)
                     )
 
+        # v109.8: Final fallback - Port is occupied but we can't find a PID
+        # This can happen with kernel-held sockets or race conditions
+        if pid_to_kill is None:
+            logger.warning(
+                f"[v109.8] Port {port}: Occupied ({validation.socket_state}) but no PID found. "
+                f"Attempting wait strategy..."
+            )
+            # Wait for socket to naturally close (works for CLOSE_WAIT, FIN_WAIT)
+            remaining_wait = max_wait - (time.time() - start_time)
+            if remaining_wait > 0:
+                return await self._wait_for_port_release(port, remaining_wait)
+
+        return False
+
+    async def _find_port_pid_comprehensive(self, port: int) -> Optional[int]:
+        """
+        v109.8: Comprehensive PID search using multiple methods.
+
+        This is a fallback when primary detection fails.
+        """
+        current_pid = os.getpid()
+        parent_pid = os.getppid()
+
+        # Method 1: lsof without LISTEN filter (catches CLOSE_WAIT, FIN_WAIT, etc.)
+        pid, _ = await self._get_port_pid_lsof(port, listen_only=False)
+        if pid and pid not in (current_pid, parent_pid):
+            logger.debug(f"[v109.8] Found PID {pid} via lsof fallback for port {port}")
+            return pid
+
+        # Method 2: psutil (catches edge cases lsof misses)
+        pid, _ = await self._get_port_pid_psutil(port)
+        if pid and pid not in (current_pid, parent_pid):
+            logger.debug(f"[v109.8] Found PID {pid} via psutil for port {port}")
+            return pid
+
+        # Method 3: fuser command (alternative to lsof, works on some systems)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "fuser", f"{port}/tcp",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            # fuser outputs to stderr on some systems
+            output = (stdout or stderr or b"").decode().strip()
+            if output:
+                for pid_str in output.split():
+                    try:
+                        pid = int(pid_str.strip())
+                        if pid not in (current_pid, parent_pid):
+                            logger.debug(f"[v109.8] Found PID {pid} via fuser for port {port}")
+                            return pid
+                    except ValueError:
+                        continue
+        except Exception as e:
+            logger.debug(f"[v109.8] fuser fallback failed: {e}")
+
+        return None
+
+    async def _wait_for_port_release(self, port: int, max_wait: float) -> bool:
+        """
+        v109.8: Wait for a port to be released naturally.
+
+        Used when we can't find a PID but socket is occupied.
+        Works for CLOSE_WAIT, FIN_WAIT states that will clear automatically.
+        """
+        logger.info(f"[v109.8] Waiting up to {max_wait:.1f}s for port {port} to release...")
+        start = time.time()
+        check_interval = 0.5
+
+        while time.time() - start < max_wait:
+            check = await self._check_socket_state(port)
+            if not check.get("occupied", True):
+                logger.info(f"[v109.8] Port {port} released after {time.time() - start:.1f}s")
+                return True
+
+            state = check.get("state", "unknown")
+            logger.debug(f"[v109.8] Port {port} still {state}, waiting...")
+
+            await asyncio.sleep(check_interval)
+            check_interval = min(check_interval * 1.5, 3.0)  # Exponential backoff
+
+        logger.warning(f"[v109.8] Port {port} did not release within {max_wait:.1f}s")
         return False
 
     async def _kill_process(

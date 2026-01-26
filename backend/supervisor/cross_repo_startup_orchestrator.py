@@ -10653,54 +10653,125 @@ echo "=== JARVIS Prime started ==="
                     logger.info(f"    ✅ Port {port} cleaned up (forced)")
                     return True
 
-                # Phase 3: Wait for TIME_WAIT if socket is in that state
-                logger.warning(f"    ⚠️ Force cleanup failed, checking for TIME_WAIT...")
+                # Phase 3: Wait for socket release (TIME_WAIT, CLOSE_WAIT, FIN_WAIT)
+                # v109.8: Enhanced diagnostics and comprehensive socket state handling
+                logger.warning(f"    ⚠️ Force cleanup failed, analyzing socket state...")
                 socket_state = await process_manager._check_socket_state(port)
-                if socket_state.get("state") == "TIME_WAIT":
-                    logger.info(f"    ⏳ Port {port} in TIME_WAIT, waiting up to 30s for release...")
+                state_name = socket_state.get("state", "unknown")
+
+                if state_name in ("TIME_WAIT", "CLOSE_WAIT", "FIN_WAIT1", "FIN_WAIT2"):
+                    logger.info(
+                        f"    ⏳ Port {port} in {state_name} state, waiting for natural release..."
+                    )
                     start = time.time()
                     while time.time() - start < 30.0:
                         await asyncio.sleep(2.0)
                         state_check = await process_manager._check_socket_state(port)
                         if not state_check.get("occupied", True):
-                            logger.info(f"    ✅ Port {port} released from TIME_WAIT")
+                            logger.info(f"    ✅ Port {port} released from {state_name}")
                             return True
-                        logger.debug(f"    ⏳ Still waiting for TIME_WAIT on port {port}...")
-                    logger.warning(f"    ❌ TIME_WAIT did not clear in time for port {port}")
+                        current_state = state_check.get("state", "unknown")
+                        logger.debug(
+                            f"    ⏳ Still waiting: port {port} in {current_state}..."
+                        )
+                    logger.warning(
+                        f"    ❌ {state_name} did not clear in time for port {port}"
+                    )
 
-                logger.error(f"    ❌ All cleanup phases failed for port {port}")
+                # v109.8: Final diagnostic dump for debugging
+                logger.error(
+                    f"    ❌ All cleanup phases failed for port {port}. Final diagnostics:\n"
+                    f"       Socket state: {state_name}\n"
+                    f"       Port occupied: {socket_state.get('occupied', 'unknown')}"
+                )
+
+                # v109.8: Try to gather more debug info
+                try:
+                    import subprocess
+                    lsof_result = subprocess.run(
+                        ["lsof", "-i", f":{port}", "-P", "-n"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if lsof_result.stdout:
+                        logger.error(
+                            f"       lsof output for port {port}:\n"
+                            f"{lsof_result.stdout}"
+                        )
+                except Exception as diag_err:
+                    logger.debug(f"       Diagnostic lsof failed: {diag_err}")
+
                 return False
 
             return False
 
         except ImportError:
-            # Fallback to legacy behavior if enterprise process manager not available
+            # v109.8: Enhanced legacy fallback with multi-state socket handling
             logger.warning(
-                "[v108.0] EnterpriseProcessManager not available, using legacy fallback"
+                "[v109.8] EnterpriseProcessManager not available, using enhanced legacy fallback"
             )
             try:
                 import psutil
+                current_pid = os.getpid()
+                parent_pid = os.getppid()
+
+                # v109.8: Check ALL socket states, not just LISTEN
+                # Prioritize LISTEN, then other states
+                conn_by_state = {"LISTEN": [], "other": []}
                 for conn in psutil.net_connections(kind='inet'):
-                    if conn.laddr.port == port and conn.status == 'LISTEN':
+                    if conn.laddr and conn.laddr.port == port and conn.pid:
+                        if conn.pid in (current_pid, parent_pid):
+                            continue  # Skip self
+                        if conn.status == 'LISTEN':
+                            conn_by_state["LISTEN"].append(conn)
+                        else:
+                            conn_by_state["other"].append(conn)
+
+                # Try LISTEN connections first, then others
+                for conn in conn_by_state["LISTEN"] + conn_by_state["other"]:
+                    try:
+                        proc = psutil.Process(conn.pid)
+                        logger.warning(
+                            f"    📋 Port {port} held by: "
+                            f"PID={conn.pid}, Name={proc.name()}, "
+                            f"Status={conn.status}, "
+                            f"Cmdline={' '.join(proc.cmdline()[:3])}"
+                        )
+                        # Attempt to kill the process
+                        proc.terminate()
                         try:
-                            proc = psutil.Process(conn.pid)
-                            logger.warning(
-                                f"    📋 Port {port} held by: "
-                                f"PID={conn.pid}, Name={proc.name()}, "
-                                f"Cmdline={' '.join(proc.cmdline()[:3])}"
-                            )
-                            # Attempt to kill the process
-                            proc.terminate()
                             proc.wait(timeout=5)
-                            logger.info(f"    ✅ Killed process {conn.pid} on port {port}")
+                        except psutil.TimeoutExpired:
+                            logger.warning(f"    ⚠️ Process {conn.pid} didn't exit, killing...")
+                            proc.kill()
+                            proc.wait(timeout=5)
+                        logger.info(f"    ✅ Killed process {conn.pid} on port {port}")
+                        return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                        logger.warning(
+                            f"    ⚠️ Could not kill process on port {port}: {e}"
+                        )
+                        continue
+
+                # v109.8: If no process found but port might be in TIME_WAIT, wait
+                if not conn_by_state["LISTEN"] and not conn_by_state["other"]:
+                    logger.info(f"    ⏳ No killable process found for port {port}, waiting for release...")
+                    start = time.time()
+                    while time.time() - start < 15.0:
+                        await asyncio.sleep(1.0)
+                        still_occupied = False
+                        for conn in psutil.net_connections(kind='inet'):
+                            if conn.laddr and conn.laddr.port == port:
+                                still_occupied = True
+                                break
+                        if not still_occupied:
+                            logger.info(f"    ✅ Port {port} released")
                             return True
-                        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                            logger.warning(
-                                f"    ⚠️ Could not kill process on port {port}: {e}"
-                            )
-                            return False
+                    logger.warning(f"    ❌ Port {port} did not release in time")
+
+                return False
+
             except Exception as e:
-                logger.debug(f"Could not identify process on port: {e}")
+                logger.error(f"Could not identify process on port: {e}")
                 return False
 
         return False
