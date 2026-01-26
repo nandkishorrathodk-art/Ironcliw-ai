@@ -662,32 +662,55 @@ class YabaiSpatialIntelligence:
         """
         # v78.1: Configurable timeout (Yabai can be slow under memory pressure)
         query_timeout = float(os.getenv('JARVIS_YABAI_QUERY_TIMEOUT', '10.0'))
+        max_retries = 3
 
-        try:
-            # Execute with timeout protection
-            result = await asyncio.create_subprocess_exec(
-                'yabai', '-m', 'query', '--spaces',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
+        for attempt in range(max_retries):
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    result.communicate(),
-                    timeout=query_timeout
+                # Execute with timeout protection
+                result = await asyncio.create_subprocess_exec(
+                    'yabai', '-m', 'query', '--spaces',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-            except asyncio.TimeoutError:
-                logger.warning(f"[YABAI-SI] Query spaces timeout ({query_timeout}s), killing process")
-                try:
-                    result.kill()
-                    await result.wait()  # v78.1: Properly wait for process cleanup
-                except Exception:
-                    pass
-                return []
 
-            if result.returncode != 0:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                logger.debug(f"[YABAI-SI] Failed to query spaces (code {result.returncode}): {error_msg}")
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        result.communicate(),
+                        timeout=query_timeout
+                    )
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"[YABAI-SI] Query spaces timeout ({query_timeout}s), retrying (attempt {attempt+1}/{max_retries})...")
+                        try:
+                            result.kill()
+                            await result.wait()
+                        except Exception:
+                            pass
+                        await asyncio.sleep(1.0 * (attempt + 1))  # Linear backoff
+                        continue
+                    else:
+                        logger.warning(f"[YABAI-SI] Query spaces timeout ({query_timeout}s) after {max_retries} attempts, killing process")
+                        try:
+                            result.kill()
+                            await result.wait()  # v78.1: Properly wait for process cleanup
+                        except Exception:
+                            pass
+                        return []
+
+                if result.returncode != 0:
+                    error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                    logger.debug(f"[YABAI-SI] Failed to query spaces (code {result.returncode}): {error_msg}")
+                    return []
+                
+                # If we got here, success! Break the retry loop
+                break
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.debug(f"[YABAI-SI] Error querying spaces: {e}, retrying...")
+                    await asyncio.sleep(1.0)
+                    continue
+                logger.error(f"[YABAI-SI] Failed to query spaces after retries: {e}")
                 return []
 
             # Robust JSON parsing
@@ -737,14 +760,7 @@ class YabaiSpatialIntelligence:
                     )
                     return []
 
-        except FileNotFoundError:
-            logger.debug("[YABAI-SI] yabai not found in PATH (is it installed?)")
-            return []
 
-        except Exception as e:
-            # Catch-all for unexpected errors (don't spam logs)
-            logger.debug(f"[YABAI-SI] Unexpected error querying spaces: {type(e).__name__}: {e}")
-            return []
 
     async def _query_windows(self) -> List[Dict]:
         """
@@ -759,32 +775,55 @@ class YabaiSpatialIntelligence:
         """
         # v78.1: Configurable timeout (Yabai can be slow with many windows)
         query_timeout = float(os.getenv('JARVIS_YABAI_QUERY_TIMEOUT', '10.0'))
+        max_retries = 3
 
-        try:
-            # Execute with timeout protection
-            result = await asyncio.create_subprocess_exec(
-                'yabai', '-m', 'query', '--windows',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
+        for attempt in range(max_retries):
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    result.communicate(),
-                    timeout=query_timeout
+                # Execute with timeout protection
+                result = await asyncio.create_subprocess_exec(
+                    'yabai', '-m', 'query', '--windows',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-            except asyncio.TimeoutError:
-                logger.warning(f"[YABAI-SI] Query windows timeout ({query_timeout}s), killing process")
-                try:
-                    result.kill()
-                    await result.wait()  # v78.1: Properly wait for process cleanup
-                except Exception:
-                    pass
-                return []
 
-            if result.returncode != 0:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                logger.debug(f"[YABAI-SI] Failed to query windows (code {result.returncode}): {error_msg}")
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        result.communicate(),
+                        timeout=query_timeout
+                    )
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"[YABAI-SI] Query windows timeout ({query_timeout}s), retrying (attempt {attempt+1}/{max_retries})...")
+                        try:
+                            result.kill()
+                            await result.wait()
+                        except Exception:
+                            pass
+                        await asyncio.sleep(1.0 * (attempt + 1))  # Linear backoff
+                        continue
+                    else:
+                        logger.warning(f"[YABAI-SI] Query windows timeout ({query_timeout}s) after {max_retries} attempts, killing process")
+                        try:
+                            result.kill()
+                            await result.wait()  # v78.1: Properly wait for process cleanup
+                        except Exception:
+                            pass
+                        return []
+
+                if result.returncode != 0:
+                    error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                    logger.debug(f"[YABAI-SI] Failed to query windows (code {result.returncode}): {error_msg}")
+                    return []
+                
+                # If we got here, success! 
+                break
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.debug(f"[YABAI-SI] Error querying windows: {e}, retrying...")
+                    await asyncio.sleep(1.0)
+                    continue
+                logger.error(f"[YABAI-SI] Failed to query windows after retries: {e}")
                 return []
 
             # Robust JSON parsing (same logic as _query_spaces)
@@ -822,13 +861,7 @@ class YabaiSpatialIntelligence:
                     logger.debug("[YABAI-SI] Unable to parse yabai windows output")
                     return []
 
-        except FileNotFoundError:
-            logger.debug("[YABAI-SI] yabai not found in PATH")
-            return []
 
-        except Exception as e:
-            logger.debug(f"[YABAI-SI] Unexpected error querying windows: {type(e).__name__}: {e}")
-            return []
 
     async def _handle_space_transition(self, from_space: int, to_space: int):
         """Handle Space transition"""
