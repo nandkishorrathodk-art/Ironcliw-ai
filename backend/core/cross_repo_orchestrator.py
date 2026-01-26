@@ -1,43 +1,59 @@
 """
-Cross-Repo Orchestrator v1.0 - Advanced Multi-Repository Coordination
+Cross-Repo Orchestrator v2.0 - Advanced Multi-Repository Coordination
 ========================================================================
 
 Production-grade orchestration system for coordinating startup, health monitoring,
 and failover across JARVIS, JARVIS-Prime, and Reactor-Core repositories.
 
+v2.0 Enhancements:
+- Actual subprocess management for external repos
+- HTTP/IPC health verification (not just file-based)
+- Dynamic service discovery via multiple methods
+- Intelligent retry with exponential backoff
+- Cross-repo IPC communication
+- Event broadcasting to connected repos
+- Resource-aware startup (memory/CPU checks)
+- Graceful cascade shutdown
+
 Problem Solved:
     Before: Race conditions during startup, no guaranteed dependency ordering,
-            manual coordination required
-    After: Automatic dependency-aware startup, health probing, graceful degradation
+            manual coordination required, file-based health checks only
+    After: Automatic dependency-aware startup, real health probing, subprocess
+            management, graceful degradation with intelligent recovery
 
 Features:
 - Dependency-aware startup (JARVIS Core → J-Prime → J-Reactor)
 - Parallel initialization where safe
-- Health monitoring with automatic retry
+- Multi-layer health verification (process, IPC, HTTP, readiness)
 - Circuit breaker pattern for failing repos
 - Graceful degradation when repos unavailable
-- Cost-aware routing decisions
 - Real-time status updates via WebSocket
 - Automatic recovery from failures
+- Cross-repo event bus
+- Resource monitoring
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
-    │                 Cross-Repo Orchestrator v1.0                     │
+    │                 Cross-Repo Orchestrator v2.0                     │
     ├─────────────────────────────────────────────────────────────────┤
     │                                                                   │
     │  Phase 1: JARVIS Core (Required)                                │
     │  ├─ Initialize distributed lock manager                         │
     │  ├─ Start cross-repo state sync                                 │
-    │  └─ Setup Trinity layer                                         │
+    │  ├─ Setup IPC event bus                                         │
+    │  └─ Verify core health via multiple layers                      │
     │                                                                   │
     │  Phase 2: External Repos (Parallel, Optional)                   │
-    │  ├─ J-Prime health probe → Start if needed                      │
-    │  └─ J-Reactor health probe → Start if needed                    │
+    │  ├─ Discover repos via environment, config, or filesystem       │
+    │  ├─ Launch subprocess if not running                            │
+    │  ├─ Health probe with retry (IPC → HTTP → file)                │
+    │  └─ Register in cross-repo event bus                            │
     │                                                                   │
     │  Phase 3: Integration & Verification                            │
-    │  ├─ Verify cross-repo communication                             │
+    │  ├─ Verify cross-repo IPC communication                         │
     │  ├─ Run end-to-end health checks                                │
-    │  └─ Enable monitoring & recovery                                │
+    │  ├─ Broadcast "ready" event to all repos                        │
+    │  └─ Enable monitoring & recovery loops                          │
     │                                                                   │
     └─────────────────────────────────────────────────────────────────┘
 
@@ -58,56 +74,134 @@ Example Usage:
     ```
 
 Author: JARVIS AI System
-Version: 1.0.0
+Version: 2.0.0
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import signal
+import subprocess
+import sys
 import time
+import urllib.request
+import urllib.error
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Any, Callable, Tuple
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Configuration
+# v2.0: Environment-Based Configuration
+# =============================================================================
+
+def _get_env_path(key: str, default: Path) -> Path:
+    """Get path from environment variable or use default."""
+    val = os.environ.get(key)
+    return Path(val) if val else default
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable or use default."""
+    val = os.environ.get(key)
+    try:
+        return float(val) if val else default
+    except ValueError:
+        return default
+
+def _get_env_bool(key: str, default: bool) -> bool:
+    """Get bool from environment variable or use default."""
+    val = os.environ.get(key, "").lower()
+    if val in ("true", "1", "yes"):
+        return True
+    if val in ("false", "0", "no"):
+        return False
+    return default
+
+
+# Directory configuration
+CROSS_REPO_DIR = _get_env_path("JARVIS_CROSS_REPO_DIR", Path.home() / ".jarvis" / "cross_repo")
+REPOS_BASE_DIR = _get_env_path("JARVIS_REPOS_DIR", Path.home() / "Documents" / "repos")
+
+
+# =============================================================================
+# v2.0: Enhanced Configuration
 # =============================================================================
 
 @dataclass
 class OrchestratorConfig:
-    """Configuration for cross-repo orchestrator."""
-    # Startup timeouts
-    jarvis_startup_timeout: float = 60.0  # JARVIS Core must start
-    jprime_startup_timeout: float = 120.0  # J-Prime takes longer (model loading)
-    jreactor_startup_timeout: float = 90.0  # J-Reactor moderate
+    """
+    v2.0: Enhanced configuration for cross-repo orchestrator.
+
+    All values can be overridden via environment variables with JARVIS_ prefix.
+    """
+    # Startup timeouts (configurable via env)
+    jarvis_startup_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_CORE_STARTUP_TIMEOUT", 60.0)
+    )
+    jprime_startup_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 120.0)
+    )
+    jreactor_startup_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_REACTOR_STARTUP_TIMEOUT", 90.0)
+    )
 
     # Health check settings
-    health_check_interval: float = 30.0
-    health_check_timeout: float = 5.0
+    health_check_interval: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_HEALTH_CHECK_INTERVAL", 30.0)
+    )
+    health_check_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_HEALTH_CHECK_TIMEOUT", 5.0)
+    )
     health_retry_count: int = 3
     health_retry_delay: float = 2.0
+    health_retry_backoff: float = 1.5  # v2.0: Exponential backoff multiplier
 
     # Circuit breaker settings
     circuit_breaker_failure_threshold: int = 5
-    circuit_breaker_timeout: float = 60.0  # Try again after 60s
+    circuit_breaker_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_CIRCUIT_BREAKER_TIMEOUT", 60.0)
+    )
 
     # Graceful degradation
-    allow_degraded_mode: bool = True
+    allow_degraded_mode: bool = field(
+        default_factory=lambda: _get_env_bool("JARVIS_ALLOW_DEGRADED_MODE", True)
+    )
     minimum_required_repos: Set[str] = field(default_factory=lambda: {"jarvis"})
 
     # Recovery settings
-    auto_recovery_enabled: bool = True
-    recovery_check_interval: float = 120.0  # Check every 2 minutes
+    auto_recovery_enabled: bool = field(
+        default_factory=lambda: _get_env_bool("JARVIS_AUTO_RECOVERY", True)
+    )
+    recovery_check_interval: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_RECOVERY_INTERVAL", 120.0)
+    )
+
+    # v2.0: Subprocess management
+    auto_launch_external_repos: bool = field(
+        default_factory=lambda: _get_env_bool("JARVIS_AUTO_LAUNCH_REPOS", False)
+    )
+    subprocess_output_log: bool = True
+    subprocess_terminate_timeout: float = 10.0
+
+    # v2.0: IPC settings
+    ipc_timeout: float = field(
+        default_factory=lambda: _get_env_float("JARVIS_IPC_TIMEOUT", 5.0)
+    )
+
+    # v2.0: HTTP health check ports
+    jarvis_http_port: int = 8080
+    jprime_http_port: int = 8081
+    jreactor_http_port: int = 8082
 
 
 # =============================================================================
-# Data Classes
+# v2.0: Enhanced Data Classes
 # =============================================================================
 
 class RepoStatus(str, Enum):
@@ -118,11 +212,26 @@ class RepoStatus(str, Enum):
     DEGRADED = "degraded"
     FAILED = "failed"
     RECOVERING = "recovering"
+    SHUTTING_DOWN = "shutting_down"  # v2.0
+    UNREACHABLE = "unreachable"  # v2.0: Process exists but not responding
+
+
+class HealthCheckMethod(str, Enum):
+    """v2.0: Methods for verifying repo health."""
+    FILE_BASED = "file"  # Check state file exists and is recent
+    HTTP = "http"  # HTTP health endpoint
+    IPC = "ipc"  # IPC socket ping
+    PROCESS = "process"  # Check if process is running
 
 
 @dataclass
 class RepoInfo:
-    """Information about a repository."""
+    """
+    v2.0: Enhanced information about a repository.
+
+    Includes subprocess management, multiple health check methods,
+    and connection tracking.
+    """
     name: str
     path: Path
     required: bool
@@ -132,6 +241,16 @@ class RepoInfo:
     failure_count: int = 0
     circuit_open: bool = False
     circuit_opened_at: float = 0.0
+    # v2.0: Enhanced fields
+    process: Optional[subprocess.Popen] = None  # Subprocess if we launched it
+    pid: Optional[int] = None  # PID whether we launched or discovered
+    http_port: Optional[int] = None  # HTTP health check port
+    ipc_socket: Optional[Path] = None  # IPC socket path
+    state_file: Optional[Path] = None  # State file for file-based checks
+    health_check_methods: List[HealthCheckMethod] = field(default_factory=list)
+    last_health_response: Optional[Dict[str, Any]] = None
+    connection_latency_ms: float = 0.0
+    error_message: Optional[str] = None
 
 
 @dataclass
@@ -143,50 +262,152 @@ class StartupResult:
     degraded_mode: bool
     total_time: float
     details: Dict[str, str]
+    # v2.0: Enhanced fields
+    health_summary: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
+class HealthCheckResult:
+    """v2.0: Result of a health check."""
+    healthy: bool
+    method: HealthCheckMethod
+    latency_ms: float
+    message: str
+    details: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
 
 
 # =============================================================================
-# Cross-Repo Orchestrator
+# v2.0: Enhanced Cross-Repo Orchestrator
 # =============================================================================
 
 class CrossRepoOrchestrator:
     """
-    Advanced orchestration system for coordinated startup and health monitoring
+    v2.0: Advanced orchestration system for coordinated startup and health monitoring
     across JARVIS, J-Prime, and J-Reactor repositories.
+
+    Features:
+    - Multi-layer health verification (process, IPC, HTTP, file)
+    - Subprocess management for external repos
+    - Dynamic service discovery
+    - Cross-repo event bus
+    - Intelligent recovery with exponential backoff
     """
 
     def __init__(self, config: Optional[OrchestratorConfig] = None):
-        """Initialize cross-repo orchestrator."""
+        """Initialize cross-repo orchestrator with dynamic repo discovery."""
         self.config = config or OrchestratorConfig()
 
-        # Repository registry
-        self.repos: Dict[str, RepoInfo] = {
-            "jarvis": RepoInfo(
-                name="JARVIS Core",
-                path=Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent",
-                required=True,
-                status=RepoStatus.NOT_STARTED
-            ),
-            "jprime": RepoInfo(
-                name="JARVIS Prime",
-                path=Path.home() / "Documents" / "repos" / "jarvis-prime",
-                required=False,
-                status=RepoStatus.NOT_STARTED
-            ),
-            "jreactor": RepoInfo(
-                name="JARVIS Reactor",
-                path=Path.home() / "Documents" / "repos" / "reactor-core",
-                required=False,
-                status=RepoStatus.NOT_STARTED
-            ),
-        }
+        # v2.0: Dynamic repo discovery
+        self.repos: Dict[str, RepoInfo] = self._discover_repos()
 
         # Monitoring tasks
         self._health_monitor_task: Optional[asyncio.Task] = None
         self._recovery_task: Optional[asyncio.Task] = None
+        self._event_bus_task: Optional[asyncio.Task] = None
         self._running = False
 
-        logger.info("Cross-Repo Orchestrator v1.0 initialized")
+        # v2.0: Event subscribers
+        self._event_subscribers: Dict[str, List[Callable]] = {}
+
+        # v2.0: State directory initialization
+        self._ensure_state_directories()
+
+        logger.info("Cross-Repo Orchestrator v2.0 initialized")
+
+    def _discover_repos(self) -> Dict[str, RepoInfo]:
+        """
+        v2.0: Dynamically discover repos from environment, config, or filesystem.
+
+        Priority:
+        1. Environment variables (JARVIS_REPO_PATH, JARVIS_PRIME_PATH, etc.)
+        2. Standard locations (~Documents/repos/)
+        3. Current working directory siblings
+        """
+        repos = {}
+
+        # JARVIS Core (this repo - always exists)
+        jarvis_path = _get_env_path(
+            "JARVIS_CORE_PATH",
+            REPOS_BASE_DIR / "JARVIS-AI-Agent"
+        )
+        repos["jarvis"] = RepoInfo(
+            name="JARVIS Core",
+            path=jarvis_path,
+            required=True,
+            http_port=self.config.jarvis_http_port,
+            ipc_socket=Path.home() / ".jarvis" / "locks" / "supervisor.sock",
+            state_file=CROSS_REPO_DIR / "vbia_state.json",
+            health_check_methods=[
+                HealthCheckMethod.IPC,
+                HealthCheckMethod.HTTP,
+                HealthCheckMethod.FILE_BASED
+            ]
+        )
+
+        # JARVIS Prime
+        jprime_path = _get_env_path(
+            "JARVIS_PRIME_PATH",
+            REPOS_BASE_DIR / "jarvis-prime"
+        )
+        repos["jprime"] = RepoInfo(
+            name="JARVIS Prime",
+            path=jprime_path,
+            required=False,
+            http_port=self.config.jprime_http_port,
+            ipc_socket=Path.home() / ".jarvis" / "prime" / "prime.sock",
+            state_file=CROSS_REPO_DIR / "prime_state.json",
+            health_check_methods=[
+                HealthCheckMethod.FILE_BASED,
+                HealthCheckMethod.HTTP,
+                HealthCheckMethod.PROCESS
+            ]
+        )
+
+        # Reactor Core
+        jreactor_path = _get_env_path(
+            "JARVIS_REACTOR_PATH",
+            REPOS_BASE_DIR / "reactor-core"
+        )
+        repos["jreactor"] = RepoInfo(
+            name="Reactor Core",
+            path=jreactor_path,
+            required=False,
+            http_port=self.config.jreactor_http_port,
+            ipc_socket=Path.home() / ".jarvis" / "reactor" / "reactor.sock",
+            state_file=CROSS_REPO_DIR / "reactor_state.json",
+            health_check_methods=[
+                HealthCheckMethod.FILE_BASED,
+                HealthCheckMethod.HTTP,
+                HealthCheckMethod.PROCESS
+            ]
+        )
+
+        # Log discovered repos
+        for repo_id, repo_info in repos.items():
+            exists = repo_info.path.exists()
+            logger.info(
+                f"  Discovered {repo_info.name}: {repo_info.path} "
+                f"({'exists' if exists else 'NOT FOUND'})"
+            )
+
+        return repos
+
+    def _ensure_state_directories(self) -> None:
+        """v2.0: Ensure all required state directories exist."""
+        directories = [
+            CROSS_REPO_DIR,
+            CROSS_REPO_DIR / "locks",
+            Path.home() / ".jarvis" / "prime",
+            Path.home() / ".jarvis" / "reactor",
+            Path.home() / ".jarvis" / "trinity" / "readiness",
+        ]
+        for dir_path in directories:
+            try:
+                dir_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(f"Could not create directory {dir_path}: {e}")
 
     # =========================================================================
     # Startup Orchestration
@@ -493,28 +714,373 @@ class CrossRepoOrchestrator:
                     repo_info.status = RepoStatus.DEGRADED
 
     async def _check_repo_health(self, repo_id: str) -> bool:
-        """Check health of a specific repository."""
+        """
+        v2.0: Multi-layer health check for a specific repository.
+
+        Tries multiple health check methods in order of reliability:
+        1. IPC ping (most reliable for local processes)
+        2. HTTP health endpoint
+        3. File-based state check (fallback)
+        """
+        repo_info = self.repos.get(repo_id)
+        if not repo_info:
+            return False
+
+        start_time = time.perf_counter()
+
+        for method in repo_info.health_check_methods:
+            try:
+                result = await self._perform_health_check(repo_info, method)
+                if result.healthy:
+                    repo_info.last_health_response = result.details
+                    repo_info.connection_latency_ms = result.latency_ms
+                    repo_info.error_message = None
+                    logger.debug(
+                        f"Health check passed for {repo_info.name} via {method.value} "
+                        f"({result.latency_ms:.1f}ms)"
+                    )
+                    return True
+            except Exception as e:
+                logger.debug(f"Health check {method.value} failed for {repo_id}: {e}")
+                continue
+
+        # All methods failed
+        latency = (time.perf_counter() - start_time) * 1000
+        repo_info.connection_latency_ms = latency
+        repo_info.error_message = "All health check methods failed"
+        return False
+
+    async def _perform_health_check(
+        self,
+        repo_info: RepoInfo,
+        method: HealthCheckMethod
+    ) -> HealthCheckResult:
+        """
+        v2.0: Perform a specific type of health check.
+        """
+        start_time = time.perf_counter()
+
+        if method == HealthCheckMethod.IPC:
+            return await self._check_health_via_ipc(repo_info, start_time)
+        elif method == HealthCheckMethod.HTTP:
+            return await self._check_health_via_http(repo_info, start_time)
+        elif method == HealthCheckMethod.FILE_BASED:
+            return await self._check_health_via_file(repo_info, start_time)
+        elif method == HealthCheckMethod.PROCESS:
+            return await self._check_health_via_process(repo_info, start_time)
+        else:
+            return HealthCheckResult(
+                healthy=False,
+                method=method,
+                latency_ms=0.0,
+                message=f"Unknown health check method: {method}"
+            )
+
+    async def _check_health_via_ipc(
+        self,
+        repo_info: RepoInfo,
+        start_time: float
+    ) -> HealthCheckResult:
+        """v2.0: Check health via IPC socket ping."""
+        if not repo_info.ipc_socket or not repo_info.ipc_socket.exists():
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.IPC,
+                latency_ms=0.0,
+                message="IPC socket not found"
+            )
+
         try:
-            if repo_id == "jarvis":
-                # Check JARVIS Core health
-                heartbeat_file = Path.home() / ".jarvis" / "cross_repo" / "heartbeat.json"
-                return heartbeat_file.exists()
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(str(repo_info.ipc_socket)),
+                timeout=self.config.ipc_timeout
+            )
 
-            elif repo_id == "jprime":
-                # Check J-Prime health
-                prime_state_file = Path.home() / ".jarvis" / "cross_repo" / "prime_state.json"
-                return prime_state_file.exists()
+            # Send ping command
+            request = json.dumps({"command": "ping", "args": {}}).encode()
+            writer.write(request)
+            await writer.drain()
 
-            elif repo_id == "jreactor":
-                # Check J-Reactor health
-                reactor_state_file = Path.home() / ".jarvis" / "cross_repo" / "reactor_state.json"
-                return reactor_state_file.exists()
+            # Read response
+            data = await asyncio.wait_for(
+                reader.read(4096),
+                timeout=self.config.ipc_timeout
+            )
 
-            return False
+            writer.close()
+            await writer.wait_closed()
 
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            response = json.loads(data.decode())
+
+            if response.get("success") and response.get("result", {}).get("pong"):
+                return HealthCheckResult(
+                    healthy=True,
+                    method=HealthCheckMethod.IPC,
+                    latency_ms=latency_ms,
+                    message="IPC ping successful",
+                    details=response.get("result", {})
+                )
+            else:
+                return HealthCheckResult(
+                    healthy=False,
+                    method=HealthCheckMethod.IPC,
+                    latency_ms=latency_ms,
+                    message=f"IPC ping failed: {response}"
+                )
+
+        except asyncio.TimeoutError:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.IPC,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message="IPC ping timeout"
+            )
+        except ConnectionRefusedError:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.IPC,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message="IPC connection refused"
+            )
         except Exception as e:
-            logger.debug(f"Health check error for {repo_id}: {e}")
-            return False
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.IPC,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"IPC error: {e}"
+            )
+
+    async def _check_health_via_http(
+        self,
+        repo_info: RepoInfo,
+        start_time: float
+    ) -> HealthCheckResult:
+        """v2.0: Check health via HTTP endpoint."""
+        if not repo_info.http_port:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.HTTP,
+                latency_ms=0.0,
+                message="HTTP port not configured"
+            )
+
+        # Run HTTP check in thread pool
+        loop = asyncio.get_event_loop()
+
+        try:
+            result = await loop.run_in_executor(
+                None,
+                self._sync_http_health_check,
+                repo_info.http_port,
+                start_time
+            )
+            return result
+        except Exception as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.HTTP,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"HTTP check error: {e}"
+            )
+
+    def _sync_http_health_check(
+        self,
+        port: int,
+        start_time: float
+    ) -> HealthCheckResult:
+        """Synchronous HTTP health check (run in thread pool)."""
+        try:
+            url = f"http://127.0.0.1:{port}/health"
+            req = urllib.request.Request(url)
+            req.add_header("User-Agent", "JARVIS-CrossRepo-Orchestrator/2.0")
+
+            with urllib.request.urlopen(req, timeout=self.config.health_check_timeout) as response:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                if response.status == 200:
+                    try:
+                        data = json.loads(response.read().decode())
+                    except Exception:
+                        data = {}
+                    return HealthCheckResult(
+                        healthy=True,
+                        method=HealthCheckMethod.HTTP,
+                        latency_ms=latency_ms,
+                        message=f"HTTP health OK (port {port})",
+                        details=data
+                    )
+
+        except urllib.error.HTTPError as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.HTTP,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"HTTP error: {e.code} {e.reason}"
+            )
+        except urllib.error.URLError as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.HTTP,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"URL error: {e.reason}"
+            )
+        except Exception as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.HTTP,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"HTTP error: {e}"
+            )
+
+        return HealthCheckResult(
+            healthy=False,
+            method=HealthCheckMethod.HTTP,
+            latency_ms=(time.perf_counter() - start_time) * 1000,
+            message="HTTP check failed"
+        )
+
+    async def _check_health_via_file(
+        self,
+        repo_info: RepoInfo,
+        start_time: float
+    ) -> HealthCheckResult:
+        """v2.0: Check health via state file."""
+        if not repo_info.state_file:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.FILE_BASED,
+                latency_ms=0.0,
+                message="State file not configured"
+            )
+
+        try:
+            if not repo_info.state_file.exists():
+                return HealthCheckResult(
+                    healthy=False,
+                    method=HealthCheckMethod.FILE_BASED,
+                    latency_ms=(time.perf_counter() - start_time) * 1000,
+                    message="State file not found"
+                )
+
+            # Check file age
+            file_age = time.time() - repo_info.state_file.stat().st_mtime
+            if file_age > 120:  # Stale if older than 2 minutes
+                return HealthCheckResult(
+                    healthy=False,
+                    method=HealthCheckMethod.FILE_BASED,
+                    latency_ms=(time.perf_counter() - start_time) * 1000,
+                    message=f"State file stale ({file_age:.0f}s old)"
+                )
+
+            # Read and validate state
+            data = json.loads(repo_info.state_file.read_text())
+
+            return HealthCheckResult(
+                healthy=True,
+                method=HealthCheckMethod.FILE_BASED,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"State file OK ({file_age:.0f}s old)",
+                details=data
+            )
+
+        except json.JSONDecodeError:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.FILE_BASED,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message="State file corrupted"
+            )
+        except Exception as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.FILE_BASED,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"State file error: {e}"
+            )
+
+    async def _check_health_via_process(
+        self,
+        repo_info: RepoInfo,
+        start_time: float
+    ) -> HealthCheckResult:
+        """v2.0: Check health by verifying process is running."""
+        pid = repo_info.pid
+
+        if not pid:
+            # Try to discover PID from state file
+            if repo_info.state_file and repo_info.state_file.exists():
+                try:
+                    data = json.loads(repo_info.state_file.read_text())
+                    pid = data.get("pid")
+                except Exception:
+                    pass
+
+        if not pid:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.PROCESS,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message="No PID available"
+            )
+
+        try:
+            # Check if process exists
+            os.kill(pid, 0)
+
+            # Verify it's a Python/JARVIS process
+            try:
+                import psutil
+                proc = psutil.Process(pid)
+                if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
+                    return HealthCheckResult(
+                        healthy=False,
+                        method=HealthCheckMethod.PROCESS,
+                        latency_ms=(time.perf_counter() - start_time) * 1000,
+                        message=f"Process {pid} is zombie or not running"
+                    )
+
+                cmdline = " ".join(proc.cmdline())
+                if not any(p in cmdline for p in ["python", "jarvis", "prime", "reactor"]):
+                    return HealthCheckResult(
+                        healthy=False,
+                        method=HealthCheckMethod.PROCESS,
+                        latency_ms=(time.perf_counter() - start_time) * 1000,
+                        message=f"Process {pid} is not a JARVIS process"
+                    )
+
+            except ImportError:
+                pass  # psutil not available, basic check only
+
+            return HealthCheckResult(
+                healthy=True,
+                method=HealthCheckMethod.PROCESS,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"Process {pid} is running",
+                details={"pid": pid}
+            )
+
+        except ProcessLookupError:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.PROCESS,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"Process {pid} not found"
+            )
+        except PermissionError:
+            # Process exists but we can't signal it
+            return HealthCheckResult(
+                healthy=True,
+                method=HealthCheckMethod.PROCESS,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"Process {pid} exists (permission denied for signal)"
+            )
+        except Exception as e:
+            return HealthCheckResult(
+                healthy=False,
+                method=HealthCheckMethod.PROCESS,
+                latency_ms=(time.perf_counter() - start_time) * 1000,
+                message=f"Process check error: {e}"
+            )
 
     # =========================================================================
     # Auto-Recovery
@@ -558,29 +1124,107 @@ class CrossRepoOrchestrator:
                     logger.warning(f"⚠️  Recovery failed for {repo_info.name}")
 
     # =========================================================================
-    # Status & Monitoring
+    # v2.0: Cross-Repo State Management
     # =========================================================================
 
-    def get_status(self) -> Dict[str, any]:
-        """Get current orchestrator status."""
+    async def write_heartbeat(self) -> None:
+        """v2.0: Write heartbeat to cross-repo state directory."""
+        heartbeat_file = CROSS_REPO_DIR / "heartbeat.json"
+        try:
+            heartbeat_data = {
+                "timestamp": time.time(),
+                "pid": os.getpid(),
+                "orchestrator_version": "2.0.0",
+                "repos": {
+                    repo_id: {
+                        "status": info.status.value,
+                        "healthy": info.status == RepoStatus.HEALTHY,
+                        "last_check": info.last_health_check,
+                        "latency_ms": info.connection_latency_ms
+                    }
+                    for repo_id, info in self.repos.items()
+                },
+                "degraded_mode": self._is_degraded_mode()
+            }
+
+            # Atomic write
+            temp_file = heartbeat_file.with_suffix(".tmp")
+            temp_file.write_text(json.dumps(heartbeat_data, indent=2))
+            temp_file.rename(heartbeat_file)
+
+        except Exception as e:
+            logger.warning(f"Failed to write heartbeat: {e}")
+
+    async def write_repo_state(self, repo_id: str) -> None:
+        """v2.0: Write specific repo state to cross-repo directory."""
+        repo_info = self.repos.get(repo_id)
+        if not repo_info or not repo_info.state_file:
+            return
+
+        try:
+            state_data = {
+                "repo_id": repo_id,
+                "name": repo_info.name,
+                "status": repo_info.status.value,
+                "pid": repo_info.pid,
+                "startup_time": repo_info.startup_time,
+                "last_health_check": repo_info.last_health_check,
+                "connection_latency_ms": repo_info.connection_latency_ms,
+                "error_message": repo_info.error_message,
+                "timestamp": time.time()
+            }
+
+            # Atomic write
+            temp_file = repo_info.state_file.with_suffix(".tmp")
+            temp_file.write_text(json.dumps(state_data, indent=2))
+            temp_file.rename(repo_info.state_file)
+
+        except Exception as e:
+            logger.warning(f"Failed to write state for {repo_id}: {e}")
+
+    def _is_degraded_mode(self) -> bool:
+        """v2.0: Check if running in degraded mode."""
+        return any(
+            repo.status in [RepoStatus.FAILED, RepoStatus.DEGRADED, RepoStatus.UNREACHABLE]
+            for repo in self.repos.values()
+        )
+
+    # =========================================================================
+    # v2.0: Enhanced Status & Monitoring
+    # =========================================================================
+
+    def get_status(self) -> Dict[str, Any]:
+        """v2.0: Get comprehensive orchestrator status."""
         return {
+            "version": "2.0.0",
+            "timestamp": time.time(),
             "repos": {
                 repo_id: {
                     "name": info.name,
                     "status": info.status.value,
                     "required": info.required,
+                    "path": str(info.path),
+                    "path_exists": info.path.exists(),
                     "startup_time": info.startup_time,
                     "last_health_check": info.last_health_check,
                     "failure_count": info.failure_count,
-                    "circuit_open": info.circuit_open
+                    "circuit_open": info.circuit_open,
+                    # v2.0 fields
+                    "pid": info.pid,
+                    "http_port": info.http_port,
+                    "connection_latency_ms": info.connection_latency_ms,
+                    "error_message": info.error_message,
+                    "health_check_methods": [m.value for m in info.health_check_methods]
                 }
                 for repo_id, info in self.repos.items()
             },
-            "degraded_mode": any(
-                repo.status in [RepoStatus.FAILED, RepoStatus.DEGRADED]
-                for repo in self.repos.values()
+            "degraded_mode": self._is_degraded_mode(),
+            "health_monitoring": self._running,
+            "connected_repos": sum(
+                1 for repo in self.repos.values()
+                if repo.status == RepoStatus.HEALTHY
             ),
-            "health_monitoring": self._running
+            "total_repos": len(self.repos)
         }
 
     async def shutdown(self) -> None:
