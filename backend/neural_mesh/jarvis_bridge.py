@@ -467,6 +467,14 @@ class JARVISNeuralMeshBridge:
                 # Create adapter
                 adapter = await factory(**factory_kwargs)
 
+                # v93.1: Handle graceful degradation from factories that return None
+                if adapter is None:
+                    logger.info(
+                        "Skipping %s: factory returned None (graceful degradation)",
+                        name,
+                    )
+                    return None
+
                 # Register with coordinator
                 await self._coordinator.register_agent(adapter)
 

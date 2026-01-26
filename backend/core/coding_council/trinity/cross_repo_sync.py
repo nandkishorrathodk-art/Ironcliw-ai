@@ -502,6 +502,9 @@ class CrossRepoSync:
     async def trigger_recovery(self, component: str) -> bool:
         """
         Trigger recovery for a failed/stale component.
+        
+        v93.1: Added intelligent backoff to prevent recovery storms.
+        Recovery attempts for the same component are throttled to once per 30 seconds.
 
         Args:
             component: Name of the component/repo (e.g. 'reactor_core')
@@ -509,7 +512,32 @@ class CrossRepoSync:
         Returns:
             True if recovery initiation was successful (does not guarantee recovery)
         """
-        logger.warning(f"[CrossRepoSync] 🚑 Triggering recovery for {component}...")
+        # Initialize recovery tracking if not present
+        if not hasattr(self, '_recovery_attempts'):
+            self._recovery_attempts: Dict[str, float] = {}
+        if not hasattr(self, '_recovery_counts'):
+            self._recovery_counts: Dict[str, int] = {}
+        
+        # Check for recovery backoff (30 seconds between attempts)
+        RECOVERY_BACKOFF = 30.0
+        last_attempt = self._recovery_attempts.get(component, 0)
+        time_since_last = time.time() - last_attempt
+        
+        if time_since_last < RECOVERY_BACKOFF:
+            logger.debug(
+                f"[CrossRepoSync] Skipping recovery for {component} "
+                f"(in backoff, {RECOVERY_BACKOFF - time_since_last:.1f}s remaining)"
+            )
+            return False
+        
+        # Track this attempt
+        self._recovery_attempts[component] = time.time()
+        self._recovery_counts[component] = self._recovery_counts.get(component, 0) + 1
+        attempt_count = self._recovery_counts[component]
+        
+        logger.warning(
+            f"[CrossRepoSync] 🚑 Triggering recovery for {component} (attempt #{attempt_count})..."
+        )
 
         # Map component to RepoType
         repo_type = None
@@ -540,7 +568,11 @@ class CrossRepoSync:
             event_type="recovery_triggered",
             source_repo="coding_council",
             target_repo=repo_type.value,
-            payload={"reason": "staleness_detected", "timestamp": time.time()}
+            payload={
+                "reason": "staleness_detected",
+                "timestamp": time.time(),
+                "attempt": attempt_count,
+            }
         )
         await self._emit_event(event)
 
@@ -550,9 +582,14 @@ class CrossRepoSync:
 
         # 4. If still offline, we rely on the event listeners (Supervisor) to restart the process
         if not repo.online:
-            logger.info(f"[CrossRepoSync] {component} still offline after discovery, waiting for external recovery...")
+            logger.info(
+                f"[CrossRepoSync] {component} still offline after discovery, "
+                f"waiting for external recovery..."
+            )
             return True
 
+        # Reset recovery count on success
+        self._recovery_counts[component] = 0
         logger.info(f"[CrossRepoSync] {component} recovered via passive discovery!")
         return True
 

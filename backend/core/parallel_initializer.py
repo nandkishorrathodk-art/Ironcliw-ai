@@ -1730,7 +1730,15 @@ class ParallelInitializer:
                 logger.info(f"   Registered heartbeat for {comp_name}")
 
             # Track state to avoid log spam
-            _event_state = {"stale_components": set(), "open_circuits": set()}
+            # v93.1: Added grace period tracking to prevent false stale warnings at startup
+            _event_state = {
+                "stale_components": set(),
+                "open_circuits": set(),
+                "registration_times": {},  # Track when components were first registered
+            }
+            
+            # Grace period before reporting staleness (prevents 0.0s warnings at startup)
+            INITIAL_GRACE_PERIOD = 15.0  # seconds
             
             # Subscribe to health events for logging/alerting
             async def handle_health_event(event_type: str, data: dict):
@@ -1738,6 +1746,8 @@ class ParallelInitializer:
                 
                 Only logs state CHANGES to avoid spam. Events that repeat
                 (like stale heartbeats) are only logged once per component.
+                
+                v93.1: Added grace period to prevent false stale warnings at startup.
                 """
                 nonlocal _event_state
                 
@@ -1752,11 +1762,26 @@ class ParallelInitializer:
                         f"after {elapsed:.1f}s"
                     )
                 elif event_type == "heartbeat_stale":
-                    # Only log NEW stale components
+                    # Only log NEW stale components, and only after grace period
                     component = data.get("component", "unknown")
-                    if component not in _event_state["stale_components"]:
+                    last_beat = data.get("last_heartbeat_seconds_ago", 0)
+                    
+                    # Track registration time for grace period
+                    if component not in _event_state["registration_times"]:
+                        _event_state["registration_times"][component] = time.time()
+                    
+                    # Check if we're past the initial grace period
+                    registration_time = _event_state["registration_times"].get(component, 0)
+                    time_since_registration = time.time() - registration_time
+                    
+                    # Only report staleness if:
+                    # 1. Past initial grace period AND
+                    # 2. Actually stale (not 0.0s which indicates just-registered) AND
+                    # 3. Not already reported
+                    if (time_since_registration > INITIAL_GRACE_PERIOD and 
+                        last_beat > INITIAL_GRACE_PERIOD and
+                        component not in _event_state["stale_components"]):
                         _event_state["stale_components"].add(component)
-                        last_beat = data.get("last_heartbeat_seconds_ago", 0)
                         logger.warning(
                             f"⚠️ VBI Heartbeat Stale: {component} - no heartbeat for {last_beat:.1f}s"
                         )
@@ -1764,6 +1789,9 @@ class ParallelInitializer:
                     # Clear stale state when heartbeat is received
                     component = data.get("component", "unknown")
                     _event_state["stale_components"].discard(component)
+                    # Update registration time if this is a new component
+                    if component not in _event_state["registration_times"]:
+                        _event_state["registration_times"][component] = time.time()
                 elif event_type == "circuit_opened":
                     # Only log NEW circuit opens
                     component = data.get("component", "unknown")

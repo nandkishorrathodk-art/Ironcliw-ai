@@ -497,6 +497,8 @@ class CodingCouncilTrinityBridge:
         Handle events from CrossRepoSync.
         
         This forwards critical sync events (like recovery triggers) to the Trinity network.
+        
+        v93.1: Fixed to use TransportMessage object instead of keyword arguments.
         """
         try:
             logger.debug(f"[CodingCouncilTrinity] Sync event: {event.event_type} from {event.source_repo}")
@@ -505,18 +507,21 @@ class CodingCouncilTrinityBridge:
             if event.event_type == "recovery_triggered":
                 logger.info(f"[CodingCouncilTrinity] Forwarding recovery request for {event.target_repo}")
                 
-                # Send high-priority message
-                if self._multi_transport:
-                    await self._multi_transport.send(
-                        topic="system.recovery",
+                # Send high-priority message using TransportMessage object
+                if self._multi_transport and TRINITY_MODULE_AVAILABLE:
+                    message = TransportMessage(
+                        channel="system.recovery",
                         payload={
                             "component": event.target_repo,
                             "reason": event.payload.get("reason", "unknown"),
                             "timestamp": event.timestamp,
                             "source": "coding_council"
                         },
-                        priority=MessagePriority.HIGH
+                        priority=1,  # Lower number = higher priority (1 = HIGH)
                     )
+                    await self._multi_transport.send(message)
+                    self._total_messages_sent += 1
+                    logger.debug(f"[CodingCouncilTrinity] Recovery message sent: {message.id}")
                     
         except Exception as e:
             logger.error(f"[CodingCouncilTrinity] Failed to handle sync event: {e}")

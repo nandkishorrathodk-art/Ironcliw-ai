@@ -967,31 +967,75 @@ async def create_voice_memory_adapter(
 async def create_speaker_verification_adapter(
     service: Optional[Any] = None,
     agent_name: str = "speaker_verification",
-) -> VoiceSystemAdapter:
-    """Create adapter for SpeakerVerificationService.
+    lazy_init: bool = True,
+) -> Optional[VoiceSystemAdapter]:
+    """Create adapter for SpeakerVerificationService with graceful degradation.
+
+    v93.1: Added graceful degradation support. If the speaker verification service
+    can't be loaded (model unavailable, dependencies missing, etc.), this function
+    returns None instead of raising, allowing the system to continue without
+    voice verification capabilities.
 
     Args:
         service: Existing service (creates new if None)
         agent_name: Name for the adapter
+        lazy_init: If True, defer full model loading until first use
 
     Returns:
-        Configured VoiceSystemAdapter
+        Configured VoiceSystemAdapter, or None if unavailable (graceful degradation)
     """
     if service is None:
         try:
+            # Try to import the service
             from voice.speaker_verification_service import (
                 get_speaker_verification_service,
+                SpeakerVerificationService,
             )
-            service = await get_speaker_verification_service()
-        except ImportError:
-            logger.warning("Could not import SpeakerVerificationService")
-            raise
+            
+            if lazy_init:
+                # Create service without full initialization
+                # (initialization will happen on first use)
+                service = SpeakerVerificationService()
+                # Mark as lazy-initialized so adapter knows to initialize on first use
+                service._lazy_initialized = True
+                logger.debug(
+                    f"[VoiceAdapter] Created speaker_verification service with lazy init"
+                )
+            else:
+                # Full initialization - may fail if model unavailable
+                service = await get_speaker_verification_service()
+                
+        except ImportError as e:
+            # Module not available - graceful degradation
+            logger.info(
+                f"[VoiceAdapter] Speaker verification not available (import failed): {e}. "
+                f"Voice verification will be disabled."
+            )
+            return None
+            
+        except Exception as e:
+            # Model loading or initialization failed - graceful degradation
+            logger.warning(
+                f"[VoiceAdapter] Speaker verification initialization failed: {e}. "
+                f"Voice verification will be disabled. "
+                f"System will continue without voice biometric authentication."
+            )
+            return None
 
-    return VoiceSystemAdapter(
-        voice_component=service,
-        component_type=VoiceComponentType.VERIFICATION,
-        agent_name=agent_name,
-    )
+    try:
+        adapter = VoiceSystemAdapter(
+            voice_component=service,
+            component_type=VoiceComponentType.VERIFICATION,
+            agent_name=agent_name,
+        )
+        return adapter
+        
+    except Exception as e:
+        logger.warning(
+            f"[VoiceAdapter] Failed to create speaker verification adapter: {e}. "
+            f"Graceful degradation: voice verification disabled."
+        )
+        return None
 
 
 async def create_voice_unlock_adapter(
