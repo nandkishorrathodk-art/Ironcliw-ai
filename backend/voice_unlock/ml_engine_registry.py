@@ -1762,16 +1762,41 @@ class MLEngineRegistry:
             except ImportError:
                 logger.debug("MemoryAwareStartup not available")
 
-            # Fallback: Use environment variable or default GCP endpoint
-            # Also check for invalid endpoints like "http://None:8010"
+            # Fallback: Intelligent Local Discovery & Cloud Fallback
+            # v113.1: Check for local cross-repo services (JARVIS-Prime, Reactor-Core) 
+            # instead of blindly using dead Cloud Run URL.
             if not self._cloud_endpoint or "None" in str(self._cloud_endpoint):
-                # Cloud Run URLs - dynamically discovered from environment
-                # Updated 2024-12 to new Cloud Run URL format
-                self._cloud_endpoint = os.getenv(
-                    "JARVIS_CLOUD_ML_ENDPOINT",
-                    "https://jarvis-ml-888774109345.us-central1.run.app"
-                )
-                logger.info(f"   Using cloud endpoint: {self._cloud_endpoint}")
+                # 1. Check JARVIS-Prime (Port 8000)
+                try:
+                    import socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    result_8000 = sock.connect_ex(('127.0.0.1', 8000))
+                    sock.close()
+                    if result_8000 == 0:
+                        self._cloud_endpoint = "http://127.0.0.1:8000"
+                        logger.info(f"   ✨ Discovered local JARVIS-Prime at {self._cloud_endpoint}")
+                except Exception:
+                    pass
+
+                # 2. Check Reactor-Core (Port 8090) - Override Prime if available (specialized ML)
+                if not self._cloud_endpoint:
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        result_8090 = sock.connect_ex(('127.0.0.1', 8090))
+                        sock.close()
+                        if result_8090 == 0:
+                            self._cloud_endpoint = "http://127.0.0.1:8090"
+                            logger.info(f"   ✨ Discovered local Reactor-Core at {self._cloud_endpoint}")
+                    except Exception:
+                        pass
+                
+                # 3. Last Resort: Cloud Run URL (only if needed)
+                if not self._cloud_endpoint:
+                    self._cloud_endpoint = os.getenv(
+                        "JARVIS_CLOUD_ML_ENDPOINT",
+                        "https://jarvis-ml-888774109345.us-central1.run.app"
+                    )
+                    logger.info(f"   Using cloud endpoint: {self._cloud_endpoint}")
 
             self._use_cloud = True
             logger.info("☁️  Cloud routing activated for ML operations")
@@ -1832,12 +1857,24 @@ class MLEngineRegistry:
         import aiohttp
 
         # =====================================================================
-        # PHASE 1: Health check with INTELLIGENT ENDPOINT DISCOVERY (v109.1)
+        # PHASE 1: Health check with INTELLIGENT ENDPOINT DISCOVERY (v113.0)
         # =====================================================================
-        # v109.1: Try multiple health check paths to handle different service configurations
-        # This prevents 404 errors when service has a different health endpoint path
-        health_paths = ["/health", "/api/ml/health", "/healthz", "/"]
+        # v113.1: Expanded health paths to include actual JARVIS Voice Unlock API
+        # and Trinity/Reactor integration points.
+        health_paths = [
+            "/health",                  # Standard health
+            "/api/voice-unlock/status", # JARVIS Voice Unlock API (CRITICAL FIX)
+            "/api/ml/health",           # Legacy ML API
+            "/healthz",                 # Kubernetes/Cloud Run standard
+            "/v1/models",               # JARVIS-Prime/OpenAI compatible
+            "/"                         # Root fallback
+        ]
         base_url = self._cloud_endpoint.rstrip('/')
+        
+        # Prevent self-deadlock if checking localhost during startup
+        is_localhost = "localhost" in base_url or "127.0.0.1" in base_url or "0.0.0.0" in base_url
+        if is_localhost and not self.is_ready:
+             logger.info(f"   Note: Checking local backend {base_url} during startup (may retry)")
 
         endpoint_reachable = False
         ecapa_ready = False
@@ -1847,7 +1884,7 @@ class MLEngineRegistry:
 
         # v109.1: Track if we're getting 404s (service not deployed) vs other errors
         consecutive_404s = 0
-        max_404s_before_skip = 2  # If we get 404 on 2+ paths, service likely not deployed
+        max_404s_before_skip = 3  # Increased tolerance for updated path list
 
         for attempt in range(1, retry_count + 1):
             # v109.1: Try all health paths on first attempt, then stick with working one
