@@ -420,3 +420,142 @@ def reset_orchestration_config() -> None:
     """Reset the global configuration (useful for testing)."""
     global _global_config
     _global_config = None
+
+
+# =============================================================================
+# v113.0: Adaptive Timeout Functions
+# =============================================================================
+
+# Minimum healthy providers before allowing EMERGENCY degradation
+MIN_HEALTHY_PROVIDERS_BEFORE_EMERGENCY = _env_int("JARVIS_MIN_HEALTHY_PROVIDERS", 1)
+
+# Consecutive failures before triggering emergency mode
+EMERGENCY_DEGRADATION_THRESHOLD = _env_int("JARVIS_EMERGENCY_THRESHOLD", 3)
+
+# Startup phase duration (global system startup, not per-component)
+GLOBAL_STARTUP_PHASE_DURATION = _env_float("JARVIS_GLOBAL_STARTUP_DURATION", 180.0)
+
+
+def get_adaptive_timeout(
+    component_name: str,
+    is_startup: bool = False,
+    operation: str = "health_check",
+) -> float:
+    """
+    Get adaptive timeout based on component and current phase.
+    
+    v113.0: Dynamic timeout calculation that accounts for:
+    - Component type (J-Prime needs more time than jarvis-body)
+    - Startup phase (more lenient during startup)
+    - Operation type (heartbeat vs health check)
+    
+    Args:
+        component_name: Name of the component (e.g., "reactor-core", "jarvis-prime")
+        is_startup: Whether system is still in startup phase
+        operation: Type of operation ("health_check", "heartbeat", "startup")
+        
+    Returns:
+        Timeout in seconds
+    """
+    config = get_orchestration_config()
+    profile = config.get_profile_by_name(component_name)
+    
+    # Base timeout by operation type
+    if operation == "startup":
+        base_timeout = profile.startup_timeout
+    elif operation == "heartbeat":
+        base_timeout = profile.heartbeat_stale
+    else:  # health_check
+        base_timeout = profile.health_check_timeout
+    
+    # Multiplier during startup phase
+    if is_startup:
+        multiplier = 2.0  # Double timeout during startup
+    else:
+        multiplier = 1.0
+    
+    return base_timeout * multiplier
+
+
+def is_global_startup_phase(system_start_time: float) -> bool:
+    """
+    Check if the system is still in global startup phase.
+    
+    During global startup, emergency degradation should be suppressed
+    to allow all components time to initialize.
+    
+    Args:
+        system_start_time: Unix timestamp when system started
+        
+    Returns:
+        True if still in startup phase
+    """
+    import time
+    elapsed = time.time() - system_start_time
+    return elapsed < GLOBAL_STARTUP_PHASE_DURATION
+
+
+def should_trigger_emergency_degradation(
+    healthy_provider_count: int,
+    consecutive_all_unhealthy: int,
+    system_start_time: float,
+) -> bool:
+    """
+    Determine if emergency degradation should be triggered.
+    
+    v113.0: Implements graceful degradation with:
+    - Grace period during startup
+    - Consecutive failure requirement
+    - Minimum healthy provider threshold
+    
+    Args:
+        healthy_provider_count: Number of currently healthy providers
+        consecutive_all_unhealthy: How many consecutive checks had 0 healthy
+        system_start_time: When the system started
+        
+    Returns:
+        True if emergency degradation should be triggered
+    """
+    # Never trigger during startup phase
+    if is_global_startup_phase(system_start_time):
+        logger.debug("[v113.0] Suppressing emergency degradation: still in startup phase")
+        return False
+    
+    # Must have no healthy providers
+    if healthy_provider_count > 0:
+        return False
+    
+    # Must have consecutive failures exceeding threshold
+    if consecutive_all_unhealthy < EMERGENCY_DEGRADATION_THRESHOLD:
+        logger.warning(
+            f"[v113.0] All providers unhealthy "
+            f"({consecutive_all_unhealthy}/{EMERGENCY_DEGRADATION_THRESHOLD}) - waiting"
+        )
+        return False
+    
+    # Now trigger emergency
+    logger.error(
+        f"[v113.0] EMERGENCY degradation triggered: "
+        f"0 healthy providers for {EMERGENCY_DEGRADATION_THRESHOLD} consecutive checks"
+    )
+    return True
+
+
+# =============================================================================
+# Exports
+# =============================================================================
+
+__all__ = [
+    "ComponentType",
+    "ComponentTimeoutProfile",
+    "TrinityOrchestrationConfig",
+    "get_orchestration_config",
+    "reset_orchestration_config",
+    "get_adaptive_timeout",
+    "is_global_startup_phase",
+    "should_trigger_emergency_degradation",
+    "MIN_HEALTHY_PROVIDERS_BEFORE_EMERGENCY",
+    "EMERGENCY_DEGRADATION_THRESHOLD",
+    "GLOBAL_STARTUP_PHASE_DURATION",
+]
+

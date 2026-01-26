@@ -15760,9 +15760,12 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Get status
             metrics = self._cross_repo_cost_sync.get_metrics()
-            redis_connected = metrics.get("redis_connected", False)
-            current_cost = metrics.get("total_cost_usd", 0.0)
-            daily_limit = metrics.get("daily_limit_usd", 1.0)
+            # v102.0: Fixed - use correct key 'redis_available' (not 'redis_connected')
+            redis_connected = metrics.get("redis_available", False)
+            # v102.0: Fixed - access costs from unified_state dict
+            unified_state = metrics.get("unified_state", {})
+            current_cost = unified_state.get("total_daily_cost", 0.0)
+            daily_limit = unified_state.get("daily_budget", 1.0)
 
             if redis_connected:
                 print(f"  {TerminalUI.GREEN}✅ Cost Sync: Redis connected (${current_cost:.4f}/${daily_limit:.2f}){TerminalUI.RESET}")

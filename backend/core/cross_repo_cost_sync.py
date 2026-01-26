@@ -766,14 +766,35 @@ class CrossRepoCostSync:
         self.register_cost_update_callback(callback)
 
     def get_metrics(self) -> Dict[str, Any]:
-        """Get sync metrics."""
+        """
+        Get sync metrics.
+        
+        v2.1: Added backward-compatible aliases and top-level cost access.
+        """
+        self._unified_state.update_totals()
+        
         return {
+            # Connection status
             "repo_name": self.repo_name,
             "redis_available": self._redis_available,
+            "redis_connected": self._redis_available,  # v2.1: Alias for compatibility
             "running": self._running,
+            
+            # v2.1: Top-level cost keys for easy access
+            "total_cost_usd": self._unified_state.total_daily_cost,
+            "daily_limit_usd": self._unified_state.daily_budget,
+            "budget_used_percent": self._unified_state.budget_used_percent,
+            "budget_remaining_usd": self.get_remaining_budget(),
+            
+            # Detailed state (full objects)
             "unified_state": self._unified_state.to_dict(),
             "local_report": self._local_report.to_dict(),
             "remaining_budget": self.get_remaining_budget(),
+            
+            # v2.1: Cross-repo status 
+            "active_repos": list(self._unified_state.repos.keys()),
+            "consecutive_errors": self._consecutive_errors,
+            "last_error": str(self._last_error) if self._last_error else None,
         }
 
 

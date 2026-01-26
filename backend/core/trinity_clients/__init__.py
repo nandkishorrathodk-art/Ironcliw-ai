@@ -62,6 +62,27 @@ except ImportError:
 # Convenience aliases
 register_with_jarvis_cleanup = register_cleanup_callback
 
+# Cost client
+try:
+    from backend.core.trinity_clients.trinity_cost_client import (
+        TrinityCostClient,
+        get_cost_client,
+        report_cost,
+        check_budget,
+        get_remaining_budget,
+    )
+except ImportError:
+    # Fallback stubs for when running outside JARVIS
+    async def get_cost_client(*args, **kwargs):
+        return None
+    async def report_cost(*args, **kwargs):
+        return False
+    async def check_budget(*args, **kwargs):
+        return True
+    async def get_remaining_budget(*args, **kwargs):
+        return 1.0
+    TrinityCostClient = None
+
 __all__ = [
     # Embedding
     "JARVISEmbeddingClient",
@@ -74,4 +95,10 @@ __all__ = [
     "register_cleanup_callback",
     "register_with_jarvis_cleanup",
     "cleanup_all_resources",
+    # Cost tracking
+    "TrinityCostClient",
+    "get_cost_client",
+    "report_cost",
+    "check_budget",
+    "get_remaining_budget",
 ]

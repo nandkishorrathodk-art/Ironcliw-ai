@@ -928,6 +928,10 @@ class AdvancedOuroborosOrchestrator:
         self._active_improvements: Dict[str, asyncio.Task] = {}
         self._semaphore = asyncio.Semaphore(OrchestratorConfig.MAX_CONCURRENT_IMPROVEMENTS)
 
+        # v113.0: Startup-aware degradation tracking
+        self._system_start_time: float = time.time()
+        self._consecutive_all_unhealthy: int = 0  # Tracks consecutive all-unhealthy checks
+
         # Metrics
         self._metrics = {
             "total_requests": 0,
@@ -1002,22 +1006,66 @@ class AdvancedOuroborosOrchestrator:
         self.logger.info("Advanced Ouroboros Orchestrator shutdown complete")
 
     async def _on_health_change(self, provider: str, status: HealthStatus) -> None:
-        """Handle health status changes."""
+        """
+        Handle health status changes.
+        
+        v113.0: Implements graceful degradation with:
+        - Startup phase detection (no emergency during startup)
+        - Consecutive failure requirement (3 checks before emergency)
+        - Proper reset when providers come back healthy
+        """
         if status.healthy:
             self.logger.info(f"Provider {provider} is now healthy")
+            
+            # v113.0: Reset consecutive failure counter on any healthy provider
+            self._consecutive_all_unhealthy = 0
+            
             # Consider upgrading degradation level
             healthy = self._health_monitor.get_healthy_providers()
             if len(healthy) >= 2 and self._degradation_level != DegradationLevel.FULL:
                 self._degradation_level = DegradationLevel.FULL
                 self.logger.info("Degradation level restored to FULL")
+            elif len(healthy) >= 1 and self._degradation_level == DegradationLevel.EMERGENCY:
+                self._degradation_level = DegradationLevel.LIMITED
+                self.logger.info("Degradation level upgraded from EMERGENCY to LIMITED")
         else:
             self.logger.warning(f"Provider {provider} is unhealthy: {status.error_message}")
+            
             # Consider downgrading
             healthy = self._health_monitor.get_healthy_providers()
+            
             if len(healthy) == 0:
-                self._degradation_level = DegradationLevel.EMERGENCY
-                self._metrics["degradation_events"] += 1
-                self.logger.error("All providers unhealthy - EMERGENCY degradation")
+                # v113.0: Increment consecutive failure counter
+                self._consecutive_all_unhealthy += 1
+                
+                # Use the new graceful degradation check
+                try:
+                    from backend.core.trinity_orchestration_config import (
+                        should_trigger_emergency_degradation
+                    )
+                    
+                    if should_trigger_emergency_degradation(
+                        healthy_provider_count=len(healthy),
+                        consecutive_all_unhealthy=self._consecutive_all_unhealthy,
+                        system_start_time=self._system_start_time,
+                    ):
+                        self._degradation_level = DegradationLevel.EMERGENCY
+                        self._metrics["degradation_events"] += 1
+                        self.logger.error("All providers unhealthy - EMERGENCY degradation")
+                    # else: waiting for more failures or still in startup
+                    
+                except ImportError:
+                    # Fallback to simple check if config not available
+                    if self._consecutive_all_unhealthy >= 3:
+                        self._degradation_level = DegradationLevel.EMERGENCY
+                        self._metrics["degradation_events"] += 1
+                        self.logger.error("All providers unhealthy - EMERGENCY degradation")
+            else:
+                # Some providers healthy - reset counter and downgrade if needed
+                self._consecutive_all_unhealthy = 0
+                if len(healthy) == 1 and self._degradation_level == DegradationLevel.FULL:
+                    self._degradation_level = DegradationLevel.LIMITED
+                    self.logger.warning(f"Only 1 healthy provider - LIMITED degradation")
 
     async def improve_code(
         self,
