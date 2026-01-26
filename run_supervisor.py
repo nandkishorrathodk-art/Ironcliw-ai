@@ -4724,6 +4724,22 @@ class SupervisorBootstrapper:
         self._in_process_mode: bool = os.getenv("JARVIS_IN_PROCESS_MODE", "true").lower() == "true"
         self._backend_port: int = int(os.getenv("BACKEND_PORT", "8010"))
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # v113.0: LOADING SERVER AND FRONTEND MANAGEMENT
+        # ═══════════════════════════════════════════════════════════════════════
+        # These are the MISSING PIECES that caused ERR_CONNECTION_REFUSED:
+        # - Loading server (port 3001): Shows startup progress during initialization
+        # - Frontend (port 3000): React app served after backend is ready
+        # ═══════════════════════════════════════════════════════════════════════
+        self._loading_server_process: Optional[asyncio.subprocess.Process] = None
+        self._frontend_process: Optional[asyncio.subprocess.Process] = None
+        self._loading_server_port: int = int(os.getenv("JARVIS_LOADING_PORT", "3001"))
+        self._frontend_port: int = int(os.getenv("JARVIS_FRONTEND_PORT", "3000"))
+        self._jarvis_repo: Path = Path(os.getenv(
+            "JARVIS_REPO",
+            str(Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent")
+        ))
+
         # v100.0: AGI Orchestrator (Unified Cognitive Architecture)
         # - MetaCognitiveEngine: Self-aware reasoning and introspection
         # - MultiModalPerceptionFusion: Vision + voice + text integration
@@ -5677,6 +5693,13 @@ class SupervisorBootstrapper:
                 except Exception:
                     pass
 
+            # v113.0: Kill frontend
+            if self._frontend_process:
+                try:
+                    self._frontend_process.terminate()
+                except Exception:
+                    pass
+
             # Cleanup graceful degradation
             try:
                 from backend.core.graceful_degradation import shutdown_degradation
@@ -6077,6 +6100,194 @@ class SupervisorBootstrapper:
             self.logger.debug("[v111.2] Heartbeat writer cancelled")
             raise
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # v113.0: LOADING SERVER AND FRONTEND STARTUP METHODS
+    # ═══════════════════════════════════════════════════════════════════════
+    # These methods fix the ERR_CONNECTION_REFUSED errors on ports 3000/3001
+    # by actually starting the loading server and frontend processes.
+    # ═══════════════════════════════════════════════════════════════════════
+
+    async def _start_loading_server_v113(self) -> bool:
+        """
+        v113.0: Start the loading server on port 3001 for startup progress display.
+
+        The loading server serves a loading page that shows startup progress
+        to the user while the backend initializes. Once the frontend is ready,
+        the loading server is stopped and traffic is redirected to port 3000.
+
+        Returns:
+            True if loading server started successfully
+        """
+        self.logger.info(f"[v113.0] Starting loading server on port {self._loading_server_port}...")
+        TerminalUI.print_step(f"[v113.0] Starting loading server (port {self._loading_server_port})")
+
+        try:
+            # Check for dedicated loading server script
+            loading_server_path = self._jarvis_repo / "backend" / "loading_server.py"
+
+            if loading_server_path.exists():
+                # Use dedicated loading server
+                self._loading_server_process = await asyncio.create_subprocess_exec(
+                    sys.executable, str(loading_server_path),
+                    env={
+                        **os.environ,
+                        "LOADING_SERVER_PORT": str(self._loading_server_port),
+                    },
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                # Fallback: serve frontend/public with Python's HTTP server
+                public_dir = self._jarvis_repo / "frontend" / "public"
+                if public_dir.exists():
+                    self._loading_server_process = await asyncio.create_subprocess_exec(
+                        sys.executable, "-m", "http.server", str(self._loading_server_port),
+                        cwd=str(public_dir),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                else:
+                    self.logger.warning("[v113.0] No loading server path found - skipping")
+                    return False
+
+            # Wait for process to start
+            await asyncio.sleep(1.0)
+
+            if self._loading_server_process.returncode is None:
+                self.logger.info(
+                    f"[v113.0] ✅ Loading server started on port {self._loading_server_port} "
+                    f"(pid={self._loading_server_process.pid})"
+                )
+                TerminalUI.print_success(f"[v113.0] Loading server: port {self._loading_server_port}")
+                return True
+            else:
+                self.logger.warning(
+                    f"[v113.0] Loading server exited with code {self._loading_server_process.returncode}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.warning(f"[v113.0] Failed to start loading server: {e}")
+            return False
+
+    async def _start_frontend_v113(self) -> bool:
+        """
+        v113.0: Start the React frontend on port 3000.
+
+        This should be called AFTER the backend is verified healthy.
+        The frontend serves the main JARVIS UI.
+
+        Returns:
+            True if frontend started successfully
+        """
+        self.logger.info(f"[v113.0] Starting frontend on port {self._frontend_port}...")
+        TerminalUI.print_step(f"[v113.0] Starting frontend (port {self._frontend_port})")
+
+        try:
+            frontend_dir = self._jarvis_repo / "frontend"
+
+            if not frontend_dir.exists():
+                self.logger.warning(f"[v113.0] Frontend directory not found: {frontend_dir}")
+                return False
+
+            # Check if node_modules exists
+            node_modules = frontend_dir / "node_modules"
+            if not node_modules.exists():
+                self.logger.info("[v113.0] Installing frontend dependencies...")
+                TerminalUI.print_step("[v113.0] npm install (first run)")
+                npm_install = await asyncio.create_subprocess_exec(
+                    "npm", "install",
+                    cwd=str(frontend_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    await asyncio.wait_for(npm_install.wait(), timeout=300.0)
+                except asyncio.TimeoutError:
+                    self.logger.warning("[v113.0] npm install timed out")
+                    return False
+                if npm_install.returncode != 0:
+                    self.logger.warning("[v113.0] npm install failed")
+                    return False
+
+            # Start the frontend dev server
+            env = {
+                **os.environ,
+                "PORT": str(self._frontend_port),
+                "BROWSER": "none",  # Don't auto-open browser
+                "REACT_APP_BACKEND_URL": f"http://localhost:{self._backend_port}",
+            }
+
+            self._frontend_process = await asyncio.create_subprocess_exec(
+                "npm", "start",
+                cwd=str(frontend_dir),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for frontend to be ready (poll health endpoint)
+            import aiohttp
+            deadline = time.time() + 120.0  # 2 minute timeout for webpack
+            check_interval = 3.0
+
+            while time.time() < deadline:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.head(
+                            f"http://localhost:{self._frontend_port}/",
+                            timeout=aiohttp.ClientTimeout(total=5.0)
+                        ) as resp:
+                            if resp.status in (200, 304):
+                                self.logger.info(
+                                    f"[v113.0] ✅ Frontend ready on port {self._frontend_port} "
+                                    f"(pid={self._frontend_process.pid})"
+                                )
+                                TerminalUI.print_success(
+                                    f"[v113.0] Frontend: http://localhost:{self._frontend_port}"
+                                )
+                                return True
+                except Exception:
+                    pass
+
+                # Check if process died
+                if self._frontend_process.returncode is not None:
+                    self.logger.warning(
+                        f"[v113.0] Frontend exited with code {self._frontend_process.returncode}"
+                    )
+                    return False
+
+                await asyncio.sleep(check_interval)
+
+            self.logger.warning("[v113.0] Frontend startup timeout (120s)")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"[v113.0] Failed to start frontend: {e}")
+            return False
+
+    async def _stop_loading_server_v113(self) -> None:
+        """v113.0: Stop the loading server (called after frontend is ready)."""
+        if self._loading_server_process and self._loading_server_process.returncode is None:
+            self.logger.info("[v113.0] Stopping loading server...")
+            try:
+                self._loading_server_process.terminate()
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                self._loading_server_process.kill()
+            self._loading_server_process = None
+
+    async def _stop_frontend_v113(self) -> None:
+        """v113.0: Stop the frontend (called during shutdown)."""
+        if self._frontend_process and self._frontend_process.returncode is None:
+            self.logger.info("[v113.0] Stopping frontend...")
+            try:
+                self._frontend_process.terminate()
+                await asyncio.wait_for(self._frontend_process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                self._frontend_process.kill()
+            self._frontend_process = None
+
     async def _run_with_deep_health(self) -> int:
         """
         v80.0: Run startup with deep health verification.
@@ -6100,6 +6311,15 @@ class SupervisorBootstrapper:
 
             # Setup signal handlers
             self._setup_signal_handlers()
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v113.0: START LOADING SERVER FIRST (shows progress on port 3001)
+            # ═══════════════════════════════════════════════════════════════════
+            # This is the FIX for "ERR_CONNECTION_REFUSED on port 3001".
+            # The loading server must be running BEFORE ANYTHING ELSE so users
+            # can see startup progress in their browser.
+            # ═══════════════════════════════════════════════════════════════════
+            await self._start_loading_server_v113()
 
             # Print banner
             TerminalUI.print_banner()
@@ -6390,6 +6610,23 @@ class SupervisorBootstrapper:
                     TerminalUI.print_error("[v111.3] Backend startup failed")
                     return 1
                 self.logger.info("[v111.3] ✅ Backend running - proceeding with cross-repo orchestration")
+
+                # ═══════════════════════════════════════════════════════════════════
+                # v113.0: START FRONTEND (after backend is healthy)
+                # ═══════════════════════════════════════════════════════════════════
+                # This is the FIX for "ERR_CONNECTION_REFUSED on port 3000".
+                # The React frontend starts AFTER the backend is verified healthy.
+                # Once frontend is ready, we stop the loading server.
+                # ═══════════════════════════════════════════════════════════════════
+                frontend_started = await self._start_frontend_v113()
+                if frontend_started:
+                    # Frontend is ready - stop loading server and redirect users
+                    await self._stop_loading_server_v113()
+                    self.logger.info(f"🚀 [v113.0] JARVIS is online at http://localhost:{self._frontend_port}")
+                    TerminalUI.print_success(f"🚀 JARVIS ready: http://localhost:{self._frontend_port}")
+                else:
+                    # Frontend failed - keep loading server running as fallback
+                    self.logger.warning("[v113.0] Frontend failed - loading page remains active on port 3001")
 
             # ═══════════════════════════════════════════════════════════════════
             # v10.1: Cross-Repo Startup Orchestration (MUST RUN BEFORE TrinityIntegrator)
