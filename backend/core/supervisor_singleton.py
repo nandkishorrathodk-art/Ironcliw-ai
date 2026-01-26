@@ -2036,8 +2036,12 @@ def _setup_sighup_handler() -> None:
             logger.debug(f"Child process cleanup warning: {e}")
 
         # Step 5: Restart via execv - this REPLACES the process (atexit NOT called)
+        # v109.6: Filter out command flags that would cause restart loop
+        # Without this, the new process sees --restart and tries to IPC restart itself!
         python = sys.executable
-        args = [python] + sys.argv
+        filtered_argv = [arg for arg in sys.argv
+                         if arg not in ('--restart', '--shutdown', '--takeover', '--status', '--force')]
+        args = [python] + filtered_argv
         logger.info(f"[Singleton] Executing: {' '.join(args[:5])}...")
 
         # This replaces the current process image - code after this never runs
