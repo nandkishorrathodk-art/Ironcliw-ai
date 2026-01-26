@@ -152,6 +152,7 @@ class EmbeddingService:
         # Register cleanup
         atexit.register(self._sync_cleanup)
         self._register_with_shutdown_manager()
+        self._register_with_cross_repo_cleanup()
 
         self._initialized = True
         logger.info(f"[EmbeddingService] Initialized (model: {self._config.model_name})")
@@ -174,17 +175,77 @@ class EmbeddingService:
         except Exception as e:
             logger.debug(f"[EmbeddingService] Could not register with shutdown manager: {e}")
 
+    def _register_with_cross_repo_cleanup(self) -> None:
+        """Register with the cross-repo cleanup coordinator."""
+        try:
+            from backend.core.cross_repo_cleanup import (
+                register_cleanup_callback,
+                register_resource,
+            )
+            
+            # Register this service for cleanup
+            register_cleanup_callback(
+                "embedding_service",
+                self._sync_cleanup,
+            )
+            logger.debug("[EmbeddingService] Registered with CrossRepoCleanupCoordinator")
+        except ImportError:
+            logger.debug("[EmbeddingService] CrossRepoCleanupCoordinator not available")
+        except Exception as e:
+            logger.debug(f"[EmbeddingService] Could not register with cross-repo cleanup: {e}")
+
+    async def _check_memory_budget(self) -> bool:
+        """Check if we have enough memory to load the model."""
+        try:
+            from backend.core.proactive_resource_guard import (
+                get_proactive_resource_guard,
+                COMPONENT_MEMORY_ESTIMATES,
+            )
+            
+            guard = get_proactive_resource_guard()
+            estimated_mb = COMPONENT_MEMORY_ESTIMATES.get("sentence_transformer", 800)
+            
+            # Request memory budget with callback for emergency unload
+            granted = await guard.request_memory_budget(
+                component="sentence_transformer",
+                estimated_mb=estimated_mb,
+                priority=60,  # Medium-high priority (embeddings are important)
+                can_unload=True,
+                unload_callback=self._sync_cleanup,
+            )
+            
+            if not granted:
+                logger.warning(
+                    f"[EmbeddingService] Memory budget denied for SentenceTransformer "
+                    f"(need ~{estimated_mb}MB)"
+                )
+            return granted
+            
+        except ImportError:
+            logger.debug("[EmbeddingService] ProactiveResourceGuard not available, skipping memory check")
+            return True  # Proceed without guard
+        except Exception as e:
+            logger.warning(f"[EmbeddingService] Memory check failed: {e}, proceeding anyway")
+            return True
+
     async def _load_model(self) -> bool:
         """
         Lazy load the SentenceTransformer model.
 
         CRITICAL: This is the ONLY place SentenceTransformer should be instantiated.
+        
+        v2.0: Now checks memory budget via ProactiveResourceGuard before loading.
         """
         if self._model is not None:
             return True
 
         if self._shutdown_requested:
             logger.warning("[EmbeddingService] Cannot load model during shutdown")
+            return False
+        
+        # v2.0: Check memory budget BEFORE loading
+        if not await self._check_memory_budget():
+            logger.error("[EmbeddingService] ❌ Insufficient memory to load model")
             return False
 
         async with self._model_lock:

@@ -41,7 +41,52 @@ except ImportError:
     def register_executor_for_cleanup(*args, **kwargs):
         pass  # No-op fallback
 
+# v2.0: Import ProactiveResourceGuard for memory-aware startup
+try:
+    from backend.core.proactive_resource_guard import (
+        get_proactive_resource_guard,
+        should_use_lite_mode as proactive_lite_mode,
+        COMPONENT_MEMORY_ESTIMATES,
+    )
+    _HAS_RESOURCE_GUARD = True
+except ImportError:
+    _HAS_RESOURCE_GUARD = False
+    def proactive_lite_mode():
+        return False
+    COMPONENT_MEMORY_ESTIMATES = {}
+
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# v2.0: LITE MODE CONFIGURATION
+# =============================================================================
+# When system memory is constrained, JARVIS starts in "lite mode" which skips
+# heavy components to prevent OOM kills. This threshold determines when lite
+# mode activates (default: 4GB available memory).
+# =============================================================================
+
+LITE_MODE_THRESHOLD_GB = float(os.getenv("JARVIS_LITE_MODE_THRESHOLD", "4.0"))
+LITE_MODE_SKIP_COMPONENTS = [
+    "neural_mesh_full",
+    "local_llm_model",
+    "sentence_transformer",
+    "vision_model_large",
+    "speaker_verification_full",
+]
+
+def should_use_lite_mode() -> bool:
+    """Check if system should start in lite mode due to memory constraints."""
+    # First check ProactiveResourceGuard if available
+    if _HAS_RESOURCE_GUARD:
+        return proactive_lite_mode()
+    
+    # Fallback to simple memory check
+    try:
+        import psutil
+        available_gb = psutil.virtual_memory().available / (1024**3)
+        return available_gb < LITE_MODE_THRESHOLD_GB
+    except Exception:
+        return False  # Assume healthy if can't check
 
 class LoadPhase(Enum):
     """Loading phases for progressive startup"""
@@ -111,6 +156,16 @@ class SmartStartupManager:
         # v95.12: Register executors for cleanup
         register_executor_for_cleanup(self.thread_executor, "smart_startup_thread_pool")
         register_executor_for_cleanup(self.process_executor, "smart_startup_process_pool", is_process_pool=True)
+        
+        # v2.0: Lite mode tracking
+        self.lite_mode = should_use_lite_mode()
+        self.skipped_heavy_components: List[str] = []
+        
+        if self.lite_mode:
+            logger.warning(
+                f"⚡ LITE MODE ACTIVE - Memory constrained (< {LITE_MODE_THRESHOLD_GB}GB available). "
+                f"Heavy components will be skipped."
+            )
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -232,6 +287,49 @@ class SmartStartupManager:
             logger.error(f"❌ Failed to load {model_name}: {str(e)}")
             self.failed_models[model_name] = str(e)
             return None
+    
+    async def load_with_memory_guard(
+        self,
+        load_func: callable,
+        model_name: str,
+        required_memory_mb: int = 200,
+        priority: int = 50,
+    ) -> Optional[Any]:
+        """
+        v2.0: Load a model using ProactiveResourceGuard for memory management.
+        
+        This is the preferred method for loading heavy models as it:
+        1. Checks memory budget via ProactiveResourceGuard
+        2. Registers the component for emergency unload if needed
+        3. Skips heavy components in lite mode
+        """
+        # Check lite mode - skip heavy components
+        if self.lite_mode and model_name in LITE_MODE_SKIP_COMPONENTS:
+            logger.info(f"⚡ [LITE MODE] Skipping {model_name} - heavy component")
+            self.skipped_heavy_components.append(model_name)
+            return None
+        
+        # Use ProactiveResourceGuard if available
+        if _HAS_RESOURCE_GUARD:
+            guard = get_proactive_resource_guard()
+            
+            # Request memory budget
+            granted = await guard.request_memory_budget(
+                component=model_name,
+                estimated_mb=required_memory_mb,
+                priority=priority,
+                can_unload=True,
+            )
+            
+            if not granted:
+                logger.warning(
+                    f"⚠️ [MEMORY GUARD] Denied {model_name} - insufficient memory"
+                )
+                self.skipped_heavy_components.append(model_name)
+                return None
+        
+        # Load using standard method
+        return await self.load_with_resource_check(load_func, model_name, required_memory_mb)
     
     async def progressive_model_loading(self):
         """Progressive model loading with resource management"""
