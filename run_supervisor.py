@@ -120,6 +120,61 @@ Version: 7.0.0
 from __future__ import annotations
 
 # =============================================================================
+# v122.0: CRITICAL - EARLY SIGNAL PROTECTION FOR CLI COMMANDS
+# =============================================================================
+# When running --restart, the supervisor sends signals that can kill the client
+# process DURING Python startup (before main() runs). This protection MUST
+# happen at module level, before ANY other imports, to survive the signal storm.
+#
+# Exit code 144 = 128 + 16 (killed by signal 16) was happening because signals
+# arrived during import phase when Python signal handlers weren't yet installed.
+# =============================================================================
+import sys as _early_sys
+import signal as _early_signal
+import os as _early_os
+
+# Check if this is a CLI command that needs signal protection
+_cli_flags = ('--restart', '--shutdown', '--status', '--cleanup')
+_is_cli_mode = any(flag in _early_sys.argv for flag in _cli_flags)
+
+if _is_cli_mode:
+    # v122.0 DEBUG: Show that protection is active
+    _early_sys.stderr.write(f"[v122.0] CLI signal protection active (PID {_early_os.getpid()})\n")
+    _early_sys.stderr.flush()
+
+    # IMMEDIATELY ignore ALL common signals that could kill the CLI client
+    # On macOS: SIGURG=16, so let's ignore everything that could kill us
+    for _sig in (
+        _early_signal.SIGINT,   # 2 - Ctrl+C
+        _early_signal.SIGTERM,  # 15 - Termination
+        _early_signal.SIGHUP,   # 1 - Hangup
+        _early_signal.SIGURG,   # 16 - Urgent data (exit 144!)
+        _early_signal.SIGPIPE,  # 13 - Broken pipe
+        _early_signal.SIGALRM,  # 14 - Alarm
+        _early_signal.SIGUSR1,  # 30 - User signal 1
+        _early_signal.SIGUSR2,  # 31 - User signal 2
+    ):
+        try:
+            _early_signal.signal(_sig, _early_signal.SIG_IGN)
+        except (OSError, ValueError):
+            pass  # Some signals can't be ignored
+
+    # Try to create own process group to isolate from supervisor's signal group
+    try:
+        _early_os.setpgrp()
+        _early_sys.stderr.write(f"[v122.0] Created own process group\n")
+    except (OSError, PermissionError) as e:
+        _early_sys.stderr.write(f"[v122.0] setpgrp failed: {e}\n")
+
+    _early_sys.stderr.flush()
+
+    # Debug marker for verification
+    _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
+
+# Clean up early imports (will be re-imported properly below)
+del _early_sys, _early_signal, _early_os, _cli_flags, _is_cli_mode
+
+# =============================================================================
 # CRITICAL: VENV AUTO-ACTIVATION (MUST BE FIRST - BEFORE ANY IMPORTS)
 # =============================================================================
 # This ensures we use the venv Python with correct packages, avoiding the
@@ -24275,18 +24330,46 @@ async def main() -> int:
 
     v111.0: Integrated unified signal handling for graceful shutdown.
     Signal escalation: 1st=graceful, 2nd=faster, 3rd=immediate exit.
-    """
-    # =========================================================================
-    # v111.0: UNIFIED SIGNAL HANDLING - Install before anything else
-    # =========================================================================
-    # This ensures signals are handled consistently throughout startup and
-    # runtime, preventing conflicts between supervisor and Uvicorn.
-    # =========================================================================
-    signal_handler = get_unified_signal_handler()
-    loop = asyncio.get_running_loop()
-    signal_handler.install(loop)
 
+    v121.0: Signal handler only installed for supervisor mode, not CLI commands.
+    """
+    # v121.0: Parse args FIRST to determine if we're in CLI command mode
     args = parse_args()
+
+    # v121.0: Check if this is a CLI command that should NOT install signal handlers
+    # These commands make IPC calls and exit - they don't need signal handling
+    is_cli_command = any([
+        args.status,
+        args.restart,
+        args.shutdown,
+        getattr(args, 'cleanup', False),
+    ])
+
+    # =========================================================================
+    # v111.0: UNIFIED SIGNAL HANDLING - Only for supervisor mode
+    # =========================================================================
+    # v121.0: Don't install for CLI commands - they need to survive signals
+    # during restart verification. The restart command was getting killed
+    # by SIGTERM because it had the signal handler installed.
+    # =========================================================================
+    if not is_cli_command:
+        signal_handler = get_unified_signal_handler()
+        loop = asyncio.get_running_loop()
+        signal_handler.install(loop)
+    else:
+        # v121.0: CLI mode - IMMEDIATELY protect from signals
+        # The supervisor restart process sends signals that can kill the client
+        # We need protection BEFORE any IPC calls
+        import signal as _sig
+        import os as _os
+        _sig.signal(_sig.SIGINT, _sig.SIG_IGN)
+        _sig.signal(_sig.SIGTERM, _sig.SIG_IGN)
+        _sig.signal(_sig.SIGHUP, _sig.SIG_IGN)
+        # Try to create own process group to isolate from supervisor's signal group
+        try:
+            _os.setpgrp()
+        except Exception:
+            pass
 
     # =========================================================================
     # v116.0: INTELLIGENT SINGLETON MANAGEMENT - Smart startup with takeover
@@ -24427,132 +24510,162 @@ async def main() -> int:
             if is_running and existing_state:
                 print(f"\n🔄 Requesting restart of supervisor (PID {existing_state.get('pid')})...")
 
-                # v117.1: Enhanced restart handling with connection drop tolerance
-                # The server sends SIGHUP 100ms after responding, which may cause
-                # connection drops during response transmission. We handle this gracefully.
-                result = await send_ipc_command('restart', timeout=10.0)
+                # v121.0: CRITICAL - Protect restart client from signals BEFORE making IPC call
+                # The supervisor restart process can send signals that kill the client
+                # Install signal protection EARLY to survive the entire restart process
+                import signal as _signal
+                import os as _os
 
-                # Success cases: explicit success, restart_initiated, or connection dropped
-                # (connection drop means the server is restarting, which is success!)
-                error = result.get('error', '')
-                connection_dropped = (
-                    'Expecting value' in error or  # Empty response (server restarted)
-                    'Connection' in error or       # Connection reset/closed
-                    'EOF' in error or              # End of stream
-                    'BrokenPipe' in error          # Pipe broken
-                )
+                # Save original handlers
+                _orig_sigint = _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
+                _orig_sigterm = _signal.signal(_signal.SIGTERM, _signal.SIG_IGN)
+                _orig_sighup = _signal.signal(_signal.SIGHUP, _signal.SIG_IGN)
 
-                if result.get('success') or result.get('restart_initiated') or connection_dropped:
-                    if connection_dropped:
-                        print(f"✅ Restart initiated (connection closed - server is restarting)")
-                    else:
-                        print(f"✅ Restart initiated. Supervisor will restart in-place.")
-                        marker_id = result.get('marker_id')
-                        if marker_id:
-                            print(f"   Restart marker: {marker_id}")
+                # Also detach from process group to avoid group signals
+                try:
+                    # Create new process group to isolate from supervisor's signals
+                    _os.setpgrp()
+                except Exception:
+                    pass  # May not be possible in all contexts
 
-                    # v120.0: Enhanced restart verification using RestartMarker
-                    # The marker tracks restart phases and allows smarter waiting
-                    # Ignore SIGINT during verification (os.execv can cause spurious signals)
-                    import signal as _signal
-                    original_sigint = _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
+                try:
+                    # v117.1: Enhanced restart handling with connection drop tolerance
+                    # The server sends SIGHUP 100ms after responding, which may cause
+                    # connection drops during response transmission. We handle this gracefully.
+                    result = await send_ipc_command('restart', timeout=10.0)
 
-                    try:
+                    # Success cases: explicit success, restart_initiated, or connection dropped
+                    # (connection drop means the server is restarting, which is success!)
+                    error = result.get('error', '')
+                    connection_dropped = (
+                        'Expecting value' in error or  # Empty response (server restarted)
+                        'Connection' in error or       # Connection reset/closed
+                        'EOF' in error or              # End of stream
+                        'BrokenPipe' in error          # Pipe broken
+                    )
+
+                    if result.get('success') or result.get('restart_initiated') or connection_dropped:
+                        if connection_dropped:
+                            print(f"✅ Restart initiated (connection closed - server is restarting)")
+                        else:
+                            print(f"✅ Restart initiated. Supervisor will restart in-place.")
+                            marker_id = result.get('marker_id')
+                            if marker_id:
+                                print(f"   Restart marker: {marker_id}")
+
+                        # v121.0: Signal protection already active from outer scope
+                        from pathlib import Path as _Path
                         print(f"   Waiting for supervisor to restart...")
                         original_pid = existing_state.get('pid')
+                        original_started = existing_state.get('started_at', '')
 
-                        # v120.0: Use adaptive timeout based on restart phases
-                        # Phase progression: initiated → signal_sent → execv_triggered →
-                        #                   new_process_started → completed
-                        max_wait = 60.0  # Total max wait time (heavy init can take long)
-                        phase_check_interval = 0.5
-                        ipc_check_interval = 2.0
+                        # v121.0: Use state file as primary restart detection
+                        # This works even when IPC is down during restart transition
+                        state_file = _Path.home() / ".jarvis" / "locks" / "supervisor.state"
+                        max_wait = 90.0  # Increased timeout for heavy init
+                        poll_interval = 0.5
                         waited = 0.0
-                        last_phase = "initiated"
-                        phase_stuck_count = 0
-                        max_phase_stuck = 10  # 5 seconds stuck in same phase
+                        ipc_available = False
+                        last_status = "waiting for os.execv()..."
 
-                        # Initial wait for os.execv() to complete
-                        await asyncio.sleep(2.0)
-                        waited += 2.0
+                        # Initial wait for os.execv() to trigger (150ms delay + some buffer)
+                        await asyncio.sleep(0.5)
+                        waited += 0.5
 
                         while waited < max_wait:
-                            # v120.0: First try restart-status to track phase progress
+                            # v121.0: PRIMARY METHOD - Check state file timestamp
+                            # This is reliable even when IPC is down
                             try:
-                                status_result, _ = await send_supervisor_command('restart-status', timeout=3.0)
+                                if state_file.exists():
+                                    import json as _json
+                                    state_data = _json.loads(state_file.read_text())
+                                    new_started = state_data.get('started_at', '')
+                                    new_pid = state_data.get('pid')
+
+                                    # os.execv keeps same PID but started_at changes
+                                    if new_started and new_started != original_started:
+                                        # State file has new timestamp - restart happened!
+                                        # Now verify IPC is responding
+                                        try:
+                                            ping_result, _ = await send_supervisor_command('ping', timeout=2.0)
+                                            if ping_result and ping_result.get('success'):
+                                                print(f"✅ Supervisor restarted successfully!")
+                                                print(f"   PID: {new_pid} | Started: {new_started}")
+                                                return 0
+                                            else:
+                                                if last_status != "ipc_starting":
+                                                    print(f"   → New process started, IPC initializing...")
+                                                    last_status = "ipc_starting"
+                                        except Exception:
+                                            if last_status != "ipc_starting":
+                                                print(f"   → New process started (started_at changed)")
+                                                last_status = "ipc_starting"
+                            except Exception as e:
+                                # State file not ready yet - this is expected during restart
+                                if last_status != "state_unavailable" and waited > 3.0:
+                                    print(f"   → Supervisor restarting (state file updating...)")
+                                    last_status = "state_unavailable"
+
+                            # v121.0: SECONDARY METHOD - Try IPC if state file check failed
+                            # This handles edge cases where state file might be stale
+                            try:
+                                status_result, _ = await send_supervisor_command('restart-status', timeout=2.0)
                                 if status_result:
                                     phase = status_result.get('phase', 'unknown')
                                     is_new = status_result.get('is_new_instance', False)
-                                    restart_active = status_result.get('restart_active', True)
 
-                                    if phase != last_phase:
-                                        print(f"   → Restart phase: {phase}")
-                                        last_phase = phase
-                                        phase_stuck_count = 0
-
-                                    # Restart completed successfully
-                                    if not restart_active or phase == "completed" or is_new:
+                                    if is_new or phase == "completed":
                                         new_pid = status_result.get('current_pid', original_pid)
                                         print(f"✅ Supervisor restarted successfully (PID {new_pid})")
                                         return 0
+                                    elif phase and phase != last_status:
+                                        print(f"   → Phase: {phase}")
+                                        last_status = phase
                             except Exception:
-                                # IPC not available - might be during restart transition
-                                pass
+                                pass  # IPC down during restart - expected
 
-                            # v120.0: Fallback to traditional IPC ping check
+                            await asyncio.sleep(poll_interval)
+                            waited += poll_interval
+
+                            # Progress indicator every 10 seconds
+                            if int(waited) % 10 == 0 and waited > 0:
+                                print(f"   ... still waiting ({int(waited)}s / {int(max_wait)}s)")
+
+                        # v121.0: Final status check after timeout
+                        error_log = "/tmp/jarvis_execv_error.log"
+                        if _os.path.exists(error_log):
+                            print(f"❌ Restart failed! os.execv() error detected:")
                             try:
-                                ping_result, _ = await send_supervisor_command('ping', timeout=3.0)
-                                if ping_result and ping_result.get('success'):
-                                    # Verify it's actually a new instance
-                                    is_back, new_state = is_supervisor_running()
-                                    if is_back and new_state:
-                                        new_started = new_state.get('started_at', '')
-                                        old_started = existing_state.get('started_at', '')
-
-                                        # os.execv keeps same PID but started_at changes
-                                        if new_started != old_started:
-                                            new_pid = new_state.get('pid', original_pid)
-                                            print(f"✅ Supervisor restarted and verified healthy (PID {new_pid})")
-                                            return 0
+                                with open(error_log, 'r') as f:
+                                    print(f"   {f.read().strip()}")
                             except Exception:
-                                pass  # IPC not ready yet
+                                pass
+                            return 1
 
-                            phase_stuck_count += 1
-                            if phase_stuck_count >= max_phase_stuck:
-                                print(f"   ⚠️ Restart seems stuck in phase '{last_phase}'")
-                                phase_stuck_count = 0  # Reset to keep waiting
-
-                            await asyncio.sleep(phase_check_interval)
-                            waited += phase_check_interval
-                    finally:
-                        # Restore original SIGINT handler
-                        _signal.signal(_signal.SIGINT, original_sigint)
-
-                    # v119.5: Check if restart actually failed
-                    # Look for error log
-                    import os as _os
-                    error_log = "/tmp/jarvis_execv_error.log"
-                    if _os.path.exists(error_log):
-                        print(f"❌ Restart failed! os.execv() error detected:")
-                        try:
-                            with open(error_log, 'r') as f:
-                                print(f"   {f.read().strip()}")
-                        except Exception:
-                            pass
-                        return 1
-
-                    # v120.0: Final status check
-                    is_back, new_state = is_supervisor_running()
-                    if is_back:
-                        print(f"⚠️ Supervisor is running but restart verification timed out.")
-                        print(f"   The supervisor may still be initializing. Check with --status")
+                        # Check final state
+                        is_back, new_state = is_supervisor_running()
+                        if is_back and new_state:
+                            new_started = new_state.get('started_at', '')
+                            if new_started != original_started:
+                                new_pid = new_state.get('pid', original_pid)
+                                print(f"✅ Supervisor restarted (PID {new_pid})")
+                                print(f"   Note: IPC may still be initializing")
+                                return 0
+                            else:
+                                print(f"⚠️ Supervisor running but may not have restarted yet.")
+                                print(f"   Check with --status in a few seconds.")
+                        else:
+                            print(f"❌ Supervisor does not appear to be running after restart.")
+                            print(f"   Check logs: tail -100 /tmp/supervisor_*.log")
+                        return 0
                     else:
-                        print(f"❌ Supervisor does not appear to be running after restart.")
-                        print(f"   Check logs for errors.")
-                    return 0
-                else:
-                    print(f"❌ Failed to initiate restart: {error}")
-                    return 1
+                        print(f"❌ Failed to initiate restart: {error}")
+                        return 1
+                finally:
+                    # v121.0: ALWAYS restore signal handlers when leaving restart block
+                    _signal.signal(_signal.SIGINT, _orig_sigint)
+                    _signal.signal(_signal.SIGTERM, _orig_sigterm)
+                    _signal.signal(_signal.SIGHUP, _orig_sighup)
             else:
                 print(f"⚪ No supervisor running. Starting fresh instance...")
                 # Fall through to normal startup

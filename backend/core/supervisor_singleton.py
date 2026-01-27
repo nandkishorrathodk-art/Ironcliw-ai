@@ -518,7 +518,7 @@ class RestartMarker:
 
         # With os.execv(), PID stays the same, so expected_new_pid == old_pid
         # Check if phase indicates we're post-execv but not yet completed
-        restart_in_progress_phases = ("initiated", "signal_sent", "execv_triggered")
+        restart_in_progress_phases = ("initiated", "signal_pending", "signal_sent", "execv_triggered")
 
         return (
             phase in restart_in_progress_phases and
@@ -2282,11 +2282,17 @@ class SupervisorSingleton:
         except Exception as e:
             logger.debug(f"[Singleton] Cross-repo notification skipped: {e}")
 
-        # v117.1: Schedule the SIGHUP to be sent AFTER the response is transmitted
+        # v121.0: Schedule the SIGHUP to be sent AFTER the response is transmitted
+        # Update phase BEFORE sending signal so clients can track progress
         async def _delayed_restart():
             """Send SIGHUP after a brief delay to allow response transmission."""
-            await asyncio.sleep(0.1)  # 100ms delay for response to be sent
-            logger.info("[Singleton] v120.0: Sending delayed SIGHUP for os.execv() restart")
+            await asyncio.sleep(0.15)  # 150ms delay for response to be sent
+
+            # v121.0: Update phase BEFORE sending SIGHUP so clients see "signal_pending"
+            RestartMarker.update_phase("signal_pending")
+            logger.info("[Singleton] v121.0: Sending SIGHUP for os.execv() restart")
+
+            # Send SIGHUP to ourselves - this triggers the os.execv() handler
             os.kill(os.getpid(), signal.SIGHUP)
 
         try:
