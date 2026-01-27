@@ -1595,23 +1595,42 @@ class SupervisorSingleton:
             logger.debug(f"[Singleton] IPC server ended: {e}")
     
     async def _handle_ipc_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        """Handle incoming IPC connection."""
+        """
+        Handle incoming IPC connection.
+
+        v119.3: Enhanced to handle both line-terminated and EOF-terminated messages.
+        """
         try:
-            # Read command (timeout: 5s)
-            data = await asyncio.wait_for(reader.read(4096), timeout=5.0)
+            # v119.3: Read until EOF or newline (supports both raw socket and asyncio clients)
+            data = b''
+            try:
+                # First try to read a line (preferred - faster)
+                line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+                if line:
+                    data = line
+                else:
+                    # No line, try reading until EOF
+                    data = await asyncio.wait_for(reader.read(4096), timeout=5.0)
+            except asyncio.TimeoutError:
+                # Try one more read
+                try:
+                    data = await asyncio.wait_for(reader.read(4096), timeout=1.0)
+                except asyncio.TimeoutError:
+                    pass
+
             if not data:
                 writer.close()
                 await writer.wait_closed()
                 return
-            
-            # Parse command
+
+            # Parse command (strip whitespace/newlines)
             try:
-                request = json.loads(data.decode())
+                request = json.loads(data.decode().strip())
                 command = request.get("command", "")
                 args = request.get("args", {})
             except json.JSONDecodeError:
                 response = {"success": False, "error": "Invalid JSON"}
-                writer.write(json.dumps(response).encode())
+                writer.write((json.dumps(response) + '\n').encode())
                 await writer.drain()
                 writer.close()
                 await writer.wait_closed()
@@ -1633,10 +1652,10 @@ class SupervisorSingleton:
             except Exception as e:
                 response = {"success": False, "error": str(e)}
             
-            # Send response
-            writer.write(json.dumps(response).encode())
+            # v119.3: Send response with newline for consistent framing
+            writer.write((json.dumps(response) + '\n').encode())
             await writer.drain()
-            
+
         except asyncio.TimeoutError:
             logger.debug("[Singleton] IPC connection timed out")
         except Exception as e:
@@ -2112,43 +2131,56 @@ async def send_supervisor_command(
     timeout: float = 5.0
 ) -> Dict[str, Any]:
     """
-    v113.0: Send IPC command to running supervisor.
-    
+    v119.3: Send IPC command to running supervisor.
+
     Args:
         command: Command name (status, ping, restart, shutdown, takeover, force-stop)
         args: Optional command arguments
         timeout: Connection timeout in seconds
-    
+
     Returns:
         Response dict from supervisor or error dict
+
+    v119.3 Fixes:
+    - Added newline terminator to match raw socket behavior
+    - Close write side after sending to signal EOF
+    - More robust response handling
     """
     if not SUPERVISOR_IPC_SOCKET.exists():
         return {"success": False, "error": "No supervisor IPC socket found"}
-    
+
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_unix_connection(str(SUPERVISOR_IPC_SOCKET)),
             timeout=timeout
         )
-        
-        # Send command
+
+        # v119.3: Send command with newline terminator (matches raw socket behavior)
         request = {"command": command, "args": args or {}}
-        writer.write(json.dumps(request).encode())
+        writer.write((json.dumps(request) + '\n').encode())
         await writer.drain()
-        
-        # Read response
+
+        # v119.3: Signal end of write to help server detect message complete
+        writer.write_eof()
+
+        # Read response with timeout
         data = await asyncio.wait_for(reader.read(4096), timeout=timeout)
-        response = json.loads(data.decode())
-        
+
         writer.close()
         await writer.wait_closed()
-        
+
+        if not data:
+            return {"success": False, "error": "Empty response from supervisor"}
+
+        response = json.loads(data.decode().strip())
         return response
-        
+
     except asyncio.TimeoutError:
         return {"success": False, "error": "Supervisor IPC timeout"}
     except ConnectionRefusedError:
         return {"success": False, "error": "Supervisor not responding"}
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"Invalid JSON response: {e}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
