@@ -138,12 +138,7 @@ _cli_flags = ('--restart', '--shutdown', '--status', '--cleanup')
 _is_cli_mode = any(flag in _early_sys.argv for flag in _cli_flags)
 
 if _is_cli_mode:
-    # v122.0 DEBUG: Show that protection is active
-    _early_sys.stderr.write(f"[v122.0] CLI signal protection active (PID {_early_os.getpid()})\n")
-    _early_sys.stderr.flush()
-
-    # IMMEDIATELY ignore ALL common signals that could kill the CLI client
-    # On macOS: SIGURG=16, so let's ignore everything that could kill us
+    # FIRST: Ignore ALL signals to protect this process
     for _sig in (
         _early_signal.SIGINT,   # 2 - Ctrl+C
         _early_signal.SIGTERM,  # 15 - Termination
@@ -159,14 +154,51 @@ if _is_cli_mode:
         except (OSError, ValueError):
             pass  # Some signals can't be ignored
 
-    # Try to create own process group to isolate from supervisor's signal group
+    # v122.1: For --restart specifically, we need EXTRA session isolation
+    # The supervisor restart sends signals to process groups, and even with
+    # SIG_IGN the terminal shell can die, taking us with it (exit 144).
+    # Solution: Re-exec ourselves in a new session if not already done.
+    if '--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC'):
+        _early_os.environ['_JARVIS_RESTART_REEXEC'] = '1'
+        import subprocess as _sp
+        # Re-run ourselves in a new session (like setsid)
+        try:
+            _proc = _sp.Popen(
+                [_early_sys.executable] + _early_sys.argv,
+                cwd=_early_os.getcwd(),
+                start_new_session=True,  # Critical: isolates from terminal's process group
+                env={**_early_os.environ, '_JARVIS_RESTART_REEXEC': '1'},
+                stdout=_sp.PIPE,
+                stderr=_sp.PIPE,
+            )
+            # Wait for child with signal-resilient loop
+            _stdout, _stderr = b'', b''
+            while _proc.poll() is None:
+                try:
+                    _out, _err = _proc.communicate(timeout=1)
+                    _stdout += _out
+                    _stderr += _err
+                    break
+                except _sp.TimeoutExpired:
+                    continue  # Keep waiting
+                except InterruptedError:
+                    continue  # Retry on EINTR
+            if _proc.returncode is None:
+                _proc.wait()
+            # Output results
+            _early_sys.stdout.write(_stdout.decode())
+            _early_sys.stderr.write(_stderr.decode())
+            _early_sys.exit(_proc.returncode)
+        except Exception as _e:
+            _early_sys.stderr.write(f"[v122.1] Session isolation failed: {_e}, continuing normally\n")
+            _early_sys.stderr.flush()
+        del _sp
+
+    # Try to create own process group for additional isolation
     try:
         _early_os.setpgrp()
-        _early_sys.stderr.write(f"[v122.0] Created own process group\n")
-    except (OSError, PermissionError) as e:
-        _early_sys.stderr.write(f"[v122.0] setpgrp failed: {e}\n")
-
-    _early_sys.stderr.flush()
+    except (OSError, PermissionError):
+        pass  # May fail if already session leader
 
     # Debug marker for verification
     _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
@@ -24534,14 +24566,16 @@ async def main() -> int:
                     # connection drops during response transmission. We handle this gracefully.
                     result = await send_ipc_command('restart', timeout=10.0)
 
-                    # Success cases: explicit success, restart_initiated, or connection dropped
-                    # (connection drop means the server is restarting, which is success!)
+                    # v122.0: Success cases: explicit success, restart_initiated, or connection issues
+                    # (connection issues during restart are EXPECTED - supervisor is replacing itself)
                     error = result.get('error', '')
                     connection_dropped = (
                         'Expecting value' in error or  # Empty response (server restarted)
                         'Connection' in error or       # Connection reset/closed
                         'EOF' in error or              # End of stream
-                        'BrokenPipe' in error          # Pipe broken
+                        'BrokenPipe' in error or       # Pipe broken
+                        'timeout' in error.lower() or  # IPC timeout (supervisor restarting)
+                        'IPC' in error                 # Any IPC-related error
                     )
 
                     if result.get('success') or result.get('restart_initiated') or connection_dropped:
