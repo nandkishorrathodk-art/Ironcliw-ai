@@ -101,6 +101,7 @@ import json
 import logging
 import os
 import signal
+import socket
 import sys
 import threading
 import time
@@ -10109,6 +10110,99 @@ echo "=== JARVIS Prime started ==="
 
         # Stop existing process if still lingering
         await self._stop_process(managed)
+
+        # v112.0: CRITICAL FIX - Wait for port to be released and handle conflicts
+        # The old process may have left the port in TIME_WAIT state, or another
+        # process may have grabbed it. We MUST ensure the port is available or
+        # allocate a fallback before attempting restart.
+        port = definition.default_port
+        max_port_wait = 15.0  # Wait up to 15s for port release
+        port_wait_start = time.time()
+        port_available = False
+
+        logger.info(
+            f"[v112.0] Waiting for port {port} to be released before restarting {definition.name}..."
+        )
+
+        while time.time() - port_wait_start < max_port_wait:
+            # Try to bind with SO_REUSEADDR
+            try:
+                test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                test_sock.settimeout(1.0)
+                test_sock.bind(('0.0.0.0', port))
+                test_sock.close()
+                port_available = True
+                logger.info(f"[v112.0] Port {port} is now available for {definition.name}")
+                break
+            except OSError as e:
+                logger.debug(
+                    f"[v112.0] Port {port} still unavailable ({e}), waiting..."
+                )
+                await asyncio.sleep(1.0)
+            finally:
+                try:
+                    test_sock.close()
+                except Exception:
+                    pass
+
+        if not port_available:
+            # Port still not available - try to allocate fallback
+            logger.warning(
+                f"[v112.0] Port {port} still unavailable after {max_port_wait}s, "
+                f"attempting fallback port allocation for {definition.name}..."
+            )
+
+            # Use the existing _handle_port_conflict which now allocates fallback
+            conflict_result = await self._handle_port_conflict(definition)
+            conflict_resolved, fallback_port = conflict_result
+
+            if conflict_resolved:
+                if fallback_port is not None:
+                    # Update definition with fallback port
+                    original_port = definition.default_port
+                    definition.default_port = fallback_port
+
+                    # Update script_args to use new port
+                    updated_args = []
+                    skip_next = False
+                    for arg in definition.script_args:
+                        if skip_next:
+                            skip_next = False
+                            continue
+                        if arg == "--port":
+                            updated_args.append("--port")
+                            updated_args.append(str(fallback_port))
+                            skip_next = True
+                        elif arg.startswith("--port="):
+                            updated_args.append(f"--port={fallback_port}")
+                        else:
+                            updated_args.append(arg)
+
+                    if "--port" not in definition.script_args and not any(
+                        a.startswith("--port=") for a in definition.script_args
+                    ):
+                        updated_args.extend(["--port", str(fallback_port)])
+
+                    definition.script_args = updated_args
+
+                    logger.info(
+                        f"[v112.0] Auto-restart using fallback port: {definition.name}\n"
+                        f"    Original port: {original_port}\n"
+                        f"    Fallback port: {fallback_port}\n"
+                        f"    Updated args: {' '.join(definition.script_args)}"
+                    )
+                else:
+                    logger.info(
+                        f"[v112.0] Port {port} conflict resolved, proceeding with restart"
+                    )
+            else:
+                logger.error(
+                    f"[v112.0] CRITICAL: Could not resolve port conflict for {definition.name} restart. "
+                    f"Port {port} is unavailable and no fallback could be allocated."
+                )
+                managed.consecutive_failures += 1
+                return False
 
         # Restart
         managed.restart_count += 1

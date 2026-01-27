@@ -176,39 +176,76 @@ class EnterpriseProcessManager:
         health_endpoint: str = "/health",
     ) -> PortValidationResult:
         """
-        Comprehensive port validation.
+        v112.0: CRITICAL FIX - Intelligent port validation with blocking detection.
 
-        This fixes the critical issue where port occupancy was assumed to mean
-        the service is healthy. Now we check:
-        1. Is the port occupied? (socket check)
-        2. What's the socket state? (LISTEN vs TIME_WAIT)
-        3. What PID owns the port? (lsof)
-        4. Is that process healthy? (HTTP health check)
+        Previous bugs fixed:
+        1. ESTABLISHED/CLOSED client connections incorrectly flagged as blocking
+        2. TIME_WAIT connections blocked when SO_REUSEADDR would allow binding
+        3. No distinction between "occupied" and "actually blocking"
+
+        This now properly handles:
+        1. Is the port occupied? (socket check with SO_REUSEADDR)
+        2. Does it ACTUALLY block binding? (LISTEN vs client connections)
+        3. What's the socket state? (LISTEN vs TIME_WAIT vs ESTABLISHED vs CLOSED)
+        4. What PID owns the port? (lsof with server socket detection)
+        5. Is that process healthy? (HTTP health check)
 
         Returns:
             PortValidationResult with full details for decision making
         """
         result = PortValidationResult(port=port)
 
-        # Step 1: Check socket occupancy and state
+        # Step 1: Check socket state with intelligent blocking detection
         socket_info = await self._check_socket_state(port)
         result.is_occupied = socket_info.get("occupied", False)
         result.socket_state = socket_info.get("state", "unknown")
+        is_blocking = socket_info.get("blocking", True)  # Default to True for safety
+        details = socket_info.get("details", "")
 
-        if not result.is_occupied:
+        # v112.0: CRITICAL - Only consider port "occupied" if it ACTUALLY blocks binding
+        if not result.is_occupied or not is_blocking:
+            if result.is_occupied and not is_blocking:
+                # Port has connections but they don't block binding
+                logger.info(
+                    f"[v112.0] Port {port}: {result.socket_state} connections exist but "
+                    f"don't block binding (non-blocking state). Proceeding. Details: {details}"
+                )
+                result.is_occupied = False  # Override - not truly blocking
             result.recommendation = "proceed"
             return result
 
-        # Step 2: Get PID of process on port
+        # Port is ACTUALLY blocking (LISTEN socket or unknown state)
+        logger.debug(
+            f"[v112.0] Port {port}: blocking state detected ({result.socket_state}). "
+            f"Details: {details}"
+        )
+
+        # Step 2: Get PID of process on port (server socket only)
         pid_info = await self._get_port_pid(port)
         result.pid = pid_info.get("pid")
         result.process_name = pid_info.get("name")
 
+        # v112.0: TIME_WAIT handling - should have been handled by SO_REUSEADDR
+        # If we're here, it means bind still failed even with SO_REUSEADDR
         if result.socket_state == "TIME_WAIT":
-            # Port in TIME_WAIT - need to wait for OS to release
+            # This is unusual - SO_REUSEADDR should allow binding
+            # Wait briefly and recommend retry
             result.recommendation = "wait"
-            result.error = f"Port {port} in TIME_WAIT state, will be released shortly"
-            logger.warning(f"[PortValidation] Port {port} in TIME_WAIT - recommending wait")
+            result.error = (
+                f"Port {port} in TIME_WAIT state even with SO_REUSEADDR. "
+                f"Unusual - may be kernel-level issue. Wait for natural release (~60s)."
+            )
+            logger.warning(f"[v112.0] Port {port}: TIME_WAIT persists with SO_REUSEADDR")
+            return result
+
+        # v112.0: CLOSE_WAIT means the app hasn't closed the socket
+        if result.socket_state == "CLOSE_WAIT":
+            result.recommendation = "kill_and_retry"
+            result.error = (
+                f"Port {port} has CLOSE_WAIT sockets - application hasn't closed connection. "
+                f"PID {result.pid} ({result.process_name}) may be stuck."
+            )
+            logger.warning(f"[v112.0] Port {port}: CLOSE_WAIT - process may be stuck")
             return result
 
         # Step 3: Check if process is responding to health checks
@@ -227,44 +264,68 @@ class EnterpriseProcessManager:
             if result.is_expected_process:
                 result.recommendation = "skip"  # Already running healthy
                 logger.info(
-                    f"[PortValidation] Port {port}: {expected_service} already running healthy"
+                    f"[v112.0] Port {port}: {expected_service} already running healthy"
                 )
             else:
                 result.recommendation = "kill_and_retry"
-                result.error = f"Port {port} occupied by different service"
+                result.error = f"Port {port} occupied by different service ({result.process_name})"
                 logger.warning(
-                    f"[PortValidation] Port {port} occupied by {result.process_name}, "
-                    f"not {expected_service}"
+                    f"[v112.0] Port {port} occupied by {result.process_name}, "
+                    f"not {expected_service} - need cleanup"
                 )
         else:
             result.recommendation = "kill_and_retry"
-            result.error = f"Port {port} occupied but process unhealthy (PID: {result.pid})"
+            result.error = f"Port {port} has LISTEN socket but process unhealthy (PID: {result.pid})"
             logger.warning(
-                f"[PortValidation] Port {port}: process {result.pid} unhealthy - will clean up"
+                f"[v112.0] Port {port}: server PID {result.pid} unhealthy - will clean up"
             )
 
         return result
 
     async def _check_socket_state(self, port: int) -> Dict[str, Any]:
         """
-        Check socket state for a port.
+        v112.0: CRITICAL FIX - Intelligent socket state detection.
+
+        Previous bugs fixed:
+        1. Missing SO_REUSEADDR - caused bind to fail on TIME_WAIT client connections
+        2. CLOSED state not recognized - defaulted to LISTEN incorrectly
+        3. Client connections flagged as blocking - lsof shows client->server but that
+           doesn't block server binding
+
+        This now properly distinguishes:
+        - Server LISTEN sockets (ACTUALLY blocks binding)
+        - Client connections (don't block server binding on same port)
+        - TIME_WAIT/CLOSE_WAIT (may block without SO_REUSEADDR)
 
         Returns dict with:
-        - occupied: bool
-        - state: LISTEN, TIME_WAIT, CLOSE_WAIT, etc.
+        - occupied: bool (True only if LISTEN socket exists)
+        - state: LISTEN, TIME_WAIT, CLOSE_WAIT, ESTABLISHED, CLOSED, etc.
+        - blocking: bool (True if state actually blocks server binding)
+        - details: Additional context for debugging
         """
+        result = {
+            "occupied": False,
+            "state": "available",
+            "blocking": False,
+            "details": "",
+        }
+
         try:
-            # Try to bind to check if available
+            # v112.0: CRITICAL - Use SO_REUSEADDR for accurate bind test
+            # Without this, TIME_WAIT/CLOSED client sockets incorrectly block bind
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.settimeout(1.0)
             try:
                 sock.bind(("0.0.0.0", port))
                 sock.close()
-                return {"occupied": False, "state": "available"}
-            except socket.error:
+                return result  # Port available
+            except socket.error as bind_err:
                 sock.close()
+                result["details"] = str(bind_err)
 
-            # Port occupied - check state with netstat/lsof
+            # Bind failed - analyze WHY using lsof
+            # v112.0: Parse lsof output to find ONLY server LISTEN sockets
             proc = await asyncio.create_subprocess_exec(
                 "lsof", "-i", f":{port}", "-P", "-n",
                 stdout=asyncio.subprocess.PIPE,
@@ -273,22 +334,114 @@ class EnterpriseProcessManager:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             output = stdout.decode() if stdout else ""
 
-            # Parse state from lsof output
-            state = "LISTEN"
-            if "TIME_WAIT" in output:
-                state = "TIME_WAIT"
-            elif "CLOSE_WAIT" in output:
-                state = "CLOSE_WAIT"
-            elif "ESTABLISHED" in output:
-                state = "ESTABLISHED"
-            elif "(LISTEN)" in output:
-                state = "LISTEN"
+            if not output.strip():
+                # No lsof output but bind failed - likely OS-level issue
+                result["occupied"] = True
+                result["state"] = "unknown_bind_failure"
+                result["blocking"] = True
+                return result
 
-            return {"occupied": True, "state": state}
+            # v112.0: CRITICAL - Parse lsof to find server LISTEN vs client connections
+            # Format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+            # Example server: Python 1234 user 5u IPv4 0x123 0t0 TCP *:8000 (LISTEN)
+            # Example client: Python 1234 user 6u IPv4 0x456 0t0 TCP 127.0.0.1:54321->127.0.0.1:8000 (ESTABLISHED)
 
+            has_listen = False
+            has_time_wait = False
+            has_close_wait = False
+            has_established = False
+            has_closed = False
+            server_pids = []  # PIDs with LISTEN sockets
+
+            for line in output.strip().split('\n')[1:]:  # Skip header
+                if not line.strip():
+                    continue
+
+                # Check if this is a SERVER socket (listening on this port)
+                # Server sockets show as *:PORT or 0.0.0.0:PORT or IP:PORT (LISTEN)
+                is_server_socket = False
+                parts = line.split()
+                if len(parts) >= 9:
+                    name_col = parts[-1] if parts[-1].startswith('(') else parts[-2] + ' ' + parts[-1]
+                    node_col = ' '.join(parts[8:])
+
+                    # v112.0: Check if this is a LISTEN socket on OUR port
+                    if '(LISTEN)' in name_col:
+                        # Verify it's listening on this port, not connecting TO this port
+                        # Server: *:8000 (LISTEN) or 0.0.0.0:8000 (LISTEN)
+                        # NOT: 127.0.0.1:54321->127.0.0.1:8000 (which is client)
+                        if f":{port}" in node_col and '->' not in node_col:
+                            has_listen = True
+                            is_server_socket = True
+                            try:
+                                server_pids.append(int(parts[1]))
+                            except (ValueError, IndexError):
+                                pass
+
+                # Parse state for all connections
+                if '(LISTEN)' in line:
+                    if is_server_socket:
+                        has_listen = True
+                elif '(TIME_WAIT)' in line:
+                    has_time_wait = True
+                elif '(CLOSE_WAIT)' in line:
+                    has_close_wait = True
+                elif '(ESTABLISHED)' in line:
+                    has_established = True
+                elif '(CLOSED)' in line:
+                    has_closed = True
+
+            # v112.0: Determine the ACTUAL state and whether it blocks binding
+            if has_listen:
+                result["occupied"] = True
+                result["state"] = "LISTEN"
+                result["blocking"] = True  # LISTEN always blocks
+                result["details"] = f"Server LISTEN socket on port {port}, PIDs: {server_pids}"
+            elif has_time_wait:
+                # TIME_WAIT doesn't block with SO_REUSEADDR, but bind failed
+                # This means something else is wrong
+                result["occupied"] = True
+                result["state"] = "TIME_WAIT"
+                result["blocking"] = False  # Shouldn't block with SO_REUSEADDR
+                result["details"] = "TIME_WAIT sockets present (should clear in ~60s)"
+            elif has_close_wait:
+                result["occupied"] = True
+                result["state"] = "CLOSE_WAIT"
+                result["blocking"] = False  # CLOSE_WAIT is waiting for app to close
+                result["details"] = "CLOSE_WAIT - application hasn't closed connection"
+            elif has_established:
+                # ESTABLISHED connections don't block new LISTEN sockets
+                result["occupied"] = False  # v112.0: CRITICAL - not blocking!
+                result["state"] = "ESTABLISHED"
+                result["blocking"] = False
+                result["details"] = "Only client ESTABLISHED connections (non-blocking)"
+            elif has_closed:
+                # CLOSED connections definitely don't block
+                result["occupied"] = False  # v112.0: CRITICAL - not blocking!
+                result["state"] = "CLOSED"
+                result["blocking"] = False
+                result["details"] = "Only CLOSED connections (non-blocking)"
+            else:
+                # Unknown state but bind failed
+                result["occupied"] = True
+                result["state"] = "unknown"
+                result["blocking"] = True
+                result["details"] = f"Unknown state, bind failed, lsof: {output[:200]}"
+
+            logger.debug(
+                f"[v112.0] Socket state for port {port}: "
+                f"occupied={result['occupied']}, state={result['state']}, "
+                f"blocking={result['blocking']}, details={result['details'][:100]}"
+            )
+
+            return result
+
+        except asyncio.TimeoutError:
+            logger.warning(f"[v112.0] Socket state check timeout for port {port}")
+            return {"occupied": True, "state": "timeout", "blocking": True, "details": "lsof timeout"}
         except Exception as e:
             logger.debug(f"[PortValidation] Socket state check error: {e}")
-            return {"occupied": True, "state": "unknown"}
+            return {"occupied": True, "state": "error", "blocking": True, "details": str(e)}
 
     async def _get_port_pid(self, port: int) -> Dict[str, Any]:
         """
