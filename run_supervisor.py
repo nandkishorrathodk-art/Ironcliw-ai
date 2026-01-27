@@ -154,45 +154,74 @@ if _is_cli_mode:
         except (OSError, ValueError):
             pass  # Some signals can't be ignored
 
-    # v122.1: For --restart specifically, we need EXTRA session isolation
-    # The supervisor restart sends signals to process groups, and even with
-    # SIG_IGN the terminal shell can die, taking us with it (exit 144).
-    # Solution: Re-exec ourselves in a new session if not already done.
+    # v122.4: For --restart, the parent process will be killed by signals regardless
+    # of what we do. So instead: launch detached child and EXIT IMMEDIATELY.
+    # The detached child does the actual restart work.
     if '--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC'):
-        _early_os.environ['_JARVIS_RESTART_REEXEC'] = '1'
         import subprocess as _sp
-        # Re-run ourselves in a new session (like setsid)
-        try:
-            _proc = _sp.Popen(
-                [_early_sys.executable] + _early_sys.argv,
-                cwd=_early_os.getcwd(),
-                start_new_session=True,  # Critical: isolates from terminal's process group
-                env={**_early_os.environ, '_JARVIS_RESTART_REEXEC': '1'},
-                stdout=_sp.PIPE,
-                stderr=_sp.PIPE,
-            )
-            # Wait for child with signal-resilient loop
-            _stdout, _stderr = b'', b''
-            while _proc.poll() is None:
-                try:
-                    _out, _err = _proc.communicate(timeout=1)
-                    _stdout += _out
-                    _stderr += _err
-                    break
-                except _sp.TimeoutExpired:
-                    continue  # Keep waiting
-                except InterruptedError:
-                    continue  # Retry on EINTR
-            if _proc.returncode is None:
-                _proc.wait()
-            # Output results
-            _early_sys.stdout.write(_stdout.decode())
-            _early_sys.stderr.write(_stderr.decode())
-            _early_sys.exit(_proc.returncode)
-        except Exception as _e:
-            _early_sys.stderr.write(f"[v122.1] Session isolation failed: {_e}, continuing normally\n")
-            _early_sys.stderr.flush()
-        del _sp
+        import tempfile as _tmp
+
+        # Create result file path
+        _result_path = f"/tmp/jarvis_restart_{_early_os.getpid()}.result"
+
+        # Write standalone restart script
+        _script_content = f'''#!/usr/bin/env python3
+import os, sys, signal, subprocess, time
+
+# Full signal immunity
+for s in range(1, 32):
+    try:
+        if s not in (9, 17):
+            signal.signal(s, signal.SIG_IGN)
+    except: pass
+
+# New session
+try: os.setsid()
+except: pass
+
+# Run the actual restart
+env = dict(os.environ)
+env["_JARVIS_RESTART_REEXEC"] = "1"
+result = subprocess.run(
+    [{_early_sys.executable!r}] + {_early_sys.argv!r},
+    cwd={_early_os.getcwd()!r},
+    capture_output=True,
+    env=env,
+)
+
+# Write result
+with open({_result_path!r}, "w") as f:
+    f.write(str(result.returncode) + "\\n")
+    f.write(result.stdout.decode())
+    f.write(result.stderr.decode())
+'''
+        _fd, _script_path = _tmp.mkstemp(suffix='.py', prefix='jarvis_restart_')
+        _early_os.write(_fd, _script_content.encode())
+        _early_os.close(_fd)
+        _early_os.chmod(_script_path, 0o755)
+
+        # Launch completely detached (double-fork daemon pattern)
+        _proc = _sp.Popen(
+            [_early_sys.executable, _script_path],
+            start_new_session=True,
+            stdin=_sp.DEVNULL,
+            stdout=_sp.DEVNULL,
+            stderr=_sp.DEVNULL,
+        )
+
+        # Print message and exit IMMEDIATELY - don't wait for child
+        _early_sys.stdout.write(f"\n")
+        _early_sys.stdout.write(f"{'='*60}\n")
+        _early_sys.stdout.write(f"  JARVIS Supervisor Restart Initiated\n")
+        _early_sys.stdout.write(f"{'='*60}\n")
+        _early_sys.stdout.write(f"  The restart is running in background.\n")
+        _early_sys.stdout.write(f"  \n")
+        _early_sys.stdout.write(f"  To check status:  python3 run_supervisor.py --status\n")
+        _early_sys.stdout.write(f"  Results file:     {_result_path}\n")
+        _early_sys.stdout.write(f"{'='*60}\n")
+        _early_sys.stdout.flush()
+        _early_os._exit(0)  # Use _exit to avoid any cleanup that might hang
+        del _sp, _tmp
 
     # Try to create own process group for additional isolation
     try:
