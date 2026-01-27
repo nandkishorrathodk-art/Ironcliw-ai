@@ -1060,10 +1060,11 @@ def setup_signal_handlers(
 
     async def _safe_shutdown(reason: ShutdownReason, sig_name: str) -> None:
         """
-        v123.1: Execute shutdown with lock to prevent duplicates.
+        v123.5: Execute shutdown with lock to prevent duplicates.
 
-        CRITICAL: Must call sys.exit() after shutdown completes, otherwise
-        the main event loop continues running after shutdown phases complete.
+        CRITICAL: Must call os._exit() after shutdown completes.
+        sys.exit() raises SystemExit which gets caught by asyncio task handling.
+        os._exit() terminates immediately without exception propagation.
         """
         async with _shutdown_lock:
             if _shutdown_triggered.is_set():
@@ -1075,25 +1076,29 @@ def setup_signal_handlers(
         try:
             result = await shutdown_manager.initiate_shutdown(reason=reason)
 
-            # v123.1: CRITICAL - Must exit after shutdown completes
-            # Without this, the main event loop continues running
+            # v123.5: CRITICAL - Must use os._exit() NOT sys.exit()
+            # sys.exit() raises SystemExit which asyncio catches as task exception
+            # os._exit() terminates immediately without exception propagation
             if result.success:
-                logger.info(f"[ShutdownManager] Shutdown successful, exiting process")
+                logger.info(f"[ShutdownManager] Shutdown successful, exiting process with os._exit()")
+                import os as _os
                 # Use signal-appropriate exit codes
                 if sig_name == "SIGTERM":
-                    sys.exit(143)  # 128 + 15
+                    _os._exit(143)  # 128 + 15
                 elif sig_name == "SIGINT":
-                    sys.exit(130)  # 128 + 2
+                    _os._exit(130)  # 128 + 2
                 else:
-                    sys.exit(0)
+                    _os._exit(0)
             else:
                 logger.error(f"[ShutdownManager] Shutdown incomplete: {result.errors}")
-                sys.exit(1)
+                import os as _os
+                _os._exit(1)
 
         except Exception as e:
             logger.error(f"[ShutdownManager] Shutdown failed: {e}")
             # Force exit on shutdown failure
-            sys.exit(1)
+            import os as _os
+            _os._exit(1)
 
     def handle_signal(signum: int) -> None:
         """Signal handler that schedules async shutdown."""

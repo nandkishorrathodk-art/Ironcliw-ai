@@ -24923,10 +24923,30 @@ async def main() -> int:
                 # Shutdown signal received - stop supervisor gracefully
                 print("[v111.0] Shutdown signal received, stopping supervisor...")
 
-                # Cancel the supervisor task
+                # v123.4: Start a deadline timer - force exit after 30 seconds
+                # This prevents hangs during cleanup
+                def force_exit_after_timeout():
+                    import time
+                    time.sleep(30)
+                    print("[v123.4] Force exit deadline reached after 30s - terminating now")
+                    import os as _os
+                    _os._exit(143 if signal_handler.shutdown_reason == "SIGTERM" else 130)
+
+                deadline_thread = threading.Thread(target=force_exit_after_timeout, daemon=True)
+                deadline_thread.start()
+
+                # Cancel the supervisor task with timeout
                 supervisor_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await supervisor_task
+                try:
+                    # v123.4: Only wait 15 seconds for cleanup
+                    await asyncio.wait_for(
+                        asyncio.shield(supervisor_task),
+                        timeout=15.0
+                    )
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    print("[v123.4] Supervisor task cleanup timed out or cancelled")
+                except Exception as e:
+                    print(f"[v123.4] Supervisor cleanup error: {e}")
 
                 # Return appropriate exit code based on signal
                 if signal_handler.shutdown_reason == "SIGINT":
