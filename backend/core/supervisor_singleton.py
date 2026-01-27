@@ -1585,14 +1585,50 @@ class SupervisorSingleton:
             logger.warning(f"[Singleton] IPC server failed to start: {e}")
     
     async def _ipc_server_loop(self, server) -> None:
-        """Run IPC server until shutdown."""
-        try:
-            async with server:
-                await server.serve_forever()
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug(f"[Singleton] IPC server ended: {e}")
+        """
+        v119.4: Self-healing IPC server loop with automatic restart.
+
+        If the server crashes, it will automatically restart after a brief delay.
+        This prevents the "zombie supervisor" state where the process runs but
+        IPC is unresponsive.
+        """
+        restart_count = 0
+        max_restarts = 10  # Prevent infinite restart loops
+        restart_delay = 1.0  # Seconds between restarts
+
+        while restart_count < max_restarts:
+            try:
+                async with server:
+                    await server.serve_forever()
+                # Normal exit (shutdown requested)
+                break
+            except asyncio.CancelledError:
+                logger.debug("[Singleton] IPC server cancelled (shutdown)")
+                break
+            except Exception as e:
+                restart_count += 1
+                logger.warning(f"[Singleton] v119.4: IPC server crashed ({restart_count}/{max_restarts}): {e}")
+
+                if restart_count >= max_restarts:
+                    logger.error("[Singleton] v119.4: IPC server max restarts reached, giving up")
+                    break
+
+                # Try to restart the server
+                await asyncio.sleep(restart_delay)
+                try:
+                    # Remove stale socket and recreate server
+                    if SUPERVISOR_IPC_SOCKET.exists():
+                        SUPERVISOR_IPC_SOCKET.unlink()
+
+                    server = await asyncio.start_unix_server(
+                        self._handle_ipc_connection,
+                        path=str(SUPERVISOR_IPC_SOCKET),
+                    )
+                    os.chmod(str(SUPERVISOR_IPC_SOCKET), 0o666)
+                    logger.info(f"[Singleton] v119.4: IPC server restarted successfully")
+                except Exception as restart_error:
+                    logger.error(f"[Singleton] v119.4: IPC server restart failed: {restart_error}")
+                    await asyncio.sleep(restart_delay * 2)  # Longer delay before next attempt
     
     async def _handle_ipc_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """
@@ -2155,16 +2191,17 @@ async def send_supervisor_command(
             timeout=timeout
         )
 
-        # v119.3: Send command with newline terminator (matches raw socket behavior)
+        # v119.5: Send command with newline terminator (matches raw socket behavior)
         request = {"command": command, "args": args or {}}
         writer.write((json.dumps(request) + '\n').encode())
         await writer.drain()
 
-        # v119.3: Signal end of write to help server detect message complete
-        writer.write_eof()
+        # v119.5: DON'T call write_eof() - it can close the connection before response
+        # The server uses readline() which works fine with the newline terminator
+        # Response is also newline-terminated, so use readline() for reading
 
-        # Read response with timeout
-        data = await asyncio.wait_for(reader.read(4096), timeout=timeout)
+        # Read response with timeout - use readline for framed response
+        data = await asyncio.wait_for(reader.readline(), timeout=timeout)
 
         writer.close()
         await writer.wait_closed()
@@ -2432,9 +2469,26 @@ def _setup_sighup_handler() -> None:
         args = [python] + filtered_argv
         logger.info(f"[Singleton] Executing: {' '.join(args[:5])}...")
 
-        # This replaces the current process image - code after this never runs
-        os.execv(python, args)
-        # UNREACHABLE: process has been replaced
+        # v119.5: Add explicit error handling for os.execv()
+        # In signal handlers, exceptions can be silently swallowed
+        try:
+            # This replaces the current process image - code after this never runs
+            os.execv(python, args)
+            # UNREACHABLE: process has been replaced
+        except Exception as e:
+            # os.execv() failed - this is a critical error
+            # Write to stderr and a fallback file since logging may not work
+            import traceback
+            error_msg = f"[Singleton] CRITICAL: os.execv() FAILED: {e}\n{traceback.format_exc()}"
+            sys.stderr.write(error_msg)
+            sys.stderr.flush()
+            try:
+                with open("/tmp/jarvis_execv_error.log", "a") as f:
+                    f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {error_msg}\n")
+            except Exception:
+                pass
+            # Exit cleanly since we can't restart
+            os._exit(1)
 
     # Install the handler
     signal.signal(signal.SIGHUP, _handle_sighup)

@@ -24448,17 +24448,57 @@ async def main() -> int:
                     else:
                         print(f"✅ Restart initiated. Supervisor will restart in-place.")
 
-                    # v117.1: Wait for supervisor to restart and verify it's healthy
-                    print(f"   Waiting for supervisor to restart...")
-                    await asyncio.sleep(3.0)  # Give time for os.execv() and startup
+                    # v119.5: Enhanced restart verification with process + IPC health check
+                    # Ignore SIGINT during verification (os.execv can cause spurious signals)
+                    import signal as _signal
+                    original_sigint = _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
 
-                    # Verify the supervisor came back up
-                    for attempt in range(5):
-                        is_back, new_state = is_supervisor_running()
-                        if is_back and new_state:
-                            print(f"✅ Supervisor restarted successfully (PID {new_state.get('pid')})")
-                            return 0
-                        await asyncio.sleep(1.0)
+                    try:
+                        print(f"   Waiting for supervisor to restart...")
+                        original_pid = existing_state.get('pid')
+                        await asyncio.sleep(3.0)  # Give time for os.execv() and startup
+
+                        # v119.5: Verify by checking both state file AND process AND IPC
+                        for attempt in range(8):  # More attempts, longer timeout
+                            is_back, new_state = is_supervisor_running()
+
+                            if is_back and new_state:
+                                new_pid = new_state.get('pid')
+
+                                # v119.5: With os.execv(), PID stays the same
+                                # Verify process is actually running
+                                try:
+                                    import psutil
+                                    proc = psutil.Process(new_pid)
+                                    if proc.is_running() and 'python' in proc.name().lower():
+                                        # Also verify IPC is responsive
+                                        try:
+                                            ipc_result, _ = await send_supervisor_command('ping', timeout=3.0)
+                                            if ipc_result and ipc_result.get('success'):
+                                                print(f"✅ Supervisor restarted and verified healthy (PID {new_pid})")
+                                                return 0
+                                        except Exception:
+                                            pass  # IPC not ready yet, continue waiting
+                                except Exception:
+                                    pass  # Process check failed, continue waiting
+
+                            await asyncio.sleep(1.0)
+                    finally:
+                        # Restore original SIGINT handler
+                        _signal.signal(_signal.SIGINT, original_sigint)
+
+                    # v119.5: Check if restart actually failed
+                    # Look for error log
+                    import os as _os
+                    error_log = "/tmp/jarvis_execv_error.log"
+                    if _os.path.exists(error_log):
+                        print(f"❌ Restart failed! os.execv() error detected:")
+                        try:
+                            with open(error_log, 'r') as f:
+                                print(f"   {f.read().strip()}")
+                        except Exception:
+                            pass
+                        return 1
 
                     print(f"⚠️ Supervisor may still be starting up. Check with --status")
                     return 0
