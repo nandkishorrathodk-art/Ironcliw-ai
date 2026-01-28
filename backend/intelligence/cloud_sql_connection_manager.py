@@ -1037,6 +1037,255 @@ class ProxyReadinessGate:
                 "[ProxyReadinessGate v112.0] Failed to set initial AgentRegistry state: %s", e
             )
 
+    # -------------------------------------------------------------------------
+    # v113.0: Proactive Proxy Startup System
+    # -------------------------------------------------------------------------
+
+    async def ensure_proxy_ready(
+        self,
+        timeout: Optional[float] = None,
+        auto_start: bool = True,
+        max_start_attempts: int = 3,
+        notify_cross_repo: bool = True,
+    ) -> ReadinessResult:
+        """
+        Proactively ensure the Cloud SQL proxy is running and DB-level ready.
+
+        v113.0: This is the ROOT FIX for "Connection refused" errors. Instead of
+        waiting for failures to trigger auto-start, this method proactively:
+        1. Checks if proxy is running
+        2. Starts it if not (using CloudSQLProxyManager)
+        3. Waits for DB-level connectivity (not just TCP port)
+        4. Uses intelligent exponential backoff
+        5. Notifies cross-repo components when ready
+
+        This should be called during startup BEFORE any CloudSQL-dependent
+        components attempt to connect.
+
+        Args:
+            timeout: Max time to wait for readiness. Default from env
+                    (CLOUDSQL_ENSURE_READY_TIMEOUT, default 60s)
+            auto_start: If True, attempt to start proxy if not running
+            max_start_attempts: Max proxy start attempts (default 3)
+            notify_cross_repo: If True, signal readiness via service registry
+
+        Returns:
+            ReadinessResult with state and details
+
+        Example:
+            # During startup
+            gate = get_proxy_readiness_gate()
+            result = await gate.ensure_proxy_ready(timeout=60.0)
+            if result.state == ReadinessState.READY:
+                print("CloudSQL ready!")
+            else:
+                print(f"CloudSQL not ready: {result.failure_reason}")
+        """
+        await self._ensure_locks()
+
+        # Get timeout from env (no hardcoding)
+        if timeout is None:
+            timeout = float(os.environ.get("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+
+        start_time = time.time()
+        attempts = 0
+        last_error: Optional[str] = None
+
+        # Exponential backoff delays (configurable via env)
+        base_delay = float(os.environ.get("CLOUDSQL_RETRY_BASE_DELAY", "1.0"))
+        max_delay = float(os.environ.get("CLOUDSQL_RETRY_MAX_DELAY", "10.0"))
+
+        logger.info(
+            "[ReadinessGate v113.0] 🚀 ensure_proxy_ready() called "
+            "(timeout=%.1fs, auto_start=%s, max_attempts=%d)",
+            timeout, auto_start, max_start_attempts
+        )
+
+        while (time.time() - start_time) < timeout:
+            attempts += 1
+            elapsed = time.time() - start_time
+
+            # Step 1: Check if proxy is running (TCP port check)
+            proxy_running = await self._check_proxy_running()
+
+            if not proxy_running and auto_start:
+                # Step 2: Attempt to start proxy
+                start_success = await self._attempt_proxy_start(
+                    max_attempts=max_start_attempts,
+                    remaining_timeout=timeout - elapsed
+                )
+                if not start_success:
+                    last_error = "proxy_start_failed"
+                    # Calculate backoff delay
+                    delay = min(base_delay * (2 ** (attempts - 1)), max_delay)
+                    logger.debug(
+                        "[ReadinessGate v113.0] Proxy start failed, backoff %.1fs (attempt %d)",
+                        delay, attempts
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+            # Step 3: Check DB-level connectivity (the real test)
+            result = await self.wait_for_ready(
+                timeout=min(10.0, timeout - elapsed),
+                raise_on_timeout=False
+            )
+
+            if result.state == ReadinessState.READY:
+                logger.info(
+                    "[ReadinessGate v113.0] ✅ CloudSQL ready in %.1fs (attempts=%d)",
+                    time.time() - start_time, attempts
+                )
+
+                # Step 4: Notify cross-repo components
+                if notify_cross_repo:
+                    await self._signal_cross_repo_ready()
+
+                return result
+
+            # Not ready yet - backoff and retry
+            last_error = result.failure_reason
+            delay = min(base_delay * (2 ** (attempts - 1)), max_delay)
+
+            # Don't sleep if we'll timeout anyway
+            if (time.time() - start_time + delay) >= timeout:
+                break
+
+            logger.debug(
+                "[ReadinessGate v113.0] Not ready (reason=%s), backoff %.1fs (attempt %d)",
+                result.failure_reason, delay, attempts
+            )
+            await asyncio.sleep(delay)
+
+        # Timeout reached
+        total_time = time.time() - start_time
+        logger.warning(
+            "[ReadinessGate v113.0] ⏰ Timeout after %.1fs (attempts=%d, last_error=%s)",
+            total_time, attempts, last_error
+        )
+
+        return ReadinessResult(
+            state=ReadinessState.UNAVAILABLE,
+            timed_out=True,
+            failure_reason=last_error or "timeout",
+            message=f"Could not ensure proxy ready within {timeout}s"
+        )
+
+    async def _check_proxy_running(self) -> bool:
+        """
+        Check if the Cloud SQL proxy process is running (TCP port check).
+
+        v113.0: Quick check before attempting DB-level connectivity.
+        """
+        if not self._db_config:
+            if not self._ensure_config():
+                return False
+
+        host = self._db_config.get("host", "127.0.0.1")
+        port = self._db_config.get("port", 5432)
+
+        try:
+            # Quick TCP connection check
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=2.0
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except Exception:
+            return False
+
+    async def _attempt_proxy_start(
+        self,
+        max_attempts: int = 3,
+        remaining_timeout: float = 60.0
+    ) -> bool:
+        """
+        Attempt to start the Cloud SQL proxy using CloudSQLProxyManager.
+
+        v113.0: Centralized proxy startup with proper error handling.
+        """
+        # Import proxy manager lazily to avoid circular imports
+        try:
+            try:
+                from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+            except ImportError:
+                from backend.intelligence.cloud_sql_proxy_manager import get_proxy_manager
+        except ImportError:
+            logger.warning("[ReadinessGate v113.0] CloudSQLProxyManager not available")
+            return False
+
+        try:
+            proxy_manager = get_proxy_manager()
+        except FileNotFoundError as e:
+            logger.warning(f"[ReadinessGate v113.0] Proxy config not found: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"[ReadinessGate v113.0] Failed to get proxy manager: {e}")
+            return False
+
+        # Check if already running
+        if proxy_manager.is_running():
+            logger.debug("[ReadinessGate v113.0] Proxy already running")
+            return True
+
+        # Attempt start with retries
+        logger.info("[ReadinessGate v113.0] 🚀 Starting Cloud SQL proxy...")
+
+        try:
+            success = await asyncio.wait_for(
+                proxy_manager.start(force_restart=False, max_retries=max_attempts),
+                timeout=min(remaining_timeout, 45.0)  # Cap at 45s for proxy start
+            )
+
+            if success:
+                logger.info("[ReadinessGate v113.0] ✅ Proxy started successfully")
+                return True
+            else:
+                logger.warning("[ReadinessGate v113.0] ❌ Proxy start returned False")
+                return False
+
+        except asyncio.TimeoutError:
+            logger.warning("[ReadinessGate v113.0] ⏰ Proxy start timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"[ReadinessGate v113.0] Proxy start error: {e}")
+            return False
+
+    async def _signal_cross_repo_ready(self) -> None:
+        """
+        Signal to cross-repo components that CloudSQL is ready.
+
+        v113.0: Uses service registry to broadcast CloudSQL readiness.
+        """
+        try:
+            # Import service registry
+            try:
+                from core.service_registry import ServiceRegistry
+            except ImportError:
+                try:
+                    from backend.core.service_registry import ServiceRegistry
+                except ImportError:
+                    logger.debug("[ReadinessGate v113.0] ServiceRegistry not available for cross-repo signaling")
+                    return
+
+            registry = ServiceRegistry()
+
+            # Register CloudSQL readiness as a service attribute
+            await registry.update_service_metadata(
+                "jarvis-body",
+                {
+                    "cloudsql_ready": True,
+                    "cloudsql_ready_at": time.time(),
+                }
+            )
+
+            logger.debug("[ReadinessGate v113.0] Signaled CloudSQL ready via service registry")
+
+        except Exception as e:
+            logger.debug(f"[ReadinessGate v113.0] Cross-repo signaling failed: {e}")
+
     async def _notify_subscribers(self, state: ReadinessState) -> None:
         """
         Notify all subscribers of state change.
