@@ -205,6 +205,201 @@ class CloudSQLProxyManager:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("127.0.0.1", port)) == 0
 
+    def _get_process_name_from_pid(self, pid: int) -> Optional[str]:
+        """
+        Get process name from PID for zombie detection.
+
+        v86.0: Enhanced zombie detection - verify process is actually cloud-sql-proxy.
+
+        Returns:
+            Process name/command if available, None if process doesn't exist.
+        """
+        try:
+            if self.system == "Darwin":
+                # macOS: use ps to get process info
+                result = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "comm="],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
+            elif self.system == "Linux":
+                # Linux: read from /proc
+                cmdline_path = Path(f"/proc/{pid}/cmdline")
+                if cmdline_path.exists():
+                    cmdline = cmdline_path.read_text().replace('\x00', ' ').strip()
+                    return cmdline
+            elif self.system == "Windows":
+                # Windows: use tasklist
+                result = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    parts = result.stdout.strip().split(',')
+                    if len(parts) >= 1:
+                        return parts[0].strip('"')
+        except Exception as e:
+            logger.debug(f"[ProxyManager] Failed to get process name for PID {pid}: {e}")
+
+        return None
+
+    def _is_cloud_sql_proxy_process(self, pid: int) -> bool:
+        """
+        Check if a PID is actually a cloud-sql-proxy process.
+
+        v86.0: Prevents zombie scenarios where port is held by different process.
+
+        Returns:
+            True if PID is a cloud-sql-proxy process, False otherwise.
+        """
+        proc_name = self._get_process_name_from_pid(pid)
+        if not proc_name:
+            return False
+
+        # Check if process name/command contains cloud-sql-proxy
+        proc_name_lower = proc_name.lower()
+        return any(keyword in proc_name_lower for keyword in [
+            'cloud-sql-proxy',
+            'cloud_sql_proxy',
+            'cloudsqlproxy'
+        ])
+
+    def _get_pid_using_port(self, port: int) -> Optional[int]:
+        """
+        Get the PID of the process listening on a port.
+
+        v86.0: Used for zombie detection - identify which process holds our port.
+
+        Returns:
+            PID if found, None otherwise.
+        """
+        try:
+            if self.system == "Darwin" or self.system == "Linux":
+                # Use lsof to find process on port
+                result = subprocess.run(
+                    ["lsof", "-t", "-i", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    # lsof may return multiple PIDs, get the first one
+                    pids = result.stdout.strip().split('\n')
+                    if pids:
+                        try:
+                            return int(pids[0])
+                        except ValueError:
+                            pass
+            elif self.system == "Windows":
+                # Use netstat to find process on port
+                result = subprocess.run(
+                    ["netstat", "-ano"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if f":{port}" in line and "LISTENING" in line:
+                            parts = line.split()
+                            if parts:
+                                try:
+                                    return int(parts[-1])
+                                except ValueError:
+                                    pass
+        except Exception as e:
+            logger.debug(f"[ProxyManager] Failed to get PID for port {port}: {e}")
+
+        return None
+
+    def detect_zombie_state(self) -> Dict:
+        """
+        Detect zombie proxy state - port held but not by our proxy.
+
+        v86.0: Comprehensive zombie detection for robust startup.
+
+        Returns:
+            Dict with:
+            - is_zombie: True if port held by non-proxy process
+            - port_in_use: True if port is occupied
+            - pid_on_port: PID of process on port (if any)
+            - is_cloud_sql_proxy: True if PID is actually cloud-sql-proxy
+            - our_pid_valid: True if our PID file points to live cloud-sql-proxy
+            - recommendation: Action to take
+        """
+        port = self.config["cloud_sql"]["port"]
+        result = {
+            'port': port,
+            'is_zombie': False,
+            'port_in_use': False,
+            'pid_on_port': None,
+            'is_cloud_sql_proxy': False,
+            'our_pid_valid': False,
+            'recommendation': 'none'
+        }
+
+        # Check if port is in use
+        result['port_in_use'] = self._is_port_in_use(port)
+
+        if not result['port_in_use']:
+            result['recommendation'] = 'start_proxy'
+            return result
+
+        # Port is in use - find out who
+        pid_on_port = self._get_pid_using_port(port)
+        result['pid_on_port'] = pid_on_port
+
+        if pid_on_port:
+            result['is_cloud_sql_proxy'] = self._is_cloud_sql_proxy_process(pid_on_port)
+
+        # Check our PID file
+        if self.pid_path.exists():
+            try:
+                with open(self.pid_path) as f:
+                    our_pid = int(f.read().strip())
+
+                # Check if our PID is still alive and is cloud-sql-proxy
+                try:
+                    os.kill(our_pid, 0)  # Check if alive
+                    if self._is_cloud_sql_proxy_process(our_pid):
+                        result['our_pid_valid'] = True
+                except ProcessLookupError:
+                    # Our PID is dead - stale PID file
+                    logger.warning(f"[ProxyManager] Stale PID file detected (PID {our_pid} dead)")
+                    self.pid_path.unlink(missing_ok=True)
+            except (ValueError, OSError):
+                logger.warning("[ProxyManager] Corrupted PID file - removing")
+                self.pid_path.unlink(missing_ok=True)
+
+        # Determine zombie state
+        if result['port_in_use'] and not result['is_cloud_sql_proxy']:
+            # Port held by non-proxy process - ZOMBIE!
+            result['is_zombie'] = True
+            result['recommendation'] = 'kill_conflicting'
+            logger.warning(
+                f"[ProxyManager] ZOMBIE detected: Port {port} held by PID {pid_on_port} "
+                f"which is NOT cloud-sql-proxy"
+            )
+        elif result['port_in_use'] and result['is_cloud_sql_proxy'] and not result['our_pid_valid']:
+            # Proxy running but not from our PID file - orphan
+            result['recommendation'] = 'adopt_or_restart'
+            logger.info(
+                f"[ProxyManager] Orphan proxy detected: cloud-sql-proxy on port {port} "
+                f"(PID {pid_on_port}) not managed by us"
+            )
+        elif result['port_in_use'] and result['is_cloud_sql_proxy'] and result['our_pid_valid']:
+            # Our proxy is running correctly
+            result['recommendation'] = 'healthy'
+        else:
+            result['recommendation'] = 'investigate'
+
+        return result
+
     def _find_proxy_processes(self) -> list:
         """Find all running cloud-sql-proxy processes."""
         try:
@@ -237,10 +432,22 @@ class CloudSQLProxyManager:
 
         return []
 
-    def is_running(self) -> bool:
-        """Check if proxy is running and healthy."""
-        # Check if port is in use
+    def is_running(self, strict: bool = False) -> bool:
+        """
+        Check if proxy is running and healthy.
+
+        v86.0: Enhanced with zombie detection and strict mode.
+
+        Args:
+            strict: If True, requires our PID file to be valid.
+                   If False, accepts any cloud-sql-proxy on the port.
+
+        Returns:
+            True if a healthy cloud-sql-proxy is running on our port.
+        """
         port = self.config["cloud_sql"]["port"]
+
+        # Quick check: is port in use?
         if not self._is_port_in_use(port):
             return False
 
@@ -249,13 +456,87 @@ class CloudSQLProxyManager:
             try:
                 with open(self.pid_path) as f:
                     pid = int(f.read().strip())
-                # Check if process exists
-                os.kill(pid, 0)  # Doesn't actually kill, just checks
-                return True
-            except (ProcessLookupError, ValueError):
+
+                # Check if process exists and is cloud-sql-proxy
+                try:
+                    os.kill(pid, 0)  # Doesn't actually kill, just checks
+                    if self._is_cloud_sql_proxy_process(pid):
+                        return True
+                    else:
+                        # PID is alive but not cloud-sql-proxy - stale PID file
+                        logger.warning(
+                            f"[ProxyManager] PID file points to non-proxy process "
+                            f"(PID {pid}) - cleaning up"
+                        )
+                        self.pid_path.unlink(missing_ok=True)
+                except ProcessLookupError:
+                    # Process dead - stale PID file
+                    self.pid_path.unlink(missing_ok=True)
+            except (ValueError, OSError):
+                # Corrupted PID file
                 self.pid_path.unlink(missing_ok=True)
 
+        # In strict mode, we require our PID file to be valid
+        if strict:
+            return False
+
+        # Non-strict mode: check if any cloud-sql-proxy is on the port
+        pid_on_port = self._get_pid_using_port(port)
+        if pid_on_port and self._is_cloud_sql_proxy_process(pid_on_port):
+            # Adopt this proxy - update our PID file
+            logger.info(f"[ProxyManager] Adopting orphan cloud-sql-proxy (PID {pid_on_port})")
+            try:
+                self.pid_path.write_text(str(pid_on_port))
+            except OSError as e:
+                logger.debug(f"[ProxyManager] Failed to update PID file: {e}")
+            return True
+
+        # Port is in use but not by cloud-sql-proxy - zombie state
+        if pid_on_port:
+            logger.warning(
+                f"[ProxyManager] Port {port} held by non-proxy process "
+                f"(PID {pid_on_port}) - zombie detected"
+            )
+
         return False
+
+    async def is_running_db_level(self) -> bool:
+        """
+        Check if proxy is running with DB-level verification.
+
+        v86.0: Uses ProxyReadinessGate for actual database connectivity check.
+
+        Returns:
+            True if proxy is running AND can connect to database.
+        """
+        # First check TCP-level
+        if not self.is_running():
+            return False
+
+        # Then check DB-level via ProxyReadinessGate
+        try:
+            from intelligence.cloud_sql_connection_manager import (
+                get_readiness_gate,
+                ReadinessState
+            )
+
+            gate = get_readiness_gate()
+
+            # Quick check - is gate already in ready state?
+            if gate.state == ReadinessState.READY:
+                return True
+
+            # If not, trigger a check with short timeout
+            result = await gate.wait_for_ready(timeout=5.0)
+            return result.state == ReadinessState.READY
+
+        except ImportError:
+            # ProxyReadinessGate not available - fall back to TCP-level
+            logger.debug("[ProxyManager] ProxyReadinessGate not available - using TCP-level check")
+            return self.is_running()
+        except Exception as e:
+            logger.debug(f"[ProxyManager] DB-level check failed: {e}")
+            return False
 
     def _kill_conflicting_processes(self):
         """Kill any conflicting proxy processes."""
@@ -445,18 +726,40 @@ class CloudSQLProxyManager:
         await asyncio.sleep(1)
         return await self.start(force_restart=True)
 
-    async def monitor(self, check_interval: int = 30, max_recovery_attempts: int = 3):
+    async def monitor(
+        self,
+        check_interval: int = 30,
+        max_recovery_attempts: int = 3,
+        db_level_check: bool = True
+    ):
         """
         Monitor proxy health and auto-recover if needed.
+
+        v86.0 Enhancements:
+        - Optional DB-level health checks via ProxyReadinessGate
+        - Enhanced zombie detection before recovery attempts
+        - Notification to ProxyReadinessGate on failures
 
         Args:
             check_interval: Seconds between health checks
             max_recovery_attempts: Maximum consecutive recovery attempts before giving up
+            db_level_check: If True, use DB-level verification (SELECT 1) instead of TCP-only
         """
-        logger.info(f"🔍 Starting proxy health monitor (interval: {check_interval}s)")
+        logger.info(f"🔍 Starting proxy health monitor (interval: {check_interval}s, db_level={db_level_check})")
 
         consecutive_failures = 0
         last_check_time = time.time()
+        readiness_gate = None
+
+        # Try to get ProxyReadinessGate for DB-level checks and failure notification
+        if db_level_check:
+            try:
+                from intelligence.cloud_sql_connection_manager import get_readiness_gate
+                readiness_gate = get_readiness_gate()
+                logger.info("   Using ProxyReadinessGate for DB-level verification")
+            except ImportError:
+                logger.debug("   ProxyReadinessGate not available - using TCP-level checks")
+                db_level_check = False
 
         health_check_timeout = float(os.getenv("TIMEOUT_PROXY_HEALTH_CHECK", "30.0"))
         while True:
@@ -464,11 +767,20 @@ class CloudSQLProxyManager:
                 await asyncio.sleep(check_interval)
 
                 # Health check with timeout
+                is_healthy = False
                 try:
-                    is_healthy = await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(None, self.is_running),
-                        timeout=health_check_timeout
-                    )
+                    if db_level_check and readiness_gate:
+                        # v86.0: Use DB-level verification
+                        is_healthy = await asyncio.wait_for(
+                            self.is_running_db_level(),
+                            timeout=health_check_timeout
+                        )
+                    else:
+                        # TCP-level only
+                        is_healthy = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(None, self.is_running),
+                            timeout=health_check_timeout
+                        )
                 except asyncio.TimeoutError:
                     logger.warning("[CloudSQL] Health check timed out")
                     is_healthy = False
@@ -484,6 +796,24 @@ class CloudSQLProxyManager:
                         f"(consecutive failures: {consecutive_failures}/{max_recovery_attempts})"
                     )
 
+                    # v86.0: Notify ProxyReadinessGate of failure
+                    if readiness_gate:
+                        try:
+                            readiness_gate.notify_connection_failed()
+                        except Exception as e:
+                            logger.debug(f"[CloudSQL] Failed to notify gate: {e}")
+
+                    # v86.0: Check for zombie state before recovery
+                    zombie_state = self.detect_zombie_state()
+                    if zombie_state['is_zombie']:
+                        logger.warning(
+                            f"[CloudSQL] Zombie detected: port {zombie_state['port']} held by "
+                            f"non-proxy process (PID {zombie_state['pid_on_port']})"
+                        )
+                        # Kill the zombie before attempting recovery
+                        self._kill_conflicting_processes()
+                        await asyncio.sleep(1)  # Wait for port to be freed
+
                     if consecutive_failures <= max_recovery_attempts:
                         logger.info(f"🔄 Attempting automatic recovery (attempt {consecutive_failures})...")
                         success = await self.start(force_restart=True)
@@ -491,6 +821,13 @@ class CloudSQLProxyManager:
                         if success:
                             logger.info("✅ Proxy recovered successfully")
                             consecutive_failures = 0  # Reset counter on success
+
+                            # v86.0: Trigger gate re-verification
+                            if readiness_gate:
+                                try:
+                                    await readiness_gate.wait_for_ready(timeout=10.0)
+                                except Exception as e:
+                                    logger.debug(f"[CloudSQL] Gate re-verification after recovery: {e}")
                         else:
                             logger.error(f"❌ Proxy recovery attempt {consecutive_failures} failed")
 
@@ -513,7 +850,8 @@ class CloudSQLProxyManager:
 
                     # Log periodic health status
                     if int(current_time) % 300 == 0:  # Every 5 minutes
-                        logger.debug(f"✅ Cloud SQL proxy healthy (uptime: {elapsed:.0f}s)")
+                        check_type = "DB-level" if db_level_check else "TCP-level"
+                        logger.debug(f"✅ Cloud SQL proxy healthy ({check_type}, uptime: {elapsed:.0f}s)")
 
             except asyncio.CancelledError:
                 logger.info("Health monitor stopped")

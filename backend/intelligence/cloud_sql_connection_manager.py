@@ -138,6 +138,968 @@ logger = logging.getLogger(__name__)
 # Type variable for generic async operations
 T = TypeVar('T')
 
+# Tuple type for type hints
+from typing import Tuple
+
+# JSON for config loading
+import json
+from pathlib import Path
+import random
+
+
+# =============================================================================
+# PROXY READINESS GATE v1.0 - Production-Grade Implementation
+# =============================================================================
+# Single source of truth for Cloud SQL proxy + DB readiness.
+# Addresses 30 edge cases for production robustness.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Process-Wide TLS Semaphore Registry (Edge Case #6, #17)
+# -----------------------------------------------------------------------------
+# Prevents asyncpg TLS race conditions across all connection creators.
+# Keyed by (host, port) so all connections to same proxy share serialization.
+# -----------------------------------------------------------------------------
+
+_tls_semaphore_registry: Dict[str, asyncio.Semaphore] = {}
+_tls_registry_lock = threading.Lock()
+_tls_semaphore_loops: Dict[str, int] = {}  # Track which loop created each semaphore
+
+
+async def get_tls_semaphore(host: str, port: int) -> asyncio.Semaphore:
+    """
+    Get or create TLS semaphore for a (host, port) pair.
+
+    Edge Cases Addressed:
+    - #6: Process-wide registry keyed by (host, port)
+    - #17: Created only in async context with get_running_loop()
+    - #29: Tracks loop affinity for multi-loop support
+
+    Must be called from async context to ensure proper loop binding.
+    """
+    key = f"{host}:{port}"
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+
+    with _tls_registry_lock:
+        # Check if semaphore exists and is for current loop
+        if key in _tls_semaphore_registry:
+            if _tls_semaphore_loops.get(key) == loop_id:
+                return _tls_semaphore_registry[key]
+            # Different loop - need new semaphore
+            logger.debug(f"[TLS Registry] Semaphore for {key} was for different loop, recreating")
+
+        # Create new semaphore for current loop
+        semaphore = asyncio.Semaphore(1)
+        _tls_semaphore_registry[key] = semaphore
+        _tls_semaphore_loops[key] = loop_id
+        logger.debug(f"[TLS Registry] Created semaphore for {key} on loop {loop_id}")
+        return semaphore
+
+
+# -----------------------------------------------------------------------------
+# Readiness State and Result Types (Edge Case #30)
+# -----------------------------------------------------------------------------
+
+class ReadinessState(Enum):
+    """State machine for proxy readiness."""
+    UNKNOWN = "unknown"
+    CHECKING = "checking"
+    READY = "ready"
+    UNAVAILABLE = "unavailable"
+    DEGRADED_SQLITE = "degraded_sqlite"
+
+
+@dataclass
+class ReadinessResult:
+    """
+    Result from wait_for_ready() - explicit timeout vs state distinction.
+
+    Edge Case #7: Returns (state, timed_out) tuple via dataclass.
+    Edge Case #11: failure_reason distinguishes credential vs proxy failure.
+    Edge Case #30: Consistent naming with ReadinessState enum.
+    """
+    state: ReadinessState
+    timed_out: bool
+    failure_reason: Optional[str] = None  # "proxy" | "credentials" | "network" | "shutdown" | "config" | "asyncpg_unavailable"
+    message: str = ""
+
+
+class ReadinessTimeoutError(Exception):
+    """Raised when wait_for_ready() times out."""
+    def __init__(self, result: ReadinessResult):
+        self.result = result
+        super().__init__(f"Readiness timeout: state={result.state.value}, reason={result.failure_reason}")
+
+
+# -----------------------------------------------------------------------------
+# Configuration Discovery (Edge Cases #9, #10, #24, #25)
+# -----------------------------------------------------------------------------
+
+def _discover_database_config_path() -> Optional[Path]:
+    """
+    Discover database_config.json path using same paths as CloudSQLProxyManager.
+
+    Edge Case #9: Reuses exact same search paths as proxy manager.
+
+    Returns:
+        Path to config file, or None if not found.
+    """
+    search_paths = [
+        Path.home() / ".jarvis" / "gcp" / "database_config.json",
+        Path(os.getenv("JARVIS_HOME", ".")) / "gcp" / "database_config.json",
+        Path("database_config.json"),
+    ]
+
+    for path in search_paths:
+        if path.exists():
+            return path
+
+    return None
+
+
+def _load_database_config_for_gate() -> Optional[Dict[str, Any]]:
+    """
+    Load database configuration for ProxyReadinessGate.
+
+    Edge Cases Addressed:
+    - #9: Uses same config path discovery as proxy manager
+    - #10: Password from env override then file
+    - #25: Same password sourcing as connection manager
+    - #26: Returns None (not raises) if config missing/invalid
+
+    Returns:
+        Dict with host, port, database, user, password, or None if unavailable.
+    """
+    try:
+        config_path = _discover_database_config_path()
+        if not config_path:
+            logger.debug("[ReadinessGate] No database_config.json found")
+            return None
+
+        with open(config_path) as f:
+            config = json.load(f)
+
+        cloud_sql = config.get("cloud_sql", {})
+
+        # Validate required fields
+        if not cloud_sql.get("port"):
+            logger.debug("[ReadinessGate] Config missing port")
+            return None
+
+        # Password: env override then file (Edge Case #10, #25)
+        password = (
+            os.getenv("JARVIS_DB_PASSWORD") or
+            os.getenv("CLOUD_SQL_PASSWORD") or
+            cloud_sql.get("password")
+        )
+
+        return {
+            "host": os.getenv("JARVIS_DB_HOST", "127.0.0.1"),
+            "port": int(os.getenv("JARVIS_DB_PORT", cloud_sql.get("port", 5432))),
+            "database": os.getenv("JARVIS_DB_NAME", cloud_sql.get("database", "jarvis_learning")),
+            "user": os.getenv("JARVIS_DB_USER", cloud_sql.get("user", "jarvis")),
+            "password": password,
+        }
+
+    except Exception as e:
+        logger.debug(f"[ReadinessGate] Config load failed: {e}")
+        return None
+
+
+# -----------------------------------------------------------------------------
+# Environment Configuration (Edge Case #13 - no hardcoding)
+# -----------------------------------------------------------------------------
+
+def _get_gate_config() -> Dict[str, Any]:
+    """
+    Load all gate configuration from environment with sensible defaults.
+
+    Edge Case #13: All timeouts/delays externalized to env vars.
+    """
+    return {
+        "readiness_timeout": float(os.getenv("JARVIS_PROXY_READINESS_TIMEOUT", "30.0")),
+        "db_check_retries": int(os.getenv("JARVIS_PROXY_DB_CHECK_RETRIES", "5")),
+        "db_check_backoff_base": float(os.getenv("JARVIS_PROXY_DB_CHECK_BACKOFF_BASE", "1.0")),
+        "db_check_backoff_max": float(os.getenv("JARVIS_PROXY_DB_CHECK_BACKOFF_MAX", "10.0")),
+        "db_check_jitter": float(os.getenv("JARVIS_PROXY_DB_CHECK_JITTER", "0.3")),
+        "periodic_recheck_interval": float(os.getenv("JARVIS_PROXY_PERIODIC_RECHECK_INTERVAL", "300")),  # 0 = disabled
+        "db_check_timeout": float(os.getenv("JARVIS_PROXY_DB_CHECK_TIMEOUT", "5.0")),
+    }
+
+
+# -----------------------------------------------------------------------------
+# ProxyReadinessGate - Main Implementation
+# -----------------------------------------------------------------------------
+
+class ProxyReadinessGate:
+    """
+    Single source of truth for Cloud SQL proxy + DB readiness.
+
+    Production-grade implementation addressing 30 edge cases:
+
+    Concurrency & Threading:
+    - #1: Single "check in progress" future for concurrent wait_for_ready()
+    - #16: asyncio primitives created lazily in async methods
+    - #17: TLS semaphore created only in async context
+    - #19: Re-check scheduling is idempotent (one in-flight)
+    - #29: Events keyed by loop id for multi-loop support
+
+    Configuration:
+    - #2: Self-sufficient config loading from database_config.json
+    - #9: Reuses proxy manager's config path discovery
+    - #10, #25: Password from env override then file
+    - #26: Missing/invalid config → UNAVAILABLE, no infinite retry
+    - #27: asyncpg unavailable → UNAVAILABLE gracefully
+
+    State Management:
+    - #3: READY → invalidation via notify_connection_failed()
+    - #4: mark_degraded_sqlite() for SQLite fallback
+    - #5: check_db_level() uses one-off asyncpg.connect, not pool
+    - #10: No event flapping during re-check from READY
+    - #11: Credential vs proxy failure distinction
+    - #20: notify_connection_failed() only triggers re-check when READY
+    - #21, #22: Lazy event creation handles DEGRADED_SQLITE state
+
+    Events & Subscribers:
+    - #6: Process-wide TLS semaphore registry
+    - #7: ReadinessResult with explicit timed_out flag
+    - #8, #23: Fire-and-forget subscriber callbacks
+    - #14: Thread-safe subscriber list
+    - #15: subscribe=in-process, cross-repo=HTTP health
+
+    Lifecycle:
+    - #12, #28: Shutdown unblocks waiters and cancels recheck task
+    - #13: Capped exponential backoff with env config
+    - #18: notify_connection_failed() is sync, best-effort
+
+    Type Safety:
+    - #30: Consistent ReadinessResult/ReadinessState naming
+    """
+
+    _instance: Optional['ProxyReadinessGate'] = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls) -> 'ProxyReadinessGate':
+        """Singleton pattern with thread-safe initialization."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        """
+        Initialize gate state. asyncio primitives created lazily.
+
+        Edge Case #16: No asyncio locks/events in __init__ - created lazily.
+        """
+        if getattr(self, '_initialized', False):
+            return
+
+        # State (thread-safe via _state_lock acquired in async methods)
+        self._state = ReadinessState.UNKNOWN
+        self._failure_reason: Optional[str] = None
+        self._failure_message: str = ""
+
+        # Lazy asyncio primitives (Edge Case #16)
+        self._state_lock: Optional[asyncio.Lock] = None
+        self._check_lock: Optional[asyncio.Lock] = None
+
+        # Single check-in-progress future (Edge Case #1)
+        self._check_future: Optional[asyncio.Future] = None
+
+        # Lazy events per loop (Edge Case #9, #29)
+        self._ready_events: Dict[int, asyncio.Event] = {}
+        self._degraded_events: Dict[int, asyncio.Event] = {}
+
+        # Subscribers (Edge Case #8, #14)
+        self._subscribers: List[Callable[[ReadinessState], Any]] = []
+        self._subscriber_lock = threading.Lock()
+
+        # Shutdown flag (Edge Case #12)
+        self._shutting_down = False
+
+        # Periodic recheck task (Edge Case #3)
+        self._recheck_task: Optional[asyncio.Task] = None
+
+        # Pending recheck flag for sync notify_connection_failed (Edge Case #18)
+        self._pending_recheck = False
+
+        # Config cache
+        self._db_config: Optional[Dict[str, Any]] = None
+        self._gate_config = _get_gate_config()
+
+        # Track if degraded was set before events existed (Edge Case #21)
+        self._degraded_before_event = False
+
+        self._initialized = True
+        logger.info("🔐 ProxyReadinessGate v1.0 initialized")
+
+    # -------------------------------------------------------------------------
+    # Lazy Primitive Initialization (Edge Cases #16, #17)
+    # -------------------------------------------------------------------------
+
+    async def _ensure_locks(self) -> None:
+        """Create asyncio locks lazily in async context."""
+        loop = asyncio.get_running_loop()
+
+        if self._state_lock is None:
+            self._state_lock = asyncio.Lock()
+        if self._check_lock is None:
+            self._check_lock = asyncio.Lock()
+
+    def _get_ready_event(self, loop: asyncio.AbstractEventLoop) -> asyncio.Event:
+        """
+        Get or create ready event for the given loop.
+
+        Edge Cases #9, #29: Events keyed by loop id for multi-loop support.
+        """
+        loop_id = id(loop)
+        if loop_id not in self._ready_events:
+            event = asyncio.Event()
+            # Set if already READY
+            if self._state == ReadinessState.READY:
+                event.set()
+            self._ready_events[loop_id] = event
+        return self._ready_events[loop_id]
+
+    def _get_degraded_event(self, loop: asyncio.AbstractEventLoop) -> asyncio.Event:
+        """
+        Get or create degraded event for the given loop.
+
+        Edge Cases #6, #21: If state is DEGRADED_SQLITE when creating, set it.
+        """
+        loop_id = id(loop)
+        if loop_id not in self._degraded_events:
+            event = asyncio.Event()
+            # Set if already degraded (Edge Case #21)
+            if self._state == ReadinessState.DEGRADED_SQLITE or self._degraded_before_event:
+                event.set()
+            self._degraded_events[loop_id] = event
+        return self._degraded_events[loop_id]
+
+    # -------------------------------------------------------------------------
+    # Config Loading (Edge Cases #2, #9, #10, #25, #26)
+    # -------------------------------------------------------------------------
+
+    def _ensure_config(self) -> bool:
+        """
+        Ensure database config is loaded.
+
+        Edge Case #26: Returns False (not raises) if config missing/invalid.
+        """
+        if self._db_config is not None:
+            return True
+
+        self._db_config = _load_database_config_for_gate()
+        return self._db_config is not None
+
+    # -------------------------------------------------------------------------
+    # Main Public API
+    # -------------------------------------------------------------------------
+
+    async def wait_for_ready(
+        self,
+        timeout: Optional[float] = None,
+        raise_on_timeout: bool = False
+    ) -> ReadinessResult:
+        """
+        Wait for DB-level readiness.
+
+        Edge Cases Addressed:
+        - #1: Concurrent callers share one check_db_level() run
+        - #7: Returns ReadinessResult with explicit timed_out flag
+        - #12: Returns immediately if shutting down
+        - #16: Locks created lazily
+        - #18: Consumes pending recheck flag
+
+        Args:
+            timeout: Max wait time in seconds. Default from env.
+            raise_on_timeout: If True, raise ReadinessTimeoutError on timeout.
+
+        Returns:
+            ReadinessResult with state, timed_out, and failure_reason.
+        """
+        await self._ensure_locks()
+        assert self._check_lock is not None  # Guaranteed by _ensure_locks
+
+        # Edge Case #12: Return immediately if shutting down
+        if self._shutting_down:
+            return ReadinessResult(
+                state=ReadinessState.UNAVAILABLE,
+                timed_out=False,
+                failure_reason="shutdown",
+                message="Gate is shutting down"
+            )
+
+        timeout = timeout or self._gate_config["readiness_timeout"]
+
+        # Edge Case #18: Consume pending recheck flag
+        if self._pending_recheck:
+            self._pending_recheck = False
+            if self._state == ReadinessState.READY:
+                await self._trigger_recheck()
+
+        # If already in terminal state, return immediately
+        if self._state == ReadinessState.READY:
+            return ReadinessResult(
+                state=ReadinessState.READY,
+                timed_out=False,
+                message="Proxy ready"
+            )
+        elif self._state == ReadinessState.DEGRADED_SQLITE:
+            return ReadinessResult(
+                state=ReadinessState.DEGRADED_SQLITE,
+                timed_out=False,
+                failure_reason=self._failure_reason,
+                message="Using SQLite fallback"
+            )
+
+        # Need to check - use shared check future (Edge Case #1)
+        async with self._check_lock:
+            if self._check_future is None or self._check_future.done():
+                # Start new check
+                self._check_future = asyncio.create_task(self._run_check())
+
+        # Wait for check to complete or timeout
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._check_future),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            result = ReadinessResult(
+                state=self._state,
+                timed_out=True,
+                failure_reason=self._failure_reason or "timeout",
+                message=f"Readiness check timed out after {timeout}s"
+            )
+            if raise_on_timeout:
+                raise ReadinessTimeoutError(result)
+            return result
+        except asyncio.CancelledError:
+            return ReadinessResult(
+                state=ReadinessState.UNAVAILABLE,
+                timed_out=False,
+                failure_reason="cancelled",
+                message="Wait cancelled"
+            )
+
+        return ReadinessResult(
+            state=self._state,
+            timed_out=False,
+            failure_reason=self._failure_reason,
+            message=self._failure_message
+        )
+
+    async def _run_check(self) -> None:
+        """
+        Run the actual DB-level check with retries.
+
+        Edge Cases Addressed:
+        - #5: Uses one-off asyncpg.connect, not pool
+        - #11: Distinguishes credential vs proxy failure
+        - #13: Capped exponential backoff
+        - #26: Missing config → UNAVAILABLE
+        - #27: asyncpg unavailable → UNAVAILABLE
+        """
+        await self._ensure_locks()
+        assert self._state_lock is not None  # Guaranteed by _ensure_locks
+
+        async with self._state_lock:
+            if self._state == ReadinessState.READY:
+                return  # Already ready
+            self._state = ReadinessState.CHECKING
+
+        # Edge Case #27: Check asyncpg availability
+        if not ASYNCPG_AVAILABLE:
+            await self._set_state(
+                ReadinessState.UNAVAILABLE,
+                "asyncpg_unavailable",
+                "asyncpg not installed"
+            )
+            return
+
+        # Edge Case #26: Check config availability
+        if not self._ensure_config():
+            await self._set_state(
+                ReadinessState.UNAVAILABLE,
+                "config",
+                "Database configuration not found"
+            )
+            return
+
+        # Check for missing password
+        if not self._db_config or not self._db_config.get("password"):
+            await self._set_state(
+                ReadinessState.UNAVAILABLE,
+                "credentials",
+                "Database password not configured"
+            )
+            return
+
+        # Run DB-level check with retries (Edge Case #13)
+        config = self._gate_config
+        max_retries = config["db_check_retries"]
+        backoff_base = config["db_check_backoff_base"]
+        backoff_max = config["db_check_backoff_max"]
+        jitter = config["db_check_jitter"]
+
+        last_error = None
+        last_reason = "proxy"
+
+        for attempt in range(max_retries):
+            if self._shutting_down:
+                await self._set_state(
+                    ReadinessState.UNAVAILABLE,
+                    "shutdown",
+                    "Shutdown during readiness check"
+                )
+                return
+
+            success, reason = await self._check_db_level()
+
+            if success:
+                await self._set_state(
+                    ReadinessState.READY,
+                    None,
+                    "DB-level verification successful"
+                )
+                # Start periodic recheck if configured
+                if config["periodic_recheck_interval"] > 0:
+                    self._start_periodic_recheck()
+                return
+
+            last_reason = reason or "proxy"
+
+            # Don't retry on credential failures (Edge Case #11)
+            if reason == "credentials":
+                await self._set_state(
+                    ReadinessState.UNAVAILABLE,
+                    "credentials",
+                    "Authentication failed - check credentials"
+                )
+                return
+
+            # Calculate backoff with cap and jitter (Edge Case #13)
+            if attempt < max_retries - 1:
+                delay = min(backoff_base * (2 ** attempt), backoff_max)
+                delay += random.uniform(0, delay * jitter)
+                logger.debug(
+                    f"[ReadinessGate] Check attempt {attempt + 1}/{max_retries} failed: {reason}. "
+                    f"Retrying in {delay:.2f}s"
+                )
+                await asyncio.sleep(delay)
+
+        # All retries exhausted
+        await self._set_state(
+            ReadinessState.UNAVAILABLE,
+            last_reason,
+            f"DB check failed after {max_retries} attempts"
+        )
+
+    async def _check_db_level(self) -> Tuple[bool, Optional[str]]:
+        """
+        Perform actual PostgreSQL SELECT 1 through proxy.
+
+        Edge Cases Addressed:
+        - #5: Uses one-off asyncpg.connect, not pool
+        - #6, #17: Uses global TLS semaphore registry
+        - #11: Distinguishes credential vs proxy vs network failure
+
+        Returns:
+            (success, failure_reason) where failure_reason is None on success
+        """
+        if not self._db_config:
+            return False, "config"
+
+        host = self._db_config["host"]
+        port = self._db_config["port"]
+
+        # Get TLS semaphore (Edge Case #6, #17)
+        tls_semaphore = await get_tls_semaphore(host, port)
+
+        conn = None
+        try:
+            async with tls_semaphore:
+                # Small delay to let TLS state machine settle
+                await asyncio.sleep(0.05)
+
+                conn = await asyncio.wait_for(
+                    asyncpg.connect(
+                        host=host,
+                        port=port,
+                        database=self._db_config["database"],
+                        user=self._db_config["user"],
+                        password=self._db_config["password"],
+                    ),
+                    timeout=self._gate_config["db_check_timeout"]
+                )
+
+                # Actual DB-level verification
+                result = await conn.fetchval("SELECT 1")
+
+                if result == 1:
+                    logger.info(f"[ReadinessGate] ✅ DB-level check passed ({host}:{port})")
+                    return True, None
+                else:
+                    return False, "proxy"
+
+        except asyncio.TimeoutError:
+            logger.debug(f"[ReadinessGate] DB check timeout ({host}:{port})")
+            return False, "network"
+
+        except Exception as e:
+            error_str = str(e).lower()
+
+            # Edge Case #11: Distinguish failure types
+            if "password authentication failed" in error_str:
+                logger.warning(f"[ReadinessGate] ❌ Credential failure: {e}")
+                return False, "credentials"
+            elif "connection refused" in error_str or "errno 61" in error_str:
+                logger.debug(f"[ReadinessGate] Proxy not available: {e}")
+                return False, "proxy"
+            elif "timeout" in error_str or "timed out" in error_str:
+                logger.debug(f"[ReadinessGate] Network timeout: {e}")
+                return False, "network"
+            elif "invalid state" in error_str:
+                logger.debug(f"[ReadinessGate] TLS race condition: {e}")
+                return False, "proxy"
+            else:
+                logger.debug(f"[ReadinessGate] DB check failed: {e}")
+                return False, "proxy"
+
+        finally:
+            if conn:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+
+    async def _set_state(
+        self,
+        new_state: ReadinessState,
+        failure_reason: Optional[str],
+        message: str
+    ) -> None:
+        """
+        Set state and manage events.
+
+        Edge Case #10: Don't clear ready event when re-checking from READY.
+        """
+        old_state = self._state
+        self._state = new_state
+        self._failure_reason = failure_reason
+        self._failure_message = message
+
+        # Manage events based on new state
+        if new_state == ReadinessState.READY:
+            # Set all ready events
+            for event in self._ready_events.values():
+                event.set()
+            # Clear degraded events
+            for event in self._degraded_events.values():
+                event.clear()
+            self._degraded_before_event = False
+            logger.info(f"[ReadinessGate] ✅ State: READY")
+
+        elif new_state == ReadinessState.UNAVAILABLE:
+            # Clear ready events
+            for event in self._ready_events.values():
+                event.clear()
+            logger.warning(f"[ReadinessGate] ❌ State: UNAVAILABLE ({failure_reason}: {message})")
+
+        elif new_state == ReadinessState.DEGRADED_SQLITE:
+            # Clear ready, set degraded (Edge Case #22)
+            for event in self._ready_events.values():
+                event.clear()
+            for event in self._degraded_events.values():
+                event.set()
+            self._degraded_before_event = True  # Edge Case #21
+            logger.info(f"[ReadinessGate] ⚠️ State: DEGRADED_SQLITE")
+
+        # Notify subscribers (Edge Case #8, #23)
+        await self._notify_subscribers(new_state)
+
+    # -------------------------------------------------------------------------
+    # Invalidation & Re-check (Edge Cases #3, #18, #19, #20)
+    # -------------------------------------------------------------------------
+
+    def notify_connection_failed(self, error: Optional[Exception] = None) -> None:
+        """
+        Called by connection manager on connection failure.
+        Triggers re-check if state is READY.
+
+        Edge Cases Addressed:
+        - #3: Supports READY → invalidation
+        - #18: Sync, best-effort; schedules only if loop exists
+        - #19: Idempotent - only one re-check in flight
+        - #20: Only triggers when state is READY
+        """
+        # Edge Case #20: Only re-check when READY
+        if self._state != ReadinessState.READY:
+            return
+
+        # Edge Case #18: Best-effort scheduling
+        try:
+            loop = asyncio.get_running_loop()
+            # Edge Case #19: Check if already rechecking
+            if self._state == ReadinessState.CHECKING:
+                return
+
+            # Schedule recheck
+            asyncio.create_task(self._trigger_recheck())
+
+        except RuntimeError:
+            # No running loop - set flag for next wait_for_ready
+            self._pending_recheck = True
+
+    async def _trigger_recheck(self) -> None:
+        """
+        Trigger a re-check from READY state.
+
+        Edge Case #10: Don't clear ready event until UNAVAILABLE confirmed.
+        Edge Case #19: Idempotent via check_lock.
+        """
+        await self._ensure_locks()
+        assert self._check_lock is not None  # Guaranteed by _ensure_locks
+
+        async with self._check_lock:
+            if self._state != ReadinessState.READY:
+                return
+
+            # Edge Case #10: Don't clear ready event yet - only on confirmed failure
+            self._state = ReadinessState.CHECKING
+
+            # Run single check (not full retry loop for re-check)
+            success, reason = await self._check_db_level()
+
+            if success:
+                self._state = ReadinessState.READY
+                # Events already set
+            else:
+                await self._set_state(
+                    ReadinessState.UNAVAILABLE,
+                    reason,
+                    "Connection failed during operation"
+                )
+
+    def _start_periodic_recheck(self) -> None:
+        """Start periodic recheck task if configured."""
+        if self._recheck_task and not self._recheck_task.done():
+            return
+
+        interval = self._gate_config["periodic_recheck_interval"]
+        if interval <= 0:
+            return
+
+        async def _recheck_loop():
+            while not self._shutting_down:
+                await asyncio.sleep(interval)
+                if self._shutting_down:
+                    break
+                if self._state == ReadinessState.READY:
+                    success, reason = await self._check_db_level()
+                    if not success:
+                        await self._set_state(
+                            ReadinessState.UNAVAILABLE,
+                            reason,
+                            "Periodic health check failed"
+                        )
+
+        try:
+            self._recheck_task = asyncio.create_task(_recheck_loop())
+        except RuntimeError:
+            pass  # No running loop
+
+    # -------------------------------------------------------------------------
+    # SQLite Fallback (Edge Cases #4, #21, #22)
+    # -------------------------------------------------------------------------
+
+    def mark_degraded_sqlite(self) -> None:
+        """
+        Mark that the system has fallen back to SQLite.
+
+        Edge Cases Addressed:
+        - #4: Single call site for DEGRADED_SQLITE transition
+        - #21: Sets flag if events don't exist yet
+        - #22: Clears ready event, sets degraded event
+        """
+        self._state = ReadinessState.DEGRADED_SQLITE
+        self._failure_reason = "fallback"
+        self._failure_message = "Fell back to SQLite"
+
+        # Edge Case #22: Manage events
+        for event in self._ready_events.values():
+            event.clear()
+        for event in self._degraded_events.values():
+            event.set()
+
+        # Edge Case #21: Flag for lazy event creation
+        self._degraded_before_event = True
+
+        # Notify subscribers
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self._notify_subscribers(ReadinessState.DEGRADED_SQLITE))
+        except RuntimeError:
+            pass  # No loop, subscribers will see state on next check
+
+        logger.info("[ReadinessGate] ⚠️ Marked DEGRADED_SQLITE")
+
+    # -------------------------------------------------------------------------
+    # Subscribers (Edge Cases #8, #14, #15, #23)
+    # -------------------------------------------------------------------------
+
+    def subscribe(self, callback: Callable[[ReadinessState], Any]) -> None:
+        """
+        Subscribe to state changes (in-process only).
+
+        Edge Cases Addressed:
+        - #14: Thread-safe subscriber list
+        - #15: Document: subscribe=in-process, cross-repo=HTTP health
+
+        Note: For cross-repo notification, use HTTP health endpoints.
+        """
+        with self._subscriber_lock:
+            self._subscribers.append(callback)
+
+    def unsubscribe(self, callback: Callable[[ReadinessState], Any]) -> None:
+        """Remove a subscriber."""
+        with self._subscriber_lock:
+            if callback in self._subscribers:
+                self._subscribers.remove(callback)
+
+    async def _notify_subscribers(self, state: ReadinessState) -> None:
+        """
+        Notify all subscribers of state change.
+
+        Edge Cases Addressed:
+        - #8, #23: async via create_task, sync via run_in_executor
+        - #14: Thread-safe snapshot of subscriber list
+        """
+        with self._subscriber_lock:
+            subscribers = list(self._subscribers)
+
+        loop = asyncio.get_running_loop()
+
+        for callback in subscribers:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    # Async callback - fire and forget
+                    asyncio.create_task(self._safe_async_callback(callback, state))
+                else:
+                    # Sync callback - run in executor to not block loop
+                    loop.run_in_executor(None, lambda cb=callback, s=state: self._safe_sync_callback(cb, s))
+            except Exception as e:
+                logger.debug(f"[ReadinessGate] Error scheduling subscriber: {e}")
+
+    async def _safe_async_callback(self, callback: Callable, state: ReadinessState) -> None:
+        """Safely invoke async subscriber."""
+        try:
+            await callback(state)
+        except Exception as e:
+            logger.debug(f"[ReadinessGate] Subscriber callback error: {e}")
+
+    def _safe_sync_callback(self, callback: Callable, state: ReadinessState) -> None:
+        """Safely invoke sync subscriber."""
+        try:
+            callback(state)
+        except Exception as e:
+            logger.debug(f"[ReadinessGate] Subscriber callback error: {e}")
+
+    # -------------------------------------------------------------------------
+    # Shutdown (Edge Cases #12, #28)
+    # -------------------------------------------------------------------------
+
+    async def shutdown(self) -> None:
+        """
+        Shutdown gate, unblock waiters, cancel tasks.
+
+        Edge Cases Addressed:
+        - #12: Set UNAVAILABLE and unblock waiters
+        - #28: Cancel recheck task first, then set state/events
+        """
+        self._shutting_down = True
+
+        # Edge Case #28: Cancel recheck task first
+        if self._recheck_task and not self._recheck_task.done():
+            self._recheck_task.cancel()
+            try:
+                await self._recheck_task
+            except asyncio.CancelledError:
+                pass
+
+        # Set state to UNAVAILABLE with shutdown reason
+        self._state = ReadinessState.UNAVAILABLE
+        self._failure_reason = "shutdown"
+        self._failure_message = "Gate shutdown"
+
+        # Edge Case #12: Set ready events so waiters wake up
+        for event in self._ready_events.values():
+            event.set()  # Wake up waiters, they'll see UNAVAILABLE state
+
+        # Notify subscribers
+        await self._notify_subscribers(ReadinessState.UNAVAILABLE)
+
+        logger.info("[ReadinessGate] Shutdown complete")
+
+    # -------------------------------------------------------------------------
+    # Status & Health (for health endpoints)
+    # -------------------------------------------------------------------------
+
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Get current gate status for health endpoints.
+
+        Edge Case #15: For cross-repo discovery via HTTP.
+        """
+        return {
+            "state": self._state.value,
+            "failure_reason": self._failure_reason,
+            "message": self._failure_message,
+            "shutting_down": self._shutting_down,
+            "db_mode": "sqlite" if self._state == ReadinessState.DEGRADED_SQLITE else "cloudsql",
+        }
+
+    @property
+    def is_ready(self) -> bool:
+        """Quick check if proxy is ready."""
+        return self._state == ReadinessState.READY
+
+    @property
+    def is_degraded(self) -> bool:
+        """Quick check if using SQLite fallback."""
+        return self._state == ReadinessState.DEGRADED_SQLITE
+
+    @property
+    def state(self) -> ReadinessState:
+        """Current state."""
+        return self._state
+
+
+# -----------------------------------------------------------------------------
+# Singleton Accessor
+# -----------------------------------------------------------------------------
+
+_readiness_gate: Optional[ProxyReadinessGate] = None
+_readiness_gate_lock = threading.Lock()
+
+
+def get_readiness_gate() -> ProxyReadinessGate:
+    """Get singleton ProxyReadinessGate instance."""
+    global _readiness_gate
+    with _readiness_gate_lock:
+        if _readiness_gate is None:
+            _readiness_gate = ProxyReadinessGate()
+        return _readiness_gate
+
+
+async def get_readiness_gate_async() -> ProxyReadinessGate:
+    """Get singleton ProxyReadinessGate instance (async version)."""
+    return get_readiness_gate()
+
 
 # =============================================================================
 # Async-Safe Lock Implementation
@@ -644,69 +1606,93 @@ class CircuitBreaker:
 
     def _try_auto_start_proxy(self) -> None:
         """
-        v82.0: Attempt to auto-start Cloud SQL proxy if it appears to be down.
+        v83.0: Attempt to auto-start Cloud SQL proxy if it appears to be down.
 
         This is called when transitioning from OPEN to HALF_OPEN and we've
         detected connection refused errors (indicating proxy not running).
 
         Uses a cooldown to prevent spamming proxy start attempts.
+
+        v83.0 Fixes:
+        - Uses get_proxy_manager() singleton instead of constructing with dict
+        - Integrates with ProxyReadinessGate for coordinated starts
+        - Cooldown configurable from env (JARVIS_CIRCUIT_BREAKER_PROXY_COOLDOWN)
+        - Proper async scheduling with running loop detection
         """
         try:
+            # Get cooldown from env (no hardcoding)
+            cooldown = float(os.getenv("JARVIS_CIRCUIT_BREAKER_PROXY_COOLDOWN", "60"))
+
             # Check cooldown
             if self._last_proxy_start_attempt:
                 elapsed = (datetime.now() - self._last_proxy_start_attempt).total_seconds()
-                if elapsed < self._proxy_start_cooldown_seconds:
+                if elapsed < cooldown:
                     logger.debug(
-                        f"[v82.0] Proxy start cooldown active ({elapsed:.0f}s / "
-                        f"{self._proxy_start_cooldown_seconds}s)"
+                        f"[v83.0] Proxy start cooldown active ({elapsed:.0f}s / {cooldown}s)"
                     )
                     return
 
             self._last_proxy_start_attempt = datetime.now()
 
-            # Import and try to start proxy
-            from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
-            from pathlib import Path
-            import json
+            # v83.0: Use singleton proxy manager (correct API!)
+            try:
+                from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+            except ImportError:
+                try:
+                    from backend.intelligence.cloud_sql_proxy_manager import get_proxy_manager
+                except ImportError:
+                    logger.debug("[v83.0] Proxy manager not available")
+                    return
 
-            # Load config
-            config_path = Path.home() / ".jarvis" / "config" / "jarvis_config.json"
-            if config_path.exists():
-                with open(config_path) as f:
-                    config = json.load(f)
+            try:
+                proxy_manager = get_proxy_manager()
+            except FileNotFoundError:
+                # Config not found - normal for SQLite-only deployments
+                logger.debug("[v83.0] Proxy config not found, skipping auto-start")
+                return
 
-                proxy_manager = CloudSQLProxyManager(config)
+            if not proxy_manager.is_running():
+                logger.info("[v83.0] 🚀 Auto-starting Cloud SQL proxy...")
 
-                if not proxy_manager.is_running():
-                    logger.info("[v82.0] 🚀 Auto-starting Cloud SQL proxy...")
-
-                    # Start proxy in background (non-blocking)
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Schedule async start
-                        asyncio.create_task(self._async_start_proxy(proxy_manager))
-                    else:
-                        logger.debug("[v82.0] Event loop not running, skipping auto-start")
-                else:
-                    logger.debug("[v82.0] Proxy already running, no auto-start needed")
-                    # Reset connection refused count since proxy is running
-                    self._connection_refused_count = 0
+                # Start proxy in background (non-blocking)
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Schedule async start
+                    asyncio.create_task(self._async_start_proxy(proxy_manager))
+                except RuntimeError:
+                    # No running loop - can't start async
+                    logger.debug("[v83.0] No running event loop, skipping auto-start")
+            else:
+                logger.debug("[v83.0] Proxy already running, no auto-start needed")
+                # Reset connection refused count since proxy is running
+                self._connection_refused_count = 0
 
         except Exception as e:
-            logger.debug(f"[v82.0] Auto-proxy-start failed: {e}")
+            logger.debug(f"[v83.0] Auto-proxy-start failed: {e}")
 
     async def _async_start_proxy(self, proxy_manager) -> None:
-        """Async helper to start proxy without blocking."""
+        """
+        Async helper to start proxy without blocking.
+
+        v83.0: Coordinates with ProxyReadinessGate after successful start.
+        """
         try:
             success = await proxy_manager.start(force_restart=False, max_retries=2)
             if success:
-                logger.info("[v82.0] ✅ Cloud SQL proxy auto-started successfully")
+                logger.info("[v83.0] ✅ Cloud SQL proxy auto-started successfully")
                 self._connection_refused_count = 0
+
+                # v83.0: Notify the readiness gate to verify DB-level connectivity
+                try:
+                    gate = get_readiness_gate()
+                    # Trigger a check - this will verify DB-level not just TCP
+                    await gate.wait_for_ready(timeout=10.0)
+                except Exception as e:
+                    logger.debug(f"[v83.0] Readiness gate check after proxy start: {e}")
             else:
-                logger.warning("[v82.0] ⚠️ Cloud SQL proxy auto-start failed")
+                logger.warning("[v83.0] ⚠️ Cloud SQL proxy auto-start failed")
         except Exception as e:
-            logger.debug(f"[v82.0] Async proxy start error: {e}")
+            logger.debug(f"[v83.0] Async proxy start error: {e}")
 
     def get_state_info(self) -> Dict[str, Any]:
         """Get circuit breaker state information."""

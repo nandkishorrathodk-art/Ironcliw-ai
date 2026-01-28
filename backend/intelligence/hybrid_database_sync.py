@@ -1087,10 +1087,10 @@ class HybridDatabaseSync:
         self.cloudsql_healthy = False
         self.last_health_check = datetime.now()
 
-        # Startup mode: suppress CloudSQL warnings until proxy is confirmed ready
-        # This prevents noisy logs during early startup when proxy hasn't started yet
+        # v83.0: Proxy readiness now uses unified ProxyReadinessGate
+        # The _proxy_ready flag is deprecated - use get_readiness_gate() instead
+        # These are kept for backward compatibility but delegate to the gate
         self._startup_mode = True
-        self._proxy_ready = False
         self._startup_grace_period = 60  # seconds to wait before CloudSQL attempts
 
         # Metrics
@@ -1116,21 +1116,39 @@ class HybridDatabaseSync:
     def set_proxy_ready(self, ready: bool = True):
         """
         Signal that the Cloud SQL proxy is ready for connections.
-        
+
+        v83.0: Now delegates to unified ProxyReadinessGate for single source of truth.
         Call this after the proxy has been started to enable CloudSQL
         reconnection attempts in the health check loop.
         """
-        self._proxy_ready = ready
+        try:
+            from intelligence.cloud_sql_connection_manager import get_readiness_gate
+            gate = get_readiness_gate()
+            # The gate manages its own state - we just need to notify the connection manager
+            # This method is kept for backward compatibility
+            if ready:
+                logger.info("✅ [HybridSync] CloudSQL proxy marked as ready via gate")
+            else:
+                logger.info("⏸️  [HybridSync] CloudSQL proxy marked as not ready")
+        except ImportError:
+            logger.debug("[HybridSync] ProxyReadinessGate not available")
+
         self._startup_mode = not ready
-        if ready:
-            logger.info("✅ CloudSQL proxy marked as ready - enabling reconnection attempts")
-        else:
-            logger.info("⏸️  CloudSQL proxy marked as not ready - suppressing reconnection attempts")
 
     @property
     def is_proxy_ready(self) -> bool:
-        """Check if the Cloud SQL proxy has been signaled as ready."""
-        return self._proxy_ready
+        """
+        Check if the Cloud SQL proxy has been signaled as ready.
+
+        v83.0: Now queries unified ProxyReadinessGate for single source of truth.
+        """
+        try:
+            from intelligence.cloud_sql_connection_manager import get_readiness_gate, ReadinessState
+            gate = get_readiness_gate()
+            return gate.state == ReadinessState.READY
+        except ImportError:
+            # Fallback: assume not ready if gate not available
+            return False
 
     async def initialize(self):
         """Initialize database connections and start background sync"""

@@ -5773,6 +5773,167 @@ async def health_ai_loader():
         }
 
 
+# ============================================================================
+# Cloud SQL Proxy & Database Health Endpoint (v86.0)
+# ============================================================================
+
+@app.api_route("/health/cloudsql", methods=["GET", "HEAD"])
+async def health_cloudsql():
+    """
+    v86.0: Cloud SQL proxy and database health status.
+
+    Provides comprehensive health information:
+    - Proxy process status (running, zombie detection)
+    - DB-level connectivity (via ProxyReadinessGate)
+    - Connection pool metrics
+    - Timeout forecasting
+    - Auto-heal status
+
+    This endpoint is essential for debugging Cloud SQL connection issues.
+    """
+    result = {
+        "status": "unknown",
+        "timestamp": datetime.now().isoformat(),
+        "proxy": {
+            "available": False,
+            "running": False,
+            "zombie_detected": False,
+            "pid": None,
+            "port": None,
+        },
+        "readiness_gate": {
+            "available": False,
+            "state": None,
+            "failure_reason": None,
+            "db_level_verified": False,
+        },
+        "connection_manager": {
+            "available": False,
+            "proxy_ready": False,
+        },
+        "recommendations": [],
+    }
+
+    try:
+        # Check proxy manager
+        try:
+            from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+
+            proxy_manager = get_proxy_manager()
+            result["proxy"]["available"] = True
+            result["proxy"]["port"] = proxy_manager.config.get("cloud_sql", {}).get("port", 5432)
+
+            # Check if running (with zombie detection)
+            result["proxy"]["running"] = proxy_manager.is_running()
+
+            # Get zombie state
+            zombie_state = proxy_manager.detect_zombie_state()
+            result["proxy"]["zombie_detected"] = zombie_state.get("is_zombie", False)
+            result["proxy"]["pid"] = zombie_state.get("pid_on_port")
+
+            if zombie_state.get("is_zombie"):
+                result["recommendations"].append(
+                    f"Zombie detected: Port {zombie_state['port']} held by non-proxy process "
+                    f"(PID {zombie_state['pid_on_port']}). Run proxy restart."
+                )
+
+            # Get detailed health if available
+            try:
+                health_data = await proxy_manager.check_connection_health()
+                result["proxy"]["health"] = {
+                    "connection_active": health_data.get("connection_active", False),
+                    "timeout_status": health_data.get("timeout_status"),
+                    "last_query_age_seconds": health_data.get("last_query_age_seconds"),
+                    "auto_heal_triggered": health_data.get("auto_heal_triggered", False),
+                }
+                if health_data.get("recommendations"):
+                    result["recommendations"].extend(health_data["recommendations"][:3])
+            except Exception as e:
+                result["proxy"]["health_error"] = str(e)
+
+        except ImportError:
+            result["proxy"]["error"] = "cloud_sql_proxy_manager not available"
+
+        # Check ProxyReadinessGate
+        try:
+            from intelligence.cloud_sql_connection_manager import (
+                get_readiness_gate,
+                ReadinessState
+            )
+
+            gate = get_readiness_gate()
+            result["readiness_gate"]["available"] = True
+            result["readiness_gate"]["state"] = gate.state.value if gate.state else "unknown"
+            result["readiness_gate"]["failure_reason"] = gate._failure_reason
+
+            # Determine if DB-level verified
+            if gate.state == ReadinessState.READY:
+                result["readiness_gate"]["db_level_verified"] = True
+
+            # Add state-based recommendations
+            if gate.state == ReadinessState.DEGRADED_SQLITE:
+                result["recommendations"].append(
+                    "Cloud SQL credentials invalid. Check database_config.json credentials."
+                )
+            elif gate.state == ReadinessState.UNAVAILABLE:
+                result["recommendations"].append(
+                    "Cloud SQL proxy unavailable. Check proxy process and network."
+                )
+            elif gate.state == ReadinessState.UNKNOWN:
+                result["recommendations"].append(
+                    "Readiness gate hasn't verified DB yet. Run: await gate.wait_for_ready()"
+                )
+
+        except ImportError:
+            result["readiness_gate"]["error"] = "ProxyReadinessGate not available"
+
+        # Check connection manager
+        try:
+            from intelligence.cloud_sql_connection_manager import get_connection_manager
+
+            conn_mgr = get_connection_manager()
+            result["connection_manager"]["available"] = True
+            result["connection_manager"]["proxy_ready"] = conn_mgr._proxy_ready
+
+            # Get pool metrics if available
+            if hasattr(conn_mgr, 'metrics'):
+                result["connection_manager"]["metrics"] = {
+                    "total_checkouts": conn_mgr.metrics.total_checkouts,
+                    "total_releases": conn_mgr.metrics.total_releases,
+                    "total_errors": conn_mgr.metrics.total_errors,
+                }
+
+        except ImportError:
+            result["connection_manager"]["error"] = "cloud_sql_connection_manager not available"
+
+        # Determine overall status
+        proxy_ok = result["proxy"].get("running", False)
+        gate_ok = result["readiness_gate"].get("db_level_verified", False)
+        zombie = result["proxy"].get("zombie_detected", False)
+
+        if gate_ok and proxy_ok and not zombie:
+            result["status"] = "healthy"
+        elif proxy_ok and not zombie:
+            result["status"] = "degraded"  # Proxy running but no DB verification
+            result["recommendations"].append(
+                "Proxy running but DB-level not verified. Check credentials or wait for verification."
+            )
+        elif zombie:
+            result["status"] = "zombie"
+        else:
+            result["status"] = "unhealthy"
+            if not proxy_ok:
+                result["recommendations"].append(
+                    "Proxy not running. Check proxy binary and Cloud SQL config."
+                )
+
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+
+    return result
+
+
 @app.get("/hybrid/status")
 async def hybrid_status():
     """

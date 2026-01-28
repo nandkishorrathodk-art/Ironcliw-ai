@@ -252,9 +252,11 @@ class ParallelInitializer:
             self._add_component("optimized_intelligence", priority=8, stale_threshold=5.0)
 
         # Cloud SQL proxy - give it more time but not critical for interactive use
+        # v86.0: Now uses ProxyReadinessGate for DB-level verification
         self._add_component("cloud_sql_proxy", priority=10, stale_threshold=45.0)
-        # Learning DB can retry if proxy not ready - moderate threshold
-        self._add_component("learning_database", priority=12, stale_threshold=40.0)
+        # Learning DB depends on cloud_sql_proxy for DB-level readiness
+        # v86.0: Explicit dependency ensures learning_db waits for DB-level gate
+        self._add_component("learning_database", priority=12, stale_threshold=40.0, dependencies=["cloud_sql_proxy"])
 
         # Phase 2: ML Infrastructure (parallel, non-blocking)
         # All these can start simultaneously
@@ -1325,13 +1327,14 @@ class ParallelInitializer:
 
     async def _init_cloud_sql_proxy(self):
         """
-        Initialize Cloud SQL proxy with non-blocking startup and graceful degradation.
+        Initialize Cloud SQL proxy with DB-level readiness verification.
 
-        v2.0 Enhancements:
-        - Non-blocking proxy startup (starts in background, doesn't wait for full readiness)
-        - Graceful degradation to SQLite if proxy fails
-        - Marks connection manager as "starting up" to suppress noisy errors
-        - Signals readiness to connection manager when proxy is confirmed running
+        v86.0 Enhancements:
+        - Uses ProxyReadinessGate for DB-level verification (not just TCP port check)
+        - Performs actual `SELECT 1` query to verify database connectivity
+        - Graceful degradation to SQLite if proxy/DB unavailable
+        - Distinguishes between credential errors vs proxy/network issues
+        - No hardcoded delays - uses proper async readiness gate
         """
         try:
             # Add backend dir to path
@@ -1340,11 +1343,18 @@ class ParallelInitializer:
                 sys.path.insert(0, backend_dir)
 
             from intelligence.cloud_sql_proxy_manager import get_proxy_manager
-            from intelligence.cloud_sql_connection_manager import get_connection_manager
+            from intelligence.cloud_sql_connection_manager import (
+                get_connection_manager,
+                get_readiness_gate,
+                ReadinessState
+            )
 
-            # Get connection manager and signal we're in startup mode
+            # Get connection manager and readiness gate
             conn_mgr = get_connection_manager()
-            conn_mgr.set_proxy_ready(False)  # Suppress connection errors during startup
+            readiness_gate = get_readiness_gate()
+
+            # Signal we're in startup mode (suppress connection errors during startup)
+            conn_mgr.set_proxy_ready(False)
 
             proxy_manager = get_proxy_manager()
             if not proxy_manager.is_running():
@@ -1355,9 +1365,8 @@ class ParallelInitializer:
                         timeout=30.0  # 30s max for proxy startup
                     )
                 except asyncio.TimeoutError:
-                    logger.warning("⚠️ Cloud SQL proxy startup timeout (30s) - will retry in background")
-                    # Continue anyway - proxy might still be starting
-                    pass
+                    logger.warning("⚠️ Cloud SQL proxy startup timeout (30s) - will verify DB-level readiness")
+                    # Continue anyway - proxy might still be starting, gate will verify
 
             # Start health monitor in background (non-blocking, tracked)
             if TASK_MANAGER_AVAILABLE:
@@ -1376,32 +1385,89 @@ class ParallelInitializer:
             # Store in app state
             self.app.state.cloud_sql_proxy_manager = proxy_manager
 
-            # Give proxy a moment to fully initialize, then signal readiness
-            async def signal_proxy_ready():
-                """Signal to connection manager that proxy is ready after brief delay"""
-                await asyncio.sleep(2.0)  # Give proxy time to fully initialize
-                if proxy_manager.is_running():
-                    conn_mgr.set_proxy_ready(True)
-                    logger.info(f"   ✅ Cloud SQL proxy confirmed ready on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}")
-                else:
-                    logger.warning("   ⚠️ Cloud SQL proxy not confirmed running - will use fallback")
+            # v86.0: Use ProxyReadinessGate for DB-level verification
+            # This performs actual SELECT 1 query, not just TCP port check
+            async def verify_db_level_readiness():
+                """
+                Verify DB-level readiness using ProxyReadinessGate.
 
-            # Run readiness signal in background (don't block startup, tracked)
+                This replaces the old TCP-only check with actual database verification.
+                """
+                try:
+                    # Wait for DB-level readiness (SELECT 1 verification)
+                    # Timeout of 30s matches proxy startup timeout
+                    result = await readiness_gate.wait_for_ready(timeout=30.0)
+
+                    if result.state == ReadinessState.READY:
+                        # DB-level verified! Signal readiness
+                        conn_mgr.set_proxy_ready(True)
+                        port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
+                        logger.info(f"   ✅ Cloud SQL DB-level ready on 127.0.0.1:{port} (verified via SELECT 1)")
+                        if result.message:
+                            logger.info(f"      {result.message}")
+
+                    elif result.state == ReadinessState.DEGRADED_SQLITE:
+                        # Credentials issue - fall back to SQLite
+                        logger.warning(f"   ⚠️ Cloud SQL credentials invalid - using SQLite fallback")
+                        logger.warning(f"      Reason: {result.failure_reason or result.message}")
+                        conn_mgr.set_proxy_ready(False)
+
+                    elif result.state == ReadinessState.UNAVAILABLE:
+                        # Proxy/network issue - may recover later
+                        logger.warning(f"   ⚠️ Cloud SQL proxy/network unavailable - using SQLite fallback")
+                        logger.warning(f"      Reason: {result.failure_reason or result.message}")
+                        conn_mgr.set_proxy_ready(False)
+
+                    else:
+                        # Unknown state
+                        logger.warning(f"   ⚠️ Cloud SQL readiness unknown ({result.state}) - using SQLite fallback")
+                        conn_mgr.set_proxy_ready(False)
+
+                except asyncio.TimeoutError:
+                    logger.warning("   ⚠️ Cloud SQL DB-level verification timeout (30s) - using SQLite fallback")
+                    conn_mgr.set_proxy_ready(False)
+
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Cloud SQL readiness check failed: {e}")
+                    conn_mgr.set_proxy_ready(False)
+
+            # Run DB-level readiness verification in background (don't block startup, tracked)
             if TASK_MANAGER_AVAILABLE:
                 task_mgr = get_task_manager()
                 await task_mgr.spawn(
-                    "cloud_sql_proxy_ready_signal",
-                    signal_proxy_ready(),
+                    "cloud_sql_db_level_ready_signal",
+                    verify_db_level_readiness(),
                     priority=TaskPriority.HIGH
                 )
             else:
                 ready_task = asyncio.create_task(
-                    signal_proxy_ready(),
-                    name="cloud_sql_proxy_ready_signal"
+                    verify_db_level_readiness(),
+                    name="cloud_sql_db_level_ready_signal"
                 )
                 self._tasks.append(ready_task)
 
-            logger.info(f"   Cloud SQL proxy starting on 127.0.0.1:{proxy_manager.config['cloud_sql']['port']}")
+            port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
+            logger.info(f"   Cloud SQL proxy starting on 127.0.0.1:{port} (DB-level verification pending)")
+
+        except ImportError as e:
+            # Handle case where cloud_sql_connection_manager doesn't have new APIs yet
+            logger.warning(f"⚠️ ProxyReadinessGate not available ({e}) - using legacy TCP check")
+            # Fall back to legacy behavior
+            try:
+                from intelligence.cloud_sql_proxy_manager import get_proxy_manager
+                from intelligence.cloud_sql_connection_manager import get_connection_manager
+
+                conn_mgr = get_connection_manager()
+                proxy_manager = get_proxy_manager()
+
+                if proxy_manager.is_running():
+                    conn_mgr.set_proxy_ready(True)
+                    logger.info("   ✅ Cloud SQL proxy running (TCP-level only, legacy mode)")
+                else:
+                    conn_mgr.set_proxy_ready(False)
+                    logger.warning("   ⚠️ Cloud SQL proxy not running - using SQLite fallback")
+            except Exception as inner_e:
+                logger.warning(f"⚠️ Legacy fallback also failed: {inner_e}")
 
         except Exception as e:
             logger.warning(f"⚠️ Cloud SQL proxy initialization failed: {e}")
@@ -1412,19 +1478,73 @@ class ParallelInitializer:
 
     async def _init_learning_database(self):
         """
-        Initialize learning database with graceful degradation and retry logic.
+        Initialize learning database with ProxyReadinessGate coordination.
 
-        v2.0 Enhancements:
-        - Retries initialization if proxy isn't ready yet (common during startup)
-        - Gracefully falls back to SQLite if CloudSQL unavailable
-        - Non-blocking initialization with timeout protection (handled by _init_component)
+        v86.0 Enhancements:
+        - Checks ProxyReadinessGate state before attempting CloudSQL connections
+        - No redundant retries if gate already knows CloudSQL is unavailable
+        - Gracefully falls back to SQLite based on gate's determination
+        - Respects credential vs proxy failure distinction from gate
         """
         try:
             from intelligence.learning_database import JARVISLearningDatabase
 
             learning_db = JARVISLearningDatabase()
 
-            # Try initialization with retries (proxy might still be starting)
+            # v86.0: Check ProxyReadinessGate state for smarter initialization
+            try:
+                from intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate,
+                    ReadinessState
+                )
+
+                gate = get_readiness_gate()
+                gate_state = gate.state
+
+                # If gate already determined CloudSQL is unavailable, skip retries
+                if gate_state == ReadinessState.DEGRADED_SQLITE:
+                    logger.info("   ProxyReadinessGate indicates credentials invalid - using SQLite only")
+                    await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
+                    self.app.state.learning_db = learning_db
+                    logger.info("   ✅ Learning database ready (SQLite fallback mode)")
+                    return
+
+                elif gate_state == ReadinessState.UNAVAILABLE:
+                    logger.info("   ProxyReadinessGate indicates proxy unavailable - using SQLite only")
+                    await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
+                    self.app.state.learning_db = learning_db
+                    logger.info("   ✅ Learning database ready (SQLite fallback, proxy may recover)")
+                    return
+
+                elif gate_state == ReadinessState.READY:
+                    # CloudSQL verified ready - initialize with confidence
+                    logger.info("   ProxyReadinessGate confirmed DB-level ready - initializing with CloudSQL")
+                    await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
+                    self.app.state.learning_db = learning_db
+                    logger.info("   ✅ Learning database ready (hybrid CloudSQL + SQLite)")
+                    return
+
+                # Gate state is UNKNOWN or CHECKING - wait briefly then proceed
+                elif gate_state in (ReadinessState.UNKNOWN, ReadinessState.CHECKING):
+                    logger.info(f"   ProxyReadinessGate state is {gate_state.value} - waiting for DB-level verification...")
+
+                    # Wait for gate to reach a final state (max 15s)
+                    try:
+                        result = await gate.wait_for_ready(timeout=15.0)
+
+                        if result.state == ReadinessState.READY:
+                            logger.info(f"   Gate confirmed ready")
+                        else:
+                            logger.info(f"   Gate determined state: {result.state.value} ({result.failure_reason or 'no details'})")
+
+                    except asyncio.TimeoutError:
+                        logger.warning("   Gate verification timeout - proceeding with initialization anyway")
+
+            except ImportError:
+                # ProxyReadinessGate not available - use legacy behavior
+                logger.debug("   ProxyReadinessGate not available - using legacy initialization")
+
+            # Try initialization with retries (only if gate didn't give definitive answer)
             max_retries = 3
             retry_delay = 2.0
 
