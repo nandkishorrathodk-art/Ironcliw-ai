@@ -2199,6 +2199,14 @@ class SupervisorSingleton:
 
         logger.info("[Singleton] Lock released")
 
+        # v116.1: Flush all output streams to prevent interleaving with client process
+        import sys as _sys
+        try:
+            _sys.stdout.flush()
+            _sys.stderr.flush()
+        except Exception:
+            pass
+
     async def start_heartbeat(self) -> None:
         """
         v115.0: Enhanced heartbeat with health level updates and cross-repo status.

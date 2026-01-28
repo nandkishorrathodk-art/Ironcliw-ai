@@ -162,17 +162,29 @@ if _is_cli_mode:
         except (OSError, ValueError):
             pass  # Some signals can't be ignored
 
-    # v122.4: For --restart, the parent process will be killed by signals regardless
-    # of what we do. So instead: launch detached child and EXIT IMMEDIATELY.
-    # The detached child does the actual restart work.
-    if '--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC'):
+    # v122.4: For --restart and --shutdown, the parent process can be killed by signals
+    # regardless of what we do. So instead: launch detached child and EXIT IMMEDIATELY.
+    # The detached child does the actual work in complete isolation.
+    #
+    # v116.2: Extended to --shutdown to prevent exit code 144 (signal 16) during venv switch
+    _needs_detached = (
+        ('--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC')) or
+        ('--shutdown' in _early_sys.argv and not _early_os.environ.get('_JARVIS_SHUTDOWN_REEXEC'))
+    )
+    if _needs_detached:
         import subprocess as _sp
         import tempfile as _tmp
 
-        # Create result file path
-        _result_path = f"/tmp/jarvis_restart_{_early_os.getpid()}.result"
+        # v116.2: Determine which command and set appropriate marker
+        _is_shutdown = '--shutdown' in _early_sys.argv
+        _is_restart = '--restart' in _early_sys.argv
+        _cmd_name = 'shutdown' if _is_shutdown else 'restart'
+        _reexec_marker = '_JARVIS_SHUTDOWN_REEXEC' if _is_shutdown else '_JARVIS_RESTART_REEXEC'
 
-        # Write standalone restart script
+        # Create result file path
+        _result_path = f"/tmp/jarvis_{_cmd_name}_{_early_os.getpid()}.result"
+
+        # Write standalone command script
         _script_content = f'''#!/usr/bin/env python3
 import os, sys, signal, subprocess, time
 
@@ -187,9 +199,9 @@ for s in range(1, 32):
 try: os.setsid()
 except: pass
 
-# Run the actual restart
+# Run the actual command
 env = dict(os.environ)
-env["_JARVIS_RESTART_REEXEC"] = "1"
+env[{_reexec_marker!r}] = "1"
 result = subprocess.run(
     [{_early_sys.executable!r}] + {_early_sys.argv!r},
     cwd={_early_os.getcwd()!r},
@@ -203,7 +215,7 @@ with open({_result_path!r}, "w") as f:
     f.write(result.stdout.decode())
     f.write(result.stderr.decode())
 '''
-        _fd, _script_path = _tmp.mkstemp(suffix='.py', prefix='jarvis_restart_')
+        _fd, _script_path = _tmp.mkstemp(suffix='.py', prefix=f'jarvis_{_cmd_name}_')
         _early_os.write(_fd, _script_content.encode())
         _early_os.close(_fd)
         _early_os.chmod(_script_path, 0o755)
@@ -220,16 +232,16 @@ with open({_result_path!r}, "w") as f:
         # Print message and exit IMMEDIATELY - don't wait for child
         _early_sys.stdout.write(f"\n")
         _early_sys.stdout.write(f"{'='*60}\n")
-        _early_sys.stdout.write(f"  JARVIS Supervisor Restart Initiated\n")
+        _early_sys.stdout.write(f"  JARVIS Supervisor {_cmd_name.title()} Initiated\n")
         _early_sys.stdout.write(f"{'='*60}\n")
-        _early_sys.stdout.write(f"  The restart is running in background.\n")
+        _early_sys.stdout.write(f"  The {_cmd_name} is running in background.\n")
         _early_sys.stdout.write(f"  \n")
         _early_sys.stdout.write(f"  To check status:  python3 run_supervisor.py --status\n")
         _early_sys.stdout.write(f"  Results file:     {_result_path}\n")
         _early_sys.stdout.write(f"{'='*60}\n")
         _early_sys.stdout.flush()
         _early_os._exit(0)  # Use _exit to avoid any cleanup that might hang
-        del _sp, _tmp
+        del _sp, _tmp, _cmd_name, _reexec_marker, _is_shutdown, _is_restart
 
     # Try to create own process group for additional isolation
     try:
@@ -24943,15 +24955,21 @@ async def main() -> int:
 
                 if cmd_result.success:
                     print(f"✅ Shutdown initiated. Supervisor will exit gracefully.")
+                    sys.stdout.flush()  # v116.1: Prevent output interleaving
 
                     # v130.0: Wait and verify cleanup
                     print(f"   Verifying lock cleanup...")
-                    await asyncio.sleep(2.0)
+                    sys.stdout.flush()  # v116.1: Prevent output interleaving
+
+                    # v116.1: Wait longer for supervisor's final output to complete
+                    # This prevents output corruption from supervisor's exit messages
+                    await asyncio.sleep(3.0)
 
                     if await verify_lock_cleanup():
                         print(f"   ✅ Lock files cleaned successfully")
                     else:
                         print(f"   ⚠️  Some lock files may remain - run with --cleanup if needed")
+                    sys.stdout.flush()  # v116.1: Prevent output interleaving
 
                     return 0
                 else:
@@ -25472,4 +25490,9 @@ if __name__ == "__main__":
 
         # v123.3: Force termination if we got here (sys.exit didn't work)
         print(f"[v123.3] Forcing immediate exit with os._exit({exit_code})")
+
+        # v116.1: Flush all output before force exit to prevent corruption
+        sys.stdout.flush()
+        sys.stderr.flush()
+
         _os._exit(exit_code)
