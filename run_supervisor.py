@@ -11744,6 +11744,23 @@ class SupervisorBootstrapper:
                 )
                 print(f"  {TerminalUI.GREEN}✓ CloudSQL Proxy: Ready ({latency_ms:.1f}ms latency){TerminalUI.RESET}")
 
+                # v134.0: Start the ProxyWatchdog for continuous health monitoring
+                try:
+                    from intelligence.cloud_sql_connection_manager import start_proxy_watchdog
+                    await start_proxy_watchdog()
+                    self.logger.info("[v134.0] 🐕 ProxyWatchdog started for continuous monitoring")
+                    print(f"  {TerminalUI.GREEN}✓ ProxyWatchdog: Monitoring active{TerminalUI.RESET}")
+                except ImportError:
+                    try:
+                        from backend.intelligence.cloud_sql_connection_manager import start_proxy_watchdog
+                        await start_proxy_watchdog()
+                        self.logger.info("[v134.0] 🐕 ProxyWatchdog started for continuous monitoring")
+                        print(f"  {TerminalUI.GREEN}✓ ProxyWatchdog: Monitoring active{TerminalUI.RESET}")
+                    except ImportError:
+                        self.logger.debug("[v134.0] ProxyWatchdog not available")
+                except Exception as e:
+                    self.logger.warning(f"[v134.0] ProxyWatchdog start failed: {e}")
+
                 # Signal to AgentRegistry that CloudSQL dependency is ready
                 await self._signal_cloudsql_ready_to_registry()
 

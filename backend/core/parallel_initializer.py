@@ -1406,6 +1406,16 @@ class ParallelInitializer:
                         if result.message:
                             logger.info(f"      {result.message}")
 
+                        # v134.0: Start ProxyWatchdog for aggressive auto-recovery
+                        try:
+                            from intelligence.cloud_sql_connection_manager import start_proxy_watchdog
+                            await start_proxy_watchdog()
+                            logger.info("   🐕 ProxyWatchdog started (10s interval, aggressive auto-recovery)")
+                        except ImportError:
+                            logger.debug("   ProxyWatchdog not available (using legacy 60s monitor)")
+                        except Exception as wd_err:
+                            logger.warning(f"   ProxyWatchdog start failed: {wd_err}")
+
                     elif result.state == ReadinessState.DEGRADED_SQLITE:
                         # Credentials issue - fall back to SQLite
                         logger.warning(f"   ⚠️ Cloud SQL credentials invalid - using SQLite fallback")
