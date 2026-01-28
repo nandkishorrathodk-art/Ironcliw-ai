@@ -573,6 +573,11 @@ class CloudSQLProxyManager:
         """
         Start Cloud SQL proxy with health monitoring and auto-recovery.
 
+        v115.0 Enhancements:
+        - GCP credential bootstrapping before proxy start
+        - Enhanced error logging with credential status
+        - Better retry logic with credential verification
+
         Args:
             force_restart: Kill existing processes and start fresh
             max_retries: Maximum number of startup attempts
@@ -581,6 +586,22 @@ class CloudSQLProxyManager:
             True if started successfully, False otherwise
         """
         last_error = None
+
+        # v115.0: Bootstrap GCP credentials FIRST - proxy needs this to authenticate
+        try:
+            from intelligence.cloud_sql_connection_manager import IntelligentCredentialResolver
+            if not IntelligentCredentialResolver.ensure_gcp_credentials():
+                logger.warning(
+                    "[ProxyManager v115.0] ⚠️ GCP credentials not found. Proxy may fail to authenticate. "
+                    "Run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
+                )
+            else:
+                gcp_creds_path = IntelligentCredentialResolver.get_gcp_credentials_path()
+                logger.info(f"[ProxyManager v115.0] ✅ GCP credentials ready: {gcp_creds_path}")
+        except ImportError:
+            logger.debug("[ProxyManager v115.0] IntelligentCredentialResolver not available")
+        except Exception as e:
+            logger.warning(f"[ProxyManager v115.0] GCP credential bootstrap failed: {e}")
 
         for attempt in range(max_retries):
             try:
@@ -608,7 +629,17 @@ class CloudSQLProxyManager:
                     f"--port={port}",
                 ]
 
-                # Add optional auth if specified in config
+                # v115.0: Add credentials file if available from bootstrap
+                try:
+                    from intelligence.cloud_sql_connection_manager import IntelligentCredentialResolver
+                    gcp_creds = IntelligentCredentialResolver.get_gcp_credentials_path()
+                    if gcp_creds and gcp_creds != "metadata_server" and os.path.exists(gcp_creds):
+                        cmd.append(f"--credentials-file={gcp_creds}")
+                        logger.info(f"   Using credentials: {gcp_creds}")
+                except Exception:
+                    pass
+
+                # Add optional auth if specified in config (legacy support)
                 if "auth_method" in cloud_sql:
                     if cloud_sql["auth_method"] == "service_account":
                         if "service_account_key" in cloud_sql:

@@ -291,7 +291,7 @@ def _load_database_config_for_gate() -> Optional[Dict[str, Any]]:
 
 
 # =============================================================================
-# v114.0: Intelligent Credential Resolution System
+# v115.0: Intelligent Credential Resolution System with GCP Bootstrapping
 # =============================================================================
 # Comprehensive credential management for CloudSQL with:
 # - Multi-source credential resolution (GCP Secret Manager, Keychain, env, file)
@@ -299,6 +299,10 @@ def _load_database_config_for_gate() -> Optional[Dict[str, Any]]:
 # - Credential validation and caching
 # - Automatic refresh on authentication failure
 # - Cross-repo credential synchronization
+# - v115.0: GCP Application Default Credentials bootstrapping
+# - v115.0: Event loop safe pool management
+# - v115.0: Intelligent retry with fresh credentials
+# - v115.0: Proxy-DB connection coordination
 # =============================================================================
 
 class CredentialSource(Enum):
@@ -321,11 +325,12 @@ class CredentialResult:
     error: Optional[str] = None
     cached: bool = False
     resolved_at: float = field(default_factory=time.time)
+    gcp_credentials_path: Optional[str] = None  # v115.0: Track GCP credentials used
 
 
 class IntelligentCredentialResolver:
     """
-    v114.0: Intelligent multi-source credential resolution system.
+    v115.0: Intelligent multi-source credential resolution system with GCP Bootstrapping.
 
     Features:
     - Tries multiple credential sources in priority order
@@ -334,6 +339,10 @@ class IntelligentCredentialResolver:
     - Provides credential validation before use
     - Handles authentication failures with auto-refresh
     - Synchronizes credentials across JARVIS Trinity repos
+    - v115.0: GCP Application Default Credentials bootstrapping
+    - v115.0: Event loop safe credential operations
+    - v115.0: Intelligent retry after credential reload
+    - v115.0: Proxy authentication verification
 
     Priority Order:
     1. IAM Authentication (if enabled and available)
@@ -354,6 +363,126 @@ class IntelligentCredentialResolver:
     # IAM authentication settings
     _iam_auth_enabled = os.getenv("JARVIS_USE_IAM_AUTH", "false").lower() in ("1", "true", "yes")
     _iam_service_account: Optional[str] = os.getenv("JARVIS_IAM_SERVICE_ACCOUNT")
+
+    # v115.0: GCP credentials bootstrapping
+    _gcp_credentials_bootstrapped = False
+    _gcp_credentials_path: Optional[str] = None
+    _retry_count = 0
+    _max_credential_retries = int(os.getenv("JARVIS_MAX_CREDENTIAL_RETRIES", "3"))
+
+    @classmethod
+    def bootstrap_gcp_credentials(cls) -> bool:
+        """
+        v115.0: Bootstrap GCP Application Default Credentials.
+
+        This MUST be called before the Cloud SQL proxy starts. It ensures that
+        GOOGLE_APPLICATION_CREDENTIALS is set to a valid credentials file.
+
+        Search order:
+        1. GOOGLE_APPLICATION_CREDENTIALS env var (if already set and valid)
+        2. ~/.jarvis/gcp/service_account.json (project-specific service account)
+        3. ~/.config/gcloud/application_default_credentials.json (gcloud CLI auth)
+        4. GCP metadata server (if running on GCP)
+
+        Returns:
+            True if credentials are available, False otherwise.
+        """
+        if cls._gcp_credentials_bootstrapped:
+            return cls._gcp_credentials_path is not None
+
+        logger.info("[CredentialResolver v115.0] 🔐 Bootstrapping GCP credentials...")
+
+        # Check if already set
+        existing_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if existing_creds and Path(existing_creds).exists():
+            cls._gcp_credentials_path = existing_creds
+            cls._gcp_credentials_bootstrapped = True
+            logger.info(f"[CredentialResolver v115.0] ✅ Using existing GOOGLE_APPLICATION_CREDENTIALS: {existing_creds}")
+            return True
+
+        # Search for credentials in priority order
+        search_paths = [
+            Path.home() / ".jarvis" / "gcp" / "service_account.json",
+            Path.home() / ".config" / "gcloud" / "application_default_credentials.json",
+            Path("/etc/jarvis/gcp/service_account.json"),  # System-wide
+        ]
+
+        for cred_path in search_paths:
+            if cred_path.exists():
+                try:
+                    # Validate it's a valid JSON file
+                    with open(cred_path) as f:
+                        cred_data = json.load(f)
+
+                    # Check for required fields
+                    cred_type = cred_data.get("type", "")
+                    if cred_type in ("service_account", "authorized_user"):
+                        # Set the environment variable
+                        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred_path)
+                        cls._gcp_credentials_path = str(cred_path)
+                        cls._gcp_credentials_bootstrapped = True
+
+                        logger.info(
+                            f"[CredentialResolver v115.0] ✅ GCP credentials bootstrapped: "
+                            f"{cred_path} (type={cred_type})"
+                        )
+                        return True
+
+                except json.JSONDecodeError:
+                    logger.debug(f"[CredentialResolver v115.0] Invalid JSON: {cred_path}")
+                except Exception as e:
+                    logger.debug(f"[CredentialResolver v115.0] Error reading {cred_path}: {e}")
+
+        # Check if running on GCP (metadata server available)
+        if cls._is_gcp_metadata_available():
+            cls._gcp_credentials_bootstrapped = True
+            cls._gcp_credentials_path = "metadata_server"
+            logger.info("[CredentialResolver v115.0] ✅ Running on GCP - using metadata server credentials")
+            return True
+
+        cls._gcp_credentials_bootstrapped = True
+        logger.warning(
+            "[CredentialResolver v115.0] ⚠️ No GCP credentials found. Cloud SQL proxy may fail to authenticate. "
+            "Run 'gcloud auth application-default login' or provide a service account key."
+        )
+        return False
+
+    @classmethod
+    def _is_gcp_metadata_available(cls) -> bool:
+        """Check if GCP metadata server is available (running on GCP)."""
+        try:
+            import urllib.request
+            import urllib.error
+
+            req = urllib.request.Request(
+                "http://metadata.google.internal/computeMetadata/v1/",
+                headers={"Metadata-Flavor": "Google"}
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
+    @classmethod
+    def get_gcp_credentials_path(cls) -> Optional[str]:
+        """v115.0: Get the path to GCP credentials being used."""
+        if not cls._gcp_credentials_bootstrapped:
+            cls.bootstrap_gcp_credentials()
+        return cls._gcp_credentials_path
+
+    @classmethod
+    def ensure_gcp_credentials(cls) -> bool:
+        """
+        v115.0: Ensure GCP credentials are available for proxy authentication.
+
+        This is a convenience method that bootstraps if needed.
+
+        Returns:
+            True if credentials are available, False otherwise.
+        """
+        if not cls._gcp_credentials_bootstrapped:
+            return cls.bootstrap_gcp_credentials()
+        return cls._gcp_credentials_path is not None
 
     @classmethod
     def get_database_config(cls) -> Optional[Dict[str, Any]]:
@@ -788,49 +917,181 @@ class IntelligentCredentialResolver:
     @classmethod
     def on_authentication_failure(cls) -> None:
         """
-        Handle authentication failure by invalidating cache and triggering re-resolution.
+        v115.0: Handle authentication failure with intelligent retry tracking.
+
+        This method:
+        1. Invalidates the credential cache
+        2. Increments retry counter (for rate limiting)
+        3. Broadcasts invalidation to cross-repo
+        4. Schedules pool invalidation
+        5. Returns whether retry is recommended
 
         Call this when password authentication fails.
         """
+        cls._retry_count += 1
         cls.invalidate_cache()
-        logger.warning(
-            "[CredentialResolver v114.0] 🔄 Authentication failure detected - "
-            "cache invalidated, will try alternate credential sources on next attempt"
-        )
-        # v114.0: Broadcast credential invalidation to cross-repo (fire-and-forget)
+
+        if cls._retry_count >= cls._max_credential_retries:
+            logger.error(
+                f"[CredentialResolver v115.0] ❌ Max credential retries ({cls._max_credential_retries}) exceeded. "
+                "Manual intervention required. Check: "
+                "1) Database password in config/env/secrets "
+                "2) Cloud SQL instance name and connection_name "
+                "3) GCP project permissions"
+            )
+        else:
+            logger.warning(
+                f"[CredentialResolver v115.0] 🔄 Authentication failure #{cls._retry_count} - "
+                f"cache invalidated, will try alternate credential sources "
+                f"({cls._max_credential_retries - cls._retry_count} retries remaining)"
+            )
+
+        # v115.0: Broadcast credential invalidation to cross-repo (fire-and-forget)
         cls._broadcast_credential_invalidated_sync()
-        # v114.0: Schedule pool invalidation (will happen on next event loop iteration)
+        # v115.0: Schedule pool invalidation (will happen on next event loop iteration)
         cls._schedule_pool_invalidation()
+
+    @classmethod
+    def reset_retry_count(cls) -> None:
+        """v115.0: Reset retry counter after successful authentication."""
+        if cls._retry_count > 0:
+            logger.info(f"[CredentialResolver v115.0] ✅ Retry count reset (was {cls._retry_count})")
+            cls._retry_count = 0
+
+    @classmethod
+    def can_retry(cls) -> bool:
+        """v115.0: Check if credential retry is allowed."""
+        return cls._retry_count < cls._max_credential_retries
+
+    @classmethod
+    def get_retry_status(cls) -> Dict[str, Any]:
+        """v115.0: Get current retry status for debugging."""
+        return {
+            "retry_count": cls._retry_count,
+            "max_retries": cls._max_credential_retries,
+            "can_retry": cls.can_retry(),
+            "retries_remaining": max(0, cls._max_credential_retries - cls._retry_count),
+        }
 
     @classmethod
     def _schedule_pool_invalidation(cls) -> None:
         """
-        v114.0: Schedule connection pool invalidation.
+        v115.0: Schedule connection pool invalidation with event loop safety.
 
-        This runs asynchronously to avoid blocking the caller. Uses a background
-        thread with a new event loop to safely invalidate pools.
+        This handles the complex event loop coordination required when:
+        1. Called from the main event loop - schedules via create_task
+        2. Called from a sync context - uses file-based signaling
+        3. Called from a background thread - signals via file
+
+        The key insight is that we CANNOT safely close an asyncpg pool from
+        a different event loop than the one that created it. Instead, we
+        signal the main loop to do the cleanup.
         """
         try:
-            import threading
+            # v115.0: Write signal file for cross-loop pool invalidation
+            # This is safer than trying to manage event loops across threads
+            signal_file = Path.home() / ".jarvis" / "cross_repo" / "pool_invalidation.signal"
+            signal_file.parent.mkdir(parents=True, exist_ok=True)
 
-            def _invalidate():
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            CloudSQLConnectionManager.invalidate_all_pools_on_credential_change()
-                        )
-                    finally:
-                        loop.close()
-                except Exception as e:
-                    logger.debug(f"[CredentialResolver v114.0] Pool invalidation error: {e}")
+            signal_data = {
+                "timestamp": time.time(),
+                "reason": "credential_invalidation",
+                "version": "115.0",
+            }
 
-            thread = threading.Thread(target=_invalidate, daemon=True)
-            thread.start()
+            # Write atomically
+            temp_file = signal_file.with_suffix(".tmp")
+            with open(temp_file, 'w') as f:
+                json.dump(signal_data, f)
+                f.flush()
+                os.fsync(f.fileno())
+            temp_file.rename(signal_file)
+
+            logger.debug("[CredentialResolver v115.0] Pool invalidation signaled via file")
+
+            # Also try to invalidate directly if we're in the right loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context - schedule task on THIS loop
+                asyncio.create_task(
+                    cls._safe_pool_invalidation(),
+                    name="credential_pool_invalidation"
+                )
+            except RuntimeError:
+                # Not in an event loop - signal file will handle it
+                pass
 
         except Exception as e:
-            logger.debug(f"[CredentialResolver v114.0] Failed to schedule pool invalidation: {e}")
+            logger.debug(f"[CredentialResolver v115.0] Failed to schedule pool invalidation: {e}")
+
+    @classmethod
+    async def _safe_pool_invalidation(cls) -> None:
+        """
+        v115.0: Safely invalidate connection pools from the correct event loop.
+
+        This method must be called from the same event loop that created the pools.
+        """
+        try:
+            # Get the global connection manager instance
+            manager = CloudSQLConnectionManager.get_instance()
+            if manager and manager.pool:
+                # Check if pool was created in this loop
+                try:
+                    await manager._close_pool_internal()
+                    manager._is_initialized = False
+                    logger.info("[CredentialResolver v115.0] ✅ Connection pool invalidated safely")
+                except Exception as e:
+                    # If close fails due to loop mismatch, mark for recreation
+                    manager.pool = None
+                    manager._is_initialized = False
+                    logger.debug(f"[CredentialResolver v115.0] Pool marked for recreation: {e}")
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v115.0] Safe pool invalidation error: {e}")
+
+    @classmethod
+    def check_pool_invalidation_signal(cls) -> bool:
+        """
+        v115.0: Check if a pool invalidation was signaled from another context.
+
+        Call this periodically or before acquiring connections to ensure
+        pools are invalidated when credentials change.
+
+        Returns:
+            True if invalidation was signaled and should be processed.
+        """
+        try:
+            signal_file = Path.home() / ".jarvis" / "cross_repo" / "pool_invalidation.signal"
+            if not signal_file.exists():
+                return False
+
+            with open(signal_file) as f:
+                signal_data = json.load(f)
+
+            # Check if signal is recent (within 30 seconds)
+            signal_age = time.time() - signal_data.get("timestamp", 0)
+            if signal_age > 30:
+                # Stale signal, clean up
+                try:
+                    signal_file.unlink()
+                except Exception:
+                    pass
+                return False
+
+            # Clean up the signal file
+            try:
+                signal_file.unlink()
+            except Exception:
+                pass
+
+            logger.info(
+                f"[CredentialResolver v115.0] Pool invalidation signal detected "
+                f"(age={signal_age:.1f}s, reason={signal_data.get('reason')})"
+            )
+            return True
+
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v115.0] Error checking pool invalidation signal: {e}")
+            return False
 
     @classmethod
     def _broadcast_credential_invalidated_sync(cls) -> None:
@@ -1543,12 +1804,29 @@ class ProxyReadinessGate:
 
             last_reason = reason or "proxy"
 
-            # Don't retry on credential failures (Edge Case #11)
+            # v115.0: Handle credential failures with intelligent retry
             if reason == "credentials":
+                # Check if we can retry with fresh credentials
+                if IntelligentCredentialResolver.can_retry():
+                    logger.warning(
+                        f"[ReadinessGate v115.0] 🔄 Credential failure - attempting reload "
+                        f"({IntelligentCredentialResolver.get_retry_status()['retries_remaining']} retries remaining)"
+                    )
+                    # Reload config to get fresh credentials from alternate sources
+                    if self._reload_config():
+                        # Config reloaded successfully, retry immediately
+                        logger.info("[ReadinessGate v115.0] ✅ Config reloaded with fresh credentials, retrying...")
+                        await asyncio.sleep(0.5)  # Brief pause before retry
+                        continue  # Skip backoff, try immediately with new credentials
+                    else:
+                        # Config reload failed
+                        logger.warning("[ReadinessGate v115.0] ❌ Failed to reload credentials from any source")
+
+                # No more retries or reload failed - give up on credentials
                 await self._set_state(
                     ReadinessState.UNAVAILABLE,
                     "credentials",
-                    "Authentication failed - check credentials"
+                    f"Authentication failed after credential reload attempts - check credentials"
                 )
                 return
 
@@ -1611,7 +1889,12 @@ class ProxyReadinessGate:
                 result = await conn.fetchval("SELECT 1")
 
                 if result == 1:
-                    logger.info(f"[ReadinessGate] ✅ DB-level check passed ({host}:{port})")
+                    logger.info(f"[ReadinessGate v115.0] ✅ DB-level check passed ({host}:{port})")
+                    # v115.0: Reset retry count on success
+                    IntelligentCredentialResolver.reset_retry_count()
+                    # v115.0: Save validated credentials to cross-repo cache
+                    if self._db_config.get("password"):
+                        IntelligentCredentialResolver.save_to_cross_repo_cache(self._db_config["password"])
                     return True, None
                 else:
                     return False, "proxy"
