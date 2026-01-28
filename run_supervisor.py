@@ -16030,7 +16030,12 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
     async def _initialize_trinity(self) -> None:
         """
-        v11.0: Initialize PROJECT TRINITY - Unified Cognitive Architecture.
+        v132.0: Initialize PROJECT TRINITY - Unified Cognitive Architecture.
+
+        MAJOR IMPROVEMENT: Parallel initialization with per-operation timeouts.
+        Previously, all operations ran sequentially causing timeout issues.
+        Now independent operations run in parallel for faster startup and
+        better fault tolerance.
 
         This connects JARVIS Body to the Trinity network, enabling:
         - Cross-repo communication (JARVIS ↔ J-Prime ↔ Reactor Core)
@@ -16042,18 +16047,36 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         - JARVIS Body = Execution layer (Computer Use, Vision, Actions)
         - J-Prime = Cognitive layer (Reasoning, Planning, Decisions)
         - Reactor Core = Neural layer (Training, Learning, Optimization)
+
+        Environment Variables:
+        - TRINITY_HEARTBEAT_CHECK_TIMEOUT: Timeout for heartbeat checks (default: 5s)
+        - TRINITY_VOICE_INIT_TIMEOUT: Timeout for voice coordination init (default: 15s)
+        - TRINITY_KNOWLEDGE_INIT_TIMEOUT: Timeout for knowledge indexer init (default: 20s)
+        - TRINITY_CROSSREPO_INIT_TIMEOUT: Timeout for cross-repo system init (default: 30s)
+        - TRINITY_CONNECTOR_INIT_TIMEOUT: Timeout for unified connector init (default: 20s)
+        - TRINITY_HEARTBEAT_SYSTEM_TIMEOUT: Timeout for heartbeat system start (default: 10s)
+        - TRINITY_PARALLEL_INIT: Enable parallel initialization (default: true)
         """
         from pathlib import Path
         import json
 
         try:
             self.logger.info("=" * 60)
-            self.logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection")
+            self.logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection (v132.0 Parallel)")
             self.logger.info("=" * 60)
 
             print(f"  {TerminalUI.CYAN}🔗 PROJECT TRINITY: Connecting distributed architecture...{TerminalUI.RESET}")
 
-            # Ensure Trinity directories exist
+            # v132.0: Configurable per-operation timeouts via environment variables
+            _heartbeat_timeout = float(os.environ.get("TRINITY_HEARTBEAT_CHECK_TIMEOUT", "5.0"))
+            _voice_timeout = float(os.environ.get("TRINITY_VOICE_INIT_TIMEOUT", "15.0"))
+            _knowledge_timeout = float(os.environ.get("TRINITY_KNOWLEDGE_INIT_TIMEOUT", "20.0"))
+            _crossrepo_timeout = float(os.environ.get("TRINITY_CROSSREPO_INIT_TIMEOUT", "30.0"))
+            _connector_timeout = float(os.environ.get("TRINITY_CONNECTOR_INIT_TIMEOUT", "20.0"))
+            _heartbeat_system_timeout = float(os.environ.get("TRINITY_HEARTBEAT_SYSTEM_TIMEOUT", "10.0"))
+            _parallel_enabled = os.environ.get("TRINITY_PARALLEL_INIT", "true").lower() in ("true", "1", "yes")
+
+            # Ensure Trinity directories exist (fast, sync operation)
             trinity_dir = Path.home() / ".jarvis" / "trinity"
             (trinity_dir / "commands").mkdir(parents=True, exist_ok=True)
             (trinity_dir / "heartbeats").mkdir(parents=True, exist_ok=True)
@@ -16061,46 +16084,69 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Generate instance ID
             import time
-            import os
             self._trinity_instance_id = f"jarvis-{os.getpid()}-{int(time.time())}"
 
-            # Check for connected components
+            # v132.0: Run heartbeat checks in parallel
+            async def _check_jprime_heartbeat() -> bool:
+                """Check J-Prime heartbeat - runs in parallel."""
+                jprime_state_files = [
+                    trinity_dir / "components" / "jarvis_prime.json",
+                    trinity_dir / "components" / "j_prime.json",
+                ]
+                for jprime_state_file in jprime_state_files:
+                    if jprime_state_file.exists():
+                        try:
+                            with open(jprime_state_file) as f:
+                                jprime_state = json.load(f)
+                            age = time.time() - jprime_state.get("timestamp", 0)
+                            if age < 30:  # Consider online if heartbeat < 30s old
+                                self.logger.info("   🧠 J-Prime (Mind): ONLINE")
+                                return True
+                        except Exception:
+                            pass
+                return False
+
+            async def _check_reactor_heartbeat() -> bool:
+                """Check Reactor-Core heartbeat - runs in parallel."""
+                reactor_state_file = trinity_dir / "components" / "reactor_core.json"
+                if reactor_state_file.exists():
+                    try:
+                        with open(reactor_state_file) as f:
+                            reactor_state = json.load(f)
+                        age = time.time() - reactor_state.get("timestamp", 0)
+                        if age < 30:
+                            self.logger.info("   ⚡ Reactor Core (Nerves): ONLINE")
+                            return True
+                    except Exception:
+                        pass
+                return False
+
+            # v132.0: Run heartbeat checks in parallel with timeout
             jprime_online = False
             reactor_online = False
 
-            # Check J-Prime heartbeat
-            # v78.1: Support both naming conventions for backwards compatibility
-            jprime_state_files = [
-                trinity_dir / "components" / "jarvis_prime.json",
-                trinity_dir / "components" / "j_prime.json",
-            ]
-            for jprime_state_file in jprime_state_files:
-                if jprime_state_file.exists():
-                    try:
-                        with open(jprime_state_file) as f:
-                            jprime_state = json.load(f)
-                        age = time.time() - jprime_state.get("timestamp", 0)
-                        if age < 30:  # Consider online if heartbeat < 30s old
-                            jprime_online = True
-                            self.logger.info("   🧠 J-Prime (Mind): ONLINE")
-                            break
-                    except Exception:
-                        pass
+            try:
+                if _parallel_enabled:
+                    # Parallel heartbeat checks
+                    jprime_task = asyncio.create_task(_check_jprime_heartbeat())
+                    reactor_task = asyncio.create_task(_check_reactor_heartbeat())
 
-            # Check Reactor Core
-            reactor_state_file = trinity_dir / "components" / "reactor_core.json"
-            if reactor_state_file.exists():
-                try:
-                    with open(reactor_state_file) as f:
-                        reactor_state = json.load(f)
-                    age = time.time() - reactor_state.get("timestamp", 0)
-                    if age < 30:
-                        reactor_online = True
-                        self.logger.info("   ⚡ Reactor Core (Nerves): ONLINE")
-                except Exception:
-                    pass
+                    results = await asyncio.wait_for(
+                        asyncio.gather(jprime_task, reactor_task, return_exceptions=True),
+                        timeout=_heartbeat_timeout
+                    )
+                    jprime_online = results[0] if not isinstance(results[0], Exception) else False
+                    reactor_online = results[1] if not isinstance(results[1], Exception) else False
+                else:
+                    # Sequential fallback
+                    jprime_online = await asyncio.wait_for(_check_jprime_heartbeat(), timeout=_heartbeat_timeout)
+                    reactor_online = await asyncio.wait_for(_check_reactor_heartbeat(), timeout=_heartbeat_timeout)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] Heartbeat checks timed out after {_heartbeat_timeout}s")
+            except Exception as e:
+                self.logger.warning(f"[v132.0] Heartbeat check error: {e}")
 
-            # Write JARVIS Body component state
+            # Write JARVIS Body component state (fast operation, no timeout needed)
             jarvis_state = {
                 "component_type": "jarvis_body",
                 "instance_id": self._trinity_instance_id,
@@ -16121,77 +16167,145 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             components_online = 1 + (1 if jprime_online else 0) + (1 if reactor_online else 0)
 
             # v93.16: Enhanced Trinity voice announcements using the startup narrator
+            # v132.0: Wrapped with timeout protection
             try:
-                from backend.core.supervisor.startup_narrator import get_startup_narrator
-                trinity_narrator = get_startup_narrator()
+                async def _announce_trinity_status():
+                    """Voice announcement - can be slow, has its own timeout."""
+                    try:
+                        from backend.core.supervisor.startup_narrator import get_startup_narrator
+                        trinity_narrator = get_startup_narrator()
 
-                if components_online == 3:
-                    self.logger.info("=" * 60)
-                    self.logger.info("PROJECT TRINITY: FULL DISTRIBUTED MODE")
-                    self.logger.info("   Mind ↔ Body ↔ Nerves: All connected")
-                    self.logger.info("=" * 60)
-                    print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: Full distributed mode (3/3 components){TerminalUI.RESET}")
+                        if components_online == 3:
+                            self.logger.info("=" * 60)
+                            self.logger.info("PROJECT TRINITY: FULL DISTRIBUTED MODE")
+                            self.logger.info("   Mind ↔ Body ↔ Nerves: All connected")
+                            self.logger.info("=" * 60)
+                            print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: Full distributed mode (3/3 components){TerminalUI.RESET}")
 
-                    # v93.16: Use enhanced Trinity complete announcement
-                    startup_duration = (time.time() - self._startup_time) if hasattr(self, '_startup_time') else None
-                    await trinity_narrator.announce_trinity_complete(
-                        mind_online=jprime_online,
-                        body_online=True,  # We're the body
-                        nerves_online=reactor_online,
-                        startup_duration=startup_duration,
-                    )
-                else:
-                    status_parts = ["Body ✓"]
-                    if jprime_online:
-                        status_parts.append("Mind ✓")
-                    if reactor_online:
-                        status_parts.append("Nerves ✓")
+                            startup_duration = (time.time() - self._startup_time) if hasattr(self, '_startup_time') else None
+                            await trinity_narrator.announce_trinity_complete(
+                                mind_online=jprime_online,
+                                body_online=True,
+                                nerves_online=reactor_online,
+                                startup_duration=startup_duration,
+                            )
+                        else:
+                            status_parts = ["Body ✓"]
+                            if jprime_online:
+                                status_parts.append("Mind ✓")
+                            if reactor_online:
+                                status_parts.append("Nerves ✓")
 
-                    self.logger.info(f"   Trinity components: {', '.join(status_parts)}")
-                    print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: {components_online}/3 components online{TerminalUI.RESET}")
+                            self.logger.info(f"   Trinity components: {', '.join(status_parts)}")
+                            print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: {components_online}/3 components online{TerminalUI.RESET}")
 
-                    # v93.16: Use partial Trinity announcement
-                    await trinity_narrator.announce_trinity_complete(
-                        mind_online=jprime_online,
-                        body_online=True,
-                        nerves_online=reactor_online,
-                    )
-            except Exception as narrator_err:
-                self.logger.debug(f"Trinity narrator unavailable: {narrator_err}")
-                # Fallback to basic announcement
-                if components_online == 3:
-                    await self.narrator.speak(
-                        "PROJECT TRINITY connected. Distributed cognitive architecture active.",
-                        wait=False,
-                    )
+                            await trinity_narrator.announce_trinity_complete(
+                                mind_online=jprime_online,
+                                body_online=True,
+                                nerves_online=reactor_online,
+                            )
+                    except Exception as narrator_err:
+                        self.logger.debug(f"Trinity narrator unavailable: {narrator_err}")
+                        if components_online == 3:
+                            await self.narrator.speak(
+                                "PROJECT TRINITY connected. Distributed cognitive architecture active.",
+                                wait=False,
+                            )
 
-            # Broadcast Trinity status to loading server
-            await self._broadcast_trinity_status()
+                await asyncio.wait_for(_announce_trinity_status(), timeout=_voice_timeout)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] Trinity announcement timed out after {_voice_timeout}s - continuing")
+                # Still print status even if voice timed out
+                print(f"  {TerminalUI.GREEN}✓ PROJECT TRINITY: {components_online}/3 components online{TerminalUI.RESET}")
+            except Exception as e:
+                self.logger.warning(f"[v132.0] Trinity announcement error: {e}")
 
-            # v79.1: Initialize Trinity Voice Coordination
-            await self._initialize_trinity_voice_coordination(
-                jprime_online=jprime_online,
-                reactor_online=reactor_online
-            )
+            # v132.0: Run independent sub-initializations in PARALLEL with individual timeouts
+            # This is the key improvement - previously these ran sequentially causing timeouts
 
-            # v88.0: Initialize Trinity Knowledge Indexer
-            await self._initialize_trinity_knowledge_indexer()
+            async def _safe_trinity_subsystem(
+                name: str,
+                coro,
+                timeout: float
+            ) -> tuple[str, bool, str | None]:
+                """
+                Run a Trinity subsystem initialization with timeout and error isolation.
+                Returns (name, success, error_message).
+                """
+                try:
+                    await asyncio.wait_for(coro, timeout=timeout)
+                    self.logger.info(f"[v132.0] ✅ {name} initialized")
+                    return (name, True, None)
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"[v132.0] ⏱️ {name} timed out after {timeout}s")
+                    return (name, False, f"timeout after {timeout}s")
+                except asyncio.CancelledError:
+                    raise  # Don't catch cancellation
+                except Exception as e:
+                    self.logger.warning(f"[v132.0] ❌ {name} failed: {e}")
+                    return (name, False, str(e))
 
-            # v80.0: Initialize Advanced Cross-Repo Loading System
-            if self._v80_enabled:
-                await self._initialize_v80_cross_repo_system(
+            # Build list of subsystem initializations
+            subsystems = [
+                ("Trinity Status Broadcast", self._broadcast_trinity_status(), _voice_timeout),
+                ("Trinity Voice Coordination", self._initialize_trinity_voice_coordination(
                     jprime_online=jprime_online,
                     reactor_online=reactor_online
-                )
+                ), _voice_timeout),
+                ("Trinity Knowledge Indexer", self._initialize_trinity_knowledge_indexer(), _knowledge_timeout),
+            ]
 
-            # v101.0: Initialize UnifiedTrinityConnector with Claude Code-like behaviors
-            # This connects enhanced self-improvement, cross-repo orchestration,
-            # and real-time communication (voice + websocket)
-            await self._initialize_unified_trinity_connector()
+            # Conditionally add v80 cross-repo system
+            if self._v80_enabled:
+                subsystems.append((
+                    "Cross-Repo Loading System",
+                    self._initialize_v80_cross_repo_system(
+                        jprime_online=jprime_online,
+                        reactor_online=reactor_online
+                    ),
+                    _crossrepo_timeout
+                ))
 
-            # v93.16: Start Enterprise-Grade Heartbeat System
-            # This ensures jarvis_body.json and service registry are continuously updated
-            await self._start_trinity_heartbeat_system()
+            # Add remaining subsystems
+            subsystems.extend([
+                ("Unified Trinity Connector", self._initialize_unified_trinity_connector(), _connector_timeout),
+                ("Trinity Heartbeat System", self._start_trinity_heartbeat_system(), _heartbeat_system_timeout),
+            ])
+
+            # v132.0: Run all subsystems in parallel or sequential based on config
+            if _parallel_enabled:
+                self.logger.info(f"[v132.0] Running {len(subsystems)} Trinity subsystems in PARALLEL")
+
+                tasks = [
+                    _safe_trinity_subsystem(name, coro, timeout)
+                    for name, coro, timeout in subsystems
+                ]
+
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Report results
+                succeeded = 0
+                failed = 0
+                for result in results:
+                    if isinstance(result, Exception):
+                        self.logger.warning(f"[v132.0] Subsystem task exception: {result}")
+                        failed += 1
+                    elif result[1]:  # success flag
+                        succeeded += 1
+                    else:
+                        failed += 1
+
+                self.logger.info(f"[v132.0] Trinity subsystems: {succeeded} succeeded, {failed} failed/timed out")
+
+                if failed > 0:
+                    print(f"  {TerminalUI.YELLOW}⚠️ PROJECT TRINITY: {failed} subsystem(s) degraded{TerminalUI.RESET}")
+            else:
+                # Sequential fallback (for debugging or if parallel causes issues)
+                self.logger.info(f"[v132.0] Running {len(subsystems)} Trinity subsystems SEQUENTIALLY")
+                for name, coro, timeout in subsystems:
+                    await _safe_trinity_subsystem(name, coro, timeout)
+
+            self.logger.info("[v132.0] PROJECT TRINITY initialization complete (parallel mode)")
 
         except Exception as e:
             self.logger.warning(f"   ⚠️ PROJECT TRINITY initialization failed: {e}")

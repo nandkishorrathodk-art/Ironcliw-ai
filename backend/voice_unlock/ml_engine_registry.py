@@ -1816,14 +1816,22 @@ class MLEngineRegistry:
         ecapa_wait_timeout: float = None
     ) -> Tuple[bool, str]:
         """
-        Verify that the cloud backend is actually reachable and ECAPA works.
+        v115.0: ROBUST Cloud Backend Verification with Intelligent Polling.
 
-        This is CRITICAL: We must verify the cloud endpoint works BEFORE
-        marking the registry as ready. Otherwise, voice unlock fails with 0% confidence.
+        CRITICAL: Verifies cloud endpoint works BEFORE marking registry as ready.
+        Otherwise, voice unlock fails with 0% confidence.
+
+        ROOT CAUSE FIX v115.0:
+        - Uses SHARED aiohttp session for all polling (prevents connection overhead)
+        - Adaptive polling intervals (fast initially, slower as time passes)
+        - Progressive diagnostics (more verbose logging as timeout approaches)
+        - Handles Cloud Run cold start (30-90s) vs warm response (1-5s)
+        - Cross-repo health state coordination
+        - Circuit breaker pattern for repeated failures
 
         Three-phase verification:
         1. Health check (fast) - verify endpoint is reachable
-        2. Wait for ECAPA ready (optional) - poll until model is loaded
+        2. Wait for ECAPA ready (adaptive) - poll until model is loaded
         3. Test extraction (optional) - verify ECAPA actually works
 
         Args:
@@ -1836,65 +1844,97 @@ class MLEngineRegistry:
         Returns:
             Tuple of (is_ready: bool, reason: str)
         """
-        # ROOT CAUSE FIX: Increase timeouts for Cloud Run cold starts
-        # Cloud Run can take 30-60s for ECAPA cold start, not 15s!
-        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "60.0"))  # INCREASED from 15s to 60s
-        retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "5"))  # INCREASED from 3 to 5
+        import aiohttp
+
+        # v115.0: Configuration with intelligent defaults for Cloud Run cold start
+        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "30.0"))
+        retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
         fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
         test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
 
-        # NEW: Wait for ECAPA to become ready (handles cold starts)
+        # v115.0: Wait for ECAPA with adaptive timeouts
         wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
-        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "120.0"))  # INCREASED from 60s to 120s for cold starts
-        ecapa_poll_interval = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL", "5.0"))  # INCREASED from 3s to 5s (less aggressive)
+        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "90.0"))  # Reduced from 120s - faster feedback
+
+        # v115.0: Adaptive polling intervals
+        poll_interval_initial = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_INITIAL", "2.0"))  # Fast initially
+        poll_interval_max = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_MAX", "10.0"))  # Slow down over time
+        poll_interval_growth = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_GROWTH", "1.5"))  # Growth factor
 
         if not self._cloud_endpoint:
             return False, "Cloud endpoint not configured"
 
-        logger.info(f"🔍 Verifying cloud backend: {self._cloud_endpoint}")
-        logger.info(f"   Wait for ECAPA: {wait_for_ecapa}, Timeout: {ecapa_wait_timeout}s")
-
-        import aiohttp
-
-        # =====================================================================
-        # PHASE 1: Health check with INTELLIGENT ENDPOINT DISCOVERY (v113.0)
-        # =====================================================================
-        # v113.1: Expanded health paths to include actual JARVIS Voice Unlock API
-        # and Trinity/Reactor integration points.
-        health_paths = [
-            "/health",                  # Standard health
-            "/api/voice-unlock/status", # JARVIS Voice Unlock API (CRITICAL FIX)
-            "/api/ml/health",           # Legacy ML API
-            "/healthz",                 # Kubernetes/Cloud Run standard
-            "/v1/models",               # JARVIS-Prime/OpenAI compatible
-            "/"                         # Root fallback
-        ]
         base_url = self._cloud_endpoint.rstrip('/')
-        
+
+        # =====================================================================
+        # v115.0: CHECK CROSS-REPO STATE FIRST (Trinity Coordination)
+        # =====================================================================
+        # If another repo (JARVIS Prime, Reactor Core) has recently verified
+        # Cloud ECAPA, we can skip our own verification and use their result.
+        # This significantly speeds up Trinity startup when multiple repos
+        # start simultaneously.
+        # =====================================================================
+        cross_repo_state = await self._read_cross_repo_ecapa_state()
+        if cross_repo_state:
+            cross_ready = cross_repo_state.get("cloud_ecapa_ready", False)
+            cross_endpoint = cross_repo_state.get("cloud_endpoint", "")
+            cross_source = cross_repo_state.get("source_repo", "unknown")
+            cross_age = time.time() - cross_repo_state.get("timestamp", 0)
+
+            # Only use cross-repo state if it's for the same endpoint
+            if cross_ready and cross_endpoint == self._cloud_endpoint:
+                logger.info(f"✅ [v115.0] Using cross-repo ECAPA state from {cross_source} ({cross_age:.1f}s ago)")
+                self._cloud_verified = True
+                self._cloud_last_verified = cross_repo_state.get("timestamp", time.time())
+                return True, f"Cross-repo verified by {cross_source}"
+            elif not cross_ready:
+                logger.info(f"ℹ️  [v115.0] Cross-repo state from {cross_source}: ECAPA not ready")
+                # Continue with our own verification - the other repo might have timed out
+
+        logger.info(f"🔍 [v115.0] Verifying cloud backend: {base_url}")
+        logger.info(f"   Wait for ECAPA: {wait_for_ecapa}, Max wait: {ecapa_wait_timeout}s")
+
+        # v115.0: Expanded health paths with priority order
+        health_paths = [
+            "/health",                  # Standard health (fastest)
+            "/api/ml/health",           # ML-specific health (has ecapa_ready)
+            "/healthz",                 # Kubernetes/Cloud Run standard
+            "/api/voice-unlock/status", # JARVIS Voice Unlock API
+            "/v1/models",               # JARVIS-Prime/OpenAI compatible
+        ]
+
         # Prevent self-deadlock if checking localhost during startup
         is_localhost = "localhost" in base_url or "127.0.0.1" in base_url or "0.0.0.0" in base_url
         if is_localhost and not self.is_ready:
-             logger.info(f"   Note: Checking local backend {base_url} during startup (may retry)")
+            logger.info(f"   Note: Checking local backend {base_url} during startup")
 
         endpoint_reachable = False
         ecapa_ready = False
         reason = "Unknown error"
         last_health_data = {}
-        working_health_path = None  # Track which path worked
+        working_health_path = None
+        consecutive_failures = 0
+        total_poll_count = 0
+        verification_start = time.time()
 
-        # v109.1: Track if we're getting 404s (service not deployed) vs other errors
-        consecutive_404s = 0
-        max_404s_before_skip = 3  # Increased tolerance for updated path list
+        # =====================================================================
+        # PHASE 1: Health check with INTELLIGENT ENDPOINT DISCOVERY (v115.0)
+        # =====================================================================
+        # v115.0: Use SHARED session for all requests to reduce overhead
+        connector = aiohttp.TCPConnector(
+            limit=10,
+            ttl_dns_cache=300,
+            enable_cleanup_closed=True,
+        )
 
-        for attempt in range(1, retry_count + 1):
-            # v109.1: Try all health paths on first attempt, then stick with working one
-            paths_to_try = [working_health_path] if working_health_path else health_paths
+        async with aiohttp.ClientSession(connector=connector) as session:
+            for attempt in range(1, retry_count + 1):
+                paths_to_try = [working_health_path] if working_health_path else health_paths
 
-            for health_path in paths_to_try:
-                health_endpoint = f"{base_url}{health_path}"
+                for health_path in paths_to_try:
+                    health_endpoint = f"{base_url}{health_path}"
 
-                try:
-                    async with aiohttp.ClientSession() as session:
+                    try:
                         async with session.get(
                             health_endpoint,
                             timeout=aiohttp.ClientTimeout(total=timeout),
@@ -1905,135 +1945,166 @@ class MLEngineRegistry:
                                     data = await response.json()
                                     last_health_data = data
                                     endpoint_reachable = True
-                                    working_health_path = health_path  # Remember this path
+                                    working_health_path = health_path
 
-                                    # Check if ECAPA is already ready
-                                    if data.get("ecapa_ready", False):
-                                        ecapa_ready = True
-                                        load_source = data.get("load_source", "unknown")
-                                        logger.info(f"✅ Cloud ECAPA already ready! Source: {load_source}")
-                                        break
+                                    # v115.0: Enhanced ECAPA detection
+                                    if data.get("ecapa_ready", False) or data.get("status") == "healthy" and "ecapa" in str(data).lower():
+                                        ecapa_ready = data.get("ecapa_ready", False)
+                                        if ecapa_ready:
+                                            load_source = data.get("load_source", "unknown")
+                                            startup_ms = data.get("startup_duration_ms", "N/A")
+                                            logger.info(f"✅ Cloud ECAPA ready on first check! Source: {load_source}, Startup: {startup_ms}ms")
+                                            break
+                                        else:
+                                            status = data.get("status", "unknown")
+                                            logger.info(f"☁️  Endpoint reachable (path: {health_path}), ECAPA initializing (status: {status})")
+                                            break
                                     else:
                                         status = data.get("status", "unknown")
-                                        logger.info(f"☁️  Cloud endpoint reachable (path: {health_path}), ECAPA initializing (status: {status})")
-                                        break  # Exit path loop, proceed to wait phase
+                                        logger.info(f"☁️  Cloud endpoint reachable (path: {health_path}), status: {status}")
+                                        break
 
-                                except Exception:
-                                    # JSON parse failed but HTTP 200 - endpoint reachable
+                                except Exception as json_err:
                                     endpoint_reachable = True
                                     working_health_path = health_path
                                     logger.info(f"✅ Cloud backend responded (non-JSON, path: {health_path})")
                                     break
+
                             elif response.status == 404:
-                                # v109.1: 404 = path not found, try next path
-                                consecutive_404s += 1
                                 logger.debug(f"   Path {health_path} returned 404, trying next...")
-                                continue  # Try next path
+                                continue
+                            elif response.status >= 500:
+                                reason = f"Cloud returned HTTP {response.status}"
+                                logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason} (server error)")
                             else:
                                 reason = f"Cloud returned HTTP {response.status}"
-                                # v109.1: Only log WARNING for server errors (5xx), INFO for client errors
-                                if response.status >= 500:
-                                    logger.warning(f"⚠️ Attempt {attempt}/{retry_count}: {reason}")
-                                else:
-                                    logger.info(f"   Attempt {attempt}/{retry_count}: {reason}")
+                                logger.debug(f"   Attempt {attempt}/{retry_count}: {reason}")
 
-                except asyncio.TimeoutError:
-                    reason = f"Cloud health check timed out after {timeout}s"
-                    logger.info(f"⏱️ Attempt {attempt}/{retry_count}: {reason}")
-                except aiohttp.ClientError as e:
-                    reason = f"Cloud connection error: {e}"
-                    # v109.1: Connection errors are expected when service isn't deployed
-                    logger.info(f"🔌 Attempt {attempt}/{retry_count}: {reason}")
-                except Exception as e:
-                    reason = f"Cloud verification error: {e}"
-                    logger.info(f"   Attempt {attempt}/{retry_count}: {reason}")
+                    except asyncio.TimeoutError:
+                        reason = f"Cloud health check timed out after {timeout}s"
+                        logger.info(f"⏱️ Attempt {attempt}/{retry_count}: {reason}")
+                        consecutive_failures += 1
+                    except aiohttp.ClientError as e:
+                        reason = f"Cloud connection error: {type(e).__name__}: {e}"
+                        logger.info(f"🔌 Attempt {attempt}/{retry_count}: {reason}")
+                        consecutive_failures += 1
+                    except Exception as e:
+                        reason = f"Cloud verification error: {e}"
+                        logger.info(f"   Attempt {attempt}/{retry_count}: {reason}")
+                        consecutive_failures += 1
 
-            # v109.1: If we found a working path or endpoint is reachable, exit retry loop
-            if endpoint_reachable:
-                break
+                if endpoint_reachable:
+                    break
 
-            # v109.1: If all paths returned 404, service likely isn't deployed
-            if consecutive_404s >= len(health_paths):
-                reason = f"Cloud service not available (all health paths returned 404)"
-                logger.info(f"ℹ️  {reason} - falling back to local processing")
-                break  # No point retrying
+                # v115.0: Adaptive backoff
+                if attempt < retry_count:
+                    backoff = min(2 ** (attempt - 1), 5)
+                    logger.debug(f"   Retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
 
-            # Exponential backoff between retries
-            if attempt < retry_count:
-                backoff = min(2 ** (attempt - 1), 5)
-                logger.debug(f"   Retrying in {backoff}s...")
-                await asyncio.sleep(backoff)
+            # =====================================================================
+            # PHASE 2: Wait for ECAPA with ADAPTIVE POLLING (v115.0)
+            # =====================================================================
+            if endpoint_reachable and not ecapa_ready and wait_for_ecapa:
+                logger.info(f"⏳ [v115.0] Waiting for Cloud ECAPA (adaptive polling, max {ecapa_wait_timeout}s)...")
+                wait_start = time.time()
+                current_poll_interval = poll_interval_initial
+                last_status = "unknown"
+                poll_endpoint = f"{base_url}{working_health_path}" if working_health_path else f"{base_url}/health"
 
-        # =====================================================================
-        # PHASE 2: Wait for ECAPA to become ready (handles cold starts)
-        # =====================================================================
-        if endpoint_reachable and not ecapa_ready and wait_for_ecapa:
-            logger.info(f"⏳ Waiting for Cloud ECAPA to initialize (max {ecapa_wait_timeout}s)...")
-            wait_start = time.time()
+                while time.time() - wait_start < ecapa_wait_timeout:
+                    try:
+                        total_poll_count += 1
+                        elapsed = time.time() - wait_start
+                        remaining = ecapa_wait_timeout - elapsed
 
-            # v109.1: Use the working health path discovered in Phase 1
-            poll_endpoint = f"{base_url}{working_health_path}" if working_health_path else f"{base_url}/health"
-
-            while time.time() - wait_start < ecapa_wait_timeout:
-                try:
-                    async with aiohttp.ClientSession() as session:
                         async with session.get(
                             poll_endpoint,
-                            timeout=aiohttp.ClientTimeout(total=timeout),
+                            timeout=aiohttp.ClientTimeout(total=min(timeout, 15.0)),  # Cap individual request timeout
                             headers={"Accept": "application/json"}
                         ) as response:
                             if response.status == 200:
                                 data = await response.json()
                                 last_health_data = data
+                                consecutive_failures = 0  # Reset on success
 
                                 if data.get("ecapa_ready", False):
                                     ecapa_ready = True
-                                    elapsed = time.time() - wait_start
                                     load_source = data.get("load_source", "unknown")
-                                    load_time_ms = data.get("load_time_ms", "N/A")
+                                    load_time_ms = data.get("load_time_ms", data.get("startup_duration_ms", "N/A"))
                                     using_prebaked = data.get("using_prebaked_cache", False)
-                                    logger.info(f"✅ Cloud ECAPA ready after {elapsed:.1f}s wait")
-                                    logger.info(f"   Load source: {load_source}")
-                                    logger.info(f"   Using prebaked cache: {using_prebaked}")
-                                    logger.info(f"   Model load time: {load_time_ms}ms")
+                                    logger.info(f"✅ Cloud ECAPA ready after {elapsed:.1f}s ({total_poll_count} polls)")
+                                    logger.info(f"   Load source: {load_source}, Prebaked: {using_prebaked}")
+                                    if load_time_ms and load_time_ms != "N/A":
+                                        logger.info(f"   Cloud model load time: {load_time_ms}ms")
                                     break
-                                else:
-                                    status = data.get("status", "unknown")
-                                    elapsed = time.time() - wait_start
-                                    remaining = ecapa_wait_timeout - elapsed
-                                    logger.debug(f"   [{elapsed:.0f}s] ECAPA status: {status} (waiting up to {remaining:.0f}s more)")
 
-                except Exception as e:
-                    # v109.1: Changed to DEBUG - health poll errors are common during startup
-                    logger.debug(f"   Health poll error: {e}")
+                                # v115.0: Adaptive logging based on time elapsed
+                                status = data.get("status", data.get("startup_state", "unknown"))
+                                if status != last_status or elapsed > 30:
+                                    if elapsed < 15:
+                                        logger.debug(f"   [{elapsed:.0f}s] ECAPA status: {status} (cold start expected)")
+                                    elif elapsed < 45:
+                                        logger.info(f"   [{elapsed:.0f}s] ECAPA status: {status} (waiting {remaining:.0f}s more)")
+                                    else:
+                                        logger.warning(f"   [{elapsed:.0f}s] ⚠️ ECAPA still not ready: {status} ({remaining:.0f}s remaining)")
+                                    last_status = status
 
-                await asyncio.sleep(ecapa_poll_interval)
+                            elif response.status >= 500:
+                                consecutive_failures += 1
+                                logger.debug(f"   Poll returned HTTP {response.status} (failure #{consecutive_failures})")
+                            else:
+                                logger.debug(f"   Poll returned HTTP {response.status}")
 
-            if not ecapa_ready:
-                elapsed = time.time() - wait_start
-                reason = f"ECAPA not ready after {elapsed:.1f}s wait (last status: {last_health_data.get('status', 'unknown')})"
-                # v109.1: Changed to INFO - this is expected when cloud service isn't deployed
-                logger.info(f"⏱️ {reason}")
+                    except asyncio.TimeoutError:
+                        consecutive_failures += 1
+                        if consecutive_failures >= 3:
+                            logger.warning(f"   [{elapsed:.0f}s] ⚠️ {consecutive_failures} consecutive timeouts")
+                    except aiohttp.ClientError as e:
+                        consecutive_failures += 1
+                        logger.debug(f"   Poll error: {type(e).__name__}")
+                    except Exception as e:
+                        consecutive_failures += 1
+                        logger.debug(f"   Poll error: {e}")
+
+                    # v115.0: Adaptive interval - start fast, slow down over time
+                    await asyncio.sleep(current_poll_interval)
+                    current_poll_interval = min(current_poll_interval * poll_interval_growth, poll_interval_max)
+
+                    # v115.0: Circuit breaker - too many failures means backend is down
+                    if consecutive_failures >= 10:
+                        reason = f"Too many consecutive failures ({consecutive_failures}) - backend appears down"
+                        logger.warning(f"🔌 {reason}")
+                        break
+
+                if not ecapa_ready:
+                    elapsed = time.time() - wait_start
+                    reason = f"ECAPA not ready after {elapsed:.1f}s ({total_poll_count} polls, last status: {last_health_data.get('status', last_health_data.get('startup_state', 'unknown'))})"
+                    logger.info(f"⏱️ {reason}")
+
+        # v115.0: END OF SHARED SESSION SCOPE
+        # =====================================================================
+
+        # v115.0: Calculate total verification time for diagnostics
+        total_verification_time = time.time() - verification_start
 
         # Determine if health check passed
         health_check_passed = endpoint_reachable and ecapa_ready
 
         if not health_check_passed and not ecapa_ready and endpoint_reachable:
-            reason = f"Cloud endpoint reachable but ECAPA not ready after {ecapa_wait_timeout}s"
+            reason = f"Cloud endpoint reachable but ECAPA not ready after {ecapa_wait_timeout}s ({total_poll_count} polls)"
 
         # If health check failed, return early
         if not health_check_passed:
             self._cloud_verified = False
-            # v109.1: Changed from ERROR to INFO - cloud unavailable is a common, expected scenario
-            # The system gracefully falls back to local processing
-            logger.info(f"ℹ️  Cloud ECAPA not available after {retry_count} attempts")
-            logger.debug(f"   Last status: {reason}")
+            logger.info(f"ℹ️  Cloud ECAPA not available ({total_verification_time:.1f}s verification)")
+            logger.info(f"   Reason: {reason}")
             if fallback_enabled:
                 logger.info("🔄 Using local ECAPA processing (cloud fallback enabled)")
             return False, reason
 
         # =====================================================================
-        # PHASE 2: Test actual embedding extraction (ensures ECAPA works)
+        # PHASE 3: Test actual embedding extraction (ensures ECAPA works)
         # =====================================================================
         if test_extraction:
             logger.info("🧪 Testing cloud ECAPA embedding extraction...")
@@ -2097,7 +2168,96 @@ class MLEngineRegistry:
         # No extraction test - just use health check result
         self._cloud_verified = True
         self._cloud_last_verified = time.time()
+
+        # v115.0: Write cross-repo health state for Trinity coordination
+        await self._write_cross_repo_ecapa_state(True, "Cloud backend healthy (extraction test skipped)")
+
         return True, "Cloud backend healthy (extraction test skipped)"
+
+    async def _write_cross_repo_ecapa_state(
+        self,
+        is_ready: bool,
+        reason: str,
+        endpoint: str = None,
+    ) -> None:
+        """
+        v115.0: Write Cloud ECAPA health state for cross-repo coordination.
+
+        This allows JARVIS, JARVIS Prime, and Reactor Core to share the
+        Cloud ECAPA verification result, avoiding redundant verification
+        attempts and improving startup time.
+
+        Args:
+            is_ready: Whether Cloud ECAPA is verified and ready
+            reason: Status message or failure reason
+            endpoint: The cloud endpoint URL (uses self._cloud_endpoint if None)
+        """
+        try:
+            import json
+            from pathlib import Path
+
+            cross_repo_dir = Path.home() / ".jarvis" / "cross_repo"
+            cross_repo_dir.mkdir(parents=True, exist_ok=True)
+
+            state_file = cross_repo_dir / "cloud_ecapa_state.json"
+
+            state = {
+                "cloud_ecapa_ready": is_ready,
+                "cloud_ecapa_verified": self._cloud_verified,
+                "cloud_endpoint": endpoint or self._cloud_endpoint,
+                "timestamp": time.time(),
+                "timestamp_iso": datetime.now().isoformat(),
+                "reason": reason,
+                "source_repo": "jarvis",
+                "pid": os.getpid(),
+                "version": "v115.0",
+            }
+
+            # Atomic write with temp file
+            tmp_file = state_file.with_suffix(".tmp")
+            tmp_file.write_text(json.dumps(state, indent=2))
+            tmp_file.rename(state_file)
+
+            logger.debug(f"[v115.0] Cross-repo ECAPA state written: ready={is_ready}")
+
+        except Exception as e:
+            logger.debug(f"[v115.0] Failed to write cross-repo ECAPA state: {e}")
+
+    async def _read_cross_repo_ecapa_state(self) -> Optional[Dict[str, Any]]:
+        """
+        v115.0: Read Cloud ECAPA health state from cross-repo coordination file.
+
+        If another repo (JARVIS Prime, Reactor Core) has recently verified
+        Cloud ECAPA, we can skip verification and use their result.
+
+        Returns:
+            State dictionary if found and recent (< 60s), None otherwise
+        """
+        try:
+            import json
+            from pathlib import Path
+
+            state_file = Path.home() / ".jarvis" / "cross_repo" / "cloud_ecapa_state.json"
+
+            if not state_file.exists():
+                return None
+
+            state = json.loads(state_file.read_text())
+
+            # Check if state is recent (< 60 seconds old)
+            state_age = time.time() - state.get("timestamp", 0)
+            max_age = float(os.getenv("JARVIS_ECAPA_STATE_MAX_AGE", "60.0"))
+
+            if state_age > max_age:
+                logger.debug(f"[v115.0] Cross-repo ECAPA state too old ({state_age:.1f}s > {max_age}s)")
+                return None
+
+            logger.info(f"[v115.0] Found recent cross-repo ECAPA state from {state.get('source_repo', 'unknown')} ({state_age:.1f}s ago)")
+            return state
+
+        except Exception as e:
+            logger.debug(f"[v115.0] Failed to read cross-repo ECAPA state: {e}")
+            return None
 
     async def _fallback_to_local_ecapa(self, reason: str) -> bool:
         """
