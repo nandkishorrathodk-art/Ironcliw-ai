@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -63,6 +64,9 @@ class AgentRegistry:
     """
     Service discovery and health monitoring for agents.
 
+    v116.0: Now a proper singleton to ensure all components share the same
+    instance and CloudSQL dependency state is consistent across the system.
+
     Features:
     - Dynamic agent registration
     - Capability-based agent discovery
@@ -70,10 +74,15 @@ class AgentRegistry:
     - Load tracking for balancing
     - Automatic offline detection
     - Persistence for recovery
+    - Singleton pattern for consistent state
 
     Usage:
-        registry = AgentRegistry()
+        # Preferred: Use singleton accessor
+        registry = get_agent_registry()
         await registry.start()
+
+        # Legacy (still works, returns singleton)
+        registry = AgentRegistry()
 
         # Register agent
         await registry.register(
@@ -92,12 +101,44 @@ class AgentRegistry:
         health = await registry.get_health("vision_agent")
     """
 
+    # v116.0: Singleton pattern
+    _instance: Optional['AgentRegistry'] = None
+    _instance_lock = threading.Lock()
+
+    def __new__(cls, config: Optional[AgentRegistryConfig] = None) -> 'AgentRegistry':
+        """
+        Singleton pattern - always returns the same instance.
+
+        v116.0: This ensures all components share the same AgentRegistry
+        and CloudSQL dependency state is consistent.
+        """
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    @classmethod
+    def get_instance(cls, config: Optional[AgentRegistryConfig] = None) -> 'AgentRegistry':
+        """
+        v116.0: Explicit singleton accessor.
+
+        Preferred way to get the AgentRegistry instance.
+        """
+        return cls(config)
+
     def __init__(self, config: Optional[AgentRegistryConfig] = None) -> None:
         """Initialize the agent registry.
+
+        v116.0: Only initializes once due to singleton pattern.
 
         Args:
             config: Registry configuration. Uses global config if not provided.
         """
+        # v116.0: Skip re-initialization for singleton
+        if getattr(self, '_initialized', False):
+            return
+
         self.config = config or get_config().agent_registry
 
         # Registered agents: {agent_name: AgentInfo}
@@ -171,7 +212,10 @@ class AgentRegistry:
             os.environ.get("AGENT_DEAD_CONFIRMATION_THRESHOLD", "3")
         )
 
-        logger.info("AgentRegistry initialized (v112.0 - dependency-aware health checks)")
+        # v116.0: Mark as initialized
+        self._initialized = True
+
+        logger.info("AgentRegistry v116.0 initialized (singleton + dependency-aware health checks)")
 
     async def start(self) -> None:
         """Start the registry and health monitoring."""
@@ -1169,3 +1213,31 @@ class AgentRegistry:
             f"offline={self._metrics.currently_offline}"
             f")"
         )
+
+
+# =============================================================================
+# Module-Level Singleton Accessors (v116.0)
+# =============================================================================
+
+
+def get_agent_registry(config: Optional[AgentRegistryConfig] = None) -> AgentRegistry:
+    """
+    Get the singleton AgentRegistry instance.
+
+    v116.0: This is the preferred way to access the AgentRegistry.
+    All callers get the same instance, ensuring consistent dependency
+    state (e.g., CloudSQL readiness) across the system.
+
+    Args:
+        config: Optional configuration (only used on first call)
+
+    Returns:
+        The singleton AgentRegistry instance
+
+    Example:
+        from neural_mesh.registry.agent_registry import get_agent_registry
+
+        registry = get_agent_registry()
+        await registry.register(agent_name="my_agent", ...)
+    """
+    return AgentRegistry.get_instance(config)
