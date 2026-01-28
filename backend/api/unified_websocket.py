@@ -90,7 +90,12 @@ class ConnectionState(Enum):
 
 @dataclass
 class ConnectionHealth:
-    """Real-time health metrics for a WebSocket connection"""
+    """
+    Real-time health metrics for a WebSocket connection
+
+    v126.0: Added robust connection state tracking to prevent
+    sending messages to closed connections (EXC_GUARD fix)
+    """
 
     client_id: str
     websocket: WebSocket
@@ -106,6 +111,13 @@ class ConnectionHealth:
     latency_ms: float = 0.0
     last_error: Optional[str] = None
     recovery_attempts: int = 0
+
+    # v126.0: Connection lifecycle tracking (prevents sending to closed connections)
+    close_sent: bool = False  # True if close message has been sent
+    close_received: bool = False  # True if close message has been received
+    marked_for_removal: bool = False  # True if scheduled for cleanup
+    last_send_error: Optional[str] = None  # Last send error message
+    consecutive_send_failures: int = 0  # Count of consecutive send failures
 
     # Intelligence integration
     uae_context: Optional[Dict] = None
@@ -231,6 +243,198 @@ class UnifiedWebSocketManager:
             f"[UNIFIED-WS] Intelligence engines set: UAE={'✅' if uae else '❌'}, SAI={'✅' if sai else '❌'}, Learning DB={'✅' if learning_db else '❌'}"
         )
 
+    # =========================================================================
+    # v126.0: ROBUST CONNECTION STATE CHECKING & SAFE SENDING
+    # =========================================================================
+
+    def _is_connection_open(self, client_id: str) -> bool:
+        """
+        v126.0: Check if a WebSocket connection is still open and sendable.
+
+        This method prevents the "Cannot call 'send' once a close message
+        has been sent" error by checking multiple layers of connection state.
+
+        Returns:
+            True if connection is open and messages can be sent
+            False if connection is closed, closing, or in error state
+        """
+        # Check 1: Client still registered
+        if client_id not in self.connections:
+            return False
+
+        # Check 2: Health tracking exists
+        health = self.connection_health.get(client_id)
+        if not health:
+            return False
+
+        # Check 3: Not marked for removal or close already sent
+        if health.marked_for_removal or health.close_sent or health.close_received:
+            return False
+
+        # Check 4: Connection state is not disconnected
+        if health.state == ConnectionState.DISCONNECTED:
+            return False
+
+        # Check 5: Too many consecutive failures indicates dead connection
+        if health.consecutive_send_failures >= 3:
+            return False
+
+        # Check 6: WebSocket application state (Starlette-specific)
+        websocket = self.connections.get(client_id)
+        if websocket:
+            try:
+                # Starlette WebSocket has client_state and application_state
+                # client_state: CONNECTING, CONNECTED, DISCONNECTED
+                # application_state: CONNECTING, CONNECTED, DISCONNECTED
+                from starlette.websockets import WebSocketState
+
+                if hasattr(websocket, 'client_state'):
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        logger.debug(
+                            f"[UNIFIED-WS] Connection {client_id} client_state={websocket.client_state}"
+                        )
+                        return False
+
+                if hasattr(websocket, 'application_state'):
+                    if websocket.application_state != WebSocketState.CONNECTED:
+                        logger.debug(
+                            f"[UNIFIED-WS] Connection {client_id} application_state={websocket.application_state}"
+                        )
+                        return False
+            except (ImportError, AttributeError):
+                # Fallback: assume open if we can't check state
+                pass
+
+        return True
+
+    async def _safe_send_json(
+        self,
+        client_id: str,
+        message: Dict[str, Any],
+        mark_failed_on_error: bool = True
+    ) -> bool:
+        """
+        v126.0: Safely send JSON message to a WebSocket connection.
+
+        This method wraps all send operations with proper state checking
+        and error handling to prevent sending to closed connections.
+
+        Args:
+            client_id: The client ID to send to
+            message: The JSON message to send
+            mark_failed_on_error: If True, mark connection for cleanup on error
+
+        Returns:
+            True if message was sent successfully
+            False if send failed or connection was not open
+        """
+        # Pre-flight check: is connection open?
+        if not self._is_connection_open(client_id):
+            logger.debug(
+                f"[UNIFIED-WS] Skipping send to {client_id}: connection not open"
+            )
+            return False
+
+        websocket = self.connections.get(client_id)
+        if not websocket:
+            return False
+
+        health = self.connection_health.get(client_id)
+
+        try:
+            await websocket.send_json(message)
+
+            # Success: reset failure counter
+            if health:
+                health.consecutive_send_failures = 0
+                health.messages_sent += 1
+                health.last_message_time = time.time()
+
+            return True
+
+        except Exception as e:
+            error_msg = str(e)
+
+            # Detect specific close-related errors
+            is_close_error = any(phrase in error_msg.lower() for phrase in [
+                "close message",
+                "connection closed",
+                "websocket is closed",
+                "websocket disconnected",
+                "connection reset",
+                "broken pipe",
+            ])
+
+            if health:
+                health.consecutive_send_failures += 1
+                health.last_send_error = error_msg
+                health.errors += 1
+
+                if is_close_error:
+                    # Mark as closed to prevent future send attempts
+                    health.close_sent = True
+                    health.state = ConnectionState.DISCONNECTED
+
+                    if mark_failed_on_error:
+                        health.marked_for_removal = True
+
+                    logger.debug(
+                        f"[UNIFIED-WS] Connection {client_id} marked as closed: {error_msg}"
+                    )
+                else:
+                    # Log other errors at error level
+                    logger.error(
+                        f"[UNIFIED-WS] Send failed to {client_id}: {error_msg}"
+                    )
+
+            return False
+
+    async def _safe_send_to_health(
+        self,
+        health: ConnectionHealth,
+        message: Dict[str, Any],
+        mark_failed_on_error: bool = True
+    ) -> bool:
+        """
+        v126.0: Safely send JSON message using ConnectionHealth object.
+
+        Convenience wrapper for _safe_send_json using health object directly.
+        """
+        return await self._safe_send_json(
+            health.client_id,
+            message,
+            mark_failed_on_error
+        )
+
+    async def _cleanup_dead_connections(self) -> int:
+        """
+        v126.0: Clean up connections marked for removal.
+
+        Called periodically by health monitoring loop to remove dead connections.
+
+        Returns:
+            Number of connections cleaned up
+        """
+        dead_connections = [
+            client_id
+            for client_id, health in self.connection_health.items()
+            if health.marked_for_removal or health.close_sent
+        ]
+
+        for client_id in dead_connections:
+            try:
+                await self.disconnect(client_id)
+                logger.debug(f"[UNIFIED-WS] Cleaned up dead connection: {client_id}")
+            except Exception as e:
+                logger.warning(f"[UNIFIED-WS] Error cleaning up {client_id}: {e}")
+                # Force removal from dictionaries
+                self.connections.pop(client_id, None)
+                self.connection_health.pop(client_id, None)
+                connection_capabilities.pop(client_id, None)
+                connection_safeguards.pop(client_id, None)
+
+        return len(dead_connections)
+
     async def start_health_monitoring(self):
         """Start intelligent health monitoring"""
         if self.health_monitor_task is None:
@@ -322,7 +526,7 @@ class UnifiedWebSocketManager:
             f"avg health: {avg_health_score:.1f}"
         )
 
-        # Close all connections gracefully
+        # v126.0: Close all connections gracefully using safe sending
         if self.connections:
             logger.info(f"[UNIFIED-WS] Closing {len(self.connections)} active connections...")
 
@@ -334,14 +538,21 @@ class UnifiedWebSocketManager:
             }
 
             for client_id in list(self.connections.keys()):
-                try:
-                    websocket = self.connections[client_id]
-                    await websocket.send_json(shutdown_message)
-                except Exception as e:
-                    logger.debug(f"[UNIFIED-WS] Could not send shutdown message to {client_id}: {e}")
+                # v126.0: Use safe sending to avoid close errors
+                await self._safe_send_json(
+                    client_id,
+                    shutdown_message,
+                    mark_failed_on_error=False  # Don't mark, we're closing anyway
+                )
 
-                # Disconnect
-                await self.disconnect(client_id)
+                # Disconnect (handles cleanup)
+                try:
+                    await self.disconnect(client_id)
+                except Exception as e:
+                    logger.debug(f"[UNIFIED-WS] Error disconnecting {client_id}: {e}")
+                    # Force cleanup
+                    self.connections.pop(client_id, None)
+                    self.connection_health.pop(client_id, None)
 
         # Log final learning data
         if self.learning_db and self.disconnection_patterns:
@@ -356,10 +567,19 @@ class UnifiedWebSocketManager:
         logger.info("[UNIFIED-WS] ✅ Graceful shutdown complete")
 
     async def _health_monitoring_loop(self):
-        """Continuous health monitoring with predictive healing"""
+        """
+        v126.0: Continuous health monitoring with predictive healing and dead connection cleanup.
+
+        Enhanced with:
+        - Pre-check for connection state before processing
+        - Skip connections marked for removal
+        - Periodic cleanup of dead connections
+        """
         # Maximum run time for health monitoring (default: 24 hours, configurable)
         max_run_time = float(os.getenv("TIMEOUT_HEALTH_MONITOR_MAX", "86400.0"))
         start_time = time.time()
+        last_cleanup_time = time.time()
+        cleanup_interval = float(os.getenv("WS_CLEANUP_INTERVAL", "30.0"))  # v126.0
 
         # v95.13: Helper to check both local and global shutdown
         def _is_shutting_down() -> bool:
@@ -382,7 +602,23 @@ class UnifiedWebSocketManager:
 
                 current_time = time.time()
 
+                # v126.0: Periodic cleanup of dead connections
+                if current_time - last_cleanup_time > cleanup_interval:
+                    cleaned = await self._cleanup_dead_connections()
+                    if cleaned > 0:
+                        logger.info(f"[UNIFIED-WS] 🧹 Cleaned up {cleaned} dead connections")
+                    last_cleanup_time = current_time
+
                 for client_id, health in list(self.connection_health.items()):
+                    # v126.0: Skip connections marked for removal or already closed
+                    if health.marked_for_removal or health.close_sent:
+                        continue
+
+                    # v126.0: Pre-check if connection is still open
+                    if not self._is_connection_open(client_id):
+                        health.marked_for_removal = True
+                        continue
+
                     # Check message timeout
                     time_since_message = current_time - health.last_message_time
 
@@ -393,7 +629,8 @@ class UnifiedWebSocketManager:
                             f"state={health.state.value} | "
                             f"score={health.health_score:.1f} | "
                             f"time_since_msg={time_since_message:.1f}s | "
-                            f"latency={health.latency_ms:.1f}ms"
+                            f"latency={health.latency_ms:.1f}ms | "
+                            f"send_failures={health.consecutive_send_failures}"
                         )
 
                     if time_since_message > self.config["message_timeout"]:
@@ -414,7 +651,7 @@ class UnifiedWebSocketManager:
                             # Attempt preventive recovery
                             await self._preventive_recovery(health)
 
-                    # Send periodic pings
+                    # Send periodic pings (v126.0: uses safe sending internally)
                     time_since_ping = current_time - health.last_ping_time
                     if time_since_ping > self.config["ping_interval"]:
                         await self._send_ping(health)
@@ -437,25 +674,66 @@ class UnifiedWebSocketManager:
                 logger.error(f"[UNIFIED-WS] Health monitoring error: {e}", exc_info=True)
 
     async def _send_ping(self, health: ConnectionHealth):
-        """Send ping to check connection health"""
-        try:
-            ping_time = time.time()
-            await health.websocket.send_json({"type": "ping", "timestamp": ping_time})
+        """
+        v126.0: Send ping to check connection health with safe sending.
+
+        Uses _safe_send_to_health to prevent sending to closed connections.
+        Marks connection for removal on consecutive failures.
+        """
+        # v126.0: Pre-flight check - don't ping dead connections
+        if not self._is_connection_open(health.client_id):
+            logger.debug(
+                f"[UNIFIED-WS] Skipping ping to {health.client_id}: connection not open"
+            )
+            # Mark for cleanup if not already
+            if not health.marked_for_removal:
+                health.marked_for_removal = True
+            return
+
+        ping_time = time.time()
+        ping_message = {"type": "ping", "timestamp": ping_time}
+
+        # v126.0: Use safe send to prevent close errors
+        success = await self._safe_send_to_health(
+            health,
+            ping_message,
+            mark_failed_on_error=True
+        )
+
+        if success:
             health.last_ping_time = ping_time
             logger.debug(
                 f"[UNIFIED-WS] 🏓 Sent ping to {health.client_id} | "
                 f"Health: {health.health_score:.1f} | State: {health.state.value}"
             )
-        except Exception as e:
-            logger.error(f"[UNIFIED-WS] ❌ Failed to send ping to {health.client_id}: {e}")
-            health.errors += 1
+        else:
+            # Safe send already logged and marked the connection
             health.health_score = max(0, health.health_score - 10)
+            logger.debug(
+                f"[UNIFIED-WS] Ping failed for {health.client_id} | "
+                f"Failures: {health.consecutive_send_failures} | "
+                f"Marked for removal: {health.marked_for_removal}"
+            )
 
     async def _preventive_recovery(self, health: ConnectionHealth):
-        """Attempt preventive recovery before full disconnection"""
+        """
+        v126.0: Attempt preventive recovery before full disconnection.
+
+        Uses safe sending to prevent errors on closed connections.
+        """
+        # v126.0: Early exit if connection is already dead
+        if not self._is_connection_open(health.client_id):
+            logger.debug(
+                f"[UNIFIED-WS] Skipping recovery for {health.client_id}: connection not open"
+            )
+            health.state = ConnectionState.DISCONNECTED
+            health.marked_for_removal = True
+            return
+
         if health.recovery_attempts >= self.config["max_recovery_attempts"]:
             logger.warning(f"[UNIFIED-WS] Max recovery attempts reached for {health.client_id}")
             health.state = ConnectionState.DISCONNECTED
+            health.marked_for_removal = True
             return
 
         try:
@@ -466,18 +744,17 @@ class UnifiedWebSocketManager:
                 f"[UNIFIED-WS] Attempting preventive recovery for {health.client_id} (attempt {health.recovery_attempts})"
             )
 
-            # Strategy 1: Send wake-up ping
+            # Strategy 1: Send wake-up ping (uses safe sending)
             await self._send_ping(health)
 
-            # Strategy 2: Notify client of degradation
-            await health.websocket.send_json(
-                {
-                    "type": "connection_health",
-                    "state": "degraded",
-                    "health_score": health.health_score,
-                    "message": "Connection health degraded, attempting recovery",
-                }
-            )
+            # Strategy 2: Notify client of degradation (uses safe sending)
+            recovery_msg = {
+                "type": "connection_health",
+                "state": "degraded",
+                "health_score": health.health_score,
+                "message": "Connection health degraded, attempting recovery",
+            }
+            await self._safe_send_to_health(health, recovery_msg, mark_failed_on_error=False)
 
             # Strategy 3: Log pattern to learning database
             if self.config["auto_learning_enabled"] and self.learning_db:
@@ -486,12 +763,19 @@ class UnifiedWebSocketManager:
             # Wait a bit and check if recovery worked
             await asyncio.sleep(2)
 
+            # v126.0: Check if connection died during recovery
+            if health.marked_for_removal or health.close_sent:
+                logger.debug(f"[UNIFIED-WS] Connection {health.client_id} closed during recovery")
+                health.state = ConnectionState.DISCONNECTED
+                return
+
             if health.state == ConnectionState.RECOVERING:
                 # If we received a message during recovery, it worked
                 current_time = time.time()
                 if current_time - health.last_message_time < 3:
                     health.state = ConnectionState.HEALTHY
                     health.health_score = min(100, health.health_score + 30)
+                    health.consecutive_send_failures = 0  # v126.0: Reset failure counter
                     self.metrics["total_recoveries"] += 1
                     logger.info(f"[UNIFIED-WS] ✅ Recovery successful for {health.client_id}")
 
@@ -507,8 +791,16 @@ class UnifiedWebSocketManager:
             health.health_score = max(0, health.health_score - 20)
 
     async def _predictive_healing(self, health: ConnectionHealth):
-        """UAE-powered predictive healing to prevent disconnections"""
+        """
+        v126.0: UAE-powered predictive healing to prevent disconnections.
+
+        Uses safe sending to prevent errors on closed connections.
+        """
         if not self.uae_engine:
+            return
+
+        # v126.0: Skip if connection is already dead
+        if not self._is_connection_open(health.client_id):
             return
 
         try:
@@ -523,6 +815,7 @@ class UnifiedWebSocketManager:
                 "reconnections": health.reconnections,
                 "connection_duration": time.time() - health.connection_time,
                 "time_since_message": time.time() - health.last_message_time,
+                "consecutive_send_failures": health.consecutive_send_failures,  # v126.0
             }
 
             # Ask UAE to predict disconnection risk
@@ -538,13 +831,15 @@ class UnifiedWebSocketManager:
 
                 if strategy == "immediate_reconnect":
                     await self._notify_uae("immediate_reconnect_needed", health)
-                    # Notify client to prepare for reconnection
-                    await health.websocket.send_json(
+                    # v126.0: Use safe sending for reconnection advisory
+                    await self._safe_send_to_health(
+                        health,
                         {
                             "type": "reconnection_advisory",
                             "reason": "predictive_healing",
                             "message": "Connection instability detected, please standby",
-                        }
+                        },
+                        mark_failed_on_error=True
                     )
                 elif strategy == "increase_pings":
                     # Temporarily increase ping frequency
@@ -553,13 +848,15 @@ class UnifiedWebSocketManager:
                         f"[UNIFIED-WS] Increased ping frequency to {self.config['ping_interval']}s"
                     )
                 elif strategy == "reduce_load":
-                    # Notify client to reduce message frequency
-                    await health.websocket.send_json(
+                    # v126.0: Use safe sending for optimization message
+                    await self._safe_send_to_health(
+                        health,
                         {
                             "type": "connection_optimization",
                             "action": "reduce_load",
                             "message": "Optimizing connection performance",
-                        }
+                        },
+                        mark_failed_on_error=False
                     )
 
                 # Log prediction to learning database
@@ -1885,23 +2182,39 @@ class UnifiedWebSocketManager:
         }
 
     async def broadcast(self, message: Dict[str, Any], capability: Optional[str] = None):
-        """Broadcast message to all connected clients or those with specific capability"""
+        """
+        v126.0: Broadcast message to all connected clients with safe sending.
+
+        Uses _safe_send_json to prevent sending to closed connections.
+        Automatically marks failed connections for cleanup.
+        """
         disconnected = []
 
-        for client_id, websocket in self.connections.items():
+        # v126.0: Iterate over a copy of keys to avoid modification during iteration
+        for client_id in list(self.connections.keys()):
             # Skip if capability filter is set and client doesn't have it
             if capability and capability not in connection_capabilities.get(client_id, set()):
                 continue
 
-            try:
-                await websocket.send_json(message)
-            except Exception as e:
-                logger.error(f"Failed to send to {client_id}: {e}")
+            # v126.0: Use safe sending to prevent close errors
+            success = await self._safe_send_json(
+                client_id,
+                message,
+                mark_failed_on_error=True
+            )
+
+            if not success:
                 disconnected.append(client_id)
 
         # Clean up disconnected clients
         for client_id in disconnected:
-            await self.disconnect(client_id)
+            try:
+                await self.disconnect(client_id)
+            except Exception as e:
+                logger.debug(f"[UNIFIED-WS] Error during broadcast cleanup of {client_id}: {e}")
+                # Force cleanup
+                self.connections.pop(client_id, None)
+                self.connection_health.pop(client_id, None)
 
     # Handler implementations
 

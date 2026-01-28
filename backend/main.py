@@ -1820,7 +1820,16 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         # Transition to INITIALIZING
         await readiness_manager.mark_initializing()
         logger.info("📊 [v95.3] ReadinessStateManager: INITIALIZING phase")
-        
+
+        # v2.0: EARLY INLINE READINESS - Mark websocket ready if already mounted
+        # Routes are mounted during app construction (before lifespan), so check now
+        if getattr(app.state, 'websocket_mounted', False):
+            try:
+                await readiness_manager.mark_component_ready("websocket", healthy=True)
+                logger.info("📊 [v2.0] websocket marked READY (early in lifespan)")
+            except Exception as rm_err:
+                logger.debug(f"Could not mark websocket ready: {rm_err}")
+
     except ImportError:
         logger.debug("ReadinessStateManager not available - using legacy health checks")
     except Exception as e:
@@ -1847,6 +1856,15 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         # Also start self-heartbeat loop
         await registry.start_cleanup_task()
         logger.info("💓 [v95.2] jarvis-body heartbeat loop started")
+
+        # v2.0: INLINE READINESS - Mark service_registry as ready NOW
+        # This is a CRITICAL component, marking it ready helps auto-transition
+        if readiness_manager:
+            try:
+                await readiness_manager.mark_component_ready("service_registry", healthy=True)
+                logger.info("📊 [v2.0] service_registry marked READY (inline)")
+            except Exception as rm_err:
+                logger.debug(f"Could not mark service_registry ready: {rm_err}")
 
     except ImportError:
         logger.debug("Service registry not available - skipping early registration")
@@ -3619,40 +3637,55 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         app.state.trinity_initialized = False
 
     # =================================================================
-    # v95.3: READINESS STATE MANAGER - Transition to READY
+    # v2.0: READINESS STATE MANAGER - Final Readiness Check
     # =================================================================
-    # Mark critical components as ready and transition to READY phase.
-    # This enables /health/ready to return 200 OK once initialization completes.
+    # v2.0 ENHANCEMENT: Critical components marked ready INLINE during init.
+    # System auto-transitions to READY when all CRITICAL components ready.
+    # This section now handles OPTIONAL/IMPORTANT components and fallback.
     # =================================================================
     if readiness_manager:
         try:
-            # Mark components that have been initialized as ready
-            # WebSocket routes are registered by now
-            await readiness_manager.mark_component_ready("websocket", healthy=True)
-            
-            # Service registry was initialized early
-            await readiness_manager.mark_component_ready("service_registry", healthy=True)
-            
-            # Mark Trinity based on initialization status
+            # v2.0: Check if auto-transition already happened
+            already_ready = readiness_manager.state.is_ready
+
+            if already_ready:
+                logger.info("📊 [v2.0] System already READY via auto-transition")
+            else:
+                # Fallback: Explicitly mark critical components if not already ready
+                # (This handles edge cases where inline marking failed)
+                logger.info("📊 [v2.0] Auto-transition didn't happen - marking components explicitly")
+
+                if "websocket" in readiness_manager.state.components:
+                    comp = readiness_manager.state.components["websocket"]
+                    if not comp.is_ready:
+                        await readiness_manager.mark_component_ready("websocket", healthy=True)
+
+                if "service_registry" in readiness_manager.state.components:
+                    comp = readiness_manager.state.components["service_registry"]
+                    if not comp.is_ready:
+                        await readiness_manager.mark_component_ready("service_registry", healthy=True)
+
+            # Mark OPTIONAL/IMPORTANT components based on initialization status
+            # (These don't block readiness but help with HEALTHY state)
             if trinity_initialized:
                 await readiness_manager.mark_component_ready("trinity", healthy=True)
-            
-            # Mark Neural Mesh if available
+
             if hasattr(app.state, 'neural_mesh_initialized') and app.state.neural_mesh_initialized:
                 await readiness_manager.mark_component_ready("neural_mesh", healthy=True)
-            
-            # Mark Voice Unlock if available  
+
             if hasattr(app.state, 'voice_unlock') and app.state.voice_unlock.get("initialized", False):
                 await readiness_manager.mark_component_ready("voice_unlock", healthy=True)
-            
+
             # Ghost proxies and ML engine are marked as "in progress" - they may still be warming
-            # They're marked IMPORTANT not CRITICAL so they won't block readiness
             await readiness_manager.update_component_progress("ghost_proxies", 50.0)
             await readiness_manager.update_component_progress("ml_engine", 50.0)
-            
-            # Transition to READY phase - this enables /health/ready to return 200
-            await readiness_manager.mark_ready()
-            logger.info("📊 [v95.3] ReadinessStateManager: READY phase - system accepting traffic")
+
+            # v2.0: Explicit transition only if auto-transition didn't happen
+            if not readiness_manager.state.is_ready:
+                await readiness_manager.mark_ready()
+                logger.info("📊 [v2.0] ReadinessStateManager: READY phase (explicit fallback)")
+
+            logger.info("📊 [v2.0] ReadinessStateManager: System accepting traffic")
             
             elapsed = time.time() - start_time
             logger.info(f"🎉 JARVIS fully initialized in {elapsed:.1f}s - /health/ready returns 200 OK")
@@ -6462,6 +6495,10 @@ def mount_routers():
 
         app.include_router(unified_ws_router, tags=["websocket"])
         logger.info("✅ Unified WebSocket API mounted at /ws")
+
+        # v2.0: Flag that WebSocket is mounted - readiness will be marked in lifespan
+        app.state.websocket_mounted = True
+
     except ImportError as e:
         logger.warning(f"Could not import unified WebSocket router: {e}")
 
