@@ -24102,6 +24102,13 @@ v116.0 Intelligent Startup Behavior:
         help="Run comprehensive zombie cleanup and exit (v109.7)"
     )
 
+    # v130.0: Force cleanup for completely hung supervisors
+    parser.add_argument(
+        "--force-cleanup",
+        action="store_true",
+        help="Force cleanup of all lock files and kill hung supervisors (v130.0)"
+    )
+
     # v119.0: Cross-repo coordination is ENABLED BY DEFAULT
     # Use --no-connect-repos to disable
     parser.add_argument(
@@ -24564,9 +24571,18 @@ async def main() -> int:
             pass
 
     # =========================================================================
-    # v116.0: INTELLIGENT SINGLETON MANAGEMENT - Smart startup with takeover
+    # v130.0: INTELLIGENT SINGLETON MANAGEMENT WITH UNIFIED COMMAND HANDLER
     # =========================================================================
-    # Enhanced from v110.0 to support intelligent restart/takeover modes:
+    # Enhanced from v116.0 to support:
+    # - Automatic stale lock cleanup BEFORE any command
+    # - Combined command support (--restart --status)
+    # - Atomic lock cleanup with race condition prevention
+    # - Force cleanup for hung supervisors
+    # - Pre-command stale lock detection
+    # - Cross-repo integration
+    # - Comprehensive error handling
+    #
+    # Commands:
     # - --status: Just check status and exit
     # - --shutdown: Request graceful shutdown of running supervisor
     # - --restart: Request restart of running supervisor (no new instance)
@@ -24575,8 +24591,14 @@ async def main() -> int:
     # - --auto (default): Intelligent decision based on situation
     # =========================================================================
     if _SINGLETON_AVAILABLE:
-        # v116.0: Use async version since we're in async context
-        from backend.core.supervisor_singleton import send_supervisor_command
+        # v130.0: Import unified command handler
+        from backend.core.supervisor_singleton import (
+            send_supervisor_command,
+            cleanup_stale_locks,
+            execute_command_with_cleanup,
+            execute_combined_commands,
+            verify_lock_cleanup,
+        )
 
         async def send_ipc_command(cmd: str, timeout: float = 5.0) -> dict:
             """Helper to send IPC command with error handling."""
@@ -24584,6 +24606,13 @@ async def main() -> int:
                 return await send_supervisor_command(cmd, timeout=timeout)
             except Exception as e:
                 return {"success": False, "error": str(e)}
+
+        # v130.0: Pre-command stale lock cleanup
+        # This ensures we start with a clean slate for all operations
+        cleanup_result = await cleanup_stale_locks(force=False, cross_repo=True)
+        if cleanup_result.cleaned_lock or cleanup_result.cleaned_socket:
+            print(f"   [v130.0] Cleaned stale resources: lock={cleanup_result.cleaned_lock}, "
+                  f"socket={cleanup_result.cleaned_socket}, pid={cleanup_result.stale_pid}")
 
         is_running, existing_state = is_supervisor_running()
 
@@ -24679,20 +24708,108 @@ async def main() -> int:
                 return 1
 
         # =====================================================================
+        # Handle --force-cleanup: Force cleanup of ALL lock files (v130.0)
+        # Use when supervisor is completely hung and normal cleanup fails
+        # =====================================================================
+        if hasattr(args, 'force_cleanup') and args.force_cleanup:
+            from backend.core.supervisor_singleton import (
+                force_cleanup_hung_supervisor,
+                SUPERVISOR_LOCK_FILE,
+                SUPERVISOR_STATE_FILE,
+                SUPERVISOR_IPC_SOCKET,
+            )
+
+            print(f"\n{'='*70}")
+            print(f"🔨 JARVIS FORCE CLEANUP v130.0")
+            print(f"{'='*70}")
+            print(f"   This will forcibly clean all lock files and kill hung processes.")
+            print(f"{'='*70}\n")
+
+            try:
+                result = await force_cleanup_hung_supervisor(timeout=15.0)
+
+                print(f"\n{'='*70}")
+                print(f"📊 FORCE CLEANUP RESULTS")
+                print(f"{'='*70}")
+                print(f"   Success:        {result.success}")
+                print(f"   Cleaned lock:   {result.cleaned_lock}")
+                print(f"   Cleaned socket: {result.cleaned_socket}")
+                print(f"   Cleaned state:  {result.cleaned_state}")
+                if result.stale_pid:
+                    print(f"   Stale PID:      {result.stale_pid}")
+                print(f"   Reason:         {result.reason}")
+                print(f"   Duration:       {result.duration_ms:.1f}ms")
+                if result.error:
+                    print(f"   Error:          {result.error}")
+
+                # Verify cleanup
+                files_remaining = []
+                for f in [SUPERVISOR_LOCK_FILE, SUPERVISOR_STATE_FILE, SUPERVISOR_IPC_SOCKET]:
+                    if f.exists():
+                        files_remaining.append(str(f.name))
+
+                if files_remaining:
+                    print(f"\n   ⚠️  Files still present: {', '.join(files_remaining)}")
+                else:
+                    print(f"\n   ✅ All lock files cleaned successfully")
+
+                print(f"{'='*70}\n")
+                return 0 if result.success else 1
+
+            except Exception as e:
+                print(f"❌ Force cleanup failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return 1
+
+        # =====================================================================
         # Handle --shutdown: Request graceful shutdown of running supervisor
+        # v130.0: Enhanced with automatic cleanup and verification
         # =====================================================================
         if args.shutdown:
             if is_running and existing_state:
                 print(f"\n🔄 Requesting graceful shutdown of supervisor (PID {existing_state.get('pid')})...")
-                result = await send_ipc_command('shutdown', timeout=10.0)
-                if result.get('success') or result.get('shutdown_initiated'):
+
+                # v130.0: Use unified command handler with verification
+                cmd_result = await execute_command_with_cleanup(
+                    command='shutdown',
+                    timeout=10.0,
+                    auto_cleanup=False,  # Already cleaned above
+                    verify=True
+                )
+
+                if cmd_result.success:
                     print(f"✅ Shutdown initiated. Supervisor will exit gracefully.")
+
+                    # v130.0: Wait and verify cleanup
+                    print(f"   Verifying lock cleanup...")
+                    await asyncio.sleep(2.0)
+
+                    if await verify_lock_cleanup():
+                        print(f"   ✅ Lock files cleaned successfully")
+                    else:
+                        print(f"   ⚠️  Some lock files may remain - run with --cleanup if needed")
+
                     return 0
                 else:
-                    print(f"❌ Failed to initiate shutdown: {result.get('error', 'unknown')}")
+                    error = cmd_result.error or cmd_result.response.get('error', 'unknown')
+                    print(f"❌ Failed to initiate shutdown: {error}")
+
+                    # v130.0: Try force cleanup if normal shutdown failed
+                    if args.force:
+                        print(f"   Attempting force cleanup...")
+                        force_result = await cleanup_stale_locks(force=True)
+                        if force_result.success:
+                            print(f"   ✅ Force cleanup successful")
+                            return 0
+
                     return 1
             else:
+                # v130.0: Clean any stale locks even if no supervisor running
                 print(f"⚪ No supervisor running to shut down.")
+                cleanup_result = await cleanup_stale_locks(force=True)
+                if cleanup_result.cleaned_lock or cleanup_result.cleaned_socket:
+                    print(f"   Cleaned stale resources from previous session")
                 return 0
 
         # =====================================================================

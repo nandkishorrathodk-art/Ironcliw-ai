@@ -741,7 +741,7 @@ class GCPVMManager:
             "config": self.config.to_dict() if hasattr(self.config, 'to_dict') else {"enabled": self.enabled},
             "stats": self.stats,
             "circuit_breakers": {
-                name: {"state": cb._state, "failures": cb._failure_count}
+                name: {"state": str(cb.state), "failures": cb.failure_count}
                 for name, cb in self._circuit_breakers.items()
             },
         }

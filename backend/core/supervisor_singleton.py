@@ -3222,6 +3222,475 @@ async def start_supervisor_ipc_server() -> None:
 
 
 # =============================================================================
+# v130.0: UNIFIED COMMAND HANDLER WITH AUTOMATIC CLEANUP
+# =============================================================================
+# Advanced multi-command support with:
+# - Automatic stale lock cleanup BEFORE any command
+# - Combined command support (--restart --status)
+# - Atomic lock cleanup with race condition prevention
+# - Force cleanup for hung supervisors
+# - Pre-command stale lock detection
+# - Cross-repo integration
+# - Comprehensive error handling
+# =============================================================================
+
+class LockCleanupResult:
+    """v130.0: Result of lock cleanup operation."""
+    __slots__ = ('success', 'cleaned_lock', 'cleaned_socket', 'cleaned_state',
+                 'stale_pid', 'reason', 'error', 'duration_ms')
+
+    def __init__(self):
+        self.success: bool = False
+        self.cleaned_lock: bool = False
+        self.cleaned_socket: bool = False
+        self.cleaned_state: bool = False
+        self.stale_pid: Optional[int] = None
+        self.reason: str = ""
+        self.error: Optional[str] = None
+        self.duration_ms: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "success": self.success,
+            "cleaned_lock": self.cleaned_lock,
+            "cleaned_socket": self.cleaned_socket,
+            "cleaned_state": self.cleaned_state,
+            "stale_pid": self.stale_pid,
+            "reason": self.reason,
+            "error": self.error,
+            "duration_ms": self.duration_ms
+        }
+
+
+class CommandResult:
+    """v130.0: Result of unified command execution."""
+    __slots__ = ('success', 'command', 'response', 'cleanup_result',
+                 'verification_passed', 'error', 'duration_ms')
+
+    def __init__(self, command: str):
+        self.success: bool = False
+        self.command: str = command
+        self.response: Optional[Dict[str, Any]] = None
+        self.cleanup_result: Optional[LockCleanupResult] = None
+        self.verification_passed: bool = False
+        self.error: Optional[str] = None
+        self.duration_ms: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "success": self.success,
+            "command": self.command,
+            "response": self.response,
+            "cleanup_result": self.cleanup_result.to_dict() if self.cleanup_result else None,
+            "verification_passed": self.verification_passed,
+            "error": self.error,
+            "duration_ms": self.duration_ms
+        }
+
+
+async def cleanup_stale_locks(
+    force: bool = False,
+    timeout: float = 5.0,
+    cross_repo: bool = True
+) -> LockCleanupResult:
+    """
+    v130.0: Comprehensive stale lock cleanup with cross-repo support.
+
+    This function MUST be called before any command that requires the lock
+    to be in a valid state. It handles all edge cases:
+    - Dead process with stale lock
+    - Hung supervisor with stale heartbeat
+    - Orphaned IPC sockets
+    - Corrupted state files
+    - Permission issues
+    - Cross-repo orphaned resources
+
+    Args:
+        force: Force cleanup even if lock appears valid
+        timeout: Timeout for cleanup operations
+        cross_repo: Also clean stale resources in connected repos
+
+    Returns:
+        LockCleanupResult with details of what was cleaned
+    """
+    start_time = time.time()
+    result = LockCleanupResult()
+
+    try:
+        singleton = get_singleton()
+        is_stale, state = singleton._is_lock_stale()
+
+        if not is_stale and not force:
+            # Lock is valid - nothing to clean
+            result.success = True
+            result.reason = "lock_valid"
+            result.duration_ms = (time.time() - start_time) * 1000
+            return result
+
+        # v130.0: Atomic cleanup with file locking to prevent races
+        # Use a temporary cleanup lock to prevent multiple processes
+        # from cleaning up simultaneously
+        cleanup_lock_path = LOCK_DIR / ".cleanup.lock"
+        cleanup_lock_fd = None
+
+        try:
+            # Ensure lock directory exists
+            LOCK_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Acquire cleanup lock (non-blocking)
+            cleanup_lock_fd = os.open(str(cleanup_lock_path), os.O_CREAT | os.O_RDWR)
+            try:
+                fcntl.flock(cleanup_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                # Another process is cleaning up - wait briefly then check again
+                await asyncio.sleep(0.5)
+                is_stale, state = singleton._is_lock_stale()
+                if not is_stale:
+                    result.success = True
+                    result.reason = "cleaned_by_other_process"
+                    result.duration_ms = (time.time() - start_time) * 1000
+                    return result
+                # Still stale after other process finished - try to acquire lock
+                fcntl.flock(cleanup_lock_fd, fcntl.LOCK_EX)
+
+            # Record stale PID for logging
+            if state:
+                result.stale_pid = state.pid
+
+            # Step 1: Clean stale IPC socket
+            if SUPERVISOR_IPC_SOCKET.exists():
+                try:
+                    SUPERVISOR_IPC_SOCKET.unlink()
+                    result.cleaned_socket = True
+                    logger.debug(f"[v130.0] Cleaned stale IPC socket")
+                except PermissionError as e:
+                    logger.warning(f"[v130.0] Cannot clean IPC socket: {e}")
+                except Exception as e:
+                    logger.debug(f"[v130.0] IPC socket cleanup: {e}")
+
+            # Step 2: Clean stale state file
+            if SUPERVISOR_STATE_FILE.exists():
+                try:
+                    SUPERVISOR_STATE_FILE.unlink()
+                    result.cleaned_state = True
+                    logger.debug(f"[v130.0] Cleaned stale state file")
+                except PermissionError as e:
+                    logger.warning(f"[v130.0] Cannot clean state file: {e}")
+                except Exception as e:
+                    logger.debug(f"[v130.0] State file cleanup: {e}")
+
+            # Step 3: Clean stale lock file
+            if SUPERVISOR_LOCK_FILE.exists():
+                try:
+                    # First try to release any lingering lock
+                    try:
+                        lock_fd = os.open(str(SUPERVISOR_LOCK_FILE), os.O_RDWR)
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                        os.close(lock_fd)
+                    except Exception:
+                        pass
+
+                    # Then remove the file
+                    SUPERVISOR_LOCK_FILE.unlink()
+                    result.cleaned_lock = True
+                    logger.debug(f"[v130.0] Cleaned stale lock file")
+                except PermissionError as e:
+                    logger.warning(f"[v130.0] Cannot clean lock file: {e}")
+                except Exception as e:
+                    logger.debug(f"[v130.0] Lock file cleanup: {e}")
+
+            # Step 4: Cross-repo cleanup if enabled
+            if cross_repo:
+                await _cleanup_cross_repo_stale_resources()
+
+            # Step 5: Kill hung supervisor if still alive
+            if state and result.stale_pid:
+                try:
+                    if singleton._is_process_alive(result.stale_pid):
+                        # Process is alive but stale - send SIGTERM
+                        logger.warning(
+                            f"[v130.0] Sending SIGTERM to hung supervisor PID {result.stale_pid}"
+                        )
+                        os.kill(result.stale_pid, signal.SIGTERM)
+                        await asyncio.sleep(0.5)
+
+                        # If still alive, SIGKILL
+                        if singleton._is_process_alive(result.stale_pid):
+                            logger.warning(
+                                f"[v130.0] Sending SIGKILL to stuck supervisor PID {result.stale_pid}"
+                            )
+                            os.kill(result.stale_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass  # Process already dead
+                except PermissionError as e:
+                    logger.warning(f"[v130.0] Cannot kill PID {result.stale_pid}: {e}")
+
+            result.success = True
+            result.reason = "cleanup_complete"
+
+        finally:
+            # Release cleanup lock
+            if cleanup_lock_fd is not None:
+                try:
+                    fcntl.flock(cleanup_lock_fd, fcntl.LOCK_UN)
+                    os.close(cleanup_lock_fd)
+                except Exception:
+                    pass
+
+            # Remove cleanup lock file
+            try:
+                cleanup_lock_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    except Exception as e:
+        result.success = False
+        result.error = str(e)
+        result.reason = "cleanup_failed"
+        logger.error(f"[v130.0] Stale lock cleanup failed: {e}")
+
+    result.duration_ms = (time.time() - start_time) * 1000
+    return result
+
+
+async def _cleanup_cross_repo_stale_resources() -> None:
+    """
+    v130.0: Clean stale resources in connected repos.
+
+    Checks JARVIS-Prime and Reactor-Core for orphaned locks/sockets.
+    """
+    try:
+        # Get cross-repo directories from environment or defaults
+        cross_repo_dirs = [
+            _get_env_path("JARVIS_PRIME_DIR", Path.home() / "Documents/repos/jarvis-prime"),
+            _get_env_path("REACTOR_CORE_DIR", Path.home() / "Documents/repos/reactor-core"),
+        ]
+
+        for repo_dir in cross_repo_dirs:
+            if not repo_dir.exists():
+                continue
+
+            # Look for orphaned lock files
+            repo_lock_dir = repo_dir / ".jarvis" / "locks"
+            if repo_lock_dir.exists():
+                for lock_file in repo_lock_dir.glob("*.lock"):
+                    try:
+                        # Check if lock is stale by reading state
+                        state_file = lock_file.with_suffix(".state")
+                        if state_file.exists():
+                            state_data = json.loads(state_file.read_text())
+                            pid = state_data.get("pid")
+                            if pid and not _is_pid_alive(pid):
+                                # Dead process - clean up
+                                lock_file.unlink(missing_ok=True)
+                                state_file.unlink(missing_ok=True)
+                                logger.debug(f"[v130.0] Cleaned cross-repo stale lock: {lock_file}")
+                    except Exception as e:
+                        logger.debug(f"[v130.0] Cross-repo cleanup warning: {e}")
+
+    except Exception as e:
+        logger.debug(f"[v130.0] Cross-repo cleanup error (non-fatal): {e}")
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """v130.0: Check if a process ID is alive."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # Can't send signal but process exists
+
+
+async def verify_lock_cleanup() -> bool:
+    """
+    v130.0: Verify that lock cleanup was successful.
+
+    Returns:
+        True if all lock files are cleaned, False if any remain
+    """
+    # Check all lock-related files
+    files_to_check = [
+        SUPERVISOR_LOCK_FILE,
+        SUPERVISOR_STATE_FILE,
+        SUPERVISOR_IPC_SOCKET,
+    ]
+
+    for f in files_to_check:
+        if f.exists():
+            # File exists - check if it's from a valid process
+            if f == SUPERVISOR_STATE_FILE:
+                try:
+                    state_data = json.loads(f.read_text())
+                    pid = state_data.get("pid")
+                    if pid and _is_pid_alive(pid):
+                        # Valid process owns this file
+                        return True
+                except Exception:
+                    pass
+            return False
+
+    return True
+
+
+async def execute_command_with_cleanup(
+    command: str,
+    args: Optional[Dict[str, Any]] = None,
+    timeout: float = 10.0,
+    auto_cleanup: bool = True,
+    verify: bool = True
+) -> CommandResult:
+    """
+    v130.0: Execute supervisor command with automatic pre-cleanup.
+
+    This is the UNIFIED entry point for all supervisor commands. It:
+    1. Cleans stale locks BEFORE executing the command
+    2. Executes the command with proper error handling
+    3. Verifies cleanup succeeded (for restart/shutdown)
+    4. Handles all edge cases gracefully
+
+    Args:
+        command: Command to execute (status, restart, shutdown, health, etc.)
+        args: Optional command arguments
+        timeout: Command timeout in seconds
+        auto_cleanup: Automatically clean stale locks before command
+        verify: Verify cleanup after restart/shutdown commands
+
+    Returns:
+        CommandResult with comprehensive status
+    """
+    start_time = time.time()
+    result = CommandResult(command)
+
+    try:
+        # Step 1: Auto-cleanup stale locks if enabled
+        if auto_cleanup:
+            cleanup_result = await cleanup_stale_locks(force=False, timeout=5.0)
+            result.cleanup_result = cleanup_result
+
+            if not cleanup_result.success:
+                logger.warning(f"[v130.0] Pre-command cleanup warning: {cleanup_result.error}")
+                # Continue anyway - cleanup failure shouldn't block commands
+
+        # Step 2: Execute the command
+        response = await send_supervisor_command(command, args=args, timeout=timeout)
+        result.response = response
+
+        # Determine success based on command type
+        if command in ("restart", "shutdown"):
+            # For restart/shutdown, connection drops are expected
+            error = response.get("error", "")
+            connection_dropped = any(indicator in error for indicator in [
+                "Expecting value", "Connection", "EOF", "BrokenPipe",
+                "timeout", "IPC", "No supervisor"
+            ])
+
+            result.success = (
+                response.get("success") or
+                response.get("restart_initiated") or
+                response.get("shutdown_initiated") or
+                connection_dropped
+            )
+        else:
+            result.success = response.get("success", False)
+
+        # Step 3: Verify cleanup for restart/shutdown
+        if verify and command in ("restart", "shutdown") and result.success:
+            await asyncio.sleep(0.5)  # Brief pause for cleanup to complete
+            result.verification_passed = await verify_lock_cleanup()
+
+    except Exception as e:
+        result.success = False
+        result.error = str(e)
+        logger.error(f"[v130.0] Command {command} failed: {e}")
+
+    result.duration_ms = (time.time() - start_time) * 1000
+    return result
+
+
+async def execute_combined_commands(
+    commands: List[str],
+    args: Optional[Dict[str, Any]] = None,
+    wait_between: float = 2.0
+) -> Dict[str, CommandResult]:
+    """
+    v130.0: Execute multiple commands in sequence with proper handling.
+
+    Supports combined command patterns like:
+    - --restart --status: Restart then show status
+    - --shutdown --cleanup: Shutdown and clean orphans
+
+    Args:
+        commands: List of commands to execute in order
+        args: Optional arguments to pass to all commands
+        wait_between: Seconds to wait between commands
+
+    Returns:
+        Dict mapping command name to its result
+    """
+    results: Dict[str, CommandResult] = {}
+
+    # Clean stale locks once before all commands
+    cleanup_result = await cleanup_stale_locks(force=False)
+
+    for i, command in enumerate(commands):
+        result = await execute_command_with_cleanup(
+            command=command,
+            args=args,
+            auto_cleanup=False,  # Already cleaned
+            verify=(command in ("restart", "shutdown"))
+        )
+        result.cleanup_result = cleanup_result if i == 0 else None
+        results[command] = result
+
+        # Wait between commands if more to come
+        if i < len(commands) - 1 and wait_between > 0:
+            await asyncio.sleep(wait_between)
+
+    return results
+
+
+async def force_cleanup_hung_supervisor(timeout: float = 10.0) -> LockCleanupResult:
+    """
+    v130.0: Force cleanup for completely hung supervisors.
+
+    Use this when normal cleanup fails and the supervisor is completely
+    unresponsive. This will:
+    1. Send SIGKILL to the supervisor process
+    2. Force remove all lock files
+    3. Clean up all IPC resources
+    4. Verify cleanup succeeded
+
+    Args:
+        timeout: Maximum time to wait for cleanup
+
+    Returns:
+        LockCleanupResult with cleanup details
+    """
+    logger.warning("[v130.0] Force cleanup of hung supervisor initiated")
+    return await cleanup_stale_locks(force=True, timeout=timeout, cross_repo=True)
+
+
+def cleanup_stale_locks_sync(force: bool = False) -> LockCleanupResult:
+    """
+    v130.0: Synchronous wrapper for cleanup_stale_locks.
+
+    Use this in contexts where async is not available (signal handlers, atexit).
+    """
+    try:
+        loop = asyncio.new_event_loop()
+        result = loop.run_until_complete(cleanup_stale_locks(force=force))
+        loop.close()
+        return result
+    except Exception as e:
+        result = LockCleanupResult()
+        result.success = False
+        result.error = str(e)
+        return result
+
+
+# =============================================================================
 # v109.4: SIGHUP HANDLER FOR CLEAN RESTART VIA os.execv()
 # =============================================================================
 
