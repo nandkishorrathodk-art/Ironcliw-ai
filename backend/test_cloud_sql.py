@@ -1,20 +1,37 @@
 #!/usr/bin/env python3
 """
 Test Cloud SQL connection directly
+
+v132.0: Uses TLS-safe factory to prevent asyncpg TLS race conditions.
 """
 import asyncio
 import logging
+import os
 
 import asyncpg
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# v132.0: TLS-Safe Connection Factory Import
+_TLS_SAFE_FACTORY_AVAILABLE = False
+tls_safe_connect = None
+
+try:
+    from intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+    tls_safe_connect = _tls_safe_connect
+    _TLS_SAFE_FACTORY_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+        tls_safe_connect = _tls_safe_connect
+        _TLS_SAFE_FACTORY_AVAILABLE = True
+    except ImportError:
+        logger.debug("[TestCloudSQL] TLS-safe factory not available")
+
 
 async def test_connection():
     """Test direct connection to Cloud SQL via proxy"""
-    import os
-
     config = {
         "host": "127.0.0.1",
         "port": 5432,
@@ -27,8 +44,22 @@ async def test_connection():
     logger.info(f"Database: {config['database']}, User: {config['user']}")
 
     try:
-        # Test connection
-        conn = await asyncpg.connect(**config)
+        # v132.0: Use TLS-safe factory to prevent race conditions
+        if _TLS_SAFE_FACTORY_AVAILABLE and tls_safe_connect is not None:
+            logger.info("Using TLS-safe connection factory...")
+            conn = await tls_safe_connect(
+                host=config["host"],
+                port=config["port"],
+                database=config["database"],
+                user=config["user"],
+                password=config["password"],
+            )
+        else:
+            logger.warning("TLS-safe factory not available, using direct asyncpg")
+            conn = await asyncpg.connect(**config)
+
+        if not conn:
+            raise RuntimeError("Connection returned None")
         logger.info("✅ Connection successful!")
 
         # Test query

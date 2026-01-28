@@ -57,6 +57,26 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# v132.0: TLS-Safe Connection Factory Import
+# =============================================================================
+# All asyncpg connections must use TLS-safe factory to prevent race conditions
+_TLS_SAFE_FACTORY_AVAILABLE = False
+tls_safe_connect = None
+
+try:
+    from intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+    tls_safe_connect = _tls_safe_connect
+    _TLS_SAFE_FACTORY_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+        tls_safe_connect = _tls_safe_connect
+        _TLS_SAFE_FACTORY_AVAILABLE = True
+    except ImportError:
+        pass  # Will fall back to direct asyncpg (not recommended)
+
+
+# =============================================================================
 # Driver Status Tracking
 # =============================================================================
 
@@ -534,6 +554,8 @@ class DatabaseDriverManager:
         """
         Create an asynchronous database connection using asyncpg.
 
+        v132.0: Uses TLS-safe factory to prevent asyncpg TLS race conditions.
+
         Args:
             host: Database host
             port: Database port
@@ -546,11 +568,32 @@ class DatabaseDriverManager:
         Returns:
             asyncpg connection or None if unavailable
         """
+        # v132.0: Prefer TLS-safe factory to prevent race conditions
+        if _TLS_SAFE_FACTORY_AVAILABLE and tls_safe_connect is not None:
+            try:
+                conn = await tls_safe_connect(
+                    host=host,
+                    port=port,
+                    database=database,
+                    user=user,
+                    password=password,
+                    timeout=timeout,
+                )
+                return conn
+            except Exception as e:
+                logger.debug(f"[DRIVER] TLS-safe connection failed: {e}")
+                return None
+
+        # Fallback to direct asyncpg (not recommended - may cause TLS race)
         asyncpg = await self.get_asyncpg_async(auto_install)
         if not asyncpg:
             logger.warning("[DRIVER] asyncpg not available for async connection")
             return None
 
+        logger.warning(
+            "[DRIVER] TLS-safe factory not available, using direct asyncpg "
+            "(may cause TLS race conditions)"
+        )
         try:
             conn = await asyncio.wait_for(
                 asyncpg.connect(

@@ -17,6 +17,23 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# v132.0: TLS-Safe Connection Factory Import
+# All asyncpg connections must use TLS-safe factory to prevent race conditions
+_TLS_SAFE_FACTORY_AVAILABLE = False
+tls_safe_connect = None
+
+try:
+    from intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+    tls_safe_connect = _tls_safe_connect
+    _TLS_SAFE_FACTORY_AVAILABLE = True
+except ImportError:
+    try:
+        from backend.intelligence.cloud_sql_connection_manager import tls_safe_connect as _tls_safe_connect
+        tls_safe_connect = _tls_safe_connect
+        _TLS_SAFE_FACTORY_AVAILABLE = True
+    except ImportError:
+        logger.debug("[ProfileConsolidation] TLS-safe factory not available")
+
 
 @dataclass
 class SpeakerProfile:
@@ -90,8 +107,36 @@ class ProfileConsolidationService:
             raise
 
     async def _get_database_connection(self) -> asyncpg.Connection:
-        """Get database connection with retry logic"""
+        """
+        Get database connection with retry logic.
+
+        v132.0: Uses TLS-safe factory to prevent asyncpg TLS race conditions.
+        """
         max_retries = 3
+
+        # v132.0: Prefer TLS-safe factory to prevent race conditions
+        if _TLS_SAFE_FACTORY_AVAILABLE and tls_safe_connect is not None:
+            try:
+                conn = await tls_safe_connect(
+                    host=self.config.get("host", "127.0.0.1"),
+                    port=self.config.get("port", 5432),
+                    database=self.config.get("database", "jarvis_learning"),
+                    user=self.config.get("user", "jarvis"),
+                    password=self.config.get("password", ""),
+                    timeout=30.0,
+                    max_retries=max_retries,
+                )
+                if conn:
+                    return conn
+                raise RuntimeError("TLS-safe connection returned None")
+            except Exception as e:
+                logger.warning(f"TLS-safe connection failed: {e}, falling back to direct asyncpg")
+
+        # Fallback to direct asyncpg (not recommended - may cause TLS race)
+        logger.warning(
+            "[ProfileConsolidation] TLS-safe factory not available, "
+            "using direct asyncpg (may cause TLS race conditions)"
+        )
         for attempt in range(max_retries):
             try:
                 return await asyncpg.connect(**self.config)

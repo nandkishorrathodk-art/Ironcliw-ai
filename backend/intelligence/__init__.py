@@ -316,6 +316,32 @@ _LAZY_MODULES = {
             'InsightSeverity',
         ]
     ),
+    # =========================================================================
+    # v132.0: TLS-Safe Connection Factory (CRITICAL - Prevents asyncpg race)
+    # =========================================================================
+    'cloud_sql_connection_manager': (
+        '.cloud_sql_connection_manager',
+        [
+            # TLS-Safe Factory Functions (ALWAYS use these!)
+            'tls_safe_connect',
+            'tls_safe_create_pool',
+            'get_tls_semaphore',
+            # Connection Manager
+            'get_connection_manager',
+            'get_connection_manager_async',
+            'CloudSQLConnectionManager',
+            # Proxy Readiness
+            'ProxyReadinessGate',
+            'get_readiness_gate',
+            'get_readiness_gate_async',
+            'ReadinessState',
+            'ReadinessResult',
+            # Credentials
+            'IntelligentCredentialResolver',
+            'CredentialSource',
+            'CredentialResult',
+        ]
+    ),
 }
 
 # Build reverse lookup: export name -> module info
@@ -784,6 +810,29 @@ __all__ = [
     'AwarenessLevel',
     'InsightCategory',
     'InsightSeverity',
+
+    # =========================================================================
+    # v132.0: TLS-Safe Connection Factory (CRITICAL - Prevents asyncpg race)
+    # =========================================================================
+    # ALWAYS use these factory functions for asyncpg connections!
+    # Direct asyncpg.connect() or asyncpg.create_pool() will cause TLS race conditions
+    'tls_safe_connect',
+    'tls_safe_create_pool',
+    'get_tls_semaphore',
+    # Connection Manager
+    'get_connection_manager',
+    'get_connection_manager_async',
+    'CloudSQLConnectionManager',
+    # Proxy Readiness
+    'ProxyReadinessGate',
+    'get_readiness_gate',
+    'get_readiness_gate_async',
+    'ReadinessState',
+    'ReadinessResult',
+    # Credentials
+    'IntelligentCredentialResolver',
+    'CredentialSource',
+    'CredentialResult',
 ]
 
 

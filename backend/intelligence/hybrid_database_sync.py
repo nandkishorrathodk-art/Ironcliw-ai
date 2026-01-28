@@ -63,12 +63,25 @@ try:
 except ImportError:
     ASYNCPG_AVAILABLE = False
 
-# Import singleton connection manager
+# Import singleton connection manager and TLS-safe factory
 try:
-    from intelligence.cloud_sql_connection_manager import get_connection_manager
+    from intelligence.cloud_sql_connection_manager import (
+        get_connection_manager,
+        tls_safe_create_pool,  # v132.0: TLS-safe pool creation
+    )
     CONNECTION_MANAGER_AVAILABLE = True
+    TLS_SAFE_FACTORY_AVAILABLE = True
 except ImportError:
-    CONNECTION_MANAGER_AVAILABLE = False
+    try:
+        from backend.intelligence.cloud_sql_connection_manager import (
+            get_connection_manager,
+            tls_safe_create_pool,
+        )
+        CONNECTION_MANAGER_AVAILABLE = True
+        TLS_SAFE_FACTORY_AVAILABLE = True
+    except ImportError:
+        CONNECTION_MANAGER_AVAILABLE = False
+        TLS_SAFE_FACTORY_AVAILABLE = False
 
 # Import Cloud SQL Proxy detector for intelligent connection management
 try:
@@ -249,23 +262,53 @@ class ConnectionOrchestrator:
         logger.info(f"🎛️  Connection Orchestrator initialized (min={self.min_connections}, max={self.max_connections})")
 
     async def initialize(self):
-        """Create connection pool with dynamic sizing"""
+        """
+        Create connection pool with dynamic sizing.
+
+        v132.0: Uses TLS-safe factory to prevent asyncpg TLS race conditions.
+        """
         try:
-            self.pool = await asyncpg.create_pool(
-                host=self.config.get("host", "127.0.0.1"),
-                port=self.config.get("port", 5432),
-                database=self.config.get("database"),
-                user=self.config.get("user"),
-                password=self.config.get("password"),
-                min_size=self.min_connections,
-                max_size=self.max_connections,
-                timeout=5.0,
-                command_timeout=10.0,
-                max_queries=50000,  # Prevent connection exhaustion
-                max_inactive_connection_lifetime=300.0  # Close idle connections after 5min
-            )
-            logger.info("✅ Connection pool created")
-            return True
+            # v132.0: Use TLS-safe factory to prevent InvalidStateError
+            if TLS_SAFE_FACTORY_AVAILABLE:
+                self.pool = await tls_safe_create_pool(
+                    host=self.config.get("host", "127.0.0.1"),
+                    port=self.config.get("port", 5432),
+                    database=self.config.get("database"),
+                    user=self.config.get("user"),
+                    password=self.config.get("password"),
+                    min_size=self.min_connections,
+                    max_size=self.max_connections,
+                    timeout=5.0,
+                    command_timeout=10.0,
+                    max_inactive_connection_lifetime=300.0,  # Close idle connections after 5min
+                    max_queries=50000,  # Prevent connection exhaustion
+                )
+            else:
+                # Fallback to direct asyncpg (not recommended - may cause TLS race)
+                logger.warning(
+                    "[ConnectionOrchestrator] TLS-safe factory not available, "
+                    "using direct asyncpg (may cause TLS race conditions)"
+                )
+                self.pool = await asyncpg.create_pool(
+                    host=self.config.get("host", "127.0.0.1"),
+                    port=self.config.get("port", 5432),
+                    database=self.config.get("database"),
+                    user=self.config.get("user"),
+                    password=self.config.get("password"),
+                    min_size=self.min_connections,
+                    max_size=self.max_connections,
+                    timeout=5.0,
+                    command_timeout=10.0,
+                    max_queries=50000,
+                    max_inactive_connection_lifetime=300.0
+                )
+
+            if self.pool:
+                logger.info("✅ Connection pool created (TLS-safe)")
+                return True
+            else:
+                logger.error("❌ Pool creation returned None")
+                return False
         except Exception as e:
             logger.error(f"❌ Pool creation failed: {e}")
             return False
