@@ -797,6 +797,166 @@ class IntelligentCredentialResolver:
             "[CredentialResolver v114.0] 🔄 Authentication failure detected - "
             "cache invalidated, will try alternate credential sources on next attempt"
         )
+        # v114.0: Broadcast credential invalidation to cross-repo (fire-and-forget)
+        cls._broadcast_credential_invalidated_sync()
+        # v114.0: Schedule pool invalidation (will happen on next event loop iteration)
+        cls._schedule_pool_invalidation()
+
+    @classmethod
+    def _schedule_pool_invalidation(cls) -> None:
+        """
+        v114.0: Schedule connection pool invalidation.
+
+        This runs asynchronously to avoid blocking the caller. Uses a background
+        thread with a new event loop to safely invalidate pools.
+        """
+        try:
+            import threading
+
+            def _invalidate():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            CloudSQLConnectionManager.invalidate_all_pools_on_credential_change()
+                        )
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    logger.debug(f"[CredentialResolver v114.0] Pool invalidation error: {e}")
+
+            thread = threading.Thread(target=_invalidate, daemon=True)
+            thread.start()
+
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v114.0] Failed to schedule pool invalidation: {e}")
+
+    @classmethod
+    def _broadcast_credential_invalidated_sync(cls) -> None:
+        """
+        v114.0: Broadcast credential invalidation synchronously (fire-and-forget).
+
+        Uses a safer file-based approach to avoid file descriptor issues with
+        background threads creating event loops. Writes to a signal file that
+        other processes can detect.
+        """
+        try:
+            # v114.0: Use a simple file-based signal instead of async broadcast
+            # This avoids file descriptor issues with background thread event loops
+            signal_file = Path.home() / ".jarvis" / "cross_repo" / "credential_invalidated.signal"
+            signal_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Safely get source value with null checks
+            source_value = "unknown"
+            if cls._credential_cache and cls._credential_cache.source:
+                source_value = cls._credential_cache.source.value
+
+            signal_data = {
+                "timestamp": time.time(),
+                "source": source_value,
+                "reason": "password_authentication_failed",
+                "user": os.getenv("JARVIS_DB_USER", "jarvis"),
+                "version": "114.0",
+            }
+
+            # Write atomically to avoid partial reads
+            temp_file = signal_file.with_suffix(".tmp")
+            with open(temp_file, 'w') as f:
+                json.dump(signal_data, f)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic rename
+            temp_file.rename(signal_file)
+
+            logger.debug(
+                f"[CredentialResolver v114.0] Credential invalidation signaled via file: {signal_file}"
+            )
+
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v114.0] Failed to signal invalidation: {e}")
+
+    @classmethod
+    async def broadcast_credential_validated_async(
+        cls,
+        source: CredentialSource,
+        latency_ms: Optional[float] = None,
+    ) -> None:
+        """
+        v114.0: Broadcast that credentials have been validated across JARVIS Trinity.
+
+        Call this after a successful database connection.
+        """
+        try:
+            try:
+                from core.cross_repo_state_initializer import get_cross_repo_initializer
+            except ImportError:
+                try:
+                    from backend.core.cross_repo_state_initializer import get_cross_repo_initializer
+                except ImportError:
+                    logger.debug("[CredentialResolver v114.0] Cross-repo initializer not available")
+                    return
+
+            # get_cross_repo_initializer is async
+            initializer = await get_cross_repo_initializer()
+            if initializer:
+                await initializer.broadcast_credential_validated(
+                    source=source.value,
+                    user=os.getenv("JARVIS_DB_USER", "jarvis"),
+                    latency_ms=latency_ms,
+                )
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v114.0] Failed to broadcast validation: {e}")
+
+    @classmethod
+    def check_invalidation_signal(cls) -> Optional[Dict[str, Any]]:
+        """
+        v114.0: Check if another JARVIS Trinity repo has signaled credential invalidation.
+
+        This allows repos to detect when credentials have been invalidated by another
+        process without needing IPC or network communication.
+
+        Returns:
+            Signal data if invalidation was signaled recently (within 60s), None otherwise.
+        """
+        try:
+            signal_file = Path.home() / ".jarvis" / "cross_repo" / "credential_invalidated.signal"
+            if not signal_file.exists():
+                return None
+
+            with open(signal_file) as f:
+                signal_data = json.load(f)
+
+            # Check if signal is recent (within 60 seconds)
+            signal_age = time.time() - signal_data.get("timestamp", 0)
+            if signal_age > 60:
+                # Signal is stale, clean it up
+                try:
+                    signal_file.unlink()
+                except Exception:
+                    pass
+                return None
+
+            logger.info(
+                f"[CredentialResolver v114.0] Detected credential invalidation signal "
+                f"(age={signal_age:.1f}s, source={signal_data.get('source')})"
+            )
+
+            # Invalidate our local cache in response
+            cls.invalidate_cache()
+
+            # Clean up the signal file after processing
+            try:
+                signal_file.unlink()
+            except Exception:
+                pass
+
+            return signal_data
+
+        except Exception as e:
+            logger.debug(f"[CredentialResolver v114.0] Error checking invalidation signal: {e}")
+            return None
 
     @classmethod
     def diagnose_credential_sources(cls) -> Dict[str, Any]:
@@ -4228,6 +4388,65 @@ class CloudSQLConnectionManager:
                     logger.error(f"❌ Error closing pool: {e}")
             finally:
                 self.pool = None
+
+    async def invalidate_pool_on_credential_change(self) -> bool:
+        """
+        v114.0: Invalidate the connection pool when credentials change.
+
+        This method should be called when credentials are invalidated or refreshed
+        to ensure the pool is recreated with the new credentials.
+
+        Returns:
+            True if pool was successfully invalidated, False if no action needed.
+        """
+        if not self.pool:
+            logger.debug("[CloudSQLConnectionManager v114.0] No pool to invalidate")
+            return False
+
+        logger.info(
+            "[CloudSQLConnectionManager v114.0] 🔄 Invalidating connection pool due to credential change"
+        )
+
+        try:
+            # Close the existing pool
+            await self._close_pool_internal()
+
+            # Reset initialization state so pool will be recreated
+            self._is_initialized = False
+
+            # Clear the credential resolver cache
+            IntelligentCredentialResolver.invalidate_cache()
+
+            logger.info(
+                "[CloudSQLConnectionManager v114.0] ✅ Pool invalidated - "
+                "will be recreated with fresh credentials on next use"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"[CloudSQLConnectionManager v114.0] ❌ Pool invalidation failed: {e}")
+            return False
+
+    @classmethod
+    async def invalidate_all_pools_on_credential_change(cls) -> int:
+        """
+        v114.0: Invalidate all connection pools across all instances when credentials change.
+
+        This is a class-level method that finds all instances and invalidates their pools.
+
+        Returns:
+            Number of pools invalidated.
+        """
+        invalidated = 0
+
+        # Get the singleton instance
+        if cls._instance and cls._instance.pool:
+            success = await cls._instance.invalidate_pool_on_credential_change()
+            if success:
+                invalidated += 1
+
+        logger.info(f"[CloudSQLConnectionManager v114.0] Invalidated {invalidated} pool(s)")
+        return invalidated
 
     async def shutdown(self) -> None:
         """

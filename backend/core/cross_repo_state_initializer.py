@@ -737,6 +737,172 @@ class CrossRepoStateInitializer:
         )
         return False
 
+    # =========================================================================
+    # v114.0: Cross-Repo Credential Synchronization API
+    # =========================================================================
+
+    async def broadcast_credential_event(
+        self,
+        event_type: EventType,
+        source: str,
+        success: bool,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        v114.0: Broadcast credential lifecycle events across JARVIS Trinity repos.
+
+        This enables JARVIS, JARVIS Prime, and Reactor Core to:
+        - Synchronize credential validation state
+        - Invalidate caches when credentials change
+        - Coordinate credential refresh across all repos
+
+        Args:
+            event_type: The credential event type (CREDENTIAL_VALIDATED, etc.)
+            source: The credential source (e.g., "gcp_secret_manager", "environment")
+            success: Whether the credential operation succeeded
+            metadata: Additional metadata to include in the event
+        """
+        payload: Dict[str, Any] = {
+            "source": source,
+            "success": success,
+            "timestamp": time.time(),
+            "version": "114.0",
+        }
+
+        if metadata:
+            payload.update(metadata)
+
+        event = VBIAEvent(
+            event_type=event_type,
+            source_repo=RepoType.JARVIS,
+            payload=payload,
+        )
+
+        await self.emit_event(event)
+
+        # Write to dedicated credential state file for quick lookup
+        await self._write_credential_state(event_type, source, success, metadata)
+
+        logger.info(
+            f"[CrossRepoState v114.0] Credential event broadcast: "
+            f"type={event_type.value}, source={source}, success={success}"
+        )
+
+    async def _write_credential_state(
+        self,
+        event_type: EventType,
+        source: str,
+        success: bool,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        v114.0: Write credential state to a dedicated state file for quick lookup.
+
+        Other repos can read this file to check credential status without
+        parsing the event log.
+        """
+        try:
+            state_file = self.config.base_dir / "credential_state.json"
+
+            state = {
+                "last_event": event_type.value,
+                "source": source,
+                "success": success,
+                "last_update": datetime.now().isoformat(),
+                "last_update_timestamp": time.time(),
+                "version": "114.0",
+                "source_repo": RepoType.JARVIS.value,
+            }
+
+            if metadata:
+                state["metadata"] = metadata
+
+            await self._write_json_file(state_file, state)
+
+        except Exception as e:
+            logger.warning(f"[CrossRepoState v114.0] Failed to write credential state: {e}")
+
+    async def get_credential_state(self) -> Dict[str, Any]:
+        """
+        v114.0: Get the current credential state.
+
+        Returns:
+            Dict with credential status, source, and metadata
+        """
+        try:
+            state_file = self.config.base_dir / "credential_state.json"
+            return await self._read_json_file(state_file, default={"success": False})
+        except Exception as e:
+            logger.debug(f"[CrossRepoState v114.0] Failed to read credential state: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def broadcast_credential_validated(
+        self,
+        source: str,
+        user: str = "jarvis",
+        latency_ms: Optional[float] = None,
+    ) -> None:
+        """
+        v114.0: Broadcast that credentials have been successfully validated.
+
+        Call this after a successful database connection to inform other repos.
+        """
+        await self.broadcast_credential_event(
+            event_type=EventType.CREDENTIAL_VALIDATED,
+            source=source,
+            success=True,
+            metadata={
+                "user": user,
+                "latency_ms": latency_ms,
+                "validated_at": time.time(),
+            }
+        )
+
+    async def broadcast_credential_invalidated(
+        self,
+        source: str,
+        reason: str,
+        user: str = "jarvis",
+    ) -> None:
+        """
+        v114.0: Broadcast that credentials have been invalidated.
+
+        Call this when authentication fails to inform other repos to refresh.
+        """
+        await self.broadcast_credential_event(
+            event_type=EventType.CREDENTIAL_INVALIDATED,
+            source=source,
+            success=False,
+            metadata={
+                "user": user,
+                "reason": reason,
+                "invalidated_at": time.time(),
+            }
+        )
+
+    async def broadcast_credential_refreshed(
+        self,
+        old_source: str,
+        new_source: str,
+        user: str = "jarvis",
+    ) -> None:
+        """
+        v114.0: Broadcast that credentials have been refreshed from a new source.
+
+        Call this when credentials are re-resolved from an alternate source.
+        """
+        await self.broadcast_credential_event(
+            event_type=EventType.CREDENTIAL_REFRESHED,
+            source=new_source,
+            success=True,
+            metadata={
+                "user": user,
+                "old_source": old_source,
+                "new_source": new_source,
+                "refreshed_at": time.time(),
+            }
+        )
+
     async def get_recent_events(self, limit: int = 100, event_type: Optional[EventType] = None) -> List[VBIAEvent]:
         """
         Get recent events from the event log.
