@@ -16813,7 +16813,11 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
     async def _initialize_trinity_core_systems(self) -> None:
         """
-        v100.0: Initialize Trinity Core Systems - Advanced Cross-Repo Infrastructure.
+        v132.0: Initialize Trinity Core Systems - Advanced Cross-Repo Infrastructure.
+
+        MAJOR IMPROVEMENT: Parallel initialization for independent systems.
+        Previously, all 4 core systems and 12+ phases ran sequentially.
+        Now independent systems run in parallel for faster startup.
 
         This initializes the following core systems:
         1. TrinityEventBus: Unified pub/sub messaging with priority queues,
@@ -16824,85 +16828,126 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
            JARVIS experience capture → Reactor Core training → Prime deployment
         4. TrinityMonitoring: Unified observability with distributed tracing,
            metrics collection, health monitoring, and intelligent alerting
+
+        Environment Variables:
+        - TRINITY_CORE_INIT_TIMEOUT: Timeout for each core system init (default: 15s)
+        - TRINITY_PHASE_TIMEOUT: Timeout for each phase (default: 30s)
+        - TRINITY_PARALLEL_PHASES: Enable parallel phase initialization (default: true)
         """
         self.logger.info("=" * 60)
-        self.logger.info("[v100.0] Initializing Trinity Core Systems")
+        self.logger.info("[v132.0] Initializing Trinity Core Systems (Parallel Mode)")
         self.logger.info("=" * 60)
 
         print(f"  {TerminalUI.CYAN}🔧 Trinity Core Systems: Initializing advanced infrastructure...{TerminalUI.RESET}")
 
+        # v132.0: Configurable timeouts
+        _core_timeout = float(os.environ.get("TRINITY_CORE_INIT_TIMEOUT", "15.0"))
+        _parallel_phases = os.environ.get("TRINITY_PARALLEL_PHASES", "true").lower() in ("true", "1", "yes")
+
         initialized_count = 0
         failed_systems = []
 
-        # 1. Initialize Trinity Event Bus
-        try:
-            from backend.core.trinity_event_bus import get_trinity_event_bus
+        # v132.0: Define core system initializers for parallel execution
+        async def _init_event_bus() -> tuple[str, bool, object | None]:
+            """Initialize Trinity Event Bus."""
+            try:
+                from backend.core.trinity_event_bus import get_trinity_event_bus
+                bus = await asyncio.wait_for(get_trinity_event_bus(), timeout=_core_timeout)
+                await asyncio.wait_for(bus.start(), timeout=_core_timeout)
+                self.logger.info("[v132.0] ✅ TrinityEventBus initialized")
+                return ("EventBus", True, bus)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] ⏱️ TrinityEventBus timed out after {_core_timeout}s")
+                return ("EventBus", False, None)
+            except ImportError as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityEventBus import failed: {e}")
+                return ("EventBus", False, None)
+            except Exception as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityEventBus initialization failed: {e}")
+                return ("EventBus", False, None)
 
-            # v100.2: Await the async factory function
-            self._trinity_event_bus = await get_trinity_event_bus()
-            await self._trinity_event_bus.start()
+        async def _init_knowledge_graph() -> tuple[str, bool, object | None]:
+            """Initialize Trinity Knowledge Graph."""
+            try:
+                from backend.core.trinity_knowledge_graph import get_trinity_knowledge_graph
+                graph = await asyncio.wait_for(get_trinity_knowledge_graph(), timeout=_core_timeout)
+                self.logger.info("[v132.0] ✅ TrinityKnowledgeGraph initialized")
+                return ("KnowledgeGraph", True, graph)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] ⏱️ TrinityKnowledgeGraph timed out after {_core_timeout}s")
+                return ("KnowledgeGraph", False, None)
+            except ImportError as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityKnowledgeGraph import failed: {e}")
+                return ("KnowledgeGraph", False, None)
+            except Exception as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityKnowledgeGraph initialization failed: {e}")
+                return ("KnowledgeGraph", False, None)
 
-            self.logger.info("[v100.0] ✅ TrinityEventBus initialized - pub/sub messaging active")
-            initialized_count += 1
-        except ImportError as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityEventBus import failed: {e}")
-            failed_systems.append("EventBus")
-        except Exception as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityEventBus initialization failed: {e}")
-            failed_systems.append("EventBus")
+        async def _init_training_pipeline() -> tuple[str, bool, object | None]:
+            """Initialize Trinity Training Pipeline."""
+            try:
+                from backend.core.trinity_training_pipeline import get_training_pipeline
+                pipeline = await asyncio.wait_for(get_training_pipeline(), timeout=_core_timeout)
+                self.logger.info("[v132.0] ✅ TrinityTrainingPipeline initialized")
+                return ("TrainingPipeline", True, pipeline)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] ⏱️ TrinityTrainingPipeline timed out after {_core_timeout}s")
+                return ("TrainingPipeline", False, None)
+            except ImportError as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityTrainingPipeline import failed: {e}")
+                return ("TrainingPipeline", False, None)
+            except Exception as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityTrainingPipeline initialization failed: {e}")
+                return ("TrainingPipeline", False, None)
 
-        # 2. Initialize Trinity Knowledge Graph
-        try:
-            from backend.core.trinity_knowledge_graph import get_trinity_knowledge_graph
+        async def _init_monitoring() -> tuple[str, bool, object | None]:
+            """Initialize Trinity Monitoring."""
+            try:
+                from backend.core.trinity_monitoring import get_trinity_monitoring
+                monitoring = await asyncio.wait_for(get_trinity_monitoring(), timeout=_core_timeout)
+                self.logger.info("[v132.0] ✅ TrinityMonitoring initialized")
+                return ("Monitoring", True, monitoring)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[v132.0] ⏱️ TrinityMonitoring timed out after {_core_timeout}s")
+                return ("Monitoring", False, None)
+            except ImportError as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityMonitoring import failed: {e}")
+                return ("Monitoring", False, None)
+            except Exception as e:
+                self.logger.warning(f"[v132.0] ⚠️ TrinityMonitoring initialization failed: {e}")
+                return ("Monitoring", False, None)
 
-            # v100.2: Await the async factory function
-            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
-            self._trinity_knowledge_graph = await get_trinity_knowledge_graph()
+        # v132.0: Run all 4 core systems in PARALLEL
+        self.logger.info("[v132.0] Running 4 core systems in PARALLEL")
+        core_results = await asyncio.gather(
+            _init_event_bus(),
+            _init_knowledge_graph(),
+            _init_training_pipeline(),
+            _init_monitoring(),
+            return_exceptions=True
+        )
 
-            self.logger.info("[v100.0] ✅ TrinityKnowledgeGraph initialized - shared knowledge active")
-            initialized_count += 1
-        except ImportError as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityKnowledgeGraph import failed: {e}")
-            failed_systems.append("KnowledgeGraph")
-        except Exception as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityKnowledgeGraph initialization failed: {e}")
-            failed_systems.append("KnowledgeGraph")
+        # Process results
+        for result in core_results:
+            if isinstance(result, Exception):
+                self.logger.warning(f"[v132.0] Core system task exception: {result}")
+                failed_systems.append("Unknown")
+            elif result[1]:  # success flag
+                initialized_count += 1
+                # Store the initialized objects
+                name, _, obj = result
+                if name == "EventBus":
+                    self._trinity_event_bus = obj
+                elif name == "KnowledgeGraph":
+                    self._trinity_knowledge_graph = obj
+                elif name == "TrainingPipeline":
+                    self._trinity_training_pipeline = obj
+                elif name == "Monitoring":
+                    self._trinity_monitoring = obj
+            else:
+                failed_systems.append(result[0])
 
-        # 3. Initialize Trinity Training Pipeline
-        try:
-            from backend.core.trinity_training_pipeline import get_training_pipeline
-
-            # v100.2: Await the async factory function
-            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
-            self._trinity_training_pipeline = await get_training_pipeline()
-
-            self.logger.info("[v100.0] ✅ TrinityTrainingPipeline initialized - JARVIS→Reactor→Prime active")
-            initialized_count += 1
-        except ImportError as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityTrainingPipeline import failed: {e}")
-            failed_systems.append("TrainingPipeline")
-        except Exception as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityTrainingPipeline initialization failed: {e}")
-            failed_systems.append("TrainingPipeline")
-
-        # 4. Initialize Trinity Monitoring
-        try:
-            from backend.core.trinity_monitoring import get_trinity_monitoring
-
-            # v100.2: Await the async factory function
-            # v100.3: These classes don't have .start() methods - factory returns ready-to-use object
-            self._trinity_monitoring = await get_trinity_monitoring()
-
-            self.logger.info("[v100.0] ✅ TrinityMonitoring initialized - observability active")
-            initialized_count += 1
-        except ImportError as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityMonitoring import failed: {e}")
-            failed_systems.append("Monitoring")
-        except Exception as e:
-            self.logger.warning(f"[v100.0] ⚠️ TrinityMonitoring initialization failed: {e}")
-            failed_systems.append("Monitoring")
-
-        # Summary
+        # v132.0: Summary (core systems now initialized in parallel above)
         if initialized_count == 4:
             self.logger.info("=" * 60)
             self.logger.info("[v100.0] TRINITY CORE SYSTEMS: FULLY INITIALIZED")
@@ -16995,144 +17040,225 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         # =====================================================================
         # PHASE 4-15: Initialize remaining Trinity components with TIMEOUTS
+        # v132.0: Parallel phase initialization for non-critical phases
         # v107.0: Each phase wrapped with _safe_phase_init() to prevent blocking
         # =====================================================================
         phase_timeout = float(os.getenv("TRINITY_PHASE_TIMEOUT", "30.0"))  # Configurable timeout
 
-        # PHASE 4: Initialize AGI Orchestrator (v100.0)
-        if self._agi_orchestrator_enabled:
-            await self._safe_phase_init(
-                "PHASE 4: AGI Orchestrator",
-                self._initialize_agi_orchestrator(),
-                timeout_seconds=phase_timeout,
-            )
+        # v132.0: Helper for parallel phase execution
+        async def _parallel_phase(
+            name: str,
+            coro,
+            timeout: float,
+            critical: bool = False
+        ) -> tuple[str, bool]:
+            """Execute a phase with timeout and error isolation for parallel execution."""
+            result = await self._safe_phase_init(name, coro, timeout_seconds=timeout, critical=critical)
+            return (name, result)
 
-        # PHASE 5: Initialize Unified Model Serving (v100.0)
-        if self._model_serving_enabled:
-            await self._safe_phase_init(
-                "PHASE 5: Unified Model Serving",
-                self._initialize_unified_model_serving(),
-                timeout_seconds=phase_timeout,
-            )
+        if _parallel_phases:
+            # v132.0: Run non-critical phases in PARALLEL (Phases 4-11, 13-15)
+            self.logger.info("[v132.0] Running non-critical phases in PARALLEL")
 
-        # PHASE 6: Initialize Unified Agent Registry (v100.0)
-        if self._agent_registry_enabled:
-            await self._safe_phase_init(
-                "PHASE 6: Unified Agent Registry",
-                self._initialize_unified_agent_registry(),
-                timeout_seconds=phase_timeout,
-            )
+            # Build list of enabled non-critical phases
+            parallel_phases = []
 
-        # PHASE 7: Initialize Distributed State Manager (v100.0)
-        if self._state_manager_enabled:
-            await self._safe_phase_init(
-                "PHASE 7: Distributed State Manager",
-                self._initialize_distributed_state_manager(),
-                timeout_seconds=phase_timeout,
-            )
+            if self._agi_orchestrator_enabled:
+                parallel_phases.append(("PHASE 4: AGI Orchestrator", self._initialize_agi_orchestrator(), phase_timeout))
+            if self._model_serving_enabled:
+                parallel_phases.append(("PHASE 5: Unified Model Serving", self._initialize_unified_model_serving(), phase_timeout))
+            if self._agent_registry_enabled:
+                parallel_phases.append(("PHASE 6: Unified Agent Registry", self._initialize_unified_agent_registry(), phase_timeout))
+            if self._state_manager_enabled:
+                parallel_phases.append(("PHASE 7: Distributed State Manager", self._initialize_distributed_state_manager(), phase_timeout))
+            if self._continuous_learning_enabled:
+                parallel_phases.append(("PHASE 8: Continuous Learning Orchestrator", self._initialize_continuous_learning_orchestrator(), phase_timeout))
+            if self._neural_mesh_bridge_enabled:
+                parallel_phases.append(("PHASE 9: Neural Mesh Registry Bridge", self._initialize_neural_mesh_bridge(), phase_timeout))
+            if self._learning_state_connector_enabled:
+                parallel_phases.append(("PHASE 10: Learning State Connector", self._initialize_learning_state_connector(), phase_timeout))
+            if self._experience_forwarder_enabled:
+                parallel_phases.append(("PHASE 11: Cross-Repo Experience Forwarder", self._initialize_experience_forwarder(), phase_timeout))
+            if self._cross_repo_neural_mesh_enabled:
+                parallel_phases.append(("PHASE 13: Cross-Repo Neural Mesh Bridge", self._initialize_cross_repo_neural_mesh(), phase_timeout))
+            if self._cross_repo_cost_sync_enabled:
+                parallel_phases.append(("PHASE 14: Cross-Repo Cost Sync", self._initialize_cross_repo_cost_sync(), phase_timeout))
+            if self._gcp_hybrid_router_enabled:
+                parallel_phases.append(("PHASE 15: GCP Hybrid Prime Router", self._initialize_gcp_hybrid_router(), phase_timeout))
 
-        # PHASE 8: Initialize Continuous Learning Orchestrator (v100.0)
-        if self._continuous_learning_enabled:
-            await self._safe_phase_init(
-                "PHASE 8: Continuous Learning Orchestrator",
-                self._initialize_continuous_learning_orchestrator(),
-                timeout_seconds=phase_timeout,
-            )
+            if parallel_phases:
+                tasks = [_parallel_phase(name, coro, timeout) for name, coro, timeout in parallel_phases]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # PHASE 9: Initialize Neural Mesh Registry Bridge (v100.0)
-        if self._neural_mesh_bridge_enabled:
-            await self._safe_phase_init(
-                "PHASE 9: Neural Mesh Registry Bridge",
-                self._initialize_neural_mesh_bridge(),
-                timeout_seconds=phase_timeout,
-            )
+                succeeded = sum(1 for r in results if isinstance(r, tuple) and r[1])
+                failed = len(results) - succeeded
+                self.logger.info(f"[v132.0] Non-critical phases: {succeeded} succeeded, {failed} failed/timed out")
 
-        # PHASE 10: Initialize Learning State Connector (v100.0)
-        if self._learning_state_connector_enabled:
-            await self._safe_phase_init(
-                "PHASE 10: Learning State Connector",
-                self._initialize_learning_state_connector(),
-                timeout_seconds=phase_timeout,
-            )
+            # v132.0: Critical phases must run SEQUENTIALLY (Phases 12, 12.5, 12.6, 12.7)
+            # These have dependencies on each other
+            self.logger.info("[v132.0] Running critical phases SEQUENTIALLY")
 
-        # PHASE 11: Initialize Cross-Repo Experience Forwarder (v100.0)
-        if self._experience_forwarder_enabled:
-            await self._safe_phase_init(
-                "PHASE 11: Cross-Repo Experience Forwarder",
-                self._initialize_experience_forwarder(),
-                timeout_seconds=phase_timeout,
-            )
+            if self._trinity_bridge_adapter_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12: Trinity Bridge Adapter",
+                    self._initialize_trinity_bridge_adapter(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
 
-        # PHASE 12: Initialize Trinity Bridge Adapter (v101.0) - CRITICAL
-        # This MUST be initialized to close the Trinity Loop:
-        # Training → MODEL_READY → TrinityBridgeAdapter → Hot-Swap
-        if self._trinity_bridge_adapter_enabled:
-            await self._safe_phase_init(
-                "PHASE 12: Trinity Bridge Adapter",
-                self._initialize_trinity_bridge_adapter(),
-                timeout_seconds=phase_timeout,
-                critical=True,  # Mark as critical
-            )
+            if self._trinity_ipc_hub_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.5: Trinity IPC Hub",
+                    self._initialize_trinity_ipc_hub(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
 
-        # PHASE 12.5: Initialize Trinity IPC Hub v4.0 (v104.0) - CRITICAL
-        # Enterprise-grade communication with ALL 10 channels
-        if self._trinity_ipc_hub_enabled:
-            await self._safe_phase_init(
-                "PHASE 12.5: Trinity IPC Hub",
-                self._initialize_trinity_ipc_hub(),
-                timeout_seconds=phase_timeout,
-                critical=True,
-            )
+            if self._trinity_state_manager_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.6: Trinity State Manager",
+                    self._initialize_trinity_state_manager(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
 
-        # PHASE 12.6: Initialize Trinity State Manager v4.0 (v105.0) - CRITICAL
-        # Enterprise-grade distributed state with ALL 8 gaps addressed
-        if self._trinity_state_manager_enabled:
-            await self._safe_phase_init(
-                "PHASE 12.6: Trinity State Manager",
-                self._initialize_trinity_state_manager(),
-                timeout_seconds=phase_timeout,
-                critical=True,
-            )
+            if self._trinity_observability_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.7: Trinity Observability",
+                    self._initialize_trinity_observability(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
 
-        # PHASE 12.7: Initialize Trinity Observability v4.0 (v106.0) - CRITICAL
-        # Enterprise-grade observability with ALL 10 gaps addressed
-        if self._trinity_observability_enabled:
-            await self._safe_phase_init(
-                "PHASE 12.7: Trinity Observability",
-                self._initialize_trinity_observability(),
-                timeout_seconds=phase_timeout,
-                critical=True,
-            )
+        else:
+            # v132.0: Sequential fallback (for debugging or if parallel causes issues)
+            self.logger.info("[v132.0] Running all phases SEQUENTIALLY (TRINITY_PARALLEL_PHASES=false)")
 
-        # PHASE 13: Initialize Cross-Repo Neural Mesh Bridge (v101.0)
-        # Registers JARVIS Prime and Reactor Core as Neural Mesh agents
-        # THIS IS THE PHASE THAT WAS BLOCKING - now has timeout protection
-        if self._cross_repo_neural_mesh_enabled:
-            await self._safe_phase_init(
-                "PHASE 13: Cross-Repo Neural Mesh Bridge",
-                self._initialize_cross_repo_neural_mesh(),
-                timeout_seconds=phase_timeout,
-            )
+            # PHASE 4: Initialize AGI Orchestrator (v100.0)
+            if self._agi_orchestrator_enabled:
+                await self._safe_phase_init(
+                    "PHASE 4: AGI Orchestrator",
+                    self._initialize_agi_orchestrator(),
+                    timeout_seconds=phase_timeout,
+                )
 
-        # PHASE 14: Initialize Cross-Repo Cost Sync (v101.0)
-        # Unified budget tracking across all repos via Redis
-        if self._cross_repo_cost_sync_enabled:
-            await self._safe_phase_init(
-                "PHASE 14: Cross-Repo Cost Sync",
-                self._initialize_cross_repo_cost_sync(),
-                timeout_seconds=phase_timeout,
-            )
+            # PHASE 5: Initialize Unified Model Serving (v100.0)
+            if self._model_serving_enabled:
+                await self._safe_phase_init(
+                    "PHASE 5: Unified Model Serving",
+                    self._initialize_unified_model_serving(),
+                    timeout_seconds=phase_timeout,
+                )
 
-        # PHASE 15: Initialize GCP Hybrid Prime Router (v101.0)
-        # Memory-triggered VM provisioning with distributed locking
-        if self._gcp_hybrid_router_enabled:
-            await self._safe_phase_init(
-                "PHASE 15: GCP Hybrid Prime Router",
-                self._initialize_gcp_hybrid_router(),
-                timeout_seconds=phase_timeout,
-            )
+            # PHASE 6: Initialize Unified Agent Registry (v100.0)
+            if self._agent_registry_enabled:
+                await self._safe_phase_init(
+                    "PHASE 6: Unified Agent Registry",
+                    self._initialize_unified_agent_registry(),
+                    timeout_seconds=phase_timeout,
+                )
 
-        self.logger.info("[v107.0] Trinity Core Systems initialization complete (with timeout protection)")
+            # PHASE 7: Initialize Distributed State Manager (v100.0)
+            if self._state_manager_enabled:
+                await self._safe_phase_init(
+                    "PHASE 7: Distributed State Manager",
+                    self._initialize_distributed_state_manager(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 8: Initialize Continuous Learning Orchestrator (v100.0)
+            if self._continuous_learning_enabled:
+                await self._safe_phase_init(
+                    "PHASE 8: Continuous Learning Orchestrator",
+                    self._initialize_continuous_learning_orchestrator(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 9: Initialize Neural Mesh Registry Bridge (v100.0)
+            if self._neural_mesh_bridge_enabled:
+                await self._safe_phase_init(
+                    "PHASE 9: Neural Mesh Registry Bridge",
+                    self._initialize_neural_mesh_bridge(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 10: Initialize Learning State Connector (v100.0)
+            if self._learning_state_connector_enabled:
+                await self._safe_phase_init(
+                    "PHASE 10: Learning State Connector",
+                    self._initialize_learning_state_connector(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 11: Initialize Cross-Repo Experience Forwarder (v100.0)
+            if self._experience_forwarder_enabled:
+                await self._safe_phase_init(
+                    "PHASE 11: Cross-Repo Experience Forwarder",
+                    self._initialize_experience_forwarder(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 12: Initialize Trinity Bridge Adapter (v101.0) - CRITICAL
+            if self._trinity_bridge_adapter_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12: Trinity Bridge Adapter",
+                    self._initialize_trinity_bridge_adapter(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
+
+            # PHASE 12.5: Initialize Trinity IPC Hub v4.0 (v104.0) - CRITICAL
+            if self._trinity_ipc_hub_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.5: Trinity IPC Hub",
+                    self._initialize_trinity_ipc_hub(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
+
+            # PHASE 12.6: Initialize Trinity State Manager v4.0 (v105.0) - CRITICAL
+            if self._trinity_state_manager_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.6: Trinity State Manager",
+                    self._initialize_trinity_state_manager(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
+
+            # PHASE 12.7: Initialize Trinity Observability v4.0 (v106.0) - CRITICAL
+            if self._trinity_observability_enabled:
+                await self._safe_phase_init(
+                    "PHASE 12.7: Trinity Observability",
+                    self._initialize_trinity_observability(),
+                    timeout_seconds=phase_timeout,
+                    critical=True,
+                )
+
+            # PHASE 13: Initialize Cross-Repo Neural Mesh Bridge (v101.0)
+            if self._cross_repo_neural_mesh_enabled:
+                await self._safe_phase_init(
+                    "PHASE 13: Cross-Repo Neural Mesh Bridge",
+                    self._initialize_cross_repo_neural_mesh(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 14: Initialize Cross-Repo Cost Sync (v101.0)
+            if self._cross_repo_cost_sync_enabled:
+                await self._safe_phase_init(
+                    "PHASE 14: Cross-Repo Cost Sync",
+                    self._initialize_cross_repo_cost_sync(),
+                    timeout_seconds=phase_timeout,
+                )
+
+            # PHASE 15: Initialize GCP Hybrid Prime Router (v101.0)
+            if self._gcp_hybrid_router_enabled:
+                await self._safe_phase_init(
+                    "PHASE 15: GCP Hybrid Prime Router",
+                    self._initialize_gcp_hybrid_router(),
+                    timeout_seconds=phase_timeout,
+                )
+
+        self.logger.info("[v132.0] Trinity Core Systems initialization complete (parallel mode enabled)")
 
     async def _initialize_trinity_bridge_adapter(self) -> None:
         """
