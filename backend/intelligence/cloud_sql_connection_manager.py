@@ -1960,13 +1960,19 @@ class ProxyReadinessGate:
             for event in self._degraded_events.values():
                 event.clear()
             self._degraded_before_event = False
-            logger.info(f"[ReadinessGate] ✅ State: READY")
+            logger.info(f"[ReadinessGate v115.0] ✅ State: READY")
+
+            # v115.0: Proactively signal AgentRegistry if available
+            await self._signal_agent_registry_ready(True)
 
         elif new_state == ReadinessState.UNAVAILABLE:
             # Clear ready events
             for event in self._ready_events.values():
                 event.clear()
-            logger.warning(f"[ReadinessGate] ❌ State: UNAVAILABLE ({failure_reason}: {message})")
+            logger.warning(f"[ReadinessGate v115.0] ❌ State: UNAVAILABLE ({failure_reason}: {message})")
+
+            # v115.0: Proactively signal AgentRegistry if available
+            await self._signal_agent_registry_ready(False)
 
         elif new_state == ReadinessState.DEGRADED_SQLITE:
             # Clear ready, set degraded (Edge Case #22)
@@ -2194,6 +2200,63 @@ class ProxyReadinessGate:
             logger.warning(
                 "[ProxyReadinessGate v112.0] Failed to set initial AgentRegistry state: %s", e
             )
+
+    async def _signal_agent_registry_ready(self, is_ready: bool) -> None:
+        """
+        v115.0: Proactively signal AgentRegistry when CloudSQL state changes.
+
+        This method attempts to directly update the AgentRegistry's cloudsql dependency
+        state when the gate changes state. This ensures the registry is updated even
+        if the normal callback subscription didn't get set up correctly.
+
+        This is a defensive measure to ensure cross-component synchronization.
+        """
+        try:
+            # Try to get the AgentRegistry singleton
+            try:
+                from neural_mesh.registry.agent_registry import AgentRegistry
+            except ImportError:
+                try:
+                    from backend.neural_mesh.registry.agent_registry import AgentRegistry
+                except ImportError:
+                    # AgentRegistry not available - skip
+                    return
+
+            # Try to get the global registry instance
+            # This is typically stored on the NeuralMeshCoordinator
+            try:
+                from neural_mesh.neural_mesh_coordinator import get_coordinator
+                coordinator = get_coordinator()
+                if coordinator and hasattr(coordinator, '_registry'):
+                    coordinator._registry.set_dependency_ready("cloudsql", is_ready)
+                    logger.debug(
+                        f"[ReadinessGate v115.0] AgentRegistry cloudsql dependency updated "
+                        f"via coordinator: {'READY' if is_ready else 'NOT_READY'}"
+                    )
+                    return
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
+            # Alternative: try to find registry via global singleton
+            try:
+                from backend.neural_mesh.neural_mesh_coordinator import get_coordinator
+                coordinator = get_coordinator()
+                if coordinator and hasattr(coordinator, '_registry'):
+                    coordinator._registry.set_dependency_ready("cloudsql", is_ready)
+                    logger.debug(
+                        f"[ReadinessGate v115.0] AgentRegistry cloudsql dependency updated "
+                        f"via backend coordinator: {'READY' if is_ready else 'NOT_READY'}"
+                    )
+                    return
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.debug(f"[ReadinessGate v115.0] Could not signal AgentRegistry: {e}")
 
     # -------------------------------------------------------------------------
     # v113.0: Proactive Proxy Startup System

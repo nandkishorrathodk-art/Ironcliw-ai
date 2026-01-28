@@ -234,14 +234,15 @@ class NeuralMeshCoordinator:
 
         try:
             # Import lazily to avoid circular imports
-            # Try both import paths
+            # v115.0: Use get_readiness_gate() to get the singleton instance
+            # CRITICAL: Must use singleton, not ProxyReadinessGate() which creates a new instance
             try:
-                from intelligence.cloud_sql_connection_manager import ProxyReadinessGate
+                from intelligence.cloud_sql_connection_manager import get_readiness_gate
             except ImportError:
-                from backend.intelligence.cloud_sql_connection_manager import ProxyReadinessGate
+                from backend.intelligence.cloud_sql_connection_manager import get_readiness_gate
 
-            # Get singleton gate instance
-            gate = ProxyReadinessGate()
+            # v115.0: Get the SINGLETON gate instance (not a new one!)
+            gate = get_readiness_gate()
 
             # Set up the integration
             gate.setup_agent_registry_integration(self._registry)
