@@ -657,6 +657,95 @@ class GCPVMManager:
         self.initialized = False
         self._initialization_error: Optional[Exception] = None
 
+        # v86.0: State for cross-repo cloud offloading coordination
+        self._cloud_offload_active: bool = False
+        self._cloud_offload_reason: str = ""
+        self._cloud_offload_triggered_at: Optional[float] = None
+
+    # =========================================================================
+    # v86.0: Property accessors for clean interface
+    # =========================================================================
+
+    @property
+    def enabled(self) -> bool:
+        """
+        Check if GCP VM Manager is enabled.
+
+        This property provides a clean interface for external code to check
+        if the manager is available for cloud offloading operations.
+
+        Returns:
+            True if GCP is enabled in config, False otherwise
+        """
+        return self.config.enabled
+
+    @property
+    def is_ready(self) -> bool:
+        """
+        Check if manager is fully initialized and ready for operations.
+
+        Returns:
+            True if enabled, initialized, and no initialization errors
+        """
+        return (
+            self.enabled and
+            self.initialized and
+            self._initialization_error is None
+        )
+
+    @property
+    def cloud_offload_active(self) -> bool:
+        """Check if cloud offloading is currently active."""
+        return self._cloud_offload_active
+
+    @property
+    def cloud_offload_reason(self) -> str:
+        """Get the reason cloud offloading was activated."""
+        return self._cloud_offload_reason
+
+    def mark_cloud_offload_active(self, reason: str) -> None:
+        """
+        Mark cloud offloading as active with the given reason.
+
+        Args:
+            reason: Why cloud offloading was activated (e.g., "High CPU", "Low memory")
+        """
+        import time
+        self._cloud_offload_active = True
+        self._cloud_offload_reason = reason
+        self._cloud_offload_triggered_at = time.time()
+        logger.info(f"☁️ [GCPVMManager] Cloud offloading marked ACTIVE: {reason}")
+
+    def mark_cloud_offload_inactive(self) -> None:
+        """Mark cloud offloading as inactive."""
+        self._cloud_offload_active = False
+        self._cloud_offload_reason = ""
+        self._cloud_offload_triggered_at = None
+        logger.info("☁️ [GCPVMManager] Cloud offloading marked INACTIVE")
+
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive status of the GCP VM Manager.
+
+        Returns:
+            Dict with enabled, ready, cloud_offload status, and stats
+        """
+        return {
+            "enabled": self.enabled,
+            "initialized": self.initialized,
+            "is_ready": self.is_ready,
+            "cloud_offload_active": self._cloud_offload_active,
+            "cloud_offload_reason": self._cloud_offload_reason,
+            "cloud_offload_triggered_at": self._cloud_offload_triggered_at,
+            "initialization_error": str(self._initialization_error) if self._initialization_error else None,
+            "config": self.config.to_dict() if hasattr(self.config, 'to_dict') else {"enabled": self.enabled},
+            "stats": self.stats,
+            "circuit_breakers": {
+                name: {"state": cb._state, "failures": cb._failure_count}
+                for name, cb in self._circuit_breakers.items()
+            },
+        }
+
     async def initialize(self):
         """
         Initialize GCP API clients and integrations with robust error handling.

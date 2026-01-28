@@ -1837,39 +1837,88 @@ class DynamicComponentManager:
             self._last_logged_pressure = pressure
 
         # ====================================================================
-        # INTELLIGENT HYBRID CLOUD OFFLOADING (v2.1)
+        # INTELLIGENT HYBRID CLOUD OFFLOADING (v86.0 Enhanced)
         # ====================================================================
         # Automatically provision GCP Spot VMs when memory pressure rises.
         # This prevents local OOM kills by offloading heavy ML work.
+        # v86.0: Enhanced with proper state tracking and cross-repo coordination
         # ====================================================================
-        
+
         # Check if we should trigger cloud offloading
         # Trigger on MEDIUM pressure or HIGH/CRITICAL, or if specifically enabled for LOW
         cloud_trigger_pressure = [MemoryPressure.MEDIUM, MemoryPressure.HIGH, MemoryPressure.CRITICAL, MemoryPressure.EMERGENCY]
         if os.getenv("JARVIS_CLOUD_OFFLOAD_AGGRESSIVE", "false").lower() == "true":
             cloud_trigger_pressure.append(MemoryPressure.LOW)
-            
+
         if pressure in cloud_trigger_pressure:
-            try:
-                # Lazy import to avoid circular dependencies
-                from .gcp_vm_manager import get_gcp_vm_manager
-                vm_manager = await get_gcp_vm_manager()
-                
-                # Only if feature is enabled
-                if vm_manager.enabled:
-                    # Check if we already have an active VM
-                    active_vm = await vm_manager.get_active_vm()
-                    
-                    if not active_vm:
-                        logger.info(f"🌩️ Memory pressure {pressure.value} detected - Initiating Hybrid Cloud Protocol...")
-                        logger.info("   Requesting GCP Spot Instance for compute offloading...")
-                        
-                        # Trigger async provisioning (fire and forget to not block main thread)
-                        asyncio.create_task(self._provision_cloud_resources(vm_manager))
-            except ImportError:
-                logger.debug("GCP VM Manager not available for offloading")
-            except Exception as e:
-                logger.warning(f"Failed to trigger cloud offloading: {e}")
+            await self._trigger_cloud_offloading(pressure)
+
+    async def _trigger_cloud_offloading(self, pressure: MemoryPressure) -> None:
+        """
+        v86.0: Trigger cloud offloading with proper state tracking.
+
+        This method handles the complete cloud offloading workflow:
+        1. Check if GCP VM Manager is available and enabled
+        2. Check if cloud offloading is already active
+        3. Provision resources if needed
+        4. Update state for cross-repo coordination
+        5. Set environment variables for ML routers
+
+        Args:
+            pressure: Current memory pressure level
+        """
+        try:
+            # Lazy import to avoid circular dependencies
+            from .gcp_vm_manager import get_gcp_vm_manager
+            vm_manager = await get_gcp_vm_manager()
+
+            # v86.0: Use enhanced property accessor
+            if not vm_manager.enabled:
+                logger.debug("GCP VM Manager disabled - skipping cloud offloading")
+                return
+
+            # Check if cloud offloading is already active
+            if vm_manager.cloud_offload_active:
+                logger.debug(f"Cloud offloading already active: {vm_manager.cloud_offload_reason}")
+                return
+
+            # Check if we already have an active VM
+            active_vm = await vm_manager.get_active_vm()
+
+            if not active_vm:
+                # Determine reason for offloading
+                offload_reason = f"Memory pressure: {pressure.value}"
+
+                logger.info(f"🌩️ {offload_reason} - Initiating Hybrid Cloud Protocol...")
+                logger.info("   Requesting GCP Spot Instance for compute offloading...")
+
+                # v86.0: Mark cloud offloading as active with reason
+                vm_manager.mark_cloud_offload_active(offload_reason)
+
+                # Set environment variables for ML routers to pick up
+                os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
+                os.environ["JARVIS_USE_CLOUD_ML"] = "true"
+                os.environ["JARVIS_CLOUD_OFFLOAD_REASON"] = offload_reason
+
+                # Trigger async provisioning (fire and forget to not block main thread)
+                asyncio.create_task(self._provision_cloud_resources(vm_manager, offload_reason))
+
+            else:
+                # VM already exists, just ensure cloud offload is marked active
+                if not vm_manager.cloud_offload_active:
+                    vm_manager.mark_cloud_offload_active(f"Existing VM: {active_vm.get('name', 'unknown')}")
+                logger.debug(f"Using existing cloud VM: {active_vm.get('name', 'unknown')}")
+
+        except ImportError as e:
+            logger.debug(f"GCP VM Manager not available for offloading: {e}")
+        except AttributeError as e:
+            # This catches the case where enabled property might be missing
+            logger.warning(f"GCP VM Manager interface issue: {e}")
+            # Fallback: try to set env vars anyway for ML routers
+            os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
+            os.environ["JARVIS_USE_CLOUD_ML"] = "true"
+        except Exception as e:
+            logger.warning(f"Failed to trigger cloud offloading: {e}")
 
         if pressure == MemoryPressure.HIGH:
             # Unload LOW priority idle components
@@ -1887,37 +1936,100 @@ class DynamicComponentManager:
                 if comp.priority != ComponentPriority.CORE and name != 'vision':
                     await self.unload_component(name)
 
-    async def _provision_cloud_resources(self, vm_manager):
-        """Provision cloud resources in background and update registry."""
+    async def _provision_cloud_resources(self, vm_manager, offload_reason: str = ""):
+        """
+        v86.0: Provision cloud resources in background and update registry.
+
+        This method handles:
+        1. Starting the GCP Spot VM
+        2. Updating the ML Engine Registry with cloud endpoint
+        3. Publishing state to Trinity Protocol for cross-repo coordination
+        4. Setting environment variables for routers
+
+        Args:
+            vm_manager: The GCPVMManager instance
+            offload_reason: Reason for cloud offloading (for logging/tracking)
+        """
         try:
             # Start VM
             success, ip_address = await vm_manager.start_spot_vm()
-            
+
             if success and ip_address:
                 logger.info(f"✅ Hybrid Cloud Active: Spot VM running at {ip_address}")
-                
+                logger.info(f"   Triggered by: {offload_reason}")
+
                 # Update ML Registry with new cloud endpoint
                 try:
                     from voice_unlock.ml_engine_registry import MLEngineRegistry
                     registry = MLEngineRegistry()
-                    
+
                     # Construct URL (assuming standard ML port 8010 or Prime port 8000 depending on image)
                     # For now default to ML service port 8010
                     cloud_url = f"http://{ip_address}:8010"
-                    
+
                     # Update registry endpoint
                     registry._cloud_endpoint = cloud_url
                     registry._use_cloud = True
                     logger.info(f"   🔄 ML Registry updated to use cloud backend: {cloud_url}")
-                    
-                    # Also notify Trinity/Reactor if possible
+
                 except ImportError:
                     pass
+
+                # v86.0: Publish state to Trinity Protocol for cross-repo coordination
+                try:
+                    await self._publish_cloud_state_to_trinity(ip_address, offload_reason)
+                except Exception as e:
+                    logger.debug(f"Trinity state publish (non-critical): {e}")
+
             else:
                 logger.warning("❌ Failed to provision GCP Spot VM")
-                
+                # Reset cloud offload state on failure
+                if hasattr(vm_manager, 'mark_cloud_offload_inactive'):
+                    vm_manager.mark_cloud_offload_inactive()
+
         except Exception as e:
             logger.error(f"Cloud provisioning task failed: {e}")
+            # Reset cloud offload state on error
+            if hasattr(vm_manager, 'mark_cloud_offload_inactive'):
+                vm_manager.mark_cloud_offload_inactive()
+
+    async def _publish_cloud_state_to_trinity(self, cloud_ip: str, reason: str) -> None:
+        """
+        v86.0: Publish cloud offloading state to Trinity Protocol.
+
+        This enables JARVIS Prime and Reactor Core to be aware of
+        the cloud offloading status and coordinate ML routing.
+
+        Args:
+            cloud_ip: IP address of the cloud VM
+            reason: Reason for cloud offloading
+        """
+        import json
+        import time
+        from pathlib import Path
+
+        trinity_state_dir = Path.home() / ".jarvis" / "trinity" / "state"
+        trinity_state_dir.mkdir(parents=True, exist_ok=True)
+
+        cloud_state_file = trinity_state_dir / "cloud_offload_state.json"
+
+        state = {
+            "cloud_offload_active": True,
+            "cloud_ip": cloud_ip,
+            "cloud_url": f"http://{cloud_ip}:8010",
+            "reason": reason,
+            "activated_at": time.time(),
+            "activated_by": "jarvis-body",
+            "timestamp": time.time(),
+        }
+
+        # Atomic write
+        temp_file = cloud_state_file.with_suffix(".tmp")
+        with open(temp_file, "w") as f:
+            json.dump(state, f, indent=2)
+        temp_file.rename(cloud_state_file)
+
+        logger.info(f"☁️ Published cloud state to Trinity: {cloud_state_file}")
 
     async def _unload_idle_components(self, priority: ComponentPriority, idle_seconds: float):
         """Unload idle components of given priority"""

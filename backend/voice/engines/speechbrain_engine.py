@@ -141,6 +141,13 @@ warnings.filterwarnings("ignore", message="torchaudio._backend.list_audio_backen
 warnings.filterwarnings("ignore", message=".*Wav2Vec2Model is frozen.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*model is frozen.*", category=UserWarning)
 
+# v129.0: Suppress PyTorch 2.x meta tensor warnings during model loading
+# These occur when loading checkpoints into models initialized with meta tensors
+# The warnings are informational - our patch handles this correctly
+warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*meta parameter.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Cannot copy out of meta tensor.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*meta tensor.*", category=UserWarning)
+
 # v95.0: Pre-configure SpeechBrain HuggingFace logger to ERROR before any model loading
 # This catches the logging.warning() calls that aren't Python warnings
 for _sb_hf_logger in [
@@ -223,6 +230,374 @@ try:
 
 except Exception as e:
     logger.warning(f"⚠️ Could not apply huggingface_hub compatibility patch: {e}")
+
+
+# ============================================================================
+# v129.0: PYTORCH 2.x META TENSOR COMPATIBILITY PATCH
+# ============================================================================
+# PyTorch 2.x uses meta tensors for memory-efficient model initialization.
+# Meta tensors are placeholder tensors with shape/dtype but NO actual data.
+# When moving meta tensors to a device with .to(), PyTorch raises:
+#   NotImplementedError: Cannot copy out of meta tensor; no data!
+#
+# The correct approach is:
+#   1. Use module.to_empty(device=device) to move the module structure
+#   2. Then load state_dict with assign=True to materialize actual tensors
+#
+# SpeechBrain's Pretrained.__init__ calls module.to(device) BEFORE loading
+# parameters, which fails for meta tensor models. This patch fixes that.
+# ============================================================================
+
+def _has_meta_tensors(module: torch.nn.Module) -> bool:
+    """
+    v129.0: Detect if a module contains any meta tensors.
+
+    Meta tensors have device type 'meta' and no actual data.
+    This is used for PyTorch 2.x lazy/deferred initialization.
+
+    Args:
+        module: PyTorch module to check
+
+    Returns:
+        True if any parameter or buffer is on meta device
+    """
+    for param in module.parameters():
+        if param.device.type == 'meta':
+            return True
+    for buffer in module.buffers():
+        if buffer.device.type == 'meta':
+            return True
+    return False
+
+
+def _safe_module_to_device(module: torch.nn.Module, device: str) -> torch.nn.Module:
+    """
+    v129.0: Safely move a module to device, handling meta tensors.
+
+    For normal tensors: Uses standard .to(device)
+    For meta tensors: Uses .to_empty(device=device) which moves the module
+                      structure without trying to copy data that doesn't exist.
+                      The actual data will be loaded later by load_state_dict.
+
+    This function is intelligent about:
+    - Detecting which approach is needed per-module
+    - Handling mixed module hierarchies (some meta, some real)
+    - Preserving module structure and references
+
+    Args:
+        module: PyTorch module to move
+        device: Target device string (e.g., 'cpu', 'cuda', 'mps')
+
+    Returns:
+        Module on the target device
+    """
+    if module is None:
+        return None
+
+    try:
+        # Check for meta tensors
+        if _has_meta_tensors(module):
+            # Use to_empty() for meta tensor modules
+            # This moves the module structure without copying non-existent data
+            # The actual weights will be loaded via load_state_dict later
+            logger.debug(f"   [v129.0] Meta tensors detected in {type(module).__name__}, using to_empty()")
+            return module.to_empty(device=device)
+        else:
+            # Standard .to() for modules with real tensors
+            return module.to(device)
+    except NotImplementedError as e:
+        if "Cannot copy out of meta tensor" in str(e):
+            # Fallback: explicitly use to_empty if detection missed something
+            logger.warning(f"   [v129.0] Meta tensor fallback triggered for {type(module).__name__}")
+            return module.to_empty(device=device)
+        raise
+    except Exception as e:
+        # Log but don't swallow unexpected errors
+        logger.error(f"   [v129.0] Unexpected error moving module to device: {e}")
+        raise
+
+
+def _patch_speechbrain_meta_tensor_handling():
+    """
+    v129.0: Patch SpeechBrain to handle PyTorch 2.x meta tensors properly.
+
+    This patches the Pretrained.__init__ method to use _safe_module_to_device
+    instead of the standard module.to(device) call that fails on meta tensors.
+    """
+    try:
+        from speechbrain.inference.interfaces import Pretrained
+
+        # Get original __init__
+        _original_init = Pretrained.__init__
+
+        def _patched_init(self, modules=None, hparams=None, run_opts=None, freeze_params=True):
+            """
+            v129.0: Patched Pretrained.__init__ with meta tensor support.
+
+            Intercepts module device movement to handle meta tensors properly.
+            """
+            # CRITICAL: Must call parent __init__ before any module assignments
+            super(Pretrained, self).__init__()
+
+            from types import SimpleNamespace
+            # AudioNormalizer moved in SpeechBrain 1.0+
+            try:
+                from speechbrain.inference.interfaces import AudioNormalizer
+            except ImportError:
+                try:
+                    from speechbrain.dataio.dataio import AudioNormalizer
+                except ImportError:
+                    # Create a minimal fallback
+                    class AudioNormalizer:
+                        def __init__(self, *args, **kwargs): pass
+
+            # Handle run_opts defaults (copied from original)
+            run_opt_defaults = {
+                "device": "cpu",
+                "data_parallel_count": -1,
+                "data_parallel_backend": False,
+                "distributed_launch": False,
+                "distributed_backend": "nccl",
+                "jit": False,
+                "jit_module_keys": None,
+                "compile": False,
+                "compile_module_keys": None,
+                "compile_mode": "reduce-overhead",
+                "compile_using_fullgraph": False,
+                "compile_using_dynamic_shape_tracing": False,
+            }
+
+            for arg, default in run_opt_defaults.items():
+                if run_opts is not None and arg in run_opts:
+                    setattr(self, arg, run_opts[arg])
+                else:
+                    if hparams is not None and arg in hparams:
+                        setattr(self, arg, hparams[arg])
+                    else:
+                        setattr(self, arg, default)
+
+            # v129.0: Use safe device movement that handles meta tensors
+            self.mods = torch.nn.ModuleDict(modules)
+            for name, module in self.mods.items():
+                if module is not None:
+                    try:
+                        self.mods[name] = _safe_module_to_device(module, self.device)
+                    except Exception as e:
+                        logger.warning(f"   [v129.0] Failed to move module {name} to {self.device}: {e}")
+                        # Leave module on original device, let later loading handle it
+
+            # HPARAMS_NEEDED check and setup
+            if self.HPARAMS_NEEDED and hparams is None:
+                raise ValueError("Need to provide hparams dict.")
+            if hparams is not None:
+                for hp in self.HPARAMS_NEEDED:
+                    if hp not in hparams:
+                        raise ValueError(f"Need hparams['{hp}']")
+                self.hparams = SimpleNamespace(**hparams)
+
+            # Prepare modules
+            self._prepare_modules(freeze_params)
+
+            # Audio normalization
+            self.audio_normalizer = hparams.get("audio_normalizer", AudioNormalizer()) if hparams else AudioNormalizer()
+
+        # Apply patch
+        Pretrained.__init__ = _patched_init
+        logger.info("🔧 Applied SpeechBrain meta tensor patch (v129.0) for PyTorch 2.x compatibility")
+
+    except ImportError:
+        logger.debug("   [v129.0] SpeechBrain not available - meta tensor patch deferred")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not apply SpeechBrain meta tensor patch: {e}")
+
+
+def _materialize_meta_tensors_and_load(module: torch.nn.Module, state_dict: dict):
+    """
+    v129.0: Fallback for PyTorch < 2.1 - manually materialize meta tensors.
+
+    For older PyTorch versions that don't support load_state_dict(assign=True),
+    this function manually replaces meta parameters with real ones from the state_dict.
+
+    Args:
+        module: PyTorch module with potential meta tensors
+        state_dict: State dict with real tensor values
+
+    Returns:
+        IncompatibleKeys named tuple with missing_keys and unexpected_keys
+    """
+    from collections import namedtuple
+    IncompatibleKeys = namedtuple('IncompatibleKeys', ['missing_keys', 'unexpected_keys'])
+
+    missing_keys = []
+    unexpected_keys = list(state_dict.keys())
+
+    # Get the module's named parameters and buffers
+    module_state = dict(module.named_parameters())
+    module_state.update(dict(module.named_buffers()))
+
+    for name, param in module_state.items():
+        if name in state_dict:
+            unexpected_keys.remove(name)
+            src_tensor = state_dict[name]
+
+            if param.device.type == 'meta':
+                # Meta tensor: need to create new real tensor and replace
+                # This is a simplified version of what assign=True does
+                new_param = torch.nn.Parameter(
+                    src_tensor.clone().detach(),
+                    requires_grad=param.requires_grad
+                ) if isinstance(param, torch.nn.Parameter) else src_tensor.clone().detach()
+
+                # Navigate to parent module and replace parameter
+                parts = name.rsplit('.', 1)
+                if len(parts) == 2:
+                    parent_name, param_name = parts
+                    parent = module
+                    for part in parent_name.split('.'):
+                        parent = getattr(parent, part)
+                    if isinstance(param, torch.nn.Parameter):
+                        parent.register_parameter(param_name, new_param)
+                    else:
+                        parent.register_buffer(param_name, new_param)
+                else:
+                    # Top-level parameter
+                    if isinstance(param, torch.nn.Parameter):
+                        module.register_parameter(name, new_param)
+                    else:
+                        module.register_buffer(name, new_param)
+            else:
+                # Normal tensor: standard copy
+                with torch.no_grad():
+                    param.copy_(src_tensor)
+        else:
+            missing_keys.append(name)
+
+    return IncompatibleKeys(missing_keys, unexpected_keys)
+
+
+def _patch_speechbrain_parameter_transfer():
+    """
+    v129.0: Patch SpeechBrain parameter transfer to handle meta tensor state loading.
+
+    When loading state_dict into a module that was moved with to_empty(),
+    we need to use assign=True to materialize the tensors.
+    """
+    try:
+        from speechbrain.utils import checkpoints
+
+        _original_transfer = checkpoints.torch_parameter_transfer
+
+        def _patched_transfer(obj, path):
+            """
+            v129.0: Patched torch_parameter_transfer with meta tensor support.
+
+            Uses assign=True when loading into modules with meta tensors.
+            Falls back to standard loading if assign=True isn't supported.
+            """
+            device = "cpu"
+            state_dict = checkpoints.torch_patched_state_dict_load(path, device)
+
+            # Check if module has meta tensors (needs assign=True)
+            needs_assign = _has_meta_tensors(obj)
+
+            incompatible_keys = None
+
+            if needs_assign:
+                logger.debug(f"   [v129.0] Meta tensors detected, loading with assign=True")
+                try:
+                    # For meta tensor modules, use assign=True to materialize tensors
+                    # assign=True replaces parameters with loaded tensors instead of copying
+                    incompatible_keys = obj.load_state_dict(state_dict, strict=False, assign=True)
+                except TypeError as e:
+                    # PyTorch < 2.1 doesn't support assign parameter
+                    if "assign" in str(e):
+                        logger.warning(f"   [v129.0] PyTorch version doesn't support assign=True, trying fallback")
+                        # Fallback: manually materialize meta tensors
+                        incompatible_keys = _materialize_meta_tensors_and_load(obj, state_dict)
+                    else:
+                        raise
+            else:
+                # Standard loading for normal modules
+                incompatible_keys = obj.load_state_dict(state_dict, strict=False)
+
+            # Log warnings (copied from original)
+            if incompatible_keys:
+                for missing_key in incompatible_keys.missing_keys:
+                    logger.warning(
+                        f"During parameter transfer to {obj} loading from "
+                        + f"{path}, the transferred parameters did not have "
+                        + f"parameters for the key: {missing_key}"
+                    )
+                for unexpected_key in incompatible_keys.unexpected_keys:
+                    logger.warning(
+                        f"During parameter transfer to {obj} loading from "
+                        + f"{path}, the object could not use the parameters loaded "
+                        + f"with the key: {unexpected_key}"
+                    )
+
+        checkpoints.torch_parameter_transfer = _patched_transfer
+        checkpoints.DEFAULT_TRANSFER_HOOKS[torch.nn.Module] = _patched_transfer
+        logger.info("🔧 Applied SpeechBrain parameter transfer patch (v129.0)")
+
+    except ImportError:
+        logger.debug("   [v129.0] SpeechBrain checkpoints not available - transfer patch deferred")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not apply SpeechBrain parameter transfer patch: {e}")
+
+
+def _patch_torch_load_for_speechbrain():
+    """
+    v129.0: Patch torch.load calls in SpeechBrain to avoid meta tensor issues.
+
+    Sets mmap=False and weights_only=True to prevent meta tensor initialization
+    from memory-mapped loading.
+    """
+    try:
+        from speechbrain.utils import checkpoints
+
+        _original_patched_load = checkpoints.torch_patched_state_dict_load
+
+        def _v129_patched_load(path, device="cpu"):
+            """
+            v129.0: Enhanced state_dict loading with meta tensor prevention.
+            """
+            # Load with explicit settings to prevent meta tensor issues
+            try:
+                # Try with mmap=False to prevent lazy loading
+                state_dict = torch.load(
+                    path,
+                    map_location=device,
+                    mmap=False,  # Disable memory mapping (avoids meta tensors)
+                    weights_only=True  # Safer and avoids some initialization issues
+                )
+            except TypeError:
+                # Older torch version doesn't support mmap or weights_only
+                try:
+                    state_dict = torch.load(path, map_location=device, weights_only=True)
+                except TypeError:
+                    state_dict = torch.load(path, map_location=device)
+            except Exception as e:
+                # weights_only=True may fail for non-pure tensor checkpoints
+                logger.debug(f"   [v129.0] Fallback to standard torch.load: {e}")
+                state_dict = torch.load(path, map_location=device)
+
+            # Apply SpeechBrain's state dict hooks
+            state_dict = checkpoints.hook_on_loading_state_dict_checkpoint(state_dict)
+            return state_dict
+
+        checkpoints.torch_patched_state_dict_load = _v129_patched_load
+        logger.info("🔧 Applied torch.load patch (v129.0) for PyTorch 2.x")
+
+    except ImportError:
+        logger.debug("   [v129.0] SpeechBrain checkpoints not available - torch.load patch deferred")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not apply torch.load patch: {e}")
+
+
+# Apply all meta tensor patches when module loads
+_patch_torch_load_for_speechbrain()
+_patch_speechbrain_parameter_transfer()
+_patch_speechbrain_meta_tensor_handling()
 
 
 @dataclass
