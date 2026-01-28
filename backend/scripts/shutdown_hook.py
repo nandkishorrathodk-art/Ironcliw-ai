@@ -873,22 +873,45 @@ def _minimal_sync_cleanup(reason: str) -> Dict[str, Any]:
 
 def _cleanup_multiprocessing_sync_fast(timeout: float = 2.0) -> int:
     """
-    v95.17: Fast synchronous multiprocessing cleanup.
+    v128.0: Fast synchronous multiprocessing cleanup.
 
     CRITICAL: This MUST run immediately in signal handlers BEFORE any async work.
     ProcessPoolExecutors use semaphores that will leak if not properly cleaned up.
 
-    This is the first line of defense against semaphore leaks.
-
-    v108.0: Enhanced to also clean up torch.multiprocessing resources from
-    SentenceTransformer and other ML libraries.
+    v128.0: Properly terminates ProcessPoolExecutor worker processes to release
+    their internal semaphores. This is the KEY fix for the semaphore leak warning.
 
     Returns:
-        Number of executors cleaned
+        Number of resources cleaned
     """
     cleaned = 0
+
+    # v128.0: Try comprehensive semaphore cleanup first (includes worker termination)
     try:
-        # Import the multiprocessing tracker
+        for module_path in ["core.resilience.graceful_shutdown", "backend.core.resilience.graceful_shutdown"]:
+            try:
+                import importlib
+                module = importlib.import_module(module_path)
+                cleanup_all = getattr(module, "cleanup_all_semaphores_sync", None)
+                if cleanup_all:
+                    result = cleanup_all()
+                    cleaned = (
+                        result.get("executors_cleaned", 0) +
+                        result.get("workers_terminated", 0) +  # v128.0: worker processes
+                        result.get("mp_children_terminated", 0) +
+                        result.get("torch_children_terminated", 0) +
+                        result.get("posix_semaphores_cleaned", 0)  # v128.0: POSIX cleanup
+                    )
+                    if cleaned > 0:
+                        logger.debug(f"   [v128.0] Comprehensive cleanup: {cleaned} resources")
+                    return cleaned
+            except ImportError:
+                continue
+    except Exception as e:
+        logger.debug(f"   [v128.0] Comprehensive cleanup error (falling back): {e}")
+
+    # Fallback: v95.17 executor cleanup
+    try:
         for module_path in ["core.resilience.graceful_shutdown", "backend.core.resilience.graceful_shutdown"]:
             try:
                 import importlib
@@ -896,7 +919,6 @@ def _cleanup_multiprocessing_sync_fast(timeout: float = 2.0) -> int:
                 get_tracker = getattr(module, "get_multiprocessing_tracker", None)
                 if get_tracker:
                     tracker = get_tracker()
-                    # Use fast sync cleanup
                     result = tracker.shutdown_all_executors_sync(timeout=timeout)
                     cleaned = result.get("successful", 0) + result.get("forced", 0)
                     if cleaned > 0:
@@ -907,7 +929,7 @@ def _cleanup_multiprocessing_sync_fast(timeout: float = 2.0) -> int:
     except Exception as e:
         logger.debug(f"   [v95.17] Fast MP cleanup error (non-critical): {e}")
 
-    # v108.0: Clean up torch.multiprocessing resources (SentenceTransformer pools)
+    # Fallback: v108.0 torch.multiprocessing cleanup
     try:
         cleanup_torch_func = None
         for module_path in ["core.resilience.graceful_shutdown", "backend.core.resilience.graceful_shutdown"]:

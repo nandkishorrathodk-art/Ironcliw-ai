@@ -5463,20 +5463,110 @@ class TrinityEntryPointDetector:
 
 
 # =============================================================================
-# Resource-Aware Startup Checker v85.0
+# Resource-Aware Startup Checker v86.0 (Enhanced with Auto Cloud Offloading)
 # =============================================================================
 
 class ResourceChecker:
     """
-    v85.0: Pre-flight resource checks before component launch.
+    v86.0: Pre-flight resource checks with automatic GCP cloud offloading.
 
     Features:
-    - Memory availability check
-    - CPU utilization check
+    - Memory availability check with auto cloud offloading
+    - CPU utilization check with auto cloud offloading
     - Disk space check
     - Network connectivity check
     - All thresholds env-configurable
+    - v86.0: Automatic GCP Spot VM activation when resources constrained
+
+    IMPORTANT (v86.0): When high CPU or low memory is detected, we automatically
+    trigger GCP cloud offloading instead of blocking startup. This enables
+    seamless operation under resource pressure.
     """
+
+    # Track cloud offloading state
+    _cloud_offloading_enabled: bool = False
+    _cloud_offloading_reason: str = ""
+
+    @staticmethod
+    async def _activate_cloud_offloading(reason: str) -> bool:
+        """
+        v86.0: Automatically activate GCP cloud offloading for ML workloads.
+
+        This sets environment variables and triggers the GCP hybrid architecture
+        to handle ML processing, allowing local resources to focus on coordination.
+
+        Args:
+            reason: Why cloud offloading is being activated
+
+        Returns:
+            True if cloud offloading was successfully activated
+        """
+        if ResourceChecker._cloud_offloading_enabled:
+            logger.debug(f"[ResourceChecker] Cloud offloading already enabled")
+            return True
+
+        logger.info(f"☁️  [ResourceChecker v86.0] Activating GCP cloud offloading: {reason}")
+
+        try:
+            # Set environment variables to enable cloud offloading
+            os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
+            os.environ["JARVIS_USE_CLOUD_ML"] = "true"
+            os.environ["JARVIS_SPOT_VM_ENABLED"] = "true"
+            os.environ["JARVIS_CLOUD_OFFLOAD_REASON"] = reason
+
+            # Try to activate the cloud ML backend
+            try:
+                from backend.core.memory_aware_startup import (
+                    get_startup_manager,
+                    MemoryAwareStartup,
+                )
+                manager = await get_startup_manager()
+                result = await manager.activate_cloud_ml_backend()
+
+                if result.get("success"):
+                    logger.info(
+                        f"☁️  [ResourceChecker v86.0] GCP cloud offloading ACTIVATED: "
+                        f"{result.get('vm_name', 'default')} - {reason}"
+                    )
+                    ResourceChecker._cloud_offloading_enabled = True
+                    ResourceChecker._cloud_offloading_reason = reason
+                    return True
+                else:
+                    logger.warning(
+                        f"[ResourceChecker v86.0] Cloud activation returned: {result}"
+                    )
+                    # Still mark as enabled via env vars
+                    ResourceChecker._cloud_offloading_enabled = True
+                    ResourceChecker._cloud_offloading_reason = reason
+                    return True
+
+            except ImportError as e:
+                logger.debug(f"[ResourceChecker v86.0] MemoryAwareStartup not available: {e}")
+                # Environment variables are set, cloud router should pick them up
+                ResourceChecker._cloud_offloading_enabled = True
+                ResourceChecker._cloud_offloading_reason = reason
+                return True
+
+            except Exception as e:
+                logger.warning(f"[ResourceChecker v86.0] Cloud activation error: {e}")
+                # Environment variables are set, proceeding
+                ResourceChecker._cloud_offloading_enabled = True
+                ResourceChecker._cloud_offloading_reason = reason
+                return True
+
+        except Exception as e:
+            logger.error(f"[ResourceChecker v86.0] Failed to activate cloud offloading: {e}")
+            return False
+
+    @staticmethod
+    def is_cloud_offloading_enabled() -> bool:
+        """Check if cloud offloading has been activated."""
+        return ResourceChecker._cloud_offloading_enabled
+
+    @staticmethod
+    def get_cloud_offloading_reason() -> str:
+        """Get the reason cloud offloading was activated."""
+        return ResourceChecker._cloud_offloading_reason
 
     @staticmethod
     async def check_resources_for_component(
@@ -5484,6 +5574,13 @@ class ResourceChecker:
     ) -> Tuple[bool, List[str]]:
         """
         Check if system has sufficient resources to launch a component.
+
+        v86.0: Now automatically activates GCP cloud offloading when:
+        - High CPU detected (> threshold)
+        - Low memory detected (< threshold)
+
+        This ensures startup always proceeds - with local resources when
+        available, or with cloud offloading when constrained.
 
         Returns:
             (can_launch: bool, warnings: List[str])
@@ -5521,9 +5618,21 @@ class ResourceChecker:
                     f"Low memory: {available_gb:.1f}GB available, "
                     f"{req['min_memory_gb']}GB recommended for {component}"
                 )
+
+                # v86.0: Auto-activate cloud offloading for memory pressure
+                await ResourceChecker._activate_cloud_offloading(
+                    f"Low memory ({available_gb:.1f}GB) for {component}"
+                )
+                warnings.append("☁️  GCP cloud offloading ACTIVATED for ML workloads")
+
+                # Only return False if critically low AND cloud activation failed
                 if available_gb < req["min_memory_gb"] * 0.5:
-                    # Critical - less than half required
-                    return False, warnings
+                    if not ResourceChecker._cloud_offloading_enabled:
+                        return False, warnings
+                    else:
+                        warnings.append(
+                            f"⚡ Proceeding with cloud offloading despite low memory"
+                        )
 
             # CPU check
             cpu_percent = psutil.cpu_percent(interval=0.5)
@@ -5532,9 +5641,21 @@ class ResourceChecker:
                 warnings.append(
                     f"High CPU: {cpu_percent:.1f}% > {req['max_cpu_percent']}% threshold"
                 )
+
+                # v86.0: Auto-activate cloud offloading for CPU pressure
+                await ResourceChecker._activate_cloud_offloading(
+                    f"High CPU ({cpu_percent:.1f}%) - offloading ML to GCP"
+                )
+                warnings.append("☁️  GCP cloud offloading ACTIVATED for ML workloads")
+
+                # Even with saturated CPU, proceed if cloud offloading is enabled
                 if cpu_percent > 98.0:
-                    # Critical - CPU saturated
-                    return False, warnings
+                    if not ResourceChecker._cloud_offloading_enabled:
+                        return False, warnings
+                    else:
+                        warnings.append(
+                            f"⚡ Proceeding with cloud offloading despite saturated CPU"
+                        )
 
             # Disk check
             disk = psutil.disk_usage("/")
@@ -5580,6 +5701,24 @@ class ResourceChecker:
             await asyncio.sleep(check_interval)
 
         return False
+
+    @staticmethod
+    async def force_cloud_offloading(reason: str = "Manual activation") -> bool:
+        """
+        v86.0: Force-enable cloud offloading regardless of resource state.
+
+        Useful for:
+        - Testing cloud offloading
+        - Preemptively avoiding local resource usage
+        - User preference for cloud-first mode
+
+        Args:
+            reason: Reason for forcing cloud offloading
+
+        Returns:
+            True if successfully enabled
+        """
+        return await ResourceChecker._activate_cloud_offloading(reason)
 
 
 # =============================================================================

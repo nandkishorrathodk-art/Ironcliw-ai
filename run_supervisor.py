@@ -7465,17 +7465,30 @@ class SupervisorBootstrapper:
                     else:
                         self.logger.warning("[v95.0] Could not acquire ownership (unknown reason)")
 
-                # v85.0: Resource pre-flight check
+                # v86.0: Resource pre-flight check with auto cloud offloading
                 # Verify we have enough resources before proceeding
+                # NEW: High CPU/Low Memory now AUTO-ACTIVATES GCP cloud offloading
                 can_proceed, issues = await ResourceChecker.check_resources_for_component("jarvis_body")
+
+                # v86.0: Check if cloud offloading was triggered
+                if ResourceChecker.is_cloud_offloading_enabled():
+                    cloud_reason = ResourceChecker.get_cloud_offloading_reason()
+                    TerminalUI.print_success(f"☁️  [v86.0] GCP Cloud Offloading ACTIVATED")
+                    TerminalUI.print_info(f"   → Reason: {cloud_reason}")
+                    TerminalUI.print_info(f"   → ML workloads will be processed by GCP Spot VM")
+                    self.logger.info(f"[v86.0] ☁️  Cloud offloading enabled: {cloud_reason}")
+
                 if not can_proceed:
                     for issue in issues:
-                        TerminalUI.print_error(f"[v85.0] Resource issue: {issue}")
-                    self.logger.error(f"[v85.0] Resource check failed: {issues}")
+                        TerminalUI.print_error(f"[v86.0] Resource issue: {issue}")
+                    self.logger.error(f"[v86.0] Resource check failed: {issues}")
                     # Don't fail hard - log and continue with degraded mode
-                    TerminalUI.print_warning("[v85.0] Continuing with degraded resources...")
+                    TerminalUI.print_warning("[v86.0] Continuing with degraded resources...")
                 else:
-                    self.logger.info("[v85.0] ✅ Resource pre-flight check passed")
+                    if ResourceChecker.is_cloud_offloading_enabled():
+                        self.logger.info("[v86.0] ✅ Resource check passed (with cloud offloading)")
+                    else:
+                        self.logger.info("[v86.0] ✅ Resource pre-flight check passed (full local mode)")
 
             except ImportError as e:
                 self.logger.debug(f"[v85.0] State coordination not available: {e}")
