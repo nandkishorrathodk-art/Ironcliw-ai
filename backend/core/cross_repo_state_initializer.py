@@ -227,6 +227,15 @@ class EventType(str, Enum):
     SYSTEM_READY = "vbia_system_ready"
     SYSTEM_ERROR = "vbia_system_error"
 
+    # v113.0: Infrastructure dependency events (CloudSQL, proxies, etc.)
+    CLOUDSQL_PROXY_STARTING = "infra_cloudsql_proxy_starting"
+    CLOUDSQL_PROXY_READY = "infra_cloudsql_proxy_ready"
+    CLOUDSQL_PROXY_FAILED = "infra_cloudsql_proxy_failed"
+    CLOUDSQL_DB_CONNECTED = "infra_cloudsql_db_connected"
+    CLOUDSQL_DB_DISCONNECTED = "infra_cloudsql_db_disconnected"
+    DEPENDENCY_READY = "infra_dependency_ready"
+    DEPENDENCY_NOT_READY = "infra_dependency_not_ready"
+
 
 class StateStatus(str, Enum):
     """Status of a repository's state."""
@@ -577,6 +586,150 @@ class CrossRepoStateInitializer:
 
         except Exception as e:
             logger.error(f"[CrossRepoState] Failed to emit event: {e}")
+
+    # =========================================================================
+    # v113.0: CloudSQL Readiness Broadcasting API
+    # =========================================================================
+
+    async def broadcast_cloudsql_ready(
+        self,
+        ready: bool,
+        latency_ms: Optional[float] = None,
+        failure_reason: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        v113.0: Broadcast CloudSQL readiness state to all cross-repo components.
+
+        This enables JARVIS Prime and Reactor Core to:
+        - Know when CloudSQL is ready before attempting DB operations
+        - Gracefully degrade if CloudSQL is unavailable
+        - Coordinate startup timing with database availability
+
+        Args:
+            ready: Whether CloudSQL proxy is ready and DB-level connectivity confirmed
+            latency_ms: DB connection latency in milliseconds (if ready)
+            failure_reason: Reason for failure (if not ready)
+            metadata: Additional metadata to include in the event
+        """
+        event_type = EventType.CLOUDSQL_PROXY_READY if ready else EventType.CLOUDSQL_PROXY_FAILED
+
+        payload: Dict[str, Any] = {
+            "ready": ready,
+            "timestamp": time.time(),
+            "version": "113.0",
+        }
+
+        if latency_ms is not None:
+            payload["latency_ms"] = latency_ms
+
+        if failure_reason:
+            payload["failure_reason"] = failure_reason
+
+        if metadata:
+            payload.update(metadata)
+
+        event = VBIAEvent(
+            event_type=event_type,
+            source_repo=RepoType.JARVIS,
+            payload=payload,
+        )
+
+        await self.emit_event(event)
+
+        # Also write to a dedicated cloudsql_state.json file for quick lookup
+        await self._write_cloudsql_state(ready, latency_ms, failure_reason, metadata)
+
+        logger.info(
+            f"[CrossRepoState v113.0] CloudSQL readiness broadcast: "
+            f"ready={ready}, latency_ms={latency_ms}"
+        )
+
+    async def _write_cloudsql_state(
+        self,
+        ready: bool,
+        latency_ms: Optional[float] = None,
+        failure_reason: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        v113.0: Write CloudSQL state to a dedicated state file for quick lookup.
+
+        Other repos can read this file to check CloudSQL readiness without
+        parsing the event log.
+        """
+        try:
+            state_file = self.config.base_dir / "cloudsql_state.json"
+
+            state = {
+                "ready": ready,
+                "last_update": datetime.now().isoformat(),
+                "last_update_timestamp": time.time(),
+                "latency_ms": latency_ms,
+                "failure_reason": failure_reason,
+                "version": "113.0",
+                "source_repo": RepoType.JARVIS.value,
+            }
+
+            if metadata:
+                state["metadata"] = metadata
+
+            await self._write_json_file(state_file, state)
+
+        except Exception as e:
+            logger.warning(f"[CrossRepoState v113.0] Failed to write CloudSQL state: {e}")
+
+    async def get_cloudsql_state(self) -> Dict[str, Any]:
+        """
+        v113.0: Get the current CloudSQL readiness state.
+
+        Returns:
+            Dict with ready status, latency, failure_reason, and metadata
+        """
+        try:
+            state_file = self.config.base_dir / "cloudsql_state.json"
+            return await self._read_json_file(state_file, default={"ready": False})
+        except Exception as e:
+            logger.debug(f"[CrossRepoState v113.0] Failed to read CloudSQL state: {e}")
+            return {"ready": False, "error": str(e)}
+
+    async def wait_for_cloudsql_ready(
+        self,
+        timeout_seconds: float = 60.0,
+        poll_interval_seconds: float = 1.0,
+    ) -> bool:
+        """
+        v113.0: Wait for CloudSQL to become ready (for use by other repos).
+
+        This is useful for JARVIS Prime and Reactor Core to wait for CloudSQL
+        before starting database-dependent components.
+
+        Args:
+            timeout_seconds: Maximum time to wait
+            poll_interval_seconds: How often to check the state
+
+        Returns:
+            True if CloudSQL became ready, False if timeout
+        """
+        start_time = time.time()
+
+        while (time.time() - start_time) < timeout_seconds:
+            state = await self.get_cloudsql_state()
+
+            if state.get("ready", False):
+                logger.info(
+                    f"[CrossRepoState v113.0] CloudSQL ready "
+                    f"(waited {time.time() - start_time:.1f}s)"
+                )
+                return True
+
+            await asyncio.sleep(poll_interval_seconds)
+
+        logger.warning(
+            f"[CrossRepoState v113.0] Timeout waiting for CloudSQL "
+            f"(waited {timeout_seconds}s)"
+        )
+        return False
 
     async def get_recent_events(self, limit: int = 100, event_type: Optional[EventType] = None) -> List[VBIAEvent]:
         """

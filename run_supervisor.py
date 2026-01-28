@@ -7935,6 +7935,17 @@ class SupervisorBootstrapper:
                 print(f"  {TerminalUI.YELLOW}⚠️ Process Management v78.0: Not available{TerminalUI.RESET}")
 
             # ═══════════════════════════════════════════════════════════════════
+            # v113.0: Proactive CloudSQL Proxy Startup (ROOT FIX for Connection Refused)
+            # ═══════════════════════════════════════════════════════════════════
+            # This ensures the Cloud SQL proxy is running and DB-level ready BEFORE
+            # any database-dependent components start. This is the ROOT FIX for:
+            # - "Connection refused" errors during startup
+            # - "Dependency 'cloudsql' is now NOT READY" messages
+            # - Race conditions between components and proxy startup
+            # ═══════════════════════════════════════════════════════════════════
+            await self._initialize_cloudsql_proxy()
+
+            # ═══════════════════════════════════════════════════════════════════
             # v5.0: Initialize Intelligent Rate Orchestrator (ML Forecasting)
             # ═══════════════════════════════════════════════════════════════════
             # This starts the ML-powered rate limiting system that:
@@ -11626,7 +11637,147 @@ class SupervisorBootstrapper:
                 self.logger.info("🧠 AGI OS module available - will integrate with supervisor")
             except ImportError:
                 self.logger.debug("AGI OS module not available - supervisor will operate independently")
-    
+
+    async def _initialize_cloudsql_proxy(self) -> None:
+        """
+        v113.0: Proactively ensure Cloud SQL proxy is running and DB-level ready.
+
+        This is the ROOT FIX for "Connection refused" errors during startup.
+        Instead of waiting for failures to trigger reactive auto-start, this
+        method proactively:
+
+        1. Checks if proxy is running
+        2. Starts it if not (using CloudSQLProxyManager)
+        3. Waits for DB-level connectivity (not just TCP port)
+        4. Uses intelligent exponential backoff
+        5. Signals AgentRegistry when CloudSQL is ready
+        6. Notifies cross-repo components via service registry
+
+        Environment Variables (no hardcoding):
+        - CLOUDSQL_PROXY_ENABLED: "true" (default) to enable this phase
+        - CLOUDSQL_ENSURE_READY_TIMEOUT: Timeout in seconds (default: 60.0)
+        - CLOUDSQL_PROXY_START_ATTEMPTS: Max proxy start attempts (default: 3)
+        """
+        # Check if CloudSQL proxy phase is enabled (configurable)
+        cloudsql_enabled = os.getenv("CLOUDSQL_PROXY_ENABLED", "true").lower() in ("1", "true", "yes")
+        if not cloudsql_enabled:
+            self.logger.info("[v113.0] CloudSQL proxy phase disabled via CLOUDSQL_PROXY_ENABLED=false")
+            print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Disabled{TerminalUI.RESET}")
+            return
+
+        # Get timeout from environment (no hardcoding)
+        timeout = float(os.getenv("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+        max_attempts = int(os.getenv("CLOUDSQL_PROXY_START_ATTEMPTS", "3"))
+
+        try:
+            # Import ProxyReadinessGate
+            try:
+                from intelligence.cloud_sql_connection_manager import (
+                    ProxyReadinessGate,
+                    ReadinessState,
+                )
+            except ImportError:
+                try:
+                    from backend.intelligence.cloud_sql_connection_manager import (
+                        ProxyReadinessGate,
+                        ReadinessState,
+                    )
+                except ImportError:
+                    self.logger.debug("[v113.0] ProxyReadinessGate not available")
+                    print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Module not available{TerminalUI.RESET}")
+                    return
+
+            # Get the singleton gate instance
+            gate = ProxyReadinessGate.get_instance()
+
+            self.logger.info("[v113.0] 🗄️ Ensuring Cloud SQL proxy is running and ready...")
+            print(f"  {TerminalUI.CYAN}🗄️ Starting CloudSQL Proxy Startup Phase...{TerminalUI.RESET}")
+
+            # Call the proactive ensure_proxy_ready method
+            result = await gate.ensure_proxy_ready(
+                timeout=timeout,
+                auto_start=True,
+                max_start_attempts=max_attempts,
+                notify_cross_repo=True,
+            )
+
+            if result.ready:
+                # Success - proxy is running and DB-level connectivity confirmed
+                latency_ms = (result.latency or 0) * 1000
+                self.logger.info(
+                    f"[v113.0] ✅ CloudSQL proxy ready (latency: {latency_ms:.1f}ms)"
+                )
+                print(f"  {TerminalUI.GREEN}✓ CloudSQL Proxy: Ready ({latency_ms:.1f}ms latency){TerminalUI.RESET}")
+
+                # Signal to AgentRegistry that CloudSQL dependency is ready
+                await self._signal_cloudsql_ready_to_registry()
+
+                # Set environment variable for downstream components
+                os.environ["CLOUDSQL_PROXY_READY"] = "true"
+                os.environ["CLOUDSQL_READY_AT"] = str(time.time())
+
+            else:
+                # Failed - log details but don't block startup (graceful degradation)
+                self.logger.warning(
+                    f"[v113.0] ⚠️ CloudSQL proxy not ready after {timeout}s: {result.message}"
+                )
+                print(f"  {TerminalUI.YELLOW}⚠️ CloudSQL Proxy: Not ready ({result.failure_reason}){TerminalUI.RESET}")
+                print(f"    → Database-dependent features may be unavailable")
+
+                # Set environment variable for downstream components to handle gracefully
+                os.environ["CLOUDSQL_PROXY_READY"] = "false"
+
+        except ImportError as e:
+            self.logger.debug(f"[v113.0] CloudSQL proxy modules not available: {e}")
+            print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Not configured{TerminalUI.RESET}")
+
+        except Exception as e:
+            self.logger.warning(f"[v113.0] CloudSQL proxy startup failed: {e}")
+            print(f"  {TerminalUI.YELLOW}⚠️ CloudSQL Proxy: Startup error{TerminalUI.RESET}")
+            os.environ["CLOUDSQL_PROXY_READY"] = "false"
+
+    async def _signal_cloudsql_ready_to_registry(self) -> None:
+        """
+        v113.0: Signal to AgentRegistry that CloudSQL dependency is ready.
+
+        This integrates with the v112.0 dependency-aware health check system
+        to ensure agents aren't marked as offline due to CloudSQL unavailability.
+        """
+        try:
+            # Import AgentRegistry
+            try:
+                from neural_mesh.registry.agent_registry import AgentRegistry
+            except ImportError:
+                try:
+                    from backend.neural_mesh.registry.agent_registry import AgentRegistry
+                except ImportError:
+                    self.logger.debug("[v113.0] AgentRegistry not available for dependency signaling")
+                    return
+
+            # Get registry singleton and set dependency ready
+            registry = AgentRegistry()
+            if hasattr(registry, 'set_dependency_ready'):
+                # v113.0: AgentRegistry.set_dependency_ready may be sync or async
+                set_dep_method = registry.set_dependency_ready
+                if asyncio.iscoroutinefunction(set_dep_method):
+                    await set_dep_method("cloudsql", True, {
+                        "source": "supervisor_bootstrap",
+                        "version": "113.0",
+                        "ready_at": time.time(),
+                    })
+                else:
+                    set_dep_method("cloudsql", True, {
+                        "source": "supervisor_bootstrap",
+                        "version": "113.0",
+                        "ready_at": time.time(),
+                    })
+                self.logger.debug("[v113.0] Signaled CloudSQL ready to AgentRegistry")
+            else:
+                self.logger.debug("[v113.0] AgentRegistry doesn't have set_dependency_ready method")
+
+        except Exception as e:
+            self.logger.debug(f"[v113.0] Failed to signal CloudSQL ready to registry: {e}")
+
     async def _initialize_rate_orchestrator(self) -> None:
         """
         v5.0: Initialize the Intelligent Rate Orchestrator for ML-powered rate limiting.

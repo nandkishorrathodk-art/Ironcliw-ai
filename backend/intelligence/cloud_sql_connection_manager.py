@@ -218,11 +218,18 @@ class ReadinessResult:
     Edge Case #7: Returns (state, timed_out) tuple via dataclass.
     Edge Case #11: failure_reason distinguishes credential vs proxy failure.
     Edge Case #30: Consistent naming with ReadinessState enum.
+    v113.0: Added latency field for connection timing metrics.
     """
     state: ReadinessState
     timed_out: bool
     failure_reason: Optional[str] = None  # "proxy" | "credentials" | "network" | "shutdown" | "config" | "asyncpg_unavailable"
     message: str = ""
+    latency: Optional[float] = None  # v113.0: Connection latency in seconds (if measured)
+
+    @property
+    def ready(self) -> bool:
+        """v113.0: Convenience property to check if CloudSQL is ready."""
+        return self.state == ReadinessState.READY and not self.timed_out
 
 
 class ReadinessTimeoutError(Exception):
@@ -379,6 +386,11 @@ class ProxyReadinessGate:
 
     _instance: Optional['ProxyReadinessGate'] = None
     _instance_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> 'ProxyReadinessGate':
+        """v113.0: Get the singleton instance of ProxyReadinessGate."""
+        return cls()
 
     def __new__(cls) -> 'ProxyReadinessGate':
         """Singleton pattern with thread-safe initialization."""
@@ -1137,9 +1149,10 @@ class ProxyReadinessGate:
                     time.time() - start_time, attempts
                 )
 
-                # Step 4: Notify cross-repo components
+                # Step 4: Notify cross-repo components with latency info
                 if notify_cross_repo:
-                    await self._signal_cross_repo_ready()
+                    latency_ms = (result.latency or 0) * 1000 if result.latency else None
+                    await self._signal_cross_repo_ready(latency_ms=latency_ms)
 
                 return result
 
@@ -1181,8 +1194,10 @@ class ProxyReadinessGate:
             if not self._ensure_config():
                 return False
 
-        host = self._db_config.get("host", "127.0.0.1")
-        port = self._db_config.get("port", 5432)
+        # v113.1: Safely extract config with proper None handling
+        db_config = self._db_config or {}
+        host = db_config.get("host", "127.0.0.1")
+        port = db_config.get("port", 5432)
 
         try:
             # Quick TCP connection check
@@ -1253,38 +1268,79 @@ class ProxyReadinessGate:
             logger.warning(f"[ReadinessGate v113.0] Proxy start error: {e}")
             return False
 
-    async def _signal_cross_repo_ready(self) -> None:
+    async def _signal_cross_repo_ready(self, latency_ms: Optional[float] = None) -> None:
         """
         Signal to cross-repo components that CloudSQL is ready.
 
         v113.0: Uses service registry to broadcast CloudSQL readiness.
+        v113.1: Fixed to use update_supervisor_state with metadata instead of non-existent method.
+        v113.2: Also broadcasts via CrossRepoStateInitializer for JARVIS Prime and Reactor Core.
         """
+        # Track signaling results
+        signaled_via = []
+
+        # Method 1: Service Registry (for local unified state)
         try:
-            # Import service registry
             try:
                 from core.service_registry import ServiceRegistry
             except ImportError:
                 try:
                     from backend.core.service_registry import ServiceRegistry
                 except ImportError:
-                    logger.debug("[ReadinessGate v113.0] ServiceRegistry not available for cross-repo signaling")
-                    return
+                    ServiceRegistry = None
 
-            registry = ServiceRegistry()
-
-            # Register CloudSQL readiness as a service attribute
-            await registry.update_service_metadata(
-                "jarvis-body",
-                {
-                    "cloudsql_ready": True,
-                    "cloudsql_ready_at": time.time(),
-                }
-            )
-
-            logger.debug("[ReadinessGate v113.0] Signaled CloudSQL ready via service registry")
+            if ServiceRegistry is not None:
+                registry = ServiceRegistry()
+                import os
+                await registry.update_supervisor_state(
+                    service_name="cloudsql-proxy",
+                    process_alive=True,
+                    pid=os.getpid(),
+                    metadata={
+                        "cloudsql_ready": True,
+                        "cloudsql_ready_at": time.time(),
+                        "readiness_gate_version": "113.2",
+                        "latency_ms": latency_ms,
+                    }
+                )
+                signaled_via.append("service_registry")
 
         except Exception as e:
-            logger.debug(f"[ReadinessGate v113.0] Cross-repo signaling failed: {e}")
+            logger.debug(f"[ReadinessGate v113.2] Service registry signaling failed: {e}")
+
+        # Method 2: CrossRepoStateInitializer (for JARVIS Prime and Reactor Core)
+        try:
+            try:
+                from core.cross_repo_state_initializer import (
+                    get_cross_repo_initializer,
+                )
+            except ImportError:
+                try:
+                    from backend.core.cross_repo_state_initializer import (
+                        get_cross_repo_initializer,
+                    )
+                except ImportError:
+                    get_cross_repo_initializer = None
+
+            if get_cross_repo_initializer is not None:
+                cross_repo_initializer = await get_cross_repo_initializer()
+                await cross_repo_initializer.broadcast_cloudsql_ready(
+                    ready=True,
+                    latency_ms=latency_ms,
+                    metadata={
+                        "source": "ProxyReadinessGate",
+                        "version": "113.2",
+                    }
+                )
+                signaled_via.append("cross_repo_state")
+
+        except Exception as e:
+            logger.debug(f"[ReadinessGate v113.2] Cross-repo state signaling failed: {e}")
+
+        if signaled_via:
+            logger.debug(f"[ReadinessGate v113.2] Signaled CloudSQL ready via: {', '.join(signaled_via)}")
+        else:
+            logger.debug("[ReadinessGate v113.2] No cross-repo signaling methods available")
 
     async def _notify_subscribers(self, state: ReadinessState) -> None:
         """
