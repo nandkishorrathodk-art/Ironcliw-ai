@@ -3,10 +3,13 @@
 Test Cloud SQL connection directly
 
 v132.0: Uses TLS-safe factory to prevent asyncpg TLS race conditions.
+v133.0: Uses IntelligentCredentialResolver for auto-credential resolution.
 """
 import asyncio
+import json
 import logging
 import os
+from pathlib import Path
 
 import asyncpg
 
@@ -30,15 +33,51 @@ except ImportError:
         logger.debug("[TestCloudSQL] TLS-safe factory not available")
 
 
-async def test_connection():
-    """Test direct connection to Cloud SQL via proxy"""
-    config = {
+def _load_database_config() -> dict:
+    """v133.0: Load database config from multiple sources."""
+    # Priority 1: Environment variable
+    if os.getenv("JARVIS_DB_PASSWORD"):
+        return {
+            "host": os.getenv("JARVIS_DB_HOST", "127.0.0.1"),
+            "port": int(os.getenv("JARVIS_DB_PORT", "5432")),
+            "database": os.getenv("JARVIS_DB_NAME", "jarvis_learning"),
+            "user": os.getenv("JARVIS_DB_USER", "jarvis"),
+            "password": os.getenv("JARVIS_DB_PASSWORD"),
+        }
+
+    # Priority 2: Config file
+    config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                data = json.load(f)
+                cloud_sql = data.get("cloud_sql", {})
+                if cloud_sql.get("password"):
+                    logger.info(f"[TestCloudSQL] Loaded credentials from {config_path}")
+                    return {
+                        "host": "127.0.0.1",  # Always use proxy for local
+                        "port": cloud_sql.get("port", 5432),
+                        "database": cloud_sql.get("database", "jarvis_learning"),
+                        "user": cloud_sql.get("user", "jarvis"),
+                        "password": cloud_sql.get("password"),
+                    }
+        except Exception as e:
+            logger.warning(f"[TestCloudSQL] Failed to load config: {e}")
+
+    # Fallback: defaults (will likely fail)
+    logger.warning("[TestCloudSQL] No credentials found, using defaults")
+    return {
         "host": "127.0.0.1",
         "port": 5432,
         "database": "jarvis_learning",
         "user": "jarvis",
-        "password": os.getenv("JARVIS_DB_PASSWORD", "YOUR_PASSWORD_HERE"),
+        "password": "",
     }
+
+
+async def test_connection():
+    """Test direct connection to Cloud SQL via proxy"""
+    config = _load_database_config()
 
     logger.info(f"Connecting to Cloud SQL at {config['host']}:{config['port']}")
     logger.info(f"Database: {config['database']}, User: {config['user']}")
