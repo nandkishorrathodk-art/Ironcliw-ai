@@ -769,6 +769,19 @@ except ImportError:
     def is_supervisor_running():
         return False, None
 
+# v12.0: Intelligent Docker Daemon Manager with Self-Healing
+try:
+    from backend.infrastructure.docker_daemon_manager import (
+        DockerDaemonManager,
+        get_docker_manager,
+    )
+    _DOCKER_MANAGER_AVAILABLE = True
+except ImportError:
+    _DOCKER_MANAGER_AVAILABLE = False
+    DockerDaemonManager = None  # type: ignore
+    async def get_docker_manager():
+        return None
+
 # =============================================================================
 # v93.12: SUPPRESS SPEECHBRAIN AND TORCHAUDIO DEPRECATION WARNINGS
 # =============================================================================
@@ -5541,6 +5554,10 @@ class SupervisorBootstrapper:
         self._infra_orchestrator = None
         self._infra_orchestrator_enabled = self.config.infra_on_demand_enabled
 
+        # v12.0: Docker Daemon Manager (Intelligent Self-Healing)
+        self._docker_manager = None
+        self._docker_manager_initialized = False
+
         # v10.0: Reactor-Core API Server (Training Pipeline)
         self._reactor_core_process = None
 
@@ -7945,6 +7962,14 @@ class SupervisorBootstrapper:
                 timeout_seconds=major_init_timeout,
             )
 
+            # v12.0: Initialize Docker Manager (Self-Healing) BEFORE infrastructure
+            # Docker must be healthy before Cloud Run deployments, container builds, etc.
+            await self._safe_phase_init(
+                "Docker Manager (Self-Healing)",
+                self._initialize_docker_manager(),
+                timeout_seconds=120,  # Docker startup can take time
+            )
+
             # v9.5: Initialize Infrastructure Orchestrator (On-Demand GCP)
             if self._infra_orchestrator_enabled:
                 await self._safe_phase_init(
@@ -10118,12 +10143,55 @@ class SupervisorBootstrapper:
     
     def _is_docker_running(self) -> bool:
         """
-        v9.0: Check if Docker daemon is currently running.
-        Used for adaptive timeout calculation.
-        
+        v12.0: Check if Docker daemon is currently running using intelligent manager.
+        Uses the new DockerDaemonManager with proper macOS process detection.
+
         Returns:
             True if Docker is running, False otherwise
         """
+        # v12.0: Try intelligent Docker manager first (correct macOS detection)
+        if _DOCKER_MANAGER_AVAILABLE:
+            try:
+                # Quick synchronous check using the diagnostic engine
+                from backend.infrastructure.docker_daemon_manager import (
+                    DockerDiagnosticEngine,
+                    DiagnosticConfig,
+                )
+
+                # Create minimal diagnostic config for quick check
+                config = DiagnosticConfig(
+                    process_check_timeout=2.0,
+                    socket_check_timeout=2.0,
+                    api_check_timeout=3.0,
+                    enable_deep_diagnostics=False,
+                )
+                engine = DockerDiagnosticEngine(config)
+
+                # Run synchronous quick check
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in an async context, use create_task pattern
+                    future = asyncio.ensure_future(engine.quick_health_check())
+                    # Give it 3 seconds max
+                    result = asyncio.get_event_loop().run_until_complete(
+                        asyncio.wait_for(future, timeout=3.0)
+                    )
+                    return result.is_healthy
+                except RuntimeError:
+                    # No running loop - create one for this check
+                    loop = asyncio.new_event_loop()
+                    try:
+                        result = loop.run_until_complete(
+                            asyncio.wait_for(engine.quick_health_check(), timeout=3.0)
+                        )
+                        return result.is_healthy
+                    finally:
+                        loop.close()
+            except Exception as e:
+                self.logger.debug(f"Docker manager check failed, falling back: {e}")
+
+        # Fallback to simple subprocess check
         try:
             import subprocess
             result = subprocess.run(
@@ -11086,6 +11154,15 @@ class SupervisorBootstrapper:
                     self.logger.warning("⚠️ Some infrastructure may not have been cleaned up")
             except Exception as e:
                 self.logger.warning(f"⚠️ Infrastructure cleanup error: {e}")
+
+        # v12.0: Shutdown Docker Manager (save learning data, stop monitoring)
+        if self._docker_manager and self._docker_manager_initialized:
+            try:
+                self.logger.info("🐳 Stopping Docker Manager (saving learning data)...")
+                await self._docker_manager.stop()
+                self.logger.info("✅ Docker Manager stopped gracefully")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Docker Manager cleanup error: {e}")
 
         # v100.0: Shutdown Trinity Voice Coordinator v100.0 (graceful with queue draining)
         try:
@@ -15001,6 +15078,78 @@ class SupervisorBootstrapper:
 
         except Exception as e:
             self.logger.warning(f"Error resolving services from container: {e}")
+
+    async def _initialize_docker_manager(self) -> None:
+        """
+        v12.0: Initialize the Intelligent Docker Daemon Manager with Self-Healing.
+
+        This fixes the root cause of Docker timeout failures:
+        - Correct macOS process detection (com.docker.backend, NOT 'Docker Desktop')
+        - Multi-signal diagnostic engine (15+ health signals)
+        - 4-level progressive self-healing recovery
+        - Adaptive circuit breaker with exponential cooldown
+        - Historical learning database for pattern recognition
+        - Cross-repo coordination via Trinity Protocol
+
+        The Docker manager ensures Docker is healthy BEFORE other infrastructure
+        components try to use it (Cloud Run deployment, container builds, etc.).
+        """
+        if not _DOCKER_MANAGER_AVAILABLE:
+            self.logger.info("⚠️ Docker Manager v12.0 not available - using basic checks")
+            return
+
+        self.logger.info("═" * 60)
+        self.logger.info("🐳 v12.0: Initializing Intelligent Docker Manager with Self-Healing...")
+        self.logger.info("═" * 60)
+
+        try:
+            # Get or create the Docker manager instance
+            self._docker_manager = await get_docker_manager()
+
+            if self._docker_manager is None:
+                self.logger.warning("⚠️ Docker Manager could not be initialized")
+                return
+
+            # Start the manager (initializes learning database, cross-repo coordination)
+            await self._docker_manager.start()
+
+            # Log diagnostic capabilities
+            self.logger.info("   • Diagnostic Engine: 15+ health signals")
+            self.logger.info("   • Self-Healing: 4-level progressive recovery")
+            self.logger.info("   • Circuit Breaker: Adaptive exponential cooldown")
+            self.logger.info("   • Learning: Historical pattern recognition")
+            self.logger.info("   • Cross-Repo: Trinity Protocol coordination")
+
+            # Check current Docker health
+            health = await self._docker_manager.get_health_status()
+
+            if health.is_healthy:
+                self.logger.info(f"   ✅ Docker Status: HEALTHY (score: {health.health_score:.1%})")
+                print(f"  {TerminalUI.GREEN}✓ Docker: Healthy ({health.health_score:.0%}){TerminalUI.RESET}")
+            else:
+                self.logger.warning(f"   ⚠️ Docker Status: UNHEALTHY - initiating self-healing")
+                print(f"  {TerminalUI.YELLOW}⚠️ Docker: Unhealthy - self-healing in progress{TerminalUI.RESET}")
+
+                # Let the manager attempt recovery
+                recovery_result = await self._docker_manager.ensure_healthy()
+
+                if recovery_result.success:
+                    self.logger.info(f"   ✅ Docker recovered via {recovery_result.level.name}")
+                    print(f"  {TerminalUI.GREEN}✓ Docker: Recovered via {recovery_result.level.name}{TerminalUI.RESET}")
+                else:
+                    self.logger.error(f"   ❌ Docker recovery failed: {recovery_result.error}")
+                    print(f"  {TerminalUI.RED}✗ Docker: Recovery failed - {recovery_result.error}{TerminalUI.RESET}")
+
+            # Store for cross-repo coordination
+            self._docker_manager_initialized = True
+            os.environ["JARVIS_DOCKER_MANAGER_ENABLED"] = "true"
+            self.logger.info("✅ Docker Manager v12.0 initialized with intelligent self-healing")
+
+        except Exception as e:
+            self.logger.error(f"❌ Docker Manager initialization failed: {e}")
+            print(f"  {TerminalUI.RED}✗ Docker Manager: Failed ({e}){TerminalUI.RESET}")
+            self._docker_manager = None
+            self._docker_manager_initialized = False
 
     async def _initialize_infrastructure_orchestrator(self) -> None:
         """

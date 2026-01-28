@@ -1539,6 +1539,16 @@ class DockerDaemonManager:
         """
         start_time = time.time()
 
+        # Initialize with defaults
+        process_signals: Dict[str, ProcessSignal] = {}
+        socket_signals: Dict[str, SocketSignal] = {}
+        resource_signals: ResourceSignal = ResourceSignal(
+            memory_available_gb=8.0, memory_total_gb=16.0, memory_percent_used=50.0,
+            disk_available_gb=50.0, disk_total_gb=500.0, disk_percent_used=90.0,
+            cpu_percent=50.0, memory_pressure='normal', sufficient_for_docker=True
+        )
+        state_signals: StateSignal = StateSignal(settings_exist=False, vm_disk_exists=False)
+
         # Run all checks in parallel
         if sys.version_info >= (3, 11):
             async with asyncio.TaskGroup() as tg:
@@ -1560,16 +1570,14 @@ class DockerDaemonManager:
                 return_exceptions=True
             )
 
-            process_signals = results[0] if not isinstance(results[0], Exception) else {}
-            socket_signals = results[1] if not isinstance(results[1], Exception) else {}
-            resource_signals = results[2] if not isinstance(results[2], Exception) else ResourceSignal(
-                memory_available_gb=8.0, memory_total_gb=16.0, memory_percent_used=50.0,
-                disk_available_gb=50.0, disk_total_gb=500.0, disk_percent_used=90.0,
-                cpu_percent=50.0, memory_pressure='normal', sufficient_for_docker=True
-            )
-            state_signals = results[3] if not isinstance(results[3], Exception) else StateSignal(
-                settings_exist=False, vm_disk_exists=False
-            )
+            if not isinstance(results[0], BaseException):
+                process_signals = results[0]
+            if not isinstance(results[1], BaseException):
+                socket_signals = results[1]
+            if not isinstance(results[2], BaseException):
+                resource_signals = results[2]
+            if not isinstance(results[3], BaseException):
+                state_signals = results[3]
 
         # Match failure patterns
         signals_dict = {
@@ -2702,6 +2710,12 @@ class DockerDaemonManager:
             elif current_level == RecoveryLevel.LEVEL_4_NUCLEAR:
                 recovery_result = await self._level_4_nuclear_recovery(diagnostic)
                 break  # Don't escalate beyond nuclear
+            else:
+                # Should never reach here, but satisfy type checker
+                recovery_result = RecoveryResult(
+                    success=False, level=current_level, actions_taken=[],
+                    duration_ms=0, error="Unknown recovery level"
+                )
 
             if recovery_result.success:
                 # Success!
