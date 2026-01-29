@@ -2199,6 +2199,52 @@ _gcp_vm_manager: Optional[GCPVMManager] = None
 _manager_lock = LazyAsyncLock()  # v100.1: Lazy initialization to avoid "no running event loop" error
 
 
+async def reset_gcp_vm_manager_singleton() -> None:
+    """
+    v132.0: Force reset the GCP VM Manager singleton.
+
+    This is used when we need to re-create the manager with new configuration,
+    such as when auto-enabling GCP during OOM prevention.
+
+    IMPORTANT: This should only be called when you KNOW you need to re-initialize
+    with different settings. Normal usage should use get_gcp_vm_manager().
+    """
+    global _gcp_vm_manager
+
+    async with _manager_lock:
+        if _gcp_vm_manager is not None:
+            # Cleanup existing manager
+            try:
+                if hasattr(_gcp_vm_manager, 'cleanup_all_vms'):
+                    # Don't cleanup VMs on reset - just release the reference
+                    pass
+            except Exception as e:
+                logger.debug(f"[GCPVMManager] Cleanup during reset: {e}")
+
+            _gcp_vm_manager = None
+            logger.info("[GCPVMManager] v132.0: Singleton reset - will reinitialize with fresh config")
+
+
+async def get_gcp_vm_manager_with_force_enable() -> GCPVMManager:
+    """
+    v132.0: Get GCP VM Manager with forced enable.
+
+    This resets the singleton and creates a new manager with GCP_ENABLED=true.
+    Used for OOM prevention auto-enable functionality.
+
+    Returns:
+        GCPVMManager with GCP enabled (if credentials available)
+    """
+    # Set environment variable BEFORE resetting singleton
+    os.environ["GCP_ENABLED"] = "true"
+
+    # Reset singleton to force re-creation with new config
+    await reset_gcp_vm_manager_singleton()
+
+    # Create new manager with fresh config (will read GCP_ENABLED=true)
+    return await get_gcp_vm_manager()
+
+
 async def get_gcp_vm_manager(config: Optional[VMManagerConfig] = None) -> GCPVMManager:
     """
     Get or create singleton GCP VM Manager with thread-safe initialization.

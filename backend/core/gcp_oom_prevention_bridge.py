@@ -995,20 +995,33 @@ class GCPOOMPreventionBridge:
 
         # Credentials available - try to enable GCP
         try:
-            # Set environment variable to enable GCP
-            os.environ["GCP_ENABLED"] = "true"
-            logger.info(f"[OOMBridge] Set GCP_ENABLED=true (project={gcp_project}, zone={gcp_zone})")
+            # v2.0.1: Use the new force-enable function that properly resets the singleton
+            # The old approach of just setting GCP_ENABLED=true didn't work because the
+            # singleton was already created with enabled=false
+            logger.info(f"[OOMBridge] Auto-enabling GCP (project={gcp_project}, zone={gcp_zone})")
 
-            # Re-initialize the GCP VM manager with new config
-            from core.gcp_vm_manager import get_gcp_vm_manager
-            self._gcp_vm_manager = await get_gcp_vm_manager()
+            try:
+                # Try to import the force-enable function (v132.0+)
+                from core.gcp_vm_manager import get_gcp_vm_manager_with_force_enable
+                self._gcp_vm_manager = await get_gcp_vm_manager_with_force_enable()
+            except ImportError:
+                # Fallback for older versions - try the old approach
+                from core.gcp_vm_manager import get_gcp_vm_manager, reset_gcp_vm_manager_singleton
+                os.environ["GCP_ENABLED"] = "true"
+                await reset_gcp_vm_manager_singleton()
+                self._gcp_vm_manager = await get_gcp_vm_manager()
 
             # Check if it worked
             if self._gcp_vm_manager and self._gcp_vm_manager.enabled:
                 logger.info(f"[OOMBridge] ✅ GCP auto-enabled successfully for: {reason}")
                 return True
             else:
-                logger.warning("[OOMBridge] GCP auto-enable failed - manager still disabled")
+                logger.warning("[OOMBridge] GCP auto-enable failed - manager still disabled after reset")
+                # Log diagnostic info
+                if self._gcp_vm_manager:
+                    logger.warning(f"  Manager exists but enabled={self._gcp_vm_manager.enabled}")
+                    logger.warning(f"  Config enabled={self._gcp_vm_manager.config.enabled}")
+                    logger.warning(f"  GCP_ENABLED env={os.getenv('GCP_ENABLED')}")
                 return False
 
         except Exception as e:
@@ -1112,25 +1125,79 @@ class GCPOOMPreventionBridge:
 
     async def _write_oom_signal(self, result: MemoryCheckResult) -> None:
         """
-        Write OOM signal file for cross-repo coordination.
+        v2.0.0: Write comprehensive OOM signal file for cross-repo coordination.
 
         This allows JARVIS Prime and Reactor Core to know about memory
-        decisions and adjust their behavior accordingly.
+        decisions and adjust their behavior accordingly. The signal includes:
+        - Decision type (local, cloud, degraded, abort)
+        - Degradation tier and fallback strategy
+        - GCP status and VM info
+        - Memory metrics
+        - Recommendations for other components
+
+        Signal file: ~/.jarvis/signals/oom_prevention.json
         """
         try:
             signal_file = self._signal_dir / "oom_prevention.json"
+
+            # Build comprehensive signal data
             signal_data = {
+                # v2.0.0: Enhanced signal format
+                "version": "2.0.0",
                 "timestamp": time.time(),
+
+                # Core decision
                 "decision": result.decision.value,
+                "can_proceed": result.can_proceed,
+                "can_proceed_locally": result.can_proceed_locally,
+                "reason": result.reason,
+
+                # v2.0.0: Degradation info
+                "degradation_active": self._degradation_active,
+                "degradation_tier": result.degradation_tier.value if result.degradation_tier else "none",
+                "fallback_strategy": result.fallback_strategy.to_dict() if result.fallback_strategy else None,
+
+                # GCP status
                 "gcp_vm_required": result.gcp_vm_required,
+                "gcp_vm_ready": result.gcp_vm_ready,
                 "gcp_vm_ip": result.gcp_vm_ip,
-                "available_ram_gb": result.available_ram_gb,
-                "memory_pressure_percent": result.memory_pressure_percent,
+                "gcp_auto_enabled": result.gcp_auto_enabled,
                 "offload_mode_active": self._offload_mode_active,
+
+                # Memory metrics
+                "available_ram_gb": round(result.available_ram_gb, 2),
+                "required_ram_gb": round(result.required_ram_gb, 2),
+                "memory_pressure_percent": round(result.memory_pressure_percent, 1),
+
+                # Component info
                 "component": result.component_name,
+                "adaptive_estimate_used": result.adaptive_estimate_used,
+                "actual_estimate_mb": result.actual_estimate_mb,
+
+                # Recommendations for other components
+                "recommendations": result.recommendations,
+
+                # Hints for cross-repo behavior adjustment
+                "hints": {
+                    "extend_timeouts": result.decision in (MemoryDecision.DEGRADED, MemoryDecision.CLOUD_REQUIRED),
+                    "reduce_parallelism": result.degradation_tier in (
+                        DegradationTier.TIER_3_SEQUENTIAL_LOAD,
+                        DegradationTier.TIER_4_MINIMAL_MODE,
+                    ) if result.degradation_tier else False,
+                    "skip_non_essential": result.degradation_tier == DegradationTier.TIER_4_MINIMAL_MODE if result.degradation_tier else False,
+                    "use_smaller_models": result.degradation_tier in (
+                        DegradationTier.TIER_2_AGGRESSIVE_OPTIMIZE,
+                        DegradationTier.TIER_4_MINIMAL_MODE,
+                    ) if result.degradation_tier else False,
+                },
             }
+
             with open(signal_file, "w") as f:
                 json.dump(signal_data, f, indent=2)
+
+            logger.debug(f"[OOMBridge] Wrote OOM signal: decision={result.decision.value}, "
+                        f"tier={result.degradation_tier.value if result.degradation_tier else 'none'}")
+
         except Exception as e:
             logger.debug(f"[OOMBridge] Could not write OOM signal: {e}")
 

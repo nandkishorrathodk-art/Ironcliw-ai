@@ -1059,9 +1059,10 @@ class JPrimeClient:
     ) -> bool:
         """
         v118.0: Wait for J-Prime to become ready.
+        v132.0: ENHANCED - Adaptive timeout based on degradation mode and progress.
 
         Args:
-            timeout: Maximum time to wait in seconds
+            timeout: Maximum time to wait in seconds (can be extended based on conditions)
             poll_interval: How often to check health
             require_healthy: If True, wait for HEALTHY status; if False, accept STARTING/INITIALIZING
 
@@ -1070,8 +1071,21 @@ class JPrimeClient:
         """
         start_time = time.time()
         attempt = 0
+        last_status = None
+        status_change_time = start_time
+        progress_extensions = 0
+        max_progress_extensions = 3
 
-        while time.time() - start_time < timeout:
+        # v132.0: Check for degradation mode - extends timeout when memory constrained
+        effective_timeout = timeout
+        degradation_active = await self._check_degradation_mode()
+        if degradation_active:
+            # In degradation mode, double the timeout (up to 5 minutes max)
+            effective_timeout = min(timeout * 2.0, 300.0)
+            logger.info(f"[JPrimeClient] v132.0: Degradation mode active - "
+                       f"extended timeout to {effective_timeout}s")
+
+        while time.time() - start_time < effective_timeout:
             attempt += 1
 
             await self.check_health()
@@ -1093,17 +1107,78 @@ class JPrimeClient:
                                f"after {attempt} checks ({time.time() - start_time:.1f}s)")
                     return True
 
+            # v132.0: Progress-based timeout extension
+            # If status is changing (making progress), extend timeout
+            if self._service_status != last_status:
+                last_status = self._service_status
+                status_change_time = time.time()
+
+                # Status changed - this is progress, maybe extend timeout
+                if progress_extensions < max_progress_extensions:
+                    elapsed = time.time() - start_time
+                    remaining = effective_timeout - elapsed
+
+                    # If we're close to timeout but making progress, extend
+                    if remaining < 30.0 and self._service_status == ServiceStatus.INITIALIZING:
+                        extension = 60.0  # Add 60 seconds
+                        effective_timeout = elapsed + remaining + extension
+                        progress_extensions += 1
+                        logger.info(
+                            f"[JPrimeClient] v132.0: J-Prime making progress "
+                            f"(status={self._service_status.value}), "
+                            f"extending timeout by {extension}s (extension #{progress_extensions})"
+                        )
+
             # Log progress
             if attempt % 5 == 0:
+                elapsed = time.time() - start_time
+                remaining = effective_timeout - elapsed
                 logger.debug(f"[JPrimeClient] Waiting for J-Prime... "
                             f"status={self._service_status.value}, "
-                            f"elapsed={time.time() - start_time:.1f}s")
+                            f"elapsed={elapsed:.1f}s, remaining={remaining:.1f}s")
 
             await asyncio.sleep(poll_interval)
 
-        logger.warning(f"[JPrimeClient] Timeout waiting for J-Prime after {timeout}s "
-                      f"(final status: {self._service_status.value})")
+        elapsed = time.time() - start_time
+        logger.warning(f"[JPrimeClient] Timeout waiting for J-Prime after {elapsed:.1f}s "
+                      f"(original timeout={timeout}s, effective={effective_timeout}s, "
+                      f"final status: {self._service_status.value})")
         return False
+
+    async def _check_degradation_mode(self) -> bool:
+        """
+        v132.0: Check if JARVIS is running in degradation mode due to memory constraints.
+
+        Reads cross-repo OOM prevention signal to determine if degradation is active.
+
+        Returns:
+            True if degradation mode is active
+        """
+        try:
+            # Check cross-repo signal file
+            signal_dir = Path(os.getenv(
+                "JARVIS_SIGNAL_DIR",
+                str(Path.home() / ".jarvis" / "signals")
+            ))
+            signal_file = signal_dir / "oom_prevention.json"
+
+            if signal_file.exists():
+                import json
+                with open(signal_file) as f:
+                    data = json.load(f)
+
+                # Check if degradation is active (less than 30 seconds old)
+                timestamp = data.get("timestamp", 0)
+                age = time.time() - timestamp
+                if age < 30:  # Signal is fresh
+                    decision = data.get("decision", "")
+                    if decision in ("degraded", "cloud_required", "abort"):
+                        return True
+
+            return False
+        except Exception as e:
+            logger.debug(f"[JPrimeClient] Could not check degradation mode: {e}")
+            return False
 
     async def start_health_monitor(self, interval: float = 10.0) -> None:
         """

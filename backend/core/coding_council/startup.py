@@ -775,25 +775,32 @@ async def _monitor_jprime_startup() -> None:
         return
 
     try:
-        # Wait up to 120 seconds for J-Prime to become healthy
+        # v132.0: Configurable timeout with intelligent extension in degradation mode
+        # The wait_for_ready function now handles degradation-aware timeout extension internally
+        base_timeout = float(os.getenv("JPRIME_STARTUP_TIMEOUT", "180.0"))
+
+        logger.info(f"[CodingCouncilStartup] Waiting for J-Prime (base timeout={base_timeout}s)")
+
+        start_time = time.time()
         ready = await _jprime_engine.wait_for_ready(
-            timeout=120.0,
+            timeout=base_timeout,
             poll_interval=5.0,
             require_healthy=True,
         )
+        elapsed = time.time() - start_time
 
         if ready:
             status, details = _jprime_engine.get_service_status()
             model_loaded = details.get("model_loaded", False)
             logger.info(
                 f"[CodingCouncilStartup] ✅ J-Prime now healthy! "
-                f"(model_loaded={model_loaded})"
+                f"(model_loaded={model_loaded}, took={elapsed:.1f}s)"
             )
         else:
             status, details = _jprime_engine.get_service_status()
             logger.warning(
-                f"[CodingCouncilStartup] J-Prime didn't become healthy within 120s "
-                f"(status={status.value})"
+                f"[CodingCouncilStartup] J-Prime didn't become healthy within {elapsed:.1f}s "
+                f"(status={status.value}). May have extended timeout due to degradation mode."
             )
     except Exception as e:
         logger.debug(f"[CodingCouncilStartup] J-Prime startup monitor error: {e}")
