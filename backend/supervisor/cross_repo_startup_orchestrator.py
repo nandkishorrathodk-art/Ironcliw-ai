@@ -3872,8 +3872,9 @@ class ProcessOrchestrator:
 
             # v111.3: Get PIDs of processes we spawned in this session
             # NEVER kill our own spawned children - they are not "stale"
+            # v118.0: CRITICAL FIX - Use self.processes not self._managed_processes
             spawned_pids = set()
-            for managed in self._managed_processes.values():
+            for managed in self.processes.values():
                 if managed.pid:
                     spawned_pids.add(managed.pid)
 
@@ -3899,6 +3900,19 @@ class ProcessOrchestrator:
                                     f"it's a process we spawned this session (NOT stale)"
                                 )
                                 continue
+
+                            # v118.0: ADDITIONAL SAFETY - Check GlobalProcessRegistry
+                            # This catches processes registered globally but not in local spawned_pids
+                            try:
+                                from backend.core.supervisor_singleton import GlobalProcessRegistry
+                                if conn.pid is not None and GlobalProcessRegistry.is_ours(conn.pid):
+                                    logger.info(
+                                        f"    ⚠️ [v118.0] Skipping PID {conn.pid} on port {port} - "
+                                        f"registered in GlobalProcessRegistry (protected)"
+                                    )
+                                    continue
+                            except ImportError:
+                                pass  # GlobalProcessRegistry not available
 
                             cmdline = ' '.join(proc.cmdline())
 
@@ -6974,8 +6988,9 @@ class ProcessOrchestrator:
 
             # v111.3: Get PIDs of processes we spawned in this session
             # NEVER kill our own spawned children - they are not "stale"
+            # v118.0: CRITICAL FIX - Use self.processes not self._managed_processes
             spawned_pids = set()
-            for managed in self._managed_processes.values():
+            for managed in self.processes.values():
                 if managed.pid:
                     spawned_pids.add(managed.pid)
 
@@ -7000,6 +7015,19 @@ class ProcessOrchestrator:
                             f"it's a process we spawned this session (NOT stale)"
                         )
                         continue
+
+                    # v118.0: ADDITIONAL SAFETY - Check GlobalProcessRegistry
+                    # This catches processes spawned before orchestrator started tracking them
+                    try:
+                        from backend.core.supervisor_singleton import GlobalProcessRegistry
+                        if GlobalProcessRegistry.is_ours(pid):
+                            logger.info(
+                                f"    ⚠️ [v118.0] Skipping PID {pid} on port {port} - "
+                                f"registered in GlobalProcessRegistry"
+                            )
+                            continue
+                    except ImportError:
+                        pass  # GlobalProcessRegistry not available
 
                     os.kill(pid, signal.SIGTERM)
                     logger.info(f"    🔪 Killed stale process on port {port} (PID: {pid})")
