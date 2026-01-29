@@ -4735,6 +4735,29 @@ class CloudSQLConnectionManager:
                     f"Circuit breaker OPEN - retry in {self._conn_config.recovery_timeout_seconds}s"
                 )
 
+        # v125.1: Proxy readiness pre-check - fail fast when proxy is known to be down
+        # This prevents connection attempt storms when the proxy hasn't started
+        if PROXY_DETECTOR_AVAILABLE and not self._proxy_ready:
+            proxy_detector = get_proxy_detector()
+            if proxy_detector:
+                try:
+                    proxy_status, proxy_info = await proxy_detector.detect_proxy()
+                    if proxy_status == ProxyStatus.UNAVAILABLE:
+                        # Check if we should even be attempting connections
+                        if not proxy_detector.should_retry():
+                            raise RuntimeError(
+                                "CloudSQL proxy unavailable - using SQLite fallback mode"
+                            )
+                        # Proxy unavailable but should retry - let the attempt proceed
+                        # but log a debug message
+                        logger.debug(
+                            "[v125.1] Proxy currently unavailable, attempting connection anyway "
+                            "(may be in startup)"
+                        )
+                except Exception as e:
+                    # Proxy detection failed - proceed with connection attempt
+                    logger.debug(f"[v125.1] Proxy detection error (proceeding): {e}")
+
         # v10.5: Enhanced intelligent rate limiting with adaptive backoff
         if INTELLIGENT_RATE_ORCHESTRATOR_AVAILABLE:
             try:
@@ -4998,9 +5021,22 @@ class CloudSQLConnectionManager:
                 # Wait for any pending TLS operations to settle
                 await asyncio.sleep(1.0)
 
-                # Create new pool with same config
+                # v125.1: Check proxy readiness BEFORE attempting pool creation
+                # This prevents retry storms when proxy is known to be down
+                proxy_detector = get_proxy_detector() if PROXY_DETECTOR_AVAILABLE else None
+                if proxy_detector:
+                    proxy_status, proxy_info = await proxy_detector.detect_proxy()
+                    if proxy_status == ProxyStatus.UNAVAILABLE:
+                        logger.warning(
+                            "[v125.1] Pool recreation skipped - proxy unavailable. "
+                            "Will retry when proxy is detected."
+                        )
+                        return  # Don't attempt - proxy is known to be down
+
+                # v125.1: Use TLS-safe factory instead of direct asyncpg.create_pool()
+                # This ensures proper serialization of TLS operations
                 if self.db_config:
-                    self.pool = await asyncpg.create_pool(
+                    self.pool = await tls_safe_create_pool(
                         host=self.db_config.get('host', '127.0.0.1'),
                         port=self.db_config.get('port', 5432),
                         database=self.db_config.get('database', 'jarvis_learning'),
@@ -5010,21 +5046,25 @@ class CloudSQLConnectionManager:
                         max_size=self._conn_config.max_pool_size,
                         command_timeout=self._conn_config.command_timeout,
                         timeout=self._conn_config.connection_timeout,
+                        max_retries=3,  # Limit retries in recreation scenario
                     )
-                    logger.info("✅ [v15.0] Connection pool recreated successfully")
 
-                    # Reset error counters
-                    self.error_count = 0
-                    self.metrics.total_errors = 0
-                    if self._circuit_breaker:
-                        self._circuit_breaker.reset()
+                    if self.pool:
+                        logger.info("✅ [v125.1] Connection pool recreated successfully (TLS-safe)")
+
+                        # Reset error counters
+                        self.error_count = 0
+                        self.metrics.total_errors = 0
+                        if self._circuit_breaker:
+                            self._circuit_breaker.reset()
+                    else:
+                        logger.warning("[v125.1] Pool recreation failed - will retry on next request")
 
             except Exception as e:
-                logger.error(f"❌ [v15.0] Failed to recreate pool: {e}")
-                # Open circuit breaker to prevent further attempts
+                logger.error(f"❌ [v125.1] Failed to recreate pool: {e}")
+                # v125.1: Record failure but don't artificially inflate failure count
+                # Let the circuit breaker work naturally based on actual failures
                 if self._circuit_breaker:
-                    await self._circuit_breaker.record_failure_async()
-                    await self._circuit_breaker.record_failure_async()
                     await self._circuit_breaker.record_failure_async()
 
     async def execute(self, query: str, *args, timeout: Optional[float] = None, retry: bool = True) -> str:

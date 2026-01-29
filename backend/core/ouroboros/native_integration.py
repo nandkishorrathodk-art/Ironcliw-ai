@@ -14115,10 +14115,11 @@ class EventBasedHealthMonitor:
         self._running = False
         self._monitor_task: Optional[asyncio.Task] = None
 
-        # Configuration
-        self._failure_threshold = 3
-        self._recovery_threshold = 2
-        self._health_check_interval_s = 5.0
+        # v125.1: Configuration with environment variable overrides
+        # Increased defaults for startup resilience
+        self._failure_threshold = int(os.environ.get("HEALTH_FAILURE_THRESHOLD", "10"))
+        self._recovery_threshold = int(os.environ.get("HEALTH_RECOVERY_THRESHOLD", "2"))
+        self._health_check_interval_s = float(os.environ.get("HEALTH_CHECK_INTERVAL", "5.0"))
 
     async def register_component(
         self,
@@ -21422,13 +21423,37 @@ class HealthCheckResult(Enum):
 
 @dataclass
 class CircuitBreakerConfig:
-    """Configuration for intelligent circuit breaker."""
-    failure_threshold: int = 3  # Failures before opening
-    success_threshold: int = 2  # Successes in half-open to close
-    timeout_seconds: float = 30.0  # Time before trying half-open
-    half_open_max_requests: int = 3  # Max requests in half-open
-    sliding_window_size: int = 10  # Window for failure rate calculation
-    failure_rate_threshold: float = 0.5  # Rate that triggers open
+    """
+    Configuration for intelligent circuit breaker.
+
+    v125.1: Tuned for startup resilience:
+    - Higher failure_threshold (10) prevents premature opening during startup
+    - Longer timeout (60s) allows CloudSQL proxy time to initialize
+    - Startup grace period prevents circuit from opening during initial warmup
+    - Environment variable overrides for runtime tuning
+    """
+    # v125.1: Increased from 3 to 10 - prevents premature opening during startup
+    # Connection refused errors during proxy startup shouldn't open circuit immediately
+    failure_threshold: int = int(os.environ.get("CIRCUIT_FAILURE_THRESHOLD", "10"))
+
+    # Successes needed to close circuit after recovery
+    success_threshold: int = int(os.environ.get("CIRCUIT_SUCCESS_THRESHOLD", "2"))
+
+    # v125.1: Increased from 30s to 60s - gives proxy more time to recover
+    timeout_seconds: float = float(os.environ.get("CIRCUIT_TIMEOUT_SECONDS", "60.0"))
+
+    # Max requests allowed in half-open state
+    half_open_max_requests: int = int(os.environ.get("CIRCUIT_HALF_OPEN_MAX", "3"))
+
+    # Window for failure rate calculation
+    sliding_window_size: int = int(os.environ.get("CIRCUIT_SLIDING_WINDOW", "20"))
+
+    # v125.1: Increased from 0.5 to 0.7 - more tolerant of transient failures
+    failure_rate_threshold: float = float(os.environ.get("CIRCUIT_FAILURE_RATE", "0.7"))
+
+    # v125.1: NEW - Startup grace period before circuit breaker activates
+    # During this period, failures don't count toward opening the circuit
+    startup_grace_seconds: float = float(os.environ.get("CIRCUIT_STARTUP_GRACE", "120.0"))
 
 
 @dataclass

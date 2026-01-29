@@ -40,10 +40,16 @@ class CircuitBreakerConfig:
     Configuration for atomic circuit breaker.
 
     All values can be overridden via environment variables.
+
+    v125.1: Tuned defaults for startup resilience:
+    - failure_threshold increased from 5 to 10 (more tolerant during proxy startup)
+    - recovery_timeout increased from 30s to 60s (gives proxy time to recover)
     """
-    failure_threshold: int = 5
+    # v125.1: Increased from 5 to 10 - prevents premature opening during startup
+    failure_threshold: int = 10
     success_threshold: int = 2
-    recovery_timeout_seconds: float = 30.0
+    # v125.1: Increased from 30s to 60s - gives proxy time to recover
+    recovery_timeout_seconds: float = 60.0
     half_open_max_requests: int = 1  # Limit test requests to prevent thundering herd
 
     def __post_init__(self):
