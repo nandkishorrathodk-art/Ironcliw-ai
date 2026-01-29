@@ -1944,6 +1944,13 @@ class ProxyReadinessGate:
         # Track if degraded was set before events existed (Edge Case #21)
         self._degraded_before_event = False
 
+        # v117.0: Transient failure tolerance - only signal NOT_READY after consecutive failures
+        self._consecutive_health_failures = 0
+        self._consecutive_failure_threshold = int(os.getenv("CLOUDSQL_CONSECUTIVE_FAILURES_THRESHOLD", "3"))
+        self._startup_time = time.time()
+        self._startup_grace_period = float(os.getenv("CLOUDSQL_STARTUP_GRACE_PERIOD", "60.0"))
+        self._last_registry_state: Optional[bool] = None  # Track last signaled state to avoid spam
+
         self._initialized = True
         logger.info("🔐 ProxyReadinessGate v1.0 initialized")
 
@@ -2598,50 +2605,159 @@ class ProxyReadinessGate:
             return
 
         def on_cloudsql_state_change(state: ReadinessState) -> None:
-            """Callback to update AgentRegistry when CloudSQL state changes."""
+            """
+            v117.0: Enhanced callback with transient failure tolerance.
+
+            Uses the same tolerance logic as _signal_agent_registry_ready:
+            - Only signals NOT_READY after consecutive failures exceed threshold
+            - Implements startup grace period
+            - Deduplicates signals
+            """
             is_ready = state == ReadinessState.READY
+
             try:
+                # v117.0: Implement transient failure tolerance inline
+                if is_ready:
+                    self._consecutive_health_failures = 0
+
+                    # Skip if already signaled READY
+                    if self._last_registry_state is True:
+                        logger.debug("[ProxyReadinessGate v117.0] Already READY - skipping signal")
+                        return
+
+                    self._last_registry_state = True
+                else:
+                    # Increment failure counter
+                    self._consecutive_health_failures += 1
+
+                    # Check startup grace period
+                    time_since_startup = time.time() - self._startup_time
+                    in_grace_period = time_since_startup < self._startup_grace_period
+                    effective_threshold = self._consecutive_failure_threshold * (2 if in_grace_period else 1)
+
+                    # Only signal after threshold exceeded
+                    if self._consecutive_health_failures < effective_threshold:
+                        logger.debug(
+                            f"[ProxyReadinessGate v117.0] Transient failure "
+                            f"{self._consecutive_health_failures}/{effective_threshold}"
+                            f"{' (grace period)' if in_grace_period else ''}"
+                        )
+                        return
+
+                    # Skip if already signaled NOT_READY
+                    if self._last_registry_state is False:
+                        logger.debug("[ProxyReadinessGate v117.0] Already NOT_READY - skipping signal")
+                        return
+
+                    self._last_registry_state = False
+                    logger.warning(
+                        f"[ProxyReadinessGate v117.0] Failures exceeded threshold "
+                        f"({self._consecutive_health_failures}/{effective_threshold})"
+                    )
+
+                # Actually signal the registry
                 agent_registry.set_dependency_ready("cloudsql", is_ready)
-                logger.debug(
-                    "[ProxyReadinessGate v112.0] AgentRegistry cloudsql dependency "
-                    "updated: %s (state: %s)",
+                logger.info(
+                    "[ProxyReadinessGate v117.0] AgentRegistry updated: %s (state: %s)",
                     "READY" if is_ready else "NOT_READY", state.name
                 )
             except Exception as e:
                 logger.warning(
-                    "[ProxyReadinessGate v112.0] Failed to update AgentRegistry: %s", e
+                    "[ProxyReadinessGate v117.0] Failed to update AgentRegistry: %s", e
                 )
 
         # Subscribe to state changes
         self.subscribe(on_cloudsql_state_change)
 
-        # Immediately set current state
+        # v117.0: Only set initial state if CloudSQL is actually READY
+        # If NOT_READY, don't immediately signal - let the tolerance mechanism handle it
         current_is_ready = self._state == ReadinessState.READY
         try:
-            agent_registry.set_dependency_ready("cloudsql", current_is_ready)
-            logger.info(
-                "[ProxyReadinessGate v112.0] AgentRegistry integration established. "
-                "Current CloudSQL state: %s",
-                "READY" if current_is_ready else "NOT_READY"
-            )
+            if current_is_ready:
+                # CloudSQL is ready - signal immediately
+                agent_registry.set_dependency_ready("cloudsql", True)
+                self._last_registry_state = True
+                logger.info(
+                    "[ProxyReadinessGate v117.0] AgentRegistry integration established. "
+                    "CloudSQL is READY"
+                )
+            else:
+                # CloudSQL not ready yet - don't signal NOT_READY immediately
+                # Let the tolerance mechanism handle transient startup delays
+                logger.info(
+                    "[ProxyReadinessGate v117.0] AgentRegistry integration established. "
+                    "CloudSQL state: %s (will signal after tolerance threshold)",
+                    self._state.name
+                )
         except Exception as e:
             logger.warning(
-                "[ProxyReadinessGate v112.0] Failed to set initial AgentRegistry state: %s", e
+                "[ProxyReadinessGate v117.0] Failed to set initial AgentRegistry state: %s", e
             )
 
     async def _signal_agent_registry_ready(self, is_ready: bool) -> None:
         """
-        v116.0: Proactively signal AgentRegistry when CloudSQL state changes.
+        v117.0: Enhanced AgentRegistry signaling with transient failure tolerance.
 
         This method updates the AgentRegistry singleton's cloudsql dependency state.
-        Since AgentRegistry is now a proper singleton (v116.0), this directly updates
-        the same instance that all components use.
 
-        This ensures CloudSQL-dependent agents aren't incorrectly marked offline
-        when CloudSQL itself is unavailable.
+        v117.0 IMPROVEMENTS:
+        - Only signals NOT_READY after consecutive failures exceed threshold
+        - Implements startup grace period (first 60s uses relaxed tolerance)
+        - Tracks and deduplicates signals to avoid log spam
+        - Resets failure counter on any success
+
+        This prevents transient network blips or cold start hiccups from
+        incorrectly marking CloudSQL-dependent agents as offline.
         """
         try:
-            # v116.0: Use the singleton accessor directly - much simpler!
+            # v117.0: Handle READY state - reset failure counter and signal immediately
+            if is_ready:
+                self._consecutive_health_failures = 0
+
+                # Only signal if state actually changed
+                if self._last_registry_state is True:
+                    logger.debug("[ReadinessGate v117.0] CloudSQL already READY - skipping duplicate signal")
+                    return
+
+                self._last_registry_state = True
+
+            else:
+                # v117.0: NOT_READY - implement transient failure tolerance
+                self._consecutive_health_failures += 1
+
+                # Check if we're in startup grace period
+                time_since_startup = time.time() - self._startup_time
+                in_grace_period = time_since_startup < self._startup_grace_period
+
+                # During grace period, use higher tolerance (2x threshold)
+                effective_threshold = self._consecutive_failure_threshold
+                if in_grace_period:
+                    effective_threshold = self._consecutive_failure_threshold * 2
+
+                # Only signal NOT_READY after threshold consecutive failures
+                if self._consecutive_health_failures < effective_threshold:
+                    logger.debug(
+                        f"[ReadinessGate v117.0] Transient failure {self._consecutive_health_failures}/"
+                        f"{effective_threshold} - NOT signaling NOT_READY yet"
+                        f"{' (startup grace period)' if in_grace_period else ''}"
+                    )
+                    return
+
+                # Already signaled NOT_READY? Avoid spam
+                if self._last_registry_state is False:
+                    logger.debug(
+                        f"[ReadinessGate v117.0] CloudSQL already NOT_READY - skipping duplicate signal "
+                        f"(failures: {self._consecutive_health_failures})"
+                    )
+                    return
+
+                self._last_registry_state = False
+                logger.warning(
+                    f"[ReadinessGate v117.0] CloudSQL health failures exceeded threshold "
+                    f"({self._consecutive_health_failures}/{effective_threshold}) - signaling NOT_READY"
+                )
+
+            # v116.0: Use the singleton accessor directly
             try:
                 from neural_mesh.registry.agent_registry import get_agent_registry
             except ImportError:
@@ -2649,7 +2765,7 @@ class ProxyReadinessGate:
                     from backend.neural_mesh.registry.agent_registry import get_agent_registry
                 except ImportError:
                     # AgentRegistry not available - skip
-                    logger.debug("[ReadinessGate v116.0] AgentRegistry not available")
+                    logger.debug("[ReadinessGate v117.0] AgentRegistry not available")
                     return
 
             # Get the singleton registry and update its dependency state
@@ -2657,12 +2773,12 @@ class ProxyReadinessGate:
             registry.set_dependency_ready("cloudsql", is_ready)
 
             logger.info(
-                f"[ReadinessGate v116.0] ✅ AgentRegistry cloudsql dependency updated: "
+                f"[ReadinessGate v117.0] ✅ AgentRegistry cloudsql dependency updated: "
                 f"{'READY' if is_ready else 'NOT_READY'}"
             )
 
         except Exception as e:
-            logger.debug(f"[ReadinessGate v116.0] Could not signal AgentRegistry: {e}")
+            logger.debug(f"[ReadinessGate v117.0] Could not signal AgentRegistry: {e}")
 
     # -------------------------------------------------------------------------
     # v113.0: Proactive Proxy Startup System
@@ -5551,6 +5667,11 @@ class ProxyWatchdog:
         self._max_consecutive_failures = int(os.getenv("PROXY_WATCHDOG_MAX_FAILURES", "5"))
         self._predictive_restart_enabled = os.getenv("PROXY_WATCHDOG_PREDICTIVE", "true").lower() == "true"
 
+        # v117.0: Startup grace period - use relaxed thresholds during initial warmup
+        self._startup_grace_period = float(os.getenv("PROXY_WATCHDOG_STARTUP_GRACE", "60.0"))
+        self._watchdog_start_time: Optional[float] = None
+        self._retry_before_fail_count = int(os.getenv("PROXY_WATCHDOG_RETRY_BEFORE_FAIL", "2"))
+
         # State
         self._is_running = False
         self._watchdog_task: Optional[asyncio.Task] = None
@@ -5607,11 +5728,16 @@ class ProxyWatchdog:
             return True
 
         self._is_running = True
+        # v117.0: Record start time for grace period calculation
+        self._watchdog_start_time = time.time()
         self._watchdog_task = asyncio.create_task(
             self._watchdog_loop(),
             name="proxy_watchdog"
         )
-        logger.info("[ProxyWatchdog v1.0] 🐕 Started background monitoring")
+        logger.info(
+            f"[ProxyWatchdog v117.0] 🐕 Started monitoring "
+            f"(grace_period={self._startup_grace_period}s, retry_before_fail={self._retry_before_fail_count})"
+        )
         return True
 
     async def stop(self) -> None:
@@ -5774,15 +5900,59 @@ class ProxyWatchdog:
 
     async def _handle_failure(self, metrics: ProxyHealthMetrics) -> None:
         """
-        Handle proxy failure with aggressive recovery.
+        v117.0: Enhanced failure handling with retry-before-signal and grace period.
+
+        Improvements:
+        - Performs immediate retries before marking as failed
+        - Uses relaxed thresholds during startup grace period
+        - Only signals NOT_READY after confirming persistent failure
         """
+        # v117.0: Check if we're in startup grace period
+        in_grace_period = False
+        if self._watchdog_start_time:
+            time_since_start = time.time() - self._watchdog_start_time
+            in_grace_period = time_since_start < self._startup_grace_period
+
+        # v117.0: Perform immediate retries before counting as failure
+        if self._consecutive_failures == 0 and self._retry_before_fail_count > 0:
+            logger.debug(
+                f"[ProxyWatchdog v117.0] First failure detected - "
+                f"performing {self._retry_before_fail_count} immediate retries"
+            )
+
+            for retry in range(self._retry_before_fail_count):
+                await asyncio.sleep(1.0)  # Brief pause between retries
+                retry_metrics = await self._check_health()
+
+                if retry_metrics.is_healthy:
+                    logger.info(
+                        f"[ProxyWatchdog v117.0] ✅ Retry {retry + 1}/{self._retry_before_fail_count} "
+                        f"succeeded - transient failure resolved"
+                    )
+                    return  # Transient failure, don't count it
+
+            logger.debug(
+                f"[ProxyWatchdog v117.0] All {self._retry_before_fail_count} retries failed - "
+                f"counting as real failure"
+            )
+
         self._consecutive_failures += 1
         self._aggressive_mode = True
         metrics.recovery_attempts = self._consecutive_failures
 
+        # v117.0: During grace period, use higher failure threshold
+        effective_max_failures = self._max_consecutive_failures
+        if in_grace_period:
+            effective_max_failures = self._max_consecutive_failures * 2
+            logger.debug(
+                f"[ProxyWatchdog v117.0] In grace period ({time_since_start:.1f}s) - "
+                f"using relaxed threshold: {effective_max_failures}"
+            )
+
         logger.warning(
-            f"[ProxyWatchdog] ❌ Health check failed "
-            f"(reason={metrics.failure_reason}, consecutive={self._consecutive_failures})"
+            f"[ProxyWatchdog v117.0] ❌ Health check failed "
+            f"(reason={metrics.failure_reason}, consecutive={self._consecutive_failures}/"
+            f"{effective_max_failures}{' [grace period]' if in_grace_period else ''})"
         )
 
         # Check cooldown
@@ -5790,19 +5960,19 @@ class ProxyWatchdog:
             elapsed = time.time() - self._last_recovery_time
             if elapsed < self._recovery_cooldown:
                 logger.debug(
-                    f"[ProxyWatchdog] Recovery cooldown active "
+                    f"[ProxyWatchdog v117.0] Recovery cooldown active "
                     f"({elapsed:.1f}s / {self._recovery_cooldown}s)"
                 )
                 return
 
         # Attempt recovery
-        if self._consecutive_failures <= self._max_consecutive_failures:
+        if self._consecutive_failures <= effective_max_failures:
             await self._attempt_recovery(metrics)
         else:
             # Max failures - longer backoff
-            backoff = min(60.0, 5.0 * (2 ** (self._consecutive_failures - self._max_consecutive_failures)))
+            backoff = min(60.0, 5.0 * (2 ** (self._consecutive_failures - effective_max_failures)))
             logger.error(
-                f"[ProxyWatchdog] ❌ Max failures exceeded - backing off {backoff:.0f}s"
+                f"[ProxyWatchdog v117.0] ❌ Max failures exceeded - backing off {backoff:.0f}s"
             )
             await asyncio.sleep(backoff)
             # Reset and try again
