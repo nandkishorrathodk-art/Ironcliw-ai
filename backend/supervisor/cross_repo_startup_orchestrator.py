@@ -9705,6 +9705,20 @@ echo "=== JARVIS Prime started ==="
                 is_startup = time_since_start < self.config.startup_phase_duration
                 current_timeout = self.config.startup_health_check_timeout if is_startup else self.config.normal_health_check_timeout
 
+                # v118.0: Check port registry for fallback port before health check
+                # The service may have restarted on a different port
+                registry_port = get_service_port_from_registry(
+                    managed.definition.name,
+                    fallback_port=managed.port
+                )
+                if registry_port and registry_port != managed.port:
+                    logger.info(
+                        f"[v118.0] {managed.definition.name} port updated from registry: "
+                        f"{managed.port} -> {registry_port}"
+                    )
+                    managed.port = registry_port
+                    managed.definition.default_port = registry_port
+
                 # v109.1: HTTP health check with nuanced state tracking
                 health_result = await self._check_health_detailed(managed, timeout=current_timeout)
                 managed.last_health_check = time.time()
@@ -10096,10 +10110,28 @@ echo "=== JARVIS Prime started ==="
         """
         definition = managed.definition
 
+        # v118.0: CRITICAL - Check port registry for fallback port BEFORE health check
+        # The service may have started on a different port due to TIME_WAIT state.
+        # Without this check, we'd try to restart a healthy service on the wrong port.
+        actual_port = definition.default_port
+        registry_port = get_service_port_from_registry(
+            definition.name,
+            fallback_port=definition.default_port
+        )
+        if registry_port and registry_port != definition.default_port:
+            logger.info(
+                f"[v118.0] {definition.name} using fallback port from registry: "
+                f"{registry_port} (original: {definition.default_port})"
+            )
+            actual_port = registry_port
+            # Update the definition's port so future operations use the correct port
+            definition.default_port = registry_port
+            managed.port = registry_port
+
         # v95.2: CRITICAL - Check if service is ACTUALLY healthy before restarting
         # This prevents restart loops when the service is already running
         is_healthy = await self._quick_health_check(
-            definition.default_port,
+            actual_port,
             definition.health_endpoint
         )
 
@@ -10123,8 +10155,9 @@ echo "=== JARVIS Prime started ==="
 
         if managed.restart_count >= self.config.max_restart_attempts:
             # v95.2: Before giving up, do one final health check
+            # v118.0: Use actual_port (which may be from registry) for final check
             final_check = await self._quick_health_check(
-                definition.default_port,
+                actual_port,
                 definition.health_endpoint
             )
             if final_check:
