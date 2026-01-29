@@ -74,9 +74,23 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LockConfig:
-    """Configuration for distributed lock manager."""
+    """
+    Configuration for distributed lock manager.
+
+    v96.2: Lock files now use `.dlm.lock` extension to avoid collision with
+    flock-based locks from other systems (e.g., AtomicFileWriter in unified_loop_manager.py).
+
+    Lock File Naming:
+    - DistributedLockManager: {lock_name}.dlm.lock (JSON metadata)
+    - Other systems (flock): {name}.lock (empty flock files)
+
+    This prevents "corrupted lock file" errors when both systems share the same lock directory.
+    """
     # Lock directory
     lock_dir: Path = Path.home() / ".jarvis" / "cross_repo" / "locks"
+
+    # v96.2: Lock file extension - distinct from flock-based locks
+    lock_extension: str = ".dlm.lock"
 
     # Default lock timeout (how long to wait for lock acquisition)
     default_timeout_seconds: float = 5.0
@@ -337,7 +351,8 @@ class DistributedLockManager:
         timeout = timeout or self.config.default_timeout_seconds
         ttl = ttl or self.config.default_ttl_seconds
 
-        lock_file = self.config.lock_dir / f"{lock_name}.lock"
+        # v96.2: Use .dlm.lock extension to avoid collision with flock-based locks
+        lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
         token = str(uuid4())
         acquired = False
 
@@ -914,9 +929,11 @@ class DistributedLockManager:
             if not await aiofiles.os.path.exists(self.config.lock_dir):
                 return 0
 
+            # v96.2: Only process our .dlm.lock files, ignore other lock types
+            ext = self.config.lock_extension
             lock_files = [
                 f for f in await aiofiles.os.listdir(self.config.lock_dir)
-                if f.endswith('.lock')
+                if f.endswith(ext)
             ]
 
             for lock_file_name in lock_files:
@@ -997,9 +1014,11 @@ class DistributedLockManager:
             if not await aiofiles.os.path.exists(self.config.lock_dir):
                 return
 
+            # v96.2: Only process our .dlm.lock files, ignore other lock types
+            ext = self.config.lock_extension
             lock_files = [
                 f for f in await aiofiles.os.listdir(self.config.lock_dir)
-                if f.endswith('.lock')
+                if f.endswith(ext)
             ]
 
             cleaned_count = 0
@@ -1060,7 +1079,8 @@ class DistributedLockManager:
         Returns:
             dict with lock status or None if lock not held
         """
-        lock_file = self.config.lock_dir / f"{lock_name}.lock"
+        # v96.2: Use .dlm.lock extension
+        lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
         metadata = await self._read_lock_metadata(lock_file)
 
         if not metadata:
@@ -1094,13 +1114,16 @@ class DistributedLockManager:
             if not await aiofiles.os.path.exists(self.config.lock_dir):
                 return locks
 
+            # v96.2: Only list our .dlm.lock files, ignore other lock types (e.g., flock .lock files)
+            ext = self.config.lock_extension
             lock_files = [
                 f for f in await aiofiles.os.listdir(self.config.lock_dir)
-                if f.endswith('.lock')
+                if f.endswith(ext)
             ]
 
             for lock_file_name in lock_files:
-                lock_name = lock_file_name.replace('.lock', '')
+                # v96.2: Remove our extension to get the lock name
+                lock_name = lock_file_name[:-len(ext)]
                 status = await self.get_lock_status(lock_name)
                 if status:
                     locks.append(status)

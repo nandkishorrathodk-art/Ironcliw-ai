@@ -11621,6 +11621,59 @@ class SupervisorBootstrapper:
         # v72.0: Cleanup Trinity component subprocesses
         await self._shutdown_trinity_components()
 
+        # v117.0: Cleanup all threads and executors (CRITICAL for clean exit)
+        # This must happen after component shutdowns but before final resource cleanup
+        # to ensure all thread pools, PyTorch workers, and third-party threads are stopped.
+        try:
+            self.logger.info("🧵 Shutting down thread pools and executors...")
+
+            # First: Shutdown PyTorch executor specifically (handles pytorch_worker threads)
+            try:
+                from backend.core.pytorch_executor import shutdown_pytorch_executor
+                shutdown_pytorch_executor(wait=False)
+                self.logger.info("   ✅ PyTorch executor shutdown initiated")
+            except ImportError:
+                pass
+            except Exception as pe:
+                self.logger.debug(f"   PyTorch executor shutdown: {pe}")
+
+            from backend.core.thread_manager import (
+                shutdown_all_threads_async,
+                shutdown_third_party_threads,
+            )
+
+            # First: Shutdown our managed threads and executors
+            thread_stats = await asyncio.wait_for(
+                shutdown_all_threads_async(timeout=10.0),
+                timeout=15.0
+            )
+            remaining = thread_stats.get("remaining_threads", 0)
+            executors_shutdown = thread_stats.get("executors_shutdown", 0)
+            self.logger.info(
+                f"   ✅ Managed threads: {executors_shutdown} executors shutdown, "
+                f"{remaining} threads remaining"
+            )
+
+            # Second: Shutdown third-party threads (PyTorch, DB pools, etc.)
+            # Run in executor since this is a sync function
+            loop = asyncio.get_event_loop()
+            third_party_stats = await loop.run_in_executor(
+                None,
+                lambda: shutdown_third_party_threads(timeout=5.0)
+            )
+            third_party_remaining = third_party_stats.get("remaining_non_daemon", 0)
+            self.logger.info(
+                f"   ✅ Third-party threads: {third_party_remaining} non-daemon threads remaining"
+            )
+
+            self.logger.info("✅ Thread cleanup complete")
+        except asyncio.TimeoutError:
+            self.logger.warning("⚠️ Thread cleanup timed out (some threads may still be running)")
+        except ImportError:
+            self.logger.debug("[v117.0] Thread manager not available for cleanup")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Thread cleanup error (non-fatal): {e}")
+
         # v90.0: Release all port locks
         if self._port_manager is not None:
             try:

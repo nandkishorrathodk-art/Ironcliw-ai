@@ -2491,6 +2491,80 @@ _register_semaphore_cleanup_atexit()
 
 
 # =============================================================================
+# v117.0: Thread and Executor Cleanup at Exit
+# =============================================================================
+# Ensure all threads and executors are shut down even if normal cleanup fails.
+# This runs via atexit which fires before Python checks for non-daemon threads.
+# =============================================================================
+
+_thread_cleanup_registered = False
+
+
+def _register_thread_cleanup_atexit():
+    """
+    Register thread cleanup as an atexit handler.
+
+    This ensures thread pools and executors are shut down even when:
+    - Normal shutdown path is bypassed (e.g., unhandled exception)
+    - sys.exit() is called directly
+    - Signal handlers don't complete cleanup
+    """
+    global _thread_cleanup_registered
+    if _thread_cleanup_registered:
+        return
+
+    _thread_cleanup_registered = True
+
+    def _final_thread_cleanup():
+        """Emergency thread cleanup at exit."""
+        try:
+            # Try to import and use thread_manager
+            from backend.core.thread_manager import (
+                shutdown_all_threads,
+                shutdown_third_party_threads,
+            )
+
+            logger.debug("[v117.0] Running final thread cleanup via atexit...")
+
+            # Sync shutdown with short timeout (atexit shouldn't block long)
+            shutdown_all_threads(timeout=5.0)
+
+            # Third-party cleanup
+            third_party_stats = shutdown_third_party_threads(timeout=3.0)
+
+            remaining = third_party_stats.get("remaining_non_daemon", 0)
+            if remaining > 0:
+                logger.debug(f"[v117.0] atexit thread cleanup: {remaining} non-daemon threads remaining")
+            else:
+                logger.debug("[v117.0] atexit thread cleanup: all threads stopped")
+
+        except ImportError:
+            # Thread manager not available - try basic executor cleanup
+            try:
+                import threading
+                from concurrent.futures import ThreadPoolExecutor
+
+                # Get all live threads
+                live_threads = [t for t in threading.enumerate()
+                               if t.is_alive() and t != threading.main_thread()]
+
+                if live_threads:
+                    logger.debug(f"[v117.0] atexit: {len(live_threads)} threads still running (no thread_manager)")
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"[v117.0] atexit thread cleanup error: {e}")
+
+    # Register our cleanup (LIFO ordering means it runs before Python's thread check)
+    atexit.register(_final_thread_cleanup)
+    logger.debug("[v117.0] Thread cleanup atexit handler registered")
+
+
+# Auto-register on import
+_register_thread_cleanup_atexit()
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -2535,4 +2609,6 @@ __all__ = [
     "cleanup_ml_resources_async",
     # v127.0: Comprehensive semaphore cleanup
     "cleanup_all_semaphores_sync",
+    # v117.0: Thread cleanup
+    "_register_thread_cleanup_atexit",
 ]
