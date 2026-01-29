@@ -1,15 +1,18 @@
 """
-CoreML-Powered Intent Classification for JARVIS
-================================================
+CoreML-Powered Intent Classification for JARVIS v117.0
+=======================================================
 
 Neural Engine-accelerated intent prediction using CoreML on Apple Silicon M1.
+Falls back gracefully to PyTorch when CoreML/coremltools is unavailable.
 
 Features:
-- PyTorch model → CoreML conversion
+- PyTorch model → CoreML conversion (when coremltools available)
 - Neural Engine hardware acceleration (15x faster)
 - Multi-label classification for component prediction
 - Async inference pipeline
 - Continuous learning with online retraining
+- ROBUST FALLBACK: PyTorch-first with optional CoreML acceleration
+- Cross-repo ML capability coordination
 
 Performance:
 - Inference: 2-10ms (Neural Engine) vs 30-50ms (CPU)
@@ -17,21 +20,69 @@ Performance:
 - Accuracy: >95% after training
 - Throughput: 1000+ predictions/sec
 
+v117.0 FIXES:
+- Uses centralized optional_dependencies system
+- Graceful degradation when coremltools missing (DEBUG level, not ERROR)
+- PyTorch-first architecture with CoreML as optional acceleration
+- Cross-repo ML state coordination
+
 Author: JARVIS AI System
-Version: 1.0.0
-Date: 2025-10-05
+Version: 117.0.0
+Date: 2026-01-28
 """
 
 import os
 import time
 import logging
 import asyncio
+import json
 from pathlib import Path
 from typing import List, Dict, Set, Tuple, Optional, Any
 from dataclasses import dataclass
 import numpy as np
 
+# v117.0: Use centralized optional dependency system
+try:
+    from backend.core.optional_dependencies import (
+        is_coreml_available,
+        is_torch_available,
+        is_mps_available,
+        get_fallback_for,
+        suggest_install,
+        get_dependency_coordinator,
+    )
+    _HAS_OPTIONAL_DEPS = True
+except ImportError:
+    # Standalone mode - provide fallback functions
+    _HAS_OPTIONAL_DEPS = False
+    def is_coreml_available() -> bool:
+        try:
+            import coremltools
+            return True
+        except ImportError:
+            return False
+    def is_torch_available() -> bool:
+        try:
+            import torch
+            return True
+        except ImportError:
+            return False
+    def is_mps_available() -> bool:
+        if not is_torch_available():
+            return False
+        import torch
+        return hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    def get_fallback_for(dep: str):
+        return None
+    def suggest_install(dep: str) -> str:
+        return f"pip install {dep}"
+    def get_dependency_coordinator():
+        return None
+
 logger = logging.getLogger(__name__)
+
+# v117.0: Cross-repo state file for ML capability coordination
+_CROSS_REPO_ML_STATE_FILE = Path.home() / ".jarvis" / "cross_repo" / "coreml_intent_state.json"
 
 
 @dataclass
@@ -101,18 +152,68 @@ class CoreMLIntentClassifier:
         self.max_coreml_failures = 3
         self.coreml_disabled = False
 
-        # Initialize models
+        # v117.0: Initialize models with robust fallback chain
+        # PyTorch is PRIMARY, CoreML is OPTIONAL ACCELERATION
         self._init_pytorch_model()
         self._check_neural_engine()
 
-        # Try to load existing CoreML model
-        if self.coreml_model_path.exists():
-            try:
-                self._load_coreml_model()
+        # v117.0: Try to load existing CoreML model (if coremltools available)
+        if self.coreml_model_path.exists() and is_coreml_available():
+            if self._load_coreml_model():
                 self.is_trained = True
-                logger.info(f"✅ Loaded existing CoreML model from {self.coreml_model_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load CoreML model: {e}")
+                logger.info(f"✅ [v117.0] Loaded existing CoreML model from {self.coreml_model_path}")
+            else:
+                # CoreML load failed - check for PyTorch model
+                if self.pytorch_model_path.exists():
+                    self._load_pytorch_weights()
+        elif self.pytorch_model_path.exists():
+            # No CoreML, try PyTorch model
+            self._load_pytorch_weights()
+
+        # v117.0: Log capability summary
+        self._log_capability_summary()
+
+    def _load_pytorch_weights(self) -> bool:
+        """
+        v117.0: Load existing PyTorch model weights.
+
+        Returns:
+            True if weights loaded successfully
+        """
+        if self.pytorch_model is None:
+            return False
+
+        try:
+            import torch
+            self.pytorch_model.load_state_dict(
+                torch.load(self.pytorch_model_path, map_location=self.device)
+            )
+            self.pytorch_model.eval()
+            self.is_trained = True
+            logger.info(f"✅ [v117.0] PyTorch model weights loaded from {self.pytorch_model_path}")
+            return True
+        except Exception as e:
+            logger.debug(f"[v117.0] Failed to load PyTorch weights: {e}")
+            return False
+
+    def _log_capability_summary(self) -> None:
+        """v117.0: Log a summary of intent classifier capabilities."""
+        capabilities = []
+
+        if self.pytorch_model is not None:
+            capabilities.append("PyTorch")
+            if is_mps_available():
+                capabilities.append("MPS")
+
+        if self.coreml_model is not None:
+            capabilities.append("CoreML")
+            if self.neural_engine_available:
+                capabilities.append("Neural Engine")
+
+        if capabilities:
+            logger.info(f"🧠 [v117.0] Intent Classifier ready: {', '.join(capabilities)}")
+        else:
+            logger.warning("[v117.0] Intent Classifier: No ML backends available")
 
     def _init_pytorch_model(self):
         """Initialize PyTorch neural network model"""
@@ -180,41 +281,107 @@ class CoreMLIntentClassifier:
             self.pytorch_model = None
 
     def _check_neural_engine(self) -> bool:
-        """Check if Neural Engine is available on this system"""
+        """
+        v117.0: Check if Neural Engine is available on this system.
+
+        Uses centralized optional dependency system for robust checking.
+        Logs at DEBUG level when coremltools is unavailable (expected on many systems).
+        """
         try:
             import platform
-            import subprocess
 
             # Check if on Apple Silicon
             machine = platform.machine()
             if machine != 'arm64':
-                logger.info(f"Not on Apple Silicon (detected: {machine})")
+                logger.debug(f"[v117.0] Not on Apple Silicon (detected: {machine}) - CoreML unavailable")
+                self._write_cross_repo_state(neural_engine=False, reason="not_apple_silicon")
                 return False
 
-            # Check if CoreML is available
+            # v117.0: Use centralized optional dependency system
+            if not is_coreml_available():
+                # Log at DEBUG level - this is expected on many systems
+                logger.debug(
+                    "[v117.0] CoreMLTools not installed - using PyTorch fallback. "
+                    f"To enable Neural Engine: {suggest_install('coremltools')}"
+                )
+                self._write_cross_repo_state(neural_engine=False, reason="coremltools_not_installed")
+                return False
+
+            # Get version for logging
             try:
                 import coremltools as ct
-                logger.info(f"✅ CoreMLTools available: {ct.__version__}")
-            except ImportError:
-                logger.warning("CoreMLTools not installed")
-                return False
+                coreml_version = ct.__version__
+            except Exception:
+                coreml_version = "unknown"
 
             # Check macOS version (Neural Engine requires macOS 12+)
             macos_version = platform.mac_ver()[0]
-            major_version = int(macos_version.split('.')[0])
+            try:
+                major_version = int(macos_version.split('.')[0])
+            except (ValueError, IndexError):
+                major_version = 0
 
             if major_version >= 12:
                 self.neural_engine_available = True
-                logger.info(f"✅ Neural Engine available (macOS {macos_version}, Apple Silicon)")
+                logger.info(f"✅ [v117.0] Neural Engine available (macOS {macos_version}, CoreML {coreml_version})")
+                self._write_cross_repo_state(
+                    neural_engine=True,
+                    reason="available",
+                    coreml_version=coreml_version,
+                    macos_version=macos_version
+                )
                 return True
             else:
-                logger.warning(f"macOS {macos_version} too old for Neural Engine (requires 12+)")
+                logger.debug(f"[v117.0] macOS {macos_version} too old for Neural Engine (requires 12+)")
+                self._write_cross_repo_state(neural_engine=False, reason="macos_too_old")
                 return False
 
         except Exception as e:
-            logger.error(f"Error checking Neural Engine: {e}")
+            logger.debug(f"[v117.0] Error checking Neural Engine: {e}")
             self.neural_engine_available = False
+            self._write_cross_repo_state(neural_engine=False, reason=f"error:{e}")
             return False
+
+    def _write_cross_repo_state(
+        self,
+        neural_engine: bool,
+        reason: str,
+        coreml_version: str = None,
+        macos_version: str = None
+    ) -> None:
+        """
+        v117.0: Write CoreML/Neural Engine state for cross-repo coordination.
+
+        This allows JARVIS Prime and Reactor Core to know whether to offload
+        intent classification to this instance or handle it themselves.
+        """
+        try:
+            _CROSS_REPO_ML_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+            state = {
+                "neural_engine_available": neural_engine,
+                "coreml_available": is_coreml_available(),
+                "torch_available": is_torch_available(),
+                "mps_available": is_mps_available(),
+                "reason": reason,
+                "coreml_version": coreml_version,
+                "macos_version": macos_version,
+                "pytorch_fallback_ready": self.pytorch_model is not None,
+                "timestamp": time.time(),
+                "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "source_repo": "jarvis",
+                "version": "v117.0",
+                "pid": os.getpid(),
+            }
+
+            # Atomic write
+            tmp_file = _CROSS_REPO_ML_STATE_FILE.with_suffix('.tmp')
+            tmp_file.write_text(json.dumps(state, indent=2))
+            tmp_file.rename(_CROSS_REPO_ML_STATE_FILE)
+
+            logger.debug(f"[v117.0] Cross-repo CoreML state written: neural_engine={neural_engine}")
+        except Exception as e:
+            logger.debug(f"[v117.0] Failed to write cross-repo CoreML state: {e}")
 
     async def train_async(
         self,
@@ -323,8 +490,20 @@ class CoreMLIntentClassifier:
             return False
 
     async def _export_to_coreml_async(self) -> bool:
-        """Export PyTorch model to CoreML format asynchronously"""
-        logger.info("🔄 Exporting PyTorch model to CoreML...")
+        """
+        v117.0: Export PyTorch model to CoreML format asynchronously.
+
+        Skips CoreML export if coremltools is not available.
+        """
+        # v117.0: Check if coremltools is available before attempting export
+        if not is_coreml_available():
+            logger.debug(
+                "[v117.0] Skipping CoreML export - coremltools not available. "
+                "PyTorch model will be used for inference."
+            )
+            return False
+
+        logger.info("🔄 [v117.0] Exporting PyTorch model to CoreML...")
 
         loop = asyncio.get_event_loop()
         success = await loop.run_in_executor(None, self._export_to_coreml_sync)
@@ -335,7 +514,20 @@ class CoreMLIntentClassifier:
         return success
 
     def _export_to_coreml_sync(self) -> bool:
-        """Synchronous CoreML export (called in thread pool)"""
+        """
+        v117.0: Synchronous CoreML export (called in thread pool).
+
+        Requires coremltools to be available.
+        """
+        # v117.0: Double-check availability (in case called directly)
+        if not is_coreml_available():
+            logger.debug("[v117.0] CoreML export skipped - coremltools not available")
+            return False
+
+        if self.pytorch_model is None:
+            logger.warning("[v117.0] CoreML export skipped - PyTorch model not initialized")
+            return False
+
         try:
             import torch
             import coremltools as ct
@@ -370,7 +562,7 @@ class CoreMLIntentClassifier:
             coreml_model.short_description = "JARVIS Intent Classification Model"
             coreml_model.author = "JARVIS AI System"
             coreml_model.license = "Proprietary"
-            coreml_model.version = "1.0.0"
+            coreml_model.version = "117.0.0"
 
             # Add input/output descriptions
             coreml_model.input_description['features'] = "256-dim TF-IDF feature vector"
@@ -379,18 +571,41 @@ class CoreMLIntentClassifier:
             # Save CoreML model
             coreml_model.save(str(self.coreml_model_path))
 
-            logger.info(f"✅ CoreML model exported to {self.coreml_model_path}")
+            logger.info(f"✅ [v117.0] CoreML model exported to {self.coreml_model_path}")
             logger.info(f"   Compute units: ALL (Neural Engine + CPU + GPU)")
             logger.info(f"   Format: ML Program (optimized for M1)")
 
             return True
 
-        except Exception as e:
-            logger.error(f"CoreML export error: {e}", exc_info=True)
+        except ImportError as e:
+            # This shouldn't happen after is_coreml_available check, but handle gracefully
+            logger.debug(f"[v117.0] CoreML export skipped - import error: {e}")
             return False
 
-    def _load_coreml_model(self):
-        """Load CoreML model for inference"""
+        except Exception as e:
+            logger.warning(f"[v117.0] CoreML export failed: {e}")
+            return False
+
+    def _load_coreml_model(self) -> bool:
+        """
+        v117.0: Load CoreML model for inference.
+
+        Uses centralized dependency system. Falls back gracefully to PyTorch
+        when coremltools is unavailable (logs at DEBUG level, not ERROR).
+
+        Returns:
+            True if CoreML model loaded successfully, False otherwise
+        """
+        # v117.0: Check availability BEFORE trying to import
+        if not is_coreml_available():
+            # Log at DEBUG level - this is expected when coremltools isn't installed
+            logger.debug(
+                f"[v117.0] CoreML model not loaded - coremltools not available. "
+                f"PyTorch fallback will be used instead."
+            )
+            self.coreml_model = None
+            return False
+
         try:
             import coremltools as ct
 
@@ -399,15 +614,20 @@ class CoreMLIntentClassifier:
                 compute_units=ct.ComputeUnit.ALL  # Use Neural Engine
             )
 
-            logger.info(f"✅ CoreML model loaded from {self.coreml_model_path}")
+            logger.info(f"✅ [v117.0] CoreML model loaded from {self.coreml_model_path}")
+            return True
+
+        except FileNotFoundError:
+            # Model file doesn't exist yet - this is normal before first training
+            logger.debug(f"[v117.0] CoreML model file not found at {self.coreml_model_path} - will train first")
+            self.coreml_model = None
+            return False
 
         except Exception as e:
-            logger.error(f"Failed to load CoreML model: {e}")
+            # Log at WARNING for actual load failures (not missing dependencies)
+            logger.warning(f"[v117.0] CoreML model load failed: {e}. Using PyTorch fallback.")
             self.coreml_model = None
-
-        result.inference_time_ms = inference_time_ms
-        
-        return result
+            return False
 
     async def predict_async(
         self,
