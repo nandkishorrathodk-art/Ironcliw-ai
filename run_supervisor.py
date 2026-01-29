@@ -5731,6 +5731,14 @@ class SupervisorBootstrapper:
         self._agi_orchestrator = None
         self._agi_orchestrator_enabled = os.getenv("AGI_ORCHESTRATOR_ENABLED", "true").lower() == "true"
 
+        # v117.0: Distributed Proxy Orchestrator (Cross-Repo Leader Election)
+        # - DistributedProxyLeader: Raft-inspired leader election
+        # - ProxyLifecycleController: State machine with launchd persistence
+        # - AsyncStartupBarrier: Multi-stage verification pipeline
+        # - UnifiedHealthAggregator: Anomaly detection and diagnostics
+        # - TrinityCoordinator: Unified cross-repo management
+        self._proxy_orchestrator = None
+
         # v100.0: Unified Model Serving (Prime + Claude Fallback)
         # - PrimeLocalClient: Local GGUF model inference
         # - PrimeCloudRunClient: Cloud Run Prime deployment
@@ -11334,6 +11342,31 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.warning(f"⚠️ Trinity Core Systems cleanup error: {e}")
 
+        # v117.0: Shutdown Distributed Proxy System (with Trinity coordination)
+        try:
+            if hasattr(self, '_proxy_orchestrator') and self._proxy_orchestrator:
+                self.logger.info("🗄️ Shutting down Distributed Proxy System...")
+                try:
+                    from core.proxy.supervisor_integration import shutdown_distributed_proxy
+                except ImportError:
+                    from backend.core.proxy.supervisor_integration import shutdown_distributed_proxy
+
+                success = await asyncio.wait_for(
+                    shutdown_distributed_proxy(graceful=True),
+                    timeout=15.0
+                )
+                if success:
+                    self.logger.info("✅ Distributed Proxy System stopped gracefully")
+                else:
+                    self.logger.warning("⚠️ Distributed Proxy System shutdown had warnings")
+                self._proxy_orchestrator = None
+        except asyncio.TimeoutError:
+            self.logger.warning("⚠️ Distributed Proxy System shutdown timed out")
+        except ImportError:
+            self.logger.debug("[v117.0] Distributed proxy modules not available for shutdown")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Distributed Proxy System cleanup error: {e}")
+
         # v100.0: Shutdown AGI Orchestrator
         try:
             if self._agi_orchestrator:
@@ -11675,30 +11708,139 @@ class SupervisorBootstrapper:
 
     async def _initialize_cloudsql_proxy(self) -> None:
         """
-        v113.0: Proactively ensure Cloud SQL proxy is running and DB-level ready.
+        v117.0: Distributed Proxy System with Leader Election & Trinity Coordination.
 
         This is the ROOT FIX for "Connection refused" errors during startup.
-        Instead of waiting for failures to trigger reactive auto-start, this
-        method proactively:
+        The new distributed proxy system provides:
 
-        1. Checks if proxy is running
-        2. Starts it if not (using CloudSQLProxyManager)
-        3. Waits for DB-level connectivity (not just TCP port)
-        4. Uses intelligent exponential backoff
-        5. Signals AgentRegistry when CloudSQL is ready
-        6. Notifies cross-repo components via service registry
+        1. Cross-repo leader election (only one repo manages the proxy)
+        2. launchd persistence (survives reboots and auto-restarts on crash)
+        3. Multi-stage verification pipeline (TCP → TLS → Auth → Query → Latency)
+        4. Intelligent health monitoring with anomaly detection
+        5. Trinity coordination (JARVIS, Prime, Reactor unified management)
+        6. Automatic fallback to legacy system if needed
 
         Environment Variables (no hardcoding):
         - CLOUDSQL_PROXY_ENABLED: "true" (default) to enable this phase
+        - DISTRIBUTED_PROXY_ENABLED: "true" (default) to use new distributed system
+        - DISTRIBUTED_PROXY_LEGACY_FALLBACK: "true" (default) to fallback to legacy
         - CLOUDSQL_ENSURE_READY_TIMEOUT: Timeout in seconds (default: 60.0)
         - CLOUDSQL_PROXY_START_ATTEMPTS: Max proxy start attempts (default: 3)
         """
         # Check if CloudSQL proxy phase is enabled (configurable)
         cloudsql_enabled = os.getenv("CLOUDSQL_PROXY_ENABLED", "true").lower() in ("1", "true", "yes")
         if not cloudsql_enabled:
-            self.logger.info("[v113.0] CloudSQL proxy phase disabled via CLOUDSQL_PROXY_ENABLED=false")
+            self.logger.info("[v117.0] CloudSQL proxy phase disabled via CLOUDSQL_PROXY_ENABLED=false")
             print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Disabled{TerminalUI.RESET}")
             return
+
+        # Define print wrapper for supervisor UI
+        def _supervisor_print(msg: str) -> None:
+            # Strip leading spaces from distributed proxy messages for consistency
+            msg = msg.strip()
+            if msg.startswith("🚀") or msg.startswith("🔐") or msg.startswith("✅") or msg.startswith("⚠️") or msg.startswith("❌") or msg.startswith("🔄"):
+                print(f"  {TerminalUI.CYAN}{msg}{TerminalUI.RESET}")
+            elif msg.startswith("✓") or "Ready" in msg:
+                print(f"  {TerminalUI.GREEN}{msg}{TerminalUI.RESET}")
+            elif msg.startswith("○"):
+                print(f"  {TerminalUI.DIM}{msg}{TerminalUI.RESET}")
+            else:
+                print(f"  {msg}")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # v117.0: Try new Distributed Proxy System first
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            # Import the distributed proxy integration
+            try:
+                from core.proxy.supervisor_integration import (
+                    initialize_distributed_proxy,
+                    is_distributed_proxy_enabled,
+                    signal_cloudsql_ready,
+                )
+            except ImportError:
+                from backend.core.proxy.supervisor_integration import (
+                    initialize_distributed_proxy,
+                    is_distributed_proxy_enabled,
+                    signal_cloudsql_ready,
+                )
+
+            if is_distributed_proxy_enabled():
+                self.logger.info("[v117.0] 🚀 Initializing Distributed Proxy System...")
+                print(f"  {TerminalUI.CYAN}🚀 Starting Distributed Proxy System v117.0...{TerminalUI.RESET}")
+
+                # Initialize distributed proxy with Trinity coordination
+                result = await initialize_distributed_proxy(
+                    repo_name="jarvis",
+                    components=None,  # Components registered separately
+                    on_ready_callback=self._on_cloudsql_ready,
+                    print_func=_supervisor_print,
+                )
+
+                if result.ready:
+                    # Success - distributed proxy is running
+                    role = "LEADER" if result.is_leader else "FOLLOWER"
+                    duration = result.startup_duration or 0
+                    phases = ", ".join(result.phases_completed) if result.phases_completed else "none"
+
+                    self.logger.info(
+                        f"[v117.0] ✅ Distributed Proxy ready ({role}, {duration:.1f}s, phases: {phases})"
+                    )
+                    print(f"  {TerminalUI.GREEN}✓ Distributed Proxy: {role} ({duration:.1f}s){TerminalUI.RESET}")
+
+                    # Signal to AgentRegistry that CloudSQL dependency is ready
+                    await signal_cloudsql_ready()
+
+                    # Set environment variable for downstream components
+                    os.environ["CLOUDSQL_PROXY_READY"] = "true"
+                    os.environ["CLOUDSQL_READY_AT"] = str(time.time())
+                    os.environ["DISTRIBUTED_PROXY_ROLE"] = role
+
+                    # Store orchestrator reference for shutdown
+                    try:
+                        from core.proxy.supervisor_integration import get_proxy_orchestrator
+                    except ImportError:
+                        from backend.core.proxy.supervisor_integration import get_proxy_orchestrator
+                    self._proxy_orchestrator = await get_proxy_orchestrator()
+
+                    return  # Success - no need for legacy fallback
+
+                else:
+                    # Distributed proxy failed - will fall through to legacy
+                    self.logger.warning(
+                        f"[v117.0] ⚠️ Distributed Proxy failed: {result.failure_reason}"
+                    )
+                    # Legacy fallback is handled inside initialize_distributed_proxy
+                    # if DISTRIBUTED_PROXY_LEGACY_FALLBACK is enabled
+                    if result.failure_reason != "feature_disabled":
+                        # If failure reason was something other than disabled,
+                        # check if legacy succeeded inside the function
+                        if result.latency is not None:
+                            # Legacy succeeded
+                            os.environ["CLOUDSQL_PROXY_READY"] = "true"
+                            os.environ["CLOUDSQL_READY_AT"] = str(time.time())
+                            await self._signal_cloudsql_ready_to_registry()
+                            return
+                        else:
+                            # Both distributed and legacy failed
+                            os.environ["CLOUDSQL_PROXY_READY"] = "false"
+                            print(f"  {TerminalUI.YELLOW}⚠️ CloudSQL Proxy: Not ready ({result.failure_reason}){TerminalUI.RESET}")
+                            print(f"    → Database-dependent features may be unavailable")
+                            return
+
+        except ImportError as e:
+            self.logger.debug(f"[v117.0] Distributed proxy modules not available: {e}")
+            # Fall through to legacy system
+
+        except Exception as e:
+            self.logger.warning(f"[v117.0] Distributed proxy initialization error: {e}")
+            # Fall through to legacy system
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Legacy fallback: ProxyReadinessGate (v113.0)
+        # ═══════════════════════════════════════════════════════════════════
+        self.logger.info("[v117.0] Using legacy ProxyReadinessGate system...")
+        print(f"  {TerminalUI.CYAN}🗄️ Starting CloudSQL Proxy (Legacy Mode)...{TerminalUI.RESET}")
 
         # Get timeout from environment (no hardcoding)
         timeout = float(os.getenv("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
@@ -11718,15 +11860,12 @@ class SupervisorBootstrapper:
                         ReadinessState,
                     )
                 except ImportError:
-                    self.logger.debug("[v113.0] ProxyReadinessGate not available")
+                    self.logger.debug("[v117.0] ProxyReadinessGate not available")
                     print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Module not available{TerminalUI.RESET}")
                     return
 
             # Get the singleton gate instance
             gate = ProxyReadinessGate.get_instance()
-
-            self.logger.info("[v113.0] 🗄️ Ensuring Cloud SQL proxy is running and ready...")
-            print(f"  {TerminalUI.CYAN}🗄️ Starting CloudSQL Proxy Startup Phase...{TerminalUI.RESET}")
 
             # Call the proactive ensure_proxy_ready method
             result = await gate.ensure_proxy_ready(
@@ -11740,7 +11879,7 @@ class SupervisorBootstrapper:
                 # Success - proxy is running and DB-level connectivity confirmed
                 latency_ms = (result.latency or 0) * 1000
                 self.logger.info(
-                    f"[v113.0] ✅ CloudSQL proxy ready (latency: {latency_ms:.1f}ms)"
+                    f"[v117.0] ✅ CloudSQL proxy ready (legacy, latency: {latency_ms:.1f}ms)"
                 )
                 print(f"  {TerminalUI.GREEN}✓ CloudSQL Proxy: Ready ({latency_ms:.1f}ms latency){TerminalUI.RESET}")
 
@@ -11771,7 +11910,7 @@ class SupervisorBootstrapper:
             else:
                 # Failed - log details but don't block startup (graceful degradation)
                 self.logger.warning(
-                    f"[v113.0] ⚠️ CloudSQL proxy not ready after {timeout}s: {result.message}"
+                    f"[v117.0] ⚠️ CloudSQL proxy not ready after {timeout}s: {result.message}"
                 )
                 print(f"  {TerminalUI.YELLOW}⚠️ CloudSQL Proxy: Not ready ({result.failure_reason}){TerminalUI.RESET}")
                 print(f"    → Database-dependent features may be unavailable")
@@ -11780,13 +11919,18 @@ class SupervisorBootstrapper:
                 os.environ["CLOUDSQL_PROXY_READY"] = "false"
 
         except ImportError as e:
-            self.logger.debug(f"[v113.0] CloudSQL proxy modules not available: {e}")
+            self.logger.debug(f"[v117.0] CloudSQL proxy modules not available: {e}")
             print(f"  {TerminalUI.DIM}○ CloudSQL Proxy: Not configured{TerminalUI.RESET}")
 
         except Exception as e:
-            self.logger.warning(f"[v113.0] CloudSQL proxy startup failed: {e}")
+            self.logger.warning(f"[v117.0] CloudSQL proxy startup failed: {e}")
             print(f"  {TerminalUI.YELLOW}⚠️ CloudSQL Proxy: Startup error{TerminalUI.RESET}")
             os.environ["CLOUDSQL_PROXY_READY"] = "false"
+
+    async def _on_cloudsql_ready(self) -> None:
+        """Callback when CloudSQL becomes ready via distributed proxy."""
+        self.logger.info("[v117.0] CloudSQL ready callback triggered")
+        await self._signal_cloudsql_ready_to_registry()
 
     async def _signal_cloudsql_ready_to_registry(self) -> None:
         """

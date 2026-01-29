@@ -188,6 +188,7 @@ class UnifiedProxyOrchestrator:
         self._lifecycle: Optional[ProxyLifecycleController] = None
         self._barrier: Optional[AsyncStartupBarrier] = None
         self._health: Optional[UnifiedHealthAggregator] = None
+        self._trinity: Optional[Any] = None  # UnifiedTrinityCoordinator
 
         # Child process management
         self._child_processes: Dict[str, asyncio.subprocess.Process] = {}
@@ -418,10 +419,40 @@ class UnifiedProxyOrchestrator:
 
             self._complete_phase(phase, True)
 
-            # Phase 5: Cross-Repo Startup (Leader only)
+            # Phase 5: Cross-Repo Startup via Trinity Coordinator (Leader only)
             if is_leader:
                 await self._transition_to(OrchestratorState.STARTING_CHILD_REPOS)
-                await self._start_child_repos()
+                phase = self._start_phase("trinity_coordination")
+
+                try:
+                    from .trinity_coordinator import (
+                        get_trinity_coordinator,
+                        integrate_with_proxy_orchestrator,
+                    )
+
+                    # Get Trinity coordinator (single source of truth)
+                    self._trinity = await get_trinity_coordinator(
+                        is_leader=True,
+                        auto_register=True,
+                    )
+
+                    # Integrate proxy health with Trinity
+                    await integrate_with_proxy_orchestrator(self._trinity)
+
+                    # Start Trinity coordination (handles Prime/Reactor)
+                    await self._trinity.start()
+
+                    self._complete_phase(phase, True)
+
+                except ImportError as e:
+                    logger.debug(f"[Orchestrator] Trinity coordinator not available: {e}")
+                    # Fall back to legacy child repo start
+                    await self._start_child_repos()
+                    self._complete_phase(phase, True, metadata={"fallback": True})
+
+                except Exception as e:
+                    logger.warning(f"[Orchestrator] Trinity startup warning: {e}")
+                    self._complete_phase(phase, True, error=str(e))
 
             # Complete!
             await self._transition_to(OrchestratorState.RUNNING)
@@ -507,11 +538,18 @@ class UnifiedProxyOrchestrator:
 
         logger.info("[Orchestrator] Starting shutdown...")
 
+        # Stop Trinity coordinator (handles child processes)
+        if self._trinity:
+            try:
+                await self._trinity.stop(graceful=graceful)
+            except Exception as e:
+                logger.warning(f"[Orchestrator] Trinity shutdown warning: {e}")
+
         # Stop health aggregator
         if self._health:
             await self._health.stop()
 
-        # Stop child processes
+        # Stop child processes (legacy fallback)
         for repo_name, process in self._child_processes.items():
             try:
                 if graceful:

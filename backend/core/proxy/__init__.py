@@ -144,6 +144,25 @@ from .supervisor_integration import (
     is_distributed_proxy_enabled,
 )
 
+# Trinity Coordination (unified cross-repo management)
+from .trinity_coordinator import (
+    ComponentConfig,
+    ComponentHealth,
+    ComponentHealthRegistry,
+    ComponentState,
+    HealthChecker,
+    NotificationCoalescer,
+    NotificationLevel,
+    NotificationRecord,
+    ProcessSupervisor,
+    TrinityComponent,
+    TrinityConfig,
+    UnifiedTrinityCoordinator,
+    get_trinity_coordinator,
+    integrate_with_proxy_orchestrator,
+    shutdown_trinity_coordinator,
+)
+
 __all__ = [
     # Layer 1: Leader Election
     "DistributedProxyLeader",
@@ -209,6 +228,22 @@ __all__ = [
     "signal_cloudsql_ready",
     "create_component_manifest",
     "is_distributed_proxy_enabled",
+    # Trinity Coordination
+    "TrinityComponent",
+    "TrinityConfig",
+    "ComponentState",
+    "ComponentConfig",
+    "ComponentHealth",
+    "ComponentHealthRegistry",
+    "NotificationLevel",
+    "NotificationCoalescer",
+    "NotificationRecord",
+    "HealthChecker",
+    "ProcessSupervisor",
+    "UnifiedTrinityCoordinator",
+    "get_trinity_coordinator",
+    "integrate_with_proxy_orchestrator",
+    "shutdown_trinity_coordinator",
 ]
 
 __version__ = "1.0.0"

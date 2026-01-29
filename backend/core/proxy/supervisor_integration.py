@@ -327,21 +327,88 @@ async def _legacy_fallback(print_func: Optional[Callable[[str], None]] = None) -
 
 async def shutdown_distributed_proxy(graceful: bool = True) -> bool:
     """
-    Shutdown the distributed proxy system.
+    Shutdown the distributed proxy system and Trinity coordinator.
 
     Call this during supervisor shutdown.
     """
     global _orchestrator_instance
 
-    if _orchestrator_instance is None:
-        return True
+    success = True
 
+    # Shutdown Trinity coordinator
     try:
-        await _orchestrator_instance.stop(graceful=graceful)
-        _orchestrator_instance = None
-        return True
+        from .trinity_coordinator import shutdown_trinity_coordinator
+        await shutdown_trinity_coordinator()
+    except ImportError:
+        pass
     except Exception as e:
-        logger.error(f"[DistributedProxy] Shutdown error: {e}")
+        logger.warning(f"[DistributedProxy] Trinity shutdown warning: {e}")
+        success = False
+
+    # Shutdown orchestrator
+    if _orchestrator_instance is not None:
+        try:
+            await _orchestrator_instance.stop(graceful=graceful)
+            _orchestrator_instance = None
+        except Exception as e:
+            logger.error(f"[DistributedProxy] Shutdown error: {e}")
+            success = False
+
+    return success
+
+
+# =============================================================================
+# Trinity Coordination Integration
+# =============================================================================
+
+async def get_trinity_status() -> Dict[str, Any]:
+    """Get current Trinity coordination status."""
+    try:
+        from .trinity_coordinator import get_trinity_coordinator
+
+        coordinator = await get_trinity_coordinator(auto_register=False)
+        return await coordinator.get_trinity_status()
+    except ImportError:
+        return {"error": "Trinity coordinator not available"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def wait_for_trinity_component(
+    component_name: str,
+    timeout: Optional[float] = None,
+) -> bool:
+    """
+    Wait for a Trinity component to become healthy.
+
+    Args:
+        component_name: Component name (jarvis_prime, reactor_core, etc.)
+        timeout: Optional timeout in seconds
+
+    Returns:
+        True if component is healthy, False otherwise
+    """
+    try:
+        from .trinity_coordinator import (
+            TrinityComponent,
+            get_trinity_coordinator,
+        )
+
+        # Map string to enum
+        try:
+            component = TrinityComponent(component_name)
+        except ValueError:
+            logger.warning(f"[Trinity] Unknown component: {component_name}")
+            return False
+
+        coordinator = await get_trinity_coordinator(auto_register=False)
+        return await coordinator.wait_for_component(component, timeout=timeout)
+
+    except ImportError:
+        logger.debug("[Trinity] Trinity coordinator not available")
+        return True  # Assume available if Trinity not installed
+    except Exception as e:
+        logger.warning(f"[Trinity] Wait error: {e}")
         return False
 
 
