@@ -1053,8 +1053,10 @@ class ReactorCoreClient:
             raise RuntimeError("Client not initialized - use async with")
 
         try:
+            # v117.0: Fixed health endpoint path to match Reactor-Core's /health endpoint
+            # (was incorrectly /api/health - Reactor-Core registers /health not /api/health)
             async with self._session.get(
-                f"{self.config.reactor_api_url}/api/health",
+                f"{self.config.reactor_api_url}/health",
                 timeout=aiohttp.ClientTimeout(total=5.0)
             ) as response:
                 return response.status == 200

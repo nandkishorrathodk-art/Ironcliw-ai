@@ -14132,7 +14132,9 @@ async def probe_jarvis_prime() -> bool:
 async def probe_reactor_core() -> bool:
     """Legacy: Probe Reactor-Core health endpoint."""
     config = OrchestratorConfig()
-    url = f"http://localhost:{config.reactor_core_default_port}/api/health"
+    # v95.14: Fixed endpoint path to match Reactor-Core's actual /health endpoint
+    # (was incorrectly /api/health, causing health check failures)
+    url = f"http://localhost:{config.reactor_core_default_port}/health"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5.0)) as response:

@@ -110,8 +110,9 @@ async def probe_reactor_core() -> bool:
     """Probe Reactor-Core health endpoint."""
     try:
         async with aiohttp.ClientSession() as session:
+            # v117.0: Fixed endpoint path to match Reactor-Core's actual /health endpoint
             async with session.get(
-                f"http://localhost:{REACTOR_CORE_PORT}/api/health",
+                f"http://localhost:{REACTOR_CORE_PORT}/health",
                 timeout=aiohttp.ClientTimeout(total=5.0)
             ) as response:
                 return response.status == 200

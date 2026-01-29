@@ -209,14 +209,26 @@ class CloudSQLProxyManager:
         """
         Get process name from PID for zombie detection.
 
-        v86.0: Enhanced zombie detection - verify process is actually cloud-sql-proxy.
+        v117.0: Enhanced with full command line fallback for more robust detection.
+        - Primary: Get short process name (comm)
+        - Fallback: Get full command line (args) for more context
 
         Returns:
             Process name/command if available, None if process doesn't exist.
         """
         try:
             if self.system == "Darwin":
-                # macOS: use ps to get process info
+                # macOS: Try full command line first (more reliable for Homebrew binaries)
+                result = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
+
+                # Fallback to short name
                 result = subprocess.run(
                     ["ps", "-p", str(pid), "-o", "comm="],
                     capture_output=True,
@@ -225,12 +237,14 @@ class CloudSQLProxyManager:
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     return result.stdout.strip()
+
             elif self.system == "Linux":
                 # Linux: read from /proc
                 cmdline_path = Path(f"/proc/{pid}/cmdline")
                 if cmdline_path.exists():
                     cmdline = cmdline_path.read_text().replace('\x00', ' ').strip()
                     return cmdline
+
             elif self.system == "Windows":
                 # Windows: use tasklist
                 result = subprocess.run(
@@ -252,51 +266,116 @@ class CloudSQLProxyManager:
         """
         Check if a PID is actually a cloud-sql-proxy process.
 
-        v86.0: Prevents zombie scenarios where port is held by different process.
+        v117.0: Enhanced with multiple detection strategies and path-aware matching.
+        - Checks process name, command line, and executable path
+        - Handles Homebrew installations (/opt/homebrew/bin/cloud-sql-proxy)
+        - Handles gcloud-installed proxies
 
         Returns:
             True if PID is a cloud-sql-proxy process, False otherwise.
         """
         proc_name = self._get_process_name_from_pid(pid)
         if not proc_name:
+            # v117.0: Try psutil as fallback for more robust detection
+            try:
+                import psutil
+                process = psutil.Process(pid)
+                proc_name = process.name()
+                if not proc_name:
+                    # Try cmdline
+                    cmdline = process.cmdline()
+                    if cmdline:
+                        proc_name = ' '.join(cmdline)
+            except Exception:
+                pass
+
+        if not proc_name:
             return False
 
-        # Check if process name/command contains cloud-sql-proxy
+        # v117.0: Enhanced keyword matching with path components
         proc_name_lower = proc_name.lower()
-        return any(keyword in proc_name_lower for keyword in [
+        keywords = [
             'cloud-sql-proxy',
             'cloud_sql_proxy',
-            'cloudsqlproxy'
-        ])
+            'cloudsqlproxy',
+            '/cloud-sql-proxy',  # Path component match
+            'bin/cloud-sql-proxy',  # Binary path match
+        ]
+        return any(keyword in proc_name_lower for keyword in keywords)
 
     def _get_pid_using_port(self, port: int) -> Optional[int]:
         """
-        Get the PID of the process listening on a port.
+        Get the PID of the process LISTENING on a port (server, not clients).
 
-        v86.0: Used for zombie detection - identify which process holds our port.
+        v117.0: Fixed zombie detection false positives by filtering for LISTEN state only.
+        Previous versions used `lsof -t -i :PORT` which returned ALL connections
+        including client connections, causing race conditions during startup where
+        a Python client PID could be returned instead of the proxy server PID.
 
         Returns:
-            PID if found, None otherwise.
+            PID of the LISTENING process if found, None otherwise.
         """
         try:
             if self.system == "Darwin" or self.system == "Linux":
-                # Use lsof to find process on port
+                # v117.0: Use -sTCP:LISTEN to filter for LISTENING sockets only
+                # This prevents false positives from client connections during startup
                 result = subprocess.run(
-                    ["lsof", "-t", "-i", f":{port}"],
+                    ["lsof", "-t", "-iTCP:" + str(port), "-sTCP:LISTEN"],
                     capture_output=True,
                     text=True,
                     timeout=10
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    # lsof may return multiple PIDs, get the first one
+                    # lsof may return multiple PIDs if multiple processes listen
+                    # (e.g., IPv4 + IPv6), but they should all be the same process
                     pids = result.stdout.strip().split('\n')
                     if pids:
                         try:
-                            return int(pids[0])
+                            # Deduplicate PIDs (same process may appear for IPv4/IPv6)
+                            unique_pids = list(set(int(p) for p in pids if p.strip()))
+                            if unique_pids:
+                                if len(unique_pids) > 1:
+                                    logger.warning(
+                                        f"[ProxyManager] Multiple processes LISTEN on port {port}: "
+                                        f"{unique_pids} - using first one"
+                                    )
+                                return unique_pids[0]
                         except ValueError:
                             pass
+
+                # v117.0: Fallback to full lsof if strict LISTEN filter returns nothing
+                # (handles edge cases where socket state reporting varies)
+                result_fallback = subprocess.run(
+                    ["lsof", "-t", "-i", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result_fallback.returncode == 0 and result_fallback.stdout.strip():
+                    pids = result_fallback.stdout.strip().split('\n')
+                    if pids:
+                        # v117.0: When using fallback, validate each PID is actually
+                        # the server by checking if it's cloud-sql-proxy
+                        for pid_str in pids:
+                            try:
+                                pid = int(pid_str.strip())
+                                if self._is_cloud_sql_proxy_process(pid):
+                                    return pid
+                            except ValueError:
+                                continue
+                        # If no cloud-sql-proxy found, return first PID with warning
+                        try:
+                            first_pid = int(pids[0])
+                            logger.debug(
+                                f"[ProxyManager] No cloud-sql-proxy in PIDs {pids}, "
+                                f"using first PID {first_pid}"
+                            )
+                            return first_pid
+                        except ValueError:
+                            pass
+
             elif self.system == "Windows":
-                # Use netstat to find process on port
+                # Use netstat to find process on port (already filters LISTENING)
                 result = subprocess.run(
                     ["netstat", "-ano"],
                     capture_output=True,
@@ -317,20 +396,29 @@ class CloudSQLProxyManager:
 
         return None
 
-    def detect_zombie_state(self) -> Dict:
+    def detect_zombie_state(self, retry_on_zombie: bool = True) -> Dict:
         """
         Detect zombie proxy state - port held but not by our proxy.
 
-        v86.0: Comprehensive zombie detection for robust startup.
+        v117.0: Enhanced with verification retry to prevent startup race condition false positives.
+        During startup, there's a brief window where lsof may return the wrong PID before
+        the proxy is fully ready. The retry mechanism waits 500ms and re-checks to confirm
+        a zombie before declaring one.
+
+        Args:
+            retry_on_zombie: If True, retry detection once after 500ms delay when zombie
+                           is suspected. This prevents false positives during startup.
+                           Set to False for synchronous operations.
 
         Returns:
             Dict with:
-            - is_zombie: True if port held by non-proxy process
+            - is_zombie: True if port held by non-proxy process (verified)
             - port_in_use: True if port is occupied
             - pid_on_port: PID of process on port (if any)
             - is_cloud_sql_proxy: True if PID is actually cloud-sql-proxy
             - our_pid_valid: True if our PID file points to live cloud-sql-proxy
             - recommendation: Action to take
+            - verified: True if zombie state was verified with retry (v117.0)
         """
         port = self.config["cloud_sql"]["port"]
         result = {
@@ -340,7 +428,8 @@ class CloudSQLProxyManager:
             'pid_on_port': None,
             'is_cloud_sql_proxy': False,
             'our_pid_valid': False,
-            'recommendation': 'none'
+            'recommendation': 'none',
+            'verified': False  # v117.0: Track verification status
         }
 
         # Check if port is in use
@@ -378,16 +467,47 @@ class CloudSQLProxyManager:
 
         # Determine zombie state
         if result['port_in_use'] and not result['is_cloud_sql_proxy']:
-            # Port held by non-proxy process - ZOMBIE!
-            result['is_zombie'] = True
-            result['recommendation'] = 'kill_conflicting'
-            logger.warning(
-                f"[ProxyManager] ZOMBIE detected: Port {port} held by PID {pid_on_port} "
-                f"which is NOT cloud-sql-proxy"
-            )
+            # v117.0: Potential zombie - verify with retry to avoid false positives
+            if retry_on_zombie:
+                logger.debug(
+                    f"[ProxyManager] Potential zombie detected on port {port} "
+                    f"(PID {pid_on_port}), verifying with 500ms delay..."
+                )
+                import time
+                time.sleep(0.5)  # Wait for potential startup race to resolve
+
+                # Re-check without retry to avoid infinite loop
+                verification = self.detect_zombie_state(retry_on_zombie=False)
+
+                if verification['is_cloud_sql_proxy']:
+                    # False positive - proxy is now detected correctly
+                    logger.info(
+                        f"[ProxyManager] Zombie false positive resolved: "
+                        f"PID {verification['pid_on_port']} is now recognized as cloud-sql-proxy"
+                    )
+                    verification['verified'] = True
+                    return verification
+                else:
+                    # Confirmed zombie
+                    result['is_zombie'] = True
+                    result['verified'] = True
+                    result['recommendation'] = 'kill_conflicting'
+                    logger.warning(
+                        f"[ProxyManager] ZOMBIE CONFIRMED: Port {port} held by PID {pid_on_port} "
+                        f"which is NOT cloud-sql-proxy (verified after retry)"
+                    )
+            else:
+                # No retry requested - report potential zombie
+                result['is_zombie'] = True
+                result['recommendation'] = 'kill_conflicting'
+                logger.warning(
+                    f"[ProxyManager] ZOMBIE detected: Port {port} held by PID {pid_on_port} "
+                    f"which is NOT cloud-sql-proxy"
+                )
         elif result['port_in_use'] and result['is_cloud_sql_proxy'] and not result['our_pid_valid']:
             # Proxy running but not from our PID file - orphan
             result['recommendation'] = 'adopt_or_restart'
+            result['verified'] = True
             logger.info(
                 f"[ProxyManager] Orphan proxy detected: cloud-sql-proxy on port {port} "
                 f"(PID {pid_on_port}) not managed by us"
@@ -395,6 +515,7 @@ class CloudSQLProxyManager:
         elif result['port_in_use'] and result['is_cloud_sql_proxy'] and result['our_pid_valid']:
             # Our proxy is running correctly
             result['recommendation'] = 'healthy'
+            result['verified'] = True
         else:
             result['recommendation'] = 'investigate'
 

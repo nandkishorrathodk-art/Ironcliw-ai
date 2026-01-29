@@ -95,7 +95,8 @@ class ReactorAPIConfig:
     port: int = field(
         default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8090"))
     )
-    health_endpoint: str = "/api/health"
+    # v117.0: Fixed to match actual Reactor-Core endpoint (was /api/health)
+    health_endpoint: str = "/health"
 
     # Drop-box protocol
     dropbox_enabled: bool = field(
