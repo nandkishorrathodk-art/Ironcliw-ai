@@ -1905,9 +1905,11 @@ class DynamicComponentManager:
 
             else:
                 # VM already exists, just ensure cloud offload is marked active
+                # v132.1: VMInstance is a dataclass, not dict - use attribute access
+                vm_name = active_vm.name if hasattr(active_vm, 'name') else "unknown"
                 if not vm_manager.cloud_offload_active:
-                    vm_manager.mark_cloud_offload_active(f"Existing VM: {active_vm.get('name', 'unknown')}")
-                logger.debug(f"Using existing cloud VM: {active_vm.get('name', 'unknown')}")
+                    vm_manager.mark_cloud_offload_active(f"Existing VM: {vm_name}")
+                logger.debug(f"Using existing cloud VM: {vm_name}")
 
         except ImportError as e:
             logger.debug(f"GCP VM Manager not available for offloading: {e}")

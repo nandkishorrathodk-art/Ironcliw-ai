@@ -25,9 +25,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -555,8 +554,9 @@ class SupervisorAwareGCPController:
         
         # Log decision
         emoji = "✅" if request.decision == VMDecision.CREATE else "❌"
+        decision_value = request.decision.value if request.decision else "unknown"
         logger.info(
-            f"{emoji} VM request: {request.decision.value} - {request.decision_reason} "
+            f"{emoji} VM request: {decision_value} - {request.decision_reason} "
             f"(trigger={request.trigger_reason}, urgency={request.urgency})"
         )
     
@@ -613,7 +613,7 @@ class SupervisorAwareGCPController:
             # Track the VM
             now = datetime.now()
             active_vm = ActiveVM(
-                instance_id=vm.get("instance_id", "unknown"),
+                instance_id=vm.instance_id,  # v132.1: VMInstance is a dataclass, not dict
                 created_at=now,
                 last_activity=now,
                 components_loaded=components,

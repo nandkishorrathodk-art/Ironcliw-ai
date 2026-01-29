@@ -391,7 +391,7 @@ class MemoryAwareStartup:
 
         try:
             # Import GCP VM manager
-            from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig
+            from core.gcp_vm_manager import get_gcp_vm_manager, VMManagerConfig, VMInstance, VMState
 
             # Configure for ML workload
             # Note: VMManagerConfig uses valid fields from gcp_vm_manager.py
@@ -449,12 +449,13 @@ class MemoryAwareStartup:
                     trigger_reason=f"Memory-aware startup: {reason}",
                 )
 
-                if vm_result and vm_result.get("success"):
+                # v132.1: VMInstance is a dataclass, not dict - check state for success
+                if vm_result and vm_result.state == VMState.RUNNING:
                     self._cloud_ml_active = True
                     logger.info(f"✅ GCP ML Backend activated!")
-                    logger.info(f"   VM: {vm_result.get('instance_id')}")
-                    logger.info(f"   IP: {vm_result.get('ip_address')}")
-                    logger.info(f"   Cost: ${vm_result.get('cost_per_hour', 0.029)}/hr")
+                    logger.info(f"   VM: {vm_result.instance_id}")
+                    logger.info(f"   IP: {vm_result.ip_address}")
+                    logger.info(f"   Cost: ${vm_result.cost_per_hour}/hr")
 
                     # Configure hybrid router to use GCP for ML
                     await self._configure_hybrid_routing(vm_result)
@@ -462,9 +463,9 @@ class MemoryAwareStartup:
                     return {
                         "success": True,
                         "mode": "gcp_spot_vm",
-                        "vm_id": vm_result.get("instance_id"),
-                        "ip": vm_result.get("ip_address"),
-                        "cost_per_hour": vm_result.get("cost_per_hour", 0.029),
+                        "vm_id": vm_result.instance_id,
+                        "ip": vm_result.ip_address,
+                        "cost_per_hour": vm_result.cost_per_hour,
                     }
                 else:
                     logger.warning(f"⚠️  GCP VM creation failed: {vm_result}")
@@ -480,20 +481,20 @@ class MemoryAwareStartup:
             logger.error(f"❌ Failed to activate GCP ML backend: {e}")
             return {"success": False, "error": str(e)}
 
-    async def _configure_hybrid_routing(self, vm_result: Dict[str, Any]) -> None:
+    async def _configure_hybrid_routing(self, vm_instance: Any) -> None:
         """
         Configure hybrid router to send ML requests to GCP.
 
         Args:
-            vm_result: VM creation result with IP and details
+            vm_instance: VMInstance dataclass with IP and details
         """
         try:
             from core.hybrid_router import get_hybrid_router
 
             self._hybrid_router = get_hybrid_router()
 
-            # Update GCP backend URL
-            gcp_ip = vm_result.get("ip_address")
+            # v132.1: VMInstance is a dataclass - use attribute access
+            gcp_ip = vm_instance.ip_address if hasattr(vm_instance, 'ip_address') else None
             if gcp_ip:
                 await self._hybrid_router.update_backend_url(
                     backend_name="gcp",
