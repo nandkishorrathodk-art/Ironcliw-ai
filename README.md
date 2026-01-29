@@ -16,7 +16,7 @@
 - **Troubleshooting issues?** → See [README_v2.md § Troubleshooting](./README_v2.md#troubleshooting)
 - **Understanding how repos work together?** → Continue reading below
 - **🆕 Startup architecture & v107.0 improvements?** → See [STARTUP_ARCHITECTURE_V2.md](./docs/STARTUP_ARCHITECTURE_V2.md)
-- **🆕 One-command supervisor, Cloud SQL, asyncpg TLS, Trinity, or Cloud ECAPA?** → See [§ v131.0 & v131.1](#v1310--v1311-one-command-supervisor-shutdown--start-january-2026), [§ v116.0 Cloud SQL](#v1160-cloud-sql-credential--retry-fixes-january-2026), [§ TLS-Safe Connections](#asyncpg-tls-invalidstateerror-fix-tls-safe-connection-factories-january-2026), [§ v117.5 Trinity](#v1175-trinity-startup-orchestration-persistent-state--distributed-lock-january-2026), [§ v132.0/v132.1](#v1320-parallel-trinity-initialization-january-2026), [§ v116.0 Cloud ECAPA](#v1160-cloud-ecapa-endpoint-priority-fix-january-2026) below
+- **🆕 One-command supervisor, Cloud SQL, asyncpg TLS, Trinity, OOM prevention, or Cloud ECAPA?** → See [§ v131.0 & v131.1](#v1310--v1311-one-command-supervisor-shutdown--start-january-2026), [§ v116.0 Cloud SQL](#v1160-cloud-sql-credential--retry-fixes-january-2026), [§ TLS-Safe Connections](#asyncpg-tls-invalidstateerror-fix-tls-safe-connection-factories-january-2026), [§ Cloud SQL Retry Storm](#cloud-sql-connection-retry-storm-fixes-january-2026), [§ GCP OOM Prevention](#gcp-oom-prevention-bridge-january-2026), [§ v117.5 Trinity](#v1175-trinity-startup-orchestration-persistent-state--distributed-lock-january-2026), [§ v132.0/v132.1](#v1320-parallel-trinity-initialization-january-2026), [§ v116.0 Cloud ECAPA](#v1160-cloud-ecapa-endpoint-priority-fix-january-2026) below
 
 ---
 
@@ -34,6 +34,8 @@
 ✅ Trinity v132.0/v132.1: Parallel init + fire-and-forget voice (no 15s block)
 ✅ Cloud ECAPA v116.0:    Cloud Run checked first for speaker embeddings (no 120s timeout)
 ✅ Cloud SQL Robustness:  No false "max retries" or credential misclassification (v116.0)
+✅ Cloud SQL Retry Storm: Circuit breaker + proxy readiness + TLS-safe pool (no rapid-fire retries)
+✅ GCP OOM Prevention:   Pre-flight memory checks, auto offload to Spot VMs (32GB) before SIGKILL
 ✅ TLS-Safe DB Connections: asyncpg InvalidStateError fixed via serialized handshakes
 ✅ Zero Workarounds:      ROOT CAUSE fixed, no hacks
 ```
@@ -489,6 +491,175 @@ Startup completes sooner because independent work is not serialized. Logs show l
 - Parallel Trinity subsystems (v132.0) start immediately after the status line.
 
 Startup is faster and no longer blocked by voice; the announcement plays in the background while the rest of initialization continues.
+
+---
+
+## Cloud SQL Connection Retry Storm Fixes (January 2026)
+
+**Major Achievement:** Eliminated rapid-fire Cloud SQL connection attempts when the proxy was down, premature circuit breaker opening during startup, and unsafe pool recreation that could trigger TLS/retry storms. All fixes are root-cause: proxy readiness pre-checks, TLS-safe pool creation, and environment-driven circuit breaker and health thresholds.
+
+### Root Causes Identified and Fixed
+
+| # | Root Cause | Fix |
+|---|------------|-----|
+| 1 | **Circuit breaker threshold too aggressive (3 failures)** | Increased failure threshold to 10; added env overrides for all circuit and health settings. |
+| 2 | **No proxy readiness pre-check before connection attempts** | `connection()` and pool recreation now check proxy readiness first and fail-fast when proxy is known down. |
+| 3 | **Pool recreation used unsafe `asyncpg.create_pool`** | Replaced with `tls_safe_create_pool()` so pool creation is serialized and TLS-safe. |
+| 4 | **No coordination between circuit breaker state and proxy readiness** | Proxy readiness check before attempting pool recreation; reduced artificial circuit breaker inflation on failure. |
+
+### Files Modified
+
+**1. `backend/core/ouroboros/native_integration.py`**
+
+| Change | Description |
+|--------|-------------|
+| **CircuitBreakerConfig** | `failure_threshold` 3 → 10; `timeout_seconds` 30s → 60s; `failure_rate_threshold` 0.5 → 0.7. |
+| **Environment overrides** | All circuit and health config values configurable via environment variables (no hardcoding). |
+| **Startup grace** | Added `startup_grace_seconds` (120s) so circuit breaker does not open during startup. |
+| **Health monitoring** | `_failure_threshold` 3 → 10 for health check failures. |
+
+**2. `backend/core/connection/circuit_breaker.py`**
+
+| Change | Description |
+|--------|-------------|
+| **Defaults** | `failure_threshold` 5 → 10; `recovery_timeout_seconds` 30s → 60s. |
+
+**3. `backend/intelligence/cloud_sql_connection_manager.py`**
+
+| Change | Description |
+|--------|-------------|
+| **`connection()`** | Proxy readiness pre-check added; fail-fast when proxy is known unavailable (no retry storm). |
+| **`_recreate_pool_on_tls_error()`** | Proxy readiness check before attempting pool recreation; uses `tls_safe_create_pool()` instead of raw `asyncpg.create_pool()`; reduced artificial circuit breaker inflation on failure. |
+
+### Configuration Environment Variables
+
+All values are optional; defaults are applied when not set.
+
+**Circuit Breaker**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CIRCUIT_FAILURE_THRESHOLD` | 10 | Failures before opening circuit. |
+| `CIRCUIT_SUCCESS_THRESHOLD` | 2 | Successes to close from half-open. |
+| `CIRCUIT_TIMEOUT_SECONDS` | 60.0 | Recovery timeout (seconds) before half-open. |
+| `CIRCUIT_HALF_OPEN_MAX` | 3 | Max half-open probe requests. |
+| `CIRCUIT_SLIDING_WINDOW` | 20 | Window size for failure rate calculation. |
+| `CIRCUIT_FAILURE_RATE` | 0.7 | Failure rate threshold (0–1). |
+| `CIRCUIT_STARTUP_GRACE` | 120.0 | Startup grace period (seconds); circuit won’t open during this time. |
+
+**Health Monitoring**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_FAILURE_THRESHOLD` | 10 | Health check failures before marking unhealthy. |
+| `HEALTH_RECOVERY_THRESHOLD` | 2 | Successes to recover. |
+| `HEALTH_CHECK_INTERVAL` | 5.0 | Check interval (seconds). |
+
+### What This Fixes
+
+1. **No rapid-fire connection attempts** when the proxy is known unavailable; fail-fast instead of retry storms.
+2. **Circuit breaker does not open prematurely** during startup (120s grace period).
+3. **Pool recreation is safe**: proxy status checked first; TLS-safe factory used.
+4. **Higher tolerance** for transient failures during startup without opening the circuit.
+5. **Graceful degradation** to SQLite without retry storms when Cloud SQL is unavailable.
+
+This complements [v116.0 Cloud SQL credential & retry fixes](#v1160-cloud-sql-credential--retry-fixes-january-2026) and [TLS-safe connection factories](#asyncpg-tls-invalidstateerror-fix-tls-safe-connection-factories-january-2026): together they address credentials, TLS races, and connection retry behavior end-to-end.
+
+---
+
+## GCP OOM Prevention Bridge (January 2026)
+
+**Major Achievement:** Proactive out-of-memory (OOM) prevention that avoids SIGKILL (exit code -9) during heavy initialization (e.g. **STEP 4/9: INITIALIZING_AGI_HUB**). The system now performs pre-flight memory checks before loading heavy components and can automatically offload to GCP Spot VMs (32GB RAM) when local memory is insufficient.
+
+### Problem Addressed
+
+During startup, heavy components (JARVIS Prime with GGUF models ~6GB, AGI Hub, etc.) could exhaust local RAM and trigger the OS OOM killer (SIGKILL -9), causing silent crashes with no graceful recovery. The fix is **preventive**: check memory **before** starting heavy init and route to cloud when needed.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Before Heavy Init (e.g., JARVIS Prime)                       │
+│                                                               │
+│  1. check_memory_before_heavy_init("jarvis_prime", 6000MB)   │
+│     ├── Check available RAM (vm_stat / psutil)               │
+│     ├── Check memory pressure                                 │
+│     └── Compare against configurable thresholds              │
+│                                                               │
+│  2. Decision:                                                 │
+│     ├── LOCAL:         Sufficient RAM (> threshold)           │
+│     ├── CLOUD:         Low RAM, GCP recommended              │
+│     ├── CLOUD_REQUIRED: Critical RAM, must use GCP           │
+│     └── ABORT:         No GCP, critical RAM (proceed at risk) │
+│                                                               │
+│  3. If CLOUD / CLOUD_REQUIRED:                                │
+│     ├── Spin up GCP Spot VM (e2-highmem-4, 32GB RAM)         │
+│     ├── Cost: ~$0.029/hour; auto-terminates when idle        │
+│     └── Route heavy processing to GCP                        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| **`backend/core/gcp_oom_prevention_bridge.py`** | Bridge module: pre-flight memory checks, GCP Spot VM spin-up when needed, cross-repo signal coordination, decision logic (LOCAL / CLOUD / CLOUD_REQUIRED / ABORT). Integrates with `ProactiveResourceGuard`, `MemoryAwareStartup`, and `GCPVMManager`. |
+
+### Files Modified
+
+**1. `backend/core/parallel_initializer.py`**
+
+| Change | Description |
+|--------|-------------|
+| OOM prevention import | Bridge module imported and used at start of background initialization. |
+| Pre-flight memory check | Runs before heavy component init. |
+| GCP offload state in `app.state` | Offload decision and VM info stored for routing (e.g. heavy work sent to GCP when active). |
+
+**2. `backend/supervisor/cross_repo_startup_orchestrator.py`**
+
+| Change | Description |
+|--------|-------------|
+| Memory check before JARVIS Prime | Checks memory before spawning JARVIS Prime (requires ~6GB for GGUF model). |
+| **ManagedProcess** | Added `gcp_offload_active` and `gcp_vm_ip` to the dataclass for offload-aware process management. |
+| **SERVICE_OFFLOADED_TO_CLOUD** | Event emitted for voice narration when a service is offloaded to GCP. |
+
+### Configurable Thresholds (Environment Variables)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JARVIS_MIN_FREE_RAM_GB` | 2.0 | Minimum free RAM (GB) to allow local execution. |
+| `JARVIS_CLOUD_TRIGGER_RAM_GB` | 4.0 | Below this, GCP is recommended. |
+| `JARVIS_CRITICAL_RAM_GB` | 1.5 | Below this, GCP is required (or ABORT if no GCP). |
+| `JARVIS_PRESSURE_CLOUD_TRIGGER` | 75 | Memory pressure % to recommend GCP. |
+| `JARVIS_PRESSURE_CRITICAL` | 90 | Memory pressure % to require GCP. |
+
+### Cross-Repo Signal File
+
+The bridge writes a shared signal file so JARVIS Prime and Reactor Core can coordinate:
+
+**Path:** `~/.jarvis/signals/oom_prevention.json`
+
+**Example content:**
+
+```json
+{
+  "decision": "cloud",
+  "gcp_vm_required": true,
+  "gcp_vm_ip": "35.x.x.x",
+  "available_ram_gb": 3.2,
+  "offload_mode_active": true
+}
+```
+
+Other repos can read this file to know whether to run locally or route to the GCP VM.
+
+### Benefits
+
+- **Prevents OOM crash** by ensuring heavy components are offloaded to 32GB Spot VMs when local RAM is low.
+- **Pre-flight checks** avoid starting heavy init when memory is already insufficient.
+- **Single place for thresholds** via environment variables; no hardcoded magic numbers.
+- **Cross-repo coordination** via the shared signal file so Body, Prime, and Reactor stay aligned on offload mode.
+- **Cost-conscious**: Spot VMs at ~$0.029/hour with auto-termination when idle.
 
 ---
 
