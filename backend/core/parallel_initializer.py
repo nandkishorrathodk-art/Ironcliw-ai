@@ -134,15 +134,20 @@ except ImportError:
     TASK_MANAGER_AVAILABLE = False
 
 # v131.0: Import GCP OOM Prevention Bridge for pre-flight memory checks
+# v132.0: Added DegradationTier for graceful degradation support
 OOM_PREVENTION_AVAILABLE = False
+_DegradationTierType = None  # Placeholder for type (will be set by import)
 try:
     from core.gcp_oom_prevention_bridge import (
         check_memory_before_heavy_init,
         MemoryDecision,
+        DegradationTier,  # v132.0
         HEAVY_COMPONENT_MEMORY_ESTIMATES,
     )
     OOM_PREVENTION_AVAILABLE = True
+    _DegradationTierType = DegradationTier  # Store for type checking
 except ImportError:
+    DegradationTier = None  # Fallback placeholder
     logging.getLogger(__name__).debug("OOM Prevention Bridge not available")
 
 logger = logging.getLogger(__name__)
@@ -436,8 +441,10 @@ class ParallelInitializer:
         # This prevents SIGKILL (exit code -9) crashes during initialization by
         # detecting low memory BEFORE loading heavy ML models and offloading to GCP.
         # =========================================================================
-        gcp_offload_active = False
-        gcp_vm_ip = None
+        # Track GCP offload state (stored in app.state for component access)
+        self.app.state.gcp_offload_active = False
+        self.app.state.gcp_vm_ip = None
+        self.app.state.oom_degradation_active = False  # v132.0
 
         if OOM_PREVENTION_AVAILABLE:
             try:
@@ -460,11 +467,9 @@ class ParallelInitializer:
                 if memory_result.decision == MemoryDecision.CLOUD_REQUIRED:
                     logger.warning(f"[OOM Prevention] ⚠️ Local RAM insufficient - GCP offload required")
                     if memory_result.gcp_vm_ready:
-                        gcp_offload_active = True
-                        gcp_vm_ip = memory_result.gcp_vm_ip
                         self.app.state.gcp_offload_active = True
-                        self.app.state.gcp_vm_ip = gcp_vm_ip
-                        logger.info(f"[OOM Prevention] ✅ GCP VM ready at {gcp_vm_ip}")
+                        self.app.state.gcp_vm_ip = memory_result.gcp_vm_ip
+                        logger.info(f"[OOM Prevention] ✅ GCP VM ready at {memory_result.gcp_vm_ip}")
                         logger.info(f"[OOM Prevention] Heavy components will be offloaded to cloud")
                     else:
                         logger.error(f"[OOM Prevention] ❌ GCP VM not available - proceeding with risk")
@@ -472,19 +477,34 @@ class ParallelInitializer:
                 elif memory_result.decision == MemoryDecision.CLOUD:
                     logger.info(f"[OOM Prevention] ☁️ Cloud recommended (optional)")
                     if memory_result.gcp_vm_ready:
-                        gcp_offload_active = True
-                        gcp_vm_ip = memory_result.gcp_vm_ip
                         self.app.state.gcp_offload_active = True
-                        self.app.state.gcp_vm_ip = gcp_vm_ip
-                        logger.info(f"[OOM Prevention] Using GCP VM at {gcp_vm_ip}")
+                        self.app.state.gcp_vm_ip = memory_result.gcp_vm_ip
+                        logger.info(f"[OOM Prevention] Using GCP VM at {memory_result.gcp_vm_ip}")
+
+                elif memory_result.decision == MemoryDecision.DEGRADED:
+                    # v132.0: Graceful degradation - proceed with reduced functionality
+                    tier_name = memory_result.degradation_tier.value if memory_result.degradation_tier else "unknown"
+                    logger.info(f"[OOM Prevention] ⚡ Using graceful degradation (Tier: {tier_name})")
+                    if memory_result.fallback_strategy:
+                        logger.info(f"[OOM Prevention] Strategy: {memory_result.fallback_strategy.description}")
+                    # Store degradation state for components to query
+                    self.app.state.oom_degradation_active = True
+                    self.app.state.oom_degradation_tier = memory_result.degradation_tier
+                    self.app.state.oom_fallback_strategy = memory_result.fallback_strategy
 
                 elif memory_result.decision == MemoryDecision.ABORT:
-                    logger.error(f"[OOM Prevention] ❌ ABORT - Cannot proceed safely")
+                    # v132.0: ABORT only when ALL degradation strategies exhausted
+                    logger.error(f"[OOM Prevention] ❌ ABORT - All strategies exhausted")
                     logger.error(f"[OOM Prevention] Reason: {memory_result.reason}")
+                    for rec in memory_result.recommendations[-3:]:
+                        logger.error(f"[OOM Prevention]   → {rec}")
                     # Continue anyway in degraded mode - better than failing completely
+                    self.app.state.oom_abort_attempted = True
 
                 else:
                     logger.info(f"[OOM Prevention] ✅ Sufficient local RAM ({memory_result.available_ram_gb:.1f}GB)")
+                    if memory_result.gcp_auto_enabled:
+                        logger.info("[OOM Prevention] 🔧 Note: GCP was auto-enabled for future use")
 
             except Exception as e:
                 logger.warning(f"[OOM Prevention] Check failed (non-fatal): {e}")

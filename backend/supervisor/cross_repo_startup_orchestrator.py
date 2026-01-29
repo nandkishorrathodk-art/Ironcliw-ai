@@ -123,15 +123,18 @@ logger = logging.getLogger(__name__)
 _OOM_PREVENTION_AVAILABLE = False
 _check_memory_before_heavy_init = None
 _MemoryDecision = None
+_DegradationTier = None  # v2.0.0
 
 try:
     from backend.core.gcp_oom_prevention_bridge import (
         check_memory_before_heavy_init as _check_mem,
         MemoryDecision as _MemDec,
+        DegradationTier as _DegTier,  # v2.0.0
         HEAVY_COMPONENT_MEMORY_ESTIMATES,
     )
     _check_memory_before_heavy_init = _check_mem
     _MemoryDecision = _MemDec
+    _DegradationTier = _DegTier
     _OOM_PREVENTION_AVAILABLE = True
 except ImportError:
     # Fallback for different import path
@@ -139,10 +142,12 @@ except ImportError:
         from core.gcp_oom_prevention_bridge import (
             check_memory_before_heavy_init as _check_mem,
             MemoryDecision as _MemDec,
+            DegradationTier as _DegTier,  # v2.0.0
             HEAVY_COMPONENT_MEMORY_ESTIMATES,
         )
         _check_memory_before_heavy_init = _check_mem
         _MemoryDecision = _MemDec
+        _DegradationTier = _DegTier
         _OOM_PREVENTION_AVAILABLE = True
     except ImportError:
         HEAVY_COMPONENT_MEMORY_ESTIMATES = {}
@@ -11897,17 +11902,40 @@ echo "=== JARVIS Prime started ==="
                                 f"[OOM Prevention] Local memory okay for {definition.name} "
                                 f"({memory_result.available_ram_gb:.1f}GB available)"
                             )
+                    elif memory_result.decision == _MemoryDecision.DEGRADED:
+                        # v2.0.0: Graceful degradation - proceed with fallback strategy
+                        tier_name = memory_result.degradation_tier.value if memory_result.degradation_tier else "unknown"
+                        logger.info(
+                            f"[OOM Prevention] ⚡ Using graceful degradation for {definition.name} "
+                            f"(Tier: {tier_name})"
+                        )
+                        if memory_result.fallback_strategy:
+                            logger.info(f"  Strategy: {memory_result.fallback_strategy.description}")
+                            for action in memory_result.fallback_strategy.actions[:3]:
+                                logger.info(f"    → {action}")
+                        # Store degradation info in managed process
+                        if hasattr(managed, 'degradation_tier'):
+                            managed.degradation_tier = memory_result.degradation_tier
                     elif memory_result.decision == _MemoryDecision.ABORT:
+                        # v2.0.0: ABORT only happens when ALL degradation tiers exhausted
                         logger.error(
                             f"[OOM Prevention] ❌ Cannot safely start {definition.name}: "
                             f"{memory_result.reason}"
                         )
+                        logger.error("[OOM Prevention] All graceful degradation strategies exhausted")
+                        for rec in memory_result.recommendations[-3:]:
+                            logger.error(f"  → {rec}")
+                        # v2.0.0: Store the failure reason for debugging
+                        if hasattr(managed, 'oom_abort_reason'):
+                            managed.oom_abort_reason = memory_result.reason
                         # Emit warning but proceed anyway - better to try than fail silently
                     else:
                         logger.info(
                             f"[OOM Prevention] ✅ Sufficient memory for {definition.name} "
                             f"({memory_result.available_ram_gb:.1f}GB available)"
                         )
+                        if memory_result.gcp_auto_enabled:
+                            logger.info("[OOM Prevention] 🔧 Note: GCP was auto-enabled for future use")
 
                 except Exception as e:
                     logger.warning(f"[OOM Prevention] Check failed for {definition.name}: {e}")
