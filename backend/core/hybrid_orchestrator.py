@@ -23,6 +23,8 @@ This module provides the main orchestration layer for JARVIS, handling:
 import asyncio
 import hashlib
 import logging
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from enum import Enum
 
@@ -30,6 +32,51 @@ from core.hybrid_backend_client import HybridBackendClient
 from core.hybrid_router import HybridRouter, RouteDecision, RoutingContext
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# TRINITY UNIFIED LOOP MANAGER INTEGRATION (v3.0)
+# =============================================================================
+# Import safe async primitives that never fail due to missing event loops
+try:
+    _cross_repo_path = Path.home() / ".jarvis" / "cross_repo"
+    if str(_cross_repo_path) not in sys.path:
+        sys.path.insert(0, str(_cross_repo_path))
+
+    from unified_loop_manager import (
+        safe_to_thread,
+        safe_create_task,
+        safe_get_running_loop,
+        get_trinity_manager,
+    )
+    TRINITY_AVAILABLE = True
+except ImportError:
+    TRINITY_AVAILABLE = False
+
+    # Fallback implementations
+    async def safe_to_thread(func, *args, **kwargs):
+        """Fallback safe_to_thread with loop creation."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+    def safe_create_task(coro, *, name=None):
+        return asyncio.create_task(coro, name=name)
+
+    def safe_get_running_loop():
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
+
+    def get_trinity_manager():
+        return None
+
+    logger.debug("Trinity not available, using fallback async primitives")
 
 
 class IntelligenceMode(Enum):
@@ -554,14 +601,22 @@ class HybridOrchestrator:
         # Create routing context
         context = RoutingContext(command=command, command_type=command_type, metadata=metadata)
 
-        # Route the request
+        # Route the request with defensive metadata handling
         decision, backend_name, route_metadata = self.router.route(context)
-        rule = self._get_rule(route_metadata["rule"])
+
+        # Defensive access for route_metadata - ensure required keys exist
+        # This fixes the KeyError: 'routing' issue during parallel initialization
+        if route_metadata is None:
+            route_metadata = {}
+        rule_name = route_metadata.get("rule", "default")
+        confidence = route_metadata.get("confidence", 0.0)
+
+        rule = self._get_rule(rule_name)
 
         logger.info(
             f"📨 Request #{self.request_count}: '{command[:50]}...' "
-            f"→ {decision.value} (rule: {route_metadata['rule']}, "
-            f"confidence: {route_metadata['confidence']:.2f})"
+            f"→ {decision.value} (rule: {rule_name}, "
+            f"confidence: {confidence:.2f})"
         )
 
         # Enrich with intelligence systems
@@ -631,18 +686,32 @@ class HybridOrchestrator:
 
     def _get_rule(self, rule_name: str) -> Optional[Dict]:
         """Get routing rule by name.
-        
+
         Args:
             rule_name: Name of the routing rule to retrieve
-            
+
         Returns:
             Dict containing rule configuration or None if not found
+
+        Note:
+            This method uses defensive access to handle missing config keys
+            gracefully, which can occur during parallel initialization before
+            the full config is loaded.
         """
-        rules = self.client.config["hybrid"]["routing"].get("rules", [])
-        for rule in rules:
-            if rule.get("name") == rule_name:
-                return rule
-        return None
+        try:
+            # Defensive nested access - handle missing keys at any level
+            config = getattr(self.client, 'config', {}) or {}
+            hybrid_config = config.get("hybrid", {}) or {}
+            routing_config = hybrid_config.get("routing", {}) or {}
+            rules = routing_config.get("rules", []) or []
+
+            for rule in rules:
+                if rule.get("name") == rule_name:
+                    return rule
+            return None
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"Could not get rule '{rule_name}': {e}")
+            return None
 
     async def _gather_intelligence_context(
         self, command: str, rule: Optional[Dict]
@@ -873,7 +942,7 @@ class HybridOrchestrator:
                 uae = _get_uae()
                 if uae:
                     try:
-                        uae_context = await asyncio.to_thread(uae.get_current_context)
+                        uae_context = await safe_to_thread(uae.get_current_context)
                         context["uae"] = {
                             "screen_state": uae_context.get("screen_locked", False),
                             "active_apps": uae_context.get("active_apps", []),
@@ -889,7 +958,7 @@ class HybridOrchestrator:
                 cai = _get_cai()
                 if cai:
                     try:
-                        intent = await asyncio.to_thread(cai.predict_intent, command)
+                        intent = await safe_to_thread(cai.predict_intent, command)
                         context["cai"] = {
                             "predicted_intent": intent.get("intent"),
                             "confidence": intent.get("confidence", 0.0),
@@ -959,7 +1028,7 @@ class HybridOrchestrator:
         sai = _get_sai()
         if sai:
             try:
-                await asyncio.to_thread(
+                await safe_to_thread(
                     sai.learn_from_execution,
                     command=command,
                     success=result.get("success", False),
@@ -1009,7 +1078,7 @@ class HybridOrchestrator:
         sai = _get_sai()
         if sai:
             try:
-                heal_result = await asyncio.to_thread(
+                heal_result = await safe_to_thread(
                     sai.attempt_self_heal, error=str(error), context={"command": command}
                 )
                 if heal_result.get("healed"):

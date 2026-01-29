@@ -53,6 +53,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, Tuple
 from functools import partial, wraps
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,562 @@ class OpType:
 
 
 # ============================================================================
+# v117.0: Intelligent Timeout & Retry System
+# ============================================================================
+
+@dataclass
+class SystemResourceSnapshot:
+    """Snapshot of system resource state."""
+    memory_available_mb: float
+    memory_percent_used: float
+    cpu_percent: float
+    load_average_1m: float
+    io_wait_percent: float
+    is_under_pressure: bool
+    timestamp: float = field(default_factory=time.time)
+
+
+class SystemResourceMonitor:
+    """
+    v117.0: Monitor system resources for adaptive timeout calculation.
+
+    Detects memory pressure, high CPU usage, and I/O wait that would
+    slow down PyTorch operations.
+    """
+
+    def __init__(self):
+        self._last_snapshot: Optional[SystemResourceSnapshot] = None
+        self._snapshot_cache_ttl = 5.0  # Seconds
+        self._pressure_thresholds = {
+            "memory_percent": float(os.getenv("PYTORCH_MEMORY_PRESSURE_THRESHOLD", "85.0")),
+            "cpu_percent": float(os.getenv("PYTORCH_CPU_PRESSURE_THRESHOLD", "90.0")),
+            "load_average_ratio": float(os.getenv("PYTORCH_LOAD_PRESSURE_RATIO", "2.0")),
+        }
+
+    def get_snapshot(self, force_refresh: bool = False) -> SystemResourceSnapshot:
+        """Get current system resource snapshot (cached)."""
+        now = time.time()
+
+        # Use cached snapshot if recent
+        if (
+            not force_refresh
+            and self._last_snapshot
+            and (now - self._last_snapshot.timestamp) < self._snapshot_cache_ttl
+        ):
+            return self._last_snapshot
+
+        try:
+            import psutil
+
+            # Memory info
+            mem = psutil.virtual_memory()
+            memory_available_mb = mem.available / 1024 / 1024
+            memory_percent_used = mem.percent
+
+            # CPU info
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+
+            # Load average (1-minute)
+            try:
+                load_avg = os.getloadavg()[0]
+            except (OSError, AttributeError):
+                load_avg = cpu_percent / 100.0  # Fallback
+
+            # I/O wait (if available)
+            try:
+                cpu_times = psutil.cpu_times_percent(interval=0)
+                io_wait_percent = getattr(cpu_times, 'iowait', 0.0)
+            except Exception:
+                io_wait_percent = 0.0
+
+            # Calculate CPU count for load ratio
+            cpu_count = os.cpu_count() or 4
+
+            # Determine if under pressure
+            is_under_pressure = (
+                memory_percent_used > self._pressure_thresholds["memory_percent"]
+                or cpu_percent > self._pressure_thresholds["cpu_percent"]
+                or (load_avg / cpu_count) > self._pressure_thresholds["load_average_ratio"]
+            )
+
+            self._last_snapshot = SystemResourceSnapshot(
+                memory_available_mb=memory_available_mb,
+                memory_percent_used=memory_percent_used,
+                cpu_percent=cpu_percent,
+                load_average_1m=load_avg,
+                io_wait_percent=io_wait_percent,
+                is_under_pressure=is_under_pressure,
+            )
+
+        except ImportError:
+            # psutil not available - assume not under pressure
+            self._last_snapshot = SystemResourceSnapshot(
+                memory_available_mb=8192.0,
+                memory_percent_used=50.0,
+                cpu_percent=50.0,
+                load_average_1m=1.0,
+                io_wait_percent=0.0,
+                is_under_pressure=False,
+            )
+        except Exception as e:
+            logger.debug(f"Resource snapshot failed: {e}")
+            self._last_snapshot = SystemResourceSnapshot(
+                memory_available_mb=4096.0,
+                memory_percent_used=60.0,
+                cpu_percent=60.0,
+                load_average_1m=1.0,
+                io_wait_percent=0.0,
+                is_under_pressure=False,
+            )
+
+        return self._last_snapshot
+
+
+class IntelligentTimeoutCalculator:
+    """
+    v117.0: Calculate adaptive timeouts based on multiple factors.
+
+    Considers:
+    - Operation type (model_load gets more time)
+    - System resource pressure (more time when memory/CPU constrained)
+    - First-run vs cached (first model load slower due to disk I/O)
+    - Historical operation durations (learn from past)
+    - Time of day (night = potentially slower due to background processes)
+    """
+
+    def __init__(
+        self,
+        base_timeout: float = 120.0,
+        multipliers: Optional[Dict[str, float]] = None,
+    ):
+        self._base_timeout = base_timeout
+        self._multipliers = multipliers or {}
+        self._resource_monitor = SystemResourceMonitor()
+
+        # Track which operations have been seen (for first-run detection)
+        self._seen_operations: set = set()
+
+        # Historical durations for adaptive learning
+        self._operation_history: Dict[str, List[float]] = {}
+        self._max_history = 20
+
+        # Model-specific first-load tracking
+        self._loaded_models: set = set()
+
+    def calculate(
+        self,
+        op_type: str,
+        explicit_timeout: Optional[float] = None,
+        model_name: Optional[str] = None,
+        warm_up_factor: float = 1.0,
+    ) -> Tuple[float, Dict[str, Any]]:
+        """
+        Calculate adaptive timeout with explanation.
+
+        Returns:
+            Tuple of (timeout_seconds, explanation_dict)
+        """
+        explanation = {
+            "base_timeout": self._base_timeout,
+            "op_type": op_type,
+            "factors": [],
+        }
+
+        # If explicit timeout given, use it (but still apply pressure multiplier)
+        if explicit_timeout is not None:
+            timeout = explicit_timeout
+            explanation["factors"].append(f"explicit_timeout={explicit_timeout}s")
+        else:
+            timeout = self._base_timeout
+
+        # Apply operation type multiplier
+        type_multiplier = self._multipliers.get(op_type, 1.0)
+        if type_multiplier != 1.0:
+            timeout *= type_multiplier
+            explanation["factors"].append(f"op_type_multiplier={type_multiplier}x")
+
+        # Apply warm-up factor
+        if warm_up_factor != 1.0:
+            timeout *= warm_up_factor
+            explanation["factors"].append(f"warmup_factor={warm_up_factor}x")
+
+        # Check if this is a first-time model load
+        if op_type == OpType.MODEL_LOAD and model_name:
+            if model_name not in self._loaded_models:
+                # First load - give extra time for disk I/O
+                timeout *= 1.5
+                explanation["factors"].append("first_model_load=1.5x")
+                self._loaded_models.add(model_name)
+
+        # Apply resource pressure multiplier
+        snapshot = self._resource_monitor.get_snapshot()
+        if snapshot.is_under_pressure:
+            pressure_multiplier = self._calculate_pressure_multiplier(snapshot)
+            timeout *= pressure_multiplier
+            explanation["factors"].append(f"resource_pressure={pressure_multiplier:.2f}x")
+            explanation["resource_snapshot"] = {
+                "memory_percent": snapshot.memory_percent_used,
+                "cpu_percent": snapshot.cpu_percent,
+                "load_avg": snapshot.load_average_1m,
+            }
+
+        # Apply historical learning (if we have enough data)
+        hist_key = f"{op_type}:{model_name or 'default'}"
+        if hist_key in self._operation_history and len(self._operation_history[hist_key]) >= 3:
+            historical_durations = self._operation_history[hist_key]
+            p95_duration = sorted(historical_durations)[int(len(historical_durations) * 0.95)]
+            # Use max of calculated timeout or 2x P95 historical
+            historical_timeout = p95_duration * 2.0
+            if historical_timeout > timeout:
+                timeout = historical_timeout
+                explanation["factors"].append(f"historical_p95={p95_duration:.1f}s->timeout={timeout:.1f}s")
+
+        # Apply min/max bounds
+        min_timeout = float(os.getenv("PYTORCH_MIN_TIMEOUT", "30.0"))
+        max_timeout = float(os.getenv("PYTORCH_MAX_TIMEOUT", "900.0"))  # 15 minutes max
+
+        timeout = max(min_timeout, min(timeout, max_timeout))
+        explanation["final_timeout"] = timeout
+
+        return timeout, explanation
+
+    def _calculate_pressure_multiplier(self, snapshot: SystemResourceSnapshot) -> float:
+        """Calculate timeout multiplier based on resource pressure."""
+        multiplier = 1.0
+
+        # Memory pressure: linear increase from 1.0 at 70% to 3.0 at 95%
+        if snapshot.memory_percent_used > 70:
+            mem_factor = 1.0 + ((snapshot.memory_percent_used - 70) / 25) * 2.0
+            multiplier = max(multiplier, mem_factor)
+
+        # CPU pressure: similar
+        if snapshot.cpu_percent > 80:
+            cpu_factor = 1.0 + ((snapshot.cpu_percent - 80) / 20) * 1.5
+            multiplier = max(multiplier, cpu_factor)
+
+        # I/O wait: significant factor for model loading
+        if snapshot.io_wait_percent > 10:
+            io_factor = 1.0 + (snapshot.io_wait_percent / 20)
+            multiplier = max(multiplier, io_factor)
+
+        return min(multiplier, 5.0)  # Cap at 5x
+
+    def record_duration(self, op_type: str, duration: float, model_name: Optional[str] = None):
+        """Record operation duration for adaptive learning."""
+        hist_key = f"{op_type}:{model_name or 'default'}"
+
+        if hist_key not in self._operation_history:
+            self._operation_history[hist_key] = []
+
+        self._operation_history[hist_key].append(duration)
+
+        # Keep only recent history
+        if len(self._operation_history[hist_key]) > self._max_history:
+            self._operation_history[hist_key] = self._operation_history[hist_key][-self._max_history:]
+
+
+class AdaptiveRetryStrategy:
+    """
+    v117.0: Intelligent retry strategy with exponential backoff.
+
+    Features:
+    - Exponential backoff with jitter
+    - Timeout increase on each retry
+    - Circuit breaker pattern
+    - Operation-specific retry policies
+    """
+
+    def __init__(
+        self,
+        max_retries: int = 3,
+        base_delay: float = 5.0,
+        timeout_increase_factor: float = 1.5,
+        max_delay: float = 60.0,
+    ):
+        self._max_retries = max_retries
+        self._base_delay = base_delay
+        self._timeout_increase_factor = timeout_increase_factor
+        self._max_delay = max_delay
+
+        # Circuit breaker state
+        self._failures_by_op: Dict[str, int] = {}
+        self._circuit_open_until: Dict[str, float] = {}
+        self._circuit_threshold = 5
+
+        # Non-retryable errors
+        self._non_retryable_errors = {
+            "OutOfMemoryError",
+            "CUDA error",
+            "MPS error",
+            "ValueError",
+            "TypeError",
+            "ImportError",
+        }
+
+    def should_retry(
+        self,
+        attempt: int,
+        error: Exception,
+        op_type: str,
+    ) -> Tuple[bool, float, float]:
+        """
+        Determine if operation should be retried.
+
+        Returns:
+            Tuple of (should_retry, delay_seconds, new_timeout_multiplier)
+        """
+        # Check if we've exceeded max retries
+        if attempt >= self._max_retries:
+            return False, 0, 1.0
+
+        # Check if error is non-retryable
+        error_str = str(type(error).__name__)
+        for non_retryable in self._non_retryable_errors:
+            if non_retryable in error_str or non_retryable in str(error):
+                logger.debug(f"Non-retryable error: {error_str}")
+                return False, 0, 1.0
+
+        # Check circuit breaker
+        if self._is_circuit_open(op_type):
+            logger.warning(f"Circuit breaker open for {op_type}")
+            return False, 0, 1.0
+
+        # Calculate delay with exponential backoff and jitter
+        import random
+        delay = self._base_delay * (2 ** attempt)
+        delay = min(delay, self._max_delay)
+        jitter = random.uniform(0, delay * 0.1)
+        delay += jitter
+
+        # Calculate timeout multiplier for next attempt
+        timeout_multiplier = self._timeout_increase_factor ** (attempt + 1)
+
+        return True, delay, timeout_multiplier
+
+    def record_success(self, op_type: str):
+        """Record successful operation - reset failure count."""
+        self._failures_by_op[op_type] = 0
+
+    def record_failure(self, op_type: str):
+        """Record failed operation - potentially open circuit."""
+        self._failures_by_op[op_type] = self._failures_by_op.get(op_type, 0) + 1
+
+        if self._failures_by_op[op_type] >= self._circuit_threshold:
+            # Open circuit for 60 seconds
+            self._circuit_open_until[op_type] = time.time() + 60.0
+            logger.warning(f"🔌 Circuit breaker opened for {op_type}")
+
+    def _is_circuit_open(self, op_type: str) -> bool:
+        """Check if circuit breaker is open for operation type."""
+        if op_type not in self._circuit_open_until:
+            return False
+
+        if time.time() > self._circuit_open_until[op_type]:
+            # Circuit has cooled down
+            del self._circuit_open_until[op_type]
+            self._failures_by_op[op_type] = 0
+            return False
+
+        return True
+
+
+class OperationProgressTracker:
+    """
+    v117.0: Track progress of long-running operations.
+
+    Uses a shared file to communicate progress from worker thread
+    to main thread, enabling detection of stuck vs slow operations.
+    """
+
+    def __init__(self):
+        self._progress_dir = Path(os.getenv(
+            "PYTORCH_PROGRESS_DIR",
+            "/tmp/jarvis/pytorch_progress"
+        ))
+        self._progress_dir.mkdir(parents=True, exist_ok=True)
+        self._active_operations: Dict[str, Dict[str, Any]] = {}
+
+    def start_operation(self, operation_id: str, description: str = "") -> Path:
+        """Start tracking an operation. Returns progress file path."""
+        progress_file = self._progress_dir / f"{operation_id}.progress"
+
+        self._active_operations[operation_id] = {
+            "start_time": time.time(),
+            "progress_file": progress_file,
+            "last_heartbeat": time.time(),
+            "description": description,
+        }
+
+        # Write initial progress
+        self._write_progress(progress_file, {
+            "status": "started",
+            "timestamp": time.time(),
+            "description": description,
+        })
+
+        return progress_file
+
+    def update_progress(
+        self,
+        operation_id: str,
+        stage: str,
+        percent: Optional[float] = None,
+        message: str = "",
+    ):
+        """Update operation progress (call from worker thread)."""
+        if operation_id not in self._active_operations:
+            return
+
+        progress_file = self._active_operations[operation_id]["progress_file"]
+        self._active_operations[operation_id]["last_heartbeat"] = time.time()
+
+        self._write_progress(progress_file, {
+            "status": "running",
+            "stage": stage,
+            "percent": percent,
+            "message": message,
+            "timestamp": time.time(),
+        })
+
+    def check_progress(self, operation_id: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        Check if operation is making progress.
+
+        Returns:
+            Tuple of (is_progressing, progress_info)
+        """
+        if operation_id not in self._active_operations:
+            return False, None
+
+        op_info = self._active_operations[operation_id]
+        progress_file = op_info["progress_file"]
+
+        if not progress_file.exists():
+            return False, None
+
+        try:
+            import json
+            with open(progress_file, "r") as f:
+                progress = json.load(f)
+
+            # Check if progress was updated recently (within 60 seconds)
+            last_update = progress.get("timestamp", 0)
+            is_progressing = (time.time() - last_update) < 60.0
+
+            return is_progressing, progress
+
+        except Exception:
+            return False, None
+
+    def complete_operation(self, operation_id: str, success: bool, result: Any = None):
+        """Mark operation as complete."""
+        if operation_id not in self._active_operations:
+            return
+
+        progress_file = self._active_operations[operation_id]["progress_file"]
+
+        self._write_progress(progress_file, {
+            "status": "completed" if success else "failed",
+            "timestamp": time.time(),
+            "success": success,
+        })
+
+        # Clean up
+        try:
+            progress_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        del self._active_operations[operation_id]
+
+    def _write_progress(self, path: Path, data: Dict[str, Any]):
+        """Write progress to file atomically."""
+        try:
+            import json
+            temp_path = path.with_suffix(".tmp")
+            with open(temp_path, "w") as f:
+                json.dump(data, f)
+            temp_path.rename(path)
+        except Exception:
+            pass
+
+
+class ModelLoadCoordinator:
+    """
+    v117.0: Coordinate model loading across repos.
+
+    Ensures only one process loads heavy models at a time,
+    preventing memory exhaustion and I/O contention.
+    """
+
+    def __init__(self):
+        self._lock_dir = Path(os.getenv(
+            "PYTORCH_LOCK_DIR",
+            "/tmp/jarvis/pytorch_locks"
+        ))
+        self._lock_dir.mkdir(parents=True, exist_ok=True)
+        self._held_locks: Dict[str, Any] = {}
+
+    async def acquire_load_lock(
+        self,
+        model_name: str,
+        timeout: float = 300.0,
+    ) -> bool:
+        """
+        Acquire exclusive lock for model loading.
+
+        Returns True if lock acquired, False if timeout.
+        """
+        lock_file = self._lock_dir / f"{model_name.replace('/', '_')}.lock"
+        start_time = time.time()
+
+        while (time.time() - start_time) < timeout:
+            try:
+                import fcntl
+
+                # Try to acquire lock
+                fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                    # Write our PID
+                    os.ftruncate(fd, 0)
+                    os.write(fd, f"{os.getpid()}\n".encode())
+
+                    self._held_locks[model_name] = fd
+                    logger.debug(f"Acquired model load lock for {model_name}")
+                    return True
+
+                except BlockingIOError:
+                    # Lock held by another process
+                    os.close(fd)
+                    await asyncio.sleep(1.0)
+
+            except Exception as e:
+                logger.debug(f"Lock acquisition failed: {e}")
+                await asyncio.sleep(0.5)
+
+        return False
+
+    def release_load_lock(self, model_name: str):
+        """Release model loading lock."""
+        if model_name not in self._held_locks:
+            return
+
+        try:
+            import fcntl
+            fd = self._held_locks[model_name]
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+            del self._held_locks[model_name]
+            logger.debug(f"Released model load lock for {model_name}")
+        except Exception as e:
+            logger.debug(f"Lock release failed: {e}")
+
+
+
+
+# ============================================================================
 # Statistics & Metrics
 # ============================================================================
 
@@ -337,9 +894,9 @@ class PyTorchExecutor:
         self._consecutive_failures = 0
 
         # Timeouts (adaptive)
-        self._default_timeout = 120.0  # 2 minutes
+        self._default_timeout = float(os.getenv("PYTORCH_DEFAULT_TIMEOUT", "120.0"))
         self._timeout_multipliers = {
-            OpType.MODEL_LOAD: 3.0,      # Model loading can take longer
+            OpType.MODEL_LOAD: 5.0,       # Model loading gets 10 minutes (5 * 120s)
             OpType.INFERENCE: 0.5,        # Inference should be fast
             OpType.EMBEDDING: 1.0,
             OpType.PREPROCESSING: 0.5,
@@ -350,6 +907,23 @@ class PyTorchExecutor:
         # Warm-up tracking
         self._warmed_up = False
         self._warmup_operations = 0
+
+        # v117.0: Intelligent timeout and retry system
+        self._timeout_calculator = IntelligentTimeoutCalculator(
+            base_timeout=self._default_timeout,
+            multipliers=self._timeout_multipliers,
+        )
+        self._retry_strategy = AdaptiveRetryStrategy(
+            max_retries=int(os.getenv("PYTORCH_MAX_RETRIES", "3")),
+            base_delay=float(os.getenv("PYTORCH_RETRY_DELAY", "5.0")),
+        )
+        self._resource_monitor = SystemResourceMonitor()
+        self._progress_tracker = OperationProgressTracker()
+        self._model_load_lock = ModelLoadCoordinator()
+
+        # Operation history for adaptive learning
+        self._operation_history: Dict[str, List[float]] = {}  # op_type -> durations
+        self._max_history_per_type = 50
 
         logger.info("🔧 PyTorchExecutor singleton initialized")
 
@@ -529,10 +1103,14 @@ class PyTorchExecutor:
         timeout: Optional[float] = None,
         priority: Priority = Priority.NORMAL,
         op_type: str = OpType.OTHER,
+        model_name: Optional[str] = None,
+        retry_enabled: bool = True,
+        progress_callback: Optional[Callable[[str, float], None]] = None,
         **kwargs
     ) -> T:
         """
-        Run a function in the dedicated PyTorch thread.
+        v117.0: Run a function in the dedicated PyTorch thread with intelligent
+        timeout calculation, automatic retry, and progress monitoring.
 
         Args:
             func: The function to run (should contain PyTorch operations)
@@ -540,86 +1118,202 @@ class PyTorchExecutor:
             timeout: Optional timeout in seconds (adaptive if not specified)
             priority: Operation priority level
             op_type: Operation type for metrics
+            model_name: Optional model name for cross-repo coordination
+            retry_enabled: Whether to enable automatic retry on timeout
+            progress_callback: Optional callback for progress updates
             **kwargs: Keyword arguments to pass to func
 
         Returns:
             The result of func(*args, **kwargs)
 
         Raises:
-            TimeoutError: If operation exceeds timeout
+            TimeoutError: If operation exceeds timeout after all retries
             RuntimeError: If executor is unhealthy and cannot recover
         """
-        # Create metrics
-        metrics = OperationMetrics(
+        attempt = 0
+        last_error: Optional[Exception] = None
+        total_start_time = time.time()
+
+        # v117.0: Calculate initial timeout with intelligent system
+        warm_up_factor = 2.0 if not self._warmed_up and self._warmup_operations < 3 else 1.0
+        base_timeout, timeout_explanation = self._timeout_calculator.calculate(
             op_type=op_type,
-            priority=priority,
-            start_time=time.time(),
-            memory_before_mb=self._get_memory_mb()
+            explicit_timeout=timeout,
+            model_name=model_name,
+            warm_up_factor=warm_up_factor,
         )
 
-        # Calculate timeout
-        effective_timeout = self._calculate_timeout(op_type, timeout)
+        # Log timeout calculation for debugging
+        if os.getenv("PYTORCH_DEBUG_TIMEOUT"):
+            logger.debug(f"[v117.0] Timeout calculation: {timeout_explanation}")
 
-        # Check health and maybe recover
-        if not self._thread_healthy:
-            if not self._maybe_recover():
-                metrics.success = False
-                metrics.error = "Executor unhealthy and recovery failed"
-                metrics.end_time = time.time()
-                metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
-                self._record_operation(metrics)
-                raise RuntimeError("PyTorch executor is unhealthy and could not recover")
-
-        # Get executor and event loop
-        executor = self._get_executor()
-        loop = asyncio.get_running_loop()
-
-        # Wrap function with args/kwargs
-        if args or kwargs:
-            func_with_args = partial(func, *args, **kwargs)
-        else:
-            func_with_args = func
+        # v117.0: Acquire model load lock if needed (cross-repo coordination)
+        acquired_lock = False
+        if op_type == OpType.MODEL_LOAD and model_name:
+            logger.info(f"🔐 Acquiring model load lock for {model_name}...")
+            acquired_lock = await self._model_load_lock.acquire_load_lock(
+                model_name,
+                timeout=60.0,  # Wait up to 60s for lock
+            )
+            if not acquired_lock:
+                logger.warning(f"⚠️ Could not acquire lock for {model_name}, proceeding anyway")
 
         try:
-            # Run in executor with timeout
-            result = await asyncio.wait_for(
-                loop.run_in_executor(executor, func_with_args),
-                timeout=effective_timeout
-            )
+            while True:
+                attempt += 1
+                effective_timeout = base_timeout
 
-            # Record success
-            metrics.success = True
-            metrics.end_time = time.time()
-            metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
-            metrics.memory_after_mb = self._get_memory_mb()
-            if metrics.memory_before_mb and metrics.memory_after_mb:
-                metrics.memory_delta_mb = metrics.memory_after_mb - metrics.memory_before_mb
+                # Create metrics for this attempt
+                metrics = OperationMetrics(
+                    op_type=op_type,
+                    priority=priority,
+                    start_time=time.time(),
+                    memory_before_mb=self._get_memory_mb()
+                )
 
-            self._record_operation(metrics)
-            return result
+                # v117.0: Start progress tracking
+                operation_id = f"{op_type}_{id(func)}_{attempt}_{time.time()}"
+                progress_file = self._progress_tracker.start_operation(
+                    operation_id,
+                    description=f"{op_type} attempt {attempt}"
+                )
 
-        except asyncio.TimeoutError:
-            metrics.success = False
-            metrics.error = f"TimeoutError: Operation exceeded {effective_timeout}s"
-            metrics.end_time = time.time()
-            metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
-            self._record_operation(metrics)
+                # Check health and maybe recover
+                if not self._thread_healthy:
+                    if not self._maybe_recover():
+                        metrics.success = False
+                        metrics.error = "Executor unhealthy and recovery failed"
+                        metrics.end_time = time.time()
+                        metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                        self._record_operation(metrics)
+                        self._progress_tracker.complete_operation(operation_id, False)
+                        raise RuntimeError("PyTorch executor is unhealthy and could not recover")
 
-            logger.error(
-                f"⏰ PyTorch operation timed out after {effective_timeout}s "
-                f"(op_type={op_type}, priority={priority.name})"
-            )
-            raise TimeoutError(f"PyTorch operation timed out after {effective_timeout}s")
+                # Get executor and event loop
+                executor = self._get_executor()
+                loop = asyncio.get_running_loop()
 
-        except Exception as e:
-            metrics.success = False
-            metrics.error = f"{type(e).__name__}: {str(e)[:100]}"
-            metrics.end_time = time.time()
-            metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
-            self._record_operation(metrics)
+                # Wrap function with args/kwargs and progress reporting
+                if args or kwargs:
+                    func_with_args = partial(func, *args, **kwargs)
+                else:
+                    func_with_args = func
 
-            logger.error(f"❌ PyTorch operation failed: {e}")
-            raise
+                try:
+                    # Log attempt info
+                    if attempt > 1:
+                        logger.info(
+                            f"🔄 Retry attempt {attempt}/{self._retry_strategy._max_retries + 1} "
+                            f"for {op_type} (timeout: {effective_timeout:.1f}s)"
+                        )
+                    else:
+                        logger.debug(
+                            f"⚡ Running {op_type} operation (timeout: {effective_timeout:.1f}s, "
+                            f"priority: {priority.name})"
+                        )
+
+                    # Run in executor with timeout
+                    result = await asyncio.wait_for(
+                        loop.run_in_executor(executor, func_with_args),
+                        timeout=effective_timeout
+                    )
+
+                    # Record success
+                    metrics.success = True
+                    metrics.end_time = time.time()
+                    metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                    metrics.memory_after_mb = self._get_memory_mb()
+                    if metrics.memory_before_mb and metrics.memory_after_mb:
+                        metrics.memory_delta_mb = metrics.memory_after_mb - metrics.memory_before_mb
+
+                    self._record_operation(metrics)
+                    self._progress_tracker.complete_operation(operation_id, True)
+
+                    # v117.0: Record duration for adaptive learning
+                    self._timeout_calculator.record_duration(op_type, metrics.duration_ms / 1000, model_name)
+                    self._retry_strategy.record_success(op_type)
+
+                    # Log success for long operations
+                    if metrics.duration_ms > 5000:  # > 5 seconds
+                        logger.info(
+                            f"✅ {op_type} completed in {metrics.duration_ms / 1000:.1f}s "
+                            f"(attempt {attempt})"
+                        )
+
+                    return result
+
+                except asyncio.TimeoutError as e:
+                    metrics.success = False
+                    metrics.error = f"TimeoutError: Operation exceeded {effective_timeout}s (attempt {attempt})"
+                    metrics.end_time = time.time()
+                    metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                    self._record_operation(metrics)
+                    self._progress_tracker.complete_operation(operation_id, False)
+                    last_error = TimeoutError(f"PyTorch operation timed out after {effective_timeout}s")
+
+                    # v117.0: Check progress to determine if stuck or just slow
+                    is_progressing, progress_info = self._progress_tracker.check_progress(operation_id)
+
+                    logger.warning(
+                        f"⏰ PyTorch operation timed out after {effective_timeout:.1f}s "
+                        f"(op_type={op_type}, attempt={attempt}, progressing={is_progressing})"
+                    )
+
+                    # v117.0: Determine if we should retry
+                    if retry_enabled:
+                        should_retry, delay, timeout_multiplier = self._retry_strategy.should_retry(
+                            attempt, last_error, op_type
+                        )
+
+                        if should_retry:
+                            self._retry_strategy.record_failure(op_type)
+                            base_timeout *= timeout_multiplier
+
+                            logger.info(
+                                f"🔄 Will retry in {delay:.1f}s with timeout {base_timeout:.1f}s"
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # No more retries
+                    self._retry_strategy.record_failure(op_type)
+                    total_duration = time.time() - total_start_time
+                    raise TimeoutError(
+                        f"PyTorch operation timed out after {total_duration:.1f}s total "
+                        f"({attempt} attempt(s), op_type={op_type})"
+                    )
+
+                except Exception as e:
+                    metrics.success = False
+                    metrics.error = f"{type(e).__name__}: {str(e)[:100]}"
+                    metrics.end_time = time.time()
+                    metrics.duration_ms = (metrics.end_time - metrics.start_time) * 1000
+                    self._record_operation(metrics)
+                    self._progress_tracker.complete_operation(operation_id, False)
+                    last_error = e
+
+                    logger.error(f"❌ PyTorch operation failed (attempt {attempt}): {e}")
+
+                    # v117.0: Determine if we should retry for non-timeout errors
+                    if retry_enabled:
+                        should_retry, delay, timeout_multiplier = self._retry_strategy.should_retry(
+                            attempt, e, op_type
+                        )
+
+                        if should_retry:
+                            self._retry_strategy.record_failure(op_type)
+                            logger.info(f"🔄 Will retry in {delay:.1f}s")
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # No more retries - raise the error
+                    self._retry_strategy.record_failure(op_type)
+                    raise
+
+        finally:
+            # v117.0: Release model load lock
+            if acquired_lock and model_name:
+                self._model_load_lock.release_load_lock(model_name)
 
     def run_sync(
         self,
@@ -710,18 +1404,52 @@ async def run_in_pytorch_thread(
     timeout: Optional[float] = None,
     priority: Priority = Priority.NORMAL,
     op_type: str = OpType.OTHER,
+    model_name: Optional[str] = None,
+    retry_enabled: bool = True,
     **kwargs
 ) -> T:
     """
-    Run a function in the dedicated PyTorch thread.
+    v117.0: Run a function in the dedicated PyTorch thread with intelligent
+    timeout, automatic retry, and cross-repo coordination.
 
     This is the recommended way to run PyTorch operations from async code.
+
+    Args:
+        func: The function to run (should contain PyTorch operations)
+        *args: Positional arguments to pass to func
+        timeout: Optional timeout in seconds (adaptive if not specified)
+        priority: Operation priority level
+        op_type: Operation type - use OpType.MODEL_LOAD for model loading!
+        model_name: Model identifier for cross-repo lock coordination
+        retry_enabled: Whether to enable automatic retry on timeout (default: True)
+        **kwargs: Keyword arguments to pass to func
+
+    Returns:
+        The result of func(*args, **kwargs)
+
+    Example:
+        # Loading a model (use MODEL_LOAD for proper timeout)
+        model = await run_in_pytorch_thread(
+            load_my_model,
+            op_type=OpType.MODEL_LOAD,
+            model_name="ecapa_tdnn",
+        )
+
+        # Inference (use INFERENCE for fast timeout)
+        embedding = await run_in_pytorch_thread(
+            model.encode,
+            audio_tensor,
+            op_type=OpType.INFERENCE,
+            priority=Priority.HIGH,
+        )
     """
     return await pytorch_executor.run(
         func, *args,
         timeout=timeout,
         priority=priority,
         op_type=op_type,
+        model_name=model_name,
+        retry_enabled=retry_enabled,
         **kwargs
     )
 

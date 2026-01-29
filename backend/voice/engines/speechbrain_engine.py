@@ -110,18 +110,44 @@ try:
     from core.pytorch_executor import (
         get_pytorch_executor,
         run_in_pytorch_thread,
-        run_in_pytorch_thread_sync
+        run_in_pytorch_thread_sync,
+        OpType,
+        Priority,
     )
     _HAS_PYTORCH_EXECUTOR = True
 except ImportError:
-    _HAS_PYTORCH_EXECUTOR = False
+    try:
+        from backend.core.pytorch_executor import (
+            get_pytorch_executor,
+            run_in_pytorch_thread,
+            run_in_pytorch_thread_sync,
+            OpType,
+            Priority,
+        )
+        _HAS_PYTORCH_EXECUTOR = True
+    except ImportError:
+        _HAS_PYTORCH_EXECUTOR = False
+
+        # Dummy OpType for fallback
+        class OpType:
+            MODEL_LOAD = "model_load"
+            INFERENCE = "inference"
+            EMBEDDING = "embedding"
+            OTHER = "other"
+
+        class Priority:
+            NORMAL = 2
+            HIGH = 1
 
     # Fallback: run synchronously if executor not available
-    async def run_in_pytorch_thread(func, *args, **kwargs):
-        from functools import partial
-        if args or kwargs:
-            return partial(func, *args, **kwargs)()
-        return func()
+    if not _HAS_PYTORCH_EXECUTOR:
+        from functools import partial as _partial
+
+        async def run_in_pytorch_thread(func, *args, **kwargs):
+            """Fallback when pytorch_executor not available."""
+            if args or kwargs:
+                return _partial(func, *args, **kwargs)()
+            return func()
 
 logger = logging.getLogger(__name__)
 
@@ -1117,9 +1143,15 @@ class SpeechBrainEngine(BaseSTTEngine):
                     raise
 
             # Use dedicated PyTorch executor for model loading
+            # v117.0: Use op_type=MODEL_LOAD for proper timeout and retry
             logger.info("   Loading ASR model in dedicated PyTorch thread...")
             if _HAS_PYTORCH_EXECUTOR:
-                self.asr_model = await run_in_pytorch_thread(_load_asr_model)
+                self.asr_model = await run_in_pytorch_thread(
+                    _load_asr_model,
+                    op_type=OpType.MODEL_LOAD,
+                    model_name="speechbrain_asr",
+                    retry_enabled=True,
+                )
             else:
                 self.asr_model = _load_asr_model()
 
@@ -1304,11 +1336,24 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Use dedicated single-threaded PyTorch executor
             # This keeps the event loop responsive while ensuring all PyTorch
             # operations are serialized to a single thread (prevents segfaults)
+            # v117.0: Use op_type=MODEL_LOAD for proper timeout (10 min instead of 2 min)
+            # and model_name for cross-repo coordination
             logger.info("   Loading model in dedicated PyTorch thread (async but serialized)...")
+            logger.info("   ⚡ Using v117.0 intelligent timeout and retry system...")
 
             if _HAS_PYTORCH_EXECUTOR:
-                # Use the singleton executor - single worker thread, no concurrent access
-                self.speaker_encoder = await run_in_pytorch_thread(_load_model_sync)
+                # v117.0: Use the singleton executor with MODEL_LOAD op_type
+                # This enables:
+                # - 5x timeout multiplier (10 minutes instead of 2 minutes)
+                # - Cross-repo model load lock coordination
+                # - Automatic retry with exponential backoff
+                # - Adaptive timeout based on system resources
+                self.speaker_encoder = await run_in_pytorch_thread(
+                    _load_model_sync,
+                    op_type=OpType.MODEL_LOAD,
+                    model_name="speechbrain_ecapa_tdnn",
+                    retry_enabled=True,
+                )
             else:
                 # Fallback to synchronous (blocks event loop but safe)
                 logger.warning("   ⚠️ PyTorch executor not available, loading synchronously...")
@@ -2100,8 +2145,13 @@ __all__ = ["EncoderDecoderASR"]
                         return np.array(embedding_safe.numpy(), dtype=np.float32, copy=True)
 
             # Use dedicated PyTorch executor (async but serialized to single thread)
+            # v117.0: Use EMBEDDING op_type for faster timeout (inference-like)
             if _HAS_PYTORCH_EXECUTOR:
-                embedding = await run_in_pytorch_thread(_encode_sync)
+                embedding = await run_in_pytorch_thread(
+                    _encode_sync,
+                    op_type=OpType.EMBEDDING,
+                    priority=Priority.HIGH,  # Inference is user-facing
+                )
             else:
                 # Fallback to synchronous
                 embedding = _encode_sync()

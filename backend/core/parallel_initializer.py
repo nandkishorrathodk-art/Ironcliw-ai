@@ -40,7 +40,35 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+# Trinity Unified Event Loop Manager - shared infrastructure across repos
+try:
+    # Add cross_repo to path for shared modules
+    _cross_repo_path = Path.home() / ".jarvis" / "cross_repo"
+    if str(_cross_repo_path) not in sys.path:
+        sys.path.insert(0, str(_cross_repo_path))
+
+    from unified_loop_manager import (
+        get_trinity_manager,
+        safe_create_task,
+        safe_to_thread,
+        safe_gather,
+        TrinityComponent,
+        TrinityConfig,
+    )
+    TRINITY_AVAILABLE = True
+except ImportError as e:
+    TRINITY_AVAILABLE = False
+    # Fallbacks if Trinity not available
+    def safe_create_task(coro, *, name=None):
+        return asyncio.create_task(coro, name=name)
+    async def safe_to_thread(func, *args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+    async def safe_gather(*coros, return_exceptions=False):
+        return await asyncio.gather(*coros, return_exceptions=return_exceptions)
+    logging.getLogger(__name__).debug(f"Trinity not available: {e}")
 
 # Python 3.9 compatible lock - lazily initializes asyncio.Lock
 try:
@@ -329,6 +357,23 @@ class ParallelInitializer:
         logger.info("JARVIS Parallel Startup v2.0.0")
         logger.info("=" * 60)
 
+        # ============== TRINITY INTEGRATION (v3.0) ==============
+        # Initialize Trinity Unified Loop Manager FIRST
+        # This ensures proper event loop management across all components
+        if TRINITY_AVAILABLE:
+            try:
+                trinity_manager = get_trinity_manager()
+                await trinity_manager.initialize(TrinityComponent.JARVIS_BODY)
+                self.app.state.trinity_manager = trinity_manager
+                logger.info("✅ Trinity Unified Loop Manager initialized")
+            except Exception as e:
+                logger.warning(f"Trinity initialization failed (non-fatal): {e}")
+                self.app.state.trinity_manager = None
+        else:
+            self.app.state.trinity_manager = None
+            logger.debug("Trinity not available, using standard asyncio")
+        # =========================================================
+
         # Initialize app state FIRST before marking any components
         self.app.state.parallel_initializer = self
         self.app.state.startup_phase = "STARTING"
@@ -345,15 +390,15 @@ class ParallelInitializer:
         self._get_ready_event().set()
         logger.info("Server ready for health checks")
 
-        # Launch background initialization
-        self.background_task = asyncio.create_task(
+        # Launch background initialization (using safe_create_task for Trinity integration)
+        self.background_task = safe_create_task(
             self._background_initialization(),
             name="parallel_init"
         )
         self._tasks.append(self.background_task)
 
         # v2.0: Start watchdog for stale component detection
-        self._watchdog_task = asyncio.create_task(
+        self._watchdog_task = safe_create_task(
             self._stale_component_watchdog(),
             name="stale_watchdog"
         )
@@ -397,7 +442,7 @@ class ParallelInitializer:
                         await self._mark_skipped(comp.name, "Dependencies not ready")
 
                 if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                    await safe_gather(*tasks, return_exceptions=True)
 
                 # Update progress
                 self._update_progress()
@@ -2213,7 +2258,7 @@ class ParallelInitializer:
             logger.warning(f"Neural mesh failed: {e}")
 
     async def _init_hybrid_orchestrator(self):
-        """Initialize hybrid orchestrator"""
+        """Initialize hybrid orchestrator with Trinity integration"""
         # Check if we already have Ghost Proxy from AI Loader
         intel_proxies = getattr(self.app.state, 'intelligence_proxies', {})
 
@@ -2227,12 +2272,23 @@ class ParallelInitializer:
             from core.hybrid_orchestrator import get_orchestrator
 
             orchestrator = get_orchestrator()
+
+            # Ensure Trinity manager is available for proper async context
+            trinity_manager = getattr(self.app.state, 'trinity_manager', None)
+            if trinity_manager:
+                # Set Trinity reference in orchestrator for consensus protocol
+                orchestrator._trinity_manager = trinity_manager
+
             await orchestrator.start()
             self.app.state.hybrid_orchestrator = orchestrator
-            logger.info("   Hybrid orchestrator ready")
+            logger.info("   ✅ Hybrid orchestrator ready (Trinity-integrated)")
 
+        except KeyError as e:
+            # Specific handling for missing config keys (like 'routing')
+            logger.warning(f"   [BACKGROUND] Hybrid Orchestrator load failed: {e}")
+            logger.debug("   This usually means hybrid_config.yaml is missing or malformed")
         except Exception as e:
-            logger.warning(f"Hybrid orchestrator failed: {e}")
+            logger.warning(f"   [BACKGROUND] Hybrid Orchestrator load failed: {e}")
 
     async def _init_vision_analyzer(self):
         """Initialize vision analyzer"""
