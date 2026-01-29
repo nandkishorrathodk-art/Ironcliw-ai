@@ -204,6 +204,9 @@ class ProxyState(Enum):
 
 
 # Valid state transitions (enforced by state machine)
+# v132.2: Added STOPPED as valid from DEAD for graceful degradation scenarios
+# This allows the system to acknowledge a DEAD state and reset to STOPPED
+# without forcing a full restart cycle when CloudSQL is unconfigured/optional
 VALID_TRANSITIONS: Dict[ProxyState, Set[ProxyState]] = {
     ProxyState.UNKNOWN: {ProxyState.STOPPED, ProxyState.STARTING, ProxyState.READY},
     ProxyState.STOPPED: {ProxyState.STARTING},
@@ -212,7 +215,16 @@ VALID_TRANSITIONS: Dict[ProxyState, Set[ProxyState]] = {
     ProxyState.READY: {ProxyState.DEGRADED, ProxyState.STOPPED, ProxyState.RECOVERING},
     ProxyState.DEGRADED: {ProxyState.READY, ProxyState.RECOVERING, ProxyState.DEAD},
     ProxyState.RECOVERING: {ProxyState.STARTING, ProxyState.READY, ProxyState.DEAD},
-    ProxyState.DEAD: {ProxyState.STARTING},
+    ProxyState.DEAD: {ProxyState.STARTING, ProxyState.STOPPED},  # v132.2: Allow graceful reset
+}
+
+
+# v132.2: Multi-step transition paths for complex state changes
+# When direct transition isn't valid, use these intermediate paths
+TRANSITION_PATHS: Dict[tuple, list] = {
+    # From DEAD, we might need to go through STARTING to reach other states
+    (ProxyState.DEAD, ProxyState.READY): [ProxyState.STARTING, ProxyState.VERIFYING, ProxyState.READY],
+    (ProxyState.DEAD, ProxyState.VERIFYING): [ProxyState.STARTING, ProxyState.VERIFYING],
 }
 
 
@@ -911,6 +923,73 @@ class ProxyLifecycleController:
 
             return True
 
+    async def _safe_transition_to(
+        self,
+        target_state: ProxyState,
+        reason: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        v132.2: Intelligent state transition that handles complex cases.
+
+        This method:
+        1. Checks if direct transition is valid
+        2. If not, finds and executes a multi-step path
+        3. Handles edge cases like DEAD -> STOPPED gracefully
+
+        Args:
+            target_state: Desired end state
+            reason: Reason for transition
+            metadata: Optional metadata for the transition
+
+        Returns:
+            True if transition(s) succeeded, False otherwise
+        """
+        current = self._state
+
+        # Check if direct transition is valid
+        valid_targets = VALID_TRANSITIONS.get(current, set())
+        if target_state in valid_targets:
+            return await self._transition_to(target_state, reason, metadata)
+
+        # Check for predefined multi-step path
+        path_key = (current, target_state)
+        if path_key in TRANSITION_PATHS:
+            path = TRANSITION_PATHS[path_key]
+            logger.info(
+                f"[LifecycleController] v132.2: Using multi-step path: "
+                f"{current.name} -> {' -> '.join(s.name for s in path)}"
+            )
+            for intermediate_state in path:
+                step_reason = f"{reason} (step: {intermediate_state.name})"
+                success = await self._transition_to(intermediate_state, step_reason, metadata)
+                if not success:
+                    logger.error(
+                        f"[LifecycleController] v132.2: Multi-step transition failed at {intermediate_state.name}"
+                    )
+                    return False
+            return True
+
+        # No valid path found - log warning and try best effort
+        logger.warning(
+            f"[LifecycleController] v132.2: No valid transition from {current.name} to {target_state.name}. "
+            f"Attempting recovery via STARTING state."
+        )
+
+        # Fallback: try to go through STARTING if it's valid from current state
+        if ProxyState.STARTING in valid_targets:
+            await self._transition_to(ProxyState.STARTING, f"{reason} (recovery step)")
+            # Now try the target transition
+            valid_from_starting = VALID_TRANSITIONS.get(ProxyState.STARTING, set())
+            if target_state in valid_from_starting:
+                return await self._transition_to(target_state, reason, metadata)
+
+        logger.error(
+            f"[LifecycleController] v132.2: Cannot find valid transition path from "
+            f"{current.name} to {target_state.name}"
+        )
+        return False
+
     def add_state_callback(self, callback: StateChangeCallback) -> None:
         """Register a callback for state changes."""
         self._state_callbacks.append(callback)
@@ -959,9 +1038,21 @@ class ProxyLifecycleController:
             # Restore state carefully
             state_name = state_data.get("state", "UNKNOWN")
             try:
-                self._state = ProxyState[state_name]
+                loaded_state = ProxyState[state_name]
             except KeyError:
-                self._state = ProxyState.UNKNOWN
+                loaded_state = ProxyState.UNKNOWN
+
+            # v132.2: Reset terminal states on fresh startup
+            # DEAD is a terminal state for a session, not meant to persist across restarts
+            # On new startup, treat DEAD as STOPPED to allow clean retry
+            if loaded_state == ProxyState.DEAD:
+                logger.info(
+                    "[LifecycleController] v132.2: Resetting persisted DEAD state to STOPPED "
+                    "(terminal states don't persist across restarts)"
+                )
+                self._state = ProxyState.STOPPED
+            else:
+                self._state = loaded_state
 
             self._pid = state_data.get("pid")
             self._recovery_attempts = state_data.get("recovery_attempts", 0)
@@ -1391,9 +1482,10 @@ class ProxyLifecycleController:
                     "[LifecycleController] v125.0: CLOUDSQL_SKIP_IF_UNCONFIGURED=true, "
                     "operating without CloudSQL (graceful degradation)"
                 )
+                # v132.2: Use safe transition to handle any state (including DEAD)
                 # Stay in STOPPED - not DEAD - to allow graceful degradation
                 if self._state != ProxyState.STOPPED:
-                    await self._transition_to(ProxyState.STOPPED, reason="unconfigured_graceful_skip")
+                    await self._safe_transition_to(ProxyState.STOPPED, reason="unconfigured_graceful_skip")
                 return False  # Not started, but not a fatal error
 
             if ProxyConfig.OPTIONAL_MODE:
@@ -1410,9 +1502,9 @@ class ProxyLifecycleController:
                 await self._transition_to(ProxyState.DEAD, reason="unconfigured_required")
                 return False
 
-        # Transition to STARTING
+        # v132.2: Use safe transition to handle any state (including DEAD or RECOVERING)
         if self._state != ProxyState.STARTING:
-            await self._transition_to(ProxyState.STARTING, reason="start_requested")
+            await self._safe_transition_to(ProxyState.STARTING, reason="start_requested")
 
         # Start the process
         success = await self._start_proxy_process()
