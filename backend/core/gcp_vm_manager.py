@@ -965,8 +965,12 @@ class GCPVMManager:
             if existing:
                 return True, existing.ip_address
                 
-            # Create new one
-            vm = await self.create_vm(reason="auto_offload")
+            # v132.2: Fixed create_vm call - uses correct parameters
+            # create_vm expects (components: List[str], trigger_reason: str)
+            vm = await self.create_vm(
+                components=["ml_processing", "heavy_computation", "auto_offload"],
+                trigger_reason="auto_offload",
+            )
             
             # Wait for IP (create_vm usually returns loaded VM but IP might take a moment)
             if vm and vm.state == VMState.RUNNING:
@@ -1992,16 +1996,31 @@ class GCPVMManager:
                             vm.cpu_percent = 5.0
                             vm.memory_used_gb = 2.0
 
-                        # Health status
+                        # v132.2: Smart health status - distinguish expected from unexpected states
                         is_healthy = vm.state == VMState.RUNNING
                         vm.last_health_check = time.time()
                         vm.health_status = "healthy" if is_healthy else "unhealthy"
 
-                        if not is_healthy:
-                            logger.warning(f"⚠️  VM {vm_name} health check failed (state: {vm.state.value})")
+                        # v132.2: Only warn for truly unexpected states, not shutdown transitions
+                        expected_shutdown_states = {VMState.STOPPING, VMState.TERMINATED}
+                        expected_startup_states = {VMState.CREATING, VMState.PROVISIONING, VMState.STAGING}
 
-                        # Log cost efficiency warnings
-                        if vm.cost_efficiency_score < 50:
+                        if not is_healthy:
+                            if vm.state in expected_shutdown_states:
+                                # Expected during shutdown - debug level only
+                                logger.debug(f"VM {vm_name} in expected shutdown state: {vm.state.value}")
+                            elif vm.state in expected_startup_states:
+                                # Expected during startup - info level
+                                logger.info(f"VM {vm_name} starting up: {vm.state.value}")
+                            elif vm.state == VMState.FAILED:
+                                # Actual failure - warning
+                                logger.warning(f"⚠️  VM {vm_name} health check failed (state: {vm.state.value})")
+                            else:
+                                # Unknown state - warning
+                                logger.warning(f"⚠️  VM {vm_name} in unexpected state: {vm.state.value}")
+
+                        # v132.2: Only log efficiency warnings for RUNNING VMs (not during shutdown)
+                        if vm.state == VMState.RUNNING and vm.cost_efficiency_score < 50:
                             logger.warning(
                                 f"⚠️  VM {vm_name} low efficiency: {vm.cost_efficiency_score:.1f}% "
                                 f"(idle: {vm.idle_time_minutes:.1f}m)"

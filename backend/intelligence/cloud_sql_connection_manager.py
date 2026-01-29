@@ -5762,10 +5762,29 @@ class ProxyWatchdog:
 
         Should be called once during supervisor initialization.
         Idempotent - safe to call multiple times.
+
+        v132.2: Added CloudSQL configuration check - operates silently if not configured.
         """
         if self._is_running and self._watchdog_task and not self._watchdog_task.done():
             logger.debug("[ProxyWatchdog] Already running")
             return True
+
+        # v132.2: Check if CloudSQL is configured before starting noisy monitoring
+        self._cloudsql_configured = self._check_cloudsql_configuration()
+        if not self._cloudsql_configured:
+            skip_if_unconfigured = os.getenv("CLOUDSQL_SKIP_IF_UNCONFIGURED", "true").lower() == "true"
+            optional_mode = os.getenv("CLOUDSQL_OPTIONAL", "true").lower() == "true"
+
+            if skip_if_unconfigured or optional_mode:
+                logger.info(
+                    "[ProxyWatchdog v132.2] CloudSQL not configured - operating in silent mode "
+                    "(no health check warnings)"
+                )
+                self._silent_mode = True
+            else:
+                self._silent_mode = False
+        else:
+            self._silent_mode = False
 
         self._is_running = True
         # v117.0: Record start time for grace period calculation
@@ -5776,9 +5795,16 @@ class ProxyWatchdog:
         )
         logger.info(
             f"[ProxyWatchdog v117.0] 🐕 Started monitoring "
-            f"(grace_period={self._startup_grace_period}s, retry_before_fail={self._retry_before_fail_count})"
+            f"(grace_period={self._startup_grace_period}s, retry_before_fail={self._retry_before_fail_count}"
+            f", silent={getattr(self, '_silent_mode', False)})"
         )
         return True
+
+    def _check_cloudsql_configuration(self) -> bool:
+        """v132.2: Check if CloudSQL is properly configured."""
+        gcp_project = os.getenv("GCP_PROJECT", "")
+        cloudsql_instance = os.getenv("CLOUDSQL_INSTANCE_NAME", "")
+        return bool(gcp_project and cloudsql_instance)
 
     async def stop(self) -> None:
         """Stop the watchdog gracefully."""
@@ -5989,11 +6015,18 @@ class ProxyWatchdog:
                 f"using relaxed threshold: {effective_max_failures}"
             )
 
-        logger.warning(
-            f"[ProxyWatchdog v117.0] ❌ Health check failed "
-            f"(reason={metrics.failure_reason}, consecutive={self._consecutive_failures}/"
-            f"{effective_max_failures}{' [grace period]' if in_grace_period else ''})"
-        )
+        # v132.2: Only warn if not in silent mode (CloudSQL configured but failing)
+        if getattr(self, '_silent_mode', False):
+            logger.debug(
+                f"[ProxyWatchdog v132.2] Health check failed (silent mode) "
+                f"(reason={metrics.failure_reason}, consecutive={self._consecutive_failures})"
+            )
+        else:
+            logger.warning(
+                f"[ProxyWatchdog v117.0] ❌ Health check failed "
+                f"(reason={metrics.failure_reason}, consecutive={self._consecutive_failures}/"
+                f"{effective_max_failures}{' [grace period]' if in_grace_period else ''})"
+            )
 
         # Check cooldown
         if self._last_recovery_time:

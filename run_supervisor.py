@@ -8058,11 +8058,13 @@ class SupervisorBootstrapper:
             )
 
             # v9.5: Initialize Infrastructure Orchestrator (On-Demand GCP)
+            # v132.2: Increased timeout for GCP operations (can take longer due to API latency)
             if self._infra_orchestrator_enabled:
+                infra_timeout = float(os.getenv("INFRA_ORCHESTRATOR_TIMEOUT", str(major_init_timeout * 2)))
                 await self._safe_phase_init(
                     "Infrastructure Orchestrator",
                     self._initialize_infrastructure_orchestrator(),
-                    timeout_seconds=major_init_timeout,
+                    timeout_seconds=infra_timeout,  # v132.2: Default 120s for GCP
                 )
 
             # v10.0: Reactor-Core API Server (Training Pipeline)
