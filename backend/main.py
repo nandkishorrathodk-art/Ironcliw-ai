@@ -4969,18 +4969,22 @@ async def health_startup():
     }
 
 
-@app.get("/health/ping")
+# v118.0: Add HEAD support for health probes (health checkers often use HEAD for efficiency)
+@app.api_route("/health/ping", methods=["GET", "HEAD"])
 async def health_ping():
     """
     Ultra-lightweight liveness probe - returns immediately.
 
     Use this endpoint for health checks that need sub-millisecond response.
     Does NOT check any services, just confirms the event loop is responsive.
+
+    v118.0: Supports HEAD method for efficient health checking.
     """
     return {"status": "ok", "message": "pong"}
 
 
-@app.get("/health/ready")
+# v118.0: Add HEAD support for readiness probes
+@app.api_route("/health/ready", methods=["GET", "HEAD"])
 async def health_ready():
     """
     Quick readiness probe - confirms key services are OPERATIONALLY READY.
@@ -4998,6 +5002,8 @@ async def health_ready():
 
     This prevents false positives where the loading page redirects before
     JARVIS can actually respond to user commands.
+
+    v118.0: Supports HEAD method for efficient health checking.
     """
     # ═══════════════════════════════════════════════════════════════════════════
     # v95.3: PRIMARY CHECK - ReadinessStateManager (fast path)
@@ -6225,7 +6231,8 @@ async def trinity_status():
     }
 
 
-@app.get("/trinity/health")
+# v118.0: Add HEAD support for Trinity health checks
+@app.api_route("/trinity/health", methods=["GET", "HEAD"])
 async def trinity_health():
     """
     v80.0: Get real-time Trinity health check with circuit breaker status.
@@ -6235,6 +6242,8 @@ async def trinity_health():
     - Circuit breaker states
     - Latency measurements
     - Trend analysis
+
+    v118.0: Supports HEAD method for efficient health checking.
     """
     try:
         from core.advanced_startup_orchestrator import get_health_monitor
@@ -7976,9 +7985,14 @@ async def audio_speak_get(text: str):
 # These endpoints are required by the frontend JarvisVoice.js component
 # They provide status and activation for the voice system
 
-@app.get("/voice/jarvis/status")
+@app.api_route("/voice/jarvis/status", methods=["GET", "HEAD"])
 async def voice_jarvis_status():
-    """Get JARVIS voice system status - required by frontend"""
+    """
+    Get JARVIS voice system status - required by frontend.
+
+    v118.0: Added HEAD support to fix 405 Method Not Allowed error.
+    HEAD requests return same headers but empty body (used by health checkers).
+    """
     voice = components.get("voice", {})
     voice_unlock = components.get("voice_unlock", {})
 
@@ -7993,9 +8007,13 @@ async def voice_jarvis_status():
     }
 
 
-@app.post("/voice/jarvis/activate")
+@app.api_route("/voice/jarvis/activate", methods=["POST", "GET", "HEAD"])
 async def voice_jarvis_activate(request: Optional[dict] = None):
-    """Activate JARVIS voice system"""
+    """
+    Activate JARVIS voice system.
+
+    v118.0: Added GET/HEAD support for health check compatibility.
+    """
     return {
         "status": "activated",
         "message": "JARVIS voice system activated",
@@ -8008,6 +8026,169 @@ async def voice_jarvis_speak(request: dict):
     """Make JARVIS speak text - uses robust TTS with fallback chain"""
     # Use the robust audio speak implementation which handles all fallbacks
     return await audio_speak_post(request)
+
+
+# ============================================================
+# v118.0: WebSocket Availability HTTP Endpoints
+# ============================================================
+# ROOT FIX: WebSocket endpoints cannot respond to HEAD requests because
+# they use the WebSocket protocol (GET with Upgrade header), not HTTP GET/HEAD.
+# Health checkers need HTTP endpoints to check WebSocket availability.
+# These endpoints provide that capability.
+# ============================================================
+
+
+@app.api_route("/ws/status", methods=["GET", "HEAD"])
+async def websocket_status():
+    """
+    v118.0: HTTP endpoint to check main WebSocket (/ws) availability.
+
+    This endpoint provides HTTP GET/HEAD support for health checkers that
+    need to verify WebSocket endpoint availability. WebSocket endpoints
+    themselves cannot respond to HEAD requests.
+
+    Returns:
+        - available: Whether the WebSocket endpoint is mounted and ready
+        - endpoint: The WebSocket URL path
+        - protocol: WebSocket protocol version supported
+    """
+    # Check if unified WebSocket router is mounted
+    ws_mounted = False
+    for route in app.routes:
+        route_path = getattr(route, 'path', '')
+        if route_path == '/ws':
+            ws_mounted = True
+            break
+
+    return {
+        "available": ws_mounted,
+        "endpoint": "/ws",
+        "protocol": "websocket",
+        "supported_subprotocols": ["jarvis-ws", "json"],
+        "status": "ready" if ws_mounted else "unavailable",
+        "v118_fix": "Use this HTTP endpoint instead of HEAD on /ws"
+    }
+
+
+@app.api_route("/vision/ws/status", methods=["GET", "HEAD"])
+async def vision_ws_status():
+    """
+    v118.0: HTTP endpoint to check Vision WebSocket (/vision/ws) availability.
+
+    Health checkers should use this endpoint instead of HEAD on /vision/ws.
+    """
+    # Check if vision WebSocket route is mounted
+    vision_ws_mounted = False
+    for route in app.routes:
+        route_path = getattr(route, 'path', '')
+        if '/vision/ws' in route_path:
+            vision_ws_mounted = True
+            break
+
+    return {
+        "available": vision_ws_mounted,
+        "endpoint": "/vision/ws",
+        "protocol": "websocket",
+        "status": "ready" if vision_ws_mounted else "unavailable",
+        "v118_fix": "Use this HTTP endpoint instead of HEAD on /vision/ws"
+    }
+
+
+@app.api_route("/voice/jarvis/stream/status", methods=["GET", "HEAD"])
+async def voice_stream_status():
+    """
+    v118.0: HTTP endpoint to check Voice Stream WebSocket availability.
+
+    Health checkers should use this endpoint instead of HEAD on /voice/jarvis/stream.
+    """
+    # Check if voice stream WebSocket is available
+    voice_ws_mounted = False
+    for route in app.routes:
+        route_path = getattr(route, 'path', '')
+        if '/voice/stream' in route_path or '/voice/jarvis/stream' in route_path:
+            voice_ws_mounted = True
+            break
+
+    return {
+        "available": voice_ws_mounted,
+        "endpoint": "/voice/stream",
+        "aliases": ["/voice/jarvis/stream"],
+        "protocol": "websocket",
+        "status": "ready" if voice_ws_mounted else "unavailable",
+        "v118_fix": "Use this HTTP endpoint instead of HEAD on /voice/jarvis/stream"
+    }
+
+
+@app.api_route("/health/websockets", methods=["GET", "HEAD"])
+async def health_websockets():
+    """
+    v118.0: Unified WebSocket health check endpoint.
+
+    This is the PRIMARY endpoint that health checkers should use to verify
+    all WebSocket endpoints are available. Returns aggregated status of
+    all WebSocket routes in a single call.
+
+    ROOT FIX: Instead of making HEAD requests to individual WebSocket endpoints
+    (which will fail with 404/405), health checkers should call this endpoint.
+    """
+    import time
+
+    # Scan all routes for WebSocket endpoints
+    ws_endpoints = {}
+    for route in app.routes:
+        route_path = getattr(route, 'path', '')
+        route_name = getattr(route, 'name', '')
+
+        # Check if it's a WebSocket route
+        is_websocket = (
+            'websocket' in str(type(route)).lower() or
+            'ws' in route_path.lower() or
+            route_name and 'websocket' in route_name.lower()
+        )
+
+        if is_websocket and route_path:
+            ws_endpoints[route_path] = {
+                "mounted": True,
+                "type": "websocket",
+                "name": route_name or "unnamed"
+            }
+
+    # Known WebSocket endpoints to check
+    known_ws_endpoints = [
+        "/ws",
+        "/vision/ws",
+        "/vision/ws/vision",
+        "/voice/stream",
+        "/audio/ml/stream",
+        "/ws/startup-progress",
+        "/notifications/ws"
+    ]
+
+    # Build status for known endpoints
+    endpoint_status = {}
+    all_available = True
+
+    for endpoint in known_ws_endpoints:
+        available = endpoint in ws_endpoints
+        endpoint_status[endpoint] = {
+            "available": available,
+            "status": "ready" if available else "not_mounted"
+        }
+        if not available and endpoint in ["/ws", "/vision/ws"]:  # Critical endpoints
+            all_available = False
+
+    return {
+        "healthy": all_available,
+        "timestamp": time.time(),
+        "total_websocket_routes": len(ws_endpoints),
+        "endpoints": endpoint_status,
+        "discovered_routes": list(ws_endpoints.keys()),
+        "v118_guidance": {
+            "issue": "HEAD requests to WebSocket endpoints return 404/405",
+            "reason": "WebSockets use GET with Upgrade header, not HTTP HEAD",
+            "solution": "Use /health/websockets or /ws/status for availability checks"
+        }
+    }
 
 
 # ============================================================
