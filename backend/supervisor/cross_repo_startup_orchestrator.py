@@ -52,9 +52,25 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.12.0 (v145.0)
+Version: 5.13.0 (v146.0)
 
 Changelog:
+- v146.0 (v5.13): TRINITY PROTOCOL - Elastic Hybrid Cloud Architecture
+  - PART 1 CLOUD-FIRST STRATEGY: Proactive GCP pre-warming on SLIM hardware
+    - Background asyncio task starts GCP provisioning IMMEDIATELY during startup
+    - Non-blocking: Does not delay service startup, VM warms in parallel
+    - GCP ready by the time first request arrives (no 2-minute cold start)
+  - PART 2 CLOUD LOCK PERSISTENCE: OOM events create persistent lock file
+    - ~/.jarvis/trinity/cloud_lock.json survives supervisor restarts
+    - After OOM crash, system FORCES cloud mode until manually cleared
+    - Prevents "OOM → restart → OOM" infinite loop across restarts
+  - PART 3 REACTOR-CORE SEQUENCING: reactor-core waits for jarvis-prime health
+    - Dependency ordering ensures heavy training waits for inference
+    - Prevents "Thundering Herd" where both grab RAM simultaneously
+  - PART 4 TRINITY EVENT BUS: Cross-repo health coordination
+    - Background health monitoring with asyncio.Event for readiness
+    - GCP warm-up completion triggers jarvis-prime spawn eligibility
+  - ROOT CAUSE FIX: GCP was provisioned AFTER spawn, now provisioned DURING startup
 - v145.0 (v5.12): TOTAL VICTORY - Self-Kill Protection Bypass & Final Deadlock Fix
   - CRITICAL FIX: Port Hygiene now allows killing service's own OLD PID for restart
   - Added `exclude_service` parameter to `_build_protected_pid_set()`
@@ -545,6 +561,251 @@ def log_hardware_assessment(assessment: Optional[HardwareAssessment] = None) -> 
 _active_rescue_gcp_endpoint: Optional[str] = None
 _active_rescue_gcp_ready: bool = False
 _active_rescue_lock = threading.Lock()
+
+# =============================================================================
+# v146.0: TRINITY PROTOCOL - Elastic Hybrid Cloud Architecture
+# =============================================================================
+# The Trinity Protocol transforms the system from "Try Local, Fail, Retry"
+# to "Assess, Offload, Execute" - a Cloud-First strategy for SLIM hardware.
+#
+# COMPONENTS:
+#   1. CLOUD LOCK PERSISTENCE: Survives restarts, prevents OOM loops
+#   2. BACKGROUND GCP PRE-WARM: Non-blocking async VM provisioning
+#   3. REACTOR-CORE SEQUENCING: Wait for jarvis-prime health
+#   4. TRINITY EVENT COORDINATION: Cross-repo health signals
+#
+# FLOW:
+#   startup → assess_hardware → SLIM detected → start_gcp_prewarm_task →
+#   spawn jarvis-prime (hollow) → GCP ready event → spawn reactor-core
+# =============================================================================
+
+# v146.0: Cloud Lock persistence file path
+_CLOUD_LOCK_FILE = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
+
+# v146.0: Trinity Protocol state
+_trinity_gcp_prewarm_task: Optional[asyncio.Task] = None
+_trinity_gcp_ready_event: Optional[asyncio.Event] = None
+_trinity_cloud_locked: bool = False
+_trinity_protocol_active: bool = False
+
+
+def _load_cloud_lock() -> Dict[str, Any]:
+    """
+    v146.0: Load persistent cloud lock state from disk.
+
+    Returns dict with:
+      - locked: bool - Whether cloud-only mode is enforced
+      - reason: str - Why the lock was set (e.g., "OOM_CRASH")
+      - timestamp: float - When the lock was set
+      - oom_count: int - Number of OOM events that led to lock
+    """
+    try:
+        if _CLOUD_LOCK_FILE.exists():
+            return json.loads(_CLOUD_LOCK_FILE.read_text())
+    except Exception as e:
+        logger.debug(f"[v146.0] Could not read cloud lock: {e}")
+    return {"locked": False, "reason": None, "timestamp": None, "oom_count": 0}
+
+
+def _save_cloud_lock(locked: bool, reason: str, oom_count: int = 0) -> bool:
+    """
+    v146.0: Persist cloud lock state to disk.
+
+    This survives supervisor restarts, ensuring that after an OOM crash,
+    the system stays in cloud mode until manually cleared.
+    """
+    try:
+        _CLOUD_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        lock_state = {
+            "locked": locked,
+            "reason": reason,
+            "timestamp": time.time(),
+            "oom_count": oom_count,
+            "version": "v146.0",
+        }
+        _CLOUD_LOCK_FILE.write_text(json.dumps(lock_state, indent=2))
+        logger.info(f"[v146.0] ☁️ Cloud lock {'SET' if locked else 'CLEARED'}: {reason}")
+        return True
+    except Exception as e:
+        logger.warning(f"[v146.0] Could not save cloud lock: {e}")
+        return False
+
+
+def clear_cloud_lock() -> bool:
+    """
+    v146.0: Manually clear the cloud lock.
+
+    Call this when you want to allow local inference again after
+    resolving the OOM issues (e.g., after upgrading RAM or reducing load).
+    """
+    return _save_cloud_lock(locked=False, reason="MANUAL_CLEAR")
+
+
+def is_cloud_locked() -> Tuple[bool, Optional[str]]:
+    """
+    v146.0: Check if cloud-only mode is enforced.
+
+    Returns:
+        Tuple of (locked: bool, reason: Optional[str])
+    """
+    lock_state = _load_cloud_lock()
+    return lock_state.get("locked", False), lock_state.get("reason")
+
+
+def set_cloud_lock_after_oom(oom_count: int = 1) -> bool:
+    """
+    v146.0: Set cloud lock after OOM crash.
+
+    This is called by the OOM Death Handler to ensure the system
+    stays in cloud mode across restarts.
+    """
+    global _trinity_cloud_locked
+    _trinity_cloud_locked = True
+    return _save_cloud_lock(
+        locked=True,
+        reason=f"OOM_CRASH_PROTECTION",
+        oom_count=oom_count,
+    )
+
+
+async def _background_gcp_prewarm_task(timeout: float = 180.0) -> None:
+    """
+    v146.0: Background task that pre-warms the GCP VM.
+
+    This runs in parallel with service startup, ensuring the GCP VM
+    is ready by the time jarvis-prime needs it for inference.
+
+    CRITICAL: This is NON-BLOCKING - it does not delay service startup.
+    """
+    global _active_rescue_gcp_endpoint, _active_rescue_gcp_ready, _trinity_gcp_ready_event
+
+    logger.info("[v146.0] 🔥 TRINITY PROTOCOL: Starting background GCP pre-warm...")
+    start_time = time.time()
+
+    try:
+        # Provision GCP VM (or verify existing)
+        success, endpoint = await ensure_gcp_vm_ready_for_prime(
+            timeout_seconds=timeout,
+            force_provision=False,
+        )
+
+        elapsed = time.time() - start_time
+
+        if success and endpoint:
+            logger.info(
+                f"[v146.0] ✅ TRINITY PROTOCOL: GCP VM pre-warmed in {elapsed:.1f}s "
+                f"→ {endpoint}"
+            )
+
+            # Update global state
+            with _active_rescue_lock:
+                _active_rescue_gcp_endpoint = endpoint
+                _active_rescue_gcp_ready = True
+
+            # Set environment variables for child processes
+            os.environ["GCP_PRIME_ENDPOINT"] = endpoint
+            os.environ["JARVIS_GCP_PRIME_ENDPOINT"] = endpoint
+            os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+
+            # Signal that GCP is ready
+            if _trinity_gcp_ready_event:
+                _trinity_gcp_ready_event.set()
+
+            await _emit_event(
+                "TRINITY_GCP_PREWARM_SUCCESS",
+                priority="HIGH",
+                details={
+                    "endpoint": endpoint,
+                    "elapsed_seconds": elapsed,
+                    "mode": "background_prewarm",
+                }
+            )
+        else:
+            logger.warning(
+                f"[v146.0] ⚠️ TRINITY PROTOCOL: GCP pre-warm failed after {elapsed:.1f}s"
+            )
+            await _emit_event(
+                "TRINITY_GCP_PREWARM_FAILED",
+                priority="HIGH",
+                details={
+                    "elapsed_seconds": elapsed,
+                    "reason": "GCP VM provisioning failed or timed out",
+                }
+            )
+
+    except asyncio.CancelledError:
+        logger.info("[v146.0] TRINITY PROTOCOL: GCP pre-warm task cancelled")
+        raise
+    except Exception as e:
+        logger.error(f"[v146.0] TRINITY PROTOCOL: GCP pre-warm error: {e}")
+
+
+def start_trinity_gcp_prewarm() -> Optional[asyncio.Task]:
+    """
+    v146.0: Start the background GCP pre-warm task.
+
+    Call this immediately after detecting SLIM hardware in start_all_services().
+    Returns the Task object so it can be awaited or cancelled if needed.
+    """
+    global _trinity_gcp_prewarm_task, _trinity_gcp_ready_event, _trinity_protocol_active
+
+    # Create the ready event if it doesn't exist
+    if _trinity_gcp_ready_event is None:
+        _trinity_gcp_ready_event = asyncio.Event()
+
+    # Don't start multiple tasks
+    if _trinity_gcp_prewarm_task is not None and not _trinity_gcp_prewarm_task.done():
+        logger.debug("[v146.0] GCP pre-warm task already running")
+        return _trinity_gcp_prewarm_task
+
+    _trinity_protocol_active = True
+
+    # Create background task (NON-BLOCKING)
+    _trinity_gcp_prewarm_task = asyncio.create_task(
+        _background_gcp_prewarm_task(timeout=180.0),
+        name="trinity_gcp_prewarm"
+    )
+
+    logger.info("[v146.0] 🚀 TRINITY PROTOCOL: GCP pre-warm task started (background)")
+    return _trinity_gcp_prewarm_task
+
+
+async def wait_for_gcp_ready(timeout: float = 60.0) -> bool:
+    """
+    v146.0: Wait for GCP to be ready (called before reactor-core spawn).
+
+    This ensures reactor-core doesn't start until jarvis-prime has
+    a working GCP endpoint to offload inference to.
+    """
+    global _trinity_gcp_ready_event
+
+    if _trinity_gcp_ready_event is None:
+        return False
+
+    try:
+        await asyncio.wait_for(_trinity_gcp_ready_event.wait(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        logger.warning(f"[v146.0] GCP ready wait timed out after {timeout}s")
+        return False
+
+
+def get_trinity_protocol_status() -> Dict[str, Any]:
+    """
+    v146.0: Get current Trinity Protocol status.
+    """
+    cloud_locked, lock_reason = is_cloud_locked()
+    return {
+        "protocol_active": _trinity_protocol_active,
+        "cloud_locked": cloud_locked,
+        "lock_reason": lock_reason,
+        "gcp_ready": _active_rescue_gcp_ready,
+        "gcp_endpoint": _active_rescue_gcp_endpoint,
+        "prewarm_task_running": (
+            _trinity_gcp_prewarm_task is not None
+            and not _trinity_gcp_prewarm_task.done()
+        ),
+    }
 
 
 async def ensure_gcp_vm_ready_for_prime(
@@ -5176,6 +5437,20 @@ class ProcessOrchestrator:
                 logger.warning(
                     f"[v144.0] 🛟 ACTIVE RESCUE OOM DEATH HANDLER: "
                     f"jarvis-prime OOM'd - forcing GCP provisioning BEFORE restart!"
+                )
+
+                # =====================================================================
+                # v146.0: SET PERSISTENT CLOUD LOCK
+                # =====================================================================
+                # This ensures the system stays in cloud mode even if the supervisor
+                # restarts. Without this, a supervisor restart would "forget" the OOM
+                # and try local again, creating an infinite OOM loop across restarts.
+                # =====================================================================
+                oom_count = managed.restart_count + 1
+                set_cloud_lock_after_oom(oom_count=oom_count)
+                logger.warning(
+                    f"[v146.0] 🔒 CLOUD LOCK SET: System will enforce cloud-only mode "
+                    f"until manually cleared (OOM count: {oom_count})"
                 )
 
                 # Invalidate any stale GCP cache
@@ -11954,6 +12229,37 @@ echo "=== JARVIS Prime started ==="
             if reactor_def:
                 # Override timeout from config
                 reactor_def.startup_timeout = self.config.reactor_core_startup_timeout
+
+                # =====================================================================
+                # v146.0: TRINITY PROTOCOL - REACTOR-CORE DEPENDENCY ENFORCEMENT
+                # =====================================================================
+                # When Trinity Protocol is active (SLIM hardware), reactor-core MUST
+                # wait for jarvis-prime to be healthy before starting. This prevents
+                # the "Thundering Herd" where both grab RAM simultaneously.
+                #
+                # Without this, on SLIM systems:
+                #   1. jarvis-prime starts loading (even as Hollow Client)
+                #   2. reactor-core starts loading heavy training models
+                #   3. Combined memory pressure causes OOM
+                #
+                # With Trinity Protocol:
+                #   1. jarvis-prime starts as Hollow Client (~300MB)
+                #   2. jarvis-prime reports HEALTHY (routing to GCP)
+                #   3. THEN reactor-core starts (has full remaining RAM)
+                # =====================================================================
+                trinity_active = _trinity_protocol_active or is_cloud_locked()[0]
+                if trinity_active and "jarvis-prime" not in reactor_def.depends_on:
+                    logger.info(
+                        f"[v146.0] 🔗 TRINITY PROTOCOL: Adding jarvis-prime as HARD dependency "
+                        f"for reactor-core (prevents Thundering Herd)"
+                    )
+                    reactor_def.depends_on = ["jarvis-prime"]
+                    # Also wait for GCP to be ready before starting reactor-core
+                    reactor_def.dependency_wait_timeout = max(
+                        reactor_def.dependency_wait_timeout or 120.0,
+                        180.0  # Allow time for GCP warm-up
+                    )
+
                 definitions.append(reactor_def)
                 logger.debug(f"Using registry definition for reactor-core: {reactor_def.script_name}")
             else:
@@ -14799,6 +15105,57 @@ echo "=== JARVIS Prime started ==="
                     )
 
         # =========================================================================
+        # v146.0: TRINITY PROTOCOL - REACTOR-CORE GCP READY GATE
+        # =========================================================================
+        # When Trinity Protocol is active, reactor-core should wait for GCP to be
+        # ready before starting. This prevents the "Thundering Herd" and ensures
+        # jarvis-prime (as Hollow Client) is fully operational before reactor-core
+        # starts consuming memory for training.
+        # =========================================================================
+        is_reactor_core = definition.name.lower() in ["reactor-core", "reactor_core"]
+        trinity_active = _trinity_protocol_active or is_cloud_locked()[0]
+
+        if is_reactor_core and trinity_active:
+            logger.info(
+                f"[v146.0] 🔗 TRINITY PROTOCOL: Checking GCP readiness before starting {definition.name}..."
+            )
+
+            # Wait for GCP ready event (set by background pre-warm task)
+            gcp_ready = await wait_for_gcp_ready(timeout=60.0)
+
+            if gcp_ready:
+                logger.info(
+                    f"[v146.0] ✅ TRINITY PROTOCOL: GCP is ready - proceeding with {definition.name} startup"
+                )
+            else:
+                # GCP not ready yet, but jarvis-prime might still be healthy as Hollow Client
+                # Check if jarvis-prime is in services_ready
+                jprime_ready = "jarvis-prime" in self._services_ready
+
+                if jprime_ready:
+                    logger.info(
+                        f"[v146.0] ⚠️ TRINITY PROTOCOL: GCP not ready but jarvis-prime is healthy - "
+                        f"proceeding with {definition.name} startup"
+                    )
+                else:
+                    logger.warning(
+                        f"[v146.0] ⚠️ TRINITY PROTOCOL: Neither GCP nor jarvis-prime ready - "
+                        f"waiting for dependencies..."
+                    )
+                    # The dependency system will handle waiting for jarvis-prime
+
+            await _emit_event(
+                "TRINITY_REACTOR_CORE_START",
+                service_name=definition.name,
+                priority="MEDIUM",
+                details={
+                    "gcp_ready": gcp_ready,
+                    "jprime_ready": "jarvis-prime" in self._services_ready,
+                    "trinity_active": trinity_active,
+                }
+            )
+
+        # =========================================================================
         # v142.0: DYNAMIC MEMORY GATING - Context-Aware Slim Mode Support
         # =========================================================================
         # This is the LAST line of defense against starting heavy services when
@@ -17250,12 +17607,71 @@ echo "=== JARVIS Prime started ==="
         # Without this, the memory gate won't detect Slim Mode and will use the
         # wrong thresholds (80% instead of 95%), blocking startup on low-memory systems.
         # =========================================================================
+        hw_assessment = None
         try:
             hw_assessment = assess_hardware_profile()
             set_hardware_env_in_supervisor(hw_assessment)
             log_hardware_assessment(hw_assessment)
         except Exception as e:
             logger.warning(f"[v143.0] Hardware assessment failed: {e}, proceeding with defaults")
+
+        # =========================================================================
+        # v146.0: TRINITY PROTOCOL - CLOUD-FIRST STRATEGY
+        # =========================================================================
+        # Check for persistent cloud lock (survives restarts after OOM)
+        # and start background GCP pre-warm on SLIM hardware.
+        #
+        # This transforms startup from "Try Local, Fail, Retry" to
+        # "Assess, Offload, Execute" - GCP is ready BEFORE you need it.
+        # =========================================================================
+        cloud_locked, lock_reason = is_cloud_locked()
+        if cloud_locked:
+            logger.warning(
+                f"[v146.0] 🔒 CLOUD LOCK ACTIVE: {lock_reason}\n"
+                f"    System will enforce cloud-only mode.\n"
+                f"    To clear: call clear_cloud_lock() or delete ~/.jarvis/trinity/cloud_lock.json"
+            )
+            os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+            os.environ["JARVIS_FORCE_CLOUD_HYBRID"] = "true"
+
+        # Determine if Trinity Protocol (Cloud-First) should be activated
+        should_activate_trinity = False
+        trinity_reason = ""
+
+        if cloud_locked:
+            should_activate_trinity = True
+            trinity_reason = f"Cloud lock active: {lock_reason}"
+        elif hw_assessment and hw_assessment.profile in (HardwareProfile.SLIM, HardwareProfile.CLOUD_ONLY):
+            should_activate_trinity = True
+            trinity_reason = f"Hardware profile: {hw_assessment.profile.name}"
+        elif hw_assessment and hw_assessment.force_cloud_hybrid:
+            should_activate_trinity = True
+            trinity_reason = "force_cloud_hybrid flag set"
+
+        if should_activate_trinity:
+            logger.info(
+                f"[v146.0] 🔥 TRINITY PROTOCOL ACTIVATED: {trinity_reason}\n"
+                f"    → Starting background GCP pre-warm (non-blocking)\n"
+                f"    → jarvis-prime will run as Hollow Client\n"
+                f"    → Heavy inference offloaded to GCP"
+            )
+
+            # Start background GCP pre-warm (NON-BLOCKING)
+            # This runs in parallel with the rest of startup
+            try:
+                start_trinity_gcp_prewarm()
+            except Exception as e:
+                logger.warning(f"[v146.0] Could not start GCP pre-warm task: {e}")
+
+            await _emit_event(
+                "TRINITY_PROTOCOL_ACTIVATED",
+                priority="HIGH",
+                details={
+                    "reason": trinity_reason,
+                    "profile": hw_assessment.profile.name if hw_assessment else "unknown",
+                    "cloud_locked": cloud_locked,
+                }
+            )
 
         # v117.0: Acquire distributed startup lock to prevent concurrent supervisor instances
         # This solves race conditions where multiple supervisors try to start/adopt services
