@@ -52,9 +52,18 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.7.0 (v93.11)
+Version: 5.8.0 (v137.0)
 
 Changelog:
+- v137.0 (v5.8): I/O Airlock Pattern - Non-Blocking File & System Operations
+  - Dedicated ThreadPoolExecutor (4 workers) for I/O operations
+  - Prevents event loop blocking from synchronous file I/O (json.loads, read_text)
+  - Non-blocking psutil wrappers for network connections, process info, memory
+  - Zombie-safe PID verification with cmdline checking
+  - Async convenience wrappers: read_json_nonblocking, write_json_nonblocking
+  - High-resolution timing logs for I/O operation monitoring
+  - Thread pool cleanup during shutdown
+- v136.0: GlobalSpawnCoordinator for cross-component spawn coordination
 - v93.11 (v5.7): Parallel Startup & Thread Safety Enhancements
   - Thread-safe locks for circuit breakers, memory status, and startup coordination
   - Shared aiohttp session with connection pooling (100 connections, 10 per host)
@@ -413,6 +422,551 @@ async def acquire_spawn_lock(service_name: str) -> asyncio.Lock:
 
 
 # =============================================================================
+# v137.0: I/O AIRLOCK PATTERN - NON-BLOCKING FILE & SYSTEM OPERATIONS
+# =============================================================================
+# This system prevents event loop blocking caused by synchronous file I/O
+# and system calls (psutil) during startup orchestration.
+#
+# ROOT CAUSE ADDRESSED:
+# - json.loads(file.read_text()) blocks the event loop for 10-500ms
+# - psutil.net_connections() blocks for 50-200ms
+# - psutil.Process(pid) can block for 10-100ms
+# - Multiple calls during startup can cause cumulative 1-5s hangs
+#
+# SOLUTION:
+# - Dedicated ThreadPoolExecutor with 4 workers for I/O operations
+# - async wrapper _run_blocking_io() with configurable timeout
+# - Safe state readers that handle corruption/missing files
+# - Zombie-safe PID verification with cmdline checking
+#
+# USAGE:
+#   result = await _run_blocking_io(_sync_read_json, path, timeout=5.0)
+#   is_valid = await _run_blocking_io(_sync_check_pid, pid, "python")
+# =============================================================================
+
+import concurrent.futures
+from contextlib import suppress
+
+# Dedicated ThreadPoolExecutor for I/O operations
+# max_workers=4 is optimal for typical disk I/O patterns (not CPU bound)
+# ThreadPoolExecutor is created lazily to avoid issues during import
+_IO_THREAD_POOL: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_IO_POOL_LOCK = threading.Lock()
+
+# I/O operation timeouts (seconds)
+_IO_DEFAULT_TIMEOUT = 5.0
+_IO_FILE_READ_TIMEOUT = 3.0
+_IO_FILE_WRITE_TIMEOUT = 5.0
+_IO_PSUTIL_TIMEOUT = 2.0
+
+
+def _get_io_thread_pool() -> concurrent.futures.ThreadPoolExecutor:
+    """
+    v137.0: Get the shared I/O thread pool (lazy initialization).
+
+    Thread pool is created on first use to avoid issues during module import.
+    Uses max_workers=4 which is optimal for I/O-bound operations.
+    """
+    global _IO_THREAD_POOL
+    if _IO_THREAD_POOL is None:
+        with _IO_POOL_LOCK:
+            if _IO_THREAD_POOL is None:
+                _IO_THREAD_POOL = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=4,
+                    thread_name_prefix="io_airlock_",
+                )
+                logger.debug("[v137.0] I/O Airlock thread pool initialized (4 workers)")
+    return _IO_THREAD_POOL
+
+
+def _shutdown_io_thread_pool() -> None:
+    """
+    v137.0: Shutdown the I/O thread pool gracefully.
+
+    Call this during orchestrator shutdown to clean up threads.
+    """
+    global _IO_THREAD_POOL
+    if _IO_THREAD_POOL is not None:
+        with _IO_POOL_LOCK:
+            if _IO_THREAD_POOL is not None:
+                try:
+                    _IO_THREAD_POOL.shutdown(wait=True, cancel_futures=True)
+                except TypeError:
+                    # Python < 3.9 doesn't have cancel_futures
+                    _IO_THREAD_POOL.shutdown(wait=True)
+                _IO_THREAD_POOL = None
+                logger.debug("[v137.0] I/O Airlock thread pool shut down")
+
+
+async def _run_blocking_io(
+    func: Callable,
+    *args,
+    timeout: float = _IO_DEFAULT_TIMEOUT,
+    default: Any = None,
+    operation_name: str = "io_operation",
+    **kwargs,
+) -> Any:
+    """
+    v137.0: Execute a blocking I/O function without blocking the event loop.
+
+    This is the core of the I/O Airlock pattern. It offloads synchronous
+    operations (file reads, psutil calls) to a dedicated thread pool.
+
+    Features:
+    - High-resolution timing for performance monitoring
+    - Configurable timeout with graceful handling
+    - Safe default return on timeout/error
+    - Detailed logging for debugging startup hangs
+
+    Args:
+        func: Synchronous function to execute
+        *args: Positional arguments for func
+        timeout: Maximum time to wait (seconds)
+        default: Value to return on timeout/error
+        operation_name: Name for logging (e.g., "read_services_json")
+        **kwargs: Keyword arguments for func
+
+    Returns:
+        Result from func, or default on timeout/error
+
+    Example:
+        data = await _run_blocking_io(
+            _sync_read_json,
+            Path("~/.jarvis/services.json"),
+            timeout=3.0,
+            default={},
+            operation_name="read_services_state",
+        )
+    """
+    loop = asyncio.get_running_loop()
+    pool = _get_io_thread_pool()
+
+    start_time = time.perf_counter()
+
+    try:
+        # Create a partial function if kwargs are provided
+        if kwargs:
+            import functools
+            partial_func = functools.partial(func, *args, **kwargs)
+            future = loop.run_in_executor(pool, partial_func)
+        else:
+            future = loop.run_in_executor(pool, func, *args)
+
+        result = await asyncio.wait_for(future, timeout=timeout)
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        if elapsed_ms > 100:  # Log slow operations
+            logger.debug(
+                f"[v137.0] ⚡ I/O Airlock: {operation_name} completed in {elapsed_ms:.1f}ms"
+            )
+        elif elapsed_ms > 50:
+            logger.debug(
+                f"[v137.0] I/O Airlock: {operation_name} completed in {elapsed_ms:.1f}ms"
+            )
+
+        return result
+
+    except asyncio.TimeoutError:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.warning(
+            f"[v137.0] ⏱️ I/O Airlock TIMEOUT: {operation_name} exceeded {timeout}s "
+            f"(elapsed: {elapsed_ms:.1f}ms). Returning default."
+        )
+        return default
+
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.warning(
+            f"[v137.0] ❌ I/O Airlock ERROR in {operation_name}: {e} "
+            f"(elapsed: {elapsed_ms:.1f}ms). Returning default."
+        )
+        return default
+
+
+# =============================================================================
+# v137.0: SYNCHRONOUS HELPER FUNCTIONS (Run in Thread Pool)
+# =============================================================================
+# These functions are designed to be called via _run_blocking_io().
+# They are intentionally synchronous and handle their own exceptions.
+
+
+def _sync_read_json(file_path: Path) -> Optional[Dict[str, Any]]:
+    """
+    v137.0: Synchronously read and parse a JSON file.
+
+    Handles:
+    - Missing files (returns None)
+    - Corrupted JSON (returns None - treated as "fresh start")
+    - Permission errors (returns None with warning)
+
+    Args:
+        file_path: Path to JSON file
+
+    Returns:
+        Parsed JSON as dict, or None on any error
+    """
+    try:
+        if not file_path.exists():
+            return None
+
+        content = file_path.read_text(encoding="utf-8")
+        if not content.strip():
+            return None
+
+        return json.loads(content)
+
+    except json.JSONDecodeError as e:
+        # Corrupted JSON = fresh start (don't propagate error)
+        logger.debug(f"[v137.0] JSON decode error in {file_path}: {e}. Treating as fresh.")
+        return None
+    except PermissionError as e:
+        logger.warning(f"[v137.0] Permission denied reading {file_path}: {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"[v137.0] Error reading {file_path}: {e}")
+        return None
+
+
+def _sync_write_json(file_path: Path, data: Dict[str, Any], indent: int = 2) -> bool:
+    """
+    v137.0: Synchronously write JSON to a file (atomic via temp file).
+
+    Uses atomic write pattern: write to temp file, then rename.
+
+    Args:
+        file_path: Destination path
+        data: Dict to serialize as JSON
+        indent: JSON indentation (default 2)
+
+    Returns:
+        True on success, False on error
+    """
+    try:
+        # Ensure parent directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to temp file first (atomic pattern)
+        temp_file = file_path.with_suffix(".tmp")
+        temp_file.write_text(json.dumps(data, indent=indent), encoding="utf-8")
+        temp_file.replace(file_path)
+
+        return True
+
+    except Exception as e:
+        logger.debug(f"[v137.0] Error writing {file_path}: {e}")
+        return False
+
+
+def _sync_check_pid_alive(pid: int, expected_name: Optional[str] = None) -> bool:
+    """
+    v137.0: Check if a PID is alive AND matches expected process name.
+
+    This is ZOMBIE-SAFE: it verifies not just that the PID exists, but that
+    it's actually the process we expect. This prevents false positives when
+    PIDs are reused by the kernel.
+
+    Args:
+        pid: Process ID to check
+        expected_name: Expected process name substring (e.g., "python", "jarvis")
+                       If None, only checks if PID exists.
+
+    Returns:
+        True if PID exists AND (expected_name is None OR name matches)
+    """
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+
+        # Check if process is still running (not zombie)
+        status = proc.status()
+        if status == psutil.STATUS_ZOMBIE:
+            logger.debug(f"[v137.0] PID {pid} is a zombie process")
+            return False
+
+        # If no name check required, just verify it exists
+        if expected_name is None:
+            return True
+
+        # Check process name
+        name = proc.name().lower()
+        if expected_name.lower() in name:
+            return True
+
+        # Also check cmdline (more reliable for scripts)
+        try:
+            cmdline = " ".join(proc.cmdline()).lower()
+            if expected_name.lower() in cmdline:
+                return True
+        except (psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
+        logger.debug(
+            f"[v137.0] PID {pid} exists but name '{name}' doesn't match '{expected_name}'"
+        )
+        return False
+
+    except psutil.NoSuchProcess:
+        return False
+    except psutil.AccessDenied:
+        # Process exists but we can't access it - assume it's valid
+        logger.debug(f"[v137.0] PID {pid} access denied, assuming alive")
+        return True
+    except Exception as e:
+        logger.debug(f"[v137.0] Error checking PID {pid}: {e}")
+        return False
+
+
+def _sync_get_net_connections(port: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    v137.0: Get network connections (optionally filtered by port).
+
+    This wraps psutil.net_connections() which can block for 50-200ms.
+
+    Args:
+        port: Optional port to filter by
+
+    Returns:
+        List of connection dicts with pid, port, status, etc.
+    """
+    try:
+        import psutil
+        connections = []
+
+        for conn in psutil.net_connections(kind='inet'):
+            # Skip if no local address
+            if not conn.laddr:
+                continue
+
+            # Filter by port if specified
+            if port is not None and conn.laddr.port != port:
+                continue
+
+            connections.append({
+                "pid": conn.pid,
+                "port": conn.laddr.port,
+                "ip": conn.laddr.ip,
+                "status": conn.status,
+                "family": conn.family,
+            })
+
+        return connections
+
+    except Exception as e:
+        logger.debug(f"[v137.0] Error getting net connections: {e}")
+        return []
+
+
+def _sync_get_process_info(pid: int) -> Optional[Dict[str, Any]]:
+    """
+    v137.0: Get detailed process information.
+
+    Args:
+        pid: Process ID
+
+    Returns:
+        Dict with name, cmdline, status, or None if not found
+    """
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+
+        return {
+            "pid": pid,
+            "name": proc.name(),
+            "cmdline": proc.cmdline()[:5],  # Truncate for safety
+            "status": proc.status(),
+            "create_time": proc.create_time(),
+        }
+
+    except psutil.NoSuchProcess:
+        return None
+    except psutil.AccessDenied:
+        return {"pid": pid, "name": "access_denied", "cmdline": [], "status": "unknown"}
+    except Exception as e:
+        logger.debug(f"[v137.0] Error getting process info for {pid}: {e}")
+        return None
+
+
+def _sync_get_memory_info() -> Dict[str, Any]:
+    """
+    v137.0: Get system memory information.
+
+    Returns:
+        Dict with total, available, percent, swap info
+    """
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+
+        return {
+            "total_gb": mem.total / (1024 ** 3),
+            "available_gb": mem.available / (1024 ** 3),
+            "used_gb": mem.used / (1024 ** 3),
+            "percent": mem.percent,
+            "swap_total_gb": swap.total / (1024 ** 3),
+            "swap_used_gb": swap.used / (1024 ** 3),
+            "swap_percent": swap.percent,
+        }
+
+    except Exception as e:
+        logger.debug(f"[v137.0] Error getting memory info: {e}")
+        return {
+            "total_gb": 0,
+            "available_gb": 0,
+            "used_gb": 0,
+            "percent": 0,
+            "swap_total_gb": 0,
+            "swap_used_gb": 0,
+            "swap_percent": 0,
+        }
+
+
+# =============================================================================
+# v137.0: ASYNC CONVENIENCE WRAPPERS
+# =============================================================================
+# These are the primary interface for non-blocking I/O in the orchestrator.
+
+
+async def read_json_nonblocking(
+    file_path: Path,
+    timeout: float = _IO_FILE_READ_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """
+    v137.0: Read and parse JSON file without blocking event loop.
+
+    Args:
+        file_path: Path to JSON file
+        timeout: Maximum time to wait
+
+    Returns:
+        Parsed JSON dict, or None on error/timeout
+    """
+    return await _run_blocking_io(
+        _sync_read_json,
+        file_path,
+        timeout=timeout,
+        default=None,
+        operation_name=f"read_json({file_path.name})",
+    )
+
+
+async def write_json_nonblocking(
+    file_path: Path,
+    data: Dict[str, Any],
+    timeout: float = _IO_FILE_WRITE_TIMEOUT,
+) -> bool:
+    """
+    v137.0: Write JSON file without blocking event loop.
+
+    Args:
+        file_path: Destination path
+        data: Dict to serialize
+        timeout: Maximum time to wait
+
+    Returns:
+        True on success, False on error/timeout
+    """
+    return await _run_blocking_io(
+        _sync_write_json,
+        file_path,
+        data,
+        timeout=timeout,
+        default=False,
+        operation_name=f"write_json({file_path.name})",
+    )
+
+
+async def check_pid_alive_nonblocking(
+    pid: int,
+    expected_name: Optional[str] = None,
+    timeout: float = _IO_PSUTIL_TIMEOUT,
+) -> bool:
+    """
+    v137.0: Check if PID is alive without blocking event loop.
+
+    Args:
+        pid: Process ID to check
+        expected_name: Expected process name substring (zombie-safe)
+        timeout: Maximum time to wait
+
+    Returns:
+        True if PID is alive and matches name (if specified)
+    """
+    return await _run_blocking_io(
+        _sync_check_pid_alive,
+        pid,
+        expected_name,
+        timeout=timeout,
+        default=False,
+        operation_name=f"check_pid({pid})",
+    )
+
+
+async def get_net_connections_nonblocking(
+    port: Optional[int] = None,
+    timeout: float = _IO_PSUTIL_TIMEOUT,
+) -> List[Dict[str, Any]]:
+    """
+    v137.0: Get network connections without blocking event loop.
+
+    Args:
+        port: Optional port to filter by
+        timeout: Maximum time to wait
+
+    Returns:
+        List of connection dicts
+    """
+    return await _run_blocking_io(
+        _sync_get_net_connections,
+        port,
+        timeout=timeout,
+        default=[],
+        operation_name=f"get_net_connections(port={port})",
+    )
+
+
+async def get_process_info_nonblocking(
+    pid: int,
+    timeout: float = _IO_PSUTIL_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """
+    v137.0: Get process info without blocking event loop.
+
+    Args:
+        pid: Process ID
+        timeout: Maximum time to wait
+
+    Returns:
+        Process info dict, or None if not found/timeout
+    """
+    return await _run_blocking_io(
+        _sync_get_process_info,
+        pid,
+        timeout=timeout,
+        default=None,
+        operation_name=f"get_process_info({pid})",
+    )
+
+
+async def get_memory_info_nonblocking(
+    timeout: float = _IO_PSUTIL_TIMEOUT,
+) -> Dict[str, Any]:
+    """
+    v137.0: Get system memory info without blocking event loop.
+
+    Returns:
+        Memory info dict with total, available, percent, swap
+    """
+    return await _run_blocking_io(
+        _sync_get_memory_info,
+        timeout=timeout,
+        default={"total_gb": 0, "available_gb": 0, "percent": 0},
+        operation_name="get_memory_info",
+    )
+
+
+# =============================================================================
 # v131.0: OOM Prevention Bridge Integration
 # =============================================================================
 # Prevents SIGKILL (exit code -9) by checking memory before spawning heavy services
@@ -626,6 +1180,65 @@ def get_all_service_ports_from_registry() -> Dict[str, Dict[str, Any]]:
             return registry.get("ports", {})
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"[v112.0] Could not read port registry: {e}")
+
+    return {}
+
+
+# =============================================================================
+# v137.0: ASYNC VERSIONS OF REGISTRY FUNCTIONS (Non-blocking I/O)
+# =============================================================================
+
+
+async def get_service_port_from_registry_async(
+    service_name: str,
+    fallback_port: Optional[int] = None,
+) -> Optional[int]:
+    """
+    v137.0: Async version of get_service_port_from_registry.
+
+    Uses non-blocking I/O to read the port registry without blocking
+    the event loop during startup coordination.
+
+    Args:
+        service_name: Name of the service
+        fallback_port: Optional fallback if service not in registry
+
+    Returns:
+        The port number, or fallback_port if not found
+    """
+    registry_file = Path.home() / ".jarvis" / "registry" / "ports.json"
+
+    registry = await read_json_nonblocking(registry_file)
+    if registry is not None:
+        if service_name in registry.get("ports", {}):
+            port_info = registry["ports"][service_name]
+            allocated_port = port_info.get("port")
+            if allocated_port:
+                if port_info.get("is_fallback"):
+                    logger.debug(
+                        f"[v137.0] get_service_port_from_registry_async: "
+                        f"{service_name} using fallback port {allocated_port} "
+                        f"(original was {port_info.get('original_port')})"
+                    )
+                return allocated_port
+
+    return fallback_port
+
+
+async def get_all_service_ports_from_registry_async() -> Dict[str, Dict[str, Any]]:
+    """
+    v137.0: Async version of get_all_service_ports_from_registry.
+
+    Uses non-blocking I/O to read the port registry.
+
+    Returns:
+        Dict mapping service names to port info
+    """
+    registry_file = Path.home() / ".jarvis" / "registry" / "ports.json"
+
+    registry = await read_json_nonblocking(registry_file)
+    if registry is not None:
+        return registry.get("ports", {})
 
     return {}
 
@@ -7379,6 +7992,7 @@ class ProcessOrchestrator:
     ) -> None:
         """
         v117.5: Persist service state to file for cross-restart adoption.
+        v137.0: Updated to use non-blocking I/O (I/O Airlock pattern).
 
         This enables the supervisor to adopt previously running services
         after a full process restart (not just SIGHUP restarts).
@@ -7401,15 +8015,20 @@ class ProcessOrchestrator:
         """
         try:
             service_state_file = Path.home() / ".jarvis" / "trinity" / "state" / "services.json"
-            service_state_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Read existing state
-            existing_services: Dict[str, Any] = {}
-            if service_state_file.exists():
-                try:
-                    existing_services = json.loads(service_state_file.read_text())
-                except (json.JSONDecodeError, IOError):
-                    pass
+            # v137.0: Use non-blocking I/O for directory creation
+            def _ensure_dir():
+                service_state_file.parent.mkdir(parents=True, exist_ok=True)
+            await _run_blocking_io(
+                _ensure_dir,
+                timeout=2.0,
+                operation_name="ensure_state_dir",
+            )
+
+            # v137.0: Read existing state with non-blocking I/O
+            existing_services = await read_json_nonblocking(service_state_file)
+            if existing_services is None:
+                existing_services = {}
 
             # Update with new service state
             existing_services[service_name] = {
@@ -7420,14 +8039,15 @@ class ProcessOrchestrator:
                 "supervisor_pid": os.getpid()
             }
 
-            # Write atomically (write to temp, then rename)
-            temp_file = service_state_file.with_suffix(".tmp")
-            temp_file.write_text(json.dumps(existing_services, indent=2))
-            temp_file.replace(service_state_file)
+            # v137.0: Write atomically with non-blocking I/O
+            success = await write_json_nonblocking(service_state_file, existing_services)
 
-            logger.debug(f"[v117.5] Persisted {service_name} state (PID: {pid}, Port: {port})")
+            if success:
+                logger.debug(f"[v137.0] Persisted {service_name} state (PID: {pid}, Port: {port})")
+            else:
+                logger.debug(f"[v137.0] Failed to persist {service_name} state (write failed)")
         except Exception as e:
-            logger.debug(f"[v117.5] Failed to persist {service_name} state: {e}")
+            logger.debug(f"[v137.0] Failed to persist {service_name} state: {e}")
 
     async def _traced_request(
         self,
@@ -7947,18 +8567,16 @@ class ProcessOrchestrator:
         except Exception as e:
             logger.debug(f"[v136.0] lsof failed for port {port}: {e}, falling back to psutil")
 
-        # Fallback method: psutil (portable, no subprocess dependency)
+        # Fallback method: psutil via non-blocking I/O (v137.0)
         try:
-            import psutil
-            for conn in psutil.net_connections(kind='inet'):
-                if (conn.status == 'LISTEN' and
-                    conn.laddr and
-                    conn.laddr.port == port and
-                    conn.pid):
-                    pids.append(conn.pid)
+            # v137.0: Use non-blocking psutil wrapper to avoid event loop blocking
+            connections = await get_net_connections_nonblocking(port=None)  # Get all, filter below
+            for conn in connections:
+                if (conn.get("status") == "LISTEN" and
+                    conn.get("port") == port and
+                    conn.get("pid")):
+                    pids.append(conn["pid"])
             return (list(set(pids)), None)  # Dedupe
-        except ImportError:
-            return ([], "psutil not available and lsof failed")
         except Exception as e:
             return ([], f"Both lsof and psutil failed: {e}")
 
@@ -8172,16 +8790,16 @@ class ProcessOrchestrator:
             # Step 4: Direct kill if EPM not available or failed
             if not enterprise_cleanup_success:
                 for pid in killable_pids:
-                    # Get process info for logging
-                    proc_info = "unknown"
-                    try:
-                        import psutil
-                        p = psutil.Process(pid)
-                        proc_info = f"{p.name()} ({' '.join(p.cmdline()[:3])})"
-                    except Exception:
-                        pass
+                    # v137.0: Get process info via non-blocking I/O
+                    proc_info_dict = await get_process_info_nonblocking(pid)
+                    if proc_info_dict:
+                        name = proc_info_dict.get("name", "unknown")
+                        cmdline = proc_info_dict.get("cmdline", [])
+                        proc_info = f"{name} ({' '.join(cmdline[:3])})"
+                    else:
+                        proc_info = "unknown"
 
-                    logger.info(f"[v136.0] 🔪 Terminating PID {pid} on port {port}: {proc_info}")
+                    logger.info(f"[v137.0] 🔪 Terminating PID {pid} on port {port}: {proc_info}")
 
                     success, status = await self._kill_process_graceful_then_force(
                         pid,
@@ -8290,11 +8908,11 @@ class ProcessOrchestrator:
                     ports[f"legacy-reactor-{lp}"] = lp
 
         # Source 4: GAP 7 - Port registry (catches dynamically allocated fallback ports)
+        # v137.0: Use non-blocking I/O for registry read
         try:
             registry_file = Path.home() / ".jarvis" / "registry" / "ports.json"
-            if registry_file.exists():
-                import json
-                registry = json.loads(registry_file.read_text())
+            registry = await read_json_nonblocking(registry_file)
+            if registry is not None:
                 for svc_name, port_info in registry.get("ports", {}).items():
                     allocated_port = port_info.get("port")
                     if allocated_port and allocated_port != orchestrator_port:
@@ -8305,7 +8923,7 @@ class ProcessOrchestrator:
                             # Service has different port in registry (fallback)
                             ports[f"{svc_name}-fallback"] = allocated_port
         except Exception as e:
-            logger.debug(f"[v136.0] Port registry unavailable: {e}")
+            logger.debug(f"[v137.0] Port registry unavailable: {e}")
 
         # Source 5: Environment variable overrides
         for env_var, svc_name in [
@@ -8721,6 +9339,7 @@ class ProcessOrchestrator:
     async def _get_memory_status(self) -> MemoryStatus:
         """
         v93.9: Get current system memory status with caching.
+        v137.0: Updated to use non-blocking I/O (I/O Airlock pattern).
 
         Uses psutil for cross-platform memory info.
         Caches result for performance (refreshed every 5s).
@@ -8733,18 +9352,16 @@ class ProcessOrchestrator:
             return self._cached_memory_status
 
         try:
-            import psutil
-
-            mem = psutil.virtual_memory()
-            swap = psutil.swap_memory()
+            # v137.0: Use non-blocking I/O wrapper for psutil calls
+            mem_info = await get_memory_info_nonblocking()
 
             status = MemoryStatus(
-                total_gb=mem.total / (1024 ** 3),
-                available_gb=mem.available / (1024 ** 3),
-                used_gb=mem.used / (1024 ** 3),
-                percent_used=mem.percent,
-                swap_total_gb=swap.total / (1024 ** 3),
-                swap_used_gb=swap.used / (1024 ** 3),
+                total_gb=mem_info.get("total_gb", 16.0),
+                available_gb=mem_info.get("available_gb", 8.0),
+                used_gb=mem_info.get("used_gb", 8.0),
+                percent_used=mem_info.get("percent", 50.0),
+                swap_total_gb=mem_info.get("swap_total_gb", 0.0),
+                swap_used_gb=mem_info.get("swap_used_gb", 0.0),
             )
 
             # Update cache
@@ -8753,16 +9370,8 @@ class ProcessOrchestrator:
 
             return status
 
-        except ImportError:
-            logger.warning("    psutil not available, using default memory estimates")
-            return MemoryStatus(
-                total_gb=16.0,
-                available_gb=8.0,
-                used_gb=8.0,
-                percent_used=50.0,
-            )
         except Exception as e:
-            logger.warning(f"    Memory check failed: {e}")
+            logger.warning(f"    [v137.0] Memory check failed: {e}")
             return MemoryStatus(available_gb=8.0)
 
     async def _should_route_to_gcp(
@@ -12708,48 +13317,64 @@ echo "=== JARVIS Prime started ==="
             return await self._allocate_fallback_port(definition)
 
         except ImportError:
-            # v109.8: Enhanced legacy fallback with multi-state socket handling
+            # v109.8/v137.0: Enhanced legacy fallback with non-blocking I/O
             logger.warning(
-                "[v109.8] EnterpriseProcessManager not available, using enhanced legacy fallback"
+                "[v137.0] EnterpriseProcessManager not available, using non-blocking legacy fallback"
             )
             try:
-                import psutil
                 current_pid = os.getpid()
                 parent_pid = os.getppid()
 
+                # v137.0: Use non-blocking I/O to get connections
+                all_connections = await get_net_connections_nonblocking(port=None)
+
                 # v109.8: Check ALL socket states, not just LISTEN
                 # Prioritize LISTEN, then other states
-                conn_by_state = {"LISTEN": [], "other": []}
-                for conn in psutil.net_connections(kind='inet'):
-                    if conn.laddr and conn.laddr.port == port and conn.pid:
-                        if conn.pid in (current_pid, parent_pid):
+                conn_by_state: Dict[str, List[Dict[str, Any]]] = {"LISTEN": [], "other": []}
+                for conn in all_connections:
+                    conn_port = conn.get("port")
+                    conn_pid = conn.get("pid")
+                    conn_status = conn.get("status")
+                    if conn_port == port and conn_pid:
+                        if conn_pid in (current_pid, parent_pid):
                             continue  # Skip self
-                        if conn.status == 'LISTEN':
+                        if conn_status == "LISTEN":
                             conn_by_state["LISTEN"].append(conn)
                         else:
                             conn_by_state["other"].append(conn)
 
                 # Try LISTEN connections first, then others
                 for conn in conn_by_state["LISTEN"] + conn_by_state["other"]:
+                    conn_pid = conn["pid"]
+                    conn_status = conn.get("status", "unknown")
                     try:
-                        proc = psutil.Process(conn.pid)
+                        # v137.0: Get process info via non-blocking I/O
+                        proc_info = await get_process_info_nonblocking(conn_pid)
+                        proc_name = proc_info.get("name", "unknown") if proc_info else "unknown"
+                        proc_cmdline = proc_info.get("cmdline", []) if proc_info else []
+
                         logger.warning(
                             f"    📋 Port {port} held by: "
-                            f"PID={conn.pid}, Name={proc.name()}, "
-                            f"Status={conn.status}, "
-                            f"Cmdline={' '.join(proc.cmdline()[:3])}"
+                            f"PID={conn_pid}, Name={proc_name}, "
+                            f"Status={conn_status}, "
+                            f"Cmdline={' '.join(proc_cmdline[:3])}"
                         )
-                        # Attempt to kill the process
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=5)
-                        except psutil.TimeoutExpired:
-                            logger.warning(f"    ⚠️ Process {conn.pid} didn't exit, killing...")
-                            proc.kill()
-                            proc.wait(timeout=5)
-                        logger.info(f"    ✅ Killed process {conn.pid} on port {port}")
-                        return True, None  # v112.0: Cleanup succeeded
-                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+
+                        # Use our existing graceful kill method
+                        success, status = await self._kill_process_graceful_then_force(
+                            conn_pid,
+                            graceful_timeout=5.0,
+                            force_timeout=5.0,
+                        )
+
+                        if success:
+                            logger.info(f"    ✅ Killed process {conn_pid} on port {port} ({status})")
+                            return True, None  # v112.0: Cleanup succeeded
+                        else:
+                            logger.warning(f"    ⚠️ Could not kill process {conn_pid}: {status}")
+                            continue
+
+                    except Exception as e:
                         logger.warning(
                             f"    ⚠️ Could not kill process on port {port}: {e}"
                         )
@@ -12761,11 +13386,9 @@ echo "=== JARVIS Prime started ==="
                     start = time.time()
                     while time.time() - start < 15.0:
                         await asyncio.sleep(1.0)
-                        still_occupied = False
-                        for conn in psutil.net_connections(kind='inet'):
-                            if conn.laddr and conn.laddr.port == port:
-                                still_occupied = True
-                                break
+                        # v137.0: Use non-blocking check
+                        connections = await get_net_connections_nonblocking(port=None)
+                        still_occupied = any(c.get("port") == port for c in connections)
                         if not still_occupied:
                             logger.info(f"    ✅ Port {port} released")
                             return True, None  # v112.0: Cleanup succeeded
@@ -12889,6 +13512,7 @@ echo "=== JARVIS Prime started ==="
     ) -> None:
         """
         v112.0: Update the distributed port registry for cross-repo coordination.
+        v137.0: Updated to use non-blocking I/O (I/O Airlock pattern).
 
         When a service gets a fallback port, other repos need to know about it.
         This updates ~/.jarvis/registry/ports.json with the actual port mapping.
@@ -12899,15 +13523,18 @@ echo "=== JARVIS Prime started ==="
             original_port: The originally requested port
         """
         registry_dir = Path.home() / ".jarvis" / "registry"
-        registry_dir.mkdir(parents=True, exist_ok=True)
+
+        # v137.0: Use non-blocking I/O for directory creation
+        def _ensure_registry_dir():
+            registry_dir.mkdir(parents=True, exist_ok=True)
+        await _run_blocking_io(_ensure_registry_dir, timeout=2.0, operation_name="ensure_registry_dir")
 
         registry_file = registry_dir / "ports.json"
 
         try:
-            # Load existing registry
-            if registry_file.exists():
-                registry = json.loads(registry_file.read_text())
-            else:
+            # v137.0: Load existing registry with non-blocking I/O
+            registry = await read_json_nonblocking(registry_file)
+            if registry is None:
                 registry = {"version": "1.0", "ports": {}, "fallbacks": []}
 
             # Update port mapping
@@ -12920,6 +13547,8 @@ echo "=== JARVIS Prime started ==="
 
             # Track fallback history
             if new_port != original_port:
+                if "fallbacks" not in registry:
+                    registry["fallbacks"] = []
                 registry["fallbacks"].append({
                     "service": service_name,
                     "original": original_port,
@@ -12927,17 +13556,17 @@ echo "=== JARVIS Prime started ==="
                     "timestamp": time.time(),
                 })
 
-            # Write atomically
-            temp_file = registry_file.with_suffix(".tmp")
-            temp_file.write_text(json.dumps(registry, indent=2))
-            temp_file.replace(registry_file)
-
-            logger.debug(
-                f"    📝 [v112.0] Updated port registry: {service_name} -> {new_port}"
-            )
+            # v137.0: Write atomically with non-blocking I/O
+            success = await write_json_nonblocking(registry_file, registry)
+            if success:
+                logger.debug(
+                    f"    📝 [v137.0] Updated port registry: {service_name} -> {new_port}"
+                )
+            else:
+                logger.warning(f"    ⚠️ [v137.0] Failed to write port registry update")
 
         except Exception as e:
-            logger.warning(f"    ⚠️ [v112.0] Could not update port registry: {e}")
+            logger.warning(f"    ⚠️ [v137.0] Could not update port registry: {e}")
 
     async def _wait_for_dependencies(self, definition: ServiceDefinition) -> bool:
         """
@@ -13792,6 +14421,7 @@ echo "=== JARVIS Prime started ==="
             )
 
         # 2. Record in TrinityOrchestrationConfig (for global access)
+        # v137.0: Use non-blocking I/O
         try:
             from backend.core.trinity_orchestration_config import (
                 get_orchestration_config,
@@ -13801,7 +14431,6 @@ echo "=== JARVIS Prime started ==="
             orch_config = get_orchestration_config()
             startup_file = orch_config.components_dir / f"{service_name}_startup.json"
 
-            import json
             startup_data = {
                 "service_name": service_name,
                 "component_type": component_type,
@@ -13809,21 +14438,21 @@ echo "=== JARVIS Prime started ==="
                 "pid": pid,
             }
 
-            # Atomic write
-            tmp_file = startup_file.with_suffix(".tmp")
-            tmp_file.write_text(json.dumps(startup_data, indent=2))
-            tmp_file.rename(startup_file)
-
-            logger.debug(
-                f"[v108.0] Recorded startup time file for {service_name} at {startup_file}"
-            )
+            # v137.0: Non-blocking atomic write
+            success = await write_json_nonblocking(startup_file, startup_data)
+            if success:
+                logger.debug(
+                    f"[v137.0] Recorded startup time file for {service_name} at {startup_file}"
+                )
+            else:
+                logger.debug(f"[v137.0] Failed to write startup file for {service_name}")
         except ImportError:
             logger.debug(
-                f"[v108.0] TrinityOrchestrationConfig not available for startup recording"
+                f"[v137.0] TrinityOrchestrationConfig not available for startup recording"
             )
         except Exception as e:
             logger.warning(
-                f"[v108.0] Failed to write startup file: {e}"
+                f"[v137.0] Failed to write startup file: {e}"
             )
 
         # 3. Record in TrinityHealthMonitor config if available
@@ -13863,6 +14492,7 @@ echo "=== JARVIS Prime started ==="
     ) -> None:
         """
         v109.4: Notify Trinity that supervisor is spawning/has spawned a service.
+        v137.0: Updated to use non-blocking I/O (I/O Airlock pattern).
 
         This prevents the race condition where:
         1. Supervisor starts spawning a service
@@ -13871,21 +14501,19 @@ echo "=== JARVIS Prime started ==="
 
         Trinity will read this notification and defer to the supervisor.
         """
-        import json
-
         supervisor_dir = Path.home() / ".jarvis" / "supervisor"
-        supervisor_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write restart state for Trinity to read
+        # v137.0: Non-blocking directory creation
+        def _ensure_supervisor_dir():
+            supervisor_dir.mkdir(parents=True, exist_ok=True)
+        await _run_blocking_io(_ensure_supervisor_dir, timeout=2.0, operation_name="ensure_supervisor_dir")
+
         restart_state_file = supervisor_dir / "restart_state.json"
 
-        # Read existing state
-        existing = {}
-        if restart_state_file.exists():
-            try:
-                existing = json.loads(restart_state_file.read_text())
-            except Exception:
-                existing = {}
+        # v137.0: Read existing state with non-blocking I/O
+        existing = await read_json_nonblocking(restart_state_file)
+        if existing is None:
+            existing = {}
 
         # Update restarting services list
         restarting_services = existing.get("restarting", [])
@@ -13908,17 +14536,20 @@ echo "=== JARVIS Prime started ==="
             "last_update": time.time(),
         }
 
-        # Atomic write
-        tmp_file = restart_state_file.with_suffix(".tmp")
-        tmp_file.write_text(json.dumps(state, indent=2))
-        tmp_file.rename(restart_state_file)
-
-        logger.debug(f"[v109.4] Notified Trinity of {service_name} spawn (PID {pid})")
+        # v137.0: Atomic write with non-blocking I/O
+        success = await write_json_nonblocking(restart_state_file, state)
+        if success:
+            logger.debug(f"[v137.0] Notified Trinity of {service_name} spawn (PID {pid})")
+        else:
+            logger.debug(f"[v137.0] Failed to notify Trinity of {service_name} spawn")
 
         # Also write spawn time to Trinity's component directory for direct access
         try:
             trinity_components_dir = Path.home() / ".jarvis" / "trinity" / "components"
-            trinity_components_dir.mkdir(parents=True, exist_ok=True)
+
+            def _ensure_trinity_dir():
+                trinity_components_dir.mkdir(parents=True, exist_ok=True)
+            await _run_blocking_io(_ensure_trinity_dir, timeout=2.0, operation_name="ensure_trinity_dir")
 
             spawn_file = trinity_components_dir / f"{component_type}_spawn.json"
             spawn_data = {
@@ -13928,29 +14559,26 @@ echo "=== JARVIS Prime started ==="
                 "pid": pid,
                 "supervisor_spawned": True,
             }
-            tmp_spawn = spawn_file.with_suffix(".tmp")
-            tmp_spawn.write_text(json.dumps(spawn_data, indent=2))
-            tmp_spawn.rename(spawn_file)
+            await write_json_nonblocking(spawn_file, spawn_data)
         except Exception:
             pass  # Not critical
 
     async def _clear_trinity_restart_notification(self, service_name: str) -> None:
         """
         v109.4: Clear Trinity restart notification after service is healthy.
+        v137.0: Updated to use non-blocking I/O (I/O Airlock pattern).
 
         Called after a service successfully starts and is healthy to allow
         Trinity to resume normal monitoring.
         """
-        import json
-
         supervisor_dir = Path.home() / ".jarvis" / "supervisor"
         restart_state_file = supervisor_dir / "restart_state.json"
 
-        if not restart_state_file.exists():
-            return
-
         try:
-            state = json.loads(restart_state_file.read_text())
+            # v137.0: Read state with non-blocking I/O
+            state = await read_json_nonblocking(restart_state_file)
+            if state is None:
+                return  # No state file, nothing to clear
 
             # Remove from restarting list
             restarting = state.get("restarting", [])
@@ -13959,15 +14587,13 @@ echo "=== JARVIS Prime started ==="
                 state["restarting"] = restarting
                 state["last_update"] = time.time()
 
-                # Atomic write
-                tmp_file = restart_state_file.with_suffix(".tmp")
-                tmp_file.write_text(json.dumps(state, indent=2))
-                tmp_file.rename(restart_state_file)
-
-                logger.debug(f"[v109.4] Cleared Trinity restart notification for {service_name}")
+                # v137.0: Atomic write with non-blocking I/O
+                success = await write_json_nonblocking(restart_state_file, state)
+                if success:
+                    logger.debug(f"[v137.0] Cleared Trinity restart notification for {service_name}")
 
         except Exception as e:
-            logger.debug(f"[v109.4] Failed to clear Trinity notification: {e}")
+            logger.debug(f"[v137.0] Failed to clear Trinity notification: {e}")
 
     async def _wait_for_health(
         self,
@@ -14701,10 +15327,11 @@ echo "=== JARVIS Prime started ==="
                 # v117.5: Step -1 - Check PERSISTENT STATE FILES for previously running services
                 # This enables service adoption across full supervisor restarts (not just SIGHUP)
                 # Services that were running before a crash/restart can be adopted instead of respawned
+                # v137.0: Use non-blocking I/O for state file read
                 try:
                     service_state_file = Path.home() / ".jarvis" / "trinity" / "state" / "services.json"
-                    if service_state_file.exists():
-                        persistent_services = json.loads(service_state_file.read_text())
+                    persistent_services = await read_json_nonblocking(service_state_file)
+                    if persistent_services is not None:
                         # Normalize service name for lookup (handle hyphens vs underscores)
                         normalized_name = service_name.replace("-", "_")
                         service_state = persistent_services.get(service_name) or persistent_services.get(normalized_name)
@@ -15340,35 +15967,37 @@ echo "=== JARVIS Prime started ==="
             lock_manager = await get_lock_manager()
 
             # v117.0: Write startup state file for other potential supervisors to detect
+            # v137.0: Use non-blocking I/O for all file operations
             startup_state_file = Path.home() / ".jarvis" / "trinity" / "state" / "orchestrator.json"
-            startup_state_file.parent.mkdir(parents=True, exist_ok=True)
+
+            def _ensure_state_dir():
+                startup_state_file.parent.mkdir(parents=True, exist_ok=True)
+            await _run_blocking_io(_ensure_state_dir, timeout=2.0, operation_name="ensure_orchestrator_state_dir")
 
             # Check for existing startup state and verify if owner is still alive
-            if startup_state_file.exists():
-                try:
-                    existing_state = json.loads(startup_state_file.read_text())
-                    existing_pid = existing_state.get("pid", 0)
-                    if existing_pid and existing_pid != os.getpid():
-                        try:
-                            os.kill(existing_pid, 0)  # Check if process exists
-                            logger.warning(
-                                f"[v117.0] ⚠️ Another supervisor (PID {existing_pid}) may be running. "
-                                f"Will attempt lock acquisition..."
-                            )
-                        except OSError:
-                            # Process is dead - clean up stale state
-                            logger.info(f"[v117.0] Cleaning up stale orchestrator state (dead PID {existing_pid})")
-                except (json.JSONDecodeError, KeyError):
-                    pass
+            # v137.0: Use non-blocking read
+            existing_state = await read_json_nonblocking(startup_state_file)
+            if existing_state is not None:
+                existing_pid = existing_state.get("pid", 0)
+                if existing_pid and existing_pid != os.getpid():
+                    try:
+                        os.kill(existing_pid, 0)  # Check if process exists
+                        logger.warning(
+                            f"[v137.0] ⚠️ Another supervisor (PID {existing_pid}) may be running. "
+                            f"Will attempt lock acquisition..."
+                        )
+                    except OSError:
+                        # Process is dead - clean up stale state
+                        logger.info(f"[v137.0] Cleaning up stale orchestrator state (dead PID {existing_pid})")
 
             # Write our startup state first
             startup_state = {
                 "pid": os.getpid(),
                 "started_at": time.time(),
                 "status": "acquiring_lock",
-                "version": "117.0"
+                "version": "137.0"
             }
-            startup_state_file.write_text(json.dumps(startup_state, indent=2))
+            await write_json_nonblocking(startup_state_file, startup_state)
 
             # Try to acquire startup lock with context manager
             # Timeout: 30s (to wait for previous supervisor if needed)
@@ -15385,14 +16014,14 @@ echo "=== JARVIS Prime started ==="
             self._startup_lock_acquired = await self._startup_lock_context.__aenter__()
 
             if self._startup_lock_acquired:
-                logger.info("[v117.0] ✅ Startup lock acquired - proceeding with orchestration")
-                # Update state file
+                logger.info("[v137.0] ✅ Startup lock acquired - proceeding with orchestration")
+                # v137.0: Update state file with non-blocking I/O
                 startup_state["status"] = "lock_acquired"
-                startup_state_file.write_text(json.dumps(startup_state, indent=2))
+                await write_json_nonblocking(startup_state_file, startup_state)
             else:
-                logger.error("[v117.0] ❌ Could not acquire startup lock after 30s - another supervisor may be running")
+                logger.error("[v137.0] ❌ Could not acquire startup lock after 30s - another supervisor may be running")
                 startup_state["status"] = "lock_failed"
-                startup_state_file.write_text(json.dumps(startup_state, indent=2))
+                await write_json_nonblocking(startup_state_file, startup_state)
                 # v117.5: Return failure for all services when lock not acquired
                 return {"startup_lock": False, "jarvis-body": False}
 
@@ -15712,21 +16341,21 @@ echo "=== JARVIS Prime started ==="
 
         # v117.0: Update orchestrator state file with completion status
         try:
+            # v137.0: Update orchestrator state with non-blocking I/O
             startup_state_file = Path.home() / ".jarvis" / "trinity" / "state" / "orchestrator.json"
-            if startup_state_file.exists():
-                orchestrator_state = {
-                    "pid": os.getpid(),
-                    "started_at": self._jarvis_body_startup_time or time.time(),
-                    "completed_at": time.time(),
-                    "status": "running" if healthy_count == total_count else "degraded",
-                    "healthy_count": healthy_count,
-                    "total_count": total_count,
-                    "services": results,
-                    "version": "117.0"
-                }
-                startup_state_file.write_text(json.dumps(orchestrator_state, indent=2))
+            orchestrator_state = {
+                "pid": os.getpid(),
+                "started_at": self._jarvis_body_startup_time or time.time(),
+                "completed_at": time.time(),
+                "status": "running" if healthy_count == total_count else "degraded",
+                "healthy_count": healthy_count,
+                "total_count": total_count,
+                "services": results,
+                "version": "137.0"
+            }
+            await write_json_nonblocking(startup_state_file, orchestrator_state)
         except Exception as e:
-            logger.debug(f"[v117.0] Failed to update orchestrator state: {e}")
+            logger.debug(f"[v137.0] Failed to update orchestrator state: {e}")
 
         # v117.5: Release startup lock by properly exiting context manager
         # Use __aexit__ for async context managers (not __anext__)
@@ -15868,6 +16497,13 @@ echo "=== JARVIS Prime started ==="
             complete_global_shutdown()
         except Exception as e:
             logger.debug(f"[v95.13] Could not complete global shutdown signal: {e}")
+
+        # v137.0: Shutdown I/O Airlock thread pool
+        try:
+            _shutdown_io_thread_pool()
+            logger.info("[v137.0] ✅ I/O Airlock thread pool shut down")
+        except Exception as e:
+            logger.debug(f"[v137.0] I/O Airlock thread pool cleanup note: {e}")
 
         logger.info("✅ All services shut down")
         self._running = False
