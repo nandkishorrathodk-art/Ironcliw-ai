@@ -344,6 +344,32 @@ def get_hardware_env_vars(assessment: Optional[HardwareAssessment] = None) -> Di
         "JARVIS_CONTEXT_SIZE": str(assessment.recommended_context_size),
     }
 
+    # =========================================================================
+    # v139.0: ACTIVE HYBRID BRIDGE - GCP ENDPOINT FOR SLIM MODE
+    # =========================================================================
+    # When Slim Mode is active, we need to tell jarvis-prime where to forward
+    # heavy tasks. This enables the Active Hybrid Bridge to route to GCP.
+    # =========================================================================
+    if assessment.enable_slim_mode:
+        # Get GCP endpoint from environment (set by user or infrastructure)
+        gcp_endpoint = os.environ.get("GCP_PRIME_ENDPOINT", os.environ.get("JARVIS_GCP_PRIME_ENDPOINT", ""))
+
+        if gcp_endpoint:
+            env_vars["JARVIS_GCP_PRIME_ENDPOINT"] = gcp_endpoint
+            env_vars["JARVIS_AUTO_WAKE_GCP"] = "true"
+            env_vars["JARVIS_WARM_UP_GCP_ON_START"] = "true"
+            logger.info(
+                f"[v139.0] ☁️ Active Hybrid Bridge: GCP endpoint set to {gcp_endpoint}"
+            )
+        else:
+            # No explicit endpoint - GCPVMManager will handle provisioning
+            env_vars["JARVIS_AUTO_WAKE_GCP"] = "true"
+            env_vars["JARVIS_WARM_UP_GCP_ON_START"] = "false"  # Don't block startup
+            logger.info(
+                "[v139.0] ☁️ Active Hybrid Bridge: No GCP endpoint configured - "
+                "will use GCPVMManager for on-demand provisioning"
+            )
+
     # Log the profile being passed
     logger.info(
         f"[v138.0] 🖥️ Hardware Profile: {assessment.profile.name} - "
